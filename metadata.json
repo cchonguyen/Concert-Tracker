@@ -1,0 +1,6 @@
+{
+  "name": "LiveArchive - Grounded Concert Tracking & Intelligence Engine",
+  "description": "Automated concert tracking orchestrating search-augmented extraction via Google AI Studio Gemini, relational Supabase schema, human-in-the-loop verification, and downstream Google Sheets sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
