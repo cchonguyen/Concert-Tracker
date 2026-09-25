@@ -98,7 +98,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Database className="h-3.5 w-3.5" />
-            <span>Supabase DDL</span>
+            <span>Supabase DB</span>
           </button>
 
           <button

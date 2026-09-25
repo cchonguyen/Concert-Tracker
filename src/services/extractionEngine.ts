@@ -39,59 +39,38 @@ export function scanLocalInputCues(input: StagingInput): ScanningCues {
   let dateCue = input.dateHint?.trim() || '';
   let endDateCue = input.endDateHint?.trim() || '';
   let tourCue = input.tourHint?.trim() || '';
-  const isFestival = /festival|fest|sun\s*soaked|sunsoaked|coachella|lollapalooza|edc|bonnaroo|in the park|gov ball|outside lands|primavera|primavera sound|portola|crssd|austin city limits|acl/i.test(query);
+  const isFestival =
+    /festival|fest|gathering|carnival|fair|summit|weekend|open\s*air|in\s*the\s*park|music\s*and\s*arts/i.test(
+      query
+    );
 
-  // Specialized festival edition parsing for Sun Soaked (Kaskade)
-  if (/sun\s*soaked|sunsoaked/i.test(query)) {
-    headliner = 'Kaskade';
-    tourCue = tourCue || 'Sun Soaked 2026';
-    venueCue = venueCue || 'Huntington State Beach';
-    municipalityCue = municipalityCue || 'Huntington Beach';
-    if (/\b2026\b/.test(query) || !dateCue) {
-      dateCue = dateCue || '2026-09-12';
-    }
+  // Check for "at <Venue>" or "@ <Venue>" or "in <City>"
+  const atMatch = query.match(/(?:at|@)\s+([^,]+?)(?:\s+in\s+([^,]+))?(?:,\s*([A-Za-z\s]+))?$/i);
+  let cleanedForArtists = query;
+  if (atMatch) {
+    if (!venueCue) venueCue = atMatch[1].trim();
+    if (!municipalityCue && atMatch[2]) municipalityCue = atMatch[2].trim();
+    if (!municipalityCue && atMatch[3]) municipalityCue = atMatch[3].trim();
+    cleanedForArtists = query.slice(0, atMatch.index).trim();
   }
 
-  // Split on delimiters like "with", "feat.", "featuring", "b2b", "and", "x", "+"
-  const parts = query.split(/\s+(?:with|feat\.?|featuring|b2b|and|x|\+)\s+/i);
+  // Deconstruct billing delimiters: with, feat., featuring, b2b, and, x, +, vs, supporting
+  const parts = cleanedForArtists.split(/\s+(?:with|feat\.?|featuring|ft\.?|b2b|and|x|\+|vs\.?|presents)\s+/i);
   if (parts.length > 1) {
-    headliner = parts[0].replace(/(?:Tour|Live|Concert|Festival|at\s+.*)/i, '').trim();
+    headliner = parts[0].replace(/(?:Tour|Live|Concert|Festival|Fest|Residency)/gi, '').trim();
     for (let i = 1; i < parts.length; i++) {
-      const act = parts[i].replace(/(?:at\s+.*|in\s+.*|\d{4}.*)/i, '').trim();
-      if (act) supportingActs.push(act);
+      const act = parts[i]
+        .replace(/(?:Tour|Live|Concert|Festival|Fest|at\s+.*|in\s+.*|\b20\d{2}\b.*)/gi, '')
+        .trim();
+      if (act && !supportingActs.includes(act)) supportingActs.push(act);
     }
   } else {
-    const atMatch = query.match(/(?:at|@)\s+([^,]+)(?:,\s*([^,]+))?/i);
-    if (atMatch) {
-      if (!venueCue) venueCue = atMatch[1].trim();
-      if (!municipalityCue && atMatch[2]) municipalityCue = atMatch[2].trim();
-      headliner = query.slice(0, atMatch.index).replace(/(?:Tour|Live|Concert)/i, '').trim();
+    // If it's a festival title like "Portola Music Festival 2024", treat the name as event title
+    if (isFestival) {
+      tourCue = tourCue || query.replace(/\b20\d{2}\b/g, '').trim();
+      headliner = query.replace(/(?:Music\s+)?(?:Festival|Fest|Open\s*Air)\b/gi, '').trim();
     } else {
-      headliner = query.replace(/(?:Tour|Live|Concert)/i, '').trim();
-    }
-  }
-
-  // Specialized festival edition parsing for Zedd in the Park
-  if (/zedd.*in.*the.*park/i.test(query)) {
-    headliner = 'Zedd';
-    venueCue = venueCue || 'Los Angeles State Historic Park';
-    municipalityCue = municipalityCue || 'Los Angeles';
-    if (/\b2022\b/.test(query)) {
-      dateCue = dateCue || '2022-07-08';
-      tourCue = tourCue || 'Zedd in the Park 2022';
-    } else if (/\b2024\b/.test(query)) {
-      dateCue = dateCue || '2024-09-06';
-      endDateCue = endDateCue || '2024-09-07';
-      tourCue = tourCue || 'Zedd in the Park 2024';
-    } else if (/\b2026\b/.test(query)) {
-      dateCue = dateCue || '2026-08-14';
-      endDateCue = endDateCue || '2026-08-15';
-      tourCue = tourCue || 'Zedd in the Park 2026';
-      venueCue = "Randall's Island Park";
-      municipalityCue = 'New York City';
-    } else if (/\b2019\b/.test(query)) {
-      dateCue = dateCue || '2019-09-07';
-      tourCue = tourCue || 'Zedd in the Park 2019';
+      headliner = cleanedForArtists.replace(/(?:Tour|Live|Concert)/gi, '').trim();
     }
   }
 
