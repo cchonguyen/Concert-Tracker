@@ -11,6 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
 import { extractEventDetails, scanInputCues } from './src/server/geminiExtractionEngine';
+import { validateSupabase, syncEventsToSupabase, fetchEventsFromSupabase } from './src/server/supabase';
 
 async function main() {
   const app = express();
@@ -198,6 +199,51 @@ async function main() {
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown sync failure';
       res.status(500).json({ error: errorMessage });
+    }
+  });
+
+  // GET /api/supabase/status - Supabase connectivity & schema check
+  app.get('/api/supabase/status', async (req, res) => {
+    try {
+      const result = await validateSupabase();
+      res.json(result);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Validation failed';
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // POST /api/supabase/validate - Trigger live full diagnostic probe
+  app.post('/api/supabase/validate', async (req, res) => {
+    try {
+      const result = await validateSupabase();
+      res.json(result);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Validation failed';
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // POST /api/supabase/sync - Upsert local entities into Supabase
+  app.post('/api/supabase/sync', async (req, res) => {
+    try {
+      const { venues, artists, events, appearances } = req.body;
+      const result = await syncEventsToSupabase({ venues, artists, events, appearances });
+      res.json(result);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Sync failed';
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // GET /api/supabase/events - Query events from Supabase
+  app.get('/api/supabase/events', async (req, res) => {
+    try {
+      const events = await fetchEventsFromSupabase();
+      res.json({ events });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Fetch failed';
+      res.status(500).json({ error: msg });
     }
   });
 

@@ -157,7 +157,7 @@ export function serializeEventsToJson(events: PopulatedEvent[]): string {
 }
 
 /**
- * Supabase DDL SQL Schema matching the exact relational topology specified:
+ * Supabase DDL SQL Schema matching the exact relational topology:
  */
 export function generateSupabaseSqlSchema(): string {
   return `-- ====================================================================
@@ -165,12 +165,9 @@ export function generateSupabaseSqlSchema(): string {
 -- Relational Topology for High-Fidelity Concert Manifests & Downstream Sync
 -- ====================================================================
 
--- 1. Enable UUID extension
-create extension if not exists "uuid-ossp";
-
--- 2. Venues Table
+-- 1. Venues Table
 create table if not exists public.venues (
-    id uuid primary key default uuid_generate_v4(),
+    id text primary key default gen_random_uuid()::text,
     name text not null unique,
     city text not null,
     state text,
@@ -180,9 +177,9 @@ create table if not exists public.venues (
     created_at timestamp with time zone default now()
 );
 
--- 3. Artists Table (with MusicBrainz Canonical Identifier)
+-- 2. Artists Table (with MusicBrainz Canonical Identifier)
 create table if not exists public.artists (
-    id uuid primary key default uuid_generate_v4(),
+    id text primary key default gen_random_uuid()::text,
     name text not null unique,
     musicbrainz_id text,
     disambiguation text,
@@ -190,16 +187,16 @@ create table if not exists public.artists (
     created_at timestamp with time zone default now()
 );
 
--- 4. Events Table (Authoritative transactional core)
+-- 3. Events Table (Authoritative transactional core)
 create table if not exists public.events (
-    id uuid primary key default uuid_generate_v4(),
+    id text primary key default gen_random_uuid()::text,
     name text not null,
     tour_name text,
     event_date date not null,
     is_festival boolean default false,
     end_date date,
     festival_days jsonb, -- Array of { date, day_index, label, attended, notes }
-    venue_id uuid not null references public.venues(id) on delete restrict,
+    venue_id text not null references public.venues(id) on delete restrict,
     notes text,
     setlist_confirmed boolean default false,
     confidence_score numeric(4,3) check (confidence_score >= 0 and confidence_score <= 1.0),
@@ -212,11 +209,11 @@ create table if not exists public.events (
     created_at timestamp with time zone default now()
 );
 
--- 5. Event Appearances (Lineup Decomposition Junction Table)
+-- 4. Event Appearances (Lineup Decomposition Junction Table)
 create table if not exists public.event_appearances (
-    id uuid primary key default uuid_generate_v4(),
-    event_id uuid not null references public.events(id) on delete cascade,
-    artist_id uuid not null references public.artists(id) on delete restrict,
+    id text primary key default gen_random_uuid()::text,
+    event_id text not null references public.events(id) on delete cascade,
+    artist_id text not null references public.artists(id) on delete restrict,
     billing_role text not null check (billing_role in ('headliner', 'support', 'guest', 'festival_lineup')),
     billing_order integer not null default 1,
     stage_name text,
@@ -224,55 +221,24 @@ create table if not exists public.event_appearances (
     unique(event_id, artist_id)
 );
 
--- Indices for dynamic typeahead querying and aggregation performance
+-- 5. Enable Row Level Security (RLS) with permissive access policies
+alter table public.venues enable row level security;
+alter table public.artists enable row level security;
+alter table public.events enable row level security;
+alter table public.event_appearances enable row level security;
+
+create policy "Allow all access to venues" on public.venues for all using (true) with check (true);
+create policy "Allow all access to artists" on public.artists for all using (true) with check (true);
+create policy "Allow all access to events" on public.events for all using (true) with check (true);
+create policy "Allow all access to event_appearances" on public.event_appearances for all using (true) with check (true);
+
+-- 6. Performance Indices
 create index if not exists idx_events_date on public.events(event_date desc);
 create index if not exists idx_events_venue on public.events(venue_id);
-create index if not exists idx_venues_name_trgm on public.venues using gin(name gin_trgm_ops);
-create index if not exists idx_artists_name_trgm on public.artists using gin(name gin_trgm_ops);
+create index if not exists idx_venues_name on public.venues(name);
+create index if not exists idx_artists_name on public.artists(name);
 create index if not exists idx_appearances_event on public.event_appearances(event_id);
 create index if not exists idx_appearances_artist on public.event_appearances(artist_id);
-
--- Downstream Google Sheets Webhook Trigger Function
--- Automatically dispatches a POST webhook payload to an edge function
-create or replace function public.dispatch_google_sheets_sync()
-returns trigger as $$
-declare
-    v_payload jsonb;
-    v_artists text;
-    v_venue_name text;
-    v_venue_city text;
-begin
-    select string_agg(a.name, '; ' order by ea.billing_order)
-    into v_artists
-    from public.event_appearances ea
-    join public.artists a on a.id = ea.artist_id
-    where ea.event_id = NEW.id;
-
-    select name, city into v_venue_name, v_venue_city
-    from public.venues where id = NEW.venue_id;
-
-    v_payload := jsonb_build_object(
-        'event_id', NEW.id,
-        'event_name', NEW.name,
-        'tour_name', NEW.tour_name,
-        'event_date', NEW.event_date,
-        'venue', v_venue_name,
-        'city', v_venue_city,
-        'artists', coalesce(v_artists, ''),
-        'ticket_price', NEW.ticket_price,
-        'synced_at', now()
-    );
-
-    -- Call Supabase pg_net / edge webhook
-    perform net.http_post(
-        url := current_setting('app.settings.sheets_webhook_url', true),
-        headers := '{"Content-Type": "application/json"}'::jsonb,
-        body := v_payload
-    );
-
-    return NEW;
-end;
-$$ language plpgsql security definer;
 `;
 }
 

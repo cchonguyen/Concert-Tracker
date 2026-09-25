@@ -756,6 +756,100 @@ export class RelationalConcertStore {
     this.persistAll();
   }
 
+  // Import / Merge records pulled from Supabase
+  public importFromSupabase(remoteEvents: PopulatedEvent[]): number {
+    let importedCount = 0;
+    for (const rEvt of remoteEvents) {
+      // 1. Reconcile Venue
+      if (rEvt.venue) {
+        const vIdx = this.venues.findIndex(
+          (v) => v.id === rEvt.venue.id || v.name.trim().toLowerCase() === rEvt.venue.name.trim().toLowerCase()
+        );
+        if (vIdx === -1) {
+          this.venues.push({
+            id: rEvt.venue.id,
+            name: rEvt.venue.name,
+            city: rEvt.venue.city,
+            state: rEvt.venue.state,
+            country: rEvt.venue.country,
+            isOutdoor: rEvt.venue.isOutdoor ?? false,
+            capacity: rEvt.venue.capacity,
+          });
+        }
+      }
+
+      // 2. Reconcile Artists & Appearances
+      if (rEvt.appearances) {
+        for (const app of rEvt.appearances) {
+          if (app.artist) {
+            const aIdx = this.artists.findIndex(
+              (a) => a.id === app.artist.id || a.name.trim().toLowerCase() === app.artist.name.trim().toLowerCase()
+            );
+            if (aIdx === -1) {
+              this.artists.push({
+                id: app.artist.id,
+                name: app.artist.name,
+                musicbrainz_id: app.artist.musicbrainz_id,
+                disambiguation: app.artist.disambiguation,
+                genres: app.artist.genres || [],
+              });
+            }
+          }
+
+          const existingApp = this.appearances.find(
+            (a) => a.event_id === rEvt.id && a.artist_id === app.artist_id
+          );
+          if (!existingApp) {
+            this.appearances.push({
+              id: app.id || ('app-' + crypto.randomUUID().slice(0, 8)),
+              event_id: rEvt.id,
+              artist_id: app.artist_id,
+              billing_role: app.billing_role,
+              billing_order: app.billing_order,
+              stage_name: app.stage_name,
+            });
+          }
+        }
+      }
+
+      // 3. Reconcile Event
+      const eIdx = this.events.findIndex(
+        (e) => e.id === rEvt.id || (e.name.trim().toLowerCase() === rEvt.name.trim().toLowerCase() && e.event_date === rEvt.event_date)
+      );
+
+      const eventRecord: ConcertEvent = {
+        id: rEvt.id,
+        name: rEvt.name,
+        tour_name: rEvt.tour_name,
+        event_date: rEvt.event_date,
+        is_festival: rEvt.is_festival ?? false,
+        end_date: rEvt.end_date,
+        festival_days: rEvt.festival_days,
+        venue_id: rEvt.venue_id,
+        created_at: rEvt.created_at || new Date().toISOString(),
+        notes: rEvt.notes,
+        setlist_confirmed: rEvt.setlist_confirmed ?? false,
+        confidence_score: rEvt.confidence_score,
+        source_urls: rEvt.source_urls || [],
+        ticket_price: rEvt.ticket_price,
+        seating_tier: rEvt.seating_tier,
+        companions: rEvt.companions || [],
+        attendance_status: rEvt.attendance_status || 'attended',
+        rating: rEvt.rating || 5,
+      };
+
+      if (eIdx === -1) {
+        this.events.push(eventRecord);
+        importedCount++;
+      } else {
+        this.events[eIdx] = eventRecord;
+      }
+    }
+
+    this.persistAll();
+    return importedCount;
+  }
+
   // Restore defaults
   public resetToDefaults(): void {
     this.venues = [...SEED_VENUES];
