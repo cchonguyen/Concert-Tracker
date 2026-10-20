@@ -137,6 +137,7 @@ export default function App() {
         <EventDetail
           key={selected.id}
           event={selected}
+          events={events}
           onChange={(e) => {
             upsert(e);
             void refresh();

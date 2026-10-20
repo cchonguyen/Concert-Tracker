@@ -60,10 +60,11 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 | R1.4 | After saving, the app researches the event's details from structured sources (Ticketmaster for listings, setlist.fm for past shows by artist and date, Clashfinder for festival dates) and verifies the date with web search (Brave). This needs at least a year; without one the event asks "When was it?". |
 | R1.5 | Research results are candidates with sources; sources agreeing on a date count together. When a source covers the full date you gave, the date is shown as confirmed (with each source and the words it used) and that candidate fills empty fields. When sources give a different date, you see up to five candidates and confirm one with one tap, or dismiss them. |
 | R1.5a | A web search result counts only if its own title or description names every word of the event and writes the date in full; month-only dates and bare years never confirm anything. |
+| R1.5b | The venue and city come from the same sources: listings give them directly, and for web results the app reads the event markup on the pages that gave the date (that event, that day, one place only). Cities are written "City, ST" in the US and Canada. |
 | R1.6 | Applying a candidate records each filled field's source (URL). Fields you typed are never overwritten without your tap. |
 | R1.7 | Research can be re-run at any time ("Look again"), for example after adding a date or a city. |
 | R1.8 | No candidate is fine: the event stays as typed and says no listing was found. |
-| R1.9 | Every field is editable later; an edit becomes a "you" source. |
+| R1.9 | Every field is editable later; an edit becomes a "you" source. The last day of an event shows its start date until you change it and is stored only when it differs (a single-day event has no last day, so nothing is defaulted). Venue and city suggest what you've entered before; city also suggests real places as you type. |
 
 ## 6. Stage 2: find who played
 
@@ -115,8 +116,9 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 | setlist.fm | 1, 2 | Past shows by artist and date (venue, city); confirms who actually performed | Needs a key; coverage depends on fans; not a full lineup |
 | Clashfinder | 1, 2 | Festival editions with start dates; full festival lineups with stages and times, archived for past years | Crowd-sourced; mostly festivals; fantasy clashes are ignored |
 | Promoter pages (and Wayback) | 2 | The official lineup, read by Gemini | Pages are overwritten each year, hence archived copies |
-| Brave web search | 1, 2 | Confirms dates from result titles and descriptions; finds lineup pages when nothing else did | Results can mix in other editions or tour dates, so strict same-event filtering applies; free plan has a monthly cap |
+| Brave web search | 1, 2 | Confirms dates from result titles and descriptions (and venue and city from the event markup on those pages); finds lineup pages when nothing else did | Results can mix in other editions or tour dates, so strict same-event filtering applies; free plan has a monthly cap |
 | Gemini (free tier) | 2 only | Reads fetched pages and extracts names verbatim | Never answers from memory; ~50 calls/day budget |
+| Open-Meteo geocoding | capture | City suggestions as you type ("City, ST"); free, no key | Suggestions only; never fills a field on its own |
 | MusicBrainz | after 2 | Stable artist IDs | Not a lineup source |
 | AXS | none | n/a | No public API; scraping breaks its terms |
 

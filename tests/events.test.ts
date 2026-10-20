@@ -19,6 +19,7 @@ import { DetailCandidate } from '../src/server/events/types.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import { PipelineDeps } from '../src/server/lineup/pipeline.ts';
 import { Edition } from '../src/server/lineup/types.ts';
+import { cityLabel, citySuggestions, placeFromPage } from '../src/server/events/place.ts';
 import { fakeFetcher } from './fakes.ts';
 
 const NOW = new Date('2026-10-20T12:00:00Z');
@@ -322,4 +323,87 @@ test('a date backed by more sources wins when several cover yours; a tie asks yo
     NOW,
   );
   assert.equal(tie.details.status, 'choose');
+});
+
+const ld = (data: unknown) => `<html><head><script type="application/ld+json">${JSON.stringify(data)}</script></head><body></body></html>`;
+const greekShow = {
+  '@context': 'https://schema.org',
+  '@type': 'MusicEvent',
+  name: 'Porter Robinson: Nurture Live',
+  startDate: '2024-10-05T19:30:00-07:00',
+  location: { '@type': 'Place', name: 'Greek Theatre', address: { '@type': 'PostalAddress', addressLocality: 'Los Angeles', addressRegion: 'California', addressCountry: 'US' } },
+};
+
+test('cities are written "City, ST" in the US and Canada and as the city elsewhere', () => {
+  assert.equal(cityLabel('Las Vegas', 'Nevada', 'US'), 'Las Vegas, NV');
+  assert.equal(cityLabel('Las Vegas', 'NV'), 'Las Vegas, NV');
+  assert.equal(cityLabel('Toronto', 'Ontario', 'Canada'), 'Toronto, ON');
+  assert.equal(cityLabel('London', 'England', 'GB'), 'London');
+  assert.equal(cityLabel('Springfield'), 'Springfield');
+  assert.equal(cityLabel(undefined, 'NV'), undefined);
+});
+
+test('a page gives a place only from event markup for this event on a covered day', () => {
+  assert.deepEqual(placeFromPage(ld(greekShow), 'Porter Robinson', '2024-10-05'), {
+    venue: 'Greek Theatre',
+    city: 'Los Angeles, CA',
+    country: undefined,
+    quote: 'Greek Theatre, Los Angeles, CA',
+  });
+  assert.equal(placeFromPage(ld(greekShow), 'Porter Robinson', '2024-10-06'), null, 'another day');
+  assert.equal(placeFromPage(ld(greekShow), 'Madeon', '2024-10-05'), null, 'another act');
+  assert.equal(placeFromPage('<p>Porter Robinson at the Greek Theatre</p>', 'Porter Robinson', '2024-10-05'), null, 'no markup, no place');
+  const byPerformer = { ...greekShow, name: 'Nurture Live', performer: [{ '@type': 'MusicGroup', name: 'Porter Robinson' }] };
+  assert.equal(placeFromPage(ld({ '@graph': [byPerformer] }), 'Porter Robinson', '2024-10-05')?.venue, 'Greek Theatre');
+  const elsewhere = { ...greekShow, location: { name: 'Fox Theater', address: { addressLocality: 'Oakland', addressRegion: 'CA' } } };
+  assert.equal(placeFromPage(ld([greekShow, elsewhere]), 'Porter Robinson', '2024-10-05'), null, 'two places is ambiguous');
+  const festival = { ...greekShow, '@type': 'Festival', name: 'EDC Las Vegas 2025', startDate: '2025-05-16' };
+  assert.equal(placeFromPage(ld(festival), 'EDC Las Vegas', '2025-05-16', '2025-05-18')?.city, 'Los Angeles, CA');
+});
+
+test('stage 1 reads the venue and city from the pages that confirmed the date', async () => {
+  process.env.BRAVE_SEARCH_API_KEY = 'k';
+  try {
+    const { fetcher, calls } = fakeFetcher({
+      'https://api.search.brave.com/': {
+        body: { web: { results: [{ url: 'https://tickets.example/porter', title: 'Porter Robinson', description: 'Sat Oct 5, 2024' }] } },
+      },
+      'https://tickets.example/porter': { body: ld(greekShow) },
+    });
+    const typed = newEvent('Porter Robinson Oct 5 2024', NOW);
+    const out = await researchEvent(typed, [braveFinder], fetcher, NOW);
+    assert.equal(out.details.status, 'matched');
+    assert.equal(out.venue, 'Greek Theatre');
+    assert.equal(out.city, 'Los Angeles, CA');
+    assert.deepEqual(out.sources.venue, { sourceType: 'discovered', sourceUrl: 'https://tickets.example/porter' });
+    const placeSource = out.details.candidates[0].sources.find((s) => s.fields.includes('venue'));
+    assert.equal(placeSource?.quote, 'Greek Theatre, Los Angeles, CA');
+    assert.ok(!placeSource?.fields.includes('startDate'), 'the place source does not count as another date confirmation');
+    assert.equal(calls.length, 2);
+
+    const yours = await researchEvent(newEvent('Porter Robinson at The Greek, Oct 5 2024', NOW), [braveFinder], fetcher, NOW);
+    assert.equal(yours.venue, 'The Greek', 'a venue you typed is never replaced');
+    assert.equal(yours.city, 'Los Angeles, CA', 'an empty city is filled');
+  } finally {
+    delete process.env.BRAVE_SEARCH_API_KEY;
+  }
+});
+
+test('city suggestions come from the geocoder as "City, ST", biggest first', async () => {
+  const { fetcher, calls } = fakeFetcher({
+    'https://geocoding-api.open-meteo.com/': {
+      body: {
+        results: [
+          { name: 'Las Vegas', admin1: 'New Mexico', country_code: 'US', country: 'United States', feature_code: 'PPLA2', population: 13000 },
+          { name: 'Las Vegas', admin1: 'Nevada', country_code: 'US', country: 'United States', feature_code: 'PPLA2', population: 640000 },
+          { name: 'Las Vegas Wash', admin1: 'Nevada', country_code: 'US', feature_code: 'STM' },
+          { name: 'Las Vegas', admin1: 'Santa Barbara', country_code: 'HN', country: 'Honduras', feature_code: 'PPL', population: 9000 },
+        ],
+      },
+    },
+  });
+  assert.deepEqual(await citySuggestions('las vegas', fetcher), ['Las Vegas, NV', 'Las Vegas, NM', 'Las Vegas, Honduras']);
+  assert.deepEqual(await citySuggestions('Las Vegas, N', fetcher), ['Las Vegas, NV', 'Las Vegas, NM', 'Las Vegas, Honduras'], 'cached');
+  assert.equal(calls.length, 1);
+  assert.deepEqual(await citySuggestions('L', fetcher), []);
 });
