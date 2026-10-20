@@ -157,15 +157,31 @@ export function mergeImports(existing: EmailImport[], outcomes: ReadOutcome[], e
     if (!pending.flags.includes(flag)) pending.flags.push(flag);
     touch(pending);
   }
-  for (const pending of byKey.values()) {
+  // A seller can sell the same name many times (a monthly club night), so
+  // each refund marks only the show whose latest order came before it.
+  for (const pending of [...byKey.values()]) {
     if (pending.status !== 'flag') continue;
-    for (const row of byKey.values()) {
-      if (row.status === 'flag' || row.status === 'unreadable' || row.seller !== pending.seller) continue;
-      if (!row.name || flagKey(row.seller, row.name) !== pending.key) continue;
-      const before = row.flags.length + row.messages.length;
-      for (const f of pending.flags) if (!row.flags.includes(f)) row.flags.push(f);
-      for (const m of pending.messages) if (!known(row, m.id)) row.messages.push(m);
-      if (row.flags.length + row.messages.length !== before) touch(row);
+    const shows = [...byKey.values()].filter(
+      (row) =>
+        row.status !== 'flag' &&
+        row.status !== 'unreadable' &&
+        row.seller === pending.seller &&
+        Boolean(row.name) &&
+        flagKey(row.seller, row.name!) === pending.key,
+    );
+    for (const m of pending.messages) {
+      if (!m.kind || m.kind === 'order') continue;
+      const orderedBefore = (row: EmailImport) =>
+        row.messages.filter((o) => o.kind === 'order' && o.sentAt <= m.sentAt).reduce((last, o) => (o.sentAt > last ? o.sentAt : last), '');
+      const row = shows.reduce<EmailImport | undefined>((best, r) => {
+        const at = orderedBefore(r);
+        return at && (!best || at > orderedBefore(best)) ? r : best;
+      }, undefined);
+      if (!row || known(row, m.id)) continue;
+      row.messages.push(m);
+      const flag = FLAG[m.kind];
+      if (!row.flags.includes(flag)) row.flags.push(flag);
+      touch(row);
     }
   }
   return [...changed];
