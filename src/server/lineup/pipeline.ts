@@ -223,8 +223,7 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
       // page first found by search is recognised by its domain here too.
       const official = doc.sourceType !== 'discovered' || isEventDomain(doc.url, job.input.eventName);
       const sourceType = official && doc.sourceType === 'discovered' ? 'promoter' : doc.sourceType;
-      const pageKind = official ? 'official' : 'third_party';
-      const extracted = await deps.gemini!.extractPerformers({ text: doc.body, input: job.input, examples, pageKind });
+      const extracted = await deps.gemini!.extractPerformers({ text: doc.body, input: job.input, examples });
       const normalizedDoc = normalizeName(doc.body);
       const kept: PerformerClaim[] = [];
       let rejected = 0;
