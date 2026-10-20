@@ -16,13 +16,23 @@ import { PipelineDeps, runJob } from './pipeline';
 
 // Supabase is the durable store. The local file store is for development and
 // is used when Supabase is not configured or its lineup tables are missing.
-export async function createStore(): Promise<LineupStore> {
+// Hosts without a persistent disk (Cloudflare Workers) pass requireSupabase,
+// so a missing database fails loudly instead of losing data.
+export async function createStore(opts: { requireSupabase?: boolean } = {}): Promise<LineupStore> {
   const fileStore = () => new FileLineupStore(process.env.DATA_DIR || path.resolve(process.cwd(), 'data'));
-  if (process.env.LINEUP_STORE === 'file') return fileStore();
+  if (!opts.requireSupabase && process.env.LINEUP_STORE === 'file') return fileStore();
   const client = getSupabaseClient();
-  if (!client) return fileStore();
+  if (!client) {
+    if (opts.requireSupabase) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required on this host.');
+    return fileStore();
+  }
   const probe = await client.from('lookup_jobs').select('id').limit(1);
   if (probe.error) {
+    if (opts.requireSupabase) {
+      throw new Error(
+        `Supabase lineup tables unavailable (${probe.error.message}). Apply supabase/migrations/0002_source_first_lineups.sql.`,
+      );
+    }
     console.warn(
       `Supabase lineup tables unavailable (${probe.error.message}). Apply supabase/migrations/0002_source_first_lineups.sql. Using the local file store.`,
     );
@@ -54,8 +64,14 @@ export function createDeps(store: LineupStore): PipelineDeps {
   };
 }
 
+// Starts a job without making the caller wait for it; callers poll the job record.
+export interface JobRunner {
+  kick(jobId: string, force?: boolean): void | Promise<void>;
+}
+
 // Single-process worker: picks up due jobs on an interval, one at a time.
-export class LookupWorker {
+// Cloudflare uses a Cron Trigger and a Queue instead (worker/index.ts).
+export class LookupWorker implements JobRunner {
   private running = new Set<string>();
   private timer: NodeJS.Timeout | null = null;
 
