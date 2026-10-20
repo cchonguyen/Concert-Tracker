@@ -599,17 +599,20 @@ export class RelationalConcertStore {
     },
   ): PopulatedEvent {
     // 1. Resolve or Insert Venue
-    let venue = this.venues.find(
-      (v) =>
-        v.name.trim().toLowerCase() === manifest.venue.name.trim().toLowerCase() ||
-        (v.city.trim().toLowerCase() === manifest.venue.city.trim().toLowerCase() &&
-          v.name.toLowerCase().includes(manifest.venue.name.toLowerCase())),
-    );
+    const venueName = manifest.venue.name.trim().toLowerCase();
+    let venue = venueName
+      ? this.venues.find(
+          (v) =>
+            v.name.trim().toLowerCase() === venueName ||
+            (v.city.trim().toLowerCase() === manifest.venue.city.trim().toLowerCase() &&
+              v.name.toLowerCase().includes(venueName)),
+        )
+      : undefined;
 
     if (!venue) {
       venue = {
         id: 'ven-' + crypto.randomUUID().slice(0, 8),
-        name: manifest.venue.name,
+        name: manifest.venue.name || 'Venue not recorded',
         city: manifest.venue.city,
         state: manifest.venue.state,
         country: manifest.venue.country,
@@ -652,7 +655,7 @@ export class RelationalConcertStore {
       seating_tier: extra?.seatingTier,
       companions: extra?.companions || [],
       attendance_status: extra?.attendanceStatus || 'attended',
-      rating: extra?.rating || 5,
+      rating: extra?.rating,
       engine_metadata: manifest.engineMetadata,
       setlist_tracks: manifest.suggestedSetlist || undefined,
     };
@@ -679,7 +682,7 @@ export class RelationalConcertStore {
         artist_id: artist.id,
         billing_role: art.role as BillingRole,
         billing_order: art.billingOrder || idx + 1,
-        stage_name: art.stage || 'Main Stage',
+        stage_name: art.stage,
       };
       this.appearances.push(appearance);
     });

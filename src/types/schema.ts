@@ -72,17 +72,6 @@ export interface PopulatedEvent extends ConcertEvent {
   })[];
 }
 
-// Extraction input staging
-export interface StagingInput {
-  concertName: string;
-  dateHint?: string;
-  endDateHint?: string;
-  attendedDaysHint?: string;
-  venueHint?: string;
-  cityHint?: string;
-  tourHint?: string;
-  notesHint?: string;
-}
 
 // Gemini Grounded Extraction Output Schema
 export interface ExtractedArtist {
@@ -123,11 +112,6 @@ export interface ExtractedEventManifest {
   confidenceScore: number;
   notes: string;
   sourceUrls: string[];
-  searchQueriesUsed?: string[];
-  groundingSources?: {
-    title: string;
-    url: string;
-  }[];
   suggestedSetlist?: {
     order: number;
     title: string;
@@ -138,44 +122,13 @@ export interface ExtractedEventManifest {
   engineMetadata?: EngineMetadata;
 }
 
-export interface ScanningCues {
-  rawTokens: string[];
-  headliner?: string;
-  supportingActs: string[];
-  venueCue?: string;
-  municipalityCue?: string;
-  dateCue?: string;
-  endDateCue?: string;
-  tourCue?: string;
-  isFestival: boolean;
-  isMultiDay: boolean;
-  estimatedDays?: number;
-}
-
+// Provenance of an archived event: which lookup and edition it came from.
+// Older records may carry extra fields from the retired extraction engine.
 export interface EngineMetadata {
   extractionModel: string;
-  confidenceScore: number;
-  executionTimeMs: number;
-  fallbackTriggered: boolean;
-  fallbackReason?: string;
-  scanSteps: string[];
-  cuesDetected: ScanningCues;
-  synthesizedSummary: string;
+  editionKey?: string;
+  lookupJobId?: string;
   timestamp: string;
-}
-
-export interface TransformedIngestionPayload {
-  event: Omit<ConcertEvent, 'id' | 'created_at'>;
-  venue: Omit<Venue, 'id'>;
-  artists: {
-    artist: Omit<Artist, 'id'>;
-    appearance: {
-      billing_role: BillingRole;
-      billing_order: number;
-      stage_name?: string;
-    };
-  }[];
-  metadata: EngineMetadata;
 }
 
 // Telemetry & Analytics Interfaces

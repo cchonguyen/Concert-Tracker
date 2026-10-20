@@ -1,0 +1,276 @@
+// Core types for the source-first lineup pipeline. See ARCHITECTURE.md.
+
+export type SourceType =
+  | 'clashfinder'
+  | 'promoter'
+  | 'wayback'
+  | 'ticketmaster'
+  | 'setlistfm'
+  | 'musicbrainz'
+  | 'discovered'
+  | 'user';
+
+// billed: announced on a lineup; performed: a post-show record says they played;
+// crowd: a crowd-sourced listing (Clashfinder).
+export type EvidenceKind = 'billed' | 'performed' | 'crowd';
+
+export interface LookupInput {
+  eventName: string;
+  year: number;
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+  venue?: string;
+  city?: string;
+  country?: string;
+  lineupUrl?: string; // promoter lineup page or a Clashfinder URL
+  notes?: string;
+}
+
+export interface SourceDocument {
+  id: string;
+  url: string;
+  sourceType: SourceType;
+  fetchedAt: string;
+  contentHash: string;
+  contentType: 'json' | 'html' | 'text';
+  body: string;
+}
+
+export interface PerformerClaim {
+  id: string;
+  jobId: string;
+  documentId: string;
+  sourceType: SourceType;
+  sourceUrl: string;
+  name: string;
+  quotedSpan: string;
+  evidence: EvidenceKind;
+  day?: string; // YYYY-MM-DD
+  stage?: string;
+  startTime?: string;
+  endTime?: string;
+  mbid?: string;
+  extractor: string; // adapter id or 'gemini:<model>'
+  extractorVersion: string;
+  createdAt: string;
+}
+
+export interface FactClaim<T = string> {
+  value: T;
+  sourceType: SourceType;
+  sourceUrl: string;
+}
+
+export interface EditionFacts {
+  name: FactClaim[];
+  startDate: FactClaim[];
+  endDate: FactClaim[];
+  venue: FactClaim[];
+  city: FactClaim[];
+  country: FactClaim[];
+}
+
+export type NewPerformerClaim = Omit<PerformerClaim, 'id' | 'jobId' | 'createdAt'>;
+
+export interface AdapterResult {
+  documents: SourceDocument[];
+  performers: NewPerformerClaim[];
+  facts: Partial<EditionFacts>;
+  // Unstructured documents that need Gemini extraction.
+  extractionQueue: string[]; // document ids
+  notes: string[];
+  // Learned by the adapter, persisted on the series (e.g. Clashfinder slug).
+  seriesHints?: Partial<SeriesRecord>;
+}
+
+export interface AdapterContext {
+  input: LookupInput;
+  editionKey: string;
+  series: SeriesRecord | null;
+  now: Date;
+  fetcher: Fetcher;
+}
+
+export interface SourceAdapter {
+  id: SourceType;
+  enabled(): boolean;
+  collect(ctx: AdapterContext): Promise<AdapterResult>;
+}
+
+export interface FetchResponse {
+  url: string; // final url after redirects
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+}
+
+export interface Fetcher {
+  get(url: string, init?: { headers?: Record<string, string>; timeoutMs?: number }): Promise<FetchResponse>;
+}
+
+export type JobStatus =
+  | 'queued'
+  | 'running'
+  | 'waiting_quota'
+  | 'needs_review'
+  | 'no_data'
+  | 'confirmed'
+  | 'failed';
+
+export type JobStage = 'collect' | 'extract' | 'discover' | 'merge' | 'done';
+
+export interface CandidateSource {
+  sourceType: SourceType;
+  sourceUrl: string;
+  quotedSpan: string;
+  evidence: EvidenceKind;
+  extractor: string;
+}
+
+export interface CandidatePerformer {
+  key: string; // normalized merge key
+  name: string;
+  mbid?: string;
+  days: string[];
+  stages: string[];
+  status: 'billed' | 'performed';
+  confidence: number; // 0..1, computed from sources
+  flagged: boolean; // low evidence, needs a look
+  sources: CandidateSource[];
+}
+
+export interface CandidateFacts {
+  name?: string;
+  startDate?: string;
+  endDate?: string;
+  venue?: string;
+  city?: string;
+  country?: string;
+  sources: Record<string, FactClaim[]>;
+}
+
+export interface CandidateLineup {
+  editionKey: string;
+  cached: boolean;
+  facts: CandidateFacts;
+  performers: CandidatePerformer[];
+  droppedCount: number; // names removed by blocklist or verification
+}
+
+export interface JobLogEntry {
+  at: string;
+  message: string;
+}
+
+export interface LookupJob {
+  id: string;
+  kind: 'lineup' | 'resolve_artists';
+  input: LookupInput;
+  editionKey: string;
+  status: JobStatus;
+  stage: JobStage;
+  attempts: number;
+  nextAttemptAt?: string;
+  waitingReason?: string;
+  lastError?: string;
+  pendingExtraction: string[]; // document ids still to extract
+  discoveryDone: boolean;
+  facts: Partial<EditionFacts>;
+  candidate?: CandidateLineup;
+  editionId?: string;
+  log: JobLogEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SeriesRecord {
+  slug: string;
+  name: string;
+  lineupUrl?: string; // learned from confirmed promoter sources
+  clashfinderSlugs?: Record<string, string>; // year -> clashfinder event slug
+  sourcePriority?: SourceType[]; // user override of trust order
+}
+
+export interface EditionPerformance {
+  artistKey: string;
+  name: string;
+  mbid?: string;
+  days: string[];
+  stages: string[];
+  status: 'billed' | 'performed' | 'cancelled';
+  confidence: number;
+  sources: CandidateSource[];
+}
+
+export interface Edition {
+  id: string;
+  key: string; // series_slug/year
+  seriesSlug: string;
+  year: number;
+  name: string;
+  startDate?: string;
+  endDate?: string;
+  venue?: string;
+  city?: string;
+  country?: string;
+  status: 'draft' | 'confirmed';
+  performances: EditionPerformance[];
+  confirmedAt?: string;
+  updatedAt: string;
+}
+
+export interface SourceStat {
+  sourceType: SourceType;
+  scope: string; // series slug or '*'
+  accepted: number;
+  rejected: number;
+}
+
+export interface Correction {
+  id: string;
+  editionKey: string;
+  kind: 'rejected' | 'renamed' | 'added';
+  original?: string;
+  corrected?: string;
+  sourceTypes: SourceType[];
+  sourceUrls: string[];
+  createdAt: string;
+}
+
+export interface BlocklistEntry {
+  domain: string; // '*' for global
+  normalized: string;
+  rejections: number;
+}
+
+export interface ExtractionExample {
+  domain: string;
+  excerpt: string;
+  names: string[];
+  createdAt: string;
+}
+
+export interface Attendance {
+  id: string;
+  editionId: string;
+  daysAttended: string[];
+  seenArtistKeys: string[];
+  rating?: number;
+  ticketPrice?: number;
+  companions?: string[];
+  notes?: string;
+  createdAt: string;
+}
+
+export interface QuotaUsage {
+  key: string; // provider:model:window
+  used: number;
+  exhaustedUntil?: string;
+}
+
+export interface ArtistIdentity {
+  key: string;
+  name: string;
+  mbid?: string;
+  resolvedAt?: string;
+}

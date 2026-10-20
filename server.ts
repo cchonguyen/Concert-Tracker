@@ -3,14 +3,15 @@ import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
-import { extractEventDetails, scanInputCues } from './src/server/geminiExtractionEngine';
+import { createDeps, createStore, LookupWorker } from './src/server/lineup/service';
+import { lineupRouter } from './src/server/lineup/routes';
+import { userAgent } from './src/server/lineup/http';
 import { validateSupabase, syncEventsToSupabase, fetchEventsFromSupabase } from './src/server/supabase';
 
 async function main() {
@@ -22,82 +23,13 @@ async function main() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // POST /api/scan-cues - Real-time cue detection & scanner guidance
-  app.post('/api/scan-cues', (req, res) => {
-    try {
-      const cues = scanInputCues(req.body);
-      res.json({ cues });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Cue scan failure';
-      res.status(400).json({ error: msg });
-    }
-  });
-
-  // POST /api/extract-event - Dedicated Gemini Extraction Engine endpoint
-  app.post('/api/extract-event', async (req, res) => {
-    try {
-      const { concertName, dateHint, endDateHint, attendedDaysHint, venueHint, cityHint, tourHint, notesHint } = req.body;
-
-      if (!concertName || typeof concertName !== 'string' || !concertName.trim()) {
-        res.status(400).json({ error: 'Concert query or headliner is required for extraction.' });
-        return;
-      }
-
-      const result = await extractEventDetails({
-        concertName,
-        dateHint,
-        endDateHint,
-        attendedDaysHint,
-        venueHint,
-        cityHint,
-        tourHint,
-        notesHint,
-      });
-
-      res.json({
-        manifest: result.manifest,
-        transformed: result.transformed,
-        metadata: result.metadata,
-        modelUsed: result.metadata.extractionModel,
-      });
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown extraction failure';
-      res.status(500).json({ error: errorMessage });
-    }
-  });
-
-  // POST /api/enrich - Backwards-compatible alias for extraction
-  app.post('/api/enrich', async (req, res) => {
-    try {
-      const { concertName, dateHint, endDateHint, attendedDaysHint, venueHint, cityHint, tourHint, notesHint } = req.body;
-
-      if (!concertName || typeof concertName !== 'string' || !concertName.trim()) {
-        res.status(400).json({ error: 'Concert query or headliner is required for extraction.' });
-        return;
-      }
-
-      const result = await extractEventDetails({
-        concertName,
-        dateHint,
-        endDateHint,
-        attendedDaysHint,
-        venueHint,
-        cityHint,
-        tourHint,
-        notesHint,
-      });
-
-      res.json({
-        manifest: result.manifest,
-        transformed: result.transformed,
-        metadata: result.metadata,
-        modelUsed: result.metadata.extractionModel,
-      });
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown extraction failure';
-      res.status(500).json({ error: errorMessage });
-    }
-  });
+  // Source-first lineup lookups (see ARCHITECTURE.md)
+  const lineupStore = await createStore();
+  const lineupDeps = createDeps(lineupStore);
+  const worker = new LookupWorker(lineupDeps);
+  app.use('/api', lineupRouter(lineupDeps, worker));
+  worker.start();
+  console.log(`Lineup store: ${lineupStore.kind}; Gemini: ${lineupDeps.gemini ? lineupDeps.gemini.model : 'not configured'}`);
 
   // GET /api/musicbrainz/lookup - Canonical MusicBrainz Resolution
   app.get('/api/musicbrainz/lookup', async (req, res) => {
@@ -112,7 +44,7 @@ async function main() {
 
       const response = await fetch(mbUrl, {
         headers: {
-          'User-Agent': 'LiveArchiveConcertTracker/1.0.0 ( contact@example.com )',
+          'User-Agent': userAgent(),
           Accept: 'application/json',
         },
       });

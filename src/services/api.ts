@@ -1,13 +1,4 @@
-import { ExtractedEventManifest, PopulatedEvent, StagingInput } from '../types/schema';
-import { executeEventExtraction, ExtractionEngineResult } from './extractionEngine';
-
-export async function enrichConcertEvent(input: StagingInput): Promise<ExtractedEventManifest> {
-  const result = await executeEventExtraction(input);
-  return result.manifest;
-}
-
-export { executeEventExtraction };
-export type { ExtractionEngineResult };
+import { PopulatedEvent } from '../types/schema';
 
 export interface MusicBrainzArtistResult {
   id: string;

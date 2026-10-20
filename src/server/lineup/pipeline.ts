@@ -1,0 +1,383 @@
+import { randomUUID } from 'node:crypto';
+import {
+  AdapterResult,
+  CandidateLineup,
+  Edition,
+  Fetcher,
+  JobLogEntry,
+  LookupInput,
+  LookupJob,
+  PerformerClaim,
+  SeriesRecord,
+  SourceAdapter,
+} from './types';
+import { LineupStore } from './store/types';
+import { GeminiClient, EXTRACTION_PROMPT_VERSION } from './gemini';
+import { QuotaExhaustedError, QuotaLedger } from './quota';
+import { appendFacts, mergeLineup } from './merge';
+import { domainOf, editionKeyFor, htmlToText, isVerbatim, normalizeName, seriesSlugFor } from './text';
+import { makeDocument } from './adapters/common';
+import { resolveArtist } from './musicbrainz';
+
+export interface PipelineDeps {
+  store: LineupStore;
+  fetcher: Fetcher;
+  // First wave runs in parallel; the second wave sees facts from the first
+  // (setlist.fm needs dates and a city).
+  adapters: SourceAdapter[];
+  lateAdapters: SourceAdapter[];
+  gemini: GeminiClient | null;
+  quota: QuotaLedger | null;
+  allowDiscovery: boolean;
+  now: () => Date;
+}
+
+const MAX_ATTEMPTS = 3;
+const ARTISTS_PER_RESOLVE_RUN = 25;
+
+export class InputError extends Error {}
+
+export function validateInput(raw: Partial<LookupInput>): LookupInput {
+  const eventName = (raw.eventName ?? '').trim();
+  const year = Number(raw.year);
+  if (!eventName) throw new InputError('Event name is required.');
+  if (!Number.isInteger(year) || year < 1950 || year > 2100) throw new InputError('A four-digit year is required.');
+  const date = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v.trim()) ? v.trim() : undefined);
+  const text = (v?: string) => (v && v.trim() ? v.trim() : undefined);
+  return {
+    eventName,
+    year,
+    startDate: date(raw.startDate),
+    endDate: date(raw.endDate),
+    venue: text(raw.venue),
+    city: text(raw.city),
+    country: text(raw.country),
+    lineupUrl: text(raw.lineupUrl),
+    notes: text(raw.notes),
+  };
+}
+
+function log(job: LookupJob, message: string, now: Date): void {
+  const entry: JobLogEntry = { at: now.toISOString(), message };
+  job.log = [...job.log, entry].slice(-100);
+}
+
+export function candidateFromEdition(edition: Edition): CandidateLineup {
+  return {
+    editionKey: edition.key,
+    cached: true,
+    facts: {
+      name: edition.name,
+      startDate: edition.startDate,
+      endDate: edition.endDate,
+      venue: edition.venue,
+      city: edition.city,
+      country: edition.country,
+      sources: {},
+    },
+    performers: edition.performances
+      .filter((p) => p.status !== 'cancelled')
+      .map((p) => ({
+        key: p.artistKey,
+        name: p.name,
+        days: p.days,
+        stages: p.stages,
+        status: p.status === 'performed' ? 'performed' : 'billed',
+        confidence: p.confidence,
+        flagged: false,
+        sources: p.sources,
+      })),
+    droppedCount: 0,
+  };
+}
+
+export async function createLookup(deps: PipelineDeps, raw: Partial<LookupInput>): Promise<LookupJob> {
+  const input = validateInput(raw);
+  const now = deps.now();
+  const editionKey = editionKeyFor(input.eventName, input.year);
+  const job: LookupJob = {
+    id: randomUUID(),
+    kind: 'lineup',
+    input,
+    editionKey,
+    status: 'queued',
+    stage: 'collect',
+    attempts: 0,
+    pendingExtraction: [],
+    discoveryDone: false,
+    facts: {},
+    log: [],
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  };
+
+  const cached = await deps.store.getEditionByKey(editionKey);
+  if (cached?.status === 'confirmed') {
+    job.status = 'needs_review';
+    job.stage = 'done';
+    job.editionId = cached.id;
+    job.candidate = candidateFromEdition(cached);
+    log(job, `Found a confirmed lineup for ${editionKey} in the database; no lookups needed.`, now);
+  } else {
+    log(job, `Queued lookup for ${editionKey}.`, now);
+  }
+  await deps.store.createJob(job);
+  return job;
+}
+
+async function persistAdapterResult(
+  deps: PipelineDeps,
+  job: LookupJob,
+  result: AdapterResult,
+  now: Date,
+): Promise<{ claims: PerformerClaim[]; extraction: string[] }> {
+  // putDocument may return an existing document, so remap ids.
+  const idMap = new Map<string, string>();
+  for (const doc of result.documents) {
+    const stored = await deps.store.putDocument(doc);
+    idMap.set(doc.id, stored.id);
+  }
+  const claims = result.performers.map(
+    (p): PerformerClaim => ({
+      ...p,
+      id: randomUUID(),
+      jobId: job.id,
+      documentId: idMap.get(p.documentId) ?? p.documentId,
+      createdAt: now.toISOString(),
+    }),
+  );
+  await deps.store.addPerformerClaims(claims);
+  return { claims, extraction: result.extractionQueue.map((id) => idMap.get(id) ?? id) };
+}
+
+async function runAdapters(
+  deps: PipelineDeps,
+  job: LookupJob,
+  adapters: SourceAdapter[],
+  input: LookupInput,
+  series: SeriesRecord | null,
+  now: Date,
+): Promise<Partial<SeriesRecord>> {
+  const enabled = adapters.filter((a) => a.enabled());
+  const settled = await Promise.allSettled(
+    enabled.map((a) =>
+      a.collect({ input, editionKey: job.editionKey, series, now, fetcher: deps.fetcher }),
+    ),
+  );
+  let hints: Partial<SeriesRecord> = {};
+  for (let i = 0; i < settled.length; i++) {
+    const outcome = settled[i];
+    if (outcome.status === 'rejected') {
+      const msg = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+      log(job, `${enabled[i].id} failed: ${msg}`, now);
+      continue;
+    }
+    const { extraction } = await persistAdapterResult(deps, job, outcome.value, now);
+    job.facts = appendFacts(job.facts, outcome.value.facts);
+    job.pendingExtraction.push(...extraction);
+    hints = { ...hints, ...outcome.value.seriesHints };
+    for (const note of outcome.value.notes) log(job, note, now);
+  }
+  return hints;
+}
+
+async function stageCollect(deps: PipelineDeps, job: LookupJob, now: Date): Promise<void> {
+  const slug = seriesSlugFor(job.input.eventName);
+  const series = await deps.store.getSeries(slug);
+  const disabled = [...deps.adapters, ...deps.lateAdapters].filter((a) => !a.enabled()).map((a) => a.id);
+  if (disabled.length) log(job, `Not configured, skipped: ${disabled.join(', ')}.`, now);
+
+  let hints = await runAdapters(deps, job, deps.adapters, job.input, series, now);
+
+  const first = (k: 'startDate' | 'endDate' | 'city' | 'venue') => job.facts[k]?.[0]?.value;
+  const enriched: LookupInput = {
+    ...job.input,
+    startDate: job.input.startDate ?? first('startDate'),
+    endDate: job.input.endDate ?? first('endDate'),
+    city: job.input.city ?? first('city'),
+    venue: job.input.venue ?? first('venue'),
+  };
+  hints = { ...hints, ...(await runAdapters(deps, job, deps.lateAdapters, enriched, series, now)) };
+
+  if (Object.keys(hints).length || !series) {
+    await deps.store.upsertSeries({ ...(series ?? { slug, name: job.input.eventName }), ...hints, slug });
+  }
+  job.stage = 'extract';
+}
+
+async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force: boolean): Promise<void> {
+  if (job.pendingExtraction.length > 0 && (!deps.gemini || !deps.quota)) {
+    log(job, `Gemini is not configured, so ${job.pendingExtraction.length} page(s) could not be read.`, now);
+    job.pendingExtraction = [];
+  }
+  while (job.pendingExtraction.length > 0) {
+    const docId = job.pendingExtraction[0];
+    const doc = await deps.store.getDocument(docId);
+    if (doc) {
+      await deps.quota!.acquire(now, { ignorePause: force });
+      const examples = await deps.store.getExamples(domainOf(doc.url));
+      const extracted = await deps.gemini!.extractPerformers({ text: doc.body, input: job.input, examples });
+      const normalizedDoc = normalizeName(doc.body);
+      const kept: PerformerClaim[] = [];
+      let rejected = 0;
+      for (const e of extracted) {
+        if (!e?.name || !e?.quote || !isVerbatim(e.name, e.quote, normalizedDoc)) {
+          rejected += 1;
+          continue;
+        }
+        kept.push({
+          id: randomUUID(),
+          jobId: job.id,
+          documentId: doc.id,
+          sourceType: doc.sourceType,
+          sourceUrl: doc.url,
+          name: e.name.trim(),
+          quotedSpan: e.quote.trim(),
+          evidence: 'billed',
+          day: e.day && /^\d{4}-\d{2}-\d{2}$/.test(e.day) && normalizedDoc.includes(normalizeName(e.day)) ? e.day : undefined,
+          stage: e.stage && normalizedDoc.includes(normalizeName(e.stage)) ? e.stage : undefined,
+          extractor: `gemini:${deps.gemini!.model}`,
+          extractorVersion: EXTRACTION_PROMPT_VERSION,
+          createdAt: now.toISOString(),
+        });
+      }
+      await deps.store.addPerformerClaims(kept);
+      log(job, `Read ${doc.url}: kept ${kept.length} name(s), rejected ${rejected} not found verbatim on the page.`, now);
+    }
+    job.pendingExtraction = job.pendingExtraction.slice(1);
+    job.updatedAt = now.toISOString();
+    await deps.store.updateJob(job); // save progress per page
+  }
+
+  const claims = await deps.store.listPerformerClaims(job.id);
+  const canDiscover = deps.allowDiscovery && deps.gemini && deps.quota && !job.discoveryDone;
+  job.stage = claims.length === 0 && canDiscover ? 'discover' : 'merge';
+}
+
+async function stageDiscover(deps: PipelineDeps, job: LookupJob, now: Date, force: boolean): Promise<void> {
+  await deps.quota!.acquire(now, { ignorePause: force });
+  const urls = await deps.gemini!.discoverLineupUrls(job.input);
+  job.discoveryDone = true;
+  log(job, urls.length ? `Search suggested ${urls.length} page(s) to read.` : 'Search found no lineup pages.', now);
+  for (const url of urls) {
+    try {
+      const res = await deps.fetcher.get(url, { timeoutMs: 30000 });
+      if (res.status !== 200) {
+        log(job, `Could not fetch ${url} (HTTP ${res.status}).`, now);
+        continue;
+      }
+      const doc = await deps.store.putDocument(makeDocument(res.url, 'discovered', htmlToText(res.body), 'text'));
+      job.pendingExtraction.push(doc.id);
+    } catch (err) {
+      log(job, `Could not fetch ${url}: ${err instanceof Error ? err.message : String(err)}`, now);
+    }
+  }
+  job.stage = 'extract';
+}
+
+async function stageMerge(deps: PipelineDeps, job: LookupJob, now: Date): Promise<void> {
+  const slug = seriesSlugFor(job.input.eventName);
+  const claims = await deps.store.listPerformerClaims(job.id);
+  const domains = ['*', ...new Set(claims.map((c) => domainOf(c.sourceUrl)))];
+  const series = await deps.store.getSeries(slug);
+  job.candidate = mergeLineup({
+    input: job.input,
+    editionKey: job.editionKey,
+    seriesSlug: slug,
+    facts: job.facts,
+    claims,
+    aliases: await deps.store.getAliases(),
+    blocklist: await deps.store.getBlocklist(domains),
+    stats: await deps.store.getSourceStats(),
+    priority: series?.sourcePriority,
+  });
+  job.stage = 'done';
+  if (job.candidate.performers.length > 0) {
+    job.status = 'needs_review';
+    log(job, `Lineup ready for review: ${job.candidate.performers.length} act(s).`, now);
+  } else {
+    job.status = 'no_data';
+    log(job, 'No source listed a lineup. Add a lineup URL or enter acts by hand.', now);
+  }
+}
+
+async function runResolveArtists(deps: PipelineDeps, job: LookupJob, now: Date): Promise<void> {
+  const pending = await deps.store.listUnresolvedArtists(ARTISTS_PER_RESOLVE_RUN);
+  for (const artist of pending) {
+    await deps.store.upsertArtist(await resolveArtist(deps.fetcher, artist));
+  }
+  const remaining = await deps.store.listUnresolvedArtists(1);
+  job.stage = remaining.length ? 'collect' : 'done';
+  job.status = remaining.length ? 'queued' : 'confirmed';
+  log(job, `Resolved ${pending.length} artist ID(s) with MusicBrainz.`, now);
+}
+
+// Runs stages until the job finishes or must wait. Never fabricates: a stage
+// that cannot run leaves the job parked with a reason. force = a person
+// pressed "retry now".
+export async function runJob(deps: PipelineDeps, jobId: string, opts: { force?: boolean } = {}): Promise<LookupJob | null> {
+  const force = Boolean(opts.force);
+  const job = await deps.store.getJob(jobId);
+  if (!job || !['queued', 'waiting_quota'].includes(job.status)) return job;
+  const now = deps.now();
+  job.status = 'running';
+  job.waitingReason = undefined;
+  job.nextAttemptAt = undefined;
+  await deps.store.updateJob(job);
+
+  try {
+    if (job.kind === 'resolve_artists') {
+      await runResolveArtists(deps, job, now);
+    } else {
+      while (job.stage !== 'done') {
+        if (job.stage === 'collect') await stageCollect(deps, job, now);
+        else if (job.stage === 'extract') await stageExtract(deps, job, now, force);
+        else if (job.stage === 'discover') await stageDiscover(deps, job, now, force);
+        else if (job.stage === 'merge') await stageMerge(deps, job, now);
+        job.updatedAt = now.toISOString();
+        await deps.store.updateJob(job);
+      }
+    }
+  } catch (err) {
+    if (err instanceof QuotaExhaustedError) {
+      await deps.quota?.markExhausted(err.retryAt, now);
+      job.status = 'waiting_quota';
+      job.nextAttemptAt = err.retryAt.toISOString();
+      job.waitingReason = err.reason;
+      log(job, `Paused: ${err.reason}`, now);
+    } else {
+      job.attempts += 1;
+      job.lastError = err instanceof Error ? err.message : String(err);
+      if (job.attempts < MAX_ATTEMPTS) {
+        job.status = 'queued';
+        job.nextAttemptAt = new Date(now.getTime() + 2 ** job.attempts * 60_000).toISOString();
+        log(job, `Error, will retry: ${job.lastError}`, now);
+      } else {
+        job.status = 'failed';
+        log(job, `Failed after ${job.attempts} attempts: ${job.lastError}`, now);
+      }
+    }
+  }
+  job.updatedAt = now.toISOString();
+  await deps.store.updateJob(job);
+  return job;
+}
+
+export async function enqueueArtistResolution(deps: PipelineDeps): Promise<void> {
+  const now = deps.now().toISOString();
+  await deps.store.createJob({
+    id: randomUUID(),
+    kind: 'resolve_artists',
+    input: { eventName: 'artist resolution', year: new Date().getUTCFullYear() },
+    editionKey: '*',
+    status: 'queued',
+    stage: 'collect',
+    attempts: 0,
+    pendingExtraction: [],
+    discoveryDone: true,
+    facts: {},
+    log: [],
+    createdAt: now,
+    updatedAt: now,
+  });
+}
