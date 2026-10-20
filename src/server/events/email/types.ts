@@ -77,6 +77,7 @@ export interface EmailImport {
   sources: Partial<Record<ImportField, EmailSource>>;
   messages: Array<{ id: string; link?: string; subject: string; sentAt: string; kind?: EmailKind }>;
   flags: ImportFlag[];
+  orderIds?: string[]; // the seller's order numbers the emails gave
   tickets?: number;
   total?: string;
   eventId?: string; // the event it became, or the one already in your log
