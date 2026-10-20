@@ -22,6 +22,7 @@ export interface EventFacts {
 export interface FieldSource {
   sourceType: SourceType;
   sourceUrl?: string;
+  quote?: string; // the words it was read from (an email, say)
 }
 
 // A suggestion from a structured source during stage 1 research.

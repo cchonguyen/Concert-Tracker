@@ -8,6 +8,7 @@ export type SourceType =
   | 'setlistfm'
   | 'musicbrainz'
   | 'discovered'
+  | 'email' // your own ticket emails (stage 1 only, never lineup evidence)
   | 'user';
 
 // billed: announced on a lineup; performed: a post-show record says they played;
