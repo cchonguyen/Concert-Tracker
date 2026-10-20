@@ -10,6 +10,9 @@
   // Needs charliechonguyen.com to be a zone on the same Cloudflare account;
   // the DNS record and certificate are created on deploy.
   "routes": [{ "pattern": "concert.charliechonguyen.com", "custom_domain": true }],
+  // Builds the frontend first, so a bare `wrangler deploy` (or Workers Builds
+  // from GitHub) always ships a fresh dist/.
+  "build": { "command": "npm run build" },
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application",

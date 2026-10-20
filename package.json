@@ -11,8 +11,8 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit && tsc --noEmit -p worker",
     "test": "node --import tsx --test tests/*.test.ts",
-    "cf:dev": "vite build && wrangler dev",
-    "cf:deploy": "vite build && wrangler deploy"
+    "cf:dev": "wrangler dev",
+    "cf:deploy": "wrangler deploy"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
