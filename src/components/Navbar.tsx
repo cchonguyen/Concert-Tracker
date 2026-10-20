@@ -39,11 +39,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                 Live<span className="text-violet-400">Archive</span>
               </span>
               <span className="rounded-md border border-violet-500/30 bg-violet-950/60 px-2 py-0.5 text-[10px] font-semibold tracking-wider text-violet-300 uppercase">
-                Grounded Engine
+                Source-first
               </span>
             </div>
             <p className="hidden text-xs text-zinc-400 sm:block">
-              Gemini Search-Augmented Manifests · Supabase Core · Sheets Downstream
+              Cited lineups · Supabase core · Sheets downstream
             </p>
           </div>
         </div>
@@ -59,7 +59,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Sparkles className="h-3.5 w-3.5" />
-            <span>Extraction</span>
+            <span>Add event</span>
           </button>
 
           <button
