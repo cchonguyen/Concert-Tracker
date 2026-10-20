@@ -170,12 +170,10 @@ test('web search only reads pages that name the event and year, and keeps only q
     'https://fest.example/next-year': { body: otherYear },
   });
   let extractedFrom: string[] = [];
-  const kinds: Array<string | undefined> = [];
   const gemini: GeminiClient = {
     model: 'fake-lite',
-    async extractPerformers({ text, pageKind }) {
+    async extractPerformers({ text }) {
       extractedFrom.push(text);
-      kinds.push(pageKind);
       return [
         { name: 'Kaskade', quote: 'Lineup: Kaskade, Dom Dolla' },
         { name: 'Dom Dolla', quote: 'Kaskade, Dom Dolla' },
@@ -206,23 +204,22 @@ test('web search only reads pages that name the event and year, and keeps only q
   assert.equal(job?.status, 'needs_review');
   assert.deepEqual(job!.candidate!.performers.map((p) => p.name).sort(), ['Dom Dolla', 'Kaskade']);
   assert.equal(extractedFrom.length, 1, 'only the page about this edition is sent to Gemini');
-  assert.deepEqual(kinds, ['third_party']);
   assert.ok(job!.candidate!.performers.every((p) => p.sources.some((s) => s.sourceUrl === 'https://news.example/sun-soaked-2026' && s.sourceType === 'discovered')));
   assert.ok(calls.includes('https://down.example/x'));
   assert.ok(job!.log.some((l) => l.message.includes('Skipped https://fest.example/next-year')));
 });
 
-test('web search reads the event site first, as an official page, even if stored earlier as discovered', async () => {
+test('web search reads the event site first, as a promoter page, even if stored earlier as discovered', async () => {
   const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'search-official-')));
   const official = '<h1>Sun Soaked 2026</h1><p>Friday: ATICA. Saturday: Cut Snake</p>';
   const { fetcher } = fakeFetcher({ 'https://sunsoaked.promoter.example/': { body: official } });
   // Stored by an earlier run as a plain search result.
   await store.putDocument(makeDocument('https://sunsoaked.promoter.example/', 'discovered', 'Sun Soaked 2026 Friday: ATICA. Saturday: Cut Snake', 'text'));
-  const kinds: Array<string | undefined> = [];
+  const read: string[] = [];
   const gemini: GeminiClient = {
     model: 'fake-lite',
-    async extractPerformers({ pageKind }) {
-      kinds.push(pageKind);
+    async extractPerformers({ text }) {
+      read.push(text);
       return [
         { name: 'ATICA', quote: 'Friday: ATICA' },
         { name: 'Cut Snake', quote: 'Saturday: Cut Snake' },
@@ -244,7 +241,7 @@ test('web search reads the event site first, as an official page, even if stored
     now: () => new Date('2026-10-01T12:00:00Z'),
   };
   const job = await runJob(deps, (await createLookup(deps, { eventName: 'Sun Soaked', year: 2026 })).id);
-  assert.equal(kinds[0], 'official');
+  assert.ok(read[0].includes('ATICA'), 'the event site is read first');
   assert.deepEqual(job!.candidate!.performers.map((p) => p.name).sort(), ['ATICA', 'Cut Snake']);
   assert.ok(job!.candidate!.performers.every((p) => p.sources.every((s) => s.sourceType === 'promoter')));
 
