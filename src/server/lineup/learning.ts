@@ -206,7 +206,11 @@ async function learnFromSources(
   acceptedByUrl: Map<string, string[]>,
   slug: string,
 ): Promise<void> {
-  const url = job.input.lineupUrl;
+  const claims = await store.listPerformerClaims(job.id);
+  // Without a URL from the person, an accepted promoter page (for example the
+  // event's own site found by web search) becomes next year's lineup URL.
+  const promoterUrl = claims.find((c) => c.sourceType === 'promoter' && acceptedByUrl.has(c.sourceUrl))?.sourceUrl;
+  const url = job.input.lineupUrl ?? promoterUrl;
   const usedOfficialPage = [...acceptedByUrl.keys()].some((u) => {
     const d = domainOf(u);
     return d !== 'clashfinder.com' && d !== '*';
@@ -216,7 +220,6 @@ async function learnFromSources(
     if (series) await store.upsertSeries({ ...series, lineupUrl: url });
   }
 
-  const claims = await store.listPerformerClaims(job.id);
   const geminiDocs = new Set(claims.filter((c) => c.extractor.startsWith('gemini:')).map((c) => c.documentId));
   for (const docId of geminiDocs) {
     const doc = await store.getDocument(docId);
