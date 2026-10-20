@@ -18,6 +18,8 @@ import { appendFacts, mergeLineup } from './merge';
 import { domainOf, editionKeyFor, htmlToText, isVerbatim, normalizeName, seriesSlugFor } from './text';
 import { makeDocument } from './adapters/common';
 import { resolveArtist } from './musicbrainz';
+import { redactSecrets } from './http';
+import { isEventDomain, LineupSearch, pageMentionsEvent } from './search';
 
 export interface PipelineDeps {
   store: LineupStore;
@@ -28,7 +30,8 @@ export interface PipelineDeps {
   lateAdapters: SourceAdapter[];
   gemini: GeminiClient | null;
   quota: QuotaLedger | null;
-  allowDiscovery: boolean;
+  // Web search for lineup pages, used only when every source came back empty.
+  search: LineupSearch | null;
   now: () => Date;
 }
 
@@ -58,7 +61,7 @@ export function validateInput(raw: Partial<LookupInput>): LookupInput {
 }
 
 function log(job: LookupJob, message: string, now: Date): void {
-  const entry: JobLogEntry = { at: now.toISOString(), message };
+  const entry: JobLogEntry = { at: now.toISOString(), message: redactSecrets(message) };
   job.log = [...job.log, entry].slice(-100);
 }
 
@@ -91,10 +94,25 @@ export function candidateFromEdition(edition: Edition): CandidateLineup {
   };
 }
 
-export async function createLookup(deps: PipelineDeps, raw: Partial<LookupInput>): Promise<LookupJob> {
+// An edition confirmed under the date, or under the year (older editions,
+// or a lookup without a date) when its confirmed start date is the same.
+async function findConfirmedEdition(deps: PipelineDeps, input: LookupInput): Promise<Edition | null> {
+  const byKey = await deps.store.getEditionByKey(editionKeyFor(input.eventName, input.year, input.startDate));
+  if (byKey?.status === 'confirmed') return byKey;
+  if (!input.startDate) return null;
+  const byYear = await deps.store.getEditionByKey(editionKeyFor(input.eventName, input.year));
+  return byYear?.status === 'confirmed' && byYear.startDate === input.startDate ? byYear : null;
+}
+
+export async function createLookup(
+  deps: PipelineDeps,
+  raw: Partial<LookupInput>,
+  opts: { eventId?: string } = {},
+): Promise<LookupJob> {
   const input = validateInput(raw);
   const now = deps.now();
-  const editionKey = editionKeyFor(input.eventName, input.year);
+  const cached = await findConfirmedEdition(deps, input);
+  const editionKey = cached?.key ?? editionKeyFor(input.eventName, input.year, input.startDate);
   const job: LookupJob = {
     id: randomUUID(),
     kind: 'lineup',
@@ -106,13 +124,13 @@ export async function createLookup(deps: PipelineDeps, raw: Partial<LookupInput>
     pendingExtraction: [],
     discoveryDone: false,
     facts: {},
+    eventId: opts.eventId,
     log: [],
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
   };
 
-  const cached = await deps.store.getEditionByKey(editionKey);
-  if (cached?.status === 'confirmed') {
+  if (cached) {
     job.status = 'needs_review';
     job.stage = 'done';
     job.editionId = cached.id;
@@ -216,6 +234,10 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
     if (doc) {
       await deps.quota!.acquire(now, { ignorePause: force });
       const examples = await deps.store.getExamples(domainOf(doc.url));
+      // A stored document keeps the type it was first saved with, so an event-site
+      // page first found by search is recognised by its domain here too.
+      const official = doc.sourceType !== 'discovered' || isEventDomain(doc.url, job.input.eventName);
+      const sourceType = official && doc.sourceType === 'discovered' ? 'promoter' : doc.sourceType;
       const extracted = await deps.gemini!.extractPerformers({ text: doc.body, input: job.input, examples });
       const normalizedDoc = normalizeName(doc.body);
       const kept: PerformerClaim[] = [];
@@ -229,7 +251,7 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
           id: randomUUID(),
           jobId: job.id,
           documentId: doc.id,
-          sourceType: doc.sourceType,
+          sourceType,
           sourceUrl: doc.url,
           name: e.name.trim(),
           quotedSpan: e.quote.trim(),
@@ -250,28 +272,51 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
   }
 
   const claims = await deps.store.listPerformerClaims(job.id);
-  const canDiscover = deps.allowDiscovery && deps.gemini && deps.quota && !job.discoveryDone;
+  const canDiscover = deps.search && deps.gemini && deps.quota && !job.discoveryDone;
   job.stage = claims.length === 0 && canDiscover ? 'discover' : 'merge';
 }
 
+const SEARCH_RESULTS_TO_TRY = 6;
+const SEARCH_PAGES_TO_READ = 3;
+
 async function stageDiscover(deps: PipelineDeps, job: LookupJob, now: Date, force: boolean): Promise<void> {
-  await deps.quota!.acquire(now, { ignorePause: force });
-  const urls = await deps.gemini!.discoverLineupUrls(job.input);
+  // Search may have been switched off while this job was parked. Extraction
+  // still needs Gemini, so search without it would only fetch pages.
+  if (!deps.search || !deps.gemini || !deps.quota) {
+    job.discoveryDone = true;
+    job.stage = 'merge';
+    log(job, 'Web search is off; skipped.', now);
+    return;
+  }
+  if (deps.search.usesGeminiQuota) await deps.quota.acquire(now, { ignorePause: force });
+  const urls = await deps.search.findLineupUrls(job.input);
   job.discoveryDone = true;
-  log(job, urls.length ? `Search suggested ${urls.length} page(s) to read.` : 'Search found no lineup pages.', now);
-  for (const url of urls) {
+  log(job, urls.length ? `Web search (${deps.search.id}) returned ${urls.length} result(s).` : `Web search (${deps.search.id}) found nothing.`, now);
+  let read = 0;
+  // The event's own site first: it is the most complete and reliable page.
+  const ordered = [...urls.filter((u) => isEventDomain(u, job.input.eventName)), ...urls.filter((u) => !isEventDomain(u, job.input.eventName))];
+  for (const url of ordered.slice(0, SEARCH_RESULTS_TO_TRY)) {
+    if (read >= SEARCH_PAGES_TO_READ) break;
     try {
       const res = await deps.fetcher.get(url, { timeoutMs: 30000 });
       if (res.status !== 200) {
         log(job, `Could not fetch ${url} (HTTP ${res.status}).`, now);
         continue;
       }
-      const doc = await deps.store.putDocument(makeDocument(res.url, 'discovered', htmlToText(res.body), 'text'));
+      const text = htmlToText(res.body);
+      if (!pageMentionsEvent(text, job.input)) {
+        log(job, `Skipped ${url}: the page does not name ${job.input.eventName} and ${job.input.year}.`, now);
+        continue;
+      }
+      const sourceType = isEventDomain(res.url, job.input.eventName) ? 'promoter' : 'discovered';
+      const doc = await deps.store.putDocument(makeDocument(res.url, sourceType, text, 'text'));
       job.pendingExtraction.push(doc.id);
+      read += 1;
     } catch (err) {
       log(job, `Could not fetch ${url}: ${err instanceof Error ? err.message : String(err)}`, now);
     }
   }
+  if (urls.length && !read) log(job, 'No search result was a page about this edition.', now);
   job.stage = 'extract';
 }
 
@@ -347,7 +392,7 @@ export async function runJob(deps: PipelineDeps, jobId: string, opts: { force?: 
       log(job, `Paused: ${err.reason}`, now);
     } else {
       job.attempts += 1;
-      job.lastError = err instanceof Error ? err.message : String(err);
+      job.lastError = redactSecrets(err instanceof Error ? err.message : String(err));
       if (job.attempts < MAX_ATTEMPTS) {
         job.status = 'queued';
         job.nextAttemptAt = new Date(now.getTime() + 2 ** job.attempts * 60_000).toISOString();

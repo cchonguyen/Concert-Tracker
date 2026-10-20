@@ -132,6 +132,11 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
     groups.set(key, group);
   }
 
+  // Pages found by web search are only as good as their agreement: an
+  // aggregator page can list other events' artists verbatim. When several
+  // such pages were read, an act backed by just one of them needs a look.
+  const discoveredPages = new Set(ctx.claims.filter((c) => c.sourceType === 'discovered').map((c) => c.sourceUrl));
+
   const performers: CandidatePerformer[] = [];
   for (const [key, claims] of groups) {
     const byPriority = [...claims].sort(
@@ -149,7 +154,11 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
       stages: [...new Set(claims.map((c) => c.stage).filter((s): s is string => Boolean(s)))],
       status: claims.some((c) => c.evidence === 'performed') ? 'performed' : 'billed',
       confidence: Math.round(confidence * 1000) / 1000,
-      flagged: confidence < FLAG_BELOW,
+      flagged:
+        confidence < FLAG_BELOW ||
+        (discoveredPages.size >= 2 &&
+          claims.every((c) => c.sourceType === 'discovered') &&
+          new Set(claims.map((c) => c.sourceUrl)).size === 1),
       sources: byPriority
         .filter((c) => {
           const k = `${c.sourceType}|${c.sourceUrl}`;

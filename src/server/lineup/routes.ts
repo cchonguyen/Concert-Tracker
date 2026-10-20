@@ -1,9 +1,18 @@
 import { Router } from 'express';
 import { createLookup, enqueueArtistResolution, InputError, PipelineDeps } from './pipeline';
 import { confirmLookup, ConfirmRequest } from './learning';
-import { configuredSources, LookupWorker } from './service';
+import { configuredSources, JobRunner } from './service';
+import { redactSecrets } from './http';
+import { LookupJob } from './types';
 
-export function lineupRouter(deps: PipelineDeps, worker: LookupWorker): Router {
+// Older log entries were written before redaction existed.
+const safeJob = (job: LookupJob): LookupJob => ({
+  ...job,
+  lastError: job.lastError && redactSecrets(job.lastError),
+  log: job.log.map((e) => ({ ...e, message: redactSecrets(e.message) })),
+});
+
+export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
   const router = Router();
   const fail = (res: any, err: unknown, status = 500) =>
     res.status(err instanceof InputError ? 400 : status).json({ error: err instanceof Error ? err.message : String(err) });
@@ -19,7 +28,7 @@ export function lineupRouter(deps: PipelineDeps, worker: LookupWorker): Router {
   router.get('/lookups', async (_req, res) => {
     try {
       const jobs = await deps.store.listJobs(30);
-      res.json({ jobs: jobs.filter((j) => j.kind === 'lineup') });
+      res.json({ jobs: jobs.filter((j) => j.kind === 'lineup').map(safeJob) });
     } catch (err) {
       fail(res, err);
     }
@@ -28,7 +37,7 @@ export function lineupRouter(deps: PipelineDeps, worker: LookupWorker): Router {
   router.post('/lookups', async (req, res) => {
     try {
       const job = await createLookup(deps, req.body ?? {});
-      if (job.status === 'queued') worker.kick(job.id);
+      if (job.status === 'queued') await runner.kick(job.id);
       res.status(201).json({ job });
     } catch (err) {
       fail(res, err);
@@ -39,7 +48,7 @@ export function lineupRouter(deps: PipelineDeps, worker: LookupWorker): Router {
     try {
       const job = await deps.store.getJob(req.params.id);
       if (!job) return res.status(404).json({ error: 'Lookup not found.' });
-      res.json({ job });
+      res.json({ job: safeJob(job) });
     } catch (err) {
       fail(res, err);
     }
@@ -51,8 +60,8 @@ export function lineupRouter(deps: PipelineDeps, worker: LookupWorker): Router {
     try {
       const job = await deps.store.getJob(req.params.id);
       if (!job) return res.status(404).json({ error: 'Lookup not found.' });
-      worker.kick(job.id, true);
-      res.json({ job });
+      await runner.kick(job.id, true);
+      res.json({ job: safeJob(job) });
     } catch (err) {
       fail(res, err);
     }

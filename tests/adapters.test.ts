@@ -12,6 +12,9 @@ import { promoterAdapter, rawSnapshotUrl, snapshotInWindow } from '../src/server
 import { matchingEvents, ticketmasterAdapter } from '../src/server/lineup/adapters/ticketmaster.ts';
 import { belongsToEvent, toSetlistDate } from '../src/server/lineup/adapters/setlistfm.ts';
 import { fakeFetcher } from './fakes.ts';
+import { braveSearch, isEventDomain, pageMentionsEvent, searchQuery } from '../src/server/lineup/search.ts';
+import { QuotaExhaustedError } from '../src/server/lineup/quota.ts';
+import { Fetcher } from '../src/server/lineup/types.ts';
 
 test('clashfinder: slugs from URLs, edition matching and late-night sets', () => {
   assert.equal(slugFromClashfinderUrl('https://clashfinder.com/s/edc2025/'), 'edc2025');
@@ -25,6 +28,29 @@ test('clashfinder: slugs from URLs, edition matching and late-night sets', () =>
   assert.equal(matchEdition(list, 'Coachella', 2025), null);
   assert.equal(festivalDay('2025-05-17 02:30'), '2025-05-16');
   assert.equal(festivalDay('2025-05-16 21:00'), '2025-05-16');
+});
+
+test('clashfinder: real list format (title in desc, Unix dates, duplicate slugs)', () => {
+  const may15 = 1778803200; // 2026-05-15
+  const list = parseEventList({
+    edc2026: { name: 'edc2026', desc: 'EDC Las Vegas 2026', startDate: may15, edits: 40, numActs: 300, private: 0 },
+    edclv2026: { name: 'edclv2026', desc: 'EDC Las Vegas 2026', startDate: may15, edits: 900, numActs: 310, private: 0 },
+    edclv2026livestream: { name: 'edclv2026livestream', desc: 'EDC Las Vegas 2026 Livestream', startDate: may15, edits: 12, numActs: 80 },
+    edcvegas2026: { name: 'edcvegas2026', desc: 'EDC 2026 (Fantasy)', startDate: may15, edits: 5000, numActs: 200 },
+    edclasvegas2026: { name: 'edclasvegas2026', desc: 'EDC LV 2026', startDate: may15, edits: 3000, numActs: 250, private: 1 },
+    edcmx26: { name: 'edcmx26', desc: 'EDC Mexico 2026', startDate: 1771545600, edits: 50, numActs: 120 },
+    edc2025: { name: 'edc2025', desc: 'EDC Las Vegas 2025', startDate: 1747353600, edits: 800, numActs: 300 },
+  });
+  assert.equal(list.find((e) => e.slug === 'edc2026')?.startDate, '2026-05-15');
+  // Most-edited public, non-fantasy clash for the year wins.
+  assert.equal(matchEdition(list, 'EDC 2026', 2026)?.slug, 'edclv2026');
+  assert.equal(matchEdition(list, 'EDC Las Vegas', 2026)?.slug, 'edclv2026');
+  assert.equal(matchEdition(list, 'EDC Mexico', 2026)?.slug, 'edcmx26');
+  assert.equal(matchEdition(list, 'EDC', 2025)?.slug, 'edc2025');
+  assert.equal(matchEdition(list, 'EDC', 2024), null);
+  // A slug run together from the name counts when the title spells it out.
+  const spelled = parseEventList({ edc2026: { name: 'edc2026', desc: 'Electric Daisy Carnival 2026', startDate: may15, numActs: 5 } });
+  assert.equal(matchEdition(spelled, 'EDC', 2026)?.slug, 'edc2026');
 });
 
 test('clashfinder: parses acts with stage and day', async () => {
@@ -120,4 +146,37 @@ test('setlist.fm: date format and event matching', () => {
   assert.equal(belongsToEvent({ venue: { name: 'Las Vegas Motor Speedway' } }, 'EDC', 'Las Vegas Motor Speedway'), true);
   assert.equal(belongsToEvent({ venue: { name: 'Omnia' } }, 'EDC Las Vegas', 'Las Vegas Motor Speedway'), false);
   assert.equal(belongsToEvent({ tour: { name: 'EDC Las Vegas 2025' }, venue: { name: 'LVMS' } }, 'EDC Las Vegas'), true);
+});
+
+test('search: Brave query, results and quota parking', async () => {
+  const input = { eventName: 'Zedd in the Park 2026', year: 2026 };
+  assert.equal(searchQuery(input), '"Zedd in the Park" 2026 lineup');
+  assert.ok(pageMentionsEvent('Zedd In The Park — 2026 lineup announced', input));
+  assert.ok(!pageMentionsEvent('Zedd in the Park 2025', input));
+  assert.ok(!pageMentionsEvent('Zedd tour 2026', input));
+
+  const { fetcher, calls } = fakeFetcher({
+    'https://api.search.brave.com/': { body: { web: { results: [{ url: 'https://a.example/x' }, { url: 'https://a.example/x' }, { url: 'https://b.example/y' }] } } },
+  });
+  assert.deepEqual(await braveSearch(fetcher, 'k').findLineupUrls(input), ['https://a.example/x', 'https://b.example/y']);
+  assert.ok(calls[0].includes('q=%22Zedd%20in%20the%20Park%22%202026%20lineup'));
+
+  const limited: Fetcher = {
+    async get(url) {
+      return { url, status: 429, headers: { 'x-ratelimit-reset': '1, 86400' }, body: '' };
+    },
+  };
+  const now = new Date('2026-10-20T00:00:00Z');
+  await assert.rejects(braveSearch(limited, 'k', () => now).findLineupUrls(input), (err: unknown) => {
+    assert.ok(err instanceof QuotaExhaustedError);
+    assert.equal(err.retryAt.toISOString(), '2026-10-21T00:00:01.000Z');
+    return true;
+  });
+});
+
+test('search: a result on the event domain is the organiser page', () => {
+  assert.ok(isEventDomain('https://sunsoaked.insomniac.com/lineup/', 'Sun Soaked 2026'));
+  assert.ok(isEventDomain('https://www.zeddinthepark.com/', 'Zedd in the Park'));
+  assert.ok(!isEventDomain('https://www.jambase.com/festival/zedd-in-the-park-2026', 'Zedd in the Park'));
+  assert.ok(!isEventDomain('https://edc.example.com/', 'EDC')); // too short to tell
 });
