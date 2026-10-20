@@ -59,6 +59,19 @@ const ENTITIES: Record<string, string> = {
   quot: '"',
   apos: "'",
   nbsp: ' ',
+  mdash: '—',
+  ndash: '–',
+  middot: '·',
+  bull: '•',
+  hellip: '…',
+  lsquo: '‘',
+  rsquo: '’',
+  ldquo: '“',
+  rdquo: '”',
+  times: '×',
+  copy: '©',
+  reg: '®',
+  trade: '™',
 };
 
 export function decodeEntities(value: string): string {

@@ -1,0 +1,121 @@
+import { timingSafeEqual } from 'node:crypto';
+import { Router } from 'express';
+import { InputError, PipelineDeps } from '../lineup/pipeline';
+import { eventFromImport, findLogged, mergeImports, readEmails, reviewList } from './email/imports';
+import { EmailImport, RawEmail } from './email/types';
+
+// /api/imports: ticket emails in, a review list out, and your ticks back.
+// Posting mail needs IMPORT_TOKEN; reviewing works like the rest of the app.
+
+const MAX_EMAILS = 100;
+
+function authorized(header: string | undefined, token: string): boolean {
+  const given = Buffer.from(header?.replace(/^Bearer\s+/i, '') ?? '');
+  const expected = Buffer.from(token);
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
+function rawEmails(body: any): RawEmail[] {
+  const list = Array.isArray(body?.emails) ? body.emails : null;
+  if (!list) throw new InputError('Send { emails: [...] }.');
+  if (list.length > MAX_EMAILS) throw new InputError(`Send at most ${MAX_EMAILS} emails at a time.`);
+  return list.map((e: any) => {
+    const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+    const email = {
+      id: str(e?.id),
+      link: str(e?.link),
+      from: str(e?.from),
+      sentAt: str(e?.sentAt),
+      subject: str(e?.subject) ?? '',
+      html: str(e?.html),
+      text: str(e?.text),
+    };
+    if (!email.id || !email.from || !email.sentAt || Number.isNaN(Date.parse(email.sentAt)))
+      throw new InputError('Each email needs id, from and sentAt.');
+    return { ...email, sentAt: new Date(email.sentAt).toISOString() } as RawEmail;
+  });
+}
+
+const ids = (body: any): Set<string> => new Set(Array.isArray(body?.ids) ? body.ids.filter((v: unknown) => typeof v === 'string') : []);
+
+export function importsRouter(deps: PipelineDeps): Router {
+  const router = Router();
+  const fail = (res: any, err: unknown) =>
+    res.status(err instanceof InputError ? 400 : 500).json({ error: err instanceof Error ? err.message : String(err) });
+
+  router.post('/imports/email', async (req, res) => {
+    const token = process.env.IMPORT_TOKEN;
+    if (!token) return res.status(503).json({ error: 'Email import is off: IMPORT_TOKEN is not set.' });
+    if (!authorized(req.get('authorization'), token)) return res.status(401).json({ error: 'Wrong import token.' });
+    try {
+      const { outcomes, ignored } = readEmails(rawEmails(req.body));
+      const [existing, events] = await Promise.all([deps.store.listImports(), deps.store.listEvents()]);
+      const changed = mergeImports(existing, outcomes, events, deps.now());
+      await deps.store.putImports(changed);
+      res.json({
+        read: outcomes.filter((o) => 'read' in o).length,
+        unreadable: outcomes.filter((o) => 'unreadable' in o).length,
+        ignored,
+        changed: changed.length,
+      });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.get('/imports', async (_req, res) => {
+    try {
+      res.json({ imports: reviewList(await deps.store.listImports()) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Your ticks: each becomes an event, unless it is already in your log.
+  router.post('/imports/add', async (req, res) => {
+    try {
+      const wanted = ids(req.body);
+      const now = deps.now();
+      const [rows, events] = await Promise.all([deps.store.listImports(), deps.store.listEvents()]);
+      const added = [];
+      const changed: EmailImport[] = [];
+      for (const row of rows) {
+        if (!wanted.has(row.id) || row.status !== 'new') continue;
+        const logged = row.eventId ? events.find((e) => e.id === row.eventId) : findLogged(row, events);
+        if (logged) {
+          changed.push({ ...row, eventId: logged.id, updatedAt: now.toISOString() });
+          continue;
+        }
+        // A show still ahead waits on the list until it has happened.
+        if (row.startDate && row.startDate > now.toISOString().slice(0, 10)) continue;
+        const event = eventFromImport(row, now);
+        await deps.store.putEvent(event);
+        added.push(event);
+        events.push(event);
+        changed.push({ ...row, status: 'added', eventId: event.id, updatedAt: now.toISOString() });
+      }
+      await deps.store.putImports(changed);
+      res.json({ events: added, imports: changed });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // "I didn't go" ({ ids }), or back to the list ({ ids, restore: true }).
+  router.post('/imports/skip', async (req, res) => {
+    try {
+      const wanted = ids(req.body);
+      const restore = req.body?.restore === true;
+      const now = deps.now().toISOString();
+      const changed = (await deps.store.listImports())
+        .filter((r) => wanted.has(r.id) && r.status === (restore ? 'skipped' : 'new'))
+        .map((r) => ({ ...r, status: restore ? ('new' as const) : ('skipped' as const), updatedAt: now }));
+      await deps.store.putImports(changed);
+      res.json({ imports: changed });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  return router;
+}

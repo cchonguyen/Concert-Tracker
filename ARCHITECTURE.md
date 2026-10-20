@@ -10,9 +10,9 @@ You type one line about an event you went to. It is saved at once (stage 1), and
 
 | | Stage 1: the event | Stage 2: the lineup |
 | --- | --- | --- |
-| Started by | Typing a line and pressing Add | "Find who played" on a saved event |
+| Started by | Typing a line and pressing Add, or ticking shows found in your ticket emails | "Find who played" on a saved event |
 | Code | `src/server/events/` | `src/server/lineup/` |
-| Sources | Ticketmaster, setlist.fm, Clashfinder, Brave web search and the event markup on the pages it found (read in code) | Clashfinder, promoter pages, Ticketmaster, setlist.fm, web search |
+| Sources | Ticketmaster, setlist.fm, Clashfinder, Brave web search and the event markup on the pages it found, your ticket emails (all read in code) | Clashfinder, promoter pages, Ticketmaster, setlist.fm, web search |
 | Gemini | Never | Reads fetched pages |
 | Runs | Inside the request, a few seconds | A background job (queue), can wait for quota |
 | Stores | `logged_events` (your log) | Canonical edition, evidence, learning data; links the event to the edition |
@@ -46,6 +46,17 @@ These are enforced in code. A change that breaks one is a bug, even if the outpu
 4. **Place from pages.** Search snippets give dates, not places. For the candidates that will be applied or shown, if a venue or city is missing, the pages that gave the date are fetched (at most 3 per research, never AXS) and their schema.org Event markup (`application/ld+json`) is read in code (`placeFromPage`): an event whose name or a performer has every word of yours, on a day the candidate covers, gives `location.name` as the venue and `addressLocality` plus `addressRegion` as the city. Several matching events at different places give nothing. The page is added as its own source for those fields, with the venue and city as the quote; it does not count as another date confirmation.
 5. **Decide.** No candidates: `none`. If you gave a full date and one candidate covers it (or one covering candidate has more sources than any other): `matched`. The date is shown as confirmed with each source and quote, and the candidate fills only empty fields. Otherwise `choose`: up to 5 candidates wait for your pick (`POST /api/events/:id/details/pick`), which fills date and place from the candidate (the name stays yours), or for "None of these". Research never replaces a filled field; where the confirmed candidate differs from a saved field, the event view offers "Use … from <source>" under it, which takes just that field (`{ candidateId, fields }`).
 6. **Edit** (`PATCH /api/events/:id`). Any field you change becomes a `user` source. In the event view, "Last day" shows the start date until you change it (so the date picker opens on the right month) and is stored only when it differs; venue and city suggest what you have entered on other events (picking a venue you always gave the same city for fills an empty city), and city also suggests places from the Open-Meteo geocoding API as you type (`GET /api/places/cities`, `citySuggestions`). Seen acts, companions, days attended, rating, ticket price and notes are edited the same way.
+
+## Stage 1 from email
+
+Ticket confirmation emails are a stage 1 source for back-filling past shows. They propose events; you decide which ones you went to. Code: `src/server/events/email/` and `src/server/events/importRoutes.ts`.
+
+1. **Feed.** Something with access to your mail posts raw messages to `POST /api/imports/email` (`{ emails: [{ id, link?, from, sentAt, subject, html?, text? }] }`, at most 100 per call, `Authorization: Bearer <IMPORT_TOKEN>`). Today that is Claude, reading Gmail through this project's connector and searching ticket senders. The feeder only copies messages; it interprets nothing. Without `IMPORT_TOKEN` the route answers 503.
+2. **Read** (`readEmails`). Each message goes to the reader for its sender's domain (`EmailReader` in `email/types.ts`; one file per seller: Ticketmaster, Tixr, DICE, Resident Advisor, Eventbrite). The HTML is turned into the lines you see when you open the email (`htmlToLines`), and the reader copies the name, date, venue, city, order number, ticket count and total from fixed positions in the seller's layout, each value with the words it came from. No Gemini. Mail a reader does not recognise (ads, reminders) is ignored; a message whose subject announces tickets but whose body does not fit the layout is kept as `unreadable`, so you can open it and type it in. Add a seller by adding a reader with a test, never by loosening an existing one.
+3. **Dates** (`email/dates.ts`). Sellers often leave out the year ("Sat Aug 29, 10:00 PM"). The year is then the only one, from two days before the email was sent to a year after, in which that day falls on the weekday given. No weekday and no year: no date, and the words are shown as written. A weekday that disagrees with a stated year means no date. A night that ends before noon the next day is one event on its first day.
+4. **Group** (`mergeImports`). Messages about one show become one row (`EmailImport`), keyed by normalized name plus start date, else seller plus order number. A later message fills only empty fields. Refund, cancellation and transfer messages add a flag to the row with the same seller and name; one that arrives before its order is kept aside (status `flag`, never listed) until the order is read. A row whose date and name (equal, or one containing the other) match an event already in your log is linked to it and not offered again.
+5. **Review** (`ImportReview`, opened from "N events found in your email" on the Events view). Rows are grouped by year and start unticked, because a ticket is not proof you went. Shows still ahead are listed apart and come back once their date has passed. "Add" turns the ticked rows into events (`POST /api/imports/add`); "I didn't go" marks them skipped (`POST /api/imports/skip`, undoable).
+6. **Save** (`eventFromImport`). The event gets the name, dates, venue and city from the row, each field sourced as `email` with the message link and the quoted words; details status `resolved` when dated, else `needs_date`. Personal fields (seen acts, rating, ticket price, companions, notes) stay empty, even though the email states a total.
 
 ## Sources
 
@@ -108,7 +119,7 @@ Cached editions are not counted again in source stats. Every claim records its e
 
 ## Data model
 
-Defined in [`supabase/migrations/0002_source_first_lineups.sql`](supabase/migrations/0002_source_first_lineups.sql) and [`0003_event_log.sql`](supabase/migrations/0003_event_log.sql); both must be applied (the server checks one table from each at start). The local file store (`store/fileStore.ts`) implements the same `LineupStore` interface for development.
+Defined in [`supabase/migrations/0002_source_first_lineups.sql`](supabase/migrations/0002_source_first_lineups.sql) and [`0003_event_log.sql`](supabase/migrations/0003_event_log.sql); both must be applied (the server checks one table from each at start). [`0004_email_imports.sql`](supabase/migrations/0004_email_imports.sql) is needed only for email import; without it the rest of the app works and the import routes fail. The local file store (`store/fileStore.ts`) implements the same `LineupStore` interface for development.
 
 | Layer | Tables |
 | --- | --- |
@@ -117,6 +128,7 @@ Defined in [`supabase/migrations/0002_source_first_lineups.sql`](supabase/migrat
 | Operations | `lookup_jobs`, `quota_ledger` |
 | Learning | `artist_aliases`, `extraction_blocklist`, `source_stats`, `corrections`, `extraction_examples` |
 | Personal | `logged_events` (one row per event you went to: fields, field sources, details research, lineup job and edition links, seen acts, companions, days, rating, price, notes). `attendance` and `seen_sets` from 0002 are no longer written; [`0003_event_log.sql`](supabase/migrations/0003_event_log.sql) copies them into `logged_events`. |
+| Import | `email_imports` (one row per show found in your ticket emails: status, read fields with their quotes and message links, flags, the event it became). Proposals only; never read as part of your log. |
 
 Store selection: Supabase when `SUPABASE_URL` is set and the migration has been applied; otherwise a JSON store under `DATA_DIR` (default `./data`). Set `LINEUP_STORE=file` to force the local store. The local store does not survive a redeploy, so use Supabase for real data. On Cloudflare the server refuses to start without Supabase.
 
@@ -133,6 +145,10 @@ The browser keeps nothing: every view reads the server. The interface is one pag
 | `POST /api/events/:id/details` | Run stage 1 research |
 | `POST /api/events/:id/details/pick` | Pick a suggestion (`{ candidateId }`) or dismiss them (`{}`) |
 | `POST /api/events/:id/lineup` | Start stage 2 for the event (`{ lineupUrl? }`) |
+| `POST /api/imports/email` | Read ticket emails into review rows (needs `IMPORT_TOKEN`); returns counts read, unreadable, ignored and changed |
+| `GET /api/imports` | Review rows from your email, newest first |
+| `POST /api/imports/add` | Add the ticked rows as events (`{ ids }`); rows already in your log or still ahead are not added |
+| `POST /api/imports/skip` | Mark rows as not attended (`{ ids }`), or put them back (`{ ids, restore: true }`) |
 | `GET /api/places/cities?q=` | City suggestions as `City, ST` (Open-Meteo geocoding, cached in memory) |
 | `GET /api/lineup/status` | Store kind, which sources are configured, Gemini model and today's usage |
 | `POST /api/lookups` | Start a lookup without an event (kept for scripts); returns the job (already `needs_review` on a cache hit) |
@@ -160,11 +176,11 @@ The queue consumer runs one message at a time (`max_concurrency: 1`), so the per
 
 ## Configuration
 
-See [`.env.example`](.env.example). Each source is optional; the app reports which ones are off and works with whatever is configured.
+See [`.env.example`](.env.example). Each source is optional; the app reports which ones are off and works with whatever is configured. `IMPORT_TOKEN` turns on posting ticket emails; it is a secret (`wrangler secret put IMPORT_TOKEN` on Cloudflare).
 
 ## Testing
 
-`npm test` runs the node test suite in `tests/`: capture parsing, stage 1 research and its rules (`events.test.ts`), verbatim checks, merging and scoring, each adapter against recorded responses, quota parsing, and the full pipeline including quota parking, review learning and the cache. `npm run lint` typechecks. Add a test with every new adapter or rule.
+`npm test` runs the node test suite in `tests/`: capture parsing, stage 1 research and its rules (`events.test.ts`), email readers, the year rule, grouping and the import routes (`email.test.ts`), verbatim checks, merging and scoring, each adapter against recorded responses, quota parsing, and the full pipeline including quota parking, review learning and the cache. `npm run lint` typechecks. Add a test with every new adapter or rule.
 
 ## Roadmap
 

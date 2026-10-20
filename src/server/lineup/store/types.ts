@@ -13,6 +13,7 @@ import {
   SourceType,
 } from '../types';
 import { LoggedEvent } from '../../events/types';
+import { EmailImport } from '../../events/email/types';
 
 // Persistence boundary for the lineup pipeline. Two implementations:
 // fileStore (local dev, no setup) and supabaseStore (durable, used when
@@ -66,6 +67,10 @@ export interface LineupStore {
   getEvent(id: string): Promise<LoggedEvent | null>;
   listEvents(): Promise<LoggedEvent[]>;
   deleteEvent(id: string): Promise<void>;
+
+  // Ticket emails waiting for your review (stage 1 from email).
+  listImports(): Promise<EmailImport[]>;
+  putImports(rows: EmailImport[]): Promise<void>;
 
   getArtist(key: string): Promise<ArtistIdentity | null>;
   upsertArtist(artist: ArtistIdentity): Promise<void>;

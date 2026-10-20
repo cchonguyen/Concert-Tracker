@@ -14,10 +14,12 @@ import {
   SourceType,
 } from '../types';
 import { LoggedEvent } from '../../events/types';
+import { EmailImport } from '../../events/email/types';
 import { LineupStore, MAX_EXAMPLES_PER_DOMAIN } from './types';
 
 // Postgres-backed store. Tables are defined in
-// supabase/migrations/0002_source_first_lineups.sql and 0003_event_log.sql.
+// supabase/migrations/0002_source_first_lineups.sql, 0003_event_log.sql and
+// 0004_email_imports.sql (optional: only email import needs it).
 export class SupabaseLineupStore implements LineupStore {
   readonly kind = 'supabase' as const;
 
@@ -526,6 +528,23 @@ export class SupabaseLineupStore implements LineupStore {
 
   async deleteEvent(id: string) {
     this.check(await this.db.from('logged_events').delete().eq('id', id), 'deleteEvent');
+  }
+
+  // email_imports (0004) is optional: the app starts without it and only
+  // email import asks for the migration.
+  async listImports() {
+    const rows = this.check(await this.db.from('email_imports').select('data'), 'listImports (apply 0004_email_imports.sql)');
+    return (rows ?? []).map((r: any) => r.data as EmailImport);
+  }
+
+  async putImports(rows: EmailImport[]) {
+    if (!rows.length) return;
+    this.check(
+      await this.db.from('email_imports').upsert(
+        rows.map((r) => ({ id: r.id, key: r.key, status: r.status, start_date: r.startDate ?? null, data: r, updated_at: r.updatedAt })),
+      ),
+      'putImports (apply 0004_email_imports.sql)',
+    );
   }
 
   async getArtist(key: string) {

@@ -55,6 +55,7 @@ const Field: React.FC<{
             href={source.sourceUrl}
             target="_blank"
             rel="noreferrer"
+            title={source.quote ? `“${source.quote}”` : undefined}
             className="inline-flex items-center gap-0.5 font-normal text-zinc-500 hover:text-violet-300"
           >
             via {SOURCE_LABELS[source.sourceType]} <ExternalLink className="h-2.5 w-2.5" />

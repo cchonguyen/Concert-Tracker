@@ -2,8 +2,9 @@ import type { Edition, LookupJob, SourceType } from '../server/lineup/types';
 import type { ConfirmRequest } from '../server/lineup/learning';
 import type { DetailCandidate, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
 import type { EventPatch } from '../server/events/service';
+import type { EmailImport } from '../server/events/email/types';
 
-export type { LookupJob, Edition, ConfirmRequest, LoggedEvent, LineupSummary, DetailCandidate, EventField, EventPatch };
+export type { LookupJob, Edition, ConfirmRequest, LoggedEvent, LineupSummary, DetailCandidate, EventField, EventPatch, EmailImport };
 
 export interface LineupStatus {
   store: 'file' | 'supabase';
@@ -40,6 +41,14 @@ export const eventsApi = {
   cities: (q: string) => request<{ cities: string[] }>(`/api/places/cities?q=${encodeURIComponent(q)}`).then((r) => r.cities),
 };
 
+// Ticket emails waiting for your review (stage 1 from email).
+export const importsApi = {
+  list: () => request<{ imports: EmailImport[] }>('/api/imports').then((r) => r.imports),
+  add: (ids: string[]) => request<{ events: LoggedEvent[]; imports: EmailImport[] }>('/api/imports/add', post({ ids })),
+  skip: (ids: string[], restore = false) =>
+    request<{ imports: EmailImport[] }>('/api/imports/skip', post({ ids, restore })).then((r) => r.imports),
+};
+
 export const lineupApi = {
   status: () => request<LineupStatus>('/api/lineup/status'),
   retry: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}/run`, post()).then((r) => r.job),
@@ -55,6 +64,7 @@ export const SOURCE_LABELS: Record<SourceType, string> = {
   setlistfm: 'setlist.fm',
   musicbrainz: 'MusicBrainz',
   discovered: 'Web page',
+  email: 'your email',
   user: 'You',
 };
 
