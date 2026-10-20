@@ -44,5 +44,23 @@
     ]
   },
   "triggers": { "crons": ["* * * * *"] },
+  // Pull-request previews (Workers Builds runs `wrangler preview`). They get
+  // the same plain settings but none of the secrets above, so a preview shows
+  // the interface while its /api answers "not configured" and never touches
+  // the Supabase data. The queue binding is required; without Supabase a
+  // preview never creates a job, so nothing is ever sent to it.
+  "previews": {
+    "vars": {
+      "NODE_ENV": "production",
+      "GEMINI_EXTRACTION_MODEL": "gemini-flash-lite-latest",
+      "GEMINI_DAILY_LIMIT": "50",
+      "GEMINI_PER_MINUTE": "10",
+      "GEMINI_SEARCH_DISCOVERY": "off",
+      "CLASHFINDER_HASH_FORMAT": "{username}{privateKey}"
+    },
+    "queues": {
+      "producers": [{ "binding": "LOOKUP_QUEUE", "queue": "concert-tracker-lookups" }]
+    }
+  },
   "observability": { "enabled": true }
 }

@@ -10,6 +10,7 @@ const HOST_INTERVAL_MS: Record<string, number> = {
   'clashfinder.com': 1000,
   'archive.org': 1000,
   'web.archive.org': 1000,
+  'geocoding-api.open-meteo.com': 200,
 };
 const DEFAULT_INTERVAL_MS = 500;
 

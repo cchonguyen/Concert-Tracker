@@ -94,10 +94,25 @@ export function candidateFromEdition(edition: Edition): CandidateLineup {
   };
 }
 
-export async function createLookup(deps: PipelineDeps, raw: Partial<LookupInput>): Promise<LookupJob> {
+// An edition confirmed under the date, or under the year (older editions,
+// or a lookup without a date) when its confirmed start date is the same.
+async function findConfirmedEdition(deps: PipelineDeps, input: LookupInput): Promise<Edition | null> {
+  const byKey = await deps.store.getEditionByKey(editionKeyFor(input.eventName, input.year, input.startDate));
+  if (byKey?.status === 'confirmed') return byKey;
+  if (!input.startDate) return null;
+  const byYear = await deps.store.getEditionByKey(editionKeyFor(input.eventName, input.year));
+  return byYear?.status === 'confirmed' && byYear.startDate === input.startDate ? byYear : null;
+}
+
+export async function createLookup(
+  deps: PipelineDeps,
+  raw: Partial<LookupInput>,
+  opts: { eventId?: string } = {},
+): Promise<LookupJob> {
   const input = validateInput(raw);
   const now = deps.now();
-  const editionKey = editionKeyFor(input.eventName, input.year);
+  const cached = await findConfirmedEdition(deps, input);
+  const editionKey = cached?.key ?? editionKeyFor(input.eventName, input.year, input.startDate);
   const job: LookupJob = {
     id: randomUUID(),
     kind: 'lineup',
@@ -109,13 +124,13 @@ export async function createLookup(deps: PipelineDeps, raw: Partial<LookupInput>
     pendingExtraction: [],
     discoveryDone: false,
     facts: {},
+    eventId: opts.eventId,
     log: [],
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
   };
 
-  const cached = await deps.store.getEditionByKey(editionKey);
-  if (cached?.status === 'confirmed') {
+  if (cached) {
     job.status = 'needs_review';
     job.stage = 'done';
     job.editionId = cached.id;
