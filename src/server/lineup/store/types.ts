@@ -1,6 +1,5 @@
 import {
   ArtistIdentity,
-  Attendance,
   BlocklistEntry,
   Correction,
   Edition,
@@ -13,6 +12,7 @@ import {
   SourceStat,
   SourceType,
 } from '../types';
+import { LoggedEvent } from '../../events/types';
 
 // Persistence boundary for the lineup pipeline. Two implementations:
 // fileStore (local dev, no setup) and supabaseStore (durable, used when
@@ -24,6 +24,7 @@ export interface LineupStore {
   getJob(id: string): Promise<LookupJob | null>;
   updateJob(job: LookupJob): Promise<void>;
   listJobs(limit: number): Promise<LookupJob[]>;
+  getJobs(ids: string[]): Promise<LookupJob[]>;
   // Queued or waiting jobs whose nextAttemptAt (if any) has passed.
   dueJobs(now: Date, limit: number): Promise<LookupJob[]>;
 
@@ -60,8 +61,11 @@ export interface LineupStore {
   getExamples(domain: string): Promise<ExtractionExample[]>;
   addExample(example: ExtractionExample): Promise<void>;
 
-  addAttendance(attendance: Attendance): Promise<void>;
-  listAttendance(): Promise<Attendance[]>;
+  // Your event log (stage 1), separate from canonical editions.
+  putEvent(event: LoggedEvent): Promise<void>;
+  getEvent(id: string): Promise<LoggedEvent | null>;
+  listEvents(): Promise<LoggedEvent[]>;
+  deleteEvent(id: string): Promise<void>;
 
   getArtist(key: string): Promise<ArtistIdentity | null>;
   upsertArtist(artist: ArtistIdentity): Promise<void>;

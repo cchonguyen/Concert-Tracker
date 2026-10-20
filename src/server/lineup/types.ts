@@ -178,6 +178,7 @@ export interface LookupJob {
   facts: Partial<EditionFacts>;
   candidate?: CandidateLineup;
   editionId?: string;
+  eventId?: string; // the logged event this lookup was started from
   log: JobLogEntry[];
   createdAt: string;
   updatedAt: string;
@@ -247,18 +248,6 @@ export interface ExtractionExample {
   domain: string;
   excerpt: string;
   names: string[];
-  createdAt: string;
-}
-
-export interface Attendance {
-  id: string;
-  editionId: string;
-  daysAttended: string[];
-  seenArtistKeys: string[];
-  rating?: number;
-  ticketPrice?: number;
-  companions?: string[];
-  notes?: string;
   createdAt: string;
 }
 

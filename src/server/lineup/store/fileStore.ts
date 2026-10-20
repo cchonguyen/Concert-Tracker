@@ -2,7 +2,6 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
   ArtistIdentity,
-  Attendance,
   BlocklistEntry,
   Correction,
   Edition,
@@ -15,6 +14,7 @@ import {
   SourceStat,
   SourceType,
 } from '../types';
+import { LoggedEvent } from '../../events/types';
 import { LineupStore, MAX_EXAMPLES_PER_DOMAIN } from './types';
 
 type DocumentMeta = Omit<SourceDocument, 'body'>;
@@ -31,7 +31,7 @@ interface FileState {
   sourceStats: SourceStat[];
   corrections: Correction[];
   examples: ExtractionExample[];
-  attendance: Attendance[];
+  events: Record<string, LoggedEvent>;
   artists: Record<string, ArtistIdentity>;
 }
 
@@ -48,7 +48,7 @@ function emptyState(): FileState {
     sourceStats: [],
     corrections: [],
     examples: [],
-    attendance: [],
+    events: {},
     artists: {},
   };
 }
@@ -112,6 +112,11 @@ export class FileLineupStore implements LineupStore {
   async listJobs(limit: number) {
     const jobs = Object.values((await this.load()).jobs);
     return clone(jobs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit));
+  }
+
+  async getJobs(ids: string[]) {
+    const jobs = (await this.load()).jobs;
+    return clone(ids.map((id) => jobs[id]).filter(Boolean));
   }
 
   async dueJobs(now: Date, limit: number) {
@@ -251,13 +256,23 @@ export class FileLineupStore implements LineupStore {
     await this.save();
   }
 
-  async addAttendance(attendance: Attendance) {
-    (await this.load()).attendance.push(clone(attendance));
+  async putEvent(event: LoggedEvent) {
+    (await this.load()).events[event.id] = clone(event);
     await this.save();
   }
 
-  async listAttendance() {
-    return clone((await this.load()).attendance);
+  async getEvent(id: string) {
+    const ev = (await this.load()).events[id];
+    return ev ? clone(ev) : null;
+  }
+
+  async listEvents() {
+    return clone(Object.values((await this.load()).events));
+  }
+
+  async deleteEvent(id: string) {
+    delete (await this.load()).events[id];
+    await this.save();
   }
 
   async getArtist(key: string) {

@@ -1,7 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import {
   ArtistIdentity,
-  Attendance,
   BlocklistEntry,
   Correction,
   Edition,
@@ -14,10 +13,11 @@ import {
   SourceStat,
   SourceType,
 } from '../types';
+import { LoggedEvent } from '../../events/types';
 import { LineupStore, MAX_EXAMPLES_PER_DOMAIN } from './types';
 
 // Postgres-backed store. Tables are defined in
-// supabase/migrations/0002_source_first_lineups.sql.
+// supabase/migrations/0002_source_first_lineups.sql and 0003_event_log.sql.
 export class SupabaseLineupStore implements LineupStore {
   readonly kind = 'supabase' as const;
 
@@ -47,6 +47,7 @@ export class SupabaseLineupStore implements LineupStore {
       facts: job.facts,
       candidate: job.candidate ?? null,
       edition_id: job.editionId ?? null,
+      event_id: job.eventId ?? null,
       log: job.log,
       created_at: job.createdAt,
       updated_at: job.updatedAt,
@@ -70,6 +71,7 @@ export class SupabaseLineupStore implements LineupStore {
       facts: row.facts ?? {},
       candidate: row.candidate ?? undefined,
       editionId: row.edition_id ?? undefined,
+      eventId: row.event_id ?? undefined,
       log: row.log ?? [],
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -94,6 +96,12 @@ export class SupabaseLineupStore implements LineupStore {
       await this.db.from('lookup_jobs').select('*').order('created_at', { ascending: false }).limit(limit),
       'listJobs',
     );
+    return (data ?? []).map((r) => this.rowToJob(r));
+  }
+
+  async getJobs(ids: string[]) {
+    if (!ids.length) return [];
+    const data = this.check(await this.db.from('lookup_jobs').select('*').in('id', ids), 'getJobs');
     return (data ?? []).map((r) => this.rowToJob(r));
   }
 
@@ -448,45 +456,76 @@ export class SupabaseLineupStore implements LineupStore {
 
   // Personal --------------------------------------------------------------
 
-  async addAttendance(a: Attendance) {
-    this.check(
-      await this.db.from('attendance').insert({
-        id: a.id,
-        edition_id: a.editionId,
-        days_attended: a.daysAttended,
-        rating: a.rating ?? null,
-        ticket_price: a.ticketPrice ?? null,
-        companions: a.companions ?? [],
-        notes: a.notes ?? null,
-        created_at: a.createdAt,
-      }),
-      'addAttendance',
-    );
-    if (a.seenArtistKeys.length > 0) {
-      this.check(
-        await this.db
-          .from('seen_sets')
-          .insert(a.seenArtistKeys.map((k) => ({ attendance_id: a.id, artist_key: k }))),
-        'addAttendance seen_sets',
-      );
-    }
+  private eventToRow(e: LoggedEvent) {
+    return {
+      id: e.id,
+      input: e.input,
+      name: e.name,
+      year: e.year ?? null,
+      month: e.month ?? null,
+      start_date: e.startDate ?? null,
+      end_date: e.endDate ?? null,
+      venue: e.venue ?? null,
+      city: e.city ?? null,
+      country: e.country ?? null,
+      sources: e.sources,
+      details: e.details,
+      lineup_job_id: e.lineupJobId ?? null,
+      edition_id: e.editionId ?? null,
+      seen: e.seen,
+      days_attended: e.daysAttended,
+      companions: e.companions,
+      rating: e.rating ?? null,
+      ticket_price: e.ticketPrice ?? null,
+      notes: e.notes ?? null,
+      created_at: e.createdAt,
+      updated_at: e.updatedAt,
+    };
   }
 
-  async listAttendance() {
-    const rows = this.check(await this.db.from('attendance').select('*, seen_sets(artist_key)'), 'listAttendance');
-    return (rows ?? []).map(
-      (r: any): Attendance => ({
-        id: r.id,
-        editionId: r.edition_id,
-        daysAttended: r.days_attended ?? [],
-        seenArtistKeys: (r.seen_sets ?? []).map((s: any) => s.artist_key),
-        rating: r.rating ?? undefined,
-        ticketPrice: r.ticket_price ?? undefined,
-        companions: r.companions ?? [],
-        notes: r.notes ?? undefined,
-        createdAt: r.created_at,
-      }),
-    );
+  private rowToEvent(r: any): LoggedEvent {
+    return {
+      id: r.id,
+      input: r.input ?? '',
+      name: r.name,
+      year: r.year ?? undefined,
+      month: r.month ?? undefined,
+      startDate: r.start_date ?? undefined,
+      endDate: r.end_date ?? undefined,
+      venue: r.venue ?? undefined,
+      city: r.city ?? undefined,
+      country: r.country ?? undefined,
+      sources: r.sources ?? {},
+      details: r.details ?? { status: 'pending', candidates: [], notes: [] },
+      lineupJobId: r.lineup_job_id ?? undefined,
+      editionId: r.edition_id ?? undefined,
+      seen: r.seen ?? [],
+      daysAttended: r.days_attended ?? [],
+      companions: r.companions ?? [],
+      rating: r.rating ?? undefined,
+      ticketPrice: r.ticket_price ?? undefined,
+      notes: r.notes ?? undefined,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    };
+  }
+
+  async putEvent(e: LoggedEvent) {
+    this.check(await this.db.from('logged_events').upsert(this.eventToRow(e)), 'putEvent');
+  }
+
+  async getEvent(id: string) {
+    const r = this.check(await this.db.from('logged_events').select('*').eq('id', id).maybeSingle(), 'getEvent');
+    return r ? this.rowToEvent(r) : null;
+  }
+
+  async listEvents() {
+    const rows = this.check(await this.db.from('logged_events').select('*'), 'listEvents');
+    return (rows ?? []).map((r: any) => this.rowToEvent(r));
+  }
+
+  async deleteEvent(id: string) {
+    this.check(await this.db.from('logged_events').delete().eq('id', id), 'deleteEvent');
   }
 
   async getArtist(key: string) {

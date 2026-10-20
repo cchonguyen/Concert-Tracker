@@ -6,6 +6,7 @@ import path from 'node:path';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import { createLookup, PipelineDeps, runJob } from '../src/server/lineup/pipeline.ts';
 import { confirmLookup } from '../src/server/lineup/learning.ts';
+import { newEvent, startLineupLookup } from '../src/server/events/service.ts';
 import { GeminiClient } from '../src/server/lineup/gemini.ts';
 import { QuotaExhaustedError, QuotaLedger } from '../src/server/lineup/quota.ts';
 import { makeDocument } from '../src/server/lineup/adapters/common.ts';
@@ -77,7 +78,7 @@ async function setup() {
     lateAdapters: [],
     gemini: fakeGemini(state),
     quota: new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 }),
-    allowDiscovery: true,
+    search: null,
     now: () => new Date('2025-06-01T12:00:00Z'),
   };
   return { store, state, deps };
@@ -111,11 +112,13 @@ test('quota exhaustion parks the job with sources intact, then resumes', async (
 
 test('review teaches aliases, the blocklist, source scores and the cache', async () => {
   const { store, state, deps } = await setup();
-  const job = (await runJob(deps, (await createLookup(deps, { eventName: 'Fest', year: 2025, lineupUrl: 'https://fest.example/lineup' })).id))!;
+  const logged = { ...newEvent('Fest 2025', deps.now()), seen: [{ key: 'opening act', name: 'Opening Act', from: 'you' as const }] };
+  await store.putEvent(logged);
+  const started = await startLineupLookup(deps, logged, 'https://fest.example/lineup');
+  const job = (await runJob(deps, started.job.id))!;
   const byName = (n: string) => job.candidate!.performers.find((p) => p.name === n)!;
 
   const result = await confirmLookup(store, job, {
-    facts: { name: 'Fest 2025', startDate: '2025-05-16' },
     performers: [
       { key: byName('Kaskade').key, name: 'Kaskade', accepted: true, seen: true },
       { key: byName('Dom Dolla').key, name: 'Dom Dolla', accepted: true, seen: false },
@@ -123,12 +126,17 @@ test('review teaches aliases, the blocklist, source scores and the cache', async
       { key: byName('Main Stage').key, name: 'Main Stage', accepted: false, rejectReason: 'not_an_act', seen: false },
       { name: 'Surprise Guest DJ', accepted: true, seen: true },
     ],
-    attendance: { daysAttended: ['2025-05-16'] },
   });
 
   assert.equal(result.edition.status, 'confirmed');
   assert.equal(result.edition.performances.length, 4);
-  assert.deepEqual(result.attendance?.seenArtistKeys.sort(), ['eric prydz', 'kaskade', 'surprise guest dj']);
+  // Facts default to the event's, with the date the sources cited.
+  assert.equal(result.edition.name, 'Fest');
+  assert.equal(result.edition.startDate, '2025-05-16');
+  // Seen acts: what was ticked, plus the act added by hand that the lineup lacks.
+  assert.deepEqual(result.event?.seen.map((s) => s.key).sort(), ['eric prydz', 'kaskade', 'opening act', 'surprise guest dj']);
+  assert.equal(result.event?.seen.find((s) => s.key === 'kaskade')?.from, 'lineup');
+  assert.equal((await store.getEvent(logged.id))?.editionId, result.edition.id);
   const stats = await store.getSourceStats();
   assert.ok(stats.some((s) => s.sourceType === 'clashfinder' && s.scope === 'fest' && s.rejected === 1));
   assert.equal((await store.getBlocklist(['clashfinder.com']))[0]?.normalized, 'main stage');
@@ -159,4 +167,96 @@ test('input validation requires a name and year', async () => {
   const { deps } = await setup();
   await assert.rejects(createLookup(deps, { eventName: '', year: 2025 }), /Event name/);
   await assert.rejects(createLookup(deps, { eventName: 'Fest', year: 25 }), /year/);
+});
+
+test('web search only reads pages that name the event and year, and keeps only quoted names', async () => {
+  const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'search-')));
+  const relevant = '<html><body><h1>Sun Soaked 2026</h1><p>Lineup: Kaskade, Dom Dolla</p></body></html>';
+  const otherYear = '<html><body><h1>Sun Soaked 2027</h1><p>Lineup: Somebody Else</p></body></html>';
+  const { fetcher, calls } = fakeFetcher({
+    'https://news.example/sun-soaked-2026': { body: relevant },
+    'https://fest.example/next-year': { body: otherYear },
+  });
+  let extractedFrom: string[] = [];
+  const gemini: GeminiClient = {
+    model: 'fake-lite',
+    async extractPerformers({ text }) {
+      extractedFrom.push(text);
+      return [
+        { name: 'Kaskade', quote: 'Lineup: Kaskade, Dom Dolla' },
+        { name: 'Dom Dolla', quote: 'Kaskade, Dom Dolla' },
+        { name: 'Zedd', quote: 'Zedd' }, // not on the page
+      ];
+    },
+    async discoverLineupUrls() {
+      throw new Error('grounded search must not be used when another provider is set');
+    },
+  };
+  const deps: PipelineDeps = {
+    store,
+    fetcher,
+    adapters: [],
+    lateAdapters: [],
+    gemini,
+    quota: new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 }),
+    search: {
+      id: 'brave',
+      usesGeminiQuota: false,
+      async findLineupUrls() {
+        return ['https://fest.example/next-year', 'https://news.example/sun-soaked-2026', 'https://down.example/x'];
+      },
+    },
+    now: () => new Date('2026-10-01T12:00:00Z'),
+  };
+  const job = await runJob(deps, (await createLookup(deps, { eventName: 'Sun Soaked', year: 2026 })).id);
+  assert.equal(job?.status, 'needs_review');
+  assert.deepEqual(job!.candidate!.performers.map((p) => p.name).sort(), ['Dom Dolla', 'Kaskade']);
+  assert.equal(extractedFrom.length, 1, 'only the page about this edition is sent to Gemini');
+  assert.ok(job!.candidate!.performers.every((p) => p.sources.some((s) => s.sourceUrl === 'https://news.example/sun-soaked-2026' && s.sourceType === 'discovered')));
+  assert.ok(calls.includes('https://down.example/x'));
+  assert.ok(job!.log.some((l) => l.message.includes('Skipped https://fest.example/next-year')));
+});
+
+test('web search reads the event site first, as a promoter page, even if stored earlier as discovered', async () => {
+  const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'search-official-')));
+  const official = '<h1>Sun Soaked 2026</h1><p>Friday: ATICA. Saturday: Cut Snake</p>';
+  const { fetcher } = fakeFetcher({ 'https://sunsoaked.promoter.example/': { body: official } });
+  // Stored by an earlier run as a plain search result.
+  await store.putDocument(makeDocument('https://sunsoaked.promoter.example/', 'discovered', 'Sun Soaked 2026 Friday: ATICA. Saturday: Cut Snake', 'text'));
+  const read: string[] = [];
+  const gemini: GeminiClient = {
+    model: 'fake-lite',
+    async extractPerformers({ text }) {
+      read.push(text);
+      return [
+        { name: 'ATICA', quote: 'Friday: ATICA' },
+        { name: 'Cut Snake', quote: 'Saturday: Cut Snake' },
+      ];
+    },
+    async discoverLineupUrls() {
+      return [];
+    },
+  };
+  const urls = Array.from({ length: 7 }, (_, i) => `https://other${i}.example/x`).concat('https://sunsoaked.promoter.example/');
+  const deps: PipelineDeps = {
+    store,
+    fetcher,
+    adapters: [],
+    lateAdapters: [],
+    gemini,
+    quota: new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 }),
+    search: { id: 'brave', usesGeminiQuota: false, findLineupUrls: async () => urls },
+    now: () => new Date('2026-10-01T12:00:00Z'),
+  };
+  const job = await runJob(deps, (await createLookup(deps, { eventName: 'Sun Soaked', year: 2026 })).id);
+  assert.ok(read[0].includes('ATICA'), 'the event site is read first');
+  assert.deepEqual(job!.candidate!.performers.map((p) => p.name).sort(), ['ATICA', 'Cut Snake']);
+  assert.ok(job!.candidate!.performers.every((p) => p.sources.every((s) => s.sourceType === 'promoter')));
+
+  // Confirming teaches the series where its lineup lives.
+  await confirmLookup(store, job!, {
+    facts: { name: 'Sun Soaked 2026' },
+    performers: job!.candidate!.performers.map((p) => ({ key: p.key, name: p.name, accepted: true, seen: false })),
+  });
+  assert.equal((await store.getSeries('sun-soaked'))?.lineupUrl, 'https://sunsoaked.promoter.example/');
 });
