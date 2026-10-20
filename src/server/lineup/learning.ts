@@ -1,0 +1,262 @@
+import { randomUUID } from 'node:crypto';
+import {
+  Attendance,
+  CandidatePerformer,
+  CandidateSource,
+  Edition,
+  EditionPerformance,
+  LookupJob,
+  SourceType,
+} from './types';
+import { LineupStore } from './store/types';
+import { domainOf, lineupWindow, normalizeName, seriesSlugFor } from './text';
+import { slugFromClashfinderUrl } from './adapters/clashfinder';
+
+// Review is where the system learns. Every decision is stored as data that the
+// next lookup reads: aliases, a per-site blocklist, measured source accuracy
+// and confirmed extraction examples. Nothing here retrains a model.
+
+export type RejectReason = 'not_an_act' | 'wrong_event' | 'cancelled';
+
+export interface ReviewedPerformer {
+  key?: string; // candidate key; absent for acts you added
+  name: string;
+  accepted: boolean;
+  rejectReason?: RejectReason;
+  seen: boolean;
+  days?: string[];
+  stages?: string[];
+}
+
+export interface ConfirmRequest {
+  facts: { name: string; startDate?: string; endDate?: string; venue?: string; city?: string; country?: string };
+  performers: ReviewedPerformer[];
+  attendance?: {
+    daysAttended?: string[];
+    rating?: number;
+    ticketPrice?: number;
+    companions?: string[];
+    notes?: string;
+  } | null;
+}
+
+export interface ConfirmResult {
+  edition: Edition;
+  attendance: Attendance | null;
+}
+
+const EXAMPLE_CHARS = 6000;
+
+async function bumpStats(store: LineupStore, types: SourceType[], slug: string, accepted: boolean) {
+  for (const t of new Set(types)) {
+    if (t === 'user') continue;
+    await store.bumpSourceStat(t, slug, accepted);
+    await store.bumpSourceStat(t, '*', accepted);
+  }
+}
+
+export async function confirmLookup(store: LineupStore, job: LookupJob, req: ConfirmRequest): Promise<ConfirmResult> {
+  if (!['needs_review', 'no_data', 'confirmed'].includes(job.status)) {
+    throw new Error(`Lookup is ${job.status}; it can be confirmed once it has finished.`);
+  }
+  if (!req.facts?.name?.trim()) throw new Error('Event name is required.');
+
+  const now = new Date().toISOString();
+  const slug = seriesSlugFor(job.input.eventName);
+  const fresh = !job.candidate?.cached; // cached lineups were already counted once
+  const byKey = new Map<string, CandidatePerformer>((job.candidate?.performers ?? []).map((p) => [p.key, p]));
+  const performances: EditionPerformance[] = [];
+  const seenKeys: string[] = [];
+  const acceptedByDoc = new Map<string, string[]>();
+
+  for (const reviewed of req.performers) {
+    const name = reviewed.name.trim();
+    if (!name) continue;
+    const cand = reviewed.key ? byKey.get(reviewed.key) : undefined;
+    const types = cand?.sources.map((s) => s.sourceType) ?? [];
+    const urls = cand?.sources.map((s) => s.sourceUrl) ?? [];
+
+    if (cand && !reviewed.accepted) {
+      if (reviewed.rejectReason === 'cancelled') {
+        performances.push({ ...toPerformance(cand, cand.name), status: 'cancelled' });
+        continue;
+      }
+      await store.addCorrection({
+        id: randomUUID(),
+        editionKey: job.editionKey,
+        kind: 'rejected',
+        original: cand.name,
+        sourceTypes: types,
+        sourceUrls: urls,
+        createdAt: now,
+      });
+      if (fresh) await bumpStats(store, types, slug, false);
+      if (reviewed.rejectReason !== 'wrong_event') {
+        for (const domain of new Set(urls.map(domainOf))) await store.bumpBlocklist(domain, normalizeName(cand.name));
+      }
+      continue;
+    }
+    if (!reviewed.accepted) continue;
+
+    if (cand) {
+      if (fresh) await bumpStats(store, types, slug, true);
+      if (name !== cand.name) {
+        await store.putAlias(normalizeName(cand.name), name);
+        await store.addCorrection({
+          id: randomUUID(),
+          editionKey: job.editionKey,
+          kind: 'renamed',
+          original: cand.name,
+          corrected: name,
+          sourceTypes: types,
+          sourceUrls: urls,
+          createdAt: now,
+        });
+      }
+    } else {
+      await store.addCorrection({
+        id: randomUUID(),
+        editionKey: job.editionKey,
+        kind: 'added',
+        corrected: name,
+        sourceTypes: ['user'],
+        sourceUrls: [],
+        createdAt: now,
+      });
+    }
+
+    const perf = cand
+      ? toPerformance(cand, name)
+      : {
+          artistKey: normalizeName(name),
+          name,
+          days: [],
+          stages: [],
+          status: 'billed' as const,
+          confidence: 1,
+          sources: [userSource(name)],
+        };
+    if (reviewed.days) perf.days = reviewed.days;
+    if (reviewed.stages) perf.stages = reviewed.stages;
+    if (reviewed.seen) {
+      perf.status = 'performed'; // you were there
+      seenKeys.push(perf.artistKey);
+    }
+    performances.push(perf);
+    if (cand) {
+      for (const s of cand.sources) {
+        acceptedByDoc.set(s.sourceUrl, [...(acceptedByDoc.get(s.sourceUrl) ?? []), cand.name]);
+      }
+    }
+    if (!(await store.getArtist(perf.artistKey))) await store.upsertArtist({ key: perf.artistKey, name: perf.name });
+  }
+
+  const existing = await store.getEditionByKey(job.editionKey);
+  const edition: Edition = {
+    id: existing?.id ?? randomUUID(),
+    key: job.editionKey,
+    seriesSlug: slug,
+    year: job.input.year,
+    name: req.facts.name.trim(),
+    startDate: req.facts.startDate || undefined,
+    endDate: req.facts.endDate || undefined,
+    venue: req.facts.venue || undefined,
+    city: req.facts.city || undefined,
+    country: req.facts.country || undefined,
+    status: 'confirmed',
+    performances: dedupe(performances),
+    confirmedAt: now,
+    updatedAt: now,
+  };
+  const series = await store.getSeries(slug);
+  if (!series) await store.upsertSeries({ slug, name: edition.name });
+  await store.upsertEdition(edition);
+
+  if (fresh) await learnFromSources(store, job, acceptedByDoc, slug);
+
+  let attendance: Attendance | null = null;
+  if (req.attendance) {
+    attendance = {
+      id: randomUUID(),
+      editionId: edition.id,
+      daysAttended: req.attendance.daysAttended ?? [],
+      seenArtistKeys: [...new Set(seenKeys)],
+      rating: req.attendance.rating,
+      ticketPrice: req.attendance.ticketPrice,
+      companions: req.attendance.companions,
+      notes: req.attendance.notes,
+      createdAt: now,
+    };
+    await store.addAttendance(attendance);
+  }
+
+  job.status = 'confirmed';
+  job.editionId = edition.id;
+  job.updatedAt = now;
+  job.log = [...job.log, { at: now, message: `Confirmed ${edition.performances.length} act(s); you saw ${seenKeys.length}.` }];
+  await store.updateJob(job);
+  return { edition, attendance };
+}
+
+// Remember the lineup page for next year and keep a confirmed extraction
+// example per website for Gemini's next read of that site.
+async function learnFromSources(
+  store: LineupStore,
+  job: LookupJob,
+  acceptedByUrl: Map<string, string[]>,
+  slug: string,
+): Promise<void> {
+  const url = job.input.lineupUrl;
+  const usedOfficialPage = [...acceptedByUrl.keys()].some((u) => {
+    const d = domainOf(u);
+    return d !== 'clashfinder.com' && d !== '*';
+  });
+  if (url && !slugFromClashfinderUrl(url) && usedOfficialPage) {
+    const series = await store.getSeries(slug);
+    if (series) await store.upsertSeries({ ...series, lineupUrl: url });
+  }
+
+  const claims = await store.listPerformerClaims(job.id);
+  const geminiDocs = new Set(claims.filter((c) => c.extractor.startsWith('gemini:')).map((c) => c.documentId));
+  for (const docId of geminiDocs) {
+    const doc = await store.getDocument(docId);
+    if (!doc) continue;
+    const excerpt = lineupWindow(doc.body, EXAMPLE_CHARS);
+    const normalizedExcerpt = ` ${normalizeName(excerpt)} `;
+    const names = (acceptedByUrl.get(doc.url) ?? []).filter((n) => normalizedExcerpt.includes(` ${normalizeName(n)} `));
+    if (names.length >= 3) {
+      await store.addExample({ domain: domainOf(doc.url), excerpt, names, createdAt: new Date().toISOString() });
+    }
+  }
+}
+
+function userSource(name: string): CandidateSource {
+  return { sourceType: 'user', sourceUrl: '', quotedSpan: name, evidence: 'billed', extractor: 'user' };
+}
+
+function toPerformance(cand: CandidatePerformer, name: string): EditionPerformance {
+  return {
+    artistKey: normalizeName(name),
+    name,
+    days: cand.days,
+    stages: cand.stages,
+    status: cand.status,
+    confidence: cand.confidence,
+    sources: cand.sources,
+  };
+}
+
+function dedupe(perfs: EditionPerformance[]): EditionPerformance[] {
+  const map = new Map<string, EditionPerformance>();
+  for (const p of perfs) {
+    const prev = map.get(p.artistKey);
+    if (!prev) map.set(p.artistKey, p);
+    else {
+      prev.days = [...new Set([...prev.days, ...p.days])].sort();
+      prev.stages = [...new Set([...prev.stages, ...p.stages])];
+      prev.sources = [...prev.sources, ...p.sources];
+      if (p.status === 'performed') prev.status = 'performed';
+    }
+  }
+  return [...map.values()];
+}
