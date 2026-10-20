@@ -6,6 +6,7 @@ import path from 'node:path';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import { createLookup, PipelineDeps, runJob } from '../src/server/lineup/pipeline.ts';
 import { confirmLookup } from '../src/server/lineup/learning.ts';
+import { newEvent, startLineupLookup } from '../src/server/events/service.ts';
 import { GeminiClient } from '../src/server/lineup/gemini.ts';
 import { QuotaExhaustedError, QuotaLedger } from '../src/server/lineup/quota.ts';
 import { makeDocument } from '../src/server/lineup/adapters/common.ts';
@@ -111,11 +112,13 @@ test('quota exhaustion parks the job with sources intact, then resumes', async (
 
 test('review teaches aliases, the blocklist, source scores and the cache', async () => {
   const { store, state, deps } = await setup();
-  const job = (await runJob(deps, (await createLookup(deps, { eventName: 'Fest', year: 2025, lineupUrl: 'https://fest.example/lineup' })).id))!;
+  const logged = { ...newEvent('Fest 2025', deps.now()), seen: [{ key: 'opening act', name: 'Opening Act', from: 'you' as const }] };
+  await store.putEvent(logged);
+  const started = await startLineupLookup(deps, logged, 'https://fest.example/lineup');
+  const job = (await runJob(deps, started.job.id))!;
   const byName = (n: string) => job.candidate!.performers.find((p) => p.name === n)!;
 
   const result = await confirmLookup(store, job, {
-    facts: { name: 'Fest 2025', startDate: '2025-05-16' },
     performers: [
       { key: byName('Kaskade').key, name: 'Kaskade', accepted: true, seen: true },
       { key: byName('Dom Dolla').key, name: 'Dom Dolla', accepted: true, seen: false },
@@ -123,12 +126,17 @@ test('review teaches aliases, the blocklist, source scores and the cache', async
       { key: byName('Main Stage').key, name: 'Main Stage', accepted: false, rejectReason: 'not_an_act', seen: false },
       { name: 'Surprise Guest DJ', accepted: true, seen: true },
     ],
-    attendance: { daysAttended: ['2025-05-16'] },
   });
 
   assert.equal(result.edition.status, 'confirmed');
   assert.equal(result.edition.performances.length, 4);
-  assert.deepEqual(result.attendance?.seenArtistKeys.sort(), ['eric prydz', 'kaskade', 'surprise guest dj']);
+  // Facts default to the event's, with the date the sources cited.
+  assert.equal(result.edition.name, 'Fest');
+  assert.equal(result.edition.startDate, '2025-05-16');
+  // Seen acts: what was ticked, plus the act added by hand that the lineup lacks.
+  assert.deepEqual(result.event?.seen.map((s) => s.key).sort(), ['eric prydz', 'kaskade', 'opening act', 'surprise guest dj']);
+  assert.equal(result.event?.seen.find((s) => s.key === 'kaskade')?.from, 'lineup');
+  assert.equal((await store.getEvent(logged.id))?.editionId, result.edition.id);
   const stats = await store.getSourceStats();
   assert.ok(stats.some((s) => s.sourceType === 'clashfinder' && s.scope === 'fest' && s.rejected === 1));
   assert.equal((await store.getBlocklist(['clashfinder.com']))[0]?.normalized, 'main stage');

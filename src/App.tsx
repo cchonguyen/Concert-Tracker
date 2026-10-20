@@ -1,205 +1,154 @@
-import React, { useState, useEffect } from 'react';
-import { Artist, PopulatedEvent } from './types/schema';
-import { concertStore } from './services/storage';
-import { computeHabitTelemetry } from './services/analytics';
-import { Navbar, NavTab } from './components/Navbar';
-import { LookupForm } from './components/LookupForm';
-import { LineupReview } from './components/LineupReview';
-import type { Attendance, Edition, LookupJob } from './server/lineup/types';
-import { archiveConfirmedEdition } from './services/archive';
-import { EventsList } from './components/EventsList';
-import { AnalyticsView } from './components/AnalyticsView';
-import { SupabaseSchemaModal } from './components/SupabaseSchemaModal';
-import { SheetsSyncModal } from './components/SheetsSyncModal';
-import { SetlistModal } from './components/SetlistModal';
-import { MusicBrainzModal } from './components/MusicBrainzModal';
-import { CheckCircle2, RotateCcw, Sparkles } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Download, Mic2, Radio, Ticket } from 'lucide-react';
+import { eventsApi, isActive, LineupStatus, LineupSummary, lineupApi, LoggedEvent, SOURCE_LABELS } from './services/lineupApi';
+import { downloadText, eventsToCsv } from './services/format';
+import { CaptureBar } from './components/CaptureBar';
+import { EventList } from './components/EventList';
+import { EventDetail } from './components/EventDetail';
+import { ArtistsView } from './components/ArtistsView';
+
+type Tab = 'events' | 'artists';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<NavTab>('staging');
-  const [events, setEvents] = useState<PopulatedEvent[]>([]);
-  const [artists, setArtists] = useState<Artist[]>([]);
+  const [tab, setTab] = useState<Tab>('events');
+  const [events, setEvents] = useState<LoggedEvent[]>([]);
+  const [lineups, setLineups] = useState<Record<string, LineupSummary>>({});
+  const [researching, setResearching] = useState<Set<string>>(new Set());
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [status, setStatus] = useState<LineupStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
-  // Lineup review state
-  const [reviewJob, setReviewJob] = useState<LookupJob | null>(null);
-
-  // Setlist Modal State
-  const [selectedSetlistEvent, setSelectedSetlistEvent] = useState<PopulatedEvent | null>(null);
-  const [isSetlistOpen, setIsSetlistOpen] = useState(false);
-
-  // MusicBrainz Modal State
-  const [selectedArtistMbid, setSelectedArtistMbid] = useState<Artist | null>(null);
-  const [isMbidModalOpen, setIsMbidModalOpen] = useState(false);
-
-  // Sync Sheets State
-  const [syncTargetEvent, setSyncTargetEvent] = useState<PopulatedEvent | null>(null);
-
-  // Toast notification
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 4000);
-  };
-
-  const refreshState = () => {
-    setEvents(concertStore.getAllEvents());
-    setArtists(concertStore.getAllArtists());
-  };
-
-  useEffect(() => {
-    refreshState();
+  const refresh = useCallback(async () => {
+    try {
+      const data = await eventsApi.list();
+      setEvents(data.events);
+      setLineups(data.lineups);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoaded(true);
+    }
   }, []);
 
-  const telemetry = computeHabitTelemetry(events);
+  useEffect(() => {
+    void refresh();
+    lineupApi.status().then(setStatus).catch(() => undefined);
+  }, [refresh]);
 
-  // A confirmed lineup goes into the archive with only the sets you saw.
-  const handleLineupSaved = (edition: Edition, attendance: Attendance | null) => {
-    const committed = archiveConfirmedEdition(edition, attendance, reviewJob?.id ?? '');
-    refreshState();
-    setReviewJob(null);
-    showToast(`Saved "${committed.name}" with ${attendance?.seenArtistKeys.length ?? 0} sets you saw.`);
-    setActiveTab('archive');
-  };
+  // Poll while a lineup lookup is running somewhere.
+  useEffect(() => {
+    if (!Object.values(lineups).some((l) => isActive(l.status))) return;
+    const t = setTimeout(() => void refresh(), 3000);
+    return () => clearTimeout(t);
+  }, [lineups, refresh]);
 
-  const handleResetData = () => {
-    if (
-      window.confirm(
-        'Reset relational database to initial seeded events (Porter Robinson, Coachella, Kendrick Lamar, etc.)?',
-      )
-    ) {
-      concertStore.resetToDefaults();
-      refreshState();
-      showToast('Database reset to seeded sample manifest library.');
+  const upsert = (event: LoggedEvent) =>
+    setEvents((list) => (list.some((e) => e.id === event.id) ? list.map((e) => (e.id === event.id ? event : e)) : [event, ...list]));
+
+  // Stage 1: the event is saved; details research follows on its own.
+  const handleCaptured = async (event: LoggedEvent) => {
+    upsert(event);
+    setResearching((s) => new Set(s).add(event.id));
+    try {
+      upsert(await eventsApi.research(event.id));
+    } catch {
+      // The event is saved as typed; research can be re-run from the event.
+    } finally {
+      setResearching((s) => {
+        const next = new Set(s);
+        next.delete(event.id);
+        return next;
+      });
     }
+    void refresh();
   };
+
+  const seenCount = new Set(events.flatMap((e) => e.seen.map((s) => s.key))).size;
+  const selected = events.find((e) => e.id === selectedId) ?? null;
 
   return (
     <div className="min-h-screen bg-zinc-950 font-sans text-zinc-100 selection:bg-violet-600 selection:text-white flex flex-col">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed top-16 right-4 z-50 flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-zinc-900/95 px-4 py-3 text-xs font-semibold text-emerald-300 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2">
-          <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
-      {/* Main Navbar */}
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        eventCount={events.length}
-        artistCount={artists.length}
-      />
-
-      {/* Main View Container */}
-      <main className="mx-auto flex-1 w-full max-w-7xl px-4 py-4 sm:px-6">
-        {activeTab === 'staging' && (
-          <LookupForm onReview={setReviewJob} />
-        )}
-
-        {activeTab === 'archive' && (
-          <EventsList
-            events={events}
-            onSelectSetlist={(evt) => {
-              setSelectedSetlistEvent(evt);
-              setIsSetlistOpen(true);
-            }}
-            onSelectArtistMbid={(art) => {
-              setSelectedArtistMbid(art);
-              setIsMbidModalOpen(true);
-            }}
-            onSyncSheets={(evt) => {
-              setSyncTargetEvent(evt);
-              setActiveTab('sheets');
-            }}
-            onRefresh={refreshState}
-            onGoToExtraction={() => setActiveTab('staging')}
-          />
-        )}
-
-        {activeTab === 'analytics' && (
-          <AnalyticsView
-            telemetry={telemetry}
-            events={events}
-            onSelectArtistMbid={(art) => {
-              const fullArtist = artists.find((a) => a.id === art.id) || {
-                id: art.id,
-                name: art.name,
-              };
-              setSelectedArtistMbid(fullArtist);
-              setIsMbidModalOpen(true);
-            }}
-          />
-        )}
-
-        {activeTab === 'supabase' && <SupabaseSchemaModal />}
-
-        {activeTab === 'sheets' && (
-          <SheetsSyncModal
-            events={events}
-            selectedEventForSync={syncTargetEvent}
-          />
-        )}
-      </main>
-
-      {/* Lineup review (human in the loop) */}
-      {reviewJob && (
-        <LineupReview job={reviewJob} onClose={() => setReviewJob(null)} onSaved={handleLineupSaved} />
-      )}
-
-      {/* Setlist Modal */}
-      {isSetlistOpen && (
-        <SetlistModal
-          isOpen={isSetlistOpen}
-          event={selectedSetlistEvent}
-          onClose={() => {
-            setIsSetlistOpen(false);
-            setSelectedSetlistEvent(null);
-          }}
-        />
-      )}
-
-      {/* Canonical MusicBrainz Modal */}
-      {isMbidModalOpen && (
-        <MusicBrainzModal
-          isOpen={isMbidModalOpen}
-          artist={selectedArtistMbid}
-          onClose={() => {
-            setIsMbidModalOpen(false);
-            setSelectedArtistMbid(null);
-          }}
-          onUpdated={refreshState}
-        />
-      )}
-
-      {/* Footer */}
-      <footer className="mt-auto border-t border-zinc-900 bg-zinc-950 py-6 text-zinc-500 text-xs">
-        <div className="mx-auto flex max-w-7xl flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6">
+      <header className="sticky top-0 z-30 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-zinc-400">LiveArchive</span>
-            <span>·</span>
-            <span>Source-first lineups</span>
-            <span>·</span>
-            <span>Supabase Relational Core</span>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handleResetData}
-              className="inline-flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors"
-              title="Reset seeded demo dataset"
-            >
-              <RotateCcw className="h-3 w-3" />
-              <span>Reset Seed Data</span>
-            </button>
-            <span className="text-zinc-700">|</span>
-            <span className="font-mono text-[11px] text-zinc-500">
-              Dual Persistence Governance Active
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-violet-600 to-cyan-400">
+              <Radio className="h-4 w-4 text-white" />
+            </div>
+            <span className="text-base font-extrabold tracking-tight">
+              Live<span className="text-violet-400">Archive</span>
             </span>
           </div>
+          <nav className="flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1 text-sm">
+            {(
+              [
+                ['events', Ticket, `Events`, events.length],
+                ['artists', Mic2, `Artists`, seenCount],
+              ] as const
+            ).map(([id, Icon, label, count]) => (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-colors ${
+                  tab === id ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+                <span className="text-[11px] opacity-70">{count}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-3xl flex-1 space-y-6 px-4 py-6">
+        {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-3 text-sm text-rose-200">{error}</p>}
+        {tab === 'events' && (
+          <>
+            <CaptureBar onCaptured={handleCaptured} />
+            <EventList events={events} lineups={lineups} researching={researching} loaded={loaded} onOpen={setSelectedId} />
+          </>
+        )}
+        {tab === 'artists' && <ArtistsView events={events} onOpenEvent={setSelectedId} />}
+      </main>
+
+      <footer className="border-t border-zinc-900 py-5 text-xs text-zinc-500">
+        <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 px-4">
+          <button
+            onClick={() => downloadText(`livearchive-${new Date().toISOString().slice(0, 10)}.csv`, eventsToCsv(events))}
+            disabled={!events.length}
+            className="inline-flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 disabled:opacity-40"
+          >
+            <Download className="h-3.5 w-3.5" /> Export as spreadsheet (CSV)
+          </button>
+          {status && (
+            <span title="Where event details and lineups come from">
+              Sources:{' '}
+              {status.sources.map((s) => `${SOURCE_LABELS[s.id]}${s.enabled ? '' : ' (off)'}`).join(' · ')}
+              {' · '}Gemini {status.gemini ? `${status.quota?.used ?? 0}/${status.quota?.limit ?? '?'} today` : '(off)'}
+            </span>
+          )}
         </div>
       </footer>
+
+      {selected && (
+        <EventDetail
+          key={selected.id}
+          event={selected}
+          events={events}
+          onChange={(e) => {
+            upsert(e);
+            void refresh();
+          }}
+          onDeleted={() => {
+            setSelectedId(null);
+            void refresh();
+          }}
+          onClose={() => setSelectedId(null)}
+        />
+      )}
     </div>
   );
 }
