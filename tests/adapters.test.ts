@@ -12,7 +12,7 @@ import { promoterAdapter, rawSnapshotUrl, snapshotInWindow } from '../src/server
 import { matchingEvents, ticketmasterAdapter } from '../src/server/lineup/adapters/ticketmaster.ts';
 import { belongsToEvent, toSetlistDate } from '../src/server/lineup/adapters/setlistfm.ts';
 import { fakeFetcher } from './fakes.ts';
-import { braveSearch, pageMentionsEvent, searchQuery } from '../src/server/lineup/search.ts';
+import { braveSearch, isEventDomain, pageMentionsEvent, searchQuery } from '../src/server/lineup/search.ts';
 import { QuotaExhaustedError } from '../src/server/lineup/quota.ts';
 import { Fetcher } from '../src/server/lineup/types.ts';
 
@@ -172,4 +172,11 @@ test('search: Brave query, results and quota parking', async () => {
     assert.equal(err.retryAt.toISOString(), '2026-10-21T00:00:01.000Z');
     return true;
   });
+});
+
+test('search: a result on the event domain is the organiser page', () => {
+  assert.ok(isEventDomain('https://sunsoaked.insomniac.com/lineup/', 'Sun Soaked 2026'));
+  assert.ok(isEventDomain('https://www.zeddinthepark.com/', 'Zedd in the Park'));
+  assert.ok(!isEventDomain('https://www.jambase.com/festival/zedd-in-the-park-2026', 'Zedd in the Park'));
+  assert.ok(!isEventDomain('https://edc.example.com/', 'EDC')); // too short to tell
 });
