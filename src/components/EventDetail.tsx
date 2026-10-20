@@ -3,6 +3,7 @@ import { Check, ExternalLink, Loader2, RefreshCw, Search, Star, Trash2, X } from
 import {
   DetailCandidate,
   Edition,
+  EventField,
   EventPatch,
   eventsApi,
   isActive,
@@ -37,9 +38,11 @@ const Field: React.FC<{
   onSave: (value: string) => void;
   onType?: (value: string) => void;
   suggestions?: string[];
+  // A confirmed source gives a different value: one tap takes it.
+  offer?: { value: string; from: string; onUse: () => void };
   min?: string;
   className?: string;
-}> = ({ label, value, type = 'text', placeholder, source, onSave, onType, suggestions, min, className }) => {
+}> = ({ label, value, type = 'text', placeholder, source, onSave, onType, suggestions, offer, min, className }) => {
   const listId = React.useId();
   const [draft, setDraft] = useState(value === undefined ? '' : String(value));
   useEffect(() => setDraft(value === undefined ? '' : String(value)), [value]);
@@ -72,6 +75,11 @@ const Field: React.FC<{
         onBlur={() => draft !== (value === undefined ? '' : String(value)) && onSave(draft)}
         onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
       />
+      {offer && (
+        <button type="button" onClick={offer.onUse} className="block w-full truncate text-left text-[11px] text-violet-300 hover:underline">
+          Use “{offer.value}” from {offer.from}
+        </button>
+      )}
       {suggestions?.length ? (
         <datalist id={listId}>
           {suggestions.map((s) => (
@@ -215,6 +223,20 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const lineupActs = (edition?.performances ?? []).filter((p) => p.status !== 'cancelled');
   const days = datesBetween(event.startDate, event.endDate);
   const details = event.details;
+
+  // Fields where the confirmed suggestion differs from what's saved; "Look
+  // again" never replaces a field on its own, so these are offered instead.
+  const confirmed = details.status === 'matched' || details.status === 'resolved' ? details.candidates[0] : undefined;
+  const offer = (field: EventField) => {
+    const v = confirmed?.[field];
+    if (!confirmed || !v || v === event[field]) return undefined;
+    const src = confirmed.sources.find((s) => s.fields.includes(field));
+    return {
+      value: field === 'endDate' ? whenLabel({ startDate: v }) ?? v : v,
+      from: src ? SOURCE_LABELS[src.sourceType] : 'a source',
+      onUse: () => void run('save', () => eventsApi.pick(event.id, confirmed.id, [field])),
+    };
+  };
   const confirmations = dateConfirmations(event);
 
   return (
@@ -254,6 +276,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               value={event.endDate ?? event.startDate}
               min={event.startDate}
               source={event.endDate ? event.sources.endDate : undefined}
+              offer={offer('endDate')}
               onSave={(v) => save({ endDate: v && v !== event.startDate ? v : null })}
             />
             {!event.startDate && (
@@ -264,6 +287,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               value={event.venue}
               source={event.sources.venue}
               suggestions={pastVenues}
+              offer={offer('venue')}
               onSave={(v) => {
                 const venue = text(v);
                 const city = venue && !event.city ? cityForVenue(others, venue) : undefined;
@@ -276,10 +300,11 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               placeholder="City, State"
               source={event.sources.city}
               suggestions={citySuggestions}
+              offer={offer('city')}
               onType={setCityQuery}
               onSave={(v) => save({ city: text(v) })}
             />
-            <Field label="Country" value={event.country} source={event.sources.country} onSave={(v) => save({ country: text(v) })} />
+            <Field label="Country" value={event.country} source={event.sources.country} offer={offer('country')} onSave={(v) => save({ country: text(v) })} />
           </div>
 
           {details.status === 'choose' && (

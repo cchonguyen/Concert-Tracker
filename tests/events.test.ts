@@ -407,3 +407,70 @@ test('city suggestions come from the geocoder as "City, ST", biggest first', asy
   assert.equal(calls.length, 1);
   assert.deepEqual(await citySuggestions('L', fetcher), []);
 });
+
+test('without a year, web search suggests dates for that place and asks you to pick', async () => {
+  process.env.BRAVE_SEARCH_API_KEY = 'k';
+  try {
+    const { fetcher, calls } = fakeFetcher({
+      'https://api.search.brave.com/': {
+        body: {
+          web: {
+            results: [
+              { url: 'https://a.example/1', title: 'Porter Robinson at the Greek Theatre', description: 'October 5, 2024' },
+              { url: 'https://b.example/2', title: 'Porter Robinson live at Red Rocks', description: 'May 3, 2023' },
+            ],
+          },
+        },
+      },
+    });
+    const ev = newEvent('Porter Robinson at the Greek Theatre', NOW);
+    assert.equal(ev.year, undefined);
+    const out = await researchEvent(ev, [braveFinder, finder('ticketmaster', [{ startDate: '2025-01-01', sources: src('ticketmaster', ['startDate']) }])], fetcher, NOW);
+    assert.equal(out.details.status, 'choose', 'a suggestion, never applied on its own');
+    assert.deepEqual(out.details.candidates.map((c) => c.startDate), ['2024-10-05'], 'only the result naming your venue; Ticketmaster needs a year');
+    assert.equal(out.startDate, undefined);
+    assert.ok(decodeURIComponent(calls[0]).includes('"Porter Robinson"') && decodeURIComponent(calls[0]).includes('Greek Theatre'));
+    const picked = pickCandidate(out, out.details.candidates[0].id, NOW);
+    assert.equal(picked.year, 2024);
+
+    const nothing = await researchEvent(newEvent('Nobody Plays Here', NOW), [braveFinder], fakeFetcher({}).fetcher, NOW);
+    assert.equal(nothing.details.status, 'needs_date');
+  } finally {
+    delete process.env.BRAVE_SEARCH_API_KEY;
+  }
+});
+
+test('a renamed event that finds nothing is looked up again under the name you first typed', async () => {
+  const seen: string[] = [];
+  const byName: DetailFinder = {
+    id: 'clashfinder',
+    enabled: () => true,
+    find: async (q) => {
+      seen.push(q.name);
+      return q.name === 'Coachella' ? [{ id: 'c', startDate: '2025-04-11', sources: src('clashfinder', ['startDate']) }] : [];
+    },
+  };
+  const renamed = applyPatch(newEvent('Coachella Apr 11 2025', NOW), { name: 'Coachella Weekend 1' }, NOW);
+  const out = await researchEvent(renamed, [byName], fakeFetcher({}).fetcher, NOW);
+  assert.deepEqual(seen, ['Coachella Weekend 1', 'Coachella']);
+  assert.equal(out.details.status, 'matched');
+  assert.equal(out.name, 'Coachella Weekend 1', 'the name stays yours');
+});
+
+test('"Use this" takes one field from the confirmed suggestion and replaces what you typed', async () => {
+  const ev = newEvent('Head in the Clouds in Pasadena May 31 2025', NOW);
+  const out = await researchEvent(
+    ev,
+    [finder('discovered', [{ startDate: '2025-05-31', venue: 'Brookside at the Rose Bowl', city: 'Pasadena, CA', sources: src('discovered', ['startDate', 'venue', 'city']) }])],
+    fakeFetcher({}).fetcher,
+    NOW,
+  );
+  assert.equal(out.city, 'Pasadena', 'look again never replaces your city');
+  assert.equal(out.venue, 'Brookside at the Rose Bowl');
+  const used = pickCandidate(out, out.details.candidates[0].id, NOW, ['city']);
+  assert.equal(used.city, 'Pasadena, CA');
+  assert.equal(used.sources.city?.sourceType, 'discovered');
+  assert.equal(used.details.status, 'matched', 'the suggestion stays');
+  assert.throws(() => pickCandidate(out, out.details.candidates[0].id, NOW, ['name' as never]));
+  assert.equal(cityLabel('Los Angeles,', 'CA'), 'Los Angeles, CA');
+});

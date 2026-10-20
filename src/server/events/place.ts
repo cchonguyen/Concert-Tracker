@@ -34,7 +34,7 @@ export function regionCode(region: string | undefined): string | undefined {
 
 // "Las Vegas, NV" in the US and Canada; just the city elsewhere.
 export function cityLabel(city: string | undefined, region?: string, country?: string): string | undefined {
-  const name = city?.trim();
+  const name = city?.replace(/[\s,;]+$/, '').trim();
   if (!name) return undefined;
   if (country && !NORTH_AMERICA.has(normalizeName(country))) return name;
   const code = regionCode(region);

@@ -87,12 +87,14 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
     }
   });
 
-  // Pick a suggestion ({ candidateId }) or dismiss them all ({}).
+  // Pick a suggestion ({ candidateId }), take some of its fields
+  // ({ candidateId, fields }), or dismiss them all ({}).
   router.post('/events/:id/details/pick', async (req, res) => {
     try {
       const event = await load(req.params.id, res);
       if (!event) return;
-      const updated = pickCandidate(event, req.body?.candidateId, deps.now());
+      const fields = Array.isArray(req.body?.fields) ? req.body.fields : undefined;
+      const updated = pickCandidate(event, req.body?.candidateId, deps.now(), fields);
       await deps.store.putEvent(updated);
       res.json({ event: updated });
     } catch (err) {

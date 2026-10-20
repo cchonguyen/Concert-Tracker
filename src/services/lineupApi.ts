@@ -1,9 +1,9 @@
 import type { Edition, LookupJob, SourceType } from '../server/lineup/types';
 import type { ConfirmRequest } from '../server/lineup/learning';
-import type { DetailCandidate, LineupSummary, LoggedEvent } from '../server/events/types';
+import type { DetailCandidate, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
 import type { EventPatch } from '../server/events/service';
 
-export type { LookupJob, Edition, ConfirmRequest, LoggedEvent, LineupSummary, DetailCandidate, EventPatch };
+export type { LookupJob, Edition, ConfirmRequest, LoggedEvent, LineupSummary, DetailCandidate, EventField, EventPatch };
 
 export interface LineupStatus {
   store: 'file' | 'supabase';
@@ -33,8 +33,8 @@ export const eventsApi = {
     request<{ event: LoggedEvent }>(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }).then((r) => r.event),
   remove: (id: string) => request<unknown>(`/api/events/${id}`, { method: 'DELETE' }),
   research: (id: string) => request<{ event: LoggedEvent }>(`/api/events/${id}/details`, post()).then((r) => r.event),
-  pick: (id: string, candidateId?: string) =>
-    request<{ event: LoggedEvent }>(`/api/events/${id}/details/pick`, post({ candidateId })).then((r) => r.event),
+  pick: (id: string, candidateId?: string, fields?: EventField[]) =>
+    request<{ event: LoggedEvent }>(`/api/events/${id}/details/pick`, post({ candidateId, fields })).then((r) => r.event),
   findLineup: (id: string, lineupUrl?: string) =>
     request<{ event: LoggedEvent; job: LookupJob }>(`/api/events/${id}/lineup`, post({ lineupUrl })),
   cities: (q: string) => request<{ cities: string[] }>(`/api/places/cities?q=${encodeURIComponent(q)}`).then((r) => r.cities),
