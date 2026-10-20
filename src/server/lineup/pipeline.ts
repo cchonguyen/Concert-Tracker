@@ -18,6 +18,7 @@ import { appendFacts, mergeLineup } from './merge';
 import { domainOf, editionKeyFor, htmlToText, isVerbatim, normalizeName, seriesSlugFor } from './text';
 import { makeDocument } from './adapters/common';
 import { resolveArtist } from './musicbrainz';
+import { redactSecrets } from './http';
 
 export interface PipelineDeps {
   store: LineupStore;
@@ -58,7 +59,7 @@ export function validateInput(raw: Partial<LookupInput>): LookupInput {
 }
 
 function log(job: LookupJob, message: string, now: Date): void {
-  const entry: JobLogEntry = { at: now.toISOString(), message };
+  const entry: JobLogEntry = { at: now.toISOString(), message: redactSecrets(message) };
   job.log = [...job.log, entry].slice(-100);
 }
 
@@ -255,6 +256,13 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
 }
 
 async function stageDiscover(deps: PipelineDeps, job: LookupJob, now: Date, force: boolean): Promise<void> {
+  // Discovery may have been switched off while this job was parked.
+  if (!deps.allowDiscovery || !deps.gemini || !deps.quota) {
+    job.discoveryDone = true;
+    job.stage = 'merge';
+    log(job, 'Search discovery is off; skipped.', now);
+    return;
+  }
   await deps.quota!.acquire(now, { ignorePause: force });
   const urls = await deps.gemini!.discoverLineupUrls(job.input);
   job.discoveryDone = true;
@@ -347,7 +355,7 @@ export async function runJob(deps: PipelineDeps, jobId: string, opts: { force?: 
       log(job, `Paused: ${err.reason}`, now);
     } else {
       job.attempts += 1;
-      job.lastError = err instanceof Error ? err.message : String(err);
+      job.lastError = redactSecrets(err instanceof Error ? err.message : String(err));
       if (job.attempts < MAX_ATTEMPTS) {
         job.status = 'queued';
         job.nextAttemptAt = new Date(now.getTime() + 2 ** job.attempts * 60_000).toISOString();

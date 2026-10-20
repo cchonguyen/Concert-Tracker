@@ -40,16 +40,37 @@ interface EventListEntry {
   slug: string;
   name: string;
   startDate?: string;
+  isPrivate?: boolean;
+  edits?: number;
+  numActs?: number;
 }
 
-// The list format is parsed defensively: either an object keyed by slug or an
-// array of objects carrying the slug in one of a few fields.
+// Clashfinder dates are Unix seconds; older formats used ISO strings.
+function toIsoDate(v: unknown): string | undefined {
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+    return new Date(v > 1e11 ? v : v * 1000).toISOString().slice(0, 10);
+  }
+  if (typeof v === 'string' && /^\d+$/.test(v)) return toIsoDate(Number(v));
+  return typeof v === 'string' ? v : undefined;
+}
+
+// The list is an object keyed by slug. In it, "name" repeats the slug and the
+// readable title is "desc" (e.g. "EDC Las Vegas 2026"); startDate is Unix
+// seconds. Older array formats are still accepted.
 export function parseEventList(json: unknown): EventListEntry[] {
   const out: EventListEntry[] = [];
   const read = (slug: unknown, v: any) => {
-    const name = v?.name ?? v?.title ?? v?.fullName;
+    const title = [v?.desc, v?.title, v?.fullName, v?.name].find((t) => typeof t === 'string' && t.trim() && t !== slug);
+    const name = title ?? v?.name;
     if (typeof slug === 'string' && typeof name === 'string') {
-      out.push({ slug, name, startDate: v?.startDate ?? v?.start ?? v?.date });
+      out.push({
+        slug,
+        name,
+        startDate: toIsoDate(v?.startDate ?? v?.start ?? v?.date),
+        isPrivate: Boolean(v?.private),
+        edits: typeof v?.edits === 'number' ? v.edits : undefined,
+        numActs: typeof v?.numActs === 'number' ? v.numActs : undefined,
+      });
     }
   };
   if (Array.isArray(json)) {
@@ -63,19 +84,32 @@ export function parseEventList(json: unknown): EventListEntry[] {
   return out;
 }
 
+// Clashfinder holds user-made "fantasy" or predicted lineups next to the real
+// ones. Those are guesses, so they are never used as evidence.
+const SPECULATIVE = /\b(fantasy|prediction|predicted|predictions|guess|guesses|wishlist)\b/i;
+
+// Several slugs often exist for one edition (edc2026, edclv2026, a livestream
+// schedule...). Candidates must match every word of the event name in the
+// title, or start the slug with those words run together, and fall in the
+// year. Among them the most-edited public clash wins, as the crowd's choice.
 export function matchEdition(entries: EventListEntry[], eventName: string, year: number): EventListEntry | null {
   const wanted = normalizeName(eventName.replace(/\b(19|20)\d{2}\b/g, ' ')).split(' ').filter(Boolean);
+  if (!wanted.length) return null;
+  const joined = wanted.join('');
   const yy = String(year).slice(2);
   let best: { entry: EventListEntry; score: number } | null = null;
   for (const entry of entries) {
+    if (entry.isPrivate || SPECULATIVE.test(entry.name) || entry.numActs === 0) continue;
     const name = normalizeName(entry.name);
-    if (!wanted.every((w) => ` ${name} `.includes(` ${w} `))) continue;
-    const yearHit =
-      name.includes(String(year)) ||
-      entry.startDate?.startsWith(String(year)) ||
-      new RegExp(`(^|[^0-9])(${year}|${yy})$`).test(entry.slug);
+    const titleHit = wanted.every((w) => ` ${name} `.includes(` ${w} `));
+    const slugHit = entry.slug.toLowerCase().startsWith(joined);
+    if (!titleHit && !slugHit) continue;
+    const yearHit = entry.startDate
+      ? entry.startDate.startsWith(String(year))
+      : name.includes(String(year)) || new RegExp(`(^|[^0-9])(${year}|${yy})$`).test(entry.slug);
     if (!yearHit) continue;
-    const score = 100 - Math.abs(name.length - wanted.join(' ').length);
+    const score =
+      (titleHit ? 1_000_000 : 0) + (entry.edits ?? 0) * 10 + Math.min(entry.numActs ?? 0, 9) - Math.abs(name.length - wanted.join(' ').length) / 1000;
     if (!best || score > best.score) best = { entry, score };
   }
   return best?.entry ?? null;
@@ -134,6 +168,7 @@ export const clashfinderAdapter: SourceAdapter = {
         return result;
       }
       slug = match.slug;
+      result.notes.push(`Clashfinder: matched "${match.name}" (${slug}).`);
     }
 
     const url = `${BASE}/data/event/${slug}.json?${auth}`;

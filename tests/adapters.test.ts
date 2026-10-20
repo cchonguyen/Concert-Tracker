@@ -27,6 +27,29 @@ test('clashfinder: slugs from URLs, edition matching and late-night sets', () =>
   assert.equal(festivalDay('2025-05-16 21:00'), '2025-05-16');
 });
 
+test('clashfinder: real list format (title in desc, Unix dates, duplicate slugs)', () => {
+  const may15 = 1778803200; // 2026-05-15
+  const list = parseEventList({
+    edc2026: { name: 'edc2026', desc: 'EDC Las Vegas 2026', startDate: may15, edits: 40, numActs: 300, private: 0 },
+    edclv2026: { name: 'edclv2026', desc: 'EDC Las Vegas 2026', startDate: may15, edits: 900, numActs: 310, private: 0 },
+    edclv2026livestream: { name: 'edclv2026livestream', desc: 'EDC Las Vegas 2026 Livestream', startDate: may15, edits: 12, numActs: 80 },
+    edcvegas2026: { name: 'edcvegas2026', desc: 'EDC 2026 (Fantasy)', startDate: may15, edits: 5000, numActs: 200 },
+    edclasvegas2026: { name: 'edclasvegas2026', desc: 'EDC LV 2026', startDate: may15, edits: 3000, numActs: 250, private: 1 },
+    edcmx26: { name: 'edcmx26', desc: 'EDC Mexico 2026', startDate: 1771545600, edits: 50, numActs: 120 },
+    edc2025: { name: 'edc2025', desc: 'EDC Las Vegas 2025', startDate: 1747353600, edits: 800, numActs: 300 },
+  });
+  assert.equal(list.find((e) => e.slug === 'edc2026')?.startDate, '2026-05-15');
+  // Most-edited public, non-fantasy clash for the year wins.
+  assert.equal(matchEdition(list, 'EDC 2026', 2026)?.slug, 'edclv2026');
+  assert.equal(matchEdition(list, 'EDC Las Vegas', 2026)?.slug, 'edclv2026');
+  assert.equal(matchEdition(list, 'EDC Mexico', 2026)?.slug, 'edcmx26');
+  assert.equal(matchEdition(list, 'EDC', 2025)?.slug, 'edc2025');
+  assert.equal(matchEdition(list, 'EDC', 2024), null);
+  // A slug run together from the name counts when the title spells it out.
+  const spelled = parseEventList({ edc2026: { name: 'edc2026', desc: 'Electric Daisy Carnival 2026', startDate: may15, numActs: 5 } });
+  assert.equal(matchEdition(spelled, 'EDC', 2026)?.slug, 'edc2026');
+});
+
 test('clashfinder: parses acts with stage and day', async () => {
   process.env.CLASHFINDER_USERNAME = 'me';
   process.env.CLASHFINDER_PUBLIC_KEY = 'k';
