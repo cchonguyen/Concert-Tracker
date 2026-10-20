@@ -17,6 +17,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { generateSupabaseSqlSchema } from '../services/export';
+import lineupMigrationSql from '../../supabase/migrations/0002_source_first_lineups.sql?raw';
 import {
   checkSupabaseStatus,
   validateSupabaseConnection,
@@ -35,7 +36,7 @@ export const SupabaseSchemaModal: React.FC = () => {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [validation, setValidation] = useState<SupabaseClientValidation | null>(null);
 
-  const sql = generateSupabaseSqlSchema();
+  const sql = `${generateSupabaseSqlSchema()}\n\n${lineupMigrationSql}`;
 
   const runValidation = async () => {
     setLoading(true);

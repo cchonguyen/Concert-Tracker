@@ -240,14 +240,14 @@ export const EventsList: React.FC<EventsListProps> = ({
           <div className="space-y-1">
             <h3 className="text-sm font-semibold text-zinc-300">No matching concerts found</h3>
             <p className="text-xs text-zinc-500">
-              Try adjusting your query filters or extract a new concert event using Google AI Studio.
+              Try adjusting your filters, or add an event and look up its lineup.
             </p>
           </div>
           <button
             onClick={onGoToExtraction}
             className="rounded-xl bg-violet-600 px-4 py-2 text-xs font-semibold text-white hover:bg-violet-500 transition-colors"
           >
-            Launch Grounded Extraction
+            Add an event
           </button>
         </div>
       ) : viewMode === 'grid' ? (

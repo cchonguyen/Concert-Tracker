@@ -27,6 +27,27 @@ export class HttpError extends Error {
   }
 }
 
+// Lineup URLs come from user input and search results, so refuse anything
+// that points back into the server's own network.
+export function assertPublicHttpUrl(raw: string): URL {
+  const url = new URL(raw);
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error(`Refusing non-web URL: ${raw}`);
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const privateHost =
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.internal') ||
+    host.endsWith('.local') ||
+    /^(0|10|127)\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+    /^(::1?|f[cd][0-9a-f]{2}:.*|fe80:.*)$/.test(host) ||
+    /^\d+$/.test(host);
+  if (privateHost) throw new Error(`Refusing private or local address: ${url.hostname}`);
+  return url;
+}
+
 export function createRateLimitedFetcher(): Fetcher {
   const nextSlot = new Map<string, number>();
 
@@ -40,7 +61,7 @@ export function createRateLimitedFetcher(): Fetcher {
 
   return {
     async get(url, init = {}): Promise<FetchResponse> {
-      const host = new URL(url).hostname.replace(/^www\./, '');
+      const host = assertPublicHttpUrl(url).hostname.replace(/^www\./, '');
       await waitTurn(host);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), init.timeoutMs ?? 15000);
@@ -49,6 +70,9 @@ export function createRateLimitedFetcher(): Fetcher {
           signal: controller.signal,
           redirect: 'follow',
           headers: { 'User-Agent': userAgent(), ...init.headers },
+        }).catch((err) => {
+          const cause = (err as { cause?: { code?: string } })?.cause?.code;
+          throw new Error(`Could not reach ${host}${cause ? ` (${cause})` : ''}: ${err instanceof Error ? err.message : String(err)}`);
         });
         const headers: Record<string, string> = {};
         res.headers.forEach((v, k) => (headers[k] = v));

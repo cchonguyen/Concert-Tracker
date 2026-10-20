@@ -1,15 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Artist,
-  ExtractedEventManifest,
-  PopulatedEvent,
-  StagingInput,
-} from './types/schema';
+import { Artist, PopulatedEvent } from './types/schema';
 import { concertStore } from './services/storage';
 import { computeHabitTelemetry } from './services/analytics';
 import { Navbar, NavTab } from './components/Navbar';
-import { EnrichmentForm } from './components/EnrichmentForm';
-import { VerificationModal } from './components/VerificationModal';
+import { LookupForm } from './components/LookupForm';
+import { LineupReview } from './components/LineupReview';
+import type { Attendance, Edition, LookupJob } from './server/lineup/types';
+import { archiveConfirmedEdition } from './services/archive';
 import { EventsList } from './components/EventsList';
 import { AnalyticsView } from './components/AnalyticsView';
 import { SupabaseSchemaModal } from './components/SupabaseSchemaModal';
@@ -23,10 +20,8 @@ export default function App() {
   const [events, setEvents] = useState<PopulatedEvent[]>([]);
   const [artists, setArtists] = useState<Artist[]>([]);
 
-  // Verification Modal State
-  const [pendingManifest, setPendingManifest] = useState<ExtractedEventManifest | null>(null);
-  const [pendingStagingInput, setPendingStagingInput] = useState<StagingInput | null>(null);
-  const [isVerificationOpen, setIsVerificationOpen] = useState(false);
+  // Lineup review state
+  const [reviewJob, setReviewJob] = useState<LookupJob | null>(null);
 
   // Setlist Modal State
   const [selectedSetlistEvent, setSelectedSetlistEvent] = useState<PopulatedEvent | null>(null);
@@ -58,34 +53,12 @@ export default function App() {
 
   const telemetry = computeHabitTelemetry(events);
 
-  // Handle Extraction Output from Gemini
-  const handleManifestReady = (manifest: ExtractedEventManifest, stagingInput: StagingInput) => {
-    setPendingManifest(manifest);
-    setPendingStagingInput(stagingInput);
-    setIsVerificationOpen(true);
-  };
-
-  // Handle Human-in-the-Loop Commit
-  const handleCommitManifest = (
-    finalManifest: ExtractedEventManifest,
-    extra: {
-      ticketPrice?: number;
-      seatingTier?: string;
-      companions?: string[];
-      attendanceStatus?: 'attended' | 'upcoming' | 'wishlist';
-      rating?: number;
-      isOutdoor?: boolean;
-      isFestival?: boolean;
-      endDate?: string;
-      festivalDays?: import('./types/schema').FestivalDayAttendance[];
-    },
-  ) => {
-    const committed = concertStore.commitManifest(finalManifest, extra);
+  // A confirmed lineup goes into the archive with only the sets you saw.
+  const handleLineupSaved = (edition: Edition, attendance: Attendance | null) => {
+    const committed = archiveConfirmedEdition(edition, attendance, reviewJob?.id ?? '');
     refreshState();
-    setIsVerificationOpen(false);
-    setPendingManifest(null);
-    setPendingStagingInput(null);
-    showToast(`Committed "${committed.name}" to Supabase Relational Core.`);
+    setReviewJob(null);
+    showToast(`Saved "${committed.name}" with ${attendance?.seenArtistKeys.length ?? 0} sets you saw.`);
     setActiveTab('archive');
   };
 
@@ -122,10 +95,7 @@ export default function App() {
       {/* Main View Container */}
       <main className="mx-auto flex-1 w-full max-w-7xl px-4 py-4 sm:px-6">
         {activeTab === 'staging' && (
-          <EnrichmentForm
-            onManifestReady={handleManifestReady}
-            onViewArchive={() => setActiveTab('archive')}
-          />
+          <LookupForm onReview={setReviewJob} />
         )}
 
         {activeTab === 'archive' && (
@@ -173,15 +143,9 @@ export default function App() {
         )}
       </main>
 
-      {/* Verification Modal (Human-In-The-Loop) */}
-      {isVerificationOpen && pendingManifest && pendingStagingInput && (
-        <VerificationModal
-          isOpen={isVerificationOpen}
-          manifest={pendingManifest}
-          stagingInput={pendingStagingInput}
-          onClose={() => setIsVerificationOpen(false)}
-          onCommit={handleCommitManifest}
-        />
+      {/* Lineup review (human in the loop) */}
+      {reviewJob && (
+        <LineupReview job={reviewJob} onClose={() => setReviewJob(null)} onSaved={handleLineupSaved} />
       )}
 
       {/* Setlist Modal */}
@@ -215,7 +179,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="font-semibold text-zinc-400">LiveArchive</span>
             <span>·</span>
-            <span>Google AI Studio Gemini Grounded Intelligence</span>
+            <span>Source-first lineups</span>
             <span>·</span>
             <span>Supabase Relational Core</span>
           </div>

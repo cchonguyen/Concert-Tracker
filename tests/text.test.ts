@@ -33,3 +33,11 @@ test('htmlToText keeps visible text and embedded JSON strings', () => {
   assert.match(text, /Peggy Gou/);
   assert.doesNotMatch(text, /var a=1/);
 });
+
+test('server-side fetching refuses private and local addresses', async () => {
+  const { assertPublicHttpUrl } = await import('../src/server/lineup/http.ts');
+  for (const bad of ['http://localhost:3000', 'http://169.254.169.254/latest', 'http://10.0.0.5/', 'http://metadata.google.internal/', 'file:///etc/passwd', 'http://[::1]/', 'http://2130706433/']) {
+    assert.throws(() => assertPublicHttpUrl(bad), bad);
+  }
+  assert.equal(assertPublicHttpUrl('https://lasvegas.electricdaisycarnival.com/lineup').hostname, 'lasvegas.electricdaisycarnival.com');
+});
