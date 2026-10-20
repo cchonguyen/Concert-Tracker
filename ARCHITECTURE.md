@@ -152,6 +152,8 @@ The `/api` routes live in `src/server/app.ts` and take a `JobRunner` that starts
 | Store | Supabase, or the file store | Supabase only |
 | Config | `.env` | `vars` in `wrangler.jsonc` plus `wrangler secret put` |
 
+Workers Builds (the GitHub-connected build) installs with the bun in Cloudflare's build image, which reads only `lockfileVersion: 1` of `bun.lock` and fails a frozen install on version 2. Keep `bun.lock` at version 1: if a newer bun rewrites the header to `"lockfileVersion": 2` with `"configVersion"`, change it back (the entries are the same).
+
 The queue consumer runs one message at a time (`max_concurrency: 1`), so the per-host spacing in `http.ts` still holds; the spacing lives in memory, so it is per isolate rather than global. Duplicate queue messages are harmless because `runJob` skips a job that is no longer `queued` or `waiting_quota`. A consumer killed mid-run (for example by the CPU limit on the Workers Free plan) leaves the job `running`; it does not resume on its own.
 
 ## Configuration
