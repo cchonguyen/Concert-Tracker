@@ -211,3 +211,40 @@ test('web search only reads pages that name the event and year, and keeps only q
   assert.ok(calls.includes('https://down.example/x'));
   assert.ok(job!.log.some((l) => l.message.includes('Skipped https://fest.example/next-year')));
 });
+
+test('web search reads the event site first, as an official page, even if stored earlier as discovered', async () => {
+  const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'search-official-')));
+  const official = '<h1>Sun Soaked 2026</h1><p>Friday: ATICA. Saturday: Cut Snake</p>';
+  const { fetcher } = fakeFetcher({ 'https://sunsoaked.promoter.example/': { body: official } });
+  // Stored by an earlier run as a plain search result.
+  await store.putDocument(makeDocument('https://sunsoaked.promoter.example/', 'discovered', 'Sun Soaked 2026 Friday: ATICA. Saturday: Cut Snake', 'text'));
+  const kinds: Array<string | undefined> = [];
+  const gemini: GeminiClient = {
+    model: 'fake-lite',
+    async extractPerformers({ pageKind }) {
+      kinds.push(pageKind);
+      return [
+        { name: 'ATICA', quote: 'Friday: ATICA' },
+        { name: 'Cut Snake', quote: 'Saturday: Cut Snake' },
+      ];
+    },
+    async discoverLineupUrls() {
+      return [];
+    },
+  };
+  const urls = Array.from({ length: 7 }, (_, i) => `https://other${i}.example/x`).concat('https://sunsoaked.promoter.example/');
+  const deps: PipelineDeps = {
+    store,
+    fetcher,
+    adapters: [],
+    lateAdapters: [],
+    gemini,
+    quota: new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 }),
+    search: { id: 'brave', usesGeminiQuota: false, findLineupUrls: async () => urls },
+    now: () => new Date('2026-10-01T12:00:00Z'),
+  };
+  const job = await runJob(deps, (await createLookup(deps, { eventName: 'Sun Soaked', year: 2026 })).id);
+  assert.equal(kinds[0], 'official');
+  assert.deepEqual(job!.candidate!.performers.map((p) => p.name).sort(), ['ATICA', 'Cut Snake']);
+  assert.ok(job!.candidate!.performers.every((p) => p.sources.every((s) => s.sourceType === 'promoter')));
+});
