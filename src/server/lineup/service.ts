@@ -11,6 +11,7 @@ import { promoterAdapter } from './adapters/promoter';
 import { ticketmasterAdapter } from './adapters/ticketmaster';
 import { setlistfmAdapter } from './adapters/setlistfm';
 import { PipelineDeps, runJob } from './pipeline';
+import { braveSearch, geminiSearch, LineupSearch } from './search';
 
 // Wires the pipeline from environment variables. See .env.example.
 
@@ -45,12 +46,19 @@ export function createDeps(store: LineupStore): PipelineDeps {
   const apiKey = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_EXTRACTION_MODEL || 'gemini-flash-lite-latest';
   const geminiReady = Boolean(apiKey && apiKey !== 'MY_GEMINI_API_KEY');
+  const fetcher = createRateLimitedFetcher();
+  const gemini = geminiReady ? createGeminiClient(apiKey!, model) : null;
+  // Brave when configured; otherwise Gemini grounded search, which needs a
+  // billed Gemini project and can be turned off with GEMINI_SEARCH_DISCOVERY=off.
+  let search: LineupSearch | null = null;
+  if (process.env.BRAVE_SEARCH_API_KEY) search = braveSearch(fetcher, process.env.BRAVE_SEARCH_API_KEY);
+  else if (gemini && process.env.GEMINI_SEARCH_DISCOVERY !== 'off') search = geminiSearch(gemini);
   return {
     store,
-    fetcher: createRateLimitedFetcher(),
+    fetcher,
     adapters: [clashfinderAdapter, promoterAdapter, ticketmasterAdapter],
     lateAdapters: [setlistfmAdapter],
-    gemini: geminiReady ? createGeminiClient(apiKey!, model) : null,
+    gemini,
     quota: geminiReady
       ? new QuotaLedger(store, {
           provider: 'gemini',
@@ -59,7 +67,7 @@ export function createDeps(store: LineupStore): PipelineDeps {
           perMinute: Number(process.env.GEMINI_PER_MINUTE || 10),
         })
       : null,
-    allowDiscovery: process.env.GEMINI_SEARCH_DISCOVERY !== 'off',
+    search,
     now: () => new Date(),
   };
 }
@@ -117,6 +125,7 @@ export function configuredSources(deps: PipelineDeps) {
   return {
     store: deps.store.kind,
     sources: [...deps.adapters, ...deps.lateAdapters].map((a) => ({ id: a.id, enabled: a.enabled() })),
-    gemini: deps.gemini ? { model: deps.gemini.model, discovery: deps.allowDiscovery } : null,
+    gemini: deps.gemini ? { model: deps.gemini.model, discovery: Boolean(deps.search) } : null,
+    search: deps.search?.id ?? null,
   };
 }

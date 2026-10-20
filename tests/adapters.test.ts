@@ -12,6 +12,9 @@ import { promoterAdapter, rawSnapshotUrl, snapshotInWindow } from '../src/server
 import { matchingEvents, ticketmasterAdapter } from '../src/server/lineup/adapters/ticketmaster.ts';
 import { belongsToEvent, toSetlistDate } from '../src/server/lineup/adapters/setlistfm.ts';
 import { fakeFetcher } from './fakes.ts';
+import { braveSearch, pageMentionsEvent, searchQuery } from '../src/server/lineup/search.ts';
+import { QuotaExhaustedError } from '../src/server/lineup/quota.ts';
+import { Fetcher } from '../src/server/lineup/types.ts';
 
 test('clashfinder: slugs from URLs, edition matching and late-night sets', () => {
   assert.equal(slugFromClashfinderUrl('https://clashfinder.com/s/edc2025/'), 'edc2025');
@@ -143,4 +146,30 @@ test('setlist.fm: date format and event matching', () => {
   assert.equal(belongsToEvent({ venue: { name: 'Las Vegas Motor Speedway' } }, 'EDC', 'Las Vegas Motor Speedway'), true);
   assert.equal(belongsToEvent({ venue: { name: 'Omnia' } }, 'EDC Las Vegas', 'Las Vegas Motor Speedway'), false);
   assert.equal(belongsToEvent({ tour: { name: 'EDC Las Vegas 2025' }, venue: { name: 'LVMS' } }, 'EDC Las Vegas'), true);
+});
+
+test('search: Brave query, results and quota parking', async () => {
+  const input = { eventName: 'Zedd in the Park 2026', year: 2026 };
+  assert.equal(searchQuery(input), '"Zedd in the Park" 2026 lineup');
+  assert.ok(pageMentionsEvent('Zedd In The Park — 2026 lineup announced', input));
+  assert.ok(!pageMentionsEvent('Zedd in the Park 2025', input));
+  assert.ok(!pageMentionsEvent('Zedd tour 2026', input));
+
+  const { fetcher, calls } = fakeFetcher({
+    'https://api.search.brave.com/': { body: { web: { results: [{ url: 'https://a.example/x' }, { url: 'https://a.example/x' }, { url: 'https://b.example/y' }] } } },
+  });
+  assert.deepEqual(await braveSearch(fetcher, 'k').findLineupUrls(input), ['https://a.example/x', 'https://b.example/y']);
+  assert.ok(calls[0].includes('q=%22Zedd%20in%20the%20Park%22%202026%20lineup'));
+
+  const limited: Fetcher = {
+    async get(url) {
+      return { url, status: 429, headers: { 'x-ratelimit-reset': '1, 86400' }, body: '' };
+    },
+  };
+  const now = new Date('2026-10-20T00:00:00Z');
+  await assert.rejects(braveSearch(limited, 'k', () => now).findLineupUrls(input), (err: unknown) => {
+    assert.ok(err instanceof QuotaExhaustedError);
+    assert.equal(err.retryAt.toISOString(), '2026-10-21T00:00:01.000Z');
+    return true;
+  });
 });

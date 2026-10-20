@@ -30,7 +30,7 @@ Each source is an adapter in `src/server/lineup/adapters/` implementing `SourceA
 | `ticketmaster` | Canonical name, dates, venue and attractions for upcoming or recent events | Free Discovery API key, 5,000 calls/day | `billed` |
 | `setlistfm` | Post-show setlists that upgrade an act to "performed" | Free non-commercial key | `performed` |
 | MusicBrainz (`musicbrainz.ts`) | Stable artist IDs only, resolved in the background after you confirm | No key, 1 request/second | n/a |
-| Gemini grounded search | Candidate lineup URLs when every source came back empty | Gemini quota | Pages are fetched and extracted like any other |
+| Web search (`search.ts`) | Candidate lineup URLs when every source came back empty: Brave Search API when `BRAVE_SEARCH_API_KEY` is set, otherwise Gemini grounded search (needs a billed Gemini project) | Brave free plan, or Gemini quota | Pages are fetched and extracted like any other; snippets are never evidence |
 
 AXS is deliberately excluded: it has no public discovery API, and scraping it breaks its terms.
 
@@ -49,7 +49,7 @@ A lookup is a `LookupJob` that moves through stages, saving after each one (`src
 1. **Create.** Input is plain fields: event name and year are required; dates, venue, city, lineup URL and notes are optional. The edition key is `series-slug/year`. If a confirmed edition exists, the job is ready for review immediately (`candidate.cached = true`).
 2. **collect.** First wave (Clashfinder, promoter, Ticketmaster) runs in parallel. The second wave (setlist.fm) runs with dates and city filled in from the first. Every response is stored as a `SourceDocument`; every act as a `PerformerClaim`. A failing adapter is logged and does not stop the others.
 3. **extract.** Each unstructured document (promoter or archived page) gets one Gemini call. The prompt includes one confirmed example from the same website when one exists. Names failing the verbatim check are dropped and counted in the log. Progress is saved per page, so a quota pause resumes where it stopped.
-4. **discover.** Only when there are no claims at all: one grounded-search call for lineup URLs, which are fetched and sent back to extract. Disable with `GEMINI_SEARCH_DISCOVERY=off`. Search grounding has no free-tier quota, so it is off in `wrangler.jsonc` until billing is enabled.
+4. **discover.** Only when there are no claims at all: one web search (`"<event>" <year> lineup`). Up to 6 results are fetched; a page is kept only if its own text names every word of the event and the year, which drops other editions and unrelated pages. At most 3 kept pages go to extract. Brave is used when `BRAVE_SEARCH_API_KEY` is set and a Brave 429 parks the job until its reset; otherwise Gemini grounded search, which has no free-tier quota and is off in `wrangler.jsonc`.
 5. **merge.** Claims are grouped by normalized name after applying learned aliases and the blocklist, then scored. Status becomes `needs_review`, or `no_data` if nothing was found.
 6. **Review and confirm.** You accept, rename, reject (with a reason) or add acts, and tick what you saw. Confirmation writes the canonical edition, your attendance and the learning data, then queues MusicBrainz ID resolution.
 

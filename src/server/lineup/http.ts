@@ -3,6 +3,7 @@ import { Fetcher, FetchResponse } from './types';
 // Minimum spacing between requests per host. MusicBrainz bans clients that
 // exceed 1 req/s; the others are kept polite.
 const HOST_INTERVAL_MS: Record<string, number> = {
+  'api.search.brave.com': 1100,
   'musicbrainz.org': 1100,
   'api.setlist.fm': 600,
   'app.ticketmaster.com': 300,
@@ -37,6 +38,7 @@ const SECRET_ENV = [
   'GEMINI_API_KEY',
   'TICKETMASTER_API_KEY',
   'SETLISTFM_API_KEY',
+  'BRAVE_SEARCH_API_KEY',
   'CLASHFINDER_PUBLIC_KEY',
   'CLASHFINDER_PRIVATE_KEY',
   'SUPABASE_SERVICE_ROLE_KEY',
