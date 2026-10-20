@@ -20,20 +20,22 @@ export interface GeminiClient {
   extractPerformers(args: {
     text: string;
     input: LookupInput;
+    // The event's own site lists its whole lineup; third-party pages often
+    // also list other events, so they get a stricter instruction.
+    pageKind?: 'official' | 'third_party';
     examples: ExtractionExample[];
   }): Promise<ExtractedName[]>;
   // Grounded search used only to find candidate lineup URLs.
   discoverLineupUrls(input: LookupInput): Promise<string[]>;
 }
 
-export const EXTRACTION_PROMPT_VERSION = 'extract@2';
+export const EXTRACTION_PROMPT_VERSION = 'extract@3';
 const MAX_DOC_CHARS = 40000;
 
 const SYSTEM = `You copy performer names out of a web page. Rules:
 - Use only the PAGE TEXT provided. Never use outside knowledge, never guess, never complete a partial lineup.
 - For every name, "quote" must be an exact substring of the page text (up to 200 characters) that contains the name.
 - Include only acts that perform (artists, DJs, bands, b2b pairings as written). Exclude stage names, day labels, sponsors, ticket tiers, menu items and navigation.
-- Include only acts billed for the EVENT named below. Pages often also list other festivals, related or upcoming events, tours or recommended artists; leave all of those out.
 - Copy names exactly as written on the page, including capitalisation and punctuation.
 - Set "day" (YYYY-MM-DD) or "stage" only when the page text states it for that act.
 - If the page has no lineup, return an empty list.`;
@@ -58,6 +60,13 @@ const SCHEMA = {
   required: ['performers'],
 };
 
+const PAGE_KIND = {
+  official:
+    "PAGE KIND: the event's own site. Its lineup covers every day and stage of the EVENT; include all of them. Leave out only other events the page advertises.",
+  third_party:
+    'PAGE KIND: a third-party site. Such pages often also list other festivals, related or upcoming events, tours or recommended artists. Include only acts billed for the EVENT and leave all of those out.',
+} as const;
+
 function rethrowQuota(err: unknown): never {
   throw parseRateLimitError(err, new Date()) ?? err;
 }
@@ -68,8 +77,8 @@ export function createGeminiClient(apiKey: string, model: string): GeminiClient 
   return {
     model,
 
-    async extractPerformers({ text, input, examples }) {
-      const parts: string[] = [`EVENT: ${input.eventName} (${input.year})`];
+    async extractPerformers({ text, input, examples, pageKind = 'official' }) {
+      const parts: string[] = [`EVENT: ${input.eventName} (${input.year})`, PAGE_KIND[pageKind]];
       for (const ex of examples.slice(0, 1)) {
         parts.push(
           `EXAMPLE from an earlier page on the same website, with the lineup a person confirmed:\nPAGE TEXT:\n${ex.excerpt}\nCONFIRMED NAMES: ${ex.names.join(' | ')}`,

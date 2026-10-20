@@ -76,7 +76,7 @@ Review is where the system improves (`src/server/lineup/learning.ts`). Nothing r
 | Confirm a Gemini-read page | `extraction_examples`: an excerpt plus the confirmed names, up to 3 per site | The next read of that site includes a worked example |
 | Confirm with a lineup URL | `event_series.lineup_url` | Next year's lookup knows where to look |
 
-Cached editions are not counted again in source stats. Every claim records its extractor and version (`gemini:<model>` plus `extract@2`, which tells the model to leave out other events listed on the same page), so claims from a bad model or prompt version can be found and re-checked later from the stored documents.
+Cached editions are not counted again in source stats. Every claim records its extractor and version (`gemini:<model>` plus `extract@3`; third-party pages are told to leave out other events they list, while official pages are read across all days and stages), so claims from a bad model or prompt version can be found and re-checked later from the stored documents.
 
 ## Data model
 

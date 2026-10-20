@@ -170,10 +170,12 @@ test('web search only reads pages that name the event and year, and keeps only q
     'https://fest.example/next-year': { body: otherYear },
   });
   let extractedFrom: string[] = [];
+  const kinds: Array<string | undefined> = [];
   const gemini: GeminiClient = {
     model: 'fake-lite',
-    async extractPerformers({ text }) {
+    async extractPerformers({ text, pageKind }) {
       extractedFrom.push(text);
+      kinds.push(pageKind);
       return [
         { name: 'Kaskade', quote: 'Lineup: Kaskade, Dom Dolla' },
         { name: 'Dom Dolla', quote: 'Kaskade, Dom Dolla' },
@@ -204,6 +206,7 @@ test('web search only reads pages that name the event and year, and keeps only q
   assert.equal(job?.status, 'needs_review');
   assert.deepEqual(job!.candidate!.performers.map((p) => p.name).sort(), ['Dom Dolla', 'Kaskade']);
   assert.equal(extractedFrom.length, 1, 'only the page about this edition is sent to Gemini');
+  assert.deepEqual(kinds, ['third_party']);
   assert.ok(job!.candidate!.performers.every((p) => p.sources.some((s) => s.sourceUrl === 'https://news.example/sun-soaked-2026' && s.sourceType === 'discovered')));
   assert.ok(calls.includes('https://down.example/x'));
   assert.ok(job!.log.some((l) => l.message.includes('Skipped https://fest.example/next-year')));
