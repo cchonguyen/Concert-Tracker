@@ -247,4 +247,11 @@ test('web search reads the event site first, as an official page, even if stored
   assert.equal(kinds[0], 'official');
   assert.deepEqual(job!.candidate!.performers.map((p) => p.name).sort(), ['ATICA', 'Cut Snake']);
   assert.ok(job!.candidate!.performers.every((p) => p.sources.every((s) => s.sourceType === 'promoter')));
+
+  // Confirming teaches the series where its lineup lives.
+  await confirmLookup(store, job!, {
+    facts: { name: 'Sun Soaked 2026' },
+    performers: job!.candidate!.performers.map((p) => ({ key: p.key, name: p.name, accepted: true, seen: false })),
+  });
+  assert.equal((await store.getSeries('sun-soaked'))?.lineupUrl, 'https://sunsoaked.promoter.example/');
 });
