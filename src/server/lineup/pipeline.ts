@@ -219,7 +219,11 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
     if (doc) {
       await deps.quota!.acquire(now, { ignorePause: force });
       const examples = await deps.store.getExamples(domainOf(doc.url));
-      const pageKind = doc.sourceType === 'discovered' ? 'third_party' : 'official';
+      // A stored document keeps the type it was first saved with, so an event-site
+      // page first found by search is recognised by its domain here too.
+      const official = doc.sourceType !== 'discovered' || isEventDomain(doc.url, job.input.eventName);
+      const sourceType = official && doc.sourceType === 'discovered' ? 'promoter' : doc.sourceType;
+      const pageKind = official ? 'official' : 'third_party';
       const extracted = await deps.gemini!.extractPerformers({ text: doc.body, input: job.input, examples, pageKind });
       const normalizedDoc = normalizeName(doc.body);
       const kept: PerformerClaim[] = [];
@@ -233,7 +237,7 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
           id: randomUUID(),
           jobId: job.id,
           documentId: doc.id,
-          sourceType: doc.sourceType,
+          sourceType,
           sourceUrl: doc.url,
           name: e.name.trim(),
           quotedSpan: e.quote.trim(),
@@ -275,7 +279,9 @@ async function stageDiscover(deps: PipelineDeps, job: LookupJob, now: Date, forc
   job.discoveryDone = true;
   log(job, urls.length ? `Web search (${deps.search.id}) returned ${urls.length} result(s).` : `Web search (${deps.search.id}) found nothing.`, now);
   let read = 0;
-  for (const url of urls.slice(0, SEARCH_RESULTS_TO_TRY)) {
+  // The event's own site first: it is the most complete and reliable page.
+  const ordered = [...urls.filter((u) => isEventDomain(u, job.input.eventName)), ...urls.filter((u) => !isEventDomain(u, job.input.eventName))];
+  for (const url of ordered.slice(0, SEARCH_RESULTS_TO_TRY)) {
     if (read >= SEARCH_PAGES_TO_READ) break;
     try {
       const res = await deps.fetcher.get(url, { timeoutMs: 30000 });
