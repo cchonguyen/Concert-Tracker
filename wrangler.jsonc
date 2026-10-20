@@ -7,6 +7,9 @@
   // Express, supabase-js and node:crypto need the Node.js APIs; this also
   // fills process.env from the vars and secrets below.
   "compatibility_flags": ["nodejs_compat"],
+  // Needs charliechonguyen.com to be a zone on the same Cloudflare account;
+  // the DNS record and certificate are created on deploy.
+  "routes": [{ "pattern": "concert.charliechonguyen.com", "custom_domain": true }],
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application",
