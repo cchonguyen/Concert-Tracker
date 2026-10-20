@@ -15,6 +15,7 @@ import {
   SourceType,
 } from '../types';
 import { LoggedEvent } from '../../events/types';
+import { EmailImport } from '../../events/email/types';
 import { LineupStore, MAX_EXAMPLES_PER_DOMAIN } from './types';
 
 type DocumentMeta = Omit<SourceDocument, 'body'>;
@@ -32,6 +33,7 @@ interface FileState {
   corrections: Correction[];
   examples: ExtractionExample[];
   events: Record<string, LoggedEvent>;
+  imports: Record<string, EmailImport>;
   artists: Record<string, ArtistIdentity>;
 }
 
@@ -49,6 +51,7 @@ function emptyState(): FileState {
     corrections: [],
     examples: [],
     events: {},
+    imports: {},
     artists: {},
   };
 }
@@ -272,6 +275,16 @@ export class FileLineupStore implements LineupStore {
 
   async deleteEvent(id: string) {
     delete (await this.load()).events[id];
+    await this.save();
+  }
+
+  async listImports() {
+    return clone(Object.values((await this.load()).imports));
+  }
+
+  async putImports(rows: EmailImport[]) {
+    const state = await this.load();
+    for (const row of rows) state.imports[row.id] = clone(row);
     await this.save();
   }
 
