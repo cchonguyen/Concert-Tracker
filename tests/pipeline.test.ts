@@ -77,7 +77,7 @@ async function setup() {
     lateAdapters: [],
     gemini: fakeGemini(state),
     quota: new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 }),
-    allowDiscovery: true,
+    search: null,
     now: () => new Date('2025-06-01T12:00:00Z'),
   };
   return { store, state, deps };
@@ -159,4 +159,52 @@ test('input validation requires a name and year', async () => {
   const { deps } = await setup();
   await assert.rejects(createLookup(deps, { eventName: '', year: 2025 }), /Event name/);
   await assert.rejects(createLookup(deps, { eventName: 'Fest', year: 25 }), /year/);
+});
+
+test('web search only reads pages that name the event and year, and keeps only quoted names', async () => {
+  const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'search-')));
+  const relevant = '<html><body><h1>Sun Soaked 2026</h1><p>Lineup: Kaskade, Dom Dolla</p></body></html>';
+  const otherYear = '<html><body><h1>Sun Soaked 2027</h1><p>Lineup: Somebody Else</p></body></html>';
+  const { fetcher, calls } = fakeFetcher({
+    'https://news.example/sun-soaked-2026': { body: relevant },
+    'https://fest.example/next-year': { body: otherYear },
+  });
+  let extractedFrom: string[] = [];
+  const gemini: GeminiClient = {
+    model: 'fake-lite',
+    async extractPerformers({ text }) {
+      extractedFrom.push(text);
+      return [
+        { name: 'Kaskade', quote: 'Lineup: Kaskade, Dom Dolla' },
+        { name: 'Dom Dolla', quote: 'Kaskade, Dom Dolla' },
+        { name: 'Zedd', quote: 'Zedd' }, // not on the page
+      ];
+    },
+    async discoverLineupUrls() {
+      throw new Error('grounded search must not be used when another provider is set');
+    },
+  };
+  const deps: PipelineDeps = {
+    store,
+    fetcher,
+    adapters: [],
+    lateAdapters: [],
+    gemini,
+    quota: new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 }),
+    search: {
+      id: 'brave',
+      usesGeminiQuota: false,
+      async findLineupUrls() {
+        return ['https://fest.example/next-year', 'https://news.example/sun-soaked-2026', 'https://down.example/x'];
+      },
+    },
+    now: () => new Date('2026-10-01T12:00:00Z'),
+  };
+  const job = await runJob(deps, (await createLookup(deps, { eventName: 'Sun Soaked', year: 2026 })).id);
+  assert.equal(job?.status, 'needs_review');
+  assert.deepEqual(job!.candidate!.performers.map((p) => p.name).sort(), ['Dom Dolla', 'Kaskade']);
+  assert.equal(extractedFrom.length, 1, 'only the page about this edition is sent to Gemini');
+  assert.ok(job!.candidate!.performers.every((p) => p.sources.some((s) => s.sourceUrl === 'https://news.example/sun-soaked-2026' && s.sourceType === 'discovered')));
+  assert.ok(calls.includes('https://down.example/x'));
+  assert.ok(job!.log.some((l) => l.message.includes('Skipped https://fest.example/next-year')));
 });

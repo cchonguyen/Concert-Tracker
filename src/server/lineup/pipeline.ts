@@ -19,6 +19,7 @@ import { domainOf, editionKeyFor, htmlToText, isVerbatim, normalizeName, seriesS
 import { makeDocument } from './adapters/common';
 import { resolveArtist } from './musicbrainz';
 import { redactSecrets } from './http';
+import { LineupSearch, pageMentionsEvent } from './search';
 
 export interface PipelineDeps {
   store: LineupStore;
@@ -29,7 +30,8 @@ export interface PipelineDeps {
   lateAdapters: SourceAdapter[];
   gemini: GeminiClient | null;
   quota: QuotaLedger | null;
-  allowDiscovery: boolean;
+  // Web search for lineup pages, used only when every source came back empty.
+  search: LineupSearch | null;
   now: () => Date;
 }
 
@@ -251,35 +253,48 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
   }
 
   const claims = await deps.store.listPerformerClaims(job.id);
-  const canDiscover = deps.allowDiscovery && deps.gemini && deps.quota && !job.discoveryDone;
+  const canDiscover = deps.search && deps.gemini && deps.quota && !job.discoveryDone;
   job.stage = claims.length === 0 && canDiscover ? 'discover' : 'merge';
 }
 
+const SEARCH_RESULTS_TO_TRY = 6;
+const SEARCH_PAGES_TO_READ = 3;
+
 async function stageDiscover(deps: PipelineDeps, job: LookupJob, now: Date, force: boolean): Promise<void> {
-  // Discovery may have been switched off while this job was parked.
-  if (!deps.allowDiscovery || !deps.gemini || !deps.quota) {
+  // Search may have been switched off while this job was parked. Extraction
+  // still needs Gemini, so search without it would only fetch pages.
+  if (!deps.search || !deps.gemini || !deps.quota) {
     job.discoveryDone = true;
     job.stage = 'merge';
-    log(job, 'Search discovery is off; skipped.', now);
+    log(job, 'Web search is off; skipped.', now);
     return;
   }
-  await deps.quota!.acquire(now, { ignorePause: force });
-  const urls = await deps.gemini!.discoverLineupUrls(job.input);
+  if (deps.search.usesGeminiQuota) await deps.quota.acquire(now, { ignorePause: force });
+  const urls = await deps.search.findLineupUrls(job.input);
   job.discoveryDone = true;
-  log(job, urls.length ? `Search suggested ${urls.length} page(s) to read.` : 'Search found no lineup pages.', now);
-  for (const url of urls) {
+  log(job, urls.length ? `Web search (${deps.search.id}) returned ${urls.length} result(s).` : `Web search (${deps.search.id}) found nothing.`, now);
+  let read = 0;
+  for (const url of urls.slice(0, SEARCH_RESULTS_TO_TRY)) {
+    if (read >= SEARCH_PAGES_TO_READ) break;
     try {
       const res = await deps.fetcher.get(url, { timeoutMs: 30000 });
       if (res.status !== 200) {
         log(job, `Could not fetch ${url} (HTTP ${res.status}).`, now);
         continue;
       }
-      const doc = await deps.store.putDocument(makeDocument(res.url, 'discovered', htmlToText(res.body), 'text'));
+      const text = htmlToText(res.body);
+      if (!pageMentionsEvent(text, job.input)) {
+        log(job, `Skipped ${url}: the page does not name ${job.input.eventName} and ${job.input.year}.`, now);
+        continue;
+      }
+      const doc = await deps.store.putDocument(makeDocument(res.url, 'discovered', text, 'text'));
       job.pendingExtraction.push(doc.id);
+      read += 1;
     } catch (err) {
       log(job, `Could not fetch ${url}: ${err instanceof Error ? err.message : String(err)}`, now);
     }
   }
+  if (urls.length && !read) log(job, 'No search result was a page about this edition.', now);
   job.stage = 'extract';
 }
 
