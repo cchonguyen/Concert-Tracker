@@ -21,8 +21,10 @@ export function seriesSlugFor(eventName: string): string {
   return slugify(eventName.replace(/\b(19|20)\d{2}\b/g, ' ')) || 'event';
 }
 
-export function editionKeyFor(eventName: string, year: number): string {
-  return `${seriesSlugFor(eventName)}/${year}`;
+// One edition per date when the date is known: an artist plays many shows a
+// year, each with its own openers. Without a date, the year.
+export function editionKeyFor(eventName: string, year: number, startDate?: string): string {
+  return `${seriesSlugFor(eventName)}/${startDate ?? year}`;
 }
 
 // The core anti-hallucination check: the quoted span must occur in the source
