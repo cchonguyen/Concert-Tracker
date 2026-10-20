@@ -4,11 +4,11 @@ import { parseJson } from '../lineup/http';
 import { InputError } from '../lineup/pipeline';
 import { addDays, decodeEntities, domainOf, normalizeName } from '../lineup/text';
 import { eventWords } from '../lineup/search';
-import { findDates } from './parse';
+import { findDates, parseEventInput } from './parse';
 import { matchingEvents } from '../lineup/adapters/ticketmaster';
 import { clashfinderAuthQuery, matchEdition, parseEventList } from '../lineup/adapters/clashfinder';
 import { cityLabel, placeFromPage } from './place';
-import { DetailCandidate, EventDetails, EVENT_FIELDS, LoggedEvent } from './types';
+import { DetailCandidate, EventDetails, EventField, EVENT_FIELDS, LoggedEvent } from './types';
 
 // Stage 1 research: find and verify an event's date and place from structured
 // sources and web search results. No Gemini here, so it never waits on quota
@@ -18,7 +18,9 @@ import { DetailCandidate, EventDetails, EVENT_FIELDS, LoggedEvent } from './type
 
 export interface DetailQuery {
   name: string;
-  year: number;
+  // Missing when you don't know when it was; only finders that can search
+  // without a year (withoutYear) run then, and their dates are suggestions.
+  year?: number;
   month?: number;
   startDate?: string;
   endDate?: string;
@@ -29,19 +31,28 @@ export interface DetailQuery {
 export interface DetailFinder {
   id: SourceType;
   enabled(): boolean;
+  withoutYear?: boolean;
   find(q: DetailQuery, fetcher: Fetcher): Promise<DetailCandidate[]>;
 }
 
 const MAX_CANDIDATES = 5;
 
 export function searchWindow(q: DetailQuery): { from: string; to: string } {
+  if (!q.year && !q.startDate) return { from: '1950-01-01', to: '2100-12-31' };
   if (q.startDate) return { from: addDays(q.startDate, -1), to: addDays(q.endDate ?? q.startDate, 1) };
-  if (q.month) {
+  if (q.month && q.year) {
     const mm = String(q.month).padStart(2, '0');
     const last = new Date(Date.UTC(q.year, q.month, 0)).getUTCDate();
     return { from: `${q.year}-${mm}-01`, to: `${q.year}-${mm}-${last}` };
   }
   return { from: `${q.year}-01-01`, to: `${q.year}-12-31` };
+}
+
+// Without a year, a web result must also name the place you gave, so an
+// artist's other shows don't crowd out the one you went to.
+function placeWords(q: DetailQuery): string[] {
+  if (q.year) return [];
+  return eventWords(q.venue ?? q.city?.split(',')[0] ?? '');
 }
 
 const inWindow = (date: string | undefined, w: { from: string; to: string }) => Boolean(date && date >= w.from && date <= w.to);
@@ -100,12 +111,13 @@ export const ticketmasterFinder: DetailFinder = {
 export const setlistfmFinder: DetailFinder = {
   id: 'setlistfm',
   enabled: () => Boolean(process.env.SETLISTFM_API_KEY),
+  withoutYear: true,
   async find(q, fetcher) {
     const params = new URLSearchParams({ artistName: q.name, p: '1' });
     if (q.startDate && !q.endDate) {
       const [y, m, d] = q.startDate.split('-');
       params.set('date', `${d}-${m}-${y}`);
-    } else {
+    } else if (q.year) {
       params.set('year', String(q.year));
     }
     const res = await fetcher.get(`https://api.setlist.fm/rest/1.0/search/setlists?${params}`, {
@@ -137,7 +149,7 @@ export const clashfinderFinder: DetailFinder = {
   async find(q, fetcher) {
     const res = await fetcher.get(`https://clashfinder.com/data/events/all.json?${clashfinderAuthQuery()}`);
     if (res.status !== 200) return [];
-    const match = matchEdition(parseEventList(parseJson(res)), q.name, q.year);
+    const match = matchEdition(parseEventList(parseJson(res)), q.name, q.year!);
     if (!match) return [];
     const c = candidate('clashfinder', `https://clashfinder.com/s/${match.slug}/`, { name: match.name, startDate: match.startDate });
     return !q.month && !q.startDate ? [c] : inWindow(c.startDate, searchWindow(q)) ? [c] : [];
@@ -149,9 +161,11 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 export function webQuery(q: DetailQuery): string {
   const when = q.startDate
     ? `${MONTH_NAMES[Number(q.startDate.slice(5, 7)) - 1]} ${Number(q.startDate.slice(8))} ${q.year}`
-    : q.month
+    : q.month && q.year
       ? `${MONTH_NAMES[q.month - 1]} ${q.year}`
-      : String(q.year);
+      : q.year
+        ? String(q.year)
+        : undefined;
   return [`"${q.name}"`, when, q.venue, q.city].filter(Boolean).join(' ');
 }
 
@@ -165,6 +179,7 @@ const stripTags = (html: string) => decodeEntities(html.replace(/<[^>]+>/g, ' ')
 export const braveFinder: DetailFinder = {
   id: 'discovered',
   enabled: () => Boolean(process.env.BRAVE_SEARCH_API_KEY),
+  withoutYear: true,
   async find(q, fetcher) {
     const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(webQuery(q))}&count=10`;
     const res = await fetcher.get(url, {
@@ -172,7 +187,7 @@ export const braveFinder: DetailFinder = {
     });
     if (res.status === 429) throw new Error('Brave Search limit reached; look again later.');
     const results: Array<{ url?: string; title?: string; description?: string }> = parseJson<any>(res)?.web?.results ?? [];
-    const words = eventWords(q.name);
+    const words = [...eventWords(q.name), ...placeWords(q)];
     const w = searchWindow(q);
     const out: DetailCandidate[] = [];
     for (const r of results) {
@@ -249,9 +264,9 @@ const covers = (c: DetailCandidate, date: string) => c.startDate === date || Boo
 
 // Applies a candidate's fields to an event. Only empty fields are filled
 // unless you picked the candidate yourself. The name is always yours.
-export function applyCandidate(event: LoggedEvent, c: DetailCandidate, picked: boolean): LoggedEvent {
+export function applyCandidate(event: LoggedEvent, c: DetailCandidate, picked: boolean, only?: EventField[]): LoggedEvent {
   const next: LoggedEvent = { ...event, sources: { ...event.sources } };
-  for (const field of EVENT_FIELDS) {
+  for (const field of only ?? EVENT_FIELDS) {
     const value = c[field];
     if (!value || (!picked && next[field])) continue;
     const src = c.sources.find((s) => s.fields.includes(field));
@@ -280,9 +295,12 @@ export async function researchEvent(
     details: { ...details, checkedAt },
     updatedAt: checkedAt,
   });
-  if (!year) return done({ status: 'needs_date', candidates: [], notes: ['Add when it was (a year is enough) to look it up.'] });
-  const enabled = finders.filter((f) => f.enabled());
-  if (!enabled.length) return done({ status: 'off', candidates: [], notes: ['No event source is configured.'] });
+  const enabled = finders.filter((f) => f.enabled() && (year || f.withoutYear));
+  if (!enabled.length) {
+    return year
+      ? done({ status: 'off', candidates: [], notes: ['No event source is configured.'] })
+      : done({ status: 'needs_date', candidates: [], notes: ['Add when it was (a year is enough) to look it up.'] });
+  }
 
   const q: DetailQuery = {
     name: event.name,
@@ -295,20 +313,32 @@ export async function researchEvent(
   };
   const notes: string[] = [];
   const found: DetailCandidate[] = [];
-  const settled = await Promise.allSettled(enabled.map((f) => f.find(q, fetcher)));
-  settled.forEach((r, i) => {
-    if (r.status === 'fulfilled') {
-      found.push(...r.value);
-      notes.push(`${enabled[i].id}: ${r.value.length} match(es).`);
-    } else {
-      notes.push(`${enabled[i].id} failed: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
-    }
-  });
+  const search = async (query: DetailQuery) => {
+    const settled = await Promise.allSettled(enabled.map((f) => f.find(query, fetcher)));
+    settled.forEach((r, i) => {
+      if (r.status === 'fulfilled') {
+        found.push(...r.value);
+        notes.push(`${enabled[i].id}: ${r.value.length} match(es) for "${query.name}".`);
+      } else {
+        notes.push(`${enabled[i].id} failed: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
+      }
+    });
+  };
+  await search(q);
+  // You may have renamed the event after saving it ("Coachella" to
+  // "Coachella Weekend 1"); when the new name finds nothing, the name you
+  // first typed is tried once.
+  const typedName = parseEventInput(event.input ?? '').name;
+  if (!found.length && typedName && normalizeName(typedName) !== normalizeName(event.name)) await search({ ...q, name: typedName });
 
   const merged = mergeCandidates(found).sort(
     (a, b) => b.sources.length - a.sources.length || (a.startDate ?? '9999').localeCompare(b.startDate ?? '9999'),
   );
-  if (!merged.length) return done({ status: 'none', candidates: [], notes });
+  if (!merged.length) {
+    return year
+      ? done({ status: 'none', candidates: [], notes })
+      : done({ status: 'needs_date', candidates: [], notes: [...notes, 'No dates found; add when it was (a year is enough).'] });
+  }
 
   // Your date is verified when a source covers it; that source (the best
   // supported, if several) fills empty fields on its own.
@@ -324,9 +354,15 @@ export async function researchEvent(
   return done({ status: 'choose', candidates: shown, notes });
 }
 
-export function pickCandidate(event: LoggedEvent, candidateId: string | undefined, now: Date): LoggedEvent {
+export function pickCandidate(event: LoggedEvent, candidateId: string | undefined, now: Date, fields?: EventField[]): LoggedEvent {
   const c = candidateId ? event.details.candidates.find((x) => x.id === candidateId) : undefined;
   if (candidateId && !c) throw new InputError('That suggestion is no longer available.');
+  // One field you chose to take from a confirmed suggestion ("Use this"):
+  // the suggestion stays as it was.
+  if (c && fields?.length) {
+    if (fields.some((f) => !EVENT_FIELDS.includes(f))) throw new InputError('Unknown field.');
+    return { ...applyCandidate(event, c, true, fields), updatedAt: now.toISOString() };
+  }
   const base = c ? applyCandidate(event, c, true) : event;
   return {
     ...base,
