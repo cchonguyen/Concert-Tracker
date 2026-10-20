@@ -77,6 +77,25 @@ const DATE_RULES: Array<{ re: RegExp; read: (m: RegExpMatchArray) => DateHit | n
   },
 ];
 
+// Every full date written in a text (a search result, say), in order, with
+// the words it was read from. Month-only and bare years are not dates here.
+export function findDates(text: string): Array<{ startDate: string; endDate?: string; quote: string }> {
+  const found: Array<{ startDate: string; endDate?: string; quote: string; at: number }> = [];
+  const taken: Array<[number, number]> = [];
+  for (const rule of DATE_RULES) {
+    for (const m of text.matchAll(new RegExp(rule.re.source, `${rule.re.flags}g`))) {
+      const start = m.index!;
+      const end = start + m[0].length;
+      if (taken.some(([a, b]) => start < b && end > a)) continue; // an earlier rule read these words
+      const hit = rule.read(m);
+      if (!hit?.startDate) continue;
+      taken.push([start, end]);
+      found.push({ startDate: hit.startDate, endDate: hit.endDate, quote: m[0].trim(), at: start });
+    }
+  }
+  return found.sort((a, b) => a.at - b.at).map(({ at: _at, ...d }) => d);
+}
+
 // A bare year. "The 1975" is a band, so a year right after "the" is not a date.
 const BARE_YEAR = /(^|[^\w-])((?:19|20)\d{2})(?![\w-])/g;
 

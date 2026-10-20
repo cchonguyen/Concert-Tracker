@@ -70,3 +70,12 @@ export function downloadText(filename: string, text: string, type = 'text/csv'):
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+// The sources that confirm the event's current date, if stage 1 checked it.
+// Empty when the date is unchecked, or was changed after the check.
+export function dateConfirmations(e: LoggedEvent): LoggedEvent['details']['candidates'][number]['sources'] {
+  if (!e.startDate || (e.details.status !== 'matched' && e.details.status !== 'resolved')) return [];
+  const c = e.details.candidates[0];
+  const covers = c && (c.startDate === e.startDate || (c.startDate && c.endDate && c.startDate <= e.startDate && e.startDate <= c.endDate));
+  return covers ? c.sources.filter((s) => s.fields.includes('startDate')) : [];
+}

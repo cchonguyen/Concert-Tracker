@@ -12,7 +12,7 @@ Read [REQUIREMENTS.md](REQUIREMENTS.md) first: it says what the app is for (reme
 - Respect source limits through the shared rate-limited fetcher (MusicBrainz 1 request/second). Do not scrape AXS.
 - Keep the canonical lineup and the personal event log (`logged_events`) separate.
 - Capture is two stages. Saving an event (stage 1) never waits on research, quota or a lineup; the lineup lookup (stage 2) only starts when asked for on a saved event.
-- Stage 1 research uses structured sources only, never Gemini. Its results are candidates: they never overwrite a field you typed, and fill empty fields on their own only when they match the full date you gave.
+- Stage 1 research uses structured APIs and web search results read in code, never Gemini. Its results are candidates: they never overwrite a field you typed, and fill empty fields on their own only when they match the full date you gave.
 - Parse the capture line in code (`src/server/events/parse.ts`); text it cannot place stays in the name. Never add a model call to parsing.
 - Keep capture to one line of text. New personal fields go on the event detail, not on capture.
 - No demo or seeded data in the app.

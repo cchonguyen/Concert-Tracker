@@ -2,13 +2,16 @@ import { randomUUID } from 'node:crypto';
 import type { Fetcher, SourceType } from '../lineup/types';
 import { parseJson } from '../lineup/http';
 import { InputError } from '../lineup/pipeline';
-import { addDays, normalizeName } from '../lineup/text';
+import { addDays, decodeEntities, normalizeName } from '../lineup/text';
+import { eventWords } from '../lineup/search';
+import { findDates } from './parse';
 import { matchingEvents } from '../lineup/adapters/ticketmaster';
 import { clashfinderAuthQuery, matchEdition, parseEventList } from '../lineup/adapters/clashfinder';
 import { DetailCandidate, EventDetails, EVENT_FIELDS, LoggedEvent } from './types';
 
-// Stage 1 research: find an event's date and place from structured sources.
-// No Gemini here, so it never waits on quota (REQUIREMENTS.md, principle 8).
+// Stage 1 research: find and verify an event's date and place from structured
+// sources and web search results. No Gemini here, so it never waits on quota
+// (REQUIREMENTS.md, principle 8).
 // Results are candidates with sources; applying one is decided in code below
 // and never overwrites what you typed.
 
@@ -18,6 +21,8 @@ export interface DetailQuery {
   month?: number;
   startDate?: string;
   endDate?: string;
+  venue?: string;
+  city?: string;
 }
 
 export interface DetailFinder {
@@ -138,8 +143,57 @@ export const clashfinderFinder: DetailFinder = {
   },
 };
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+export function webQuery(q: DetailQuery): string {
+  const when = q.startDate
+    ? `${MONTH_NAMES[Number(q.startDate.slice(5, 7)) - 1]} ${Number(q.startDate.slice(8))} ${q.year}`
+    : q.month
+      ? `${MONTH_NAMES[q.month - 1]} ${q.year}`
+      : String(q.year);
+  return [`"${q.name}"`, when, q.venue, q.city].filter(Boolean).join(' ');
+}
+
+const stripTags = (html: string) => decodeEntities(html.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+
+// Brave web search: the dates search results give for the event. A result
+// counts only if its own title and description name every word of the event,
+// and a date counts only if it is written there in full and falls in the
+// window; the words it was read from are kept as the quote. Pages agreeing
+// on a date merge into one candidate with several sources.
+export const braveFinder: DetailFinder = {
+  id: 'discovered',
+  enabled: () => Boolean(process.env.BRAVE_SEARCH_API_KEY),
+  async find(q, fetcher) {
+    const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(webQuery(q))}&count=10`;
+    const res = await fetcher.get(url, {
+      headers: { Accept: 'application/json', 'X-Subscription-Token': process.env.BRAVE_SEARCH_API_KEY! },
+    });
+    if (res.status === 429) throw new Error('Brave Search limit reached; look again later.');
+    const results: Array<{ url?: string; title?: string; description?: string }> = parseJson<any>(res)?.web?.results ?? [];
+    const words = eventWords(q.name);
+    const w = searchWindow(q);
+    const out: DetailCandidate[] = [];
+    for (const r of results) {
+      if (!r.url) continue;
+      const text = stripTags(`${r.title ?? ''}. ${r.description ?? ''}`);
+      const norm = ` ${normalizeName(text)} `;
+      if (!words.length || !words.every((word) => norm.includes(` ${word} `))) continue;
+      const seen = new Set<string>();
+      for (const d of findDates(text)) {
+        if (!inWindow(d.startDate, w) || seen.has(d.startDate)) continue;
+        seen.add(d.startDate);
+        const c = candidate('discovered', r.url, { startDate: d.startDate, endDate: d.endDate });
+        c.sources[0].quote = d.quote;
+        out.push(c);
+      }
+    }
+    return out;
+  },
+};
+
 export function defaultFinders(): DetailFinder[] {
-  return [ticketmasterFinder, setlistfmFinder, clashfinderFinder];
+  return [ticketmasterFinder, setlistfmFinder, clashfinderFinder, braveFinder];
 }
 
 // Candidates on the same start date describe the same occurrence: combine
@@ -197,7 +251,15 @@ export async function researchEvent(
   const enabled = finders.filter((f) => f.enabled());
   if (!enabled.length) return done({ status: 'off', candidates: [], notes: ['No event source is configured.'] });
 
-  const q: DetailQuery = { name: event.name, year, month: event.month, startDate: event.startDate, endDate: event.endDate };
+  const q: DetailQuery = {
+    name: event.name,
+    year,
+    month: event.month,
+    startDate: event.startDate,
+    endDate: event.endDate,
+    venue: event.venue,
+    city: event.city,
+  };
   const notes: string[] = [];
   const found: DetailCandidate[] = [];
   const settled = await Promise.allSettled(enabled.map((f) => f.find(q, fetcher)));
@@ -215,10 +277,13 @@ export async function researchEvent(
   );
   if (!merged.length) return done({ status: 'none', candidates: [], notes });
 
-  // Only a source that confirms the full date you gave fills fields on its own.
+  // Your date is verified when a source covers it; that source (the best
+  // supported, if several) fills empty fields on its own.
   if (event.startDate) {
     const hits = merged.filter((c) => covers(c, event.startDate!));
-    if (hits.length === 1) return done({ status: 'matched', candidates: hits, notes }, applyCandidate(event, hits[0], false));
+    if (hits.length === 1 || (hits.length > 1 && hits[0].sources.length > hits[1].sources.length)) {
+      return done({ status: 'matched', candidates: [hits[0]], notes }, applyCandidate(event, hits[0], false));
+    }
   }
   return done({ status: 'choose', candidates: merged.slice(0, MAX_CANDIDATES), notes });
 }

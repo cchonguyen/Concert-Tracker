@@ -1,7 +1,7 @@
 import React from 'react';
-import { ChevronRight, Loader2 } from 'lucide-react';
+import { Check, ChevronRight, Loader2 } from 'lucide-react';
 import type { LineupSummary, LoggedEvent } from '../services/lineupApi';
-import { eventYear, placeLabel, whenLabel } from '../services/format';
+import { dateConfirmations, eventYear, placeLabel, whenLabel } from '../services/format';
 
 interface EventListProps {
   events: LoggedEvent[];
@@ -15,7 +15,11 @@ interface EventListProps {
 function hint(e: LoggedEvent, lineup: LineupSummary | undefined, researching: boolean): { text: string; busy?: boolean; tone?: string } | null {
   if (researching) return { text: 'Looking up details', busy: true };
   if (e.details.status === 'needs_date') return { text: 'When was it?', tone: 'text-amber-300/90' };
-  if (e.details.status === 'choose') return { text: `Is this it? ${e.details.candidates.length} suggestion${e.details.candidates.length === 1 ? '' : 's'}`, tone: 'text-violet-300' };
+  if (e.details.status === 'choose')
+    return {
+      text: e.startDate ? 'Sources give a different date' : `Is this it? ${e.details.candidates.length} suggestion${e.details.candidates.length === 1 ? '' : 's'}`,
+      tone: 'text-violet-300',
+    };
   if (lineup && !e.editionId) {
     if (lineup.status === 'queued' || lineup.status === 'running') return { text: 'Finding who played', busy: true };
     if (lineup.status === 'waiting_quota') return { text: 'Lineup lookup waiting for capacity', tone: 'text-amber-300/90' };
@@ -44,6 +48,7 @@ const EventCard: React.FC<{ event: LoggedEvent; lineup?: LineupSummary; research
         <div className="truncate font-semibold text-zinc-100">{event.name}</div>
         <div className="truncate text-xs text-zinc-400">
           {when ?? <span className="text-zinc-600">Date unknown</span>}
+          {dateConfirmations(event).length > 0 && <Check className="ml-1 inline h-3 w-3 text-emerald-400" aria-label="Date confirmed" />}
           {place && <span> · {place}</span>}
         </div>
         {event.seen.length > 0 && (

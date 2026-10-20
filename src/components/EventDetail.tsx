@@ -11,7 +11,7 @@ import {
   LookupJob,
   SOURCE_LABELS,
 } from '../services/lineupApi';
-import { datesBetween, whenLabel } from '../services/format';
+import { dateConfirmations, datesBetween, whenLabel } from '../services/format';
 import { LineupReview } from './LineupReview';
 
 interface EventDetailProps {
@@ -166,6 +166,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, onChange, onDel
   const lineupActs = (edition?.performances ?? []).filter((p) => p.status !== 'cancelled');
   const days = datesBetween(event.startDate, event.endDate);
   const details = event.details;
+  const confirmations = dateConfirmations(event);
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -207,7 +208,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, onChange, onDel
 
           {details.status === 'choose' && (
             <div className="space-y-2 rounded-xl border border-violet-500/30 bg-violet-950/20 p-3">
-              <p className="text-sm text-violet-200">Is it one of these?</p>
+              <p className="text-sm text-violet-200">
+                {event.startDate ? 'Sources give a different date. Is it one of these?' : 'Is it one of these?'}
+              </p>
               {details.candidates.map((c) => (
                 <button
                   key={c.id}
@@ -218,7 +221,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, onChange, onDel
                     <span className="block truncate text-sm text-zinc-100">{candidateLine(c) || c.name}</span>
                     <span className="block truncate text-[11px] text-zinc-500">
                       {c.name && `${c.name} · `}
-                      {c.sources.map((s) => SOURCE_LABELS[s.sourceType]).join(', ')}
+                      {c.sources.length > 1 ? `${c.sources.length} sources: ` : ''}
+                      {[...new Set(c.sources.map((s) => SOURCE_LABELS[s.sourceType]))].join(', ')}
                     </span>
                   </span>
                   <Check className="mt-0.5 h-4 w-4 shrink-0 text-violet-300" />
@@ -229,7 +233,23 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, onChange, onDel
               </button>
             </div>
           )}
-          {details.status === 'matched' && <p className="text-xs text-emerald-300/80">Found a listing for that date and filled in what was missing.</p>}
+          {confirmations.length > 0 && (
+            <div className="space-y-1 text-xs">
+              <p className="inline-flex items-center gap-1 text-emerald-300/90">
+                <Check className="h-3.5 w-3.5" /> Date confirmed by {confirmations.length} source{confirmations.length === 1 ? '' : 's'}
+              </p>
+              <ul className="space-y-0.5 text-zinc-500">
+                {confirmations.map((s, i) => (
+                  <li key={i} className="truncate">
+                    <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="hover:text-violet-300">
+                      {SOURCE_LABELS[s.sourceType]}
+                      {s.quote ? `: “${s.quote}”` : ''} <ExternalLink className="inline h-2.5 w-2.5" />
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {details.status === 'none' && <p className="text-xs text-zinc-500">No listing found. It's saved as you typed it.</p>}
           {details.status === 'needs_date' && <p className="text-xs text-amber-300/90">Add when it was (a year is enough), then look again.</p>}
           {details.status === 'off' && <p className="text-xs text-zinc-500">No event source is set up, so details are as you typed them.</p>}
