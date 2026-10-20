@@ -20,7 +20,9 @@
     "GEMINI_EXTRACTION_MODEL": "gemini-flash-lite-latest",
     "GEMINI_DAILY_LIMIT": "50",
     "GEMINI_PER_MINUTE": "10",
-    "GEMINI_SEARCH_DISCOVERY": "on",
+    // Google Search grounding has no free-tier quota on this key (every call
+    // returns 429). Turn on once billing is enabled for the Gemini project.
+    "GEMINI_SEARCH_DISCOVERY": "off",
     "CLASHFINDER_HASH_FORMAT": "{username}{privateKey}"
   },
   // Secrets (wrangler secret put): GEMINI_API_KEY, SUPABASE_URL,

@@ -2,6 +2,15 @@ import { Router } from 'express';
 import { createLookup, enqueueArtistResolution, InputError, PipelineDeps } from './pipeline';
 import { confirmLookup, ConfirmRequest } from './learning';
 import { configuredSources, JobRunner } from './service';
+import { redactSecrets } from './http';
+import { LookupJob } from './types';
+
+// Older log entries were written before redaction existed.
+const safeJob = (job: LookupJob): LookupJob => ({
+  ...job,
+  lastError: job.lastError && redactSecrets(job.lastError),
+  log: job.log.map((e) => ({ ...e, message: redactSecrets(e.message) })),
+});
 
 export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
   const router = Router();
@@ -19,7 +28,7 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
   router.get('/lookups', async (_req, res) => {
     try {
       const jobs = await deps.store.listJobs(30);
-      res.json({ jobs: jobs.filter((j) => j.kind === 'lineup') });
+      res.json({ jobs: jobs.filter((j) => j.kind === 'lineup').map(safeJob) });
     } catch (err) {
       fail(res, err);
     }
@@ -39,7 +48,7 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
     try {
       const job = await deps.store.getJob(req.params.id);
       if (!job) return res.status(404).json({ error: 'Lookup not found.' });
-      res.json({ job });
+      res.json({ job: safeJob(job) });
     } catch (err) {
       fail(res, err);
     }
@@ -52,7 +61,7 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
       const job = await deps.store.getJob(req.params.id);
       if (!job) return res.status(404).json({ error: 'Lookup not found.' });
       await runner.kick(job.id, true);
-      res.json({ job });
+      res.json({ job: safeJob(job) });
     } catch (err) {
       fail(res, err);
     }

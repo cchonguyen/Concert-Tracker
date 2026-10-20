@@ -17,13 +17,54 @@ export function userAgent(): string {
   return `LiveArchiveConcertTracker/2.0 ( ${contact} )`;
 }
 
+// Query parameters that carry credentials. Job logs are shown in the UI and
+// stored in the database, so URLs are redacted before they reach a message.
+const SECRET_PARAMS = /^(api_?key|key|token|access_token|authPublicKey|auth_?key|secret|signature)$/i;
+
+export function redactUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    for (const name of [...url.searchParams.keys()]) {
+      if (SECRET_PARAMS.test(name)) url.searchParams.set(name, 'REDACTED');
+    }
+    return url.toString();
+  } catch {
+    return raw.replace(/([?&](?:api_?key|key|token|authPublicKey)=)[^&\s]+/gi, '$1REDACTED');
+  }
+}
+
+const SECRET_ENV = [
+  'GEMINI_API_KEY',
+  'TICKETMASTER_API_KEY',
+  'SETLISTFM_API_KEY',
+  'CLASHFINDER_PUBLIC_KEY',
+  'CLASHFINDER_PRIVATE_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'SUPABASE_ANON_KEY',
+];
+
+// Last line of defence for text shown to people: removes configured secret
+// values and credential query parameters wherever they appear.
+export function redactSecrets(text: string): string {
+  let out = text.replace(/https?:\/\/[^\s"'<>]+/g, (u) => redactUrl(u));
+  for (const name of SECRET_ENV) {
+    const value = process.env[name];
+    if (value && value.length >= 8) out = out.split(value).join('REDACTED');
+  }
+  return out;
+}
+
 export class HttpError extends Error {
+  public readonly url: string;
+
   constructor(
     public readonly status: number,
-    public readonly url: string,
+    url: string,
     message?: string,
   ) {
-    super(message || `HTTP ${status} for ${url}`);
+    const safeUrl = redactUrl(url);
+    super(message || `HTTP ${status} for ${safeUrl}`);
+    this.url = safeUrl;
   }
 }
 
@@ -89,6 +130,6 @@ export function parseJson<T>(res: FetchResponse): T {
   try {
     return JSON.parse(res.body) as T;
   } catch {
-    throw new HttpError(res.status, res.url, `Invalid JSON from ${res.url}`);
+    throw new HttpError(res.status, res.url, `Invalid JSON from ${redactUrl(res.url)}`);
   }
 }
