@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
 import { JobRunner } from '../lineup/service';
 import { DetailFinder, defaultFinders, pickCandidate, researchEvent } from './details';
+import { citySuggestions } from './place';
 import { applyPatch, EventPatch, lineupSummary, newEvent, sortEvents, startLineupLookup } from './service';
 import { LineupSummary } from './types';
 
@@ -94,6 +95,15 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
       const updated = pickCandidate(event, req.body?.candidateId, deps.now());
       await deps.store.putEvent(updated);
       res.json({ event: updated });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // City suggestions as you type ("Las Vegas, NV").
+  router.get('/places/cities', async (req, res) => {
+    try {
+      res.json({ cities: await citySuggestions(String(req.query.q ?? ''), deps.fetcher) });
     } catch (err) {
       fail(res, err);
     }

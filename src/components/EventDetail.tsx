@@ -16,6 +16,8 @@ import { LineupReview } from './LineupReview';
 
 interface EventDetailProps {
   event: LoggedEvent;
+  // Your whole log, for venue and city suggestions.
+  events: LoggedEvent[];
   onChange: (event: LoggedEvent) => void;
   onDeleted: () => void;
   onClose: () => void;
@@ -33,8 +35,12 @@ const Field: React.FC<{
   placeholder?: string;
   source?: LoggedEvent['sources'][keyof LoggedEvent['sources']];
   onSave: (value: string) => void;
+  onType?: (value: string) => void;
+  suggestions?: string[];
+  min?: string;
   className?: string;
-}> = ({ label, value, type = 'text', placeholder, source, onSave, className }) => {
+}> = ({ label, value, type = 'text', placeholder, source, onSave, onType, suggestions, min, className }) => {
+  const listId = React.useId();
   const [draft, setDraft] = useState(value === undefined ? '' : String(value));
   useEffect(() => setDraft(value === undefined ? '' : String(value)), [value]);
   return (
@@ -56,11 +62,23 @@ const Field: React.FC<{
         className={input}
         type={type}
         value={draft}
+        min={min}
         placeholder={placeholder}
-        onChange={(e) => setDraft(e.target.value)}
+        list={suggestions?.length ? listId : undefined}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          onType?.(e.target.value);
+        }}
         onBlur={() => draft !== (value === undefined ? '' : String(value)) && onSave(draft)}
         onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
       />
+      {suggestions?.length ? (
+        <datalist id={listId}>
+          {suggestions.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+      ) : null}
     </label>
   );
 };
@@ -118,7 +136,23 @@ const JOB_STATUS: Record<LookupJob['status'], string> = {
   failed: 'Failed',
 };
 
-export const EventDetail: React.FC<EventDetailProps> = ({ event, onChange, onDeleted, onClose }) => {
+// Venues and cities you've entered before, most used first.
+function pastValues(events: LoggedEvent[], field: 'venue' | 'city'): string[] {
+  const counts = new Map<string, number>();
+  for (const e of events) {
+    const v = e[field]?.trim();
+    if (v) counts.set(v, (counts.get(v) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([v]) => v);
+}
+
+// The city you gave every other time at this venue, if there is exactly one.
+function cityForVenue(events: LoggedEvent[], venue: string): string | undefined {
+  const cities = new Set(events.filter((e) => e.venue?.trim().toLowerCase() === venue.toLowerCase() && e.city).map((e) => e.city!));
+  return cities.size === 1 ? [...cities][0] : undefined;
+}
+
+export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChange, onDeleted, onClose }) => {
   const [job, setJob] = useState<LookupJob | null>(null);
   const [edition, setEdition] = useState<Edition | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -126,6 +160,21 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, onChange, onDel
   const [lineupUrl, setLineupUrl] = useState('');
   const [showLog, setShowLog] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const [cityQuery, setCityQuery] = useState('');
+  const [foundCities, setFoundCities] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (cityQuery.trim().length < 3) return setFoundCities([]);
+    const t = setTimeout(() => {
+      eventsApi.cities(cityQuery).then(setFoundCities, () => setFoundCities([]));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [cityQuery]);
+
+  const others = events.filter((e) => e.id !== event.id);
+  const pastVenues = pastValues(others, 'venue');
+  const pastCities = pastValues(others, 'city');
+  const citySuggestions = [...new Set([...pastCities, ...foundCities])];
 
   const load = useCallback(async () => {
     try {
@@ -197,12 +246,39 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, onChange, onDel
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Date" type="date" value={event.startDate} source={event.sources.startDate} onSave={(v) => save({ startDate: text(v) })} />
-            <Field label="Last day (multi-day)" type="date" value={event.endDate} source={event.sources.endDate} onSave={(v) => save({ endDate: text(v) })} />
+            {/* Shows the start date until you change it, so the picker opens on the
+                right month; stored only when it differs (a single-day event has no last day). */}
+            <Field
+              label="Last day"
+              type="date"
+              value={event.endDate ?? event.startDate}
+              min={event.startDate}
+              source={event.endDate ? event.sources.endDate : undefined}
+              onSave={(v) => save({ endDate: v && v !== event.startDate ? v : null })}
+            />
             {!event.startDate && (
               <Field label="Year, if that's all you know" type="number" value={event.year} placeholder="2024" onSave={(v) => save({ year: v ? Number(v) : null })} />
             )}
-            <Field label="Venue" value={event.venue} source={event.sources.venue} onSave={(v) => save({ venue: text(v) })} />
-            <Field label="City" value={event.city} source={event.sources.city} onSave={(v) => save({ city: text(v) })} />
+            <Field
+              label="Venue"
+              value={event.venue}
+              source={event.sources.venue}
+              suggestions={pastVenues}
+              onSave={(v) => {
+                const venue = text(v);
+                const city = venue && !event.city ? cityForVenue(others, venue) : undefined;
+                void save(city ? { venue, city } : { venue });
+              }}
+            />
+            <Field
+              label="City"
+              value={event.city}
+              placeholder="City, State"
+              source={event.sources.city}
+              suggestions={citySuggestions}
+              onType={setCityQuery}
+              onSave={(v) => save({ city: text(v) })}
+            />
             <Field label="Country" value={event.country} source={event.sources.country} onSave={(v) => save({ country: text(v) })} />
           </div>
 

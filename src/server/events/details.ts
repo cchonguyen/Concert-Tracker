@@ -2,11 +2,12 @@ import { randomUUID } from 'node:crypto';
 import type { Fetcher, SourceType } from '../lineup/types';
 import { parseJson } from '../lineup/http';
 import { InputError } from '../lineup/pipeline';
-import { addDays, decodeEntities, normalizeName } from '../lineup/text';
+import { addDays, decodeEntities, domainOf, normalizeName } from '../lineup/text';
 import { eventWords } from '../lineup/search';
 import { findDates } from './parse';
 import { matchingEvents } from '../lineup/adapters/ticketmaster';
 import { clashfinderAuthQuery, matchEdition, parseEventList } from '../lineup/adapters/clashfinder';
+import { cityLabel, placeFromPage } from './place';
 import { DetailCandidate, EventDetails, EVENT_FIELDS, LoggedEvent } from './types';
 
 // Stage 1 research: find and verify an event's date and place from structured
@@ -88,7 +89,7 @@ export const ticketmasterFinder: DetailFinder = {
         startDate: dates[0],
         endDate: dates.length > 1 && dates[dates.length - 1] !== dates[0] ? dates[dates.length - 1] : undefined,
         venue: v?.name,
-        city: v?.city?.name,
+        city: cityLabel(v?.city?.name, v?.state?.stateCode, v?.country?.countryCode),
         country: v?.country?.name,
       });
     });
@@ -121,7 +122,7 @@ export const setlistfmFinder: DetailFinder = {
           name: s.artist?.name,
           startDate: y ? `${y}-${m}-${d}` : undefined,
           venue: s.venue?.name,
-          city: s.venue?.city?.name,
+          city: cityLabel(s.venue?.city?.name, s.venue?.city?.stateCode, s.venue?.city?.country?.code),
           country: s.venue?.city?.country?.name,
         });
       })
@@ -212,6 +213,38 @@ export function mergeCandidates(all: DetailCandidate[]): DetailCandidate[] {
   return out;
 }
 
+const MAX_PLACE_PAGES = 3;
+
+// Search results give a date but rarely a place. For candidates without a
+// venue or city, read the event markup on the pages that gave their date
+// (placeFromPage), a few pages at most. A page that answers adds its own
+// source with the venue and city as the quote.
+export async function addPlaces(candidates: DetailCandidate[], eventName: string, fetcher: Fetcher): Promise<void> {
+  let budget = MAX_PLACE_PAGES;
+  for (const c of candidates) {
+    if ((c.venue && c.city) || !c.startDate) continue;
+    const urls = [...new Set(c.sources.filter((s) => s.sourceType === 'discovered' && s.sourceUrl).map((s) => s.sourceUrl!))];
+    for (const url of urls) {
+      if (budget <= 0) return;
+      if (/(^|\.)axs\.com$/.test(domainOf(url))) continue; // AXS is never scraped
+      budget--;
+      try {
+        const res = await fetcher.get(url, { headers: { Accept: 'text/html' }, timeoutMs: 8000 });
+        if (res.status !== 200) continue;
+        const place = placeFromPage(res.body, eventName, c.startDate, c.endDate);
+        if (!place) continue;
+        const fields = (['venue', 'city', 'country'] as const).filter((f) => place[f] && !c[f]);
+        if (!fields.length) continue;
+        for (const f of fields) c[f] = place[f];
+        c.sources.push({ sourceType: 'discovered', sourceUrl: url, fields: [...fields], quote: place.quote });
+        break;
+      } catch {
+        // An unreachable page just gives no place.
+      }
+    }
+  }
+}
+
 const covers = (c: DetailCandidate, date: string) => c.startDate === date || Boolean(c.startDate && c.endDate && c.startDate <= date && date <= c.endDate);
 
 // Applies a candidate's fields to an event. Only empty fields are filled
@@ -282,10 +315,13 @@ export async function researchEvent(
   if (event.startDate) {
     const hits = merged.filter((c) => covers(c, event.startDate!));
     if (hits.length === 1 || (hits.length > 1 && hits[0].sources.length > hits[1].sources.length)) {
+      await addPlaces([hits[0]], event.name, fetcher);
       return done({ status: 'matched', candidates: [hits[0]], notes }, applyCandidate(event, hits[0], false));
     }
   }
-  return done({ status: 'choose', candidates: merged.slice(0, MAX_CANDIDATES), notes });
+  const shown = merged.slice(0, MAX_CANDIDATES);
+  await addPlaces(shown, event.name, fetcher);
+  return done({ status: 'choose', candidates: shown, notes });
 }
 
 export function pickCandidate(event: LoggedEvent, candidateId: string | undefined, now: Date): LoggedEvent {

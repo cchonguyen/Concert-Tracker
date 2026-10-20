@@ -12,7 +12,7 @@ You type one line about an event you went to. It is saved at once (stage 1), and
 | --- | --- | --- |
 | Started by | Typing a line and pressing Add | "Find who played" on a saved event |
 | Code | `src/server/events/` | `src/server/lineup/` |
-| Sources | Ticketmaster, setlist.fm, Clashfinder, Brave web search (read in code) | Clashfinder, promoter pages, Ticketmaster, setlist.fm, web search |
+| Sources | Ticketmaster, setlist.fm, Clashfinder, Brave web search and the event markup on the pages it found (read in code) | Clashfinder, promoter pages, Ticketmaster, setlist.fm, web search |
 | Gemini | Never | Reads fetched pages |
 | Runs | Inside the request, a few seconds | A background job (queue), can wait for quota |
 | Stores | `logged_events` (your log) | Canonical edition, evidence, learning data; links the event to the edition |
@@ -42,9 +42,10 @@ These are enforced in code. A change that breaks one is a bug, even if the outpu
    - setlist.fm: shows by an artist of exactly that name on the date (or in the year), with venue and city.
    - Clashfinder: the edition matched in its event list (same rule as the lineup adapter), giving the start date.
    - Brave web search (`braveFinder`, when `BRAVE_SEARCH_API_KEY` is set): one query (`"<name>" <date or month or year> <venue> <city>`). A result counts only if its title and description name every word of the event; every full date written there (`findDates` in `parse.ts`) inside the window becomes a candidate whose source keeps the quoted words. These snippets only confirm stage 1 dates; they are never lineup evidence.
-   Candidates on the same start date are merged, each field keeping the source that gave it. A failing finder is noted and the others still count.
-4. **Decide.** No candidates: `none`. If you gave a full date and one candidate covers it (or one covering candidate has more sources than any other): `matched`. The date is shown as confirmed with each source and quote, and the candidate fills only empty fields. Otherwise `choose`: up to 5 candidates wait for your pick (`POST /api/events/:id/details/pick`), which fills date and place from the candidate (the name stays yours), or for "None of these".
-5. **Edit** (`PATCH /api/events/:id`). Any field you change becomes a `user` source. Seen acts, companions, days attended, rating, ticket price and notes are edited the same way.
+   Candidates on the same start date are merged, each field keeping the source that gave it. A failing finder is noted and the others still count. Cities are written `City, ST` in the US and Canada (`cityLabel` in `src/server/events/place.ts`, from the region a source gives) and as the city elsewhere.
+4. **Place from pages.** Search snippets give dates, not places. For the candidates that will be applied or shown, if a venue or city is missing, the pages that gave the date are fetched (at most 3 per research, never AXS) and their schema.org Event markup (`application/ld+json`) is read in code (`placeFromPage`): an event whose name or a performer has every word of yours, on a day the candidate covers, gives `location.name` as the venue and `addressLocality` plus `addressRegion` as the city. Several matching events at different places give nothing. The page is added as its own source for those fields, with the venue and city as the quote; it does not count as another date confirmation.
+5. **Decide.** No candidates: `none`. If you gave a full date and one candidate covers it (or one covering candidate has more sources than any other): `matched`. The date is shown as confirmed with each source and quote, and the candidate fills only empty fields. Otherwise `choose`: up to 5 candidates wait for your pick (`POST /api/events/:id/details/pick`), which fills date and place from the candidate (the name stays yours), or for "None of these".
+6. **Edit** (`PATCH /api/events/:id`). Any field you change becomes a `user` source. In the event view, "Last day" shows the start date until you change it (so the date picker opens on the right month) and is stored only when it differs; venue and city suggest what you have entered on other events (picking a venue you always gave the same city for fills an empty city), and city also suggests places from the Open-Meteo geocoding API as you type (`GET /api/places/cities`, `citySuggestions`). Seen acts, companions, days attended, rating, ticket price and notes are edited the same way.
 
 ## Sources
 
@@ -132,6 +133,7 @@ The browser keeps nothing: every view reads the server. The interface is one pag
 | `POST /api/events/:id/details` | Run stage 1 research |
 | `POST /api/events/:id/details/pick` | Pick a suggestion (`{ candidateId }`) or dismiss them (`{}`) |
 | `POST /api/events/:id/lineup` | Start stage 2 for the event (`{ lineupUrl? }`) |
+| `GET /api/places/cities?q=` | City suggestions as `City, ST` (Open-Meteo geocoding, cached in memory) |
 | `GET /api/lineup/status` | Store kind, which sources are configured, Gemini model and today's usage |
 | `POST /api/lookups` | Start a lookup without an event (kept for scripts); returns the job (already `needs_review` on a cache hit) |
 | `GET /api/lookups`, `GET /api/lookups/:id` | Job list and detail with log and candidate lineup |
