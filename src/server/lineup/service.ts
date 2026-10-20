@@ -27,16 +27,16 @@ export async function createStore(opts: { requireSupabase?: boolean } = {}): Pro
     if (opts.requireSupabase) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required on this host.');
     return fileStore();
   }
-  const probe = await client.from('lookup_jobs').select('id').limit(1);
-  if (probe.error) {
-    if (opts.requireSupabase) {
-      throw new Error(
-        `Supabase lineup tables unavailable (${probe.error.message}). Apply supabase/migrations/0002_source_first_lineups.sql.`,
-      );
-    }
-    console.warn(
-      `Supabase lineup tables unavailable (${probe.error.message}). Apply supabase/migrations/0002_source_first_lineups.sql. Using the local file store.`,
-    );
+  // Probe one table from each migration so a missing one fails clearly.
+  for (const [table, migration] of [
+    ['lookup_jobs', '0002_source_first_lineups.sql'],
+    ['logged_events', '0003_event_log.sql'],
+  ]) {
+    const probe = await client.from(table).select('id').limit(1);
+    if (!probe.error) continue;
+    const message = `Supabase table ${table} unavailable (${probe.error.message}). Apply supabase/migrations/${migration}.`;
+    if (opts.requireSupabase) throw new Error(message);
+    console.warn(`${message} Using the local file store.`);
     return fileStore();
   }
   return new SupabaseLineupStore(client);

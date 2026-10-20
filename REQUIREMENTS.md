@@ -1,0 +1,144 @@
+# LiveArchive requirements
+
+What this app is for, what it must and must not do, and the principles behind every design decision. Read it before you change anything, whether you are a person or an AI agent. [ARCHITECTURE.md](ARCHITECTURE.md) says how the app works today; [AGENTS.md](AGENTS.md) lists the rules an agent must follow. When the three disagree, this document says what the app is for, and the other two are changed to match it (say why in the same change).
+
+## 1. Purpose
+
+LiveArchive helps one person remember **which events they went to** and **who they saw there**.
+
+Everything else is secondary or tertiary to that goal. A feature that makes logging an event slower, or a lineup less trustworthy, is a regression even if it adds information.
+
+Ranked goals:
+
+1. **Remember the event.** Logging that you were at something takes seconds and never fails.
+2. **Remember who you saw.** You can say who you saw at any event, by hand or by ticking acts from a found lineup.
+3. **Know the full lineup.** The app can find who else was on the bill, with a citation for every act, when you ask it to.
+4. **Remember the rest.** Who you went with, notes, a rating, what you paid, which days you went, whenever you feel like adding them.
+5. **Look back.** Browse your history by year, by artist, and export it as a spreadsheet.
+
+## 2. Who uses it
+
+- One person (the owner). No accounts, sharing or social features.
+- Tens to a few hundred events over a lifetime; a festival can have 200+ acts.
+- Used on a phone right after a show and on a laptop when catching up on old ones.
+- The owner is not a developer and should never need to read logs, pick a data source or understand quotas to use the app.
+
+## 3. Principles
+
+These decide trade-offs. They are ordered: when two conflict, the earlier one wins.
+
+1. **Never guess.** Missing data stays missing and the UI says so. No default dates, venues, cities, stages, ratings, setlists or lineups, and no model answering from memory. An empty answer is a valid answer.
+2. **Capture beats completeness.** Saving an event must never wait on research, quota or a network call. Research happens after the event is saved and can be repeated later.
+3. **Two stages, triggered separately.** Stage 1 records the event itself (name, date, place). Stage 2 finds the lineup, and only when you ask for it on a saved event. A failed or parked stage 2 never affects stage 1.
+4. **Every fact has a source.** Each field on an event and each act in a lineup records where it came from: you, or a cited source (URL plus the quoted text). The UI can always show it.
+5. **Your word wins.** The app suggests; it never overwrites what you typed. A suggestion is applied when it exactly confirms what you entered, or when you pick it.
+6. **Simple in, structured out, room to grow.** Input is one line of plain text. Output is structured fields that can grow (companions, notes, days, seen acts) without making the first input any longer.
+7. **The world and you are separate.** The canonical lineup (a fact about the world, reusable across years and lookups) is stored apart from your log (what you attended and who you saw).
+8. **Spend scarce capacity only where it pays.** Stage 1 uses only structured APIs and never Gemini, so it always works. Gemini quota is reserved for reading lineup pages in stage 2, and when it runs out the job waits.
+9. **No hardcoded knowledge.** No lists of festivals, venues or artists in code. Improve a source adapter or add one.
+10. **Delight comes from small, reliable moments,** not from more screens: the app understanding a sloppy sentence, a one-tap "is this it?", a lineup that is already known, a running count of everyone you've seen.
+
+## 4. Vocabulary
+
+| Term | Meaning |
+| --- | --- |
+| **Event** | One entry in your log: something you attended. Has a name, when, where, and your personal details. Stored in `logged_events`. |
+| **Edition** | The canonical record of one occurrence of an event in the world (e.g. EDC Las Vegas on 2025-05-16, or a Porter Robinson show on 2024-10-05), with its confirmed lineup. Shared by every event that points at it. |
+| **Series** | Editions with the same name across years (EDC Las Vegas). Remembers where its lineup is published. |
+| **Act** | A performer billed at an edition. |
+| **Seen act** | An act you say you saw at an event. Can exist without any lineup lookup. |
+| **Source** | Where a fact came from: you, or a fetched document with its URL and the quoted text. |
+| **Candidate** | A suggestion from a source (event details in stage 1, an act in stage 2) waiting for you to accept it. |
+
+## 5. Stage 1: capture the event
+
+| ID | Requirement |
+| --- | --- |
+| R1.1 | Adding an event takes one line of text, for example `Porter Robinson at the Greek Theatre, Oct 5 2024` or `EDC Las Vegas 2025`. A single-artist show can be named after the artist. |
+| R1.2 | The app splits the line into name, date (full date, month and year, or year) and place (venue, city) in code, without a model, and shows the split before you save. Text it cannot place stays in the name; nothing is invented. |
+| R1.3 | Saving needs only a name. The event is stored immediately with exactly what you typed; every typed field is sourced as "you". |
+| R1.4 | After saving, the app researches the event's details from structured sources (Ticketmaster for listings, setlist.fm for past shows by artist and date, Clashfinder for festival dates). This needs at least a year; without one the event asks "When was it?". |
+| R1.5 | Research results are candidates with sources. A candidate fills empty fields automatically only when it matches the full date you gave. Otherwise you see up to five candidates and confirm one with one tap, or dismiss them. |
+| R1.6 | Applying a candidate records each filled field's source (URL). Fields you typed are never overwritten without your tap. |
+| R1.7 | Research can be re-run at any time ("Look again"), for example after adding a date or a city. |
+| R1.8 | No candidate is fine: the event stays as typed and says no listing was found. |
+| R1.9 | Every field is editable later; an edit becomes a "you" source. |
+
+## 6. Stage 2: find who played
+
+| ID | Requirement |
+| --- | --- |
+| R2.1 | Lineup lookup is started from a saved event ("Find who played") and can be started, retried or redone at any time. It needs a name and at least a year. |
+| R2.2 | The lookup uses the event's own name, dates and place as its search parameters, so better stage 1 data gives better lineups. |
+| R2.3 | An edition already confirmed (same name and date) is reused with zero network calls. |
+| R2.4 | Every proposed act cites a stored source document and a quoted span from it. Gemini only extracts from text the app fetched; names not found verbatim are dropped. |
+| R2.5 | Festivals and single-artist shows are different problems. Festivals: Clashfinder first, then the promoter's page (archived copy for past years), then web search. Single-artist shows: the headliner is usually known from the event name; openers and support come from ticketing listings, setlist.fm (on that date and venue) and the venue or promoter page. Stage 2 may grow separate strategies for each without touching stage 1. |
+| R2.6 | When Gemini quota runs out, the job waits with its progress kept and resumes on its own. No other model, no heuristic substitute. |
+| R2.7 | You review the lineup: accept, rename, reject with a reason, add a missing act, and tick who you saw. Review decisions teach future lookups (aliases, blocklist, source accuracy, lineup URLs). |
+| R2.8 | Confirming writes the canonical edition and updates your event's seen acts. Acts you had already marked as seen stay ticked; acts you added by hand that the lineup lacks are kept. |
+
+## 7. Your details
+
+| ID | Requirement |
+| --- | --- |
+| R3.1 | Seen acts can be added by name on any event, with or without a lineup. |
+| R3.2 | Optional, added any time: who you went with, notes, a rating (1 to 5), ticket price, and which days you went for multi-day events. None is ever pre-filled. |
+| R3.3 | New personal fields are added to the event without making capture longer. They appear in the event's detail view and the export. |
+
+## 8. Views
+
+| ID | Requirement |
+| --- | --- |
+| R4.1 | **Events**: the capture line at the top, then your events newest first, grouped by year. Each shows when, where, how many acts you saw, and what it still needs (a date, a pick, a lineup review) as a quiet hint, not a warning. |
+| R4.2 | **Event detail**: edit fields, see each field's source, pick research candidates, manage seen acts and personal details, run and review the lineup lookup. |
+| R4.3 | **Artists**: everyone you've seen, with how many times and at which events. |
+| R4.4 | **Export**: download all events as CSV (one row per event, seen acts joined) for a spreadsheet. |
+| R4.5 | Operational detail (job logs, sources configured, quota) stays out of the way, one tap deep. |
+| R4.6 | No demo or seeded data. An empty app is empty. |
+
+## 9. Non-functional requirements
+
+- **Hosting**: a Cloudflare Worker at concert.charliechonguyen.com with Supabase as the only durable store; a Node server for local development. See ARCHITECTURE.md.
+- **Cost**: free tiers only (Gemini free tier, Ticketmaster, setlist.fm non-commercial, Clashfinder, Brave Search free plan, Workers Free, Supabase free).
+- **Respect sources**: all fetching through the shared rate-limited fetcher (MusicBrainz 1 request/second); AXS is never scraped; credentials are redacted from anything stored or shown.
+- **Responsiveness**: capture returns as soon as the row is stored. Stage 1 research completes within a single request. Stage 2 runs in the background and the UI polls.
+- **Privacy**: the site holds one person's history; put it behind Cloudflare Access.
+- **Quality gate**: `npm run lint` and `npm test` pass before every commit; new parsing rules, adapters and stage rules come with tests.
+
+## 10. Capabilities and limitations of the sources
+
+| Source | Stage | Can | Cannot |
+| --- | --- | --- | --- |
+| You | 1, 2 | Anything; always trusted | n/a |
+| Ticketmaster Discovery | 1, 2 | Name, dates, venue, city for upcoming and recent events; billed attractions | Most past events drop out; festival listings may name headliners only |
+| setlist.fm | 1, 2 | Past shows by artist and date (venue, city); confirms who actually performed | Needs a key; coverage depends on fans; not a full lineup |
+| Clashfinder | 1, 2 | Festival editions with start dates; full festival lineups with stages and times, archived for past years | Crowd-sourced; mostly festivals; fantasy clashes are ignored |
+| Promoter pages (and Wayback) | 2 | The official lineup, read by Gemini | Pages are overwritten each year, hence archived copies |
+| Brave web search | 2 | Finds lineup pages when nothing else did | Results can mix in other editions, so strict same-event filtering applies |
+| Gemini (free tier) | 2 only | Reads fetched pages and extracts names verbatim | Never answers from memory; ~50 calls/day budget |
+| MusicBrainz | after 2 | Stable artist IDs | Not a lineup source |
+| AXS | none | n/a | No public API; scraping breaks its terms |
+
+## 11. Out of scope
+
+- Multiple users, sharing, social feeds, recommendations.
+- Ticket purchasing, calendars of upcoming shows, notifications.
+- Inferring what you saw from lineups (you tick it, or it isn't recorded).
+- Pulling events from email or ticket accounts automatically (possible later, as a source that proposes stage 1 candidates, never as silent imports).
+
+## 12. Open questions
+
+- Should the email inbox (ticket confirmations) become a stage 1 source? It would make back-filling years of events nearly effortless, but it touches private mail.
+- Should a single-artist event automatically offer its own name as a one-tap "I saw them" suggestion? (It would be your own text, so it is not a guess, but it is still a tap you must make.)
+- Photos per event: worth the storage, or link out to an album?
+
+## 13. Ideas for delight (not yet built)
+
+Ranked by how much they serve the purpose for how little complexity they add.
+
+1. **On this day**: a quiet line on the Events view when today is the anniversary of something you went to.
+2. **Artist pages**: every time you saw someone, with the venues and who you were with.
+3. **Back-fill mode**: type one line per event in a box (a whole year at once) and stage 1 handles each.
+4. **Year in review**: events, new artists, most-seen artist, people you went with most.
+5. **Setlists**: for a seen act at a single-artist show, link the setlist.fm setlist for that night.
+6. **Share card**: an image of one event or one year, generated from your own data.

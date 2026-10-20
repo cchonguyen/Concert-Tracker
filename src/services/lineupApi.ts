@@ -1,13 +1,9 @@
-import type {
-  Attendance,
-  Edition,
-  LookupInput,
-  LookupJob,
-  SourceType,
-} from '../server/lineup/types';
+import type { Edition, LookupJob, SourceType } from '../server/lineup/types';
 import type { ConfirmRequest } from '../server/lineup/learning';
+import type { DetailCandidate, LineupSummary, LoggedEvent } from '../server/events/types';
+import type { EventPatch } from '../server/events/service';
 
-export type { LookupJob, LookupInput, Edition, ConfirmRequest };
+export type { LookupJob, Edition, ConfirmRequest, LoggedEvent, LineupSummary, DetailCandidate, EventPatch };
 
 export interface LineupStatus {
   store: 'file' | 'supabase';
@@ -26,18 +22,28 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+const post = (body?: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body ?? {}) });
+
+// Your event log: capture and details (stage 1), lineup lookups (stage 2).
+export const eventsApi = {
+  list: () => request<{ events: LoggedEvent[]; lineups: Record<string, LineupSummary> }>('/api/events'),
+  get: (id: string) => request<{ event: LoggedEvent; job: LookupJob | null; edition: Edition | null }>(`/api/events/${id}`),
+  create: (text: string) => request<{ event: LoggedEvent }>('/api/events', post({ text })).then((r) => r.event),
+  update: (id: string, patch: EventPatch) =>
+    request<{ event: LoggedEvent }>(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }).then((r) => r.event),
+  remove: (id: string) => request<unknown>(`/api/events/${id}`, { method: 'DELETE' }),
+  research: (id: string) => request<{ event: LoggedEvent }>(`/api/events/${id}/details`, post()).then((r) => r.event),
+  pick: (id: string, candidateId?: string) =>
+    request<{ event: LoggedEvent }>(`/api/events/${id}/details/pick`, post({ candidateId })).then((r) => r.event),
+  findLineup: (id: string, lineupUrl?: string) =>
+    request<{ event: LoggedEvent; job: LookupJob }>(`/api/events/${id}/lineup`, post({ lineupUrl })),
+};
+
 export const lineupApi = {
   status: () => request<LineupStatus>('/api/lineup/status'),
-  list: () => request<{ jobs: LookupJob[] }>('/api/lookups').then((r) => r.jobs),
-  get: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}`).then((r) => r.job),
-  create: (input: Partial<LookupInput>) =>
-    request<{ job: LookupJob }>('/api/lookups', { method: 'POST', body: JSON.stringify(input) }).then((r) => r.job),
-  retry: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}/run`, { method: 'POST' }).then((r) => r.job),
+  retry: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}/run`, post()).then((r) => r.job),
   confirm: (id: string, body: ConfirmRequest) =>
-    request<{ edition: Edition; attendance: Attendance | null }>(`/api/lookups/${id}/confirm`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
+    request<{ edition: Edition; event: LoggedEvent | null }>(`/api/lookups/${id}/confirm`, post(body)),
 };
 
 export const SOURCE_LABELS: Record<SourceType, string> = {
@@ -51,6 +57,6 @@ export const SOURCE_LABELS: Record<SourceType, string> = {
   user: 'You',
 };
 
-export function isActive(job: LookupJob): boolean {
-  return job.status === 'queued' || job.status === 'running';
+export function isActive(status: LookupJob['status'] | undefined): boolean {
+  return status === 'queued' || status === 'running';
 }

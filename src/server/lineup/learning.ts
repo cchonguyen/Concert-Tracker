@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import {
-  Attendance,
   CandidatePerformer,
   CandidateSource,
   Edition,
@@ -11,6 +10,7 @@ import {
 import { LineupStore } from './store/types';
 import { domainOf, lineupWindow, normalizeName, seriesSlugFor } from './text';
 import { slugFromClashfinderUrl } from './adapters/clashfinder';
+import { LoggedEvent, SeenAct } from '../events/types';
 
 // Review is where the system learns. Every decision is stored as data that the
 // next lookup reads: aliases, a per-site blocklist, measured source accuracy
@@ -28,21 +28,41 @@ export interface ReviewedPerformer {
   stages?: string[];
 }
 
+type EditionFactsInput = { name: string; startDate?: string; endDate?: string; venue?: string; city?: string; country?: string };
+
 export interface ConfirmRequest {
-  facts: { name: string; startDate?: string; endDate?: string; venue?: string; city?: string; country?: string };
+  // Defaults to the logged event's facts, then what the sources found.
+  facts?: EditionFactsInput;
   performers: ReviewedPerformer[];
-  attendance?: {
-    daysAttended?: string[];
-    rating?: number;
-    ticketPrice?: number;
-    companions?: string[];
-    notes?: string;
-  } | null;
 }
 
 export interface ConfirmResult {
   edition: Edition;
-  attendance: Attendance | null;
+  event: LoggedEvent | null;
+}
+
+// The edition's facts: what was sent, else your event's, with gaps filled
+// from what the lineup sources cited.
+function editionFacts(job: LookupJob, event: LoggedEvent | null, sent?: EditionFactsInput): EditionFactsInput {
+  const found = job.candidate?.facts;
+  const base = sent ?? event ?? { ...job.input, name: job.input.eventName };
+  return {
+    name: base.name,
+    startDate: base.startDate || found?.startDate,
+    endDate: base.endDate || found?.endDate,
+    venue: base.venue || found?.venue,
+    city: base.city || found?.city,
+    country: base.country || found?.country,
+  };
+}
+
+// Your seen acts after review: what you ticked, plus anything you had added
+// by hand that the lineup did not list.
+export function mergeSeen(before: SeenAct[], ticked: SeenAct[], reviewedKeys: Set<string>): SeenAct[] {
+  const out = new Map<string, SeenAct>();
+  for (const s of before) if (!reviewedKeys.has(s.key)) out.set(s.key, s);
+  for (const s of ticked) out.set(s.key, s);
+  return [...out.values()];
 }
 
 const EXAMPLE_CHARS = 6000;
@@ -59,19 +79,23 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
   if (!['needs_review', 'no_data', 'confirmed'].includes(job.status)) {
     throw new Error(`Lookup is ${job.status}; it can be confirmed once it has finished.`);
   }
-  if (!req.facts?.name?.trim()) throw new Error('Event name is required.');
+  const event = job.eventId ? await store.getEvent(job.eventId) : null;
+  const facts = editionFacts(job, event, req.facts);
+  if (!facts.name?.trim()) throw new Error('Event name is required.');
 
   const now = new Date().toISOString();
   const slug = seriesSlugFor(job.input.eventName);
   const fresh = !job.candidate?.cached; // cached lineups were already counted once
   const byKey = new Map<string, CandidatePerformer>((job.candidate?.performers ?? []).map((p) => [p.key, p]));
   const performances: EditionPerformance[] = [];
-  const seenKeys: string[] = [];
+  const ticked: SeenAct[] = [];
+  const reviewedKeys = new Set<string>();
   const acceptedByDoc = new Map<string, string[]>();
 
   for (const reviewed of req.performers) {
     const name = reviewed.name.trim();
     if (!name) continue;
+    reviewedKeys.add(normalizeName(name));
     const cand = reviewed.key ? byKey.get(reviewed.key) : undefined;
     const types = cand?.sources.map((s) => s.sourceType) ?? [];
     const urls = cand?.sources.map((s) => s.sourceUrl) ?? [];
@@ -140,7 +164,7 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
     if (reviewed.stages) perf.stages = reviewed.stages;
     if (reviewed.seen) {
       perf.status = 'performed'; // you were there
-      seenKeys.push(perf.artistKey);
+      ticked.push({ key: perf.artistKey, name: perf.name, from: cand ? 'lineup' : 'you' });
     }
     performances.push(perf);
     if (cand) {
@@ -157,12 +181,12 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
     key: job.editionKey,
     seriesSlug: slug,
     year: job.input.year,
-    name: req.facts.name.trim(),
-    startDate: req.facts.startDate || undefined,
-    endDate: req.facts.endDate || undefined,
-    venue: req.facts.venue || undefined,
-    city: req.facts.city || undefined,
-    country: req.facts.country || undefined,
+    name: facts.name.trim(),
+    startDate: facts.startDate || undefined,
+    endDate: facts.endDate || undefined,
+    venue: facts.venue || undefined,
+    city: facts.city || undefined,
+    country: facts.country || undefined,
     status: 'confirmed',
     performances: dedupe(performances),
     confirmedAt: now,
@@ -174,28 +198,23 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
 
   if (fresh) await learnFromSources(store, job, acceptedByDoc, slug);
 
-  let attendance: Attendance | null = null;
-  if (req.attendance) {
-    attendance = {
-      id: randomUUID(),
+  let updated: LoggedEvent | null = null;
+  if (event) {
+    updated = {
+      ...event,
       editionId: edition.id,
-      daysAttended: req.attendance.daysAttended ?? [],
-      seenArtistKeys: [...new Set(seenKeys)],
-      rating: req.attendance.rating,
-      ticketPrice: req.attendance.ticketPrice,
-      companions: req.attendance.companions,
-      notes: req.attendance.notes,
-      createdAt: now,
+      seen: mergeSeen(event.seen, ticked, reviewedKeys),
+      updatedAt: now,
     };
-    await store.addAttendance(attendance);
+    await store.putEvent(updated);
   }
 
   job.status = 'confirmed';
   job.editionId = edition.id;
   job.updatedAt = now;
-  job.log = [...job.log, { at: now, message: `Confirmed ${edition.performances.length} act(s); you saw ${seenKeys.length}.` }];
+  job.log = [...job.log, { at: now, message: `Confirmed ${edition.performances.length} act(s); you saw ${ticked.length}.` }];
   await store.updateJob(job);
-  return { edition, attendance };
+  return { edition, event: updated };
 }
 
 // Remember the lineup page for next year and keep a confirmed extraction
