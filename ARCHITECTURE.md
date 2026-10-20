@@ -55,7 +55,7 @@ Job statuses: `queued`, `running`, `waiting_quota`, `needs_review`, `no_data`, `
 
 - `QuotaLedger` (`src/server/lineup/quota.ts`) counts Gemini calls per model per Pacific day, against `GEMINI_DAILY_LIMIT` and `GEMINI_PER_MINUTE`. It refuses a call before it is made when the budget is spent.
 - A Gemini 429 is parsed: a per-day quota parks the job until midnight Pacific; otherwise the job waits for the `retryDelay` Google returns (60 s if none).
-- Parked jobs keep everything collected so far. The worker (`LookupWorker` in `service.ts`) checks for due jobs every 20 seconds, one at a time. "Try now" in the UI retries immediately, past an earlier 429 pause but not past your own daily budget.
+- Parked jobs keep everything collected so far. Under Node, the worker (`LookupWorker` in `service.ts`) checks for due jobs every 20 seconds, one at a time. On Cloudflare a Cron Trigger sends due jobs to a Queue every minute and the queue consumer runs them one at a time (see Hosting). "Try now" in the UI retries immediately, past an earlier 429 pause but not past your own daily budget.
 
 ## Learning loops
 
@@ -86,7 +86,7 @@ Defined in [`supabase/migrations/0002_source_first_lineups.sql`](supabase/migrat
 | Learning | `artist_aliases`, `extraction_blocklist`, `source_stats`, `corrections`, `extraction_examples` |
 | Personal | `attendance`, `seen_sets` |
 
-Store selection: Supabase when `SUPABASE_URL` is set and the migration has been applied; otherwise a JSON store under `DATA_DIR` (default `./data`). Set `LINEUP_STORE=file` to force the local store. The local store does not survive a Cloud Run redeploy, so use Supabase for real data.
+Store selection: Supabase when `SUPABASE_URL` is set and the migration has been applied; otherwise a JSON store under `DATA_DIR` (default `./data`). Set `LINEUP_STORE=file` to force the local store. The local store does not survive a redeploy, so use Supabase for real data. On Cloudflare the server refuses to start without Supabase.
 
 The browser archive (`src/services/storage.ts`, localStorage) still powers the Archive, Telemetry and Sheets views. A confirmed edition is written there with only the sets you saw (`src/services/archive.ts`). Moving those views onto the server tables is the next step.
 
@@ -100,6 +100,21 @@ The browser archive (`src/services/storage.ts`, localStorage) still powers the A
 | `POST /api/lookups/:id/run` | Retry now |
 | `POST /api/lookups/:id/confirm` | Save the reviewed lineup, attendance and learning data |
 | `GET /api/editions` | Confirmed and draft editions |
+
+## Hosting
+
+The `/api` routes live in `src/server/app.ts` and take a `JobRunner` that starts a job without waiting for it. Two hosts wire them up:
+
+| | Node (`server.ts`, `npm run dev`) | Cloudflare Worker (`worker/index.ts`, `wrangler.jsonc`) |
+| --- | --- | --- |
+| Frontend | Vite middleware in dev, `dist/` in production | Workers static assets from `dist/`, SPA fallback; only `/api/*` runs the Worker |
+| API | Express | The same Express app, through `handleAsNodeRequest` from `cloudflare:node` (`nodejs_compat`) |
+| Starting a job | `LookupWorker.kick` runs it in-process | A message on the `concert-tracker-lookups` Queue |
+| Due and parked jobs | `setInterval` every 20 s | Cron Trigger every minute sends due jobs to the Queue |
+| Store | Supabase, or the file store | Supabase only |
+| Config | `.env` | `vars` in `wrangler.jsonc` plus `wrangler secret put` |
+
+The queue consumer runs one message at a time (`max_concurrency: 1`), so the per-host spacing in `http.ts` still holds; the spacing lives in memory, so it is per isolate rather than global. Duplicate queue messages are harmless because `runJob` skips a job that is no longer `queued` or `waiting_quota`. A consumer killed mid-run (for example by the CPU limit on the Workers Free plan) leaves the job `running`; it does not resume on its own.
 
 ## Configuration
 

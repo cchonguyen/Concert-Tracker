@@ -1,0 +1,40 @@
+// Cloudflare deployment. See "Deploying to Cloudflare" in ARCHITECTURE.md.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "concert-tracker",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  // Express, supabase-js and node:crypto need the Node.js APIs; this also
+  // fills process.env from the vars and secrets below.
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    "NODE_ENV": "production",
+    "GEMINI_EXTRACTION_MODEL": "gemini-flash-lite-latest",
+    "GEMINI_DAILY_LIMIT": "50",
+    "GEMINI_PER_MINUTE": "10",
+    "GEMINI_SEARCH_DISCOVERY": "on",
+    "CLASHFINDER_HASH_FORMAT": "{username}{privateKey}"
+  },
+  // Secrets (wrangler secret put): GEMINI_API_KEY, SUPABASE_URL,
+  // SUPABASE_SERVICE_ROLE_KEY, CONTACT_EMAIL, TICKETMASTER_API_KEY,
+  // SETLISTFM_API_KEY, CLASHFINDER_USERNAME, CLASHFINDER_PUBLIC_KEY or
+  // CLASHFINDER_PRIVATE_KEY.
+  "queues": {
+    "producers": [{ "binding": "LOOKUP_QUEUE", "queue": "concert-tracker-lookups" }],
+    "consumers": [
+      {
+        "queue": "concert-tracker-lookups",
+        "max_batch_size": 1,
+        "max_concurrency": 1,
+        "max_retries": 3
+      }
+    ]
+  },
+  "triggers": { "crons": ["* * * * *"] },
+  "observability": { "enabled": true }
+}

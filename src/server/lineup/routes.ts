@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { createLookup, enqueueArtistResolution, InputError, PipelineDeps } from './pipeline';
 import { confirmLookup, ConfirmRequest } from './learning';
-import { configuredSources, LookupWorker } from './service';
+import { configuredSources, JobRunner } from './service';
 
-export function lineupRouter(deps: PipelineDeps, worker: LookupWorker): Router {
+export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
   const router = Router();
   const fail = (res: any, err: unknown, status = 500) =>
     res.status(err instanceof InputError ? 400 : status).json({ error: err instanceof Error ? err.message : String(err) });
@@ -28,7 +28,7 @@ export function lineupRouter(deps: PipelineDeps, worker: LookupWorker): Router {
   router.post('/lookups', async (req, res) => {
     try {
       const job = await createLookup(deps, req.body ?? {});
-      if (job.status === 'queued') worker.kick(job.id);
+      if (job.status === 'queued') await runner.kick(job.id);
       res.status(201).json({ job });
     } catch (err) {
       fail(res, err);
@@ -51,7 +51,7 @@ export function lineupRouter(deps: PipelineDeps, worker: LookupWorker): Router {
     try {
       const job = await deps.store.getJob(req.params.id);
       if (!job) return res.status(404).json({ error: 'Lookup not found.' });
-      worker.kick(job.id, true);
+      await runner.kick(job.id, true);
       res.json({ job });
     } catch (err) {
       fail(res, err);
