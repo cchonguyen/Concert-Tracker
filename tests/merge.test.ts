@@ -81,3 +81,26 @@ test('a lone low-trust source is flagged', () => {
   });
   assert.equal(lineup.performers[0].flagged, true);
 });
+
+test('web search pages: an act on only one of several pages is flagged', () => {
+  const page = (url: string, name: string) =>
+    claim({ name, quotedSpan: name, sourceType: 'discovered', sourceUrl: url, evidence: 'billed', extractor: 'gemini:x' });
+  const lineup = mergeLineup({
+    ...base,
+    claims: [
+      page('https://wizard.example/zitp-2026', 'Zedd'),
+      page('https://nyc.example/zitp', 'Zedd'),
+      page('https://aggregator.example/zitp', 'Zedd'),
+      page('https://aggregator.example/zitp', 'Blackberry Smoke'),
+      claim({ name: 'Kaskade' }),
+    ],
+  });
+  const get = (n: string) => lineup.performers.find((p) => p.name === n)!;
+  assert.equal(get('Zedd').flagged, false);
+  assert.equal(get('Blackberry Smoke').flagged, true);
+  assert.equal(get('Kaskade').flagged, false);
+
+  // A single search page is not compared against anything.
+  const alone = mergeLineup({ ...base, claims: [page('https://only.example/x', 'Solo Act')] });
+  assert.equal(alone.performers[0].flagged, false);
+});

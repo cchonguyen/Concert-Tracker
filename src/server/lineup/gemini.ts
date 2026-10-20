@@ -26,13 +26,14 @@ export interface GeminiClient {
   discoverLineupUrls(input: LookupInput): Promise<string[]>;
 }
 
-export const EXTRACTION_PROMPT_VERSION = 'extract@1';
+export const EXTRACTION_PROMPT_VERSION = 'extract@2';
 const MAX_DOC_CHARS = 40000;
 
 const SYSTEM = `You copy performer names out of a web page. Rules:
 - Use only the PAGE TEXT provided. Never use outside knowledge, never guess, never complete a partial lineup.
 - For every name, "quote" must be an exact substring of the page text (up to 200 characters) that contains the name.
 - Include only acts that perform (artists, DJs, bands, b2b pairings as written). Exclude stage names, day labels, sponsors, ticket tiers, menu items and navigation.
+- Include only acts billed for the EVENT named below. Pages often also list other festivals, related or upcoming events, tours or recommended artists; leave all of those out.
 - Copy names exactly as written on the page, including capitalisation and punctuation.
 - Set "day" (YYYY-MM-DD) or "stage" only when the page text states it for that act.
 - If the page has no lineup, return an empty list.`;

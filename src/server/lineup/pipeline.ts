@@ -19,7 +19,7 @@ import { domainOf, editionKeyFor, htmlToText, isVerbatim, normalizeName, seriesS
 import { makeDocument } from './adapters/common';
 import { resolveArtist } from './musicbrainz';
 import { redactSecrets } from './http';
-import { LineupSearch, pageMentionsEvent } from './search';
+import { isEventDomain, LineupSearch, pageMentionsEvent } from './search';
 
 export interface PipelineDeps {
   store: LineupStore;
@@ -287,7 +287,8 @@ async function stageDiscover(deps: PipelineDeps, job: LookupJob, now: Date, forc
         log(job, `Skipped ${url}: the page does not name ${job.input.eventName} and ${job.input.year}.`, now);
         continue;
       }
-      const doc = await deps.store.putDocument(makeDocument(res.url, 'discovered', text, 'text'));
+      const sourceType = isEventDomain(res.url, job.input.eventName) ? 'promoter' : 'discovered';
+      const doc = await deps.store.putDocument(makeDocument(res.url, sourceType, text, 'text'));
       job.pendingExtraction.push(doc.id);
       read += 1;
     } catch (err) {

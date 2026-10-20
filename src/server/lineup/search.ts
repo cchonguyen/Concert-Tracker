@@ -64,3 +64,15 @@ export function braveSearch(fetcher: Fetcher, apiKey: string, now: () => Date = 
 export function geminiSearch(gemini: GeminiClient): LineupSearch {
   return { id: 'gemini', usesGeminiQuota: true, findLineupUrls: (input) => gemini.discoverLineupUrls(input) };
 }
+
+// A search result on the event's own domain (sunsoaked.insomniac.com for
+// "Sun Soaked") is the organiser's page, so it counts as a promoter source.
+export function isEventDomain(url: string, eventName: string): boolean {
+  const joined = eventWords(eventName).join('');
+  if (joined.length < 5) return false;
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/[^a-z0-9.]/g, '').includes(joined);
+  } catch {
+    return false;
+  }
+}
