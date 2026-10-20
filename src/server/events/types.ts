@@ -33,7 +33,8 @@ export interface DetailCandidate {
   venue?: string;
   city?: string;
   country?: string;
-  sources: Array<{ sourceType: SourceType; sourceUrl: string; fields: EventField[] }>;
+  // quote: the words a web page used for the date, when it came from web search.
+  sources: Array<{ sourceType: SourceType; sourceUrl: string; fields: EventField[]; quote?: string }>;
 }
 
 // pending: not researched yet; needs_date: research needs at least a year;

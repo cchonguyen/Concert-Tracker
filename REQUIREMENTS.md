@@ -34,7 +34,7 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 5. **Your word wins.** The app suggests; it never overwrites what you typed. A suggestion is applied when it exactly confirms what you entered, or when you pick it.
 6. **Simple in, structured out, room to grow.** Input is one line of plain text. Output is structured fields that can grow (companions, notes, days, seen acts) without making the first input any longer.
 7. **The world and you are separate.** The canonical lineup (a fact about the world, reusable across years and lookups) is stored apart from your log (what you attended and who you saw).
-8. **Spend scarce capacity only where it pays.** Stage 1 uses only structured APIs and never Gemini, so it always works. Gemini quota is reserved for reading lineup pages in stage 2, and when it runs out the job waits.
+8. **Spend scarce capacity only where it pays.** Stage 1 uses structured APIs and web search read in code, never Gemini, so it always works. Gemini quota is reserved for reading lineup pages in stage 2, and when it runs out the job waits.
 9. **No hardcoded knowledge.** No lists of festivals, venues or artists in code. Improve a source adapter or add one.
 10. **Delight comes from small, reliable moments,** not from more screens: the app understanding a sloppy sentence, a one-tap "is this it?", a lineup that is already known, a running count of everyone you've seen.
 
@@ -57,8 +57,9 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 | R1.1 | Adding an event takes one line of text, for example `Porter Robinson at the Greek Theatre, Oct 5 2024` or `EDC Las Vegas 2025`. A single-artist show can be named after the artist. |
 | R1.2 | The app splits the line into name, date (full date, month and year, or year) and place (venue, city) in code, without a model, and shows the split before you save. Text it cannot place stays in the name; nothing is invented. |
 | R1.3 | Saving needs only a name. The event is stored immediately with exactly what you typed; every typed field is sourced as "you". |
-| R1.4 | After saving, the app researches the event's details from structured sources (Ticketmaster for listings, setlist.fm for past shows by artist and date, Clashfinder for festival dates). This needs at least a year; without one the event asks "When was it?". |
-| R1.5 | Research results are candidates with sources. A candidate fills empty fields automatically only when it matches the full date you gave. Otherwise you see up to five candidates and confirm one with one tap, or dismiss them. |
+| R1.4 | After saving, the app researches the event's details from structured sources (Ticketmaster for listings, setlist.fm for past shows by artist and date, Clashfinder for festival dates) and verifies the date with web search (Brave). This needs at least a year; without one the event asks "When was it?". |
+| R1.5 | Research results are candidates with sources; sources agreeing on a date count together. When a source covers the full date you gave, the date is shown as confirmed (with each source and the words it used) and that candidate fills empty fields. When sources give a different date, you see up to five candidates and confirm one with one tap, or dismiss them. |
+| R1.5a | A web search result counts only if its own title or description names every word of the event and writes the date in full; month-only dates and bare years never confirm anything. |
 | R1.6 | Applying a candidate records each filled field's source (URL). Fields you typed are never overwritten without your tap. |
 | R1.7 | Research can be re-run at any time ("Look again"), for example after adding a date or a city. |
 | R1.8 | No candidate is fine: the event stays as typed and says no listing was found. |
@@ -114,7 +115,7 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 | setlist.fm | 1, 2 | Past shows by artist and date (venue, city); confirms who actually performed | Needs a key; coverage depends on fans; not a full lineup |
 | Clashfinder | 1, 2 | Festival editions with start dates; full festival lineups with stages and times, archived for past years | Crowd-sourced; mostly festivals; fantasy clashes are ignored |
 | Promoter pages (and Wayback) | 2 | The official lineup, read by Gemini | Pages are overwritten each year, hence archived copies |
-| Brave web search | 2 | Finds lineup pages when nothing else did | Results can mix in other editions, so strict same-event filtering applies |
+| Brave web search | 1, 2 | Confirms dates from result titles and descriptions; finds lineup pages when nothing else did | Results can mix in other editions or tour dates, so strict same-event filtering applies; free plan has a monthly cap |
 | Gemini (free tier) | 2 only | Reads fetched pages and extracts names verbatim | Never answers from memory; ~50 calls/day budget |
 | MusicBrainz | after 2 | Stable artist IDs | Not a lineup source |
 | AXS | none | n/a | No public API; scraping breaks its terms |

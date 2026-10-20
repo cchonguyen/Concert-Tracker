@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { parseEventInput } from '../src/server/events/parse.ts';
+import { findDates, parseEventInput } from '../src/server/events/parse.ts';
 import {
   DetailFinder,
   mergeCandidates,
@@ -11,6 +11,8 @@ import {
   researchEvent,
   setlistfmFinder,
   ticketmasterFinder,
+  braveFinder,
+  webQuery,
 } from '../src/server/events/details.ts';
 import { applyPatch, newEvent, sortEvents, startLineupLookup } from '../src/server/events/service.ts';
 import { DetailCandidate } from '../src/server/events/types.ts';
@@ -250,4 +252,74 @@ test('a lineup lookup from a dated event reuses an edition confirmed for that da
   assert.equal(otherNight.job.editionKey, 'porter-robinson/2024-11-02');
 
   await assert.rejects(startLineupLookup(deps, newEvent('Porter Robinson', NOW)), /a year is enough/);
+});
+
+test('findDates reads every full date in a text, with the words it came from', () => {
+  assert.deepEqual(findDates('Doors 7pm. Porter Robinson live Oct 5, 2024 at the Greek; also 2024-10-06 and October 2024.'), [
+    { startDate: '2024-10-05', endDate: undefined, quote: 'Oct 5, 2024' },
+    { startDate: '2024-10-06', endDate: undefined, quote: '2024-10-06' },
+  ]);
+  assert.deepEqual(findDates('EDC Las Vegas May 16-18, 2025'), [{ startDate: '2025-05-16', endDate: '2025-05-18', quote: 'May 16-18, 2025' }]);
+});
+
+test('Brave results confirm a date only when they name the event and write the date in full', async () => {
+  process.env.BRAVE_SEARCH_API_KEY = 'k';
+  try {
+    const { fetcher, calls } = fakeFetcher({
+      'https://api.search.brave.com/': {
+        body: {
+          web: {
+            results: [
+              { url: 'https://greek.example/porter', title: 'Porter Robinson | Greek Theatre', description: 'Porter Robinson performs <strong>Oct 5, 2024</strong>.' },
+              { url: 'https://news.example/review', title: 'Review: Porter Robinson at the Greek', description: 'On October 5, 2024 the show sold out.' },
+              { url: 'https://other.example/x', title: 'Madeon at the Greek', description: 'Oct 5, 2024' },
+              { url: 'https://far.example/y', title: 'Porter Robinson tour', description: 'Next show March 1, 2025' },
+            ],
+          },
+        },
+      },
+    });
+    const q = { name: 'Porter Robinson', year: 2024, startDate: '2024-10-05', venue: 'the Greek' };
+    assert.equal(webQuery(q), '"Porter Robinson" October 5 2024 the Greek');
+    const found = await braveFinder.find(q, fetcher);
+    assert.deepEqual(found.map((c) => c.sources[0].sourceUrl), ['https://greek.example/porter', 'https://news.example/review']);
+    assert.equal(found[0].sources[0].quote, 'Oct 5, 2024');
+    assert.ok(calls[0].includes('q=%22Porter%20Robinson%22'));
+
+    const verified = await researchEvent(newEvent('Porter Robinson at the Greek Oct 5 2024', NOW), [braveFinder], fetcher, NOW);
+    assert.equal(verified.details.status, 'matched');
+    assert.equal(verified.details.candidates[0].sources.length, 2, 'two pages agree on the date');
+  } finally {
+    delete process.env.BRAVE_SEARCH_API_KEY;
+  }
+});
+
+test('a date backed by more sources wins when several cover yours; a tie asks you', async () => {
+  const ev = newEvent('Fest May 17 2025', NOW);
+  const twoAgree = await researchEvent(
+    ev,
+    [
+      finder('discovered', [
+        { startDate: '2025-05-16', endDate: '2025-05-18', sources: src('discovered', ['startDate', 'endDate']) },
+        { startDate: '2025-05-17', sources: src('discovered', ['startDate']) },
+      ]),
+      finder('ticketmaster', [{ startDate: '2025-05-16', endDate: '2025-05-18', venue: 'Speedway', sources: src('ticketmaster', ['startDate', 'endDate', 'venue']) }]),
+    ],
+    fakeFetcher({}).fetcher,
+    NOW,
+  );
+  assert.equal(twoAgree.details.status, 'matched');
+  assert.equal(twoAgree.venue, 'Speedway');
+  assert.equal(twoAgree.startDate, '2025-05-17', 'your date stays');
+
+  const tie = await researchEvent(
+    ev,
+    [finder('discovered', [
+      { startDate: '2025-05-16', endDate: '2025-05-18', sources: src('discovered', ['startDate', 'endDate']) },
+      { startDate: '2025-05-17', sources: src('discovered', ['startDate']) },
+    ])],
+    fakeFetcher({}).fetcher,
+    NOW,
+  );
+  assert.equal(tie.details.status, 'choose');
 });

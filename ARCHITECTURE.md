@@ -12,7 +12,7 @@ You type one line about an event you went to. It is saved at once (stage 1), and
 | --- | --- | --- |
 | Started by | Typing a line and pressing Add | "Find who played" on a saved event |
 | Code | `src/server/events/` | `src/server/lineup/` |
-| Sources | Ticketmaster, setlist.fm, Clashfinder (structured APIs only) | Clashfinder, promoter pages, Ticketmaster, setlist.fm, web search |
+| Sources | Ticketmaster, setlist.fm, Clashfinder, Brave web search (read in code) | Clashfinder, promoter pages, Ticketmaster, setlist.fm, web search |
 | Gemini | Never | Reads fetched pages |
 | Runs | Inside the request, a few seconds | A background job (queue), can wait for quota |
 | Stores | `logged_events` (your log) | Canonical edition, evidence, learning data; links the event to the edition |
@@ -41,8 +41,9 @@ These are enforced in code. A change that breaks one is a bug, even if the outpu
    - Ticketmaster: listings whose name has every word you typed; a festival listed per day is grouped by name and venue into one start and end date.
    - setlist.fm: shows by an artist of exactly that name on the date (or in the year), with venue and city.
    - Clashfinder: the edition matched in its event list (same rule as the lineup adapter), giving the start date.
+   - Brave web search (`braveFinder`, when `BRAVE_SEARCH_API_KEY` is set): one query (`"<name>" <date or month or year> <venue> <city>`). A result counts only if its title and description name every word of the event; every full date written there (`findDates` in `parse.ts`) inside the window becomes a candidate whose source keeps the quoted words. These snippets only confirm stage 1 dates; they are never lineup evidence.
    Candidates on the same start date are merged, each field keeping the source that gave it. A failing finder is noted and the others still count.
-4. **Decide.** No candidates: `none`. If you gave a full date and exactly one candidate covers it: `matched`, and it fills only empty fields. Otherwise `choose`: up to 5 candidates wait for your pick (`POST /api/events/:id/details/pick`), which fills date and place from the candidate (the name stays yours), or for "None of these".
+4. **Decide.** No candidates: `none`. If you gave a full date and one candidate covers it (or one covering candidate has more sources than any other): `matched`. The date is shown as confirmed with each source and quote, and the candidate fills only empty fields. Otherwise `choose`: up to 5 candidates wait for your pick (`POST /api/events/:id/details/pick`), which fills date and place from the candidate (the name stays yours), or for "None of these".
 5. **Edit** (`PATCH /api/events/:id`). Any field you change becomes a `user` source. Seen acts, companions, days attended, rating, ticket price and notes are edited the same way.
 
 ## Sources
@@ -56,7 +57,7 @@ Each source is an adapter in `src/server/lineup/adapters/` implementing `SourceA
 | `ticketmaster` | Canonical name, dates, venue and attractions for upcoming or recent events | Free Discovery API key, 5,000 calls/day | `billed` |
 | `setlistfm` | Post-show setlists that upgrade an act to "performed" | Free non-commercial key | `performed` |
 | MusicBrainz (`musicbrainz.ts`) | Stable artist IDs only, resolved in the background after you confirm | No key, 1 request/second | n/a |
-| Web search (`search.ts`) | Candidate lineup URLs when every source came back empty: Brave Search API when `BRAVE_SEARCH_API_KEY` is set, otherwise Gemini grounded search (needs a billed Gemini project) | Brave free plan, or Gemini quota | Pages are fetched and extracted like any other; snippets are never evidence |
+| Web search (`search.ts`) | Stage 2: candidate lineup URLs when every source came back empty (stage 1 date checks are in `events/details.ts`): Brave Search API when `BRAVE_SEARCH_API_KEY` is set, otherwise Gemini grounded search (needs a billed Gemini project) | Brave free plan, or Gemini quota | Pages are fetched and extracted like any other; snippets are never evidence |
 
 AXS is deliberately excluded: it has no public discovery API, and scraping it breaks its terms.
 
