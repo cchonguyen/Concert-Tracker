@@ -22,6 +22,7 @@ export const SOURCE_PRIOR: Record<SourceType, number> = {
   ticketmaster: 0.8,
   musicbrainz: 0.7,
   discovered: 0.65,
+  email: 0.9,
   user: 1,
 };
 

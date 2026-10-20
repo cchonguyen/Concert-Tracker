@@ -65,6 +65,8 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 | R1.7 | Research can be re-run at any time ("Look again"), for example after adding a date or a city. It fills empty fields and never replaces a filled one; when the confirmed source disagrees with a saved field, the field offers a one-tap "Use …" instead. A renamed event that finds nothing is searched again under the name you first typed. |
 | R1.8 | No candidate is fine: the event stays as typed and says no listing was found. |
 | R1.9 | Every field is editable later; an edit becomes a "you" source. The last day of an event shows its start date until you change it and is stored only when it differs (a single-day event has no last day, so nothing is defaulted). Venue and city suggest what you've entered before; city also suggests real places as you type. |
+| R1.10 | Past shows can be back-filled from ticket confirmation emails. Each seller's email layout is read in code (no model); every value keeps the email's link and words. The year of a date written without one is the year in which that day falls on the weekday given, within a year of the email; otherwise there is no date. |
+| R1.11 | Emails propose; you decide. Found shows are listed for review, one per show, unticked (a ticket is not attendance), with refunds and cancellations flagged and shows already in your log or still ahead set apart. Nothing is saved until you tick it and press Add, and personal fields are never filled from an email. |
 
 ## 6. Stage 2: find who played
 
@@ -117,6 +119,7 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 | Clashfinder | 1, 2 | Festival editions with start dates; full festival lineups with stages and times, archived for past years | Crowd-sourced; mostly festivals; fantasy clashes are ignored |
 | Promoter pages (and Wayback) | 2 | The official lineup, read by Gemini | Pages are overwritten each year, hence archived copies |
 | Brave web search | 1, 2 | Confirms dates from result titles and descriptions (and venue and city from the event markup on those pages); finds lineup pages when nothing else did | Results can mix in other editions or tour dates, so strict same-event filtering applies; free plan has a monthly cap |
+| Your ticket emails | 1 | Name, date, venue and city of shows you bought tickets for, from Ticketmaster, Tixr, DICE, Resident Advisor and Eventbrite confirmations; refunds and cancellations | A ticket is not attendance; layouts change; many omit the year; other sellers' emails are listed as unreadable |
 | Gemini (free tier) | 2 only | Reads fetched pages and extracts names verbatim | Never answers from memory; ~50 calls/day budget |
 | Open-Meteo geocoding | capture | City suggestions as you type ("City, ST"); free, no key | Suggestions only; never fills a field on its own |
 | MusicBrainz | after 2 | Stable artist IDs | Not a lineup source |
@@ -127,11 +130,10 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 - Multiple users, sharing, social feeds, recommendations.
 - Ticket purchasing, calendars of upcoming shows, notifications.
 - Inferring what you saw from lineups (you tick it, or it isn't recorded).
-- Pulling events from email or ticket accounts automatically (possible later, as a source that proposes stage 1 candidates, never as silent imports).
+- Importing from email without review, or signing in to ticket accounts.
 
 ## 12. Open questions
 
-- Should the email inbox (ticket confirmations) become a stage 1 source? It would make back-filling years of events nearly effortless, but it touches private mail.
 - Should a single-artist event automatically offer its own name as a one-tap "I saw them" suggestion? (It would be your own text, so it is not a guess, but it is still a tap you must make.)
 - Photos per event: worth the storage, or link out to an album?
 

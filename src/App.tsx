@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Download, Mic2, Radio, Ticket } from 'lucide-react';
-import { eventsApi, isActive, LineupStatus, LineupSummary, lineupApi, LoggedEvent, SOURCE_LABELS } from './services/lineupApi';
+import { Download, Mail, Mic2, Radio, Ticket } from 'lucide-react';
+import { EmailImport, eventsApi, importsApi, isActive, LineupStatus, LineupSummary, lineupApi, LoggedEvent, SOURCE_LABELS } from './services/lineupApi';
 import { downloadText, eventsToCsv } from './services/format';
 import { CaptureBar } from './components/CaptureBar';
 import { EventList } from './components/EventList';
 import { EventDetail } from './components/EventDetail';
 import { ArtistsView } from './components/ArtistsView';
+import { ImportReview } from './components/ImportReview';
 
 type Tab = 'events' | 'artists';
 
@@ -18,6 +19,8 @@ export default function App() {
   const [status, setStatus] = useState<LineupStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [imports, setImports] = useState<EmailImport[]>([]);
+  const [reviewing, setReviewing] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -35,6 +38,8 @@ export default function App() {
   useEffect(() => {
     void refresh();
     lineupApi.status().then(setStatus).catch(() => undefined);
+    // Nothing to show when email import was never run (or its table is missing).
+    importsApi.list().then(setImports).catch(() => undefined);
   }, [refresh]);
 
   // Poll while a lineup lookup is running somewhere.
@@ -67,6 +72,8 @@ export default function App() {
 
   const seenCount = new Set(events.flatMap((e) => e.seen.map((s) => s.key))).size;
   const selected = events.find((e) => e.id === selectedId) ?? null;
+  const today = new Date().toISOString().slice(0, 10);
+  const toReview = imports.filter((r) => r.status === 'new' && !r.eventId && !(r.startDate && r.startDate > today)).length;
 
   return (
     <div className="min-h-screen bg-zinc-950 font-sans text-zinc-100 selection:bg-violet-600 selection:text-white flex flex-col">
@@ -108,6 +115,14 @@ export default function App() {
         {tab === 'events' && (
           <>
             <CaptureBar onCaptured={handleCaptured} />
+            {toReview > 0 && (
+              <button
+                onClick={() => setReviewing(true)}
+                className="inline-flex items-center gap-1.5 text-sm text-violet-300 hover:text-violet-200"
+              >
+                <Mail className="h-3.5 w-3.5" /> {toReview} event{toReview === 1 ? '' : 's'} found in your email. Review
+              </button>
+            )}
             <EventList events={events} lineups={lineups} researching={researching} loaded={loaded} onOpen={setSelectedId} />
           </>
         )}
@@ -132,6 +147,18 @@ export default function App() {
           )}
         </div>
       </footer>
+
+      {reviewing && (
+        <ImportReview
+          imports={imports}
+          onChange={setImports}
+          onAdded={(added) => {
+            added.forEach(upsert);
+            void refresh();
+          }}
+          onClose={() => setReviewing(false)}
+        />
+      )}
 
       {selected && (
         <EventDetail
