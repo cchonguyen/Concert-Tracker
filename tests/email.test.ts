@@ -173,6 +173,14 @@ test('email imports: one row per show; resends merge, refunds flag the show even
   assert.deepEqual(mergeImports(all, readEmails([dice, resend, ticketmaster, refund]).outcomes, [], NOW), []);
 });
 
+test('email imports: a refund marks only the show it followed when the same name recurs', () => {
+  const april = mail({ ...dice, id: 'dice-april', subject: 'Your tickets: MAURICE', sentAt: '2025-03-25T18:00:00Z', text: dice.text!.replace('Sat 17 Oct', 'Sat 05 Apr') });
+  const refund = mail({ from: 'DICE <hello@dice.fm>', subject: 'Refund requested: MAURICE', sentAt: '2026-09-05T18:00:00Z', text: 'Your refund' });
+  const rows = mergeImports([], readEmails([refund, april, dice]).outcomes, [], NOW);
+  const byDate = Object.fromEntries(rows.filter((r) => r.status === 'new').map((r) => [r.startDate, r.flags]));
+  assert.deepEqual(byDate, { '2025-04-05': [], '2026-10-17': ['refunded'] });
+});
+
 test('email imports: a show already in your log is matched, by date and a contained name', () => {
   const logged = { ...newEvent('Porter Robinson - Smile! :D World Tour', NOW), startDate: '2024-10-05' };
   const [row] = mergeImports([], readEmails([ticketmaster]).outcomes, [logged], NOW);
