@@ -219,7 +219,8 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
     if (doc) {
       await deps.quota!.acquire(now, { ignorePause: force });
       const examples = await deps.store.getExamples(domainOf(doc.url));
-      const extracted = await deps.gemini!.extractPerformers({ text: doc.body, input: job.input, examples });
+      const pageKind = doc.sourceType === 'discovered' ? 'third_party' : 'official';
+      const extracted = await deps.gemini!.extractPerformers({ text: doc.body, input: job.input, examples, pageKind });
       const normalizedDoc = normalizeName(doc.body);
       const kept: PerformerClaim[] = [];
       let rejected = 0;
