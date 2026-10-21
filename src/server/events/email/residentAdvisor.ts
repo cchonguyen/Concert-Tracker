@@ -6,6 +6,7 @@ import { EmailReader, UnreadableEmail } from './types';
 // 12 Dec 2026"), the times, the venue and its address, then the tickets.
 export const residentAdvisor: EmailReader = {
   seller: 'Resident Advisor',
+  domain: 'ra.co',
   matches: (from) => fromDomain(from, 'ra.co'),
   read(email, lines) {
     const name = subjectAfter(email.subject, /^Your order for\s+(.+)$/i);

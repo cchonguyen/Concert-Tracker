@@ -30,6 +30,7 @@ function findCard(lines: string[], name: string, sentAt: string): { nameAt: numb
 
 export const eventbrite: EmailReader = {
   seller: 'Eventbrite',
+  domain: 'eventbrite.com',
   matches: (from) => fromDomain(from, 'eventbrite.com'),
   read(email, lines) {
     const name = subjectAfter(email.subject, /^(?:Your Tickets for|Order Confirmation for)\s+(.+)$/i);

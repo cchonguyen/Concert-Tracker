@@ -7,6 +7,7 @@ import { EmailReader, UnreadableEmail } from './types';
 // ("Sat Aug 29, 10:00 PM").
 export const tixr: EmailReader = {
   seller: 'Tixr',
+  domain: 'tixr.com',
   matches: (from) => fromDomain(from, 'tixr.com'),
   read(email, lines) {
     const name = subjectAfter(email.subject, /^(?:Order Confirmation|Tickets for):\s*(.+)$/i);

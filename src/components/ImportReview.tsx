@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { Check, ExternalLink, Loader2, Mail, Undo2, X } from 'lucide-react';
-import { EmailImport, importsApi, LoggedEvent } from '../services/lineupApi';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Check, ExternalLink, Loader2, Mail, RefreshCw, Undo2, X } from 'lucide-react';
+import { EmailImport, EmailScanStatus, importsApi, LoggedEvent } from '../services/lineupApi';
 import { placeLabel, whenLabel } from '../services/format';
 
 // Stage 1 from email: shows found in your ticket emails. A ticket is not
@@ -12,6 +12,7 @@ interface ImportReviewProps {
   onChange: (imports: EmailImport[]) => void;
   onAdded: (events: LoggedEvent[]) => void;
   onClose: () => void;
+  notice?: string | null; // the result of Connect Gmail, when you just came back from it
 }
 
 const FLAG_LABELS: Record<EmailImport['flags'][number], string> = {
@@ -30,6 +31,83 @@ const EmailLink: React.FC<{ row: EmailImport }> = ({ row }) => {
     </a>
   ) : (
     <span>{row.seller} email</span>
+  );
+};
+
+const dayLabel = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+// Check email: reads the ticket mail that arrived since the last check, a few
+// messages per call, until nothing is left. New shows land below, unticked.
+const CheckEmail: React.FC<{ onFound: (imports: EmailImport[]) => void }> = ({ onFound }) => {
+  const [status, setStatus] = useState<EmailScanStatus | null>(null);
+  const [progress, setProgress] = useState<{ read: number; added: number; remaining?: number } | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    importsApi.scanStatus().then(setStatus).catch(() => undefined);
+  }, []);
+
+  if (!status?.configured) return null;
+
+  const check = async () => {
+    setChecking(true);
+    setError(null);
+    let read = 0;
+    let added = 0;
+    try {
+      for (;;) {
+        const step = await importsApi.scan();
+        read += step.read;
+        added += step.added;
+        setProgress({ read, added, remaining: step.remaining });
+        setStatus((s) => s && { ...s, scannedThrough: step.scannedThrough, lastCheckedAt: step.lastCheckedAt ?? s.lastCheckedAt });
+        if (!step.remaining || !step.read) break;
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      if (err instanceof Error && /connect gmail/i.test(err.message)) setStatus((s) => s && { ...s, connected: false });
+    } finally {
+      setChecking(false);
+      if (read) onFound(await importsApi.list().catch(() => []));
+    }
+  };
+
+  const summary = () => {
+    if (checking) return progress ? `Read ${progress.read} email${progress.read === 1 ? '' : 's'}, ${progress.remaining} to go…` : 'Looking for new ticket emails…';
+    if (progress) {
+      if (!progress.read) return 'No new ticket emails.';
+      return `Read ${progress.read} new email${progress.read === 1 ? '' : 's'}; ${progress.added ? `${progress.added} new show${progress.added === 1 ? '' : 's'} below` : 'no new shows'}.`;
+    }
+    if (status.scannedThrough) return `Read up to mail from ${dayLabel(status.scannedThrough)}${status.lastCheckedAt ? `, last checked ${dayLabel(status.lastCheckedAt)}` : ''}.`;
+    return 'Reads the ticket emails in your Gmail.';
+  };
+
+  return (
+    <div className="space-y-1 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-zinc-400">{status.connected ? summary() : 'Connect Gmail to check for new ticket emails.'}</p>
+        {status.connected ? (
+          <button
+            onClick={check}
+            disabled={checking}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:border-zinc-500 disabled:opacity-40"
+          >
+            {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            Check email
+          </button>
+        ) : (
+          <a
+            href="/api/gmail/connect"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500"
+          >
+            <Mail className="h-3.5 w-3.5" /> Connect Gmail
+          </a>
+        )}
+      </div>
+      {status.connected && status.account && <p className="text-[11px] text-zinc-600">{status.account}</p>}
+      {error && <p className="text-xs text-rose-300">{error}</p>}
+    </div>
   );
 };
 
@@ -71,7 +149,7 @@ const Row: React.FC<{ row: EmailImport; ticked?: boolean; onTick?: () => void; a
   );
 };
 
-export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, onAdded, onClose }) => {
+export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, onAdded, onClose, notice }) => {
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -158,6 +236,16 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
               <X className="h-5 w-5" />
             </button>
           </div>
+          {notice && (
+            <p
+              className={`rounded-lg border p-2 text-sm ${
+                notice === 'connected' ? 'border-violet-500/30 bg-violet-950/30 text-violet-200' : 'border-rose-500/30 bg-rose-950/30 text-rose-200'
+              }`}
+            >
+              {notice === 'connected' ? 'Gmail is connected. Press Check email to look for new tickets.' : notice}
+            </p>
+          )}
+          <CheckEmail onFound={onChange} />
           {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
 
           {!toReview.length && <p className="text-sm text-zinc-500">Nothing left to review.</p>}
