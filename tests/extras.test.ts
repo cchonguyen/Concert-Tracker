@@ -179,7 +179,7 @@ test('artists from titles for many events come from stored data only', async () 
   const store = {
     listEvents: async () => events,
     getJobs: async (ids: string[]) => (ids.includes('j1') ? [job as any] : []),
-    getEdition: async () => null,
+    getEditions: async () => [],
   };
   const out = await storedNameSuggestions(store, ['a', 'b', 'c']);
   assert.deepEqual(

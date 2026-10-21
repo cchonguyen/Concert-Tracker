@@ -93,11 +93,12 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
         // A show still ahead waits on the list until it has happened.
         if (row.startDate && row.startDate > now.toISOString().slice(0, 10)) continue;
         const event = eventFromImport(row, now);
-        await deps.store.putEvent(event);
         added.push(event);
         events.push(event);
         changed.push({ ...row, status: 'added', eventId: event.id, updatedAt: now.toISOString() });
       }
+      // One write for all of them (Workers cap subrequests per request).
+      await deps.store.putEvents(added);
       await deps.store.putImports(changed);
       res.json({ events: added, imports: changed });
     } catch (err) {

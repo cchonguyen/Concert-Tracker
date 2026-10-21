@@ -40,6 +40,9 @@ const GAP_LABELS: Record<Gap, string> = {
   weather: 'Weather',
 };
 
+// Matches MAX_BULK_LOOKUPS on the server.
+const LOOKUPS_PER_REQUEST = 5;
+
 const control =
   'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
 
@@ -439,9 +442,16 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
     setBusy('lineups');
     setError(null);
     try {
-      const r = await eventsApi.findLineups(lineupRows.map((e) => e.id));
+      // A few per request: each queued lookup costs several database calls,
+      // and a Worker request may make only 50.
+      let started = 0;
+      for (let i = 0; i < lineupRows.length; i += LOOKUPS_PER_REQUEST) {
+        setNote(`Queueing lineup lookups: ${Math.min(i + LOOKUPS_PER_REQUEST, lineupRows.length)} of ${lineupRows.length}…`);
+        const r = await eventsApi.findLineups(lineupRows.slice(i, i + LOOKUPS_PER_REQUEST).map((e) => e.id));
+        started += r.started.length;
+      }
       setNote(
-        `Queued ${r.started.length} lineup lookup${r.started.length === 1 ? '' : 's'}. They run one at a time in the background; found lineups show up under "Lineup to review".`,
+        `Queued ${started} lineup lookup${started === 1 ? '' : 's'}. They run one at a time in the background; found lineups show up under "Lineup to review".`,
       );
       onRefresh();
     } catch (err) {
