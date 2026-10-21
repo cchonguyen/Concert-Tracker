@@ -368,3 +368,23 @@ test('a run cut off mid-way is picked up again once stale, and not before', asyn
   const done = await runJob(deps, job.id);
   assert.equal(done?.status, 'needs_review');
 });
+
+test('a second lookup of the same edition reuses the page reading instead of calling Gemini', async () => {
+  const { store, state, deps } = await setup();
+  const first = await runJob(deps, (await createLookup(deps, { eventName: 'Fest', year: 2025 })).id);
+  assert.equal(state.calls, 1);
+  const again = await runJob(deps, (await createLookup(deps, { eventName: 'Fest', year: 2025 })).id);
+  assert.equal(state.calls, 1, 'no second Gemini call for the same page');
+  assert.equal(again?.status, 'needs_review');
+  assert.deepEqual(
+    again!.candidate!.performers.map((p) => p.name).sort(),
+    first!.candidate!.performers.map((p) => p.name).sort(),
+  );
+  assert.ok(again!.log.some((l) => l.message.includes('no Gemini call')));
+  // Each job keeps its own claims, so the reuse does not double them.
+  assert.equal((await store.listPerformerClaims(again!.id)).length, (await store.listPerformerClaims(first!.id)).length);
+
+  // The same page for a different edition is read again.
+  await runJob(deps, (await createLookup(deps, { eventName: 'Fest', year: 2024 })).id);
+  assert.equal(state.calls, 2);
+});
