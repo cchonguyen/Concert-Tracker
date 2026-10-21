@@ -1,4 +1,4 @@
-import type { LineupSummary, LoggedEvent } from '../server/events/types';
+import type { LineupSummary, LoggedEvent, SeenAct } from '../server/events/types';
 import { eventScale, LineupFacts } from '../server/events/scale';
 import { eventYear } from './format';
 
@@ -101,6 +101,13 @@ export function tableDate(e: Pick<LoggedEvent, 'startDate' | 'endDate' | 'year' 
   if (e.year && e.month) return { month: MONTHS[e.month - 1], year: String(e.year), note: 'Day not known' };
   if (e.year) return { year: String(e.year), note: 'Month not known' };
   return null;
+}
+
+// Acts in the order a cell lists them: headliners first, then your favourite
+// set, then the rest as stored.
+export function actsInOrder(seen: SeenAct[]): SeenAct[] {
+  const rank = (s: SeenAct) => (s.role === 'headliner' ? 0 : s.favourite ? 1 : 2);
+  return [...seen].sort((a, b) => rank(a) - rank(b));
 }
 
 // What an event still needs, if anything, in the terms of the "needs" filter.

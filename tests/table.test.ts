@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LoggedEvent } from '../src/server/events/types.ts';
 import {
+  actsInOrder,
   EMPTY_FILTERS,
   filterEvents,
   filterOptions,
@@ -137,4 +138,13 @@ test('table dates split into aligned parts and never fill what is missing', () =
   assert.deepEqual(tableDate({ year: 2024, month: 10 }), { month: 'Oct', year: '2024', note: 'Day not known' });
   assert.deepEqual(tableDate({ year: 2023 }), { year: '2023', note: 'Month not known' });
   assert.equal(tableDate({}), null);
+});
+
+test('table cells list headliners first, then your favourite set', () => {
+  const act = (name: string, patch: Partial<LoggedEvent['seen'][number]> = {}) => ({ key: name, name, from: 'you' as const, ...patch });
+  const order = actsInOrder([act('a'), act('b', { favourite: true }), act('c', { role: 'headliner' }), act('d')]);
+  assert.deepEqual(
+    order.map((s) => s.name),
+    ['c', 'b', 'a', 'd'],
+  );
 });
