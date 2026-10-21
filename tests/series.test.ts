@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { applyPatch, newEvent } from '../src/server/events/service.ts';
 import { LoggedEvent } from '../src/server/events/types.ts';
 import { mergeSeen } from '../src/server/lineup/learning.ts';
-import { b2bGroups, leaveB2b, pairB2b, seenSlots, slotLabel, toSeenInput } from '../src/server/events/seen.ts';
+import { b2bGroups, leaveB2b, pairB2b, seenSlots, setSolo, slotLabel, toSeenInput } from '../src/server/events/seen.ts';
 import { eventTitle, seriesBase, seriesList, seriesOffers, seriesSuggestions, withPlace } from '../src/services/series.ts';
 import { EMPTY_FILTERS, filterEvents, filtersFromQuery, filtersToQuery } from '../src/services/table.ts';
 import { eventsToCsv } from '../src/services/format.ts';
@@ -194,4 +194,40 @@ test('weekend: picked by you, shown with the series, read back from the CSV', as
   assert.match(csv.split('\n')[0], /,Series,Weekend,/);
   const list = readList(csv.replace(',Coachella,1,', ',Coachella,Weekend 2,'));
   assert.deepEqual(editPatch(list.rows[0], e, list.present).patch, { weekend: 2 });
+});
+
+test('an act in a B2B can also have its own solo set, credited once', () => {
+  const e = applyPatch(
+    ev('Movement 2025'),
+    {
+      seen: [
+        { name: 'Sasha', set: 'dj', b2b: ['john digweed'], solo: true, soloSet: 'live' },
+        { name: 'John Digweed', set: 'dj' },
+        { name: 'Bicep', solo: true }, // not in a B2B: no solo set
+      ],
+    },
+    NOW,
+  );
+  assert.equal(e.seen.length, 3);
+  assert.deepEqual(
+    e.seen.map((s) => [s.name, s.solo, s.soloSet]),
+    [
+      ['Sasha', true, 'live'],
+      ['John Digweed', undefined, undefined],
+      ['Bicep', undefined, undefined],
+    ],
+  );
+  assert.deepEqual(seenSlots(e.seen).map(slotLabel), ['Sasha b2b John Digweed (DJ set)', 'Sasha (solo, Live set)', 'Bicep']);
+  assert.deepEqual(applyPatch(e, { seen: toSeenInput(e.seen) }, NOW).seen, e.seen);
+  assert.match(eventsToCsv([e]), /Sasha b2b John Digweed \(DJ set\); Sasha \(solo, Live set\)/);
+
+  // Breaking up the B2B keeps Sasha's solo set as Sasha's set.
+  const apart = leaveB2b(e.seen, 'sasha');
+  assert.deepEqual(apart.find((s) => s.key === 'sasha'), { key: 'sasha', name: 'Sasha', from: 'you', set: 'live' });
+  // Taking the solo set away leaves the B2B as it was.
+  const noSolo = setSolo(e.seen, 'sasha', false);
+  assert.deepEqual(seenSlots(noSolo).map(slotLabel), ['Sasha b2b John Digweed (DJ set)', 'Bicep']);
+  // It outlives a lineup review.
+  const merged = mergeSeen(e.seen, [{ key: 'sasha', name: 'Sasha', from: 'lineup' }], new Set(['sasha']));
+  assert.equal(merged.find((s) => s.key === 'sasha')!.soloSet, 'live');
 });
