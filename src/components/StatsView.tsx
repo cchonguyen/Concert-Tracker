@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import type { LoggedEvent } from '../services/lineupApi';
 import { whenLabel } from '../services/format';
 import { facts, pastEvents, perYear, RankBy, Ranked, top, yearInReview } from '../services/stats';
+import { eventTitle } from '../services/series';
 
 interface StatsViewProps {
   events: LoggedEvent[];
@@ -225,7 +226,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
             <li>
               <span className="text-zinc-500">First event logged: </span>
               <button onClick={() => onOpen(f.first!.id)} className="hover:text-violet-300 hover:underline">
-                {f.first.name}, {whenLabel(f.first)}
+                {eventTitle(f.first)}, {whenLabel(f.first)}
               </button>
             </li>
           )}
@@ -245,7 +246,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
           {f.longestGap && (
             <li>
               <span className="text-zinc-500">Longest break: </span>
-              {plural(f.longestGap.days, 'day')}, between {f.longestGap.from.name} and {f.longestGap.to.name}
+              {plural(f.longestGap.days, 'day')}, between {eventTitle(f.longestGap.from)} and {eventTitle(f.longestGap.to)}
             </li>
           )}
           {f.actsPerEvent && (

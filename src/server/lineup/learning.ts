@@ -13,6 +13,7 @@ import { LineupStore } from './store/types';
 import { domainOf, lineupWindow, normalizeName, seriesSlugFor } from './text';
 import { slugFromClashfinderUrl } from './adapters/clashfinder';
 import { LoggedEvent, SeenAct } from '../events/types';
+import { withB2b } from '../events/seen';
 import { Billing, isBilling } from './billing';
 
 // Review is where the system learns. Every decision is stored as data that the
@@ -68,11 +69,16 @@ export function mergeSeen(before: SeenAct[], ticked: SeenAct[], reviewedKeys: Se
   const out = new Map<string, SeenAct>();
   for (const s of before) if (!reviewedKeys.has(s.key)) out.set(s.key, s);
   for (const s of ticked) {
-    // Your favourite mark outlives a review of the lineup.
-    const kept = before.find((b) => b.key === s.key)?.favourite;
-    out.set(s.key, kept ? { ...s, favourite: true } : s);
+    // Your favourite, set and B2B marks outlive a review of the lineup.
+    const was = before.find((b) => b.key === s.key);
+    out.set(s.key, {
+      ...s,
+      ...(was?.favourite ? { favourite: true } : {}),
+      ...(was?.set ? { set: was.set } : {}),
+      ...(was?.b2b ? { b2b: was.b2b } : {}),
+    });
   }
-  return [...out.values()];
+  return withB2b([...out.values()]);
 }
 
 const EXAMPLE_CHARS = 6000;

@@ -55,8 +55,13 @@ export interface EventDetails {
   checkedAt?: string;
 }
 
+// How an act played, as you mark it. Never filled from a lineup or a guess.
+export type SetKind = 'dj' | 'live';
+
 // Artist: headliner, or no role stated. Supporting: role 'support', which
 // needs a source that says so, or you.
+// set and b2b are yours only. Acts in a B2B are still separate seen acts, so
+// each one is credited; b2b lists the keys of the others on this event.
 export interface SeenAct {
   key: string; // normalized name
   name: string;
@@ -64,6 +69,8 @@ export interface SeenAct {
   role?: Billing;
   roleFrom?: 'you' | 'lineup';
   favourite?: boolean; // your set of the night; at most one per event
+  set?: SetKind;
+  b2b?: string[];
 }
 
 // The weather where and when the event was, from the Open-Meteo archive
@@ -101,6 +108,10 @@ export interface LoggedEvent extends EventFacts {
   // What kind of night it was (club night, warehouse party, block party, ...),
   // in your words. Separate from kind, and never filled on its own.
   format?: string;
+  // The festival or tour this event is one edition of ("EDC Las Vegas"), in
+  // your words. Editions with the same series show as "<series> <year>".
+  // Set only by you; the Table can offer a name from your own event names.
+  series?: string;
   weather?: EventWeather;
   daysAttended: string[];
   companions: string[];

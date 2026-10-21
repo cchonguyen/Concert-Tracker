@@ -44,7 +44,7 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 | --- | --- |
 | **Event** | One entry in your log: something you attended. Has a name, when, where, and your personal details. Stored in `logged_events`. |
 | **Edition** | The canonical record of one occurrence of an event in the world (e.g. EDC Las Vegas on 2025-05-16, or a Porter Robinson show on 2024-10-05), with its confirmed lineup. Shared by every event that points at it. |
-| **Series** | Editions with the same name across years (EDC Las Vegas). Remembers where its lineup is published. |
+| **Series** | Editions with the same name across years (EDC Las Vegas). Remembers where its lineup is published. Your log has its own series name per event (R3.9), which you set; it does not change the canonical series. |
 | **Act** | A performer billed at an edition. |
 | **Seen act** | An act you say you saw at an event. Can exist without any lineup lookup. |
 | **Billing role** | How an act was billed: *headliner*, *support*, or not stated. **Artist** lists headliners and acts with no role stated (co-bills, festivals); **Supporting artists** lists only acts a source explicitly bills as support, or that you moved there. |
@@ -98,6 +98,8 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 | R3.5 | **Type**: an event is a **Festival** when it spans more than one day, more than 5 acts are known (confirmed lineup or acts you saw), or its date was matched to a Clashfinder edition; a **Concert** when a confirmed lineup has 5 acts or fewer on one day; otherwise **not known yet**. You can set it yourself, and your choice wins. Only your choice is stored; the rule is worked out again whenever dates or the lineup change. |
 | R3.6 | **Favourite set**: you can mark one act you saw as your set of the night. It shows first, with a heart, in the Table and is a CSV column. |
 | R3.7 | **Set times**: when a source times the sets (Clashfinder), each act you saw shows its stage and time, cited to that source. Nothing is shown for an act no source times. |
+| R3.9 | **Series**: you can link the years of a festival or tour by giving each event the same series name (EDC Las Vegas). An event in a series shows everywhere as the series and its year ("EDC Las Vegas 2024"); the name you typed stays on the event and is what a lineup lookup reads. The Table offers events whose names match once the year (and a weekend or day number) is taken out, as a group you can rename, untick from and link in one tap; nothing is linked without that tap. You can rename a series for all its events, add an event to it, or take one out. Series is a Table filter and a CSV column read back on import. |
+| R3.10 | **Set type and B2B**: you can mark an act you saw as a DJ set or a live set, and pair acts as a B2B. A B2B shows as one slot ("Sasha b2b John Digweed (DJ set)"), but each act in it is still its own seen act, so each artist is credited with the event in Artists, Stats and the Saw column. These marks are yours only; no source or rule sets them, and they survive a lineup review. A CSV "Sets" column lists them and is not read back. |
 | R3.8 | **Weather**: on request, the weather on the event's days (high, low, rain, conditions) from the Open-Meteo archive, with a link to what was read. Only for a past date and a city that matches exactly one place; otherwise the event says why and stays without. |
 
 ## 8. Views
