@@ -56,7 +56,7 @@ export interface EmailSource {
   quote: string;
 }
 
-export type ImportField = 'name' | Exclude<EventField, 'region' | 'country'>;
+export type ImportField = 'name' | Exclude<EventField, 'region' | 'country'> | 'ticketPrice';
 export type ImportFlag = 'refunded' | 'cancelled' | 'transferred_away';
 
 // new: waiting for your review; added: saved as an event; skipped: you said
@@ -82,6 +82,9 @@ export interface EmailImport {
   orderIds?: string[]; // the seller's order numbers the emails gave
   tickets?: number;
   total?: string;
+  // One ticket's cost: an email's total in dollars over its ticket count,
+  // from the first email that gives both.
+  ticketPrice?: number;
   eventId?: string; // the event it became, or the one already in your log
   createdAt: string;
   updatedAt: string;

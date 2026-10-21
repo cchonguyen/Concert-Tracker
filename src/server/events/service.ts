@@ -114,6 +114,8 @@ export function applyPatch(event: LoggedEvent, patch: EventPatch, now: Date): Lo
     const p = patch.ticketPrice === null ? undefined : Number(patch.ticketPrice);
     if (p !== undefined && (!Number.isFinite(p) || p < 0)) throw new InputError('Ticket price must be a positive number.');
     next.ticketPrice = p;
+    // Yours, even cleared: an email's price never fills it again.
+    next.sources.ticketPrice = { sourceType: 'user' };
   }
   if (patch.notes !== undefined) next.notes = text(patch.notes);
   next.updatedAt = now.toISOString();

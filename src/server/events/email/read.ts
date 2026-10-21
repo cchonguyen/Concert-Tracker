@@ -87,3 +87,12 @@ export function money(line: string | undefined): string | undefined {
   const m = line?.match(/(?:[$€£]\s?[\d,]+(?:\.\d{2})?|\bfree\b)/i);
   return m?.[0].replace(/\s+/g, '');
 }
+
+// The amount after a label, on its line ("Total: $42.50") or alone on the
+// next ("Total:" / "$ 42.50").
+export function moneyAfter(lines: string[], label: RegExp): string | undefined {
+  const at = lines.findIndex((l) => label.test(l));
+  if (at < 0) return undefined;
+  const next = lines[at + 1];
+  return money(lines[at].replace(label, '')) ?? (next && /^[$€£]\s?[\d,]+(?:\.\d{2})?$/.test(next) ? money(next) : undefined);
+}

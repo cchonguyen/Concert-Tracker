@@ -23,6 +23,7 @@ export function gotTickets(email: RawEmail, lines: string[], name: string): Read
   if (!date.startDate && !date.dateText) throw new UnreadableEmail('No event date after the event name.');
   const place = lines[at + 2]?.match(/^(.+?)\s+[—–]\s+(.+)$/);
   const order = lines.find((l) => /^Order #\s*\S/.test(l));
+  const tickets = seats(lines);
   return {
     kind: 'order',
     name: quoted(name, lines[at]),
@@ -31,5 +32,16 @@ export function gotTickets(email: RawEmail, lines: string[], name: string): Read
     city: place ? cityFrom(place[2]) : undefined,
     orderId: order?.replace(/^Order #\s*/, ''),
     total: money(lines.find((l) => /^Total:/.test(l))),
+    ...(tickets ? { tickets } : {}),
   };
+}
+
+// "Sec 141LG, Row R, Seat 5 - 8" is four tickets; general admission names
+// no seats, so no count.
+function seats(lines: string[]): number | undefined {
+  const rows = [...new Set(lines)].map((l) => l.match(/^Sec .+, Row .+, Seats? (\d+)(?:\s*-\s*(\d+))?$/i)).filter((m) => m);
+  if (rows.length !== 1) return undefined;
+  const [, from, to] = rows[0]!;
+  const n = to ? Number(to) - Number(from) + 1 : 1;
+  return n > 0 ? n : undefined;
 }

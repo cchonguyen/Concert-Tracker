@@ -1,7 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { Router } from 'express';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
-import { eventFromImport, findLogged, mergeImports, readEmails, reviewList } from './email/imports';
+import { eventFromImport, findLogged, mergeImports, pricesFromImports, readEmails, reviewList } from './email/imports';
 import { GmailApi, GmailAuthError } from './email/gmail';
 import { GMAIL_SETTING, GmailSetting, NotConnected, SCAN_SETTING, ScanSetting, scanStep } from './email/scan';
 import { EmailImport, RawEmail } from './email/types';
@@ -56,6 +56,7 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
       const [existing, events] = await Promise.all([deps.store.listImports(), deps.store.listEvents()]);
       const changed = mergeImports(existing, outcomes, events, deps.now());
       await deps.store.putImports(changed);
+      await deps.store.putEvents(pricesFromImports(changed, events, deps.now()));
       res.json({
         read: outcomes.filter((o) => 'read' in o).length,
         unreadable: outcomes.filter((o) => 'unreadable' in o).length,
@@ -97,8 +98,11 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
         events.push(event);
         changed.push({ ...row, status: 'added', eventId: event.id, updatedAt: now.toISOString() });
       }
+      // Shows already in your log take the email's price when they have none.
+      const priced = pricesFromImports(changed, events, now);
+      const pricedIds = new Set(priced.map((e) => e.id));
       // One write for all of them (Workers cap subrequests per request).
-      await deps.store.putEvents(added);
+      await deps.store.putEvents([...added.filter((e) => !pricedIds.has(e.id)), ...priced]);
       await deps.store.putImports(changed);
       res.json({ events: added, imports: changed });
     } catch (err) {

@@ -1,5 +1,5 @@
 import { fromDomain } from './text';
-import { count, dateFields, indexOfName, money, quoted, subjectAfter, valueAfter, venueFrom } from './read';
+import { count, dateFields, indexOfName, moneyAfter, quoted, subjectAfter, valueAfter, venueFrom } from './read';
 import { EmailReader, UnreadableEmail } from './types';
 
 // "Order Confirmation: <event>" and "Tickets for: <event>" (tickets ready):
@@ -24,7 +24,7 @@ export const tixr: EmailReader = {
       venue: venueFrom(lines[at + 1]),
       orderId: order?.value,
       tickets: count(lines[at + 3]),
-      total: money(lines.find((l) => /^Total Including Fees:/i.test(l))),
+      total: moneyAfter(lines, /^Total Including Fees:/i),
     };
   },
 };

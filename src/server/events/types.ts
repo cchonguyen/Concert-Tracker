@@ -105,7 +105,8 @@ export type EventKind = 'concert' | 'festival';
 export interface LoggedEvent extends EventFacts {
   id: string;
   input: string; // the line you typed
-  sources: Partial<Record<EventField, FieldSource>>;
+  // Where each fact came from; `ticketPrice` only when a ticket email gave it.
+  sources: Partial<Record<EventField | 'ticketPrice', FieldSource>>;
   details: EventDetails;
   lineupJobId?: string;
   editionId?: string;
