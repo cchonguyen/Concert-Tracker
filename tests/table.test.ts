@@ -9,6 +9,7 @@ import {
   filtersToQuery,
   needsOf,
   summarize,
+  tableDate,
   TableFilters,
 } from '../src/services/table.ts';
 
@@ -121,4 +122,19 @@ test('table filters round-trip through the page address and ignore junk', () => 
   assert.deepEqual(filtersFromQuery(filtersToQuery(filters)), { ...unset, ...filters });
   assert.equal(filtersToQuery(EMPTY_FILTERS), '');
   assert.deepEqual(filtersFromQuery('rating=9&needs=everything&sort=bogus&from=abc'), { ...EMPTY_FILTERS, ...unset });
+});
+
+test('table dates split into aligned parts and never fill what is missing', () => {
+  assert.deepEqual(tableDate({ startDate: '2024-10-05' }), { day: '5', month: 'Oct', year: '2024', note: 'Sat' });
+  assert.deepEqual(tableDate({ startDate: '2023-04-14', endDate: '2023-04-16' }), {
+    day: '14',
+    month: 'Apr',
+    year: '2023',
+    note: '3 days, to 16 Apr',
+  });
+  assert.deepEqual(tableDate({ startDate: '2024-12-30', endDate: '2025-01-01' })?.note, '3 days, to 1 Jan 2025');
+  assert.deepEqual(tableDate({ startDate: '2024-06-01', endDate: '2024-06-01' })?.note, 'Sat');
+  assert.deepEqual(tableDate({ year: 2024, month: 10 }), { month: 'Oct', year: '2024', note: 'Day not known' });
+  assert.deepEqual(tableDate({ year: 2023 }), { year: '2023', note: 'Month not known' });
+  assert.equal(tableDate({}), null);
 });
