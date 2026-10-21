@@ -161,7 +161,19 @@ export default function App() {
             />
           </>
         )}
-        {tab === 'table' && <TableView events={events} lineups={lineups} editions={editions} onOpen={setSelectedId} />}
+        {tab === 'table' && (
+          <TableView
+            events={events}
+            lineups={lineups}
+            editions={editions}
+            imports={imports}
+            onOpen={setSelectedId}
+            onImported={() => {
+              void refresh();
+              importsApi.list().then(setImports).catch(() => undefined);
+            }}
+          />
+        )}
         {tab === 'stats' && <StatsView events={events} onOpen={setSelectedId} onOpenTable={openTable} />}
         {tab === 'artists' && <ArtistsView events={events} onOpenEvent={setSelectedId} />}
       </main>
