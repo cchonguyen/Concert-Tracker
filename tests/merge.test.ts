@@ -56,7 +56,7 @@ test('merges spelling variants and marks setlist.fm evidence as performed', () =
   });
   assert.equal(lineup.performers.length, 1);
   const p = lineup.performers[0];
-  assert.equal(p.name, 'Fred Again'); // promoter wins display name by default priority
+  assert.equal(p.name, 'Fred again..'); // Clashfinder wins the display name by default priority
   assert.equal(p.status, 'performed');
   assert.equal(p.mbid, 'abc');
   assert.equal(p.sources.length, 3);
@@ -103,4 +103,34 @@ test('web search pages: an act on only one of several pages is flagged', () => {
   // A single search page is not compared against anything.
   const alone = mergeLineup({ ...base, claims: [page('https://only.example/x', 'Solo Act')] });
   assert.equal(alone.performers[0].flagged, false);
+});
+
+test('an act a full lineup leaves out is marked down, more so when the more accurate source leaves it out', () => {
+  const promoter = (name: string) =>
+    claim({ name, quotedSpan: name, sourceType: 'promoter', sourceUrl: 'https://sunsoaked.example/', evidence: 'billed' });
+  const both = ['A', 'B', 'C', 'D', 'E'];
+  const lineup = mergeLineup({
+    ...base,
+    claims: [
+      ...both.map((name) => claim({ name, quotedSpan: name })),
+      ...both.map(promoter),
+      promoter('Other Event Act'), // a promoter page listing another event's artist
+      claim({ name: 'Late Addition', quotedSpan: 'Late Addition' }),
+    ],
+  });
+  const p = (n: string) => lineup.performers.find((x) => x.name === n)!;
+  assert.ok(p('A').confidence > 0.95);
+  assert.equal(p('A').missingFrom, undefined);
+  assert.deepEqual(p('Other Event Act').missingFrom, ['clashfinder']);
+  assert.deepEqual(p('Late Addition').missingFrom, ['promoter']);
+  assert.ok(p('Other Event Act').flagged);
+  assert.equal(p('Late Addition').flagged, false);
+  assert.ok(p('Other Event Act').confidence < p('Late Addition').confidence);
+  // A partial source (a few acts) says nothing by leaving one out.
+  const partial = mergeLineup({ ...base, claims: [claim({ name: 'A' }), promoter('B')] });
+  assert.equal(partial.performers.find((x) => x.name === 'A')!.missingFrom, undefined);
+});
+
+test('Clashfinder starts out more trusted than promoter pages', () => {
+  assert.ok(sourceReliability('clashfinder', 'x', []) > sourceReliability('promoter', 'x', []));
 });

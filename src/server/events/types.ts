@@ -77,6 +77,9 @@ export interface LoggedEvent extends EventFacts {
   editionId?: string;
   seen: SeenAct[];
   kind?: EventKind; // your choice; absent means worked out by the rule
+  // What kind of night it was (club night, warehouse party, block party, ...),
+  // in your words. Separate from kind, and never filled on its own.
+  format?: string;
   daysAttended: string[];
   companions: string[];
   rating?: number;

@@ -52,6 +52,10 @@ export const eventsApi = {
   research: (id: string) => request<{ event: LoggedEvent }>(`/api/events/${id}/details`, post()).then((r) => r.event),
   pick: (id: string, candidateId?: string, fields?: EventField[]) =>
     request<{ event: LoggedEvent }>(`/api/events/${id}/details/pick`, post({ candidateId, fields })).then((r) => r.event),
+  nameArtists: (id: string) =>
+    request<{ suggestions: ArtistSuggestion[] }>(`/api/events/${id}/name-artists`).then((r) => r.suggestions),
+  findLineups: (ids: string[]) =>
+    request<{ started: string[]; skipped: Array<{ id: string; reason: string }> }>('/api/events/lineups', post({ ids })),
   findLineup: (id: string, lineupUrl?: string) =>
     request<{ event: LoggedEvent; job: LookupJob }>(`/api/events/${id}/lineup`, post({ lineupUrl })),
   cities: (q: string) => request<{ cities: string[] }>(`/api/places/cities?q=${encodeURIComponent(q)}`).then((r) => r.cities),
