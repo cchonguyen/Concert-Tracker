@@ -148,3 +148,14 @@ test('table cells list headliners first, then your favourite set', () => {
     ['c', 'b', 'a', 'd'],
   );
 });
+
+test('format holds several values, and the format filter matches any of them', async () => {
+  const { formatsOf, joinFormats } = await import('../src/services/format.ts');
+  assert.deepEqual(formatsOf(' Club night, Rave ,, club night'), ['Club night', 'Rave']);
+  assert.deepEqual(formatsOf(undefined), []);
+  assert.equal(joinFormats(['Club night', 'Rave', 'rave']), 'Club night, Rave');
+  assert.equal(joinFormats([]), null);
+  const list = [ev('x', { format: 'Club night, Rave' }), ev('y', { format: 'Rave' }), ev('z', {})];
+  assert.deepEqual(ids(filterEvents(list, f({ format: 'rave', sort: 'name', desc: false }))), ['x', 'y']);
+  assert.deepEqual(filterOptions(list).formats, ['Rave', 'Club night']);
+});

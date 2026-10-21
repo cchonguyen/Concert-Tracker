@@ -12,7 +12,7 @@ import {
   PlaceGuess,
   SOURCE_LABELS,
 } from '../services/lineupApi';
-import { whenLabel } from '../services/format';
+import { formatsOf, whenLabel } from '../services/format';
 import { toSeenInput } from '../server/events/seen';
 import { canFindLineup, cityOf, Gap, gapCounts, GAPS, hasGap, placePatch } from '../services/table';
 import { regionCode } from '../server/events/regions';
@@ -304,7 +304,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
       case 'city':
         return byCount(all.flatMap((e) => (e.city ? [cityOf(e)!] : [])));
       case 'format':
-        return byCount(all.flatMap((e) => (e.format ? [e.format] : [])));
+        return byCount(all.flatMap((e) => formatsOf(e.format)));
       case 'seen':
         return byCount(all.flatMap((e) => e.seen.map((s) => s.name)));
       case 'companions':

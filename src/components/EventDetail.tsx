@@ -14,12 +14,12 @@ import {
   PlaceGuess,
   SOURCE_LABELS,
 } from '../services/lineupApi';
-import { artistsOf, dateConfirmations, datesBetween, matchNames, pastArtistNames, pastCompanionNames, supportOf, weatherLine, whenLabel } from '../services/format';
+import { artistsOf, dateConfirmations, datesBetween, formatsOf, joinFormats, matchNames, pastArtistNames, pastCompanionNames, supportOf, weatherLine, whenLabel } from '../services/format';
 import { actSets, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
 import { norm } from '../services/listImport';
-import { leaveB2b, pairB2b, seenSlots, SET_LABELS, toSeenInput } from '../server/events/seen';
+import { leaveB2b, pairB2b, seenSlots, SET_LABELS, setSolo, SlotAct, slotId, toSeenInput } from '../server/events/seen';
 import { eventTitle, seriesList, seriesOffers, weekendFromName } from '../services/series';
 import { placePatch } from '../services/table';
 import { cityWithRegion } from '../server/events/regions';
@@ -184,6 +184,39 @@ const ChipInput: React.FC<{
   );
 };
 
+// Which days of a multi-day event you went. No days stored means every day,
+// so each day starts ticked and you untick the ones you missed. Ticking every
+// day again stores none; the last ticked day can't be unticked.
+const DaysWent: React.FC<{ days: string[]; attended: string[]; onChange: (days: string[]) => void }> = ({ days, attended, onChange }) => {
+  const picked = attended.filter((d) => days.includes(d));
+  const went = picked.length ? picked : days;
+  const toggle = (d: string) => {
+    const next = went.includes(d) ? went.filter((x) => x !== d) : [...went, d].sort();
+    onChange(next.length === days.length ? [] : next);
+  };
+  return (
+    <div className="col-span-2 flex flex-wrap items-center gap-2 text-xs text-zinc-300">
+      <span className="font-semibold text-zinc-400">Days you went{went.length === days.length ? ' (all)' : ''}:</span>
+      {days.map((d) => {
+        const on = went.includes(d);
+        const last = on && went.length === 1;
+        return (
+          <button
+            key={d}
+            onClick={() => toggle(d)}
+            disabled={last}
+            title={last ? 'You went at least one day' : on ? 'Tap if you missed this day' : 'Tap if you went this day'}
+            aria-pressed={on}
+            className={`rounded-full border px-2.5 py-1 ${on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-500 line-through'}`}
+          >
+            {new Date(`${d}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' })}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
 type Seen = LoggedEvent['seen'][number];
 type SeenPatch = NonNullable<EventPatch['seen']>;
 
@@ -197,7 +230,9 @@ const NEXT_SET: Record<string, Seen['set'] | null> = { none: 'dj', dj: 'live', l
 // stage and time where a source times it.
 // The set button cycles DJ set, live set and unmarked. The link button pairs
 // acts as a B2B: tap it on one act, then on the other. Each act in a B2B is
-// still its own seen act, so each is credited.
+// still its own seen act, so each is credited. "+ solo" on an act in a B2B
+// adds its own solo set at the same event (typing its name again does too);
+// the solo chip has its own set button, and its x takes the solo set away.
 // Typing offers acts you've entered on other events; a click, or arrow keys
 // then Enter, adds one as you spelled it before. Enter alone adds what you typed.
 const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string[]; onChange: (seen: SeenPatch) => void }> = ({
@@ -209,9 +244,16 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
   const [draft, setDraft] = useState('');
   const [active, setActive] = useState(-1);
   const [pairing, setPairing] = useState<string | null>(null);
-  const matches = matchNames(draft, past, new Set(seen.map((s) => s.key)));
+  // An act in a B2B without a solo set can be typed again, for its solo set.
+  const canSolo = (s: Seen) => Boolean(s.b2b?.length) && !s.solo;
+  const matches = matchNames(draft, past, new Set(seen.filter((s) => !canSolo(s)).map((s) => s.key)));
   const addNames = (names: string[]) => {
-    if (names.length) onChange([...toPatch(seen), ...names.map((name) => ({ name, from: 'you' as const }))]);
+    const soloKeys = new Set(seen.filter(canSolo).map((s) => s.key));
+    const solos = names.filter((n) => soloKeys.has(norm(n)));
+    const fresh = names.filter((n) => !soloKeys.has(norm(n)));
+    let next = seen;
+    for (const n of solos) next = setSolo(next, norm(n), true);
+    if (names.length) onChange([...toPatch(next), ...fresh.map((name) => ({ name, from: 'you' as const }))]);
     setDraft('');
     setActive(-1);
   };
@@ -221,8 +263,16 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
   const remove = (key: string) => onChange(toPatch(seen.filter((s) => s.key !== key)));
   const favourite = (key: string) =>
     onChange(toPatch(seen).map((s, i) => ({ ...s, favourite: seen[i].key === key && !seen[i].favourite })));
-  const cycleSet = (key: string) =>
-    onChange(toPatch(seen).map((s, i) => (seen[i].key === key ? { ...s, set: NEXT_SET[seen[i].set ?? 'none'] } : s)));
+  const cycleSet = (key: string, solo = false) =>
+    onChange(
+      toPatch(seen).map((s, i) =>
+        seen[i].key !== key
+          ? s
+          : solo
+            ? { ...s, soloSet: NEXT_SET[seen[i].soloSet ?? 'none'] }
+            : { ...s, set: NEXT_SET[seen[i].set ?? 'none'] },
+      ),
+    );
   const b2bTap = (s: Seen) => {
     if (pairing === s.key) return setPairing(null);
     if (pairing) {
@@ -233,9 +283,9 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
     setPairing(s.key);
   };
   const pairingName = seen.find((s) => s.key === pairing)?.name;
-  const chip = (s: Seen) => (
+  const chip = (s: SlotAct<Seen>) => (
     <span
-      key={s.key}
+      key={s.asSolo ? `${s.key}:solo` : s.key}
       className={`inline-flex items-center gap-1 rounded-full py-1 pl-2.5 pr-1.5 text-sm text-zinc-100 ${
         pairing === s.key ? 'bg-violet-700/50 ring-1 ring-violet-400' : 'bg-zinc-800'
       }`}
@@ -258,38 +308,57 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
         {s.name}
       </button>
       {s.role === 'headliner' && <span className="text-[10px] uppercase text-amber-300/80">headliner</span>}
+      {s.asSolo && <span className="text-[10px] uppercase text-violet-300/80">solo</span>}
       {sets.get(s.key) && <span className="text-[10px] text-zinc-500">{sets.get(s.key)}</span>}
       <button
-        onClick={() => cycleSet(s.key)}
+        onClick={() => cycleSet(s.key, s.asSolo)}
         aria-label={s.set ? `${s.name}: ${SET_LABELS[s.set]}. Change` : `Mark ${s.name} as DJ set or live set`}
         title={s.set ? `${SET_LABELS[s.set]} (tap to change)` : 'DJ set or live set?'}
         className={`rounded px-1 text-[10px] uppercase ${s.set ? 'bg-sky-500/15 text-sky-300' : 'text-zinc-600 hover:text-zinc-300'}`}
       >
         {s.set === 'dj' ? 'DJ' : s.set === 'live' ? 'Live' : 'set'}
       </button>
+      {canSolo(s) && !s.asSolo && (
+        <button
+          onClick={() => onChange(toPatch(setSolo(seen, s.key, true)))}
+          aria-label={`${s.name} also played a solo set`}
+          title="Also saw a solo set"
+          className="text-[10px] text-zinc-600 hover:text-zinc-300"
+        >
+          +solo
+        </button>
+      )}
+      {!s.asSolo && (
+        <button
+          onClick={() => b2bTap(s)}
+          aria-label={
+            pairing && pairing !== s.key
+              ? `B2B with ${pairingName}`
+              : s.b2b?.length
+                ? `Take ${s.name} out of the B2B`
+                : `Pair ${s.name} B2B with another act`
+          }
+          title={pairing && pairing !== s.key ? `B2B with ${pairingName}` : s.b2b?.length ? 'Take out of the B2B' : 'B2B with another act'}
+          className={s.b2b?.length || pairing === s.key ? 'text-violet-300' : 'text-zinc-600 hover:text-zinc-300'}
+        >
+          <Link2 className="h-3 w-3" />
+        </button>
+      )}
+      {!s.asSolo && (
+        <button
+          onClick={() => setRole(s.key, s.role === 'support' ? null : 'support')}
+          aria-label={s.role === 'support' ? `Move ${s.name} to Artist` : `Move ${s.name} to Supporting`}
+          title={s.role === 'support' ? 'Move to Artist' : 'Move to Supporting'}
+          className="text-zinc-500 hover:text-zinc-200"
+        >
+          {s.role === 'support' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+        </button>
+      )}
       <button
-        onClick={() => b2bTap(s)}
-        aria-label={
-          pairing && pairing !== s.key
-            ? `B2B with ${pairingName}`
-            : s.b2b?.length
-              ? `Take ${s.name} out of the B2B`
-              : `Pair ${s.name} B2B with another act`
-        }
-        title={pairing && pairing !== s.key ? `B2B with ${pairingName}` : s.b2b?.length ? 'Take out of the B2B' : 'B2B with another act'}
-        className={s.b2b?.length || pairing === s.key ? 'text-violet-300' : 'text-zinc-600 hover:text-zinc-300'}
-      >
-        <Link2 className="h-3 w-3" />
-      </button>
-      <button
-        onClick={() => setRole(s.key, s.role === 'support' ? null : 'support')}
-        aria-label={s.role === 'support' ? `Move ${s.name} to Artist` : `Move ${s.name} to Supporting`}
-        title={s.role === 'support' ? 'Move to Artist' : 'Move to Supporting'}
+        onClick={() => (s.asSolo ? onChange(toPatch(setSolo(seen, s.key, false))) : remove(s.key))}
+        aria-label={s.asSolo ? `Remove ${s.name}'s solo set` : `Remove ${s.name}`}
         className="text-zinc-500 hover:text-zinc-200"
       >
-        {s.role === 'support' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-      </button>
-      <button onClick={() => remove(s.key)} aria-label={`Remove ${s.name}`} className="text-zinc-500 hover:text-zinc-200">
         <X className="h-3 w-3" />
       </button>
     </span>
@@ -297,11 +366,11 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
   const artists = artistsOf(seen);
   const support = supportOf(seen);
   // A B2B shows as one slot: its acts side by side, joined by "b2b".
-  const slot = (acts: Seen[]) =>
+  const slot = (acts: Array<SlotAct<Seen>>) =>
     acts.length === 1 ? (
       chip(acts[0])
     ) : (
-      <span key={acts.map((a) => a.key).join('+')} className="inline-flex flex-wrap items-center gap-1 rounded-full border border-violet-500/30 p-0.5">
+      <span key={slotId(acts)} className="inline-flex flex-wrap items-center gap-1 rounded-full border border-violet-500/30 p-0.5">
         {acts.map((a, i) => (
           <React.Fragment key={a.key}>
             {i > 0 && <span className="text-[10px] font-semibold uppercase text-violet-300/80">b2b</span>}
@@ -447,8 +516,8 @@ const FORMAT_IDEAS = [
   'Livestream',
 ];
 
-// Venues, cities and formats you've entered before, most used first.
-function pastValues(events: LoggedEvent[], field: 'venue' | 'city' | 'format'): string[] {
+// Venues and cities you've entered before, most used first.
+function pastValues(events: LoggedEvent[], field: 'venue' | 'city'): string[] {
   const counts = new Map<string, number>();
   for (const e of events) {
     const v = e[field]?.trim();
@@ -521,7 +590,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     };
   }, [event.city, event.region, event.country]);
   const guessed = placeGuess ? placePatch(event, placeGuess) : null;
-  const formatSuggestions = [...new Set([...pastValues(others, 'format'), ...FORMAT_IDEAS])];
+  const formatSuggestions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of others) for (const v of formatsOf(e.format)) counts.set(v, (counts.get(v) ?? 0) + 1);
+    const past = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([v]) => v);
+    return [...new Set([...past, ...FORMAT_IDEAS])];
+  }, [events, event.id]);
   const pastArtists = useMemo(() => pastArtistNames(others), [events, event.id]);
   const pastCompanions = useMemo(() => pastCompanionNames(others), [events, event.id]);
 
@@ -690,6 +764,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               offer={offer('endDate')}
               onSave={(v) => save({ endDate: v && v !== event.startDate ? v : null })}
             />
+            {days.length > 1 && (
+              <DaysWent days={days} attended={event.daysAttended} onChange={(daysAttended) => save({ daysAttended })} />
+            )}
             {!event.startDate && (
               <Field label="Year, if that's all you know" type="number" value={event.year} placeholder="2024" onSave={(v) => save({ year: v ? Number(v) : null })} />
             )}
@@ -937,34 +1014,20 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         {/* Your details */}
         <section className="space-y-3">
           <h3 className={sectionTitle}>Your notes</h3>
-          <Field
-            label="Format"
-            value={event.format}
-            placeholder="Club night, warehouse party, block party…"
-            suggestions={formatSuggestions}
-            onSave={(v) => save({ format: text(v) })}
-          />
+          <label className="block space-y-1">
+            <span className="text-[11px] font-semibold text-zinc-400">Format</span>
+            <ChipInput
+              items={formatsOf(event.format)}
+              placeholder="Club night, warehouse party, block party…"
+              past={formatSuggestions}
+              label="Add a format"
+              onChange={(formats) => save({ format: joinFormats(formats) })}
+            />
+          </label>
           <label className="block space-y-1">
             <span className="text-[11px] font-semibold text-zinc-400">Went with</span>
             <ChipInput items={event.companions} placeholder="Add a name" past={pastCompanions} label="Add who you went with" onChange={(companions) => save({ companions })} />
           </label>
-          {days.length > 1 && (
-            <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-300">
-              <span className="font-semibold text-zinc-400">Days you went:</span>
-              {days.map((d) => {
-                const on = event.daysAttended.includes(d);
-                return (
-                  <button
-                    key={d}
-                    onClick={() => save({ daysAttended: on ? event.daysAttended.filter((x) => x !== d) : [...event.daysAttended, d].sort() })}
-                    className={`rounded-full border px-2.5 py-1 ${on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-400'}`}
-                  >
-                    {new Date(`${d}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' })}
-                  </button>
-                );
-              })}
-            </div>
-          )}
           <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-1">
               <span className="text-[11px] font-semibold text-zinc-400">Rating</span>

@@ -80,6 +80,8 @@ export function mergeSeen(before: SeenAct[], ticked: SeenAct[], reviewedKeys: Se
       ...(was?.favourite ? { favourite: true } : {}),
       ...(was?.set && !setChosen.has(s.key) ? { set: was.set } : {}),
       ...(was?.b2b ? { b2b: was.b2b } : {}),
+      ...(was?.solo ? { solo: true } : {}),
+      ...(was?.soloSet ? { soloSet: was.soloSet } : {}),
     });
   }
   return withB2b([...out.values()]);

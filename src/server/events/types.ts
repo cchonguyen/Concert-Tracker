@@ -71,8 +71,12 @@ export interface SeenAct {
   role?: Billing;
   roleFrom?: 'you' | 'lineup';
   favourite?: boolean; // your set of the night; at most one per event
-  set?: SetKind;
+  set?: SetKind; // in a B2B: how the B2B was played
   b2b?: string[];
+  // In a B2B, you also saw this act play on its own at the event; soloSet is
+  // how that set was played. Still one seen act, credited once.
+  solo?: boolean;
+  soloSet?: SetKind;
 }
 
 // The weather where and when the event was, from the Open-Meteo archive
