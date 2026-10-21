@@ -45,6 +45,7 @@ export interface EventPatch {
   country?: string | null;
   seen?: Array<{ name: string; from?: SeenAct['from']; role?: SeenAct['role'] | null; roleFrom?: SeenAct['roleFrom'] }>;
   kind?: EventKind | null; // null: worked out by the rule again
+  format?: string | null;
   daysAttended?: string[];
   companions?: string[];
   rating?: number | null;
@@ -82,6 +83,7 @@ export function applyPatch(event: LoggedEvent, patch: EventPatch, now: Date): Lo
     if (patch.kind !== null && patch.kind !== 'concert' && patch.kind !== 'festival') throw new InputError('Type is concert or festival.');
     next.kind = patch.kind ?? undefined;
   }
+  if (patch.format !== undefined) next.format = text(patch.format);
   if (patch.daysAttended) next.daysAttended = patch.daysAttended.filter((d) => DATE.test(d));
   if (patch.companions) next.companions = [...new Set(patch.companions.map((c) => c.trim()).filter(Boolean))];
   if (patch.rating !== undefined) {
@@ -147,6 +149,45 @@ export async function startLineupLookup(
   const updated = { ...event, lineupJobId: job.id, updatedAt: deps.now().toISOString() };
   await deps.store.putEvent(updated);
   return { event: updated, job };
+}
+
+export const MAX_BULK_LOOKUPS = 50;
+
+export interface BulkLookupResult {
+  started: string[]; // event ids
+  skipped: Array<{ id: string; reason: string }>;
+}
+
+// "Find lineups for all": a lookup for each event that has a year and no
+// lineup yet. Jobs are only queued; the worker runs them one at a time, so a
+// batch never bursts past the sources' limits, and quota parks them as usual.
+export async function startBulkLookups(deps: PipelineDeps, ids: string[]): Promise<BulkLookupResult> {
+  const result: BulkLookupResult = { started: [], skipped: [] };
+  const unique = [...new Set(ids)];
+  if (unique.length > MAX_BULK_LOOKUPS) throw new InputError(`At most ${MAX_BULK_LOOKUPS} events at a time.`);
+  for (const id of unique) {
+    const event = await deps.store.getEvent(id);
+    if (!event) {
+      result.skipped.push({ id, reason: 'not found' });
+      continue;
+    }
+    if (event.editionId) {
+      result.skipped.push({ id, reason: 'lineup already confirmed' });
+      continue;
+    }
+    if (!event.year && !event.startDate) {
+      result.skipped.push({ id, reason: 'no date' });
+      continue;
+    }
+    const job = event.lineupJobId ? await deps.store.getJob(event.lineupJobId) : null;
+    if (job && job.status !== 'failed') {
+      result.skipped.push({ id, reason: `lookup ${job.status.replace('_', ' ')}` });
+      continue;
+    }
+    await startLineupLookup(deps, event);
+    result.started.push(id);
+  }
+  return result;
 }
 
 export function lineupSummary(job: LookupJob): LineupSummary {

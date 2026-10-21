@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Download, FileUp, SlidersHorizontal, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Download, FileUp, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import type { EmailImport, LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
 import { artistsOf, downloadText, eventsToCsv, kindLabel, supportOf, whenLabel } from '../services/format';
 import {
@@ -18,6 +18,7 @@ import {
   TableFilters,
 } from '../services/table';
 import { ListImport } from './ListImport';
+import { FillGaps } from './FillGaps';
 
 interface TableViewProps {
   events: LoggedEvent[];
@@ -26,6 +27,7 @@ interface TableViewProps {
   imports: EmailImport[];
   onOpen: (id: string) => void;
   onImported: () => void;
+  onChanged: (event: LoggedEvent) => void;
 }
 
 const control =
@@ -87,7 +89,8 @@ const names = (acts: LoggedEvent['seen']) =>
 
 // Every event as a row you can filter, sort and export. A row opens the usual
 // event panel for editing; "Import a list" adds events from a CSV you kept.
-export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, imports, onOpen, onImported }) => {
+export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, imports, onOpen, onImported, onChanged }) => {
+  const [filling, setFilling] = useState(false);
   const [filters, setFilters] = useState<TableFilters>(readQuery);
   const [importing, setImporting] = useState(false);
   const [showFilters, setShowFilters] = useState(() => activeFilterCount(readQuery()) > 0);
@@ -117,6 +120,11 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const importPanel = importing && (
     <ListImport events={events} imports={imports} onDone={onImported} onClose={() => setImporting(false)} />
   );
+  const fillButton = (
+    <button onClick={() => setFilling(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+      <Sparkles className="h-3.5 w-3.5" /> Fill gaps
+    </button>
+  );
 
   if (!events.length) {
     return (
@@ -131,6 +139,21 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   return (
     <div className="space-y-3">
       {importPanel}
+      {filling && (
+        <FillGaps
+          events={rows}
+          all={events}
+          lineups={lineups}
+          editions={editions}
+          onChanged={onChanged}
+          onRefresh={onImported}
+          onOpen={(id) => {
+            setFilling(false);
+            onOpen(id);
+          }}
+          onClose={() => setFilling(false)}
+        />
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <input
           value={filters.q}
@@ -198,6 +221,9 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
             onChange={(v) => set({ needs: (v || 'any') as TableFilters['needs'] })}
             options={Object.entries(NEEDS_LABELS).map(([value, l]) => ({ value, label: l }))}
           />
+          {options.formats.length > 0 && (
+            <Select name="Format" value={filters.format} onChange={(v) => set({ format: v })} options={list(options.formats)} />
+          )}
           <Select
             name="Type"
             value={filters.kind === 'any' ? '' : filters.kind}
@@ -244,6 +270,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
           {summary.totalPrice !== undefined && ` · ${summary.totalPrice.toLocaleString()} spent (${summary.priced} priced)`}
         </span>
         <span className="flex items-center gap-4">
+          {fillButton}
           {importButton}
           <button
           onClick={() => downloadText(`livearchive-${new Date().toISOString().slice(0, 10)}.csv`, eventsToCsv(rows, editions))}
@@ -285,7 +312,10 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                     <tr key={e.id} onClick={() => onOpen(e.id)} className="cursor-pointer hover:bg-zinc-900/60">
                       <td className="whitespace-nowrap px-3 py-2 text-zinc-400">{whenLabel(e) ?? dash}</td>
                       <td className="px-3 py-2 font-medium text-zinc-100">{e.name}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-zinc-400">{kindLabel(e, editions[e.id]) || dash}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-zinc-400" title={e.format}>
+                        {kindLabel(e, editions[e.id]) || dash}
+                        {e.format && <div className="text-[11px] text-zinc-500">{e.format}</div>}
+                      </td>
                       <td className="px-3 py-2 text-zinc-300">{e.venue ?? dash}</td>
                       <td className="px-3 py-2 text-zinc-300">{e.city ?? dash}</td>
                       <td className="px-3 py-2 text-zinc-300" title={artistsOf(e.seen).map((s) => s.name).join(', ')}>

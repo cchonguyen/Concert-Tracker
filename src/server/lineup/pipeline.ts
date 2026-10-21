@@ -16,6 +16,7 @@ import { GeminiClient, EXTRACTION_PROMPT_VERSION } from './gemini';
 import { QuotaExhaustedError, QuotaLedger } from './quota';
 import { appendFacts, mergeLineup } from './merge';
 import { domainOf, editionKeyFor, htmlToText, isVerbatim, normalizeName, seriesSlugFor } from './text';
+import { isBilling, quoteBacksBilling } from './billing';
 import { makeDocument } from './adapters/common';
 import { resolveArtist } from './musicbrainz';
 import { redactSecrets } from './http';
@@ -259,6 +260,7 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
           evidence: 'billed',
           day: e.day && /^\d{4}-\d{2}-\d{2}$/.test(e.day) && normalizedDoc.includes(normalizeName(e.day)) ? e.day : undefined,
           stage: e.stage && normalizedDoc.includes(normalizeName(e.stage)) ? e.stage : undefined,
+          billing: isBilling(e.billing) && quoteBacksBilling(e.quote, e.name, e.billing) ? e.billing : undefined,
           extractor: `gemini:${deps.gemini!.model}`,
           extractorVersion: EXTRACTION_PROMPT_VERSION,
           createdAt: now.toISOString(),
