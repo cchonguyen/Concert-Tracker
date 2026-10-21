@@ -4,7 +4,7 @@ import { applyPatch, newEvent } from '../src/server/events/service.ts';
 import { LoggedEvent } from '../src/server/events/types.ts';
 import { mergeSeen } from '../src/server/lineup/learning.ts';
 import { b2bGroups, leaveB2b, pairB2b, seenSlots, slotLabel, toSeenInput } from '../src/server/events/seen.ts';
-import { eventTitle, seriesBase, seriesList, seriesOffers, seriesSuggestions } from '../src/services/series.ts';
+import { eventTitle, seriesBase, seriesList, seriesOffers, seriesSuggestions, withPlace } from '../src/services/series.ts';
 import { EMPTY_FILTERS, filterEvents, filtersFromQuery, filtersToQuery } from '../src/services/table.ts';
 import { eventsToCsv } from '../src/services/format.ts';
 import { editPatch, readList } from '../src/services/listImport.ts';
@@ -123,4 +123,32 @@ test('your set marks outlive a lineup review, and the CSV lists them', () => {
   assert.deepEqual(merged.find((s) => s.key === 'sasha'), { key: 'sasha', name: 'Sasha', from: 'lineup', set: 'dj', b2b: ['john digweed'] });
   const csv = eventsToCsv([{ ...ev('Movement 2024'), seen: merged }]);
   assert.match(csv, /,John Digweed b2b Sasha \(DJ set\),/);
+});
+
+test('series take the town from the city: same festival, two cities, two series', () => {
+  const lv = [ev('EDC 2023', { city: 'Las Vegas, NV' }), ev('EDC 2024', { city: 'Las Vegas, NV' }), ev('EDC 2025')];
+  const orl = [ev('EDC Orlando 2022', { city: 'Orlando, FL' }), ev('EDC 2023', { city: 'Orlando, FL' })];
+  const groups = seriesSuggestions([...lv, ...orl]);
+  assert.deepEqual(
+    groups.map((g) => [g.name, g.events.length]),
+    [
+      ['EDC Las Vegas', 2],
+      ['EDC Orlando', 2],
+    ],
+  );
+  // With two cities known for the name, an event with no city is not placed.
+  assert.ok(!groups.some((g) => g.events.includes(lv[2])));
+  // Only Las Vegas known: the event with no city joins it.
+  assert.equal(seriesSuggestions(lv)[0].events.length, 3);
+
+  // A series named without a place shows the event's town; one that says it already does not repeat it.
+  assert.equal(eventTitle({ ...lv[1], series: 'EDC' }), 'EDC Las Vegas 2024');
+  assert.equal(eventTitle({ ...lv[1], series: 'EDC Las Vegas' }), 'EDC Las Vegas 2024');
+  assert.equal(eventTitle({ ...lv[2], series: 'EDC' }), 'EDC 2025');
+  assert.equal(withPlace('Lightning in a Bottle', 'Buena Vista Lake, CA'), 'Lightning in a Bottle Buena Vista Lake');
+  // A series you linked as "EDC" is offered new Las Vegas years under your name.
+  const linked = lv.slice(0, 2).map((e) => ({ ...e, series: 'EDC' }));
+  const [next] = seriesSuggestions([...linked, ev('EDC 2026', { city: 'Las Vegas, NV' })]);
+  assert.equal(next.name, 'EDC');
+  assert.equal(next.linked, 2);
 });
