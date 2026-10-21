@@ -71,6 +71,38 @@ function hasField(e: LoggedEvent, f: HasField): boolean {
   }
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// A date cell split into parts, so day, month and year line up in their own
+// columns down the table. Parts the event does not have stay empty, and the
+// note says what is missing; nothing is filled in.
+export interface TableDate {
+  day?: string;
+  month?: string;
+  year: string;
+  note?: string;
+}
+
+const utc = (iso: string) => new Date(`${iso}T12:00:00Z`);
+
+export function tableDate(e: Pick<LoggedEvent, 'startDate' | 'endDate' | 'year' | 'month'>): TableDate | null {
+  if (e.startDate) {
+    const start = utc(e.startDate);
+    const parts = { day: String(start.getUTCDate()), month: MONTHS[start.getUTCMonth()], year: String(start.getUTCFullYear()) };
+    if (e.endDate && e.endDate > e.startDate) {
+      const end = utc(e.endDate);
+      const days = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+      const year = end.getUTCFullYear() === start.getUTCFullYear() ? '' : ` ${end.getUTCFullYear()}`;
+      return { ...parts, note: `${days} days, to ${end.getUTCDate()} ${MONTHS[end.getUTCMonth()]}${year}` };
+    }
+    return { ...parts, note: WEEKDAYS[start.getUTCDay()] };
+  }
+  if (e.year && e.month) return { month: MONTHS[e.month - 1], year: String(e.year), note: 'Day not known' };
+  if (e.year) return { year: String(e.year), note: 'Month not known' };
+  return null;
+}
+
 // What an event still needs, if anything, in the terms of the "needs" filter.
 export function needsOf(e: LoggedEvent, lineup?: LineupSummary): Exclude<Needs, 'any'> | null {
   if (e.details.status === 'needs_date' || (!e.startDate && !e.year)) return 'date';
