@@ -286,7 +286,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
 
           {skipped.length > 0 && (
             <details className="space-y-2">
-              <summary className={`${sectionTitle} cursor-pointer`}>Didn't go ({skipped.length})</summary>
+              <summary className={`${sectionTitle} cursor-pointer`}>Left out ({skipped.length})</summary>
               {skipped.map((r) => (
                 <Row
                   key={r.id}
@@ -319,7 +319,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
               disabled={busy || !chosen.length}
               className="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-40"
             >
-              I didn't go to these
+              Leave these out
             </button>
             <button
               onClick={add}

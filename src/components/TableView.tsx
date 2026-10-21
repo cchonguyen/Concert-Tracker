@@ -24,6 +24,7 @@ import type { EmailImport, LineupFacts, LineupSummary, LoggedEvent } from '../se
 import { artistsOf, downloadText, eventsToCsv, kindLabel, supportOf, whenLabel } from '../services/format';
 import {
   activeFilterCount,
+  actsInOrder,
   EMPTY_FILTERS,
   filterEvents,
   filterOptions,
@@ -163,12 +164,16 @@ const NeedsBadge: React.FC<{ needs: keyof typeof NEEDS_LABELS }> = ({ needs }) =
 };
 
 // At most a few names in a cell; the full list is in the tooltip.
-// Your favourite set comes first, with a heart.
+// Headliners come first, in bold, then your favourite set, with a heart.
 // A B2B counts as one slot ("A b2b B"); DJ and live sets are tagged.
 const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, muted }) => {
-  const fav = (slot: LoggedEvent['seen']) => Number(slot.some((s) => s.favourite));
-  const slots = seenSlots([...seen]).sort((a, b) => fav(b) - fav(a));
+  const slots = seenSlots(actsInOrder(seen));
   const shown = slots.slice(0, 3);
+  const tag = (set: 'dj' | 'live') => (
+    <span className="ml-1 text-[10px] uppercase text-sky-300/80" title={SET_LABELS[set]}>
+      {set === 'dj' ? 'DJ' : 'Live'}
+    </span>
+  );
   return (
     <span className={muted ? 'text-zinc-500' : 'text-zinc-200'}>
       {shown.map((slot, i) => {
@@ -180,15 +185,17 @@ const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, 
             {slot.map((s, j) => (
               <React.Fragment key={s.key}>
                 {j > 0 && <span className="text-[10px] uppercase text-violet-300/80"> b2b </span>}
-                {s.name}
-                {!set && s.set && <span className="ml-1 text-[10px] uppercase text-sky-300/80">{s.set === 'dj' ? 'DJ' : 'Live'}</span>}
+                {s.role === 'headliner' ? (
+                  <span className="font-semibold text-amber-100" title="Headliner">
+                    {s.name}
+                  </span>
+                ) : (
+                  s.name
+                )}
+                {!set && s.set && tag(s.set)}
               </React.Fragment>
             ))}
-            {set && (
-              <span className="ml-1 text-[10px] uppercase text-sky-300/80" title={SET_LABELS[set]}>
-                {set === 'dj' ? 'DJ' : 'Live'}
-              </span>
-            )}
+            {set && tag(set)}
           </React.Fragment>
         );
       })}

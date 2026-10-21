@@ -26,11 +26,14 @@ export interface ScanCursor {
   recent: Record<string, string>;
 }
 
-// The sellers' own mail, plus `forwards`: mail someone forwarded to you.
-// Forwards have their own cursor, so the first check after it was added
-// searches all your past mail for them.
+// One cursor per seller (`sellers`, by domain), so a seller whose reader
+// was just added is searched through all your past mail once, plus
+// `forwards`: mail someone forwarded to you. `scannedThrough` and `recent`
+// at the top are how far the first checks read every seller at once; a
+// seller that already has rows on the review list starts from there.
 export interface ScanSetting extends ScanCursor {
   lastCheckedAt?: string; // when a check last finished
+  sellers?: Record<string, ScanCursor>;
   forwards?: ScanCursor;
 }
 
@@ -45,7 +48,9 @@ export interface ScanStep {
 export class NotConnected extends Error {}
 
 const domains = () => READERS.map((r) => r.domain).join(' OR ');
-export const senderQuery = () => `from:(${domains()})`;
+// A seller's own mail; `search` narrows it to its ticket mail when the
+// seller also sends a lot of ads.
+export const sellerQuery = (reader: (typeof READERS)[number]) => `from:(${reader.domain})${reader.search ? ` ${reader.search}` : ''}`;
 // A forward keeps the seller's address in its header ("From: Tixr
 // <no-reply@tixr.com>"), so Gmail finds it by that word. Your own forwards
 // to others are left out.
@@ -67,10 +72,16 @@ export async function scanStep(store: LineupStore, gmail: GmailApi, now: Date, b
   const [existing, events, saved] = await Promise.all([store.listImports(), store.listEvents(), store.getSetting<ScanSetting>(SCAN_SETTING)]);
   const state = saved ?? startingPoint(existing);
   state.forwards ??= { recent: {} };
-  const searches: Array<[string, ScanCursor]> = [
-    [senderQuery(), state],
-    [forwardQuery(), state.forwards],
-  ];
+  state.sellers ??= {};
+  const sellersWithRows = new Set(existing.map((r) => r.seller));
+  const searches: Array<[string, ScanCursor]> = READERS.map((reader) => {
+    const cursor = (state.sellers![reader.domain] ??= sellersWithRows.has(reader.seller)
+      ? { scannedThrough: state.scannedThrough, recent: { ...state.recent } }
+      : { recent: {} });
+    return [sellerQuery(reader), cursor];
+  });
+  searches.push([forwardQuery(), state.forwards]);
+  const cursors = searches.map(([, c]) => c);
 
   // Gmail lists newest first; each search is read oldest first so a check
   // that stops halfway picks up where it left off, one search at a time.
@@ -78,7 +89,7 @@ export async function scanStep(store: LineupStore, gmail: GmailApi, now: Date, b
   const todos: Array<[ScanCursor, string[]]> = [];
   for (const [query, cursor] of searches) {
     const ids = (await gmail.listIds(login.refreshToken, since(query, cursor)))
-      .filter((id) => !known.has(id) && !(id in cursor.recent) && !(id in state.recent) && !(id in state.forwards!.recent))
+      .filter((id) => !known.has(id) && !cursors.some((c) => id in c.recent))
       .reverse();
     ids.forEach((id) => known.add(id));
     todos.push([cursor, ids]);
@@ -96,6 +107,9 @@ export async function scanStep(store: LineupStore, gmail: GmailApi, now: Date, b
   }
   const cutoff = cursor.scannedThrough ? Date.parse(cursor.scannedThrough) - DAY_MS : 0;
   cursor.recent = Object.fromEntries(Object.entries(cursor.recent).filter(([, at]) => Date.parse(at) >= cutoff));
+  // How far your mail has been read, for the page: the furthest any search got.
+  const furthest = cursors.map((c) => c.scannedThrough).filter((t): t is string => Boolean(t)).sort().pop();
+  if (furthest && (!state.scannedThrough || furthest > state.scannedThrough)) state.scannedThrough = furthest;
   const remaining = todos.reduce((n, [, ids]) => n + ids.length, 0) - messages.length;
   if (!remaining) state.lastCheckedAt = now.toISOString();
   await store.putSetting(SCAN_SETTING, state);
