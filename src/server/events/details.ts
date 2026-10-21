@@ -8,6 +8,7 @@ import { findDates, parseEventInput } from './parse';
 import { matchingEvents } from '../lineup/adapters/ticketmaster';
 import { clashfinderAuthQuery, matchEdition, parseEventList } from '../lineup/adapters/clashfinder';
 import { cityLabel, placeFromPage } from './place';
+import { cityWithRegion, splitEventCity } from './regions';
 import { DetailCandidate, EventDetails, EventField, EVENT_FIELDS, LoggedEvent } from './types';
 
 // Stage 1 research: find and verify an event's date and place from structured
@@ -285,7 +286,8 @@ export function applyCandidate(event: LoggedEvent, c: DetailCandidate, picked: b
     next.year = Number(next.startDate.slice(0, 4));
     next.month = undefined;
   }
-  return next;
+  // Sources write "Las Vegas, NV"; a city taken from one brings its state.
+  return next.city !== event.city ? splitEventCity(next, picked) : next;
 }
 
 // Runs every configured finder and decides what to do with the results.
@@ -316,7 +318,7 @@ export async function researchEvent(
     startDate: event.startDate,
     endDate: event.endDate,
     venue: event.venue,
-    city: event.city,
+    city: cityWithRegion(event.city, event.region),
   };
   const notes: string[] = [];
   const found: DetailCandidate[] = [];

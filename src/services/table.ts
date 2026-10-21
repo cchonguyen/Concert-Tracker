@@ -2,6 +2,7 @@ import type { LineupSummary, LoggedEvent, SeenAct } from '../server/events/types
 import { eventScale, LineupFacts } from '../server/events/scale';
 import { eventYear } from './format';
 import { eventTitle } from './series';
+import { cityWithRegion, NORTH_AMERICA } from '../server/events/regions';
 
 // The Table view: filters, sorting and a summary over the event list the app
 // already loaded. Read-only; nothing here is stored. An empty field is a gap,
@@ -21,7 +22,8 @@ export interface TableFilters {
   yearFrom?: number;
   yearTo?: number;
   venue: string;
-  city: string;
+  city: string; // "Las Vegas, NV": the city with its state, so two Portlands stay apart
+  region: string;
   country: string;
   artist: string; // a seen act's key
   companion: string;
@@ -40,6 +42,7 @@ export const EMPTY_FILTERS: TableFilters = {
   q: '',
   venue: '',
   city: '',
+  region: '',
   country: '',
   artist: '',
   companion: '',
@@ -52,6 +55,9 @@ export const EMPTY_FILTERS: TableFilters = {
   sort: 'date',
   desc: true,
 };
+
+// The city as filters, sorting and counts see it: with its state.
+export const cityOf = (e: Pick<LoggedEvent, 'city' | 'region'>) => cityWithRegion(e.city, e.region);
 
 const fold = (s: string) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
@@ -124,7 +130,7 @@ export function needsOf(e: LoggedEvent, lineup?: LineupSummary): Exclude<Needs, 
 export function matches(e: LoggedEvent, f: TableFilters, lineup?: LineupSummary, facts?: LineupFacts): boolean {
   const q = fold(f.q);
   if (q) {
-    const text = [e.name, e.series, e.venue, e.city, e.country, e.notes, ...e.seen.map((s) => s.name), ...e.companions]
+    const text = [e.name, e.series, e.venue, e.city, e.region, e.country, e.notes, ...e.seen.map((s) => s.name), ...e.companions]
       .filter(Boolean)
       .map((s) => fold(String(s)))
       .join('\n');
@@ -137,7 +143,8 @@ export function matches(e: LoggedEvent, f: TableFilters, lineup?: LineupSummary,
     if (f.yearTo !== undefined && y > f.yearTo) return false;
   }
   if (f.venue && e.venue !== f.venue) return false;
-  if (f.city && e.city !== f.city) return false;
+  if (f.city && cityOf(e) !== f.city) return false;
+  if (f.region && e.region !== f.region) return false;
   if (f.country && e.country !== f.country) return false;
   if (f.artist && !e.seen.some((s) => s.key === f.artist)) return false;
   if (f.companion && !e.companions.includes(f.companion)) return false;
@@ -164,7 +171,7 @@ function sortValue(e: LoggedEvent, key: SortKey): string | number | undefined {
     case 'venue':
       return e.venue ? fold(e.venue) : undefined;
     case 'city':
-      return e.city ? fold(e.city) : undefined;
+      return e.city ? fold(cityOf(e)!) : undefined;
     case 'seen':
       return e.seen.length;
     case 'rating':
@@ -201,6 +208,7 @@ export function filterEvents(
 export interface Options {
   venues: string[];
   cities: string[];
+  regions: string[];
   countries: string[];
   artists: Array<{ key: string; name: string }>;
   companions: string[];
@@ -221,7 +229,8 @@ export function filterOptions(events: LoggedEvent[]): Options {
   const years = [...new Set(events.map(eventYear).filter((y): y is number => y !== null))].sort((a, b) => b - a);
   return {
     venues: byCount(events.flatMap((e) => (e.venue ? [e.venue] : []))),
-    cities: byCount(events.flatMap((e) => (e.city ? [e.city] : []))),
+    cities: byCount(events.flatMap((e) => (e.city ? [cityOf(e)!] : []))),
+    regions: byCount(events.flatMap((e) => (e.region ? [e.region] : []))),
     countries: byCount(events.flatMap((e) => (e.country ? [e.country] : []))),
     artists: byCount(events.flatMap((e) => e.seen.map((s) => s.key))).map((key) => ({ key, name: names.get(key)! })),
     companions: byCount(events.flatMap((e) => e.companions)),
@@ -269,6 +278,7 @@ export function filtersToQuery(f: TableFilters): string {
   if (f.yearTo !== undefined) p.set('to', String(f.yearTo));
   if (f.venue) p.set('venue', f.venue);
   if (f.city) p.set('city', f.city);
+  if (f.region) p.set('state', f.region);
   if (f.country) p.set('country', f.country);
   if (f.artist) p.set('artist', f.artist);
   if (f.companion) p.set('with', f.companion);
@@ -307,6 +317,7 @@ export function filtersFromQuery(query: string): TableFilters {
     yearTo: int(p.get('to'), 1900, 3000),
     venue: p.get('venue') ?? '',
     city: p.get('city') ?? '',
+    region: p.get('state') ?? '',
     country: p.get('country') ?? '',
     artist: p.get('artist') ?? '',
     companion: p.get('with') ?? '',
@@ -324,7 +335,7 @@ export function filtersFromQuery(query: string): TableFilters {
 
 export function activeFilterCount(f: TableFilters): number {
   return (
-    [f.q, f.venue, f.city, f.country, f.artist, f.companion, f.format, f.series].filter(Boolean).length +
+    [f.q, f.venue, f.city, f.region, f.country, f.artist, f.companion, f.format, f.series].filter(Boolean).length +
     [f.yearFrom, f.yearTo, f.minRating].filter((v) => v !== undefined).length +
     Object.values(f.has).filter((v) => v && v !== 'any').length +
     (f.needs !== 'any' ? 1 : 0) +
@@ -338,6 +349,7 @@ export type Gap =
   | 'date'
   | 'venue'
   | 'city'
+  | 'place'
   | 'type'
   | 'format'
   | 'seen'
@@ -347,7 +359,7 @@ export type Gap =
   | 'price'
   | 'weather'
   | 'review';
-export const GAPS: Gap[] = ['date', 'venue', 'city', 'type', 'seen', 'review', 'favourite', 'format', 'companions', 'rating', 'price', 'weather'];
+export const GAPS: Gap[] = ['date', 'venue', 'city', 'place', 'type', 'seen', 'review', 'favourite', 'format', 'companions', 'rating', 'price', 'weather'];
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -359,6 +371,9 @@ export function hasGap(e: LoggedEvent, gap: Gap, lineup?: LineupSummary, facts?:
       return !e.venue;
     case 'city':
       return !e.city;
+    case 'place':
+      // A city without its country, or a US or Canadian city without its state.
+      return Boolean(e.city) && (!e.country || (!e.region && NORTH_AMERICA.has(fold(e.country))));
     case 'type':
       return !eventScale(e, facts).kind;
     case 'format':
@@ -396,4 +411,17 @@ export function gapCounts(
 export function canFindLineup(e: LoggedEvent, lineup?: LineupSummary): boolean {
   if (e.editionId || (!e.year && !e.startDate)) return false;
   return !lineup || lineup.status === 'failed';
+}
+
+// What a state-and-country lookup adds to an event: only the parts it is
+// missing, and the city without the state or country written after it.
+export function placePatch(
+  e: Pick<LoggedEvent, 'city' | 'region' | 'country'>,
+  g: { city: string; region?: string; country?: string },
+): { city?: string; region?: string; country?: string } | null {
+  const patch: { city?: string; region?: string; country?: string } = {};
+  if (e.city && e.city !== g.city && e.city.includes(',')) patch.city = g.city;
+  if (!e.region && g.region) patch.region = g.region;
+  if (!e.country && g.country) patch.country = g.country;
+  return Object.keys(patch).length ? patch : null;
 }

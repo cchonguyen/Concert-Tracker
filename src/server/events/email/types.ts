@@ -56,7 +56,7 @@ export interface EmailSource {
   quote: string;
 }
 
-export type ImportField = 'name' | Exclude<EventField, 'country'>;
+export type ImportField = 'name' | Exclude<EventField, 'region' | 'country'>;
 export type ImportFlag = 'refunded' | 'cancelled' | 'transferred_away';
 
 // new: waiting for your review; added: saved as an event; skipped: you said

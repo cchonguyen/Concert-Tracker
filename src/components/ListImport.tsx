@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { AlertTriangle, FileUp, Loader2, X } from 'lucide-react';
 import { EmailImport, eventsApi, importsApi, LoggedEvent } from '../services/lineupApi';
 import { placeLabel, whenLabel } from '../services/format';
+import { splitCity } from '../server/events/regions';
 import { baseRows } from '../services/sheetSync';
 import {
   BaseRow,
@@ -48,6 +49,7 @@ const FIELD_LABELS: Record<ListField, string> = {
   year: 'year',
   venue: 'venue',
   city: 'city',
+  region: 'state',
   country: 'country',
   seen: 'acts seen',
   companions: 'went with',
@@ -71,7 +73,9 @@ const targetLabel = (t: Target) => {
 };
 
 const baseOf = (t: Target): Partial<LoggedEvent> =>
-  t.kind === 'event' ? t.event : { startDate: t.row.startDate, endDate: t.row.endDate, venue: t.row.venue, city: t.row.city };
+  t.kind === 'event'
+    ? t.event
+    : { startDate: t.row.startDate, endDate: t.row.endDate, venue: t.row.venue, ...splitCity({ city: t.row.city }) };
 
 const choiceValue = (c: Choice | undefined) =>
   !c ? '' : c.kind === 'into' ? targetId(c.target) : c.kind === 'edit' && c.keepApp ? 'keep' : c.kind;
