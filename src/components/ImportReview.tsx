@@ -40,7 +40,7 @@ const dayLabel = (iso: string) => new Date(iso).toLocaleDateString(undefined, { 
 // messages per call, until nothing is left. New shows land below, unticked.
 const CheckEmail: React.FC<{ onFound: (imports: EmailImport[]) => void }> = ({ onFound }) => {
   const [status, setStatus] = useState<EmailScanStatus | null>(null);
-  const [progress, setProgress] = useState<{ read: number; added: number; remaining?: number } | null>(null);
+  const [progress, setProgress] = useState<{ read: number; added: number; skipped: number; remaining?: number; waiting?: boolean } | null>(null);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,14 +55,27 @@ const CheckEmail: React.FC<{ onFound: (imports: EmailImport[]) => void }> = ({ o
     setError(null);
     let read = 0;
     let added = 0;
+    let skipped = 0;
+    let waits = 0;
     try {
       for (;;) {
-        const step = await importsApi.scan();
+        let step;
+        try {
+          step = await importsApi.scan();
+        } catch (err) {
+          // Gmail asked to slow down: wait, then carry on where it stopped.
+          if (!(err as { retry?: boolean }).retry || waits >= 5) throw err;
+          waits++;
+          setProgress((p) => ({ read, added, skipped, remaining: p?.remaining, waiting: true }));
+          await new Promise((resolve) => setTimeout(resolve, 15000));
+          continue;
+        }
         read += step.read;
         added += step.added;
-        setProgress({ read, added, remaining: step.remaining });
+        skipped += step.skipped ?? 0;
+        setProgress({ read, added, skipped, remaining: step.remaining });
         setStatus((s) => s && { ...s, scannedThrough: step.scannedThrough, lastCheckedAt: step.lastCheckedAt ?? s.lastCheckedAt });
-        if (!step.remaining || !step.read) break;
+        if (!step.remaining || !(step.read || step.skipped)) break;
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -74,10 +87,15 @@ const CheckEmail: React.FC<{ onFound: (imports: EmailImport[]) => void }> = ({ o
   };
 
   const summary = () => {
-    if (checking) return progress ? `Read ${progress.read} email${progress.read === 1 ? '' : 's'}, ${progress.remaining} to go…` : 'Looking for new ticket emails…';
+    if (checking) {
+      if (!progress) return 'Looking for new ticket emails…';
+      const wait = progress.waiting ? ' Gmail asked to slow down, so this waits a moment.' : '';
+      return `Read ${progress.read} email${progress.read === 1 ? '' : 's'}, ${progress.remaining ?? 'some'} to go…${wait}`;
+    }
     if (progress) {
-      if (!progress.read) return 'No new ticket emails.';
-      return `Read ${progress.read} new email${progress.read === 1 ? '' : 's'}; ${progress.added ? `${progress.added} new show${progress.added === 1 ? '' : 's'} below` : 'no new shows'}.`;
+      const skipped = progress.skipped ? ` Gmail would not open ${progress.skipped}.` : '';
+      if (!progress.read) return `No new ticket emails.${skipped}`;
+      return `Read ${progress.read} new email${progress.read === 1 ? '' : 's'}; ${progress.added ? `${progress.added} new show${progress.added === 1 ? '' : 's'} below` : 'no new shows'}.${skipped}`;
     }
     if (status.scannedThrough) return `Read up to mail from ${dayLabel(status.scannedThrough)}${status.lastCheckedAt ? `, last checked ${dayLabel(status.lastCheckedAt)}` : ''}.`;
     return 'Reads the ticket emails in your Gmail.';
