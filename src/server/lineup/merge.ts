@@ -13,6 +13,7 @@ import {
   SourceType,
 } from './types';
 import { domainOf, normalizeName } from './text';
+import { preferredSpelling, readActName } from './actName';
 
 // Starting reliability per source before any review history exists. The
 // measured accept/reject rate from your reviews pulls these toward reality.
@@ -135,6 +136,7 @@ export interface MergeContext {
   blocklist: BlocklistEntry[];
   stats: SourceStat[];
   priority?: SourceType[];
+  spellings?: Record<string, string>; // your spelling per normalized name
 }
 
 // One source entry per page, carrying every set that page times for the act
@@ -162,16 +164,28 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
   const groups = new Map<string, PerformerClaim[]>();
   let dropped = 0;
 
-  for (const claim of ctx.claims) {
-    if (isBlocked(claim.name, claim.sourceUrl, ctx.blocklist)) {
+  // "A b2b B" becomes A and B, paired; a "DJ Set" suffix becomes the mark.
+  const djKeys = new Set<string>();
+  const partners = new Map<string, Set<string>>();
+  for (const whole of ctx.claims) {
+    if (isBlocked(whole.name, whole.sourceUrl, ctx.blocklist)) {
       dropped += 1;
       continue;
     }
-    const key = normalizeName(canonicalName(claim.name, ctx.aliases));
-    if (!key) continue;
-    const group = groups.get(key) ?? [];
-    group.push(claim);
-    groups.set(key, group);
+    const read = readActName(canonicalName(whole.name, ctx.aliases));
+    const keys: string[] = [];
+    for (const part of read.parts) {
+      const claim = read.parts.length === 1 && !read.dj ? whole : { ...whole, name: part };
+      if (claim !== whole && isBlocked(part, claim.sourceUrl, ctx.blocklist)) continue;
+      const key = normalizeName(canonicalName(part, ctx.aliases));
+      if (!key) continue;
+      keys.push(key);
+      if (read.dj) djKeys.add(key);
+      const group = groups.get(key) ?? [];
+      group.push(claim);
+      groups.set(key, group);
+    }
+    for (const k of keys) for (const o of keys) if (o !== k) partners.set(k, (partners.get(k) ?? new Set()).add(o));
   }
 
   // Pages found by web search are only as good as their agreement: an
@@ -198,7 +212,9 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
     const confidence = combineConfidence(types.map(reliability), missingFrom.map(reliability));
     performers.push({
       key,
-      name: aliasName ?? byPriority[0].name.trim(),
+      name: aliasName ?? preferredSpelling(byPriority[0].name.trim(), ctx.spellings ?? {}),
+      ...(djKeys.has(key) ? { set: 'dj' as const } : {}),
+      ...(partners.has(key) ? { b2b: [...partners.get(key)!] } : {}),
       mbid: claims.find((c) => c.mbid)?.mbid,
       days: [...new Set(claims.map((c) => c.day).filter((d): d is string => Boolean(d)))].sort(),
       stages: [...new Set(claims.map((c) => c.stage).filter((s): s is string => Boolean(s)))],

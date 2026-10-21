@@ -12,8 +12,8 @@ import {
 import { LineupStore } from './store/types';
 import { domainOf, lineupWindow, normalizeName, seriesSlugFor } from './text';
 import { slugFromClashfinderUrl } from './adapters/clashfinder';
-import { LoggedEvent, SeenAct } from '../events/types';
-import { withB2b } from '../events/seen';
+import { LoggedEvent, SeenAct, SetKind } from '../events/types';
+import { isSetKind, withB2b } from '../events/seen';
 import { Billing, isBilling } from './billing';
 
 // Review is where the system learns. Every decision is stored as data that the
@@ -33,6 +33,9 @@ export interface ReviewedPerformer {
   // Your role for the act: null means no lead stated. Left out, the role the
   // sources agreed on is kept.
   billing?: Billing | null;
+  // Your set type for an act you saw: null for none. Left out, the lineup's
+  // DJ set mark (or your earlier one) is kept.
+  set?: SetKind | null;
 }
 
 type EditionFactsInput = { name: string; startDate?: string; endDate?: string; venue?: string; city?: string; country?: string };
@@ -65,7 +68,8 @@ function editionFacts(job: LookupJob, event: LoggedEvent | null, sent?: EditionF
 
 // Your seen acts after review: what you ticked, plus anything you had added
 // by hand that the lineup did not list.
-export function mergeSeen(before: SeenAct[], ticked: SeenAct[], reviewedKeys: Set<string>): SeenAct[] {
+// A set type chosen in the review (setChosen) replaces your earlier one.
+export function mergeSeen(before: SeenAct[], ticked: SeenAct[], reviewedKeys: Set<string>, setChosen = new Set<string>()): SeenAct[] {
   const out = new Map<string, SeenAct>();
   for (const s of before) if (!reviewedKeys.has(s.key)) out.set(s.key, s);
   for (const s of ticked) {
@@ -74,7 +78,7 @@ export function mergeSeen(before: SeenAct[], ticked: SeenAct[], reviewedKeys: Se
     out.set(s.key, {
       ...s,
       ...(was?.favourite ? { favourite: true } : {}),
-      ...(was?.set ? { set: was.set } : {}),
+      ...(was?.set && !setChosen.has(s.key) ? { set: was.set } : {}),
       ...(was?.b2b ? { b2b: was.b2b } : {}),
     });
   }
@@ -108,6 +112,7 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
   const byKey = new Map<string, CandidatePerformer>((job.candidate?.performers ?? []).map((p) => [p.key, p]));
   const performances: EditionPerformance[] = [];
   const ticked: SeenAct[] = [];
+  const setChosen = new Set<string>();
   const reviewedKeys = new Set<string>();
   const acceptedByDoc = new Map<string, string[]>();
   // Learning writes are collected and saved in a few batched calls after the
@@ -195,6 +200,14 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
         act.role = perf.billing;
         act.roleFrom = cand && perf.billing === cand.billing ? 'lineup' : 'you';
       }
+      // As the lineup billed it; your own marks win (mergeSeen).
+      if (cand?.set) act.set = cand.set;
+      if (reviewed.set !== undefined) {
+        setChosen.add(act.key);
+        if (isSetKind(reviewed.set)) act.set = reviewed.set;
+        else delete act.set;
+      }
+      if (cand?.b2b?.length) act.b2b = cand.b2b;
       ticked.push(act);
     }
     performances.push(perf);
@@ -239,7 +252,7 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
     updated = {
       ...event,
       editionId: edition.id,
-      seen: mergeSeen(event.seen, ticked, reviewedKeys),
+      seen: mergeSeen(event.seen, ticked, reviewedKeys, setChosen),
       updatedAt: now,
     };
     await store.putEvent(updated);
