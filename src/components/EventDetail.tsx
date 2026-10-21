@@ -19,7 +19,7 @@ import { actSets, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
 import { norm } from '../services/listImport';
-import { leaveB2b, pairB2b, seenSlots, SET_LABELS, toSeenInput } from '../server/events/seen';
+import { leaveB2b, pairB2b, seenSlots, SET_LABELS, setSolo, SlotAct, slotId, toSeenInput } from '../server/events/seen';
 import { eventTitle, seriesList, seriesOffers, weekendFromName } from '../services/series';
 import { placePatch } from '../services/table';
 import { cityWithRegion } from '../server/events/regions';
@@ -230,7 +230,9 @@ const NEXT_SET: Record<string, Seen['set'] | null> = { none: 'dj', dj: 'live', l
 // stage and time where a source times it.
 // The set button cycles DJ set, live set and unmarked. The link button pairs
 // acts as a B2B: tap it on one act, then on the other. Each act in a B2B is
-// still its own seen act, so each is credited.
+// still its own seen act, so each is credited. "+ solo" on an act in a B2B
+// adds its own solo set at the same event (typing its name again does too);
+// the solo chip has its own set button, and its x takes the solo set away.
 // Typing offers acts you've entered on other events; a click, or arrow keys
 // then Enter, adds one as you spelled it before. Enter alone adds what you typed.
 const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string[]; onChange: (seen: SeenPatch) => void }> = ({
@@ -242,9 +244,16 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
   const [draft, setDraft] = useState('');
   const [active, setActive] = useState(-1);
   const [pairing, setPairing] = useState<string | null>(null);
-  const matches = matchNames(draft, past, new Set(seen.map((s) => s.key)));
+  // An act in a B2B without a solo set can be typed again, for its solo set.
+  const canSolo = (s: Seen) => Boolean(s.b2b?.length) && !s.solo;
+  const matches = matchNames(draft, past, new Set(seen.filter((s) => !canSolo(s)).map((s) => s.key)));
   const addNames = (names: string[]) => {
-    if (names.length) onChange([...toPatch(seen), ...names.map((name) => ({ name, from: 'you' as const }))]);
+    const soloKeys = new Set(seen.filter(canSolo).map((s) => s.key));
+    const solos = names.filter((n) => soloKeys.has(norm(n)));
+    const fresh = names.filter((n) => !soloKeys.has(norm(n)));
+    let next = seen;
+    for (const n of solos) next = setSolo(next, norm(n), true);
+    if (names.length) onChange([...toPatch(next), ...fresh.map((name) => ({ name, from: 'you' as const }))]);
     setDraft('');
     setActive(-1);
   };
@@ -254,8 +263,16 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
   const remove = (key: string) => onChange(toPatch(seen.filter((s) => s.key !== key)));
   const favourite = (key: string) =>
     onChange(toPatch(seen).map((s, i) => ({ ...s, favourite: seen[i].key === key && !seen[i].favourite })));
-  const cycleSet = (key: string) =>
-    onChange(toPatch(seen).map((s, i) => (seen[i].key === key ? { ...s, set: NEXT_SET[seen[i].set ?? 'none'] } : s)));
+  const cycleSet = (key: string, solo = false) =>
+    onChange(
+      toPatch(seen).map((s, i) =>
+        seen[i].key !== key
+          ? s
+          : solo
+            ? { ...s, soloSet: NEXT_SET[seen[i].soloSet ?? 'none'] }
+            : { ...s, set: NEXT_SET[seen[i].set ?? 'none'] },
+      ),
+    );
   const b2bTap = (s: Seen) => {
     if (pairing === s.key) return setPairing(null);
     if (pairing) {
@@ -266,9 +283,9 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
     setPairing(s.key);
   };
   const pairingName = seen.find((s) => s.key === pairing)?.name;
-  const chip = (s: Seen) => (
+  const chip = (s: SlotAct<Seen>) => (
     <span
-      key={s.key}
+      key={s.asSolo ? `${s.key}:solo` : s.key}
       className={`inline-flex items-center gap-1 rounded-full py-1 pl-2.5 pr-1.5 text-sm text-zinc-100 ${
         pairing === s.key ? 'bg-violet-700/50 ring-1 ring-violet-400' : 'bg-zinc-800'
       }`}
@@ -291,38 +308,57 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
         {s.name}
       </button>
       {s.role === 'headliner' && <span className="text-[10px] uppercase text-amber-300/80">headliner</span>}
+      {s.asSolo && <span className="text-[10px] uppercase text-violet-300/80">solo</span>}
       {sets.get(s.key) && <span className="text-[10px] text-zinc-500">{sets.get(s.key)}</span>}
       <button
-        onClick={() => cycleSet(s.key)}
+        onClick={() => cycleSet(s.key, s.asSolo)}
         aria-label={s.set ? `${s.name}: ${SET_LABELS[s.set]}. Change` : `Mark ${s.name} as DJ set or live set`}
         title={s.set ? `${SET_LABELS[s.set]} (tap to change)` : 'DJ set or live set?'}
         className={`rounded px-1 text-[10px] uppercase ${s.set ? 'bg-sky-500/15 text-sky-300' : 'text-zinc-600 hover:text-zinc-300'}`}
       >
         {s.set === 'dj' ? 'DJ' : s.set === 'live' ? 'Live' : 'set'}
       </button>
+      {canSolo(s) && !s.asSolo && (
+        <button
+          onClick={() => onChange(toPatch(setSolo(seen, s.key, true)))}
+          aria-label={`${s.name} also played a solo set`}
+          title="Also saw a solo set"
+          className="text-[10px] text-zinc-600 hover:text-zinc-300"
+        >
+          +solo
+        </button>
+      )}
+      {!s.asSolo && (
+        <button
+          onClick={() => b2bTap(s)}
+          aria-label={
+            pairing && pairing !== s.key
+              ? `B2B with ${pairingName}`
+              : s.b2b?.length
+                ? `Take ${s.name} out of the B2B`
+                : `Pair ${s.name} B2B with another act`
+          }
+          title={pairing && pairing !== s.key ? `B2B with ${pairingName}` : s.b2b?.length ? 'Take out of the B2B' : 'B2B with another act'}
+          className={s.b2b?.length || pairing === s.key ? 'text-violet-300' : 'text-zinc-600 hover:text-zinc-300'}
+        >
+          <Link2 className="h-3 w-3" />
+        </button>
+      )}
+      {!s.asSolo && (
+        <button
+          onClick={() => setRole(s.key, s.role === 'support' ? null : 'support')}
+          aria-label={s.role === 'support' ? `Move ${s.name} to Artist` : `Move ${s.name} to Supporting`}
+          title={s.role === 'support' ? 'Move to Artist' : 'Move to Supporting'}
+          className="text-zinc-500 hover:text-zinc-200"
+        >
+          {s.role === 'support' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+        </button>
+      )}
       <button
-        onClick={() => b2bTap(s)}
-        aria-label={
-          pairing && pairing !== s.key
-            ? `B2B with ${pairingName}`
-            : s.b2b?.length
-              ? `Take ${s.name} out of the B2B`
-              : `Pair ${s.name} B2B with another act`
-        }
-        title={pairing && pairing !== s.key ? `B2B with ${pairingName}` : s.b2b?.length ? 'Take out of the B2B' : 'B2B with another act'}
-        className={s.b2b?.length || pairing === s.key ? 'text-violet-300' : 'text-zinc-600 hover:text-zinc-300'}
-      >
-        <Link2 className="h-3 w-3" />
-      </button>
-      <button
-        onClick={() => setRole(s.key, s.role === 'support' ? null : 'support')}
-        aria-label={s.role === 'support' ? `Move ${s.name} to Artist` : `Move ${s.name} to Supporting`}
-        title={s.role === 'support' ? 'Move to Artist' : 'Move to Supporting'}
+        onClick={() => (s.asSolo ? onChange(toPatch(setSolo(seen, s.key, false))) : remove(s.key))}
+        aria-label={s.asSolo ? `Remove ${s.name}'s solo set` : `Remove ${s.name}`}
         className="text-zinc-500 hover:text-zinc-200"
       >
-        {s.role === 'support' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-      </button>
-      <button onClick={() => remove(s.key)} aria-label={`Remove ${s.name}`} className="text-zinc-500 hover:text-zinc-200">
         <X className="h-3 w-3" />
       </button>
     </span>
@@ -330,11 +366,11 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
   const artists = artistsOf(seen);
   const support = supportOf(seen);
   // A B2B shows as one slot: its acts side by side, joined by "b2b".
-  const slot = (acts: Seen[]) =>
+  const slot = (acts: Array<SlotAct<Seen>>) =>
     acts.length === 1 ? (
       chip(acts[0])
     ) : (
-      <span key={acts.map((a) => a.key).join('+')} className="inline-flex flex-wrap items-center gap-1 rounded-full border border-violet-500/30 p-0.5">
+      <span key={slotId(acts)} className="inline-flex flex-wrap items-center gap-1 rounded-full border border-violet-500/30 p-0.5">
         {acts.map((a, i) => (
           <React.Fragment key={a.key}>
             {i > 0 && <span className="text-[10px] font-semibold uppercase text-violet-300/80">b2b</span>}
