@@ -312,6 +312,10 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
         <SeriesPanel
           events={events}
           onChanged={onChanged}
+          onShow={(series) => {
+            setLinking(false);
+            set({ series });
+          }}
           onOpen={(id) => {
             setLinking(false);
             onOpen(id);
@@ -349,6 +353,15 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
         >
           <SlidersHorizontal className="h-3.5 w-3.5" /> Filters{active ? ` (${active})` : ''}
         </button>
+        {filters.series && (
+          <button
+            onClick={() => set({ series: '' })}
+            className="inline-flex items-center gap-1 rounded-full border border-violet-500/50 px-2.5 py-1 text-xs text-violet-200 hover:bg-violet-950/40"
+            aria-label={`Stop showing only ${filters.series}`}
+          >
+            <Layers className="h-3 w-3" /> {filters.series} <X className="h-3 w-3" />
+          </button>
+        )}
         {active > 0 && (
           <button
             onClick={() => setFilters({ ...EMPTY_FILTERS, sort: filters.sort, desc: filters.desc })}
@@ -528,6 +541,18 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           <KindBadge kind={kindLabel(e, editions[e.id])} />
+                          {e.series && (
+                            <button
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                set({ series: e.series! });
+                              }}
+                              title={`Show only ${e.series}`}
+                              className="inline-flex items-center gap-1 rounded-full border border-violet-500/30 px-1.5 text-[11px] text-violet-300/90 hover:bg-violet-950/40"
+                            >
+                              <Layers className="h-3 w-3" /> {e.series}
+                            </button>
+                          )}
                           {e.format && <span className="text-[11px] text-zinc-500">{e.format}</span>}
                         </div>
                       </td>

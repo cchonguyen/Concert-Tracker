@@ -162,3 +162,47 @@ export function facts(events: LoggedEvent[]): Facts {
     };
   return out;
 }
+
+// Your series (LoggedEvent.series), for fun: how many editions you went to,
+// your longest run of years in a row, the cities, and the acts you saw at
+// more than one edition. Only your own series names count; nothing is grouped
+// that you did not link.
+export interface SeriesStat {
+  name: string;
+  editions: number;
+  years: number[]; // years you went, oldest first
+  streak?: { years: number; from: number; to: number }; // longest run of years in a row, when 2 or more
+  cities: string[];
+  acts: number; // distinct acts seen across its editions
+  regulars: Array<{ label: string; count: number }>; // acts seen at 2 or more editions, most first
+}
+
+export function seriesStats(events: LoggedEvent[]): SeriesStat[] {
+  const bySeries = new Map<string, LoggedEvent[]>();
+  for (const e of events) if (e.series) bySeries.set(e.series, [...(bySeries.get(e.series) ?? []), e]);
+  const out: SeriesStat[] = [];
+  for (const [name, list] of bySeries) {
+    const years = [...new Set(list.map(eventYear).filter((y): y is number => y !== null))].sort((a, b) => a - b);
+    let streak: SeriesStat['streak'];
+    for (let i = 0, start = 0; i < years.length; i++) {
+      if (i > 0 && years[i] !== years[i - 1] + 1) start = i;
+      const run = i - start + 1;
+      if (run > 1 && (!streak || run > streak.years)) streak = { years: run, from: years[start], to: years[i] };
+    }
+    const cities = [...new Map(list.flatMap((e) => (e.city ? [[fold(e.city), e.city] as const] : []))).values()];
+    const regulars = top(list, 'artist', 50)
+      .filter((r) => r.count > 1)
+      .slice(0, 5)
+      .map(({ label, count }) => ({ label, count }));
+    out.push({
+      name,
+      editions: list.length,
+      years,
+      streak,
+      cities,
+      acts: new Set(list.flatMap((e) => e.seen.map((s) => s.key))).size,
+      regulars,
+    });
+  }
+  return out.sort((a, b) => b.editions - a.editions || (b.streak?.years ?? 0) - (a.streak?.years ?? 0) || a.name.localeCompare(b.name));
+}
