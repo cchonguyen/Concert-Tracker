@@ -144,6 +144,8 @@ function cleanSeen(list: NonNullable<EventPatch['seen']>): SeenAct[] {
     if (s.favourite === true && !favourite) favourite = act.favourite = true;
     if (isSetKind(s.set)) act.set = s.set;
     if (Array.isArray(s.b2b)) act.b2b = s.b2b.map((k) => normalizeName(String(k))).filter((k) => k && k !== key);
+    if (s.solo === true) act.solo = true;
+    if (s.solo === true && isSetKind(s.soloSet)) act.soloSet = s.soloSet;
     out.set(key, act);
   }
   return withB2b([...out.values()]);
