@@ -46,7 +46,7 @@ import { SheetSync } from './SheetSync';
 import { FillGaps } from './FillGaps';
 import { SeriesPanel } from './SeriesPanel';
 import { eventTitle } from '../services/series';
-import { SET_LABELS, seenSlots } from '../server/events/seen';
+import { SET_LABELS, seenSlots, slotId } from '../server/events/seen';
 
 interface TableViewProps {
   events: LoggedEvent[];
@@ -166,7 +166,8 @@ const NeedsBadge: React.FC<{ needs: keyof typeof NEEDS_LABELS }> = ({ needs }) =
 
 // At most a few names in a cell; the full list is in the tooltip.
 // Headliners come first, in bold, then your favourite set, with a heart.
-// A B2B counts as one slot ("A b2b B"); DJ and live sets are tagged.
+// A B2B counts as one slot ("A b2b B"); DJ and live sets are tagged, and
+// the solo set of an act also in a B2B is its own slot, tagged solo.
 const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, muted }) => {
   const slots = seenSlots(actsInOrder(seen));
   const shown = slots.slice(0, 3);
@@ -180,7 +181,7 @@ const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, 
       {shown.map((slot, i) => {
         const set = new Set(slot.map((s) => s.set)).size === 1 ? slot[0].set : undefined;
         return (
-          <React.Fragment key={slot[0].key}>
+          <React.Fragment key={slotId(slot)}>
             {i > 0 && ', '}
             {slot.some((s) => s.favourite) && <Heart className="mr-0.5 inline h-3 w-3 -translate-y-px fill-rose-400 text-rose-400" />}
             {slot.map((s, j) => (
@@ -193,6 +194,7 @@ const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, 
                 ) : (
                   s.name
                 )}
+                {s.asSolo && <span className="ml-1 text-[10px] uppercase text-violet-300/80">solo</span>}
                 {!set && s.set && tag(s.set)}
               </React.Fragment>
             ))}

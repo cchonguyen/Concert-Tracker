@@ -186,7 +186,7 @@ export function eventRows(
     supportOf(e.seen).map((s) => s.name).join('; '),
     favouriteOf(e.seen)?.name,
     seenSlots(e.seen)
-      .filter((slot) => slot.length > 1 || slot[0].set)
+      .filter((slot) => slot.length > 1 || slot[0].set || slot[0].asSolo)
       .map(slotLabel)
       .join('; '),
     e.companions.join('; '),
