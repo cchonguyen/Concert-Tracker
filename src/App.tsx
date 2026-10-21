@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Mic2, Radio, Table2, Ticket } from 'lucide-react';
+import { BarChart3, Mic2, Radio, Table2, Ticket } from 'lucide-react';
 import { EmailImport, eventsApi, importsApi, isActive, LineupStatus, LineupSummary, lineupApi, LoggedEvent, SOURCE_LABELS } from './services/lineupApi';
 import { CaptureBar } from './components/CaptureBar';
 import { EventsHome } from './components/EventsHome';
@@ -7,8 +7,9 @@ import { EventDetail } from './components/EventDetail';
 import { ArtistsView } from './components/ArtistsView';
 import { ImportReview } from './components/ImportReview';
 import { TableView } from './components/TableView';
+import { StatsView } from './components/StatsView';
 
-type Tab = 'events' | 'table' | 'artists';
+type Tab = 'events' | 'table' | 'stats' | 'artists';
 
 // The Table view keeps its filters in the address (?view=table&...).
 const initialTab = (): Tab => (new URLSearchParams(window.location.search).get('view') === 'table' ? 'table' : 'events');
@@ -108,18 +109,20 @@ export default function App() {
               [
                 ['events', Ticket, `Events`, events.length],
                 ['table', Table2, `Table`, null],
+                ['stats', BarChart3, `Stats`, null],
                 ['artists', Mic2, `Artists`, seenCount],
               ] as const
             ).map(([id, Icon, label, count]) => (
               <button
                 key={id}
                 onClick={() => openTab(id)}
+                title={label}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-colors ${
                   tab === id ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 <Icon className="h-3.5 w-3.5" />
-                {label}
+                <span className={tab === id ? '' : 'hidden sm:inline'}>{label}</span>
                 {count !== null && <span className="text-[11px] opacity-70">{count}</span>}
               </button>
             ))}
@@ -146,6 +149,7 @@ export default function App() {
           </>
         )}
         {tab === 'table' && <TableView events={events} lineups={lineups} onOpen={setSelectedId} />}
+        {tab === 'stats' && <StatsView events={events} onOpen={setSelectedId} onOpenTable={openTable} />}
         {tab === 'artists' && <ArtistsView events={events} onOpenEvent={setSelectedId} />}
       </main>
 
