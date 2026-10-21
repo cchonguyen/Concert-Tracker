@@ -14,23 +14,26 @@ import { domainOf, normalizeName } from './text';
 
 // Starting reliability per source before any review history exists. The
 // measured accept/reject rate from your reviews pulls these toward reality.
+// Clashfinder's per-edition lineups have proved more accurate than promoter
+// pages, which are overwritten for the next edition or list other events of
+// the same brand (Sun Soaked 2026).
 export const SOURCE_PRIOR: Record<SourceType, number> = {
   setlistfm: 0.95,
-  promoter: 0.9,
-  wayback: 0.88,
-  clashfinder: 0.85,
+  clashfinder: 0.93,
   ticketmaster: 0.8,
+  promoter: 0.75,
+  wayback: 0.72,
   musicbrainz: 0.7,
-  discovered: 0.65,
+  discovered: 0.6,
   email: 0.9,
   user: 1,
 };
 
 export const DEFAULT_PRIORITY: SourceType[] = [
   'user',
+  'clashfinder',
   'promoter',
   'wayback',
-  'clashfinder',
   'ticketmaster',
   'setlistfm',
   'discovered',
@@ -51,10 +54,26 @@ export function sourceReliability(type: SourceType, seriesSlug: string, stats: S
   return a / (a + b);
 }
 
-// Independent sources agreeing raise confidence: 1 - prod(1 - r).
-export function combineConfidence(reliabilities: number[]): number {
-  return 1 - reliabilities.reduce((acc, r) => acc * (1 - r), 1);
+// Independent sources agreeing raise confidence: 1 - prod(1 - r). A source
+// that gave a full lineup for the edition and leaves the act out disagrees:
+// each one scales the result by (1 - DISSENT_WEIGHT * r), so the more
+// accurate the source that leaves it out, the lower the act ends up.
+export function combineConfidence(reliabilities: number[], dissent: number[] = []): number {
+  const agree = 1 - reliabilities.reduce((acc, r) => acc * (1 - r), 1);
+  return dissent.reduce((acc, r) => acc * (1 - DISSENT_WEIGHT * r), agree);
 }
+
+// Under half weight: a full lineup can still miss a late addition, so an act
+// only Clashfinder lists stays above the flag line when a promoter page
+// leaves it out, while one only a promoter page lists drops below it when
+// Clashfinder leaves it out.
+export const DISSENT_WEIGHT = 0.4;
+
+// Sources that publish a whole lineup, so an act missing from them means
+// something. Listings (Ticketmaster), setlists and search pages often name
+// only some acts, so their silence says nothing.
+export const FULL_LINEUP_SOURCES: SourceType[] = ['clashfinder', 'promoter', 'wayback'];
+export const FULL_LINEUP_MIN_ACTS = 5;
 
 export function isBlocked(name: string, sourceUrl: string, blocklist: BlocklistEntry[]): boolean {
   const n = normalizeName(name);
@@ -138,6 +157,13 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
   // such pages were read, an act backed by just one of them needs a look.
   const discoveredPages = new Set(ctx.claims.filter((c) => c.sourceType === 'discovered').map((c) => c.sourceUrl));
 
+  // Which sources gave a full lineup for this edition.
+  const actsBySource = new Map<SourceType, Set<string>>();
+  for (const [key, claims] of groups) {
+    for (const c of claims) actsBySource.set(c.sourceType, (actsBySource.get(c.sourceType) ?? new Set()).add(key));
+  }
+  const fullLineups = FULL_LINEUP_SOURCES.filter((t) => (actsBySource.get(t)?.size ?? 0) >= FULL_LINEUP_MIN_ACTS);
+
   const performers: CandidatePerformer[] = [];
   for (const [key, claims] of groups) {
     const byPriority = [...claims].sort(
@@ -145,7 +171,9 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
     );
     const aliasName = ctx.aliases[key];
     const types = [...new Set(claims.map((c) => c.sourceType))];
-    const confidence = combineConfidence(types.map((t) => sourceReliability(t, ctx.seriesSlug, ctx.stats)));
+    const missingFrom = fullLineups.filter((t) => !types.includes(t));
+    const reliability = (t: SourceType) => sourceReliability(t, ctx.seriesSlug, ctx.stats);
+    const confidence = combineConfidence(types.map(reliability), missingFrom.map(reliability));
     const sourceUrls = new Set<string>();
     performers.push({
       key,
@@ -156,6 +184,7 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
       status: claims.some((c) => c.evidence === 'performed') ? 'performed' : 'billed',
       billing: agreedBilling(claims),
       confidence: Math.round(confidence * 1000) / 1000,
+      missingFrom: missingFrom.length ? missingFrom : undefined,
       flagged:
         confidence < FLAG_BELOW ||
         (discoveredPages.size >= 2 &&

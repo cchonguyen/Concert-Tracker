@@ -62,4 +62,29 @@ export function billingFromTitle(title: string, names: string[]): Map<string, Bi
   return out;
 }
 
+const ROLE_WORDS = /\b(headlin(?:ers?|ing|e))\b|\b(support(?:ing)?(?:\s+acts?)?|special\s+guests?|openers?|opening\s+acts?)\b/gi;
+
+// Whether a quoted span from a page itself bills the act as claimed: the
+// nearest role word before the act ("Headliners: A, B", "Support: C",
+// "special guest D") names that role, or a marker puts the act on the matching
+// side ("X with Y"). A reader's role without such words in its quote is
+// dropped, like a name not on the page.
+export function quoteBacksBilling(quote: string, name: string, billing: Billing): boolean {
+  const n = normalizeName(name);
+  if (!n || !contains(quote, n)) return false;
+  const at = quote.toLowerCase().indexOf(name.toLowerCase().trim());
+  let nearest: Billing | undefined;
+  if (at >= 0) {
+    for (const m of quote.matchAll(ROLE_WORDS)) {
+      if (m.index! >= at) break;
+      nearest = m[1] ? 'headliner' : 'support';
+    }
+  }
+  if (nearest) return nearest === billing;
+  const split = splitBill(quote);
+  if (!split) return false;
+  const [mine, other] = billing === 'headliner' ? [split.head, split.tail] : [split.tail, split.head];
+  return contains(mine, n) && !contains(other, n);
+}
+
 export const isBilling = (v: unknown): v is Billing => v === 'headliner' || v === 'support';

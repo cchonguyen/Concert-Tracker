@@ -22,6 +22,7 @@ interface Row {
   stages: string[];
   confidence: number;
   flagged: boolean;
+  missingFrom: string[];
   status: 'billed' | 'performed';
   sources: NonNullable<LookupJob['candidate']>['performers'][number]['sources'];
 }
@@ -49,6 +50,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, onClose,
       stages: p.stages,
       confidence: p.confidence,
       flagged: p.flagged,
+      missingFrom: (p.missingFrom ?? []).map((t) => SOURCE_LABELS[t]),
       status: p.status,
       sources: p.sources,
     })),
@@ -73,7 +75,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, onClose,
     if (!name) return;
     setRows((rs) => [
       ...rs,
-      { name, accepted: true, rejectReason: 'not_an_act', seen: true, billing: '', days: [], stages: [], confidence: 1, flagged: false, status: 'billed', sources: [] },
+      { name, accepted: true, rejectReason: 'not_an_act', seen: true, billing: '', days: [], stages: [], confidence: 1, flagged: false, missingFrom: [], status: 'billed', sources: [] },
     ]);
     setNewAct('');
   };
@@ -105,7 +107,12 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, onClose,
   const seenCount = rows.filter((r) => r.accepted && r.seen).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
+    // Rendered inside the event panel's backdrop, whose click closes the panel:
+    // keep clicks in here (ticking a box) from reaching it.
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm"
+      onClick={(e) => e.stopPropagation()}
+    >
       <div className="w-full max-w-5xl space-y-5 rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -165,7 +172,15 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, onClose,
                         )}
                         {row.status === 'performed' && <span className="text-emerald-300">confirmed performed</span>}
                         {row.sources.some((src) => src.sourceType !== 'user') && (
-                          <span className="text-zinc-500">{Math.round(row.confidence * 100)}% confidence</span>
+                          <span
+                            className="text-zinc-500"
+                            title="Sources that list the act, weighted by how often each has been right in your reviews; a full lineup that leaves it out lowers it."
+                          >
+                            {Math.round(row.confidence * 100)}% confidence
+                          </span>
+                        )}
+                        {row.missingFrom.length > 0 && (
+                          <span className="text-amber-300/80">not on {row.missingFrom.join(' or ')} lineup</span>
                         )}
                         {row.originalName && row.name !== row.originalName && (
                           <span className="text-violet-300">will remember "{row.originalName}" as "{row.name}"</span>

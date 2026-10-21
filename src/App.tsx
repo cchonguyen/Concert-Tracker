@@ -168,6 +168,7 @@ export default function App() {
             editions={editions}
             imports={imports}
             onOpen={setSelectedId}
+            onChanged={upsert}
             onImported={() => {
               void refresh();
               importsApi.list().then(setImports).catch(() => undefined);

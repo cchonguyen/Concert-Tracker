@@ -13,6 +13,7 @@ export interface ExtractedName {
   quote: string;
   day?: string;
   stage?: string;
+  billing?: string; // 'headliner' | 'support', only when the quote says so
 }
 
 export interface GeminiClient {
@@ -26,7 +27,8 @@ export interface GeminiClient {
   discoverLineupUrls(input: LookupInput): Promise<string[]>;
 }
 
-export const EXTRACTION_PROMPT_VERSION = 'extract@4';
+// @5: an optional billing role, kept only when the quote states it.
+export const EXTRACTION_PROMPT_VERSION = 'extract@5';
 const MAX_DOC_CHARS = 40000;
 
 const SYSTEM = `You copy performer names out of a web page. Rules:
@@ -36,6 +38,7 @@ const SYSTEM = `You copy performer names out of a web page. Rules:
 - Include only acts billed for the EVENT in the year named below, across all of its days and stages. Pages, including the event's own site, often also list other events, other dates or cities of the same brand, past or upcoming editions, tours or recommended artists; leave all of those out.
 - Copy names exactly as written on the page, including capitalisation and punctuation.
 - Set "day" (YYYY-MM-DD) or "stage" only when the page text states it for that act.
+- Set "billing" to "headliner" or "support" only when the page text itself bills the act that way (for example "Headliners:", "Support:", "special guest", "X with Y"), and then make "quote" include those words. Never infer it from order, size or fame.
 - If the page has no lineup, return an empty list.`;
 
 const SCHEMA = {
@@ -50,6 +53,7 @@ const SCHEMA = {
           quote: { type: Type.STRING },
           day: { type: Type.STRING },
           stage: { type: Type.STRING },
+          billing: { type: Type.STRING, enum: ['headliner', 'support'] },
         },
         required: ['name', 'quote'],
       },
