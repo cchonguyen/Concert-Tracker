@@ -5,7 +5,7 @@ import { DetailFinder, defaultFinders, pickCandidate, researchEvent } from './de
 import { cityPoint, citySuggestions } from './place';
 import { applyPatch, EventPatch, lineupSummary, newEvent, sortEvents, startBulkLookups, startLineupLookup } from './service';
 import { LineupSummary } from './types';
-import { artistSuggestions, eventPerformers, nameArtistSuggestions, pastArtists } from './artists';
+import { artistSuggestions, eventPerformers, nameArtistSuggestions, pastArtists, MAX_BULK_SUGGESTIONS, storedNameSuggestions } from './artists';
 import type { LineupFacts } from './scale';
 import { lookupWeather } from './weather';
 
@@ -156,6 +156,17 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
       const event = await load(req.params.id, res);
       if (!event) return;
       res.json({ suggestions: await nameArtistSuggestions(event, deps.fetcher) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Name suggestions for many events ({ ids }), from stored data only.
+  router.post('/events/name-artists', async (req, res) => {
+    try {
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+      if (ids.length > MAX_BULK_SUGGESTIONS) throw new InputError(`At most ${MAX_BULK_SUGGESTIONS} events at a time.`);
+      res.json({ suggestions: await storedNameSuggestions(deps.store, ids) });
     } catch (err) {
       fail(res, err);
     }
