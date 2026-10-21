@@ -12,7 +12,9 @@ import {
   SOURCE_LABELS,
 } from '../services/lineupApi';
 import { whenLabel } from '../services/format';
+import { toSeenInput } from '../server/events/seen';
 import { canFindLineup, Gap, gapCounts, GAPS, hasGap } from '../services/table';
+import { eventTitle } from '../services/series';
 
 interface FillGapsProps {
   events: LoggedEvent[]; // the rows the Table shows
@@ -53,7 +55,7 @@ function byCount(values: string[]): string[] {
 }
 
 const list = (v: string) => v.split(',').map((s) => s.trim()).filter(Boolean);
-const seenPatch = (e: LoggedEvent) => e.seen.map(({ name, from, role, roleFrom, favourite }) => ({ name, from, role, roleFrom, favourite }));
+const seenPatch = (e: LoggedEvent) => toSeenInput(e.seen);
 
 // Why an act is offered from the event's name.
 const offeredBy = (s: ArtistSuggestion) =>
@@ -576,7 +578,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
               <li key={e.id} className="space-y-1.5 px-3 py-2.5">
                 <div className="flex items-baseline justify-between gap-2">
                   <button onClick={() => onOpen(e.id)} className="truncate text-left text-sm font-medium text-zinc-100 hover:underline">
-                    {e.name}
+                    {eventTitle(e)}
                   </button>
                   <span className="shrink-0 text-xs text-zinc-500">{[whenLabel(e) ?? 'Date unknown', e.venue].filter(Boolean).join(' · ')}</span>
                 </div>

@@ -1,6 +1,7 @@
 import type { LineupSummary, LoggedEvent } from '../server/events/types';
 import { eventScale, LineupFacts } from '../server/events/scale';
 import { eventYear } from './format';
+import { eventTitle } from './series';
 
 // The Table view: filters, sorting and a summary over the event list the app
 // already loaded. Read-only; nothing here is stored. An empty field is a gap,
@@ -30,6 +31,7 @@ export interface TableFilters {
   origin: Origin;
   kind: KindFilter;
   format: string;
+  series: string;
   sort: SortKey;
   desc: boolean;
 }
@@ -46,6 +48,7 @@ export const EMPTY_FILTERS: TableFilters = {
   origin: 'any',
   kind: 'any',
   format: '',
+  series: '',
   sort: 'date',
   desc: true,
 };
@@ -114,7 +117,7 @@ export function needsOf(e: LoggedEvent, lineup?: LineupSummary): Exclude<Needs, 
 export function matches(e: LoggedEvent, f: TableFilters, lineup?: LineupSummary, facts?: LineupFacts): boolean {
   const q = fold(f.q);
   if (q) {
-    const text = [e.name, e.venue, e.city, e.country, e.notes, ...e.seen.map((s) => s.name), ...e.companions]
+    const text = [e.name, e.series, e.venue, e.city, e.country, e.notes, ...e.seen.map((s) => s.name), ...e.companions]
       .filter(Boolean)
       .map((s) => fold(String(s)))
       .join('\n');
@@ -140,6 +143,7 @@ export function matches(e: LoggedEvent, f: TableFilters, lineup?: LineupSummary,
   if (f.origin !== 'any' && fromEmail(e) !== (f.origin === 'email')) return false;
   if (f.kind !== 'any' && (eventScale(e, facts).kind ?? 'unknown') !== f.kind) return false;
   if (f.format && e.format !== f.format) return false;
+  if (f.series && e.series !== f.series) return false;
   return true;
 }
 
@@ -149,7 +153,7 @@ function sortValue(e: LoggedEvent, key: SortKey): string | number | undefined {
     case 'date':
       return e.startDate ?? (e.year ? `${e.year}-${String(e.month ?? 0).padStart(2, '0')}` : undefined);
     case 'name':
-      return fold(e.name);
+      return fold(eventTitle(e));
     case 'venue':
       return e.venue ? fold(e.venue) : undefined;
     case 'city':
@@ -194,6 +198,7 @@ export interface Options {
   artists: Array<{ key: string; name: string }>;
   companions: string[];
   formats: string[];
+  series: string[];
   years: number[];
 }
 
@@ -214,6 +219,7 @@ export function filterOptions(events: LoggedEvent[]): Options {
     artists: byCount(events.flatMap((e) => e.seen.map((s) => s.key))).map((key) => ({ key, name: names.get(key)! })),
     companions: byCount(events.flatMap((e) => e.companions)),
     formats: byCount(events.flatMap((e) => (e.format ? [e.format] : []))),
+    series: byCount(events.flatMap((e) => (e.series ? [e.series] : []))),
     years,
   };
 }
@@ -268,6 +274,7 @@ export function filtersToQuery(f: TableFilters): string {
   if (f.origin !== 'any') p.set('from_source', f.origin);
   if (f.kind !== 'any') p.set('type', f.kind);
   if (f.format) p.set('format', f.format);
+  if (f.series) p.set('series', f.series);
   if (f.sort !== 'date' || !f.desc) p.set('sort', `${f.sort}${f.desc ? '' : ':asc'}`);
   return p.toString();
 }
@@ -302,6 +309,7 @@ export function filtersFromQuery(query: string): TableFilters {
     origin: oneOf(p.get('from_source'), ['any', 'typed', 'email'] as const, 'any'),
     kind: oneOf(p.get('type'), ['any', 'concert', 'festival', 'unknown'] as const, 'any'),
     format: p.get('format') ?? '',
+    series: p.get('series') ?? '',
     sort: oneOf(sort, ['date', 'name', 'venue', 'city', 'seen', 'rating', 'price'] as const, 'date'),
     desc: dir !== 'asc',
   };
@@ -309,7 +317,7 @@ export function filtersFromQuery(query: string): TableFilters {
 
 export function activeFilterCount(f: TableFilters): number {
   return (
-    [f.q, f.venue, f.city, f.country, f.artist, f.companion, f.format].filter(Boolean).length +
+    [f.q, f.venue, f.city, f.country, f.artist, f.companion, f.format, f.series].filter(Boolean).length +
     [f.yearFrom, f.yearTo, f.minRating].filter((v) => v !== undefined).length +
     Object.values(f.has).filter((v) => v && v !== 'any').length +
     (f.needs !== 'any' ? 1 : 0) +
