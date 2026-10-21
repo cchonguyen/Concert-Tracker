@@ -8,6 +8,8 @@ Read [REQUIREMENTS.md](REQUIREMENTS.md) first: it says what the app is for (reme
 - Reject any extracted name that is not found verbatim (after normalization) in its source text. Do not loosen `isVerbatim`.
 - A billing role (headliner or support) is stored only with a quote that contains the marker words ("with special guest", "supported by", ...) and a billed act on each side (`src/server/lineup/billing.ts`). List order, font size or position never make a headliner. No role means "Artist".
 - Concert or Festival is worked out in code (`src/server/events/scale.ts`); store only the person's own choice.
+- Format is the person's own words; the app suggests past values but never fills it.
+- Suggestions from an event's name (a source's listing, your other events, MusicBrainz) are one-tap offers; nothing is added to seen acts without a tap.
 - Confidence is computed in code from sources and review history.
 - On a quota error, park the job and stop. Do not retry with another model and do not fall back to heuristics or regex parsing.
 - Do not add hardcoded lists of festivals, venues or artists. Improve an adapter or add a new one under `src/server/lineup/adapters/`.

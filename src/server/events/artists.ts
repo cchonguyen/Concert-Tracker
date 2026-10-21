@@ -1,5 +1,6 @@
-import type { Edition, LookupJob, SourceType } from '../lineup/types';
-import { Billing, billingFromTitle, placeInTitle } from '../lineup/billing';
+import type { Edition, Fetcher, LookupJob, SourceType } from '../lineup/types';
+import { Billing, billingFromTitle, placeInTitle, splitBill } from '../lineup/billing';
+import { artistNamed } from '../lineup/musicbrainz';
 import { normalizeName } from '../lineup/text';
 import type { LoggedEvent } from './types';
 
@@ -7,7 +8,9 @@ import type { LoggedEvent } from './types';
 // as a one-tap seen act only when a source lists that act for this event (a
 // Ticketmaster attraction, the setlist.fm artist, or the lineup). The name is
 // your text and the source confirms it is a performer, so nothing is guessed;
-// it still takes your tap (REQUIREMENTS.md R3.4).
+// it still takes your tap (REQUIREMENTS.md R3.4). Two more confirmations,
+// both still a tap: an act you saw at another event, and a part of the name
+// that MusicBrainz knows as an artist (nameArtistSuggestions).
 
 export interface ArtistSuggestion {
   key: string;
@@ -38,6 +41,57 @@ export function eventPerformers(event: LoggedEvent, job?: LookupJob | null, edit
     if (src && p.status !== 'cancelled') out.push({ name: p.name, sourceType: src.sourceType, sourceUrl: src.sourceUrl });
   }
   return out;
+}
+
+// Acts you saw at your other events: if one is named in this event's name,
+// it is offered too. Short names are left out, so a word like "Live" in a
+// title never matches.
+export function pastArtists(events: LoggedEvent[], current: LoggedEvent): Performer[] {
+  const out: Performer[] = [];
+  for (const e of events) {
+    if (e.id === current.id) continue;
+    for (const s of e.seen) if (s.key.length >= 4) out.push({ name: s.name, sourceType: 'user' });
+  }
+  return out;
+}
+
+// The names an event's name may hold, in your words: the part before a
+// subtitle (": Nurture Live Tour", " - 10th Anniversary"), split on billing
+// markers ("with special guest", "w/", "b2b") and commas. A trailing year
+// goes. "Above & Beyond" stays whole.
+export function titleParts(name: string): string[] {
+  const head = name
+    .replace(/\b(19|20)\d{2}\b/g, ' ')
+    .split(/\s*:\s+|\s+[-–—|]\s+/)[0]
+    .trim();
+  const pieces: string[] = [];
+  const bill = splitBill(head);
+  for (const part of bill ? [bill.head, bill.tail] : [head]) {
+    pieces.push(...part.split(/\s*,\s*|\s+(?:b2b|B2B|vs\.?)\s+/));
+  }
+  const seen = new Set<string>();
+  return pieces
+    .map((p) => p.replace(/\s+/g, ' ').trim())
+    .filter((p) => {
+      const k = normalizeName(p);
+      if (k.length < 2 || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .slice(0, 4);
+}
+
+// Parts of the name that MusicBrainz knows as an artist of exactly that name.
+// One request per part (at most 4), spaced by the shared fetcher.
+export async function nameArtistSuggestions(event: LoggedEvent, fetcher: Fetcher): Promise<ArtistSuggestion[]> {
+  const seen = new Set(event.seen.map((s) => s.key));
+  const found: Performer[] = [];
+  for (const part of titleParts(event.name)) {
+    if (seen.has(normalizeName(part))) continue;
+    const url = await artistNamed(fetcher, part);
+    if (url) found.push({ name: part, sourceType: 'musicbrainz', sourceUrl: url });
+  }
+  return artistSuggestions(event, found);
 }
 
 export function artistSuggestions(event: LoggedEvent, performers: Performer[]): ArtistSuggestion[] {

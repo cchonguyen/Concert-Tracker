@@ -29,6 +29,7 @@ export interface TableFilters {
   needs: Needs;
   origin: Origin;
   kind: KindFilter;
+  format: string;
   sort: SortKey;
   desc: boolean;
 }
@@ -44,6 +45,7 @@ export const EMPTY_FILTERS: TableFilters = {
   needs: 'any',
   origin: 'any',
   kind: 'any',
+  format: '',
   sort: 'date',
   desc: true,
 };
@@ -105,6 +107,7 @@ export function matches(e: LoggedEvent, f: TableFilters, lineup?: LineupSummary,
   if (f.needs !== 'any' && needsOf(e, lineup) !== f.needs) return false;
   if (f.origin !== 'any' && fromEmail(e) !== (f.origin === 'email')) return false;
   if (f.kind !== 'any' && (eventScale(e, facts).kind ?? 'unknown') !== f.kind) return false;
+  if (f.format && e.format !== f.format) return false;
   return true;
 }
 
@@ -158,6 +161,7 @@ export interface Options {
   countries: string[];
   artists: Array<{ key: string; name: string }>;
   companions: string[];
+  formats: string[];
   years: number[];
 }
 
@@ -177,6 +181,7 @@ export function filterOptions(events: LoggedEvent[]): Options {
     countries: byCount(events.flatMap((e) => (e.country ? [e.country] : []))),
     artists: byCount(events.flatMap((e) => e.seen.map((s) => s.key))).map((key) => ({ key, name: names.get(key)! })),
     companions: byCount(events.flatMap((e) => e.companions)),
+    formats: byCount(events.flatMap((e) => (e.format ? [e.format] : []))),
     years,
   };
 }
@@ -230,6 +235,7 @@ export function filtersToQuery(f: TableFilters): string {
   if (f.needs !== 'any') p.set('needs', f.needs);
   if (f.origin !== 'any') p.set('from_source', f.origin);
   if (f.kind !== 'any') p.set('type', f.kind);
+  if (f.format) p.set('format', f.format);
   if (f.sort !== 'date' || !f.desc) p.set('sort', `${f.sort}${f.desc ? '' : ':asc'}`);
   return p.toString();
 }
@@ -263,6 +269,7 @@ export function filtersFromQuery(query: string): TableFilters {
     needs: oneOf(p.get('needs'), ['any', 'date', 'pick', 'review'] as const, 'any'),
     origin: oneOf(p.get('from_source'), ['any', 'typed', 'email'] as const, 'any'),
     kind: oneOf(p.get('type'), ['any', 'concert', 'festival', 'unknown'] as const, 'any'),
+    format: p.get('format') ?? '',
     sort: oneOf(sort, ['date', 'name', 'venue', 'city', 'seen', 'rating', 'price'] as const, 'date'),
     desc: dir !== 'asc',
   };
@@ -270,11 +277,57 @@ export function filtersFromQuery(query: string): TableFilters {
 
 export function activeFilterCount(f: TableFilters): number {
   return (
-    [f.q, f.venue, f.city, f.country, f.artist, f.companion].filter(Boolean).length +
+    [f.q, f.venue, f.city, f.country, f.artist, f.companion, f.format].filter(Boolean).length +
     [f.yearFrom, f.yearTo, f.minRating].filter((v) => v !== undefined).length +
     Object.values(f.has).filter((v) => v && v !== 'any').length +
     (f.needs !== 'any' ? 1 : 0) +
     (f.origin !== 'any' ? 1 : 0) +
     (f.kind !== 'any' ? 1 : 0)
   );
+}
+
+// "Fill gaps": what an event is missing, one kind of gap at a time.
+export type Gap = 'date' | 'venue' | 'city' | 'type' | 'format' | 'seen' | 'companions' | 'rating' | 'price' | 'review';
+export const GAPS: Gap[] = ['date', 'venue', 'city', 'type', 'seen', 'review', 'format', 'companions', 'rating', 'price'];
+
+export function hasGap(e: LoggedEvent, gap: Gap, lineup?: LineupSummary, facts?: LineupFacts): boolean {
+  switch (gap) {
+    case 'date':
+      return !e.startDate;
+    case 'venue':
+      return !e.venue;
+    case 'city':
+      return !e.city;
+    case 'type':
+      return !eventScale(e, facts).kind;
+    case 'format':
+      return !e.format;
+    case 'seen':
+      return e.seen.length === 0;
+    case 'companions':
+      return e.companions.length === 0;
+    case 'rating':
+      return typeof e.rating !== 'number';
+    case 'price':
+      return typeof e.ticketPrice !== 'number';
+    case 'review':
+      return lineup?.status === 'needs_review' && !e.editionId;
+  }
+}
+
+export function gapCounts(
+  events: LoggedEvent[],
+  lineups: Record<string, LineupSummary> = {},
+  editions: Record<string, LineupFacts> = {},
+): Record<Gap, number> {
+  const out = Object.fromEntries(GAPS.map((g) => [g, 0])) as Record<Gap, number>;
+  for (const e of events) for (const g of GAPS) if (hasGap(e, g, lineups[e.id], editions[e.id])) out[g] += 1;
+  return out;
+}
+
+// Events that can start a lineup lookup from the Table: dated, no confirmed
+// lineup, and no lookup that is running, waiting or ready for review.
+export function canFindLineup(e: LoggedEvent, lineup?: LineupSummary): boolean {
+  if (e.editionId || (!e.year && !e.startDate)) return false;
+  return !lineup || lineup.status === 'failed';
 }
