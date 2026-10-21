@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LoggedEvent, SeenAct } from '../src/server/events/types.ts';
-import { artistSummaries, groupArtists, sortArtists } from '../src/services/artists.ts';
+import { artistSummaries, groupArtists, jumpTargets, sortArtists } from '../src/services/artists.ts';
 
 const ev = (id: string, patch: Partial<LoggedEvent>): LoggedEvent => ({
   id,
@@ -57,4 +57,16 @@ test('groupArtists heads groups by letter, times seen or year', () => {
   assert.deepEqual(labels('most'), ['Seen 3 times:1', 'Seen once:3']);
   assert.deepEqual(labels('recent'), ['2023:2', '2019:1', 'Date unknown:1']);
   assert.deepEqual(labels('first'), ['2019:2', '2023:1', 'Date unknown:1']);
+});
+
+test('jumpTargets lists every letter for A to Z and the years you have for date orders', () => {
+  const az = jumpTargets(groupArtists(list, 'az'), 'az');
+  assert.equal(az.length, 27);
+  assert.deepEqual(az.filter((t) => t.group).map((t) => t.label), ['B', 'C', 'O']);
+  assert.deepEqual(jumpTargets(groupArtists(list, 'recent'), 'recent'), [
+    { label: '2023', group: '2023' },
+    { label: '2019', group: '2019' },
+    { label: '?', group: 'Date unknown' },
+  ]);
+  assert.deepEqual(jumpTargets(groupArtists(list, 'most'), 'most'), []);
 });
