@@ -3,8 +3,22 @@ import type { ConfirmRequest } from '../server/lineup/learning';
 import type { DetailCandidate, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
 import type { EventPatch } from '../server/events/service';
 import type { EmailImport } from '../server/events/email/types';
+import type { ArtistSuggestion } from '../server/events/artists';
+import type { LineupFacts } from '../server/events/scale';
 
-export type { LookupJob, Edition, ConfirmRequest, LoggedEvent, LineupSummary, DetailCandidate, EventField, EventPatch, EmailImport };
+export type {
+  LookupJob,
+  Edition,
+  ConfirmRequest,
+  LoggedEvent,
+  LineupSummary,
+  DetailCandidate,
+  EventField,
+  EventPatch,
+  EmailImport,
+  ArtistSuggestion,
+  LineupFacts,
+};
 
 export interface LineupStatus {
   store: 'file' | 'supabase';
@@ -27,8 +41,10 @@ const post = (body?: unknown): RequestInit => ({ method: 'POST', body: JSON.stri
 
 // Your event log: capture and details (stage 1), lineup lookups (stage 2).
 export const eventsApi = {
-  list: () => request<{ events: LoggedEvent[]; lineups: Record<string, LineupSummary> }>('/api/events'),
-  get: (id: string) => request<{ event: LoggedEvent; job: LookupJob | null; edition: Edition | null }>(`/api/events/${id}`),
+  list: () =>
+    request<{ events: LoggedEvent[]; lineups: Record<string, LineupSummary>; editions: Record<string, LineupFacts> }>('/api/events'),
+  get: (id: string) =>
+    request<{ event: LoggedEvent; job: LookupJob | null; edition: Edition | null; suggestions: ArtistSuggestion[] }>(`/api/events/${id}`),
   create: (text: string) => request<{ event: LoggedEvent }>('/api/events', post({ text })).then((r) => r.event),
   update: (id: string, patch: EventPatch) =>
     request<{ event: LoggedEvent }>(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }).then((r) => r.event),

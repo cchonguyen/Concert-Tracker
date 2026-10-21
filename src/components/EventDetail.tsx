@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Check, ExternalLink, Loader2, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, ExternalLink, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import {
+  ArtistSuggestion,
   DetailCandidate,
   Edition,
   EventField,
@@ -12,7 +13,8 @@ import {
   LookupJob,
   SOURCE_LABELS,
 } from '../services/lineupApi';
-import { dateConfirmations, datesBetween, whenLabel } from '../services/format';
+import { artistsOf, dateConfirmations, datesBetween, supportOf, whenLabel } from '../services/format';
+import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
 
 interface EventDetailProps {
@@ -131,6 +133,72 @@ const ChipInput: React.FC<{
   );
 };
 
+type Seen = LoggedEvent['seen'][number];
+type SeenPatch = NonNullable<EventPatch['seen']>;
+
+const toPatch = (seen: Seen[]): SeenPatch => seen.map(({ name, from, role, roleFrom }) => ({ name, from, role, roleFrom }));
+
+// Who you saw, in two rows: Artist (headliners and acts with no role stated)
+// and Supporting (acts billed as support). Moving an act sets its role as yours.
+const SeenActs: React.FC<{ seen: Seen[]; onChange: (seen: SeenPatch) => void }> = ({ seen, onChange }) => {
+  const [draft, setDraft] = useState('');
+  const add = () => {
+    const names = draft.split(',').map((s) => s.trim()).filter(Boolean);
+    if (names.length) onChange([...toPatch(seen), ...names.map((name) => ({ name, from: 'you' as const }))]);
+    setDraft('');
+  };
+  const setRole = (key: string, role: Seen['role'] | null) =>
+    onChange(toPatch(seen).map((s, i) => (seen[i].key === key ? { ...s, role, roleFrom: 'you' as const } : s)));
+  const remove = (key: string) => onChange(toPatch(seen.filter((s) => s.key !== key)));
+  const chip = (s: Seen) => (
+    <span key={s.key} className="inline-flex items-center gap-1 rounded-full bg-zinc-800 py-1 pl-2.5 pr-1.5 text-sm text-zinc-100">
+      {s.name}
+      {s.role === 'headliner' && <span className="text-[10px] uppercase text-amber-300/80">headliner</span>}
+      <button
+        onClick={() => setRole(s.key, s.role === 'support' ? null : 'support')}
+        aria-label={s.role === 'support' ? `Move ${s.name} to Artist` : `Move ${s.name} to Supporting`}
+        title={s.role === 'support' ? 'Move to Artist' : 'Move to Supporting'}
+        className="text-zinc-500 hover:text-zinc-200"
+      >
+        {s.role === 'support' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+      </button>
+      <button onClick={() => remove(s.key)} aria-label={`Remove ${s.name}`} className="text-zinc-500 hover:text-zinc-200">
+        <X className="h-3 w-3" />
+      </button>
+    </span>
+  );
+  const artists = artistsOf(seen);
+  const support = supportOf(seen);
+  return (
+    <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="w-20 shrink-0 text-[11px] font-semibold text-zinc-500">Artist</span>
+        {artists.map(chip)}
+        {!artists.length && <span className="text-xs text-zinc-600">None yet</span>}
+      </div>
+      {support.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="w-20 shrink-0 text-[11px] font-semibold text-zinc-500">Supporting</span>
+          {support.map(chip)}
+        </div>
+      )}
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault();
+            add();
+          }
+        }}
+        onBlur={add}
+        placeholder={seen.length ? 'Add another' : 'Type a name and press Enter'}
+        className="w-full bg-transparent px-1.5 py-1 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+      />
+    </div>
+  );
+};
+
 function candidateLine(c: DetailCandidate): string {
   return [whenLabel(c), c.venue, c.city, c.country].filter(Boolean).join(' · ');
 }
@@ -164,6 +232,7 @@ function cityForVenue(events: LoggedEvent[], venue: string): string | undefined 
 export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChange, onDeleted, onClose }) => {
   const [job, setJob] = useState<LookupJob | null>(null);
   const [edition, setEdition] = useState<Edition | null>(null);
+  const [suggestions, setSuggestions] = useState<ArtistSuggestion[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lineupUrl, setLineupUrl] = useState('');
@@ -190,6 +259,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
       const data = await eventsApi.get(event.id);
       setJob(data.job);
       setEdition(data.edition);
+      setSuggestions(data.suggestions ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -197,7 +267,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
 
   useEffect(() => {
     void load();
-  }, [load, event.lineupJobId, event.editionId]);
+  }, [load, event.lineupJobId, event.editionId, event.seen.length, event.details.status]);
 
   useEffect(() => {
     if (!isActive(job?.status)) return;
@@ -239,6 +309,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     };
   };
   const confirmations = dateConfirmations(event);
+  const scale = eventScale(event, edition ? lineupFacts(edition) : undefined);
+  const worked = eventScale({ ...event, kind: undefined }, edition ? lineupFacts(edition) : undefined);
+  const offered = suggestions.filter((s) => !seenKeys.has(s.key));
+  const roleName = (role?: Seen['role']) => (role === 'support' ? 'Supporting' : 'Artist');
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -306,6 +380,23 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               onSave={(v) => save({ city: text(v) })}
             />
             <Field label="Country" value={event.country} source={event.sources.country} offer={offer('country')} onSave={(v) => save({ country: text(v) })} />
+            <label className="space-y-1">
+              <span className="flex items-center justify-between gap-2 text-[11px] font-semibold text-zinc-400">
+                Type
+                <span className="font-normal text-zinc-500">{scale.by === 'rule' && scale.kind ? scale.reason : ''}</span>
+              </span>
+              <select
+                className={input}
+                value={event.kind ?? ''}
+                onChange={(e) => save({ kind: (e.target.value || null) as EventPatch['kind'] })}
+              >
+                <option value="">
+                  {worked.kind ? `${KIND_LABELS[worked.kind]} (worked out)` : 'Not known yet'}
+                </option>
+                <option value="concert">Concert</option>
+                <option value="festival">Festival</option>
+              </select>
+            </label>
           </div>
 
           {details.status === 'choose' && (
@@ -360,13 +451,24 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         {/* Who you saw */}
         <section className="space-y-3">
           <h3 className={sectionTitle}>Who you saw</h3>
-          <ChipInput
-            items={event.seen.map((s) => s.name)}
-            placeholder={event.seen.length ? 'Add another' : 'Type a name and press Enter'}
-            onChange={(names) =>
-              save({ seen: names.map((name) => ({ name, from: event.seen.find((s) => s.name === name)?.from ?? 'you' })) })
-            }
-          />
+          <SeenActs seen={event.seen} onChange={(seen) => save({ seen })} />
+          {offered.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="text-zinc-500">From the event name:</span>
+              {offered.map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() =>
+                    save({ seen: [...toPatch(event.seen), { name: s.name, from: 'you', role: s.role, roleFrom: s.role ? 'you' : undefined }] })
+                  }
+                  title={`Listed by ${SOURCE_LABELS[s.sourceType]}`}
+                  className="inline-flex items-center gap-1 rounded-full border border-violet-500/50 px-2.5 py-1 text-violet-200 hover:bg-violet-950/40"
+                >
+                  <Plus className="h-3 w-3" /> {s.name} as {roleName(s.role)}?
+                </button>
+              ))}
+            </div>
+          )}
           {lineupActs.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-[11px] text-zinc-500">From the lineup, tap to mark who you saw:</p>
@@ -379,13 +481,15 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                       onClick={() =>
                         save({
                           seen: on
-                            ? event.seen.filter((s) => s.key !== p.artistKey)
-                            : [...event.seen, { name: p.name, from: 'lineup' as const }],
+                            ? toPatch(event.seen.filter((s) => s.key !== p.artistKey))
+                            : [...toPatch(event.seen), { name: p.name, from: 'lineup', role: p.billing, roleFrom: p.billing ? 'lineup' : undefined }],
                         })
                       }
+                      title={p.billing ? `Billed as ${p.billing}` : undefined}
                       className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
                     >
                       {p.name}
+                      {p.billing === 'support' && <span className="ml-1 text-[10px] text-zinc-500">support</span>}
                     </button>
                   );
                 })}

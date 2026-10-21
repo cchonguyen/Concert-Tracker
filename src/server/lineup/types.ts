@@ -1,5 +1,7 @@
 // Core types for the source-first lineup pipeline. See ARCHITECTURE.md.
 
+import type { Billing } from './billing';
+
 export type SourceType =
   | 'clashfinder'
   | 'promoter'
@@ -51,6 +53,9 @@ export interface PerformerClaim {
   startTime?: string;
   endTime?: string;
   mbid?: string;
+  // Set only when the quoted span itself bills the act as headliner or
+  // support ("X with special guest Y"); see billing.ts.
+  billing?: Billing;
   extractor: string; // adapter id or 'gemini:<model>'
   extractorVersion: string;
   createdAt: string;
@@ -135,6 +140,7 @@ export interface CandidatePerformer {
   days: string[];
   stages: string[];
   status: 'billed' | 'performed';
+  billing?: Billing; // when every source that states a role agrees
   confidence: number; // 0..1, computed from sources
   flagged: boolean; // low evidence, needs a look
   sources: CandidateSource[];
@@ -200,6 +206,7 @@ export interface EditionPerformance {
   days: string[];
   stages: string[];
   status: 'billed' | 'performed' | 'cancelled';
+  billing?: Billing; // absent: no lead stated (filed under Artist)
   confidence: number;
   sources: CandidateSource[];
 }

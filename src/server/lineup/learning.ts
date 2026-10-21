@@ -11,6 +11,7 @@ import { LineupStore } from './store/types';
 import { domainOf, lineupWindow, normalizeName, seriesSlugFor } from './text';
 import { slugFromClashfinderUrl } from './adapters/clashfinder';
 import { LoggedEvent, SeenAct } from '../events/types';
+import { Billing, isBilling } from './billing';
 
 // Review is where the system learns. Every decision is stored as data that the
 // next lookup reads: aliases, a per-site blocklist, measured source accuracy
@@ -26,6 +27,9 @@ export interface ReviewedPerformer {
   seen: boolean;
   days?: string[];
   stages?: string[];
+  // Your role for the act: null means no lead stated. Left out, the role the
+  // sources agreed on is kept.
+  billing?: Billing | null;
 }
 
 type EditionFactsInput = { name: string; startDate?: string; endDate?: string; venue?: string; city?: string; country?: string };
@@ -162,9 +166,15 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
         };
     if (reviewed.days) perf.days = reviewed.days;
     if (reviewed.stages) perf.stages = reviewed.stages;
+    if (reviewed.billing !== undefined) perf.billing = isBilling(reviewed.billing) ? reviewed.billing : undefined;
     if (reviewed.seen) {
       perf.status = 'performed'; // you were there
-      ticked.push({ key: perf.artistKey, name: perf.name, from: cand ? 'lineup' : 'you' });
+      const act: SeenAct = { key: perf.artistKey, name: perf.name, from: cand ? 'lineup' : 'you' };
+      if (perf.billing) {
+        act.role = perf.billing;
+        act.roleFrom = cand && perf.billing === cand.billing ? 'lineup' : 'you';
+      }
+      ticked.push(act);
     }
     performances.push(perf);
     if (cand) {
@@ -263,6 +273,7 @@ function toPerformance(cand: CandidatePerformer, name: string): EditionPerforman
     days: cand.days,
     stages: cand.stages,
     status: cand.status,
+    billing: cand.billing,
     confidence: cand.confidence,
     sources: cand.sources,
   };
@@ -278,6 +289,7 @@ function dedupe(perfs: EditionPerformance[]): EditionPerformance[] {
       prev.stages = [...new Set([...prev.stages, ...p.stages])];
       prev.sources = [...prev.sources, ...p.sources];
       if (p.status === 'performed') prev.status = 'performed';
+      prev.billing ??= p.billing;
     }
   }
   return [...map.values()];

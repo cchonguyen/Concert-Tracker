@@ -2,13 +2,16 @@ import { AdapterContext, AdapterResult, NewPerformerClaim, SourceAdapter } from 
 import { parseJson } from '../http';
 import { addDays, normalizeName } from '../text';
 import { emptyResult, fact, makeDocument } from './common';
+import { billingFromTitle } from '../billing';
 
 // Ticketmaster Discovery API v2. Free key, 5,000 calls/day. Anchors the
 // canonical event name, dates and venue; attractions are performers, though
 // festival listings may name headliners only. Past events generally drop out
 // of the Discovery API, so this mainly helps upcoming and recent editions.
 
-const VERSION = 'ticketmaster@1';
+// @2: a listing named "X with special guest Y" bills X as headliner and Y as
+// support, quoting the listing name.
+const VERSION = 'ticketmaster@2';
 
 interface TmEvent {
   id: string;
@@ -76,17 +79,21 @@ export const ticketmasterAdapter: SourceAdapter = {
 
     const seen = new Set<string>();
     for (const e of events) {
-      for (const a of e._embedded?.attractions ?? []) {
+      const attractions = e._embedded?.attractions ?? [];
+      const roles = billingFromTitle(e.name, attractions.map((a) => a.name));
+      for (const a of attractions) {
         const key = `${a.id}:${e.dates?.start?.localDate ?? ''}`;
         if (seen.has(key)) continue;
         seen.add(key);
+        const billing = roles.get(normalizeName(a.name));
         result.performers.push({
           documentId: doc.id,
           sourceType: 'ticketmaster',
           sourceUrl: e.url ?? publicUrl,
           name: a.name,
-          quotedSpan: a.name,
+          quotedSpan: billing ? e.name : a.name,
           evidence: 'billed',
+          billing,
           day: events.length > 1 ? e.dates?.start?.localDate : undefined,
           extractor: 'ticketmaster',
           extractorVersion: VERSION,

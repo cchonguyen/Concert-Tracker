@@ -14,6 +14,7 @@ import {
   SourceType,
 } from '../types';
 import { LoggedEvent } from '../../events/types';
+import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import { LineupStore, MAX_EXAMPLES_PER_DOMAIN } from './types';
 
@@ -192,6 +193,7 @@ export class SupabaseLineupStore implements LineupStore {
           start_time: c.startTime ?? null,
           end_time: c.endTime ?? null,
           mbid: c.mbid ?? null,
+          billing: c.billing ?? null,
           extractor: c.extractor,
           extractor_version: c.extractorVersion,
           created_at: c.createdAt,
@@ -218,6 +220,7 @@ export class SupabaseLineupStore implements LineupStore {
         startTime: r.start_time ?? undefined,
         endTime: r.end_time ?? undefined,
         mbid: r.mbid ?? undefined,
+        billing: r.billing ?? undefined,
         extractor: r.extractor,
         extractorVersion: r.extractor_version,
         createdAt: r.created_at,
@@ -277,6 +280,7 @@ export class SupabaseLineupStore implements LineupStore {
         days: p.days ?? [],
         stages: p.stages ?? [],
         status: p.status,
+        billing: p.billing ?? undefined,
         confidence: Number(p.confidence),
         sources: p.sources ?? [],
       })),
@@ -328,6 +332,7 @@ export class SupabaseLineupStore implements LineupStore {
             days: p.days,
             stages: p.stages,
             status: p.status,
+            billing: p.billing ?? null,
             confidence: p.confidence,
             sources: p.sources,
           })),
@@ -335,6 +340,19 @@ export class SupabaseLineupStore implements LineupStore {
         'upsertEdition performances',
       );
     }
+  }
+
+  async editionLineupFacts(ids: string[]) {
+    const out: Record<string, LineupFacts> = {};
+    if (!ids.length) return out;
+    const rows = this.check(
+      await this.db.from('performances').select('edition_id, status, sources').in('edition_id', ids),
+      'editionLineupFacts',
+    );
+    const byEdition = new Map<string, any[]>();
+    for (const r of rows ?? []) byEdition.set(r.edition_id, [...(byEdition.get(r.edition_id) ?? []), r]);
+    for (const id of ids) out[id] = lineupFacts({ performances: byEdition.get(id) ?? [] });
+    return out;
   }
 
   async listEditions(limit: number) {
@@ -475,6 +493,7 @@ export class SupabaseLineupStore implements LineupStore {
       lineup_job_id: e.lineupJobId ?? null,
       edition_id: e.editionId ?? null,
       seen: e.seen,
+      kind: e.kind ?? null,
       days_attended: e.daysAttended,
       companions: e.companions,
       rating: e.rating ?? null,
@@ -502,6 +521,7 @@ export class SupabaseLineupStore implements LineupStore {
       lineupJobId: r.lineup_job_id ?? undefined,
       editionId: r.edition_id ?? undefined,
       seen: r.seen ?? [],
+      kind: r.kind ?? undefined,
       daysAttended: r.days_attended ?? [],
       companions: r.companions ?? [],
       rating: r.rating ?? undefined,

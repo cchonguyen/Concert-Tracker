@@ -154,6 +154,7 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
       days: [...new Set(claims.map((c) => c.day).filter((d): d is string => Boolean(d)))].sort(),
       stages: [...new Set(claims.map((c) => c.stage).filter((s): s is string => Boolean(s)))],
       status: claims.some((c) => c.evidence === 'performed') ? 'performed' : 'billed',
+      billing: agreedBilling(claims),
       confidence: Math.round(confidence * 1000) / 1000,
       flagged:
         confidence < FLAG_BELOW ||
@@ -185,6 +186,12 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
     performers,
     droppedCount: dropped,
   };
+}
+
+// A role only when every claim that states one states the same one.
+function agreedBilling(claims: PerformerClaim[]): PerformerClaim['billing'] {
+  const roles = new Set(claims.map((c) => c.billing).filter(Boolean));
+  return roles.size === 1 ? [...roles][0] : undefined;
 }
 
 export function appendFacts(target: Partial<EditionFacts>, extra: Partial<EditionFacts>): Partial<EditionFacts> {

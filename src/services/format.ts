@@ -1,4 +1,5 @@
-import type { LoggedEvent } from '../server/events/types';
+import type { LoggedEvent, SeenAct } from '../server/events/types';
+import { eventScale, KIND_LABELS, LineupFacts } from '../server/events/scale';
 
 const day = (iso: string, opts: Intl.DateTimeFormatOptions) =>
   new Date(`${iso}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', ...opts });
@@ -42,17 +43,47 @@ const csvCell = (v: unknown) => {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
+// Who you saw, split the way the event shows it: Artist is the headliners
+// plus every act with no role stated; Supporting only acts billed as support.
+export const artistsOf = (seen: SeenAct[]) => seen.filter((s) => s.role !== 'support');
+export const supportOf = (seen: SeenAct[]) => seen.filter((s) => s.role === 'support');
+
+// "Concert", "Festival", or empty while it is not known yet.
+export function kindLabel(e: LoggedEvent, facts?: LineupFacts): string {
+  const kind = eventScale(e, facts).kind;
+  return kind ? KIND_LABELS[kind] : '';
+}
+
 // One row per event, for a spreadsheet.
-export function eventsToCsv(events: LoggedEvent[]): string {
-  const header = ['Date', 'End date', 'Year', 'Event', 'Venue', 'City', 'Country', 'Saw', 'Went with', 'Rating', 'Ticket price', 'Notes'];
+export function eventsToCsv(events: LoggedEvent[], editions: Record<string, LineupFacts> = {}): string {
+  const header = [
+    'Date',
+    'End date',
+    'Year',
+    'Event',
+    'Type',
+    'Venue',
+    'City',
+    'Country',
+    'Artist',
+    'Supporting artists',
+    'Saw',
+    'Went with',
+    'Rating',
+    'Ticket price',
+    'Notes',
+  ];
   const rows = events.map((e) => [
     e.startDate,
     e.endDate,
     e.startDate ? e.startDate.slice(0, 4) : e.year,
     e.name,
+    kindLabel(e, editions[e.id]),
     e.venue,
     e.city,
     e.country,
+    artistsOf(e.seen).map((s) => s.name).join('; '),
+    supportOf(e.seen).map((s) => s.name).join('; '),
     e.seen.map((s) => s.name).join('; '),
     e.companions.join('; '),
     e.rating,

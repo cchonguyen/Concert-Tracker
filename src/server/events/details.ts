@@ -95,7 +95,9 @@ export const ticketmasterFinder: DetailFinder = {
     return [...groups.values()].map((events) => {
       const dates = events.map((e) => e.dates?.start?.localDate).filter(Boolean).sort();
       const v = events[0]._embedded?.venues?.[0];
-      return candidate('ticketmaster', events[0].url ?? `https://www.ticketmaster.com/event/${events[0].id}`, {
+      const url = events[0].url ?? `https://www.ticketmaster.com/event/${events[0].id}`;
+      const names = [...new Set<string>(events.flatMap((e) => (e._embedded?.attractions ?? []).map((a: any) => String(a.name ?? '').trim())))];
+      const c = candidate('ticketmaster', url, {
         name: events[0].name,
         startDate: dates[0],
         endDate: dates.length > 1 && dates[dates.length - 1] !== dates[0] ? dates[dates.length - 1] : undefined,
@@ -103,6 +105,8 @@ export const ticketmasterFinder: DetailFinder = {
         city: cityLabel(v?.city?.name, v?.state?.stateCode, v?.country?.countryCode),
         country: v?.country?.name,
       });
+      const performers = names.filter(Boolean).map((name) => ({ name, sourceType: 'ticketmaster' as const, sourceUrl: url }));
+      return performers.length ? { ...c, performers } : c;
     });
   },
 };
@@ -130,13 +134,15 @@ export const setlistfmFinder: DetailFinder = {
       .filter((s: any) => normalizeName(s.artist?.name ?? '') === wanted)
       .map((s: any) => {
         const [d, m, y] = String(s.eventDate ?? '').split('-');
-        return candidate('setlistfm', s.url ?? 'https://www.setlist.fm', {
+        const url = s.url ?? 'https://www.setlist.fm';
+        const c = candidate('setlistfm', url, {
           name: s.artist?.name,
           startDate: y ? `${y}-${m}-${d}` : undefined,
           venue: s.venue?.name,
           city: cityLabel(s.venue?.city?.name, s.venue?.city?.stateCode, s.venue?.city?.country?.code),
           country: s.venue?.city?.country?.name,
         });
+        return { ...c, performers: [{ name: String(s.artist.name), sourceType: 'setlistfm' as const, sourceUrl: url }] };
       })
       .filter((c: DetailCandidate) => inWindow(c.startDate, w));
   },
@@ -224,6 +230,7 @@ export function mergeCandidates(all: DetailCandidate[]): DetailCandidate[] {
     }
     for (const f of ['name', ...EVENT_FIELDS] as const) if (!same[f] && c[f]) same[f] = c[f];
     same.sources.push(...c.sources);
+    if (c.performers?.length) same.performers = [...(same.performers ?? []), ...c.performers];
   }
   return out;
 }

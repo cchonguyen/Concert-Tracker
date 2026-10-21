@@ -1,6 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { BarChart3, Mic2, Radio, Table2, Ticket } from 'lucide-react';
-import { EmailImport, eventsApi, importsApi, isActive, LineupStatus, LineupSummary, lineupApi, LoggedEvent, SOURCE_LABELS } from './services/lineupApi';
+import {
+  EmailImport,
+  eventsApi,
+  importsApi,
+  isActive,
+  LineupFacts,
+  LineupStatus,
+  LineupSummary,
+  lineupApi,
+  LoggedEvent,
+  SOURCE_LABELS,
+} from './services/lineupApi';
 import { CaptureBar } from './components/CaptureBar';
 import { EventsHome } from './components/EventsHome';
 import { EventDetail } from './components/EventDetail';
@@ -18,6 +29,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [events, setEvents] = useState<LoggedEvent[]>([]);
   const [lineups, setLineups] = useState<Record<string, LineupSummary>>({});
+  const [editions, setEditions] = useState<Record<string, LineupFacts>>({});
   const [researching, setResearching] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [status, setStatus] = useState<LineupStatus | null>(null);
@@ -32,6 +44,7 @@ export default function App() {
       const data = await eventsApi.list();
       setEvents(data.events);
       setLineups(data.lineups);
+      setEditions(data.editions ?? {});
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -148,7 +161,7 @@ export default function App() {
             />
           </>
         )}
-        {tab === 'table' && <TableView events={events} lineups={lineups} onOpen={setSelectedId} />}
+        {tab === 'table' && <TableView events={events} lineups={lineups} editions={editions} onOpen={setSelectedId} />}
         {tab === 'stats' && <StatsView events={events} onOpen={setSelectedId} onOpenTable={openTable} />}
         {tab === 'artists' && <ArtistsView events={events} onOpenEvent={setSelectedId} />}
       </main>
