@@ -106,7 +106,7 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
     }
   });
 
-  // "I didn't go" ({ ids }), or back to the list ({ ids, restore: true }).
+  // "Leave these out" ({ ids }): not attended, or not a show at all; or back to the list ({ ids, restore: true }).
   router.post('/imports/skip', async (req, res) => {
     try {
       const wanted = ids(req.body);

@@ -6,9 +6,11 @@ import { dice } from './dice';
 import { eventbrite } from './eventbrite';
 import { unwrapForward } from './forwarded';
 import { frontGate } from './frontGate';
+import { liveNation } from './liveNation';
 import { residentAdvisor } from './residentAdvisor';
 import { emailLines } from './text';
 import { ticketmaster } from './ticketmaster';
+import { ticketWeb } from './ticketWeb';
 import { tixr } from './tixr';
 import {
   EmailImport,
@@ -25,7 +27,7 @@ import {
 // From raw ticket emails to one review row per show. Nothing here saves an
 // event: rows wait for you to tick "I went" (addImports).
 
-export const READERS: EmailReader[] = [ticketmaster, tixr, dice, residentAdvisor, eventbrite, axs, frontGate];
+export const READERS: EmailReader[] = [ticketmaster, liveNation, tixr, dice, residentAdvisor, eventbrite, axs, frontGate, ticketWeb];
 
 export type ReadOutcome =
   | { email: RawEmail; seller: string; read: ReadEmail }
