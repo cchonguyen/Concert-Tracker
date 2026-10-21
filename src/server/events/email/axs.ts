@@ -57,7 +57,12 @@ export const axs: EmailReader = {
 
 function order(subject: string, lines: string[], sentAt: string): ReadEmail | null {
   const confirmation = lines.map((l) => l.match(/confirmation number is\s*#?(\d+)/i)?.[1] ?? l.match(/^#(\d+)$/)?.[1]).find(Boolean);
-  const total = money(lines[lines.findIndex((l) => /^(Grand Total|Order Total|Total):?$/i.test(l)) + 1]);
+  const total = ['Grand Total', 'Order Total', 'Total']
+    .map((label) => lines.findIndex((l) => new RegExp(`^${label}:$`, 'i').test(l)))
+    .filter((at) => at >= 0)
+    .map((at) => money(lines[at + 1]))
+    .find(Boolean);
+  const tickets = ticketCount(lines);
   const details = lines.find((l) => /^Order details for .+ scheduled on /i.test(l));
   if (details) {
     const m = details.match(/^Order details for (.+?) at (.+?) scheduled on (.+)$/i);
@@ -68,6 +73,7 @@ function order(subject: string, lines: string[], sentAt: string): ReadEmail | nu
       startDate: numericDate(m?.[3] ?? details),
       venue: m ? quoted(m[2], details) : undefined,
       orderId: confirmation,
+      tickets,
       total,
     };
   }
@@ -80,6 +86,7 @@ function order(subject: string, lines: string[], sentAt: string): ReadEmail | nu
       name: named(lines[placed + 1], lines[placed + 1]),
       ...dateFields(when, sentAt),
       orderId: confirmation,
+      tickets,
       total,
     };
   }
@@ -91,6 +98,7 @@ function order(subject: string, lines: string[], sentAt: string): ReadEmail | nu
       name: named(event, event),
       ...dateFields(lines[ticketDetails + 2] ?? '', sentAt),
       orderId: confirmation,
+      tickets,
       total,
     };
   }
@@ -100,9 +108,30 @@ function order(subject: string, lines: string[], sentAt: string): ReadEmail | nu
         kind: 'order',
         name: named(event, subject),
         orderId: confirmation,
+        tickets,
         total,
       }
     : null;
+}
+
+// The quantity of the one ticket line an order lists, in either table:
+// "Quantity / Type / Section / Row / Seats / Price / Total", then "2", or
+// "Item / Price/ea. / Qty / Subtotal", then the item, "$269.00", "2",
+// "$538.00". An order of several lines gives no count.
+function ticketCount(lines: string[]): number | undefined {
+  const wide = lines.findIndex((l, i) => /^Quantity$/i.test(l) && /^Total$/i.test(lines[i + 6] ?? ''));
+  if (wide >= 0) {
+    const values = lines.slice(wide + 7);
+    const end = values.findIndex((l) => /^(Method of Delivery|Sub Total)/i.test(l));
+    const qty = values.slice(0, end < 0 ? 0 : end).filter((l) => /^\d+$/.test(l));
+    return /^\d+$/.test(values[0] ?? '') && qty.length === 1 ? Number(values[0]) : undefined;
+  }
+  const box = lines.findIndex((l, i) => /^Item$/i.test(l) && /^Qty$/i.test(lines[i + 2] ?? '') && /^Subtotal$/i.test(lines[i + 3] ?? ''));
+  if (box < 0) return undefined;
+  const values = lines.slice(box + 4, lines.findIndex((l, i) => i > box && /^Total:?$/i.test(l)));
+  const prices = values.flatMap((l, i) => (/^\$[\d,]+\.\d{2}$/.test(l) ? [i] : []));
+  if (prices.length !== 2 || prices[1] !== prices[0] + 2 || !/^\d+$/.test(values[prices[0] + 1])) return undefined;
+  return Number(values[prices[0] + 1]);
 }
 
 function delivered(lines: string[], sentAt: string): ReadEmail | null {

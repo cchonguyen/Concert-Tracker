@@ -1,6 +1,7 @@
 import type { LineupStore } from '../../lineup/store/types';
 import type { GmailApi } from './gmail';
-import { mergeImports, READERS, readEmails } from './imports';
+import { fillPrice, mergeImports, pricesFromImports, READERS, readEmails } from './imports';
+import type { EmailImport } from './types';
 
 // "Check email": read the ticket mail that arrived since the last check,
 // a few messages per call so each request stays short (the Workers CPU
@@ -35,6 +36,9 @@ export interface ScanSetting extends ScanCursor {
   lastCheckedAt?: string; // when a check last finished
   sellers?: Record<string, ScanCursor>;
   forwards?: ScanCursor;
+  // Order emails read before ticket prices were, read once more for their
+  // price only: the ids done so far, until every one has been.
+  prices?: { done?: boolean; read: string[] };
 }
 
 export interface ScanStep {
@@ -94,23 +98,40 @@ export async function scanStep(store: LineupStore, gmail: GmailApi, now: Date, b
     ids.forEach((id) => known.add(id));
     todos.push([cursor, ids]);
   }
-  const [cursor, todo] = todos.find(([, ids]) => ids.length) ?? todos[0];
+  // Then, once, the orders already on the list that have no price.
+  state.prices ??= { read: [] };
+  const reread = new Set(state.prices.read);
+  const unpriced = state.prices.done
+    ? []
+    : existing
+        .filter((r) => (r.status === 'new' || r.status === 'added') && r.ticketPrice === undefined)
+        .flatMap((r) => r.messages.filter((m) => m.kind === 'order' && !reread.has(m.id)).map((m) => m.id));
+  const found = todos.find(([, ids]) => ids.length);
+  const [cursor, todo] = found ?? [undefined, unpriced];
   const messages = await Promise.all(todo.slice(0, batch).map((id) => gmail.getMessage(login.refreshToken, id)));
 
-  const changed = mergeImports(existing, readEmails(messages).outcomes, events, now);
+  const changed = cursor ? mergeImports(existing, readEmails(messages).outcomes, events, now) : rereadPrices(existing, messages);
   await store.putImports(changed);
+  // Shows in your log without a price take the one their emails give.
+  const rows = [...new Map([...existing, ...changed].map((r) => [r.id, r])).values()];
+  await store.putEvents(pricesFromImports(rows, events, now));
   const before = new Set(existing.map((r) => r.id));
 
-  for (const m of messages) {
-    cursor.recent[m.id] = m.sentAt;
-    if (!cursor.scannedThrough || Date.parse(m.sentAt) > Date.parse(cursor.scannedThrough)) cursor.scannedThrough = new Date(m.sentAt).toISOString();
+  if (!cursor) {
+    state.prices.read.push(...messages.map((m) => m.id));
+    if (messages.length >= unpriced.length) state.prices = { done: true, read: [] };
+  } else {
+    for (const m of messages) {
+      cursor.recent[m.id] = m.sentAt;
+      if (!cursor.scannedThrough || Date.parse(m.sentAt) > Date.parse(cursor.scannedThrough)) cursor.scannedThrough = new Date(m.sentAt).toISOString();
+    }
+    const cutoff = cursor.scannedThrough ? Date.parse(cursor.scannedThrough) - DAY_MS : 0;
+    cursor.recent = Object.fromEntries(Object.entries(cursor.recent).filter(([, at]) => Date.parse(at) >= cutoff));
   }
-  const cutoff = cursor.scannedThrough ? Date.parse(cursor.scannedThrough) - DAY_MS : 0;
-  cursor.recent = Object.fromEntries(Object.entries(cursor.recent).filter(([, at]) => Date.parse(at) >= cutoff));
   // How far your mail has been read, for the page: the furthest any search got.
   const furthest = cursors.map((c) => c.scannedThrough).filter((t): t is string => Boolean(t)).sort().pop();
   if (furthest && (!state.scannedThrough || furthest > state.scannedThrough)) state.scannedThrough = furthest;
-  const remaining = todos.reduce((n, [, ids]) => n + ids.length, 0) - messages.length;
+  const remaining = todos.reduce((n, [, ids]) => n + ids.length, 0) + unpriced.length - messages.length;
   if (!remaining) state.lastCheckedAt = now.toISOString();
   await store.putSetting(SCAN_SETTING, state);
 
@@ -121,4 +142,15 @@ export async function scanStep(store: LineupStore, gmail: GmailApi, now: Date, b
     scannedThrough: state.scannedThrough,
     lastCheckedAt: state.lastCheckedAt,
   };
+}
+
+// The price from an email already on a row, filled into that row only.
+function rereadPrices(rows: EmailImport[], messages: Awaited<ReturnType<GmailApi['getMessage']>>[]): EmailImport[] {
+  const changed = new Set<EmailImport>();
+  for (const o of readEmails(messages).outcomes) {
+    if (!('read' in o)) continue;
+    const row = rows.find((r) => r.messages.some((m) => m.id === o.email.id));
+    if (row && fillPrice(row, o.read, o.email)) changed.add(row);
+  }
+  return [...changed];
 }
