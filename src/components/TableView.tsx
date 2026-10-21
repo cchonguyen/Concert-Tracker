@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Download, FileUp, SlidersHorizontal, X } from 'lucide-react';
-import type { EmailImport, LineupSummary, LoggedEvent } from '../services/lineupApi';
-import { downloadText, eventsToCsv, whenLabel } from '../services/format';
+import type { EmailImport, LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
+import { artistsOf, downloadText, eventsToCsv, kindLabel, supportOf, whenLabel } from '../services/format';
 import {
   activeFilterCount,
   EMPTY_FILTERS,
@@ -22,6 +22,7 @@ import { ListImport } from './ListImport';
 interface TableViewProps {
   events: LoggedEvent[];
   lineups: Record<string, LineupSummary>;
+  editions: Record<string, LineupFacts>;
   imports: EmailImport[];
   onOpen: (id: string) => void;
   onImported: () => void;
@@ -44,8 +45,11 @@ const NEEDS_LABELS = { date: 'A date', pick: 'A pick', review: 'Lineup review' }
 const COLUMNS: Array<{ key: SortKey | null; label: string; className?: string }> = [
   { key: 'date', label: 'Date' },
   { key: 'name', label: 'Event' },
+  { key: null, label: 'Type' },
   { key: 'venue', label: 'Venue' },
   { key: 'city', label: 'City' },
+  { key: null, label: 'Artist' },
+  { key: null, label: 'Supporting' },
   { key: 'seen', label: 'Seen', className: 'text-right' },
   { key: null, label: 'With' },
   { key: 'rating', label: 'Rating', className: 'text-right' },
@@ -77,9 +81,13 @@ const Select: React.FC<{
 
 const dash = <span className="text-zinc-700">–</span>;
 
+// At most a few names in a cell; the full list is in the tooltip.
+const names = (acts: LoggedEvent['seen']) =>
+  acts.length > 3 ? `${acts.slice(0, 3).map((s) => s.name).join(', ')} +${acts.length - 3}` : acts.map((s) => s.name).join(', ');
+
 // Every event as a row you can filter, sort and export. A row opens the usual
 // event panel for editing; "Import a list" adds events from a CSV you kept.
-export const TableView: React.FC<TableViewProps> = ({ events, lineups, imports, onOpen, onImported }) => {
+export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, imports, onOpen, onImported }) => {
   const [filters, setFilters] = useState<TableFilters>(readQuery);
   const [importing, setImporting] = useState(false);
   const [showFilters, setShowFilters] = useState(() => activeFilterCount(readQuery()) > 0);
@@ -91,7 +99,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, imports, 
   }, [filters]);
 
   const options = useMemo(() => filterOptions(events), [events]);
-  const rows = useMemo(() => filterEvents(events, filters, lineups), [events, filters, lineups]);
+  const rows = useMemo(() => filterEvents(events, filters, lineups, editions), [events, filters, lineups, editions]);
   const summary = useMemo(() => summarize(rows), [rows]);
   const active = activeFilterCount(filters);
   const set = (patch: Partial<TableFilters>) => setFilters((f) => ({ ...f, ...patch }));
@@ -191,6 +199,16 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, imports, 
             options={Object.entries(NEEDS_LABELS).map(([value, l]) => ({ value, label: l }))}
           />
           <Select
+            name="Type"
+            value={filters.kind === 'any' ? '' : filters.kind}
+            onChange={(v) => set({ kind: (v || 'any') as TableFilters['kind'] })}
+            options={[
+              { value: 'concert', label: 'Concert' },
+              { value: 'festival', label: 'Festival' },
+              { value: 'unknown', label: 'Not known yet' },
+            ]}
+          />
+          <Select
             name="Added from"
             value={filters.origin === 'any' ? '' : filters.origin}
             onChange={(v) => set({ origin: (v || 'any') as TableFilters['origin'] })}
@@ -228,7 +246,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, imports, 
         <span className="flex items-center gap-4">
           {importButton}
           <button
-          onClick={() => downloadText(`livearchive-${new Date().toISOString().slice(0, 10)}.csv`, eventsToCsv(rows))}
+          onClick={() => downloadText(`livearchive-${new Date().toISOString().slice(0, 10)}.csv`, eventsToCsv(rows, editions))}
           disabled={!rows.length}
           className="inline-flex items-center gap-1.5 hover:text-zinc-200 disabled:opacity-40"
         >
@@ -267,8 +285,15 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, imports, 
                     <tr key={e.id} onClick={() => onOpen(e.id)} className="cursor-pointer hover:bg-zinc-900/60">
                       <td className="whitespace-nowrap px-3 py-2 text-zinc-400">{whenLabel(e) ?? dash}</td>
                       <td className="px-3 py-2 font-medium text-zinc-100">{e.name}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-zinc-400">{kindLabel(e, editions[e.id]) || dash}</td>
                       <td className="px-3 py-2 text-zinc-300">{e.venue ?? dash}</td>
                       <td className="px-3 py-2 text-zinc-300">{e.city ?? dash}</td>
+                      <td className="px-3 py-2 text-zinc-300" title={artistsOf(e.seen).map((s) => s.name).join(', ')}>
+                        {names(artistsOf(e.seen)) || dash}
+                      </td>
+                      <td className="px-3 py-2 text-zinc-300" title={supportOf(e.seen).map((s) => s.name).join(', ')}>
+                        {names(supportOf(e.seen)) || dash}
+                      </td>
                       <td className="px-3 py-2 text-right text-zinc-300" title={e.seen.map((s) => s.name).join(', ')}>
                         {e.seen.length || dash}
                       </td>
@@ -294,7 +319,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, imports, 
                       <span className="shrink-0 text-xs text-zinc-500">{whenLabel(e) ?? 'Date unknown'}</span>
                     </div>
                     <div className="truncate text-xs text-zinc-400">
-                      {[e.venue, e.city].filter(Boolean).join(' · ')}
+                      {[kindLabel(e, editions[e.id]), e.venue, e.city].filter(Boolean).join(' · ')}
                       {e.seen.length > 0 && ` · ${e.seen.length} seen`}
                       {e.rating !== undefined && e.rating !== null && ` · ${e.rating}/5`}
                       {needs && <span className="text-zinc-500"> · needs {NEEDS_LABELS[needs].toLowerCase()}</span>}

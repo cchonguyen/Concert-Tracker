@@ -1,4 +1,5 @@
 import type { JobStatus, SourceType } from '../lineup/types';
+import type { Billing } from '../lineup/billing';
 
 // Your personal log: one LoggedEvent per thing you attended. Stage 1 fills its
 // name, date and place; stage 2 (the lineup lookup) links it to a canonical
@@ -36,6 +37,9 @@ export interface DetailCandidate {
   country?: string;
   // quote: the words a web page used for the date, when it came from web search.
   sources: Array<{ sourceType: SourceType; sourceUrl: string; fields: EventField[]; quote?: string }>;
+  // Performers the listing names (Ticketmaster attractions, the setlist.fm
+  // artist). Used only to confirm an act named in the event's own name.
+  performers?: Array<{ name: string; sourceType: SourceType; sourceUrl: string }>;
 }
 
 // pending: not researched yet; needs_date: research needs at least a year;
@@ -51,11 +55,18 @@ export interface EventDetails {
   checkedAt?: string;
 }
 
+// Artist: headliner, or no role stated. Supporting: role 'support', which
+// needs a source that says so, or you.
 export interface SeenAct {
   key: string; // normalized name
   name: string;
   from: 'you' | 'lineup';
+  role?: Billing;
+  roleFrom?: 'you' | 'lineup';
 }
+
+// Concert or festival. Worked out from the event (scale.ts) unless you set it.
+export type EventKind = 'concert' | 'festival';
 
 export interface LoggedEvent extends EventFacts {
   id: string;
@@ -65,6 +76,7 @@ export interface LoggedEvent extends EventFacts {
   lineupJobId?: string;
   editionId?: string;
   seen: SeenAct[];
+  kind?: EventKind; // your choice; absent means worked out by the rule
   daysAttended: string[];
   companions: string[];
   rating?: number;
