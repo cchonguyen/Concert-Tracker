@@ -3,12 +3,15 @@ import { AlertTriangle, ExternalLink, Loader2, Plus, X } from 'lucide-react';
 import type { RejectReason } from '../server/lineup/learning';
 import { lineupApi, LoggedEvent, LookupJob, SOURCE_LABELS } from '../services/lineupApi';
 import { eventTitle } from '../services/series';
+import { filterOptions, startRows } from '../services/reviewRows';
+import type { Edition } from '../server/lineup/types';
 
 interface LineupReviewProps {
   job: LookupJob;
   event: LoggedEvent;
   onClose: () => void;
   onSaved: (event: LoggedEvent) => void;
+  edition?: Edition | null; // set when reopening a confirmed lineup
 }
 
 interface Row {
@@ -33,29 +36,32 @@ const input =
 
 // Stage 2 review: keep, fix or reject each act and tick who you saw. The
 // event's date and place come from the event itself, not from here.
-export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, onClose, onSaved }) => {
+export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition, onClose, onSaved }) => {
   const candidate = job.candidate;
   const alreadySeen = new Set(event.seen.map((s) => s.key));
   // A role you set on a seen act wins over the sources'.
   const yourRole = new Map(event.seen.filter((s) => s.roleFrom === 'you').map((s) => [s.key, s.role ?? '']));
   const [rows, setRows] = useState<Row[]>(
-    (candidate?.performers ?? []).map((p) => ({
-      key: p.key,
-      name: p.name,
-      originalName: p.name,
-      accepted: !p.flagged,
-      rejectReason: 'not_an_act',
-      seen: alreadySeen.has(p.key),
-      billing: (yourRole.get(p.key) ?? p.billing ?? '') as Row['billing'],
-      days: p.days,
-      stages: p.stages,
-      confidence: p.confidence,
-      flagged: p.flagged,
-      missingFrom: (p.missingFrom ?? []).map((t) => SOURCE_LABELS[t]),
-      status: p.status,
-      sources: p.sources,
+    startRows(candidate?.performers ?? [], edition).map((r) => ({
+      key: r.key,
+      name: r.name,
+      originalName: r.candidate?.name,
+      accepted: r.accepted,
+      rejectReason: r.cancelled ? 'cancelled' : 'not_an_act',
+      seen: alreadySeen.has(r.seenKey),
+      billing: (yourRole.get(r.seenKey) ?? r.billing ?? '') as Row['billing'],
+      days: r.days,
+      stages: r.stages,
+      confidence: r.candidate?.confidence ?? 1,
+      flagged: r.candidate?.flagged ?? false,
+      missingFrom: (r.candidate?.missingFrom ?? []).map((t) => SOURCE_LABELS[t]),
+      status: r.candidate?.status === 'performed' ? 'performed' : 'billed',
+      sources: r.candidate?.sources ?? [],
     })),
   );
+  const options = filterOptions(rows);
+  const [day, setDay] = useState('');
+  const [stage, setStage] = useState('');
   const [filter, setFilter] = useState('');
   const [onlyFlagged, setOnlyFlagged] = useState(false);
   const [newAct, setNewAct] = useState('');
@@ -64,7 +70,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, onClose,
 
   const visible = rows
     .map((row, index) => ({ row, index }))
-    .filter(({ row }) => (!onlyFlagged || row.flagged) && row.name.toLowerCase().includes(filter.toLowerCase()));
+    .filter(({ row }) => (!onlyFlagged || row.flagged) && (!day || row.days.includes(day)) && (!stage || row.stages.includes(stage)) && row.name.toLowerCase().includes(filter.toLowerCase()));
 
   const update = (index: number, patch: Partial<Row>) =>
     setRows((rs) => rs.map((r, i) => (i === index ? { ...r, ...patch } : r)));
@@ -119,7 +125,9 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, onClose,
           <div>
             <h2 className="text-lg font-bold text-white">Who played {eventTitle(event)}</h2>
             <p className="text-xs text-zinc-400">
-              {candidate?.cached
+              {edition
+                ? 'Your saved lineup. Change anything and save again.'
+                : candidate?.cached
                 ? 'This edition was confirmed before, so it came straight from your database.'
                 : 'Every act below was found on at least one source page. Untick anything wrong, fix spellings, and tick who you saw. Your fixes are remembered for next time.'}
               {candidate?.droppedCount ? ` ${candidate.droppedCount} entries were filtered out by your earlier corrections.` : ''}
@@ -136,6 +144,22 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, onClose,
             <label className="inline-flex items-center gap-1 text-zinc-400">
               <input type="checkbox" checked={onlyFlagged} onChange={(e) => setOnlyFlagged(e.target.checked)} /> Low evidence only
             </label>
+            {options.days.length > 0 && (
+              <select className={`${input} w-auto`} value={day} onChange={(e) => setDay(e.target.value)} aria-label="Filter by day">
+                <option value="">Every day</option>
+                {options.days.map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            )}
+            {options.stages.length > 0 && (
+              <select className={`${input} w-auto`} value={stage} onChange={(e) => setStage(e.target.value)} aria-label="Filter by stage">
+                <option value="">Every stage</option>
+                {options.stages.map((st) => (
+                  <option key={st} value={st}>{st}</option>
+                ))}
+              </select>
+            )}
             <span className="mx-1 text-zinc-700">|</span>
             <button className="text-zinc-300 hover:underline" onClick={() => setAll({ accepted: true })}>Accept shown</button>
             <button className="text-zinc-300 hover:underline" onClick={() => setAll({ seen: true })}>Saw all shown</button>
