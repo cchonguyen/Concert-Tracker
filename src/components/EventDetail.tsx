@@ -662,7 +662,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             <div className="space-y-2 rounded-xl border border-zinc-800 p-3">
               <div className="flex items-center gap-2 text-sm text-zinc-200">
                 {isActive(job.status) && <Loader2 className="h-4 w-4 animate-spin text-violet-300" />}
-                {JOB_STATUS[job.status]}
+                {/* Between steps a job is briefly queued again; it is still looking. */}
+                {job.status === 'queued' && job.stage !== 'collect' && !job.nextAttemptAt ? JOB_STATUS.running : JOB_STATUS[job.status]}
                 {job.status === 'needs_review' && ` · ${job.candidate?.performers.length ?? 0} acts`}
               </div>
               {job.status === 'waiting_quota' && (

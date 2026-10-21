@@ -17,7 +17,7 @@ import {
 import { LoggedEvent } from '../../events/types';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
-import { LineupStore, MAX_EXAMPLES_PER_DOMAIN } from './types';
+import { isStaleRun, LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS } from './types';
 
 type DocumentMeta = Omit<SourceDocument, 'body'>;
 
@@ -128,8 +128,8 @@ export class FileLineupStore implements LineupStore {
     const iso = now.toISOString();
     const jobs = Object.values((await this.load()).jobs).filter(
       (j) =>
-        (j.status === 'queued' || j.status === 'waiting_quota') &&
-        (!j.nextAttemptAt || j.nextAttemptAt <= iso),
+        ((j.status === 'queued' || j.status === 'waiting_quota') && (!j.nextAttemptAt || j.nextAttemptAt <= iso)) ||
+        isStaleRun(j, now),
     );
     return clone(jobs.sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(0, limit));
   }

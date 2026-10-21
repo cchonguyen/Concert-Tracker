@@ -9,8 +9,11 @@ import { createDeps, createStore } from '../src/server/lineup/service';
 // There is no long-lived process, so the Node LookupWorker is replaced by:
 // - a Queue: "start" and "try now" send the job id, and the consumer runs it;
 // - a Cron Trigger: every minute, jobs that are due (queued or past their
-//   quota pause) are sent to the queue. Duplicate messages are harmless
-//   because runJob skips a job that is no longer queued or waiting.
+//   quota pause, or cut off while running) are sent to the queue. Duplicate
+//   messages are harmless because runJob skips a job that is no longer
+//   queued or waiting.
+// Each message runs one stage and sends the job back to the queue for the
+// next, so every invocation stays within the Workers subrequest limit.
 
 interface LookupMessage {
   jobId: string;
@@ -70,10 +73,14 @@ export default {
 
   // max_concurrency 1 and max_batch_size 1 keep jobs one at a time, which the
   // per-host rate limiter in http.ts relies on.
-  async queue(batch, _env) {
+  async queue(batch, env) {
     const deps = await getDeps();
     for (const message of batch.messages) {
-      await runJob(deps, message.body.jobId, { force: message.body.force });
+      const { jobId, force } = message.body;
+      // One stage (or one page) per message: a whole lookup in one
+      // invocation went past the 50-subrequest limit and was left "running".
+      const job = await runJob(deps, jobId, { force, oneStep: true });
+      if (job?.status === 'queued' && !job.nextAttemptAt) await env.LOOKUP_QUEUE.send({ jobId, force });
       message.ack();
     }
   },

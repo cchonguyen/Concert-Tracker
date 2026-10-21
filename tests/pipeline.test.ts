@@ -327,3 +327,44 @@ test('confirming a large lineup makes the same few store writes as a small one',
   assert.equal(large, small);
   assert.ok(large < 25, `${large} store calls`);
 });
+
+test('one step at a time: a Worker run stays small and the lookup still finishes', async () => {
+  // A whole lookup in one Worker invocation went past the 50-subrequest
+  // limit after reading three pages and was left "running" forever.
+  const { store, deps } = await setup();
+  const twoPages: SourceAdapter = {
+    id: 'promoter',
+    enabled: () => true,
+    async collect() {
+      const a = makeDocument('https://fest.example/lineup', 'promoter', PAGE, 'text');
+      const b = makeDocument('https://fest.example/lineup2', 'promoter', `${PAGE}\nmore`, 'text');
+      return { documents: [a, b], performers: [], facts: {}, extractionQueue: [a.id, b.id], notes: [] };
+    },
+  };
+  deps.adapters = [crowdSource, twoPages];
+  const job = await createLookup(deps, { eventName: 'Fest', year: 2025 });
+  const stages: string[] = [];
+  let current = job;
+  for (let i = 0; i < 10 && current.status === 'queued'; i++) {
+    current = (await runJob(deps, job.id, { oneStep: true }))!;
+    stages.push(current.stage);
+  }
+  // collect, one page, the other page, choose the next stage, merge.
+  assert.deepEqual(stages, ['extract', 'extract', 'extract', 'merge', 'done']);
+  assert.equal(current.status, 'needs_review');
+  assert.equal(current.pendingExtraction.length, 0);
+  assert.ok((await store.listPerformerClaims(job.id)).length > 0);
+});
+
+test('a run cut off mid-way is picked up again once stale, and not before', async () => {
+  const { store, deps } = await setup();
+  const job = await createLookup(deps, { eventName: 'Fest', year: 2025 });
+  await store.updateJob({ ...job, status: 'running', stage: 'collect', updatedAt: '2025-06-01T11:55:00Z' });
+  assert.equal((await store.dueJobs(deps.now(), 5)).length, 0);
+  assert.equal((await runJob(deps, job.id))?.status, 'running'); // another run may still be going
+
+  await store.updateJob({ ...job, status: 'running', stage: 'collect', updatedAt: '2025-06-01T11:40:00Z' });
+  assert.deepEqual((await store.dueJobs(deps.now(), 5)).map((j) => j.id), [job.id]);
+  const done = await runJob(deps, job.id);
+  assert.equal(done?.status, 'needs_review');
+});
