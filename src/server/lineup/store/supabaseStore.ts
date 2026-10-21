@@ -569,6 +569,22 @@ export class SupabaseLineupStore implements LineupStore {
     );
   }
 
+  // app_settings (0006) is optional too: only "Check email" needs it.
+  async getSetting<T>(key: string) {
+    const row = this.check(
+      await this.db.from('app_settings').select('data').eq('key', key).maybeSingle(),
+      'getSetting (apply 0006_app_settings.sql)',
+    );
+    return row ? ((row as any).data as T) : null;
+  }
+
+  async putSetting<T>(key: string, data: T) {
+    this.check(
+      await this.db.from('app_settings').upsert({ key, data, updated_at: new Date().toISOString() }),
+      'putSetting (apply 0006_app_settings.sql)',
+    );
+  }
+
   async getArtist(key: string) {
     const r = this.check(await this.db.from('canonical_artists').select('*').eq('key', key).maybeSingle(), 'getArtist');
     return r ? { key: r.key, name: r.name, mbid: r.mbid ?? undefined, resolvedAt: r.resolved_at ?? undefined } : null;

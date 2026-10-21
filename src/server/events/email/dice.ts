@@ -7,6 +7,7 @@ import { EmailReader, UnreadableEmail } from './types';
 // "Refund requested: <event>" marks the tickets as refunded.
 export const dice: EmailReader = {
   seller: 'DICE',
+  domain: 'dice.fm',
   matches: (from) => fromDomain(from, 'dice.fm'),
   read(email, lines) {
     const refund = subjectAfter(email.subject, /^Refund[a-z ]*:\s*(.+)$/i);
