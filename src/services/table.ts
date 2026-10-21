@@ -1,6 +1,6 @@
 import type { LineupSummary, LoggedEvent, SeenAct } from '../server/events/types';
 import { eventScale, LineupFacts } from '../server/events/scale';
-import { eventYear } from './format';
+import { eventYear, formatsOf } from './format';
 import { eventTitle } from './series';
 import { cityWithRegion, NORTH_AMERICA } from '../server/events/regions';
 
@@ -156,7 +156,7 @@ export function matches(e: LoggedEvent, f: TableFilters, lineup?: LineupSummary,
   if (f.needs !== 'any' && needsOf(e, lineup) !== f.needs) return false;
   if (f.origin !== 'any' && fromEmail(e) !== (f.origin === 'email')) return false;
   if (f.kind !== 'any' && (eventScale(e, facts).kind ?? 'unknown') !== f.kind) return false;
-  if (f.format && e.format !== f.format) return false;
+  if (f.format && !formatsOf(e.format).some((v) => v.toLowerCase() === f.format.toLowerCase())) return false;
   if (f.series && e.series !== f.series) return false;
   return true;
 }
@@ -234,7 +234,7 @@ export function filterOptions(events: LoggedEvent[]): Options {
     countries: byCount(events.flatMap((e) => (e.country ? [e.country] : []))),
     artists: byCount(events.flatMap((e) => e.seen.map((s) => s.key))).map((key) => ({ key, name: names.get(key)! })),
     companions: byCount(events.flatMap((e) => e.companions)),
-    formats: byCount(events.flatMap((e) => (e.format ? [e.format] : []))),
+    formats: byCount(events.flatMap((e) => formatsOf(e.format))),
     series: byCount(events.flatMap((e) => (e.series ? [e.series] : []))),
     years,
   };

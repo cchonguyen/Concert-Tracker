@@ -14,7 +14,7 @@ import {
   PlaceGuess,
   SOURCE_LABELS,
 } from '../services/lineupApi';
-import { artistsOf, dateConfirmations, datesBetween, matchNames, pastArtistNames, pastCompanionNames, supportOf, weatherLine, whenLabel } from '../services/format';
+import { artistsOf, dateConfirmations, datesBetween, formatsOf, joinFormats, matchNames, pastArtistNames, pastCompanionNames, supportOf, weatherLine, whenLabel } from '../services/format';
 import { actSets, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
@@ -180,6 +180,39 @@ const ChipInput: React.FC<{
           ))}
         </div>
       )}
+    </div>
+  );
+};
+
+// Which days of a multi-day event you went. No days stored means every day,
+// so each day starts ticked and you untick the ones you missed. Ticking every
+// day again stores none; the last ticked day can't be unticked.
+const DaysWent: React.FC<{ days: string[]; attended: string[]; onChange: (days: string[]) => void }> = ({ days, attended, onChange }) => {
+  const picked = attended.filter((d) => days.includes(d));
+  const went = picked.length ? picked : days;
+  const toggle = (d: string) => {
+    const next = went.includes(d) ? went.filter((x) => x !== d) : [...went, d].sort();
+    onChange(next.length === days.length ? [] : next);
+  };
+  return (
+    <div className="col-span-2 flex flex-wrap items-center gap-2 text-xs text-zinc-300">
+      <span className="font-semibold text-zinc-400">Days you went{went.length === days.length ? ' (all)' : ''}:</span>
+      {days.map((d) => {
+        const on = went.includes(d);
+        const last = on && went.length === 1;
+        return (
+          <button
+            key={d}
+            onClick={() => toggle(d)}
+            disabled={last}
+            title={last ? 'You went at least one day' : on ? 'Tap if you missed this day' : 'Tap if you went this day'}
+            aria-pressed={on}
+            className={`rounded-full border px-2.5 py-1 ${on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-500 line-through'}`}
+          >
+            {new Date(`${d}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' })}
+          </button>
+        );
+      })}
     </div>
   );
 };
@@ -483,8 +516,8 @@ const FORMAT_IDEAS = [
   'Livestream',
 ];
 
-// Venues, cities and formats you've entered before, most used first.
-function pastValues(events: LoggedEvent[], field: 'venue' | 'city' | 'format'): string[] {
+// Venues and cities you've entered before, most used first.
+function pastValues(events: LoggedEvent[], field: 'venue' | 'city'): string[] {
   const counts = new Map<string, number>();
   for (const e of events) {
     const v = e[field]?.trim();
@@ -557,7 +590,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     };
   }, [event.city, event.region, event.country]);
   const guessed = placeGuess ? placePatch(event, placeGuess) : null;
-  const formatSuggestions = [...new Set([...pastValues(others, 'format'), ...FORMAT_IDEAS])];
+  const formatSuggestions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of others) for (const v of formatsOf(e.format)) counts.set(v, (counts.get(v) ?? 0) + 1);
+    const past = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([v]) => v);
+    return [...new Set([...past, ...FORMAT_IDEAS])];
+  }, [events, event.id]);
   const pastArtists = useMemo(() => pastArtistNames(others), [events, event.id]);
   const pastCompanions = useMemo(() => pastCompanionNames(others), [events, event.id]);
 
@@ -726,6 +764,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               offer={offer('endDate')}
               onSave={(v) => save({ endDate: v && v !== event.startDate ? v : null })}
             />
+            {days.length > 1 && (
+              <DaysWent days={days} attended={event.daysAttended} onChange={(daysAttended) => save({ daysAttended })} />
+            )}
             {!event.startDate && (
               <Field label="Year, if that's all you know" type="number" value={event.year} placeholder="2024" onSave={(v) => save({ year: v ? Number(v) : null })} />
             )}
@@ -973,34 +1014,20 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         {/* Your details */}
         <section className="space-y-3">
           <h3 className={sectionTitle}>Your notes</h3>
-          <Field
-            label="Format"
-            value={event.format}
-            placeholder="Club night, warehouse party, block party…"
-            suggestions={formatSuggestions}
-            onSave={(v) => save({ format: text(v) })}
-          />
+          <label className="block space-y-1">
+            <span className="text-[11px] font-semibold text-zinc-400">Format</span>
+            <ChipInput
+              items={formatsOf(event.format)}
+              placeholder="Club night, warehouse party, block party…"
+              past={formatSuggestions}
+              label="Add a format"
+              onChange={(formats) => save({ format: joinFormats(formats) })}
+            />
+          </label>
           <label className="block space-y-1">
             <span className="text-[11px] font-semibold text-zinc-400">Went with</span>
             <ChipInput items={event.companions} placeholder="Add a name" past={pastCompanions} label="Add who you went with" onChange={(companions) => save({ companions })} />
           </label>
-          {days.length > 1 && (
-            <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-300">
-              <span className="font-semibold text-zinc-400">Days you went:</span>
-              {days.map((d) => {
-                const on = event.daysAttended.includes(d);
-                return (
-                  <button
-                    key={d}
-                    onClick={() => save({ daysAttended: on ? event.daysAttended.filter((x) => x !== d) : [...event.daysAttended, d].sort() })}
-                    className={`rounded-full border px-2.5 py-1 ${on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-400'}`}
-                  >
-                    {new Date(`${d}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' })}
-                  </button>
-                );
-              })}
-            </div>
-          )}
           <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-1">
               <span className="text-[11px] font-semibold text-zinc-400">Rating</span>
