@@ -816,6 +816,11 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           {edition && (
             <p className="text-sm text-zinc-300">
               {lineupActs.length} acts confirmed, each with a source.
+              {job && (
+                <button onClick={() => setReviewing(true)} className="ml-2 rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-200 hover:bg-zinc-900">
+                  Edit lineup
+                </button>
+              )}
             </p>
           )}
           {job && !edition && (
@@ -959,6 +964,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         <LineupReview
           job={job}
           event={event}
+          edition={edition}
           onClose={() => setReviewing(false)}
           onSaved={(updated) => {
             setReviewing(false);
