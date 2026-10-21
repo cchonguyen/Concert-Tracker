@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { CalendarDays, ChevronDown, Crown, Heart, MapPin, Search, Table2 } from 'lucide-react';
 import type { LoggedEvent } from '../services/lineupApi';
 import { whenLabel } from '../services/format';
+import { eventTitle } from '../services/series';
 import { ARTIST_SORTS, artistSummaries, ArtistSort, ArtistSummary, groupArtists } from '../services/artists';
 
 interface ArtistsViewProps {
@@ -130,7 +131,7 @@ const ArtistCard: React.FC<{ artist: ArtistSummary; onOpenEvent: (id: string) =>
               <button onClick={() => onOpenEvent(e.id)} className="group flex w-full items-baseline gap-2 text-left text-xs">
                 <span className="w-24 shrink-0 whitespace-nowrap tabular-nums text-zinc-500">{shortWhen(e) ?? 'Date unknown'}</span>
                 <span className="min-w-0 truncate text-zinc-300 group-hover:text-violet-300 group-hover:underline">
-                  {e.name}
+                  {eventTitle(e)}
                   {e.venue && <span className="text-zinc-600"> · {e.venue}</span>}
                 </span>
               </button>

@@ -1,6 +1,7 @@
 import type { EventPatch } from '../server/events/service';
 import type { EmailImport } from '../server/events/email/types';
 import type { LoggedEvent } from '../server/events/types';
+import { toSeenInput } from '../server/events/seen';
 
 // A list of past events you kept elsewhere (a Notion export, a spreadsheet,
 // this app's own CSV export) read into rows you review in the Table view.
@@ -22,6 +23,7 @@ export type ListField =
   | 'rating'
   | 'ticketPrice'
   | 'format'
+  | 'series'
   | 'notes'
   | 'id';
 
@@ -39,6 +41,7 @@ const HEADERS: Record<ListField, string[]> = {
   rating: ['rating', 'stars', 'score'],
   ticketPrice: ['ticket price', 'price', 'cost', 'paid'],
   format: ['format'],
+  series: ['series', 'festival series'],
   notes: ['notes', 'note', 'comments'],
   // This app's own export: the event the row came from.
   id: ['id'],
@@ -65,6 +68,7 @@ export interface ListRow {
   rating?: number;
   ticketPrice?: number;
   format?: string;
+  series?: string;
   notes?: string;
   eventId?: string; // the ID column of this app's export
   unread: ListField[]; // cells with a value that couldn't be read
@@ -279,6 +283,7 @@ export function readTable(cells: string[][]): ReadList {
       }
     }
     row.format = get('format') || undefined;
+    row.series = get('series') || undefined;
     row.notes = get('notes') || undefined;
     row.eventId = get('id') || undefined;
     const lost = [name, ...row.seen].filter((s) => LOST.test(s));
@@ -295,7 +300,7 @@ export function readTable(cells: string[][]): ReadList {
     }
     combined++;
     earlier.lines.push(line);
-    for (const f of ['endDate', 'venue', 'city', 'country', 'rating', 'ticketPrice', 'format', 'notes'] as const) {
+    for (const f of ['endDate', 'venue', 'city', 'country', 'rating', 'ticketPrice', 'format', 'series', 'notes'] as const) {
       if (earlier[f] === undefined && row[f] !== undefined) (earlier as any)[f] = row[f];
     }
     earlier.seen = union(earlier.seen, row.seen);
@@ -390,7 +395,7 @@ export function fillPatch(row: ListRow, base: Partial<LoggedEvent>, leaveOut: Se
   const known = new Set(seen.map((s) => norm(s.name)));
   const newActs = row.seen.filter((a) => !known.has(norm(a)));
   if (newActs.length) {
-    patch.seen = [...seen.map((s) => ({ name: s.name, from: s.from })), ...newActs.map((name) => ({ name, from: 'you' as const }))];
+    patch.seen = [...toSeenInput(seen), ...newActs.map((name) => ({ name, from: 'you' as const }))];
     adds.push(`${newActs.length} act${newActs.length === 1 ? '' : 's'} seen`);
   }
   const people = base.companions ?? [];
@@ -411,6 +416,10 @@ export function fillPatch(row: ListRow, base: Partial<LoggedEvent>, leaveOut: Se
   if (!base.format && row.format) {
     patch.format = row.format;
     adds.push('format');
+  }
+  if (!base.series && row.series) {
+    patch.series = row.series;
+    adds.push('series');
   }
   if (!base.notes && row.notes) {
     patch.notes = row.notes;
@@ -436,6 +445,7 @@ export function newEventPatch(row: ListRow, leaveOut: Set<string> = new Set()): 
     rating: row.rating ?? null,
     ticketPrice: row.ticketPrice ?? null,
     format: row.format ?? null,
+    series: row.series ?? null,
     notes: row.notes ?? null,
   };
 }
@@ -453,7 +463,7 @@ const shown = (v: unknown) => (v === undefined || v === null ? '' : String(v));
 // a different value replaces the event's and an emptied cell clears it. Only
 // columns the file has count, and a cell that couldn't be read changes
 // nothing. Columns worked out by the app (Type, Artist, Supporting artists,
-// Favourite set, Weather) are not read back.
+// Favourite set, Sets, Weather) are not read back.
 export function editPatch(
   row: ListRow,
   event: LoggedEvent,
@@ -498,6 +508,7 @@ export function editPatch(
     ['city', 'city'],
     ['country', 'country'],
     ['format', 'format'],
+    ['series', 'series'],
     ['notes', 'notes'],
   ] as const) {
     if (!has(f)) continue;
@@ -525,9 +536,9 @@ export function editPatch(
     const added = row.seen.filter((a) => !have.has(norm(a)));
     const removed = event.seen.filter((s) => !want.has(norm(s.name)));
     if (added.length || removed.length) {
-      // Acts kept keep their role, source and favourite mark.
+      // Acts kept keep their role, source and your marks.
       patch.seen = [
-        ...kept.map((s) => ({ name: s.name, from: s.from, role: s.role, roleFrom: s.roleFrom, favourite: s.favourite })),
+        ...toSeenInput(kept),
         ...added.map((name) => ({ name, from: 'you' as const })),
       ];
       change('acts seen', removed.map((s) => s.name).join(', '), added.join(', '));

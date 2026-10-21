@@ -50,6 +50,7 @@ const FIELD_LABELS: Record<ListField, string> = {
   rating: 'rating',
   ticketPrice: 'ticket price',
   format: 'format',
+  series: 'series',
   notes: 'notes',
   id: 'event ID',
 };

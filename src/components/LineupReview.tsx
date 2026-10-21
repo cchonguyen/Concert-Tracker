@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AlertTriangle, ExternalLink, Loader2, Plus, X } from 'lucide-react';
 import type { RejectReason } from '../server/lineup/learning';
 import { lineupApi, LoggedEvent, LookupJob, SOURCE_LABELS } from '../services/lineupApi';
+import { eventTitle } from '../services/series';
 
 interface LineupReviewProps {
   job: LookupJob;
@@ -116,7 +117,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, onClose,
       <div className="w-full max-w-5xl space-y-5 rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-bold text-white">Who played {event.name}</h2>
+            <h2 className="text-lg font-bold text-white">Who played {eventTitle(event)}</h2>
             <p className="text-xs text-zinc-400">
               {candidate?.cached
                 ? 'This edition was confirmed before, so it came straight from your database.'
