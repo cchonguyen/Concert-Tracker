@@ -186,7 +186,8 @@ const toPatch = (seen: Seen[]): SeenPatch =>
   seen.map(({ name, from, role, roleFrom, favourite }) => ({ name, from, role, roleFrom, favourite }));
 
 // Who you saw, in two rows: Artist (headliners and acts with no role stated)
-// and Supporting (acts billed as support). Moving an act sets its role as yours.
+// and Supporting (acts billed as support). Moving an act, or tapping its name
+// to mark it headliner, sets its role as yours.
 // The heart marks your favourite set of the night; sets shows each act's
 // stage and time where a source times it.
 // Typing offers acts you've entered on other events; a click, or arrow keys
@@ -221,7 +222,15 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
       >
         <Heart className={`h-3 w-3 ${s.favourite ? 'fill-rose-400' : ''}`} />
       </button>
-      {s.name}
+      {/* Tapping the name marks or unmarks Headliner, as your choice. */}
+      <button
+        onClick={() => setRole(s.key, s.role === 'headliner' ? null : 'headliner')}
+        aria-label={s.role === 'headliner' ? `Unmark ${s.name} as headliner` : `Mark ${s.name} as headliner`}
+        title={s.role === 'headliner' ? 'Headliner (tap to unmark)' : 'Tap to mark as headliner'}
+        className="hover:text-amber-200"
+      >
+        {s.name}
+      </button>
       {s.role === 'headliner' && <span className="text-[10px] uppercase text-amber-300/80">headliner</span>}
       {sets.get(s.key) && <span className="text-[10px] text-zinc-500">{sets.get(s.key)}</span>}
       <button
