@@ -1,6 +1,16 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Check, CloudSun, ExternalLink, Heart, Loader2, RefreshCw, Search, Star, X } from 'lucide-react';
-import { eventsApi, lineupApi, LineupFacts, LineupSummary, LoggedEvent, LookupJob, EventPatch } from '../services/lineupApi';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, CloudSun, ExternalLink, Heart, Loader2, Plus, RefreshCw, Search, Star, Type, X } from 'lucide-react';
+import {
+  ArtistSuggestion,
+  eventsApi,
+  lineupApi,
+  LineupFacts,
+  LineupSummary,
+  LoggedEvent,
+  LookupJob,
+  EventPatch,
+  SOURCE_LABELS,
+} from '../services/lineupApi';
 import { whenLabel } from '../services/format';
 import { canFindLineup, Gap, gapCounts, GAPS, hasGap } from '../services/table';
 
@@ -41,6 +51,54 @@ function byCount(values: string[]): string[] {
 
 const list = (v: string) => v.split(',').map((s) => s.trim()).filter(Boolean);
 const seenPatch = (e: LoggedEvent) => e.seen.map(({ name, from, role, roleFrom, favourite }) => ({ name, from, role, roleFrom, favourite }));
+
+// Why an act is offered from the event's name.
+const offeredBy = (s: ArtistSuggestion) =>
+  s.sourceType === 'user'
+    ? 'You saw them at another event'
+    : s.sourceType === 'musicbrainz'
+      ? 'An artist of this name on MusicBrainz'
+      : `Listed by ${SOURCE_LABELS[s.sourceType]}`;
+
+// Acts named in one event's title, as chips you tick; "Add" saves the ticked
+// ones as acts you saw, with any role the title gives.
+const TitleArtistsRow: React.FC<{
+  offered: ArtistSuggestion[];
+  ticked: Set<string>;
+  onToggle: (key: string) => void;
+  onAdd: () => void;
+}> = ({ offered, ticked, onToggle, onAdd }) => (
+  <div className="flex flex-wrap items-center gap-1.5">
+    <span className="text-[11px] text-zinc-500">From the title:</span>
+    {offered.map((s) => {
+      const on = ticked.has(s.key);
+      return (
+        <button
+          key={s.key}
+          role="checkbox"
+          aria-checked={on}
+          onClick={() => onToggle(s.key)}
+          title={offeredBy(s)}
+          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${
+            on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-700 text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          {on ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+          {s.name}
+          {s.role === 'support' && <span className="text-[10px] text-zinc-500">support</span>}
+          {s.sourceType === 'musicbrainz' && <span className="text-[10px] text-zinc-500">MusicBrainz</span>}
+        </button>
+      );
+    })}
+    <button
+      onClick={onAdd}
+      disabled={!ticked.size}
+      className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+    >
+      Add {ticked.size || ''}
+    </button>
+  </div>
+);
 
 // One gap on one event: type the value and press Enter. Saving goes through
 // the usual event edit, so every value is sourced as yours.
@@ -288,6 +346,94 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
     setBusy(null);
   };
 
+  // Artists from titles, for every row missing who you saw. Suggestions from
+  // what's stored come at once; MusicBrainz is asked per event on request.
+  // Ticked by default: acts a source lists for the event or you saw before.
+  // MusicBrainz name matches wait for your tick. Nothing saves without "Add".
+  const [offered, setOffered] = useState<Record<string, ArtistSuggestion[]>>({});
+  const [ticked, setTicked] = useState<Record<string, Set<string>>>({});
+  const [askedMb, setAskedMb] = useState<Set<string>>(new Set());
+  const stopMb = useRef(false);
+  const fetched = useRef(new Set<string>());
+  const offer = (id: string, list: ArtistSuggestion[]) => {
+    if (!list.length) return;
+    setOffered((o) => {
+      const prev = o[id] ?? [];
+      return { ...o, [id]: [...prev, ...list.filter((s) => !prev.some((p) => p.key === s.key))] };
+    });
+    setTicked((t) => {
+      const next = new Set(t[id] ?? []);
+      for (const s of list) if (s.sourceType !== 'musicbrainz') next.add(s.key);
+      return { ...t, [id]: next };
+    });
+  };
+  const seenIds = gap === 'seen' ? rows.map((e) => e.id).join(',') : '';
+  useEffect(() => {
+    if (!seenIds) return;
+    const ids = seenIds.split(',').filter((id) => !fetched.current.has(id)).slice(0, 500);
+    if (!ids.length) return;
+    ids.forEach((id) => fetched.current.add(id));
+    eventsApi.titleArtists(ids).then(
+      (found) => Object.entries(found).forEach(([id, list]) => offer(id, list)),
+      (err) => setError(err instanceof Error ? err.message : String(err)),
+    );
+  }, [seenIds]);
+  const toggle = (id: string, key: string) =>
+    setTicked((t) => {
+      const next = new Set(t[id] ?? []);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return { ...t, [id]: next };
+    });
+  const pickedFor = (e: LoggedEvent) => (offered[e.id] ?? []).filter((s) => ticked[e.id]?.has(s.key));
+  const addFromTitle = async (e: LoggedEvent) => {
+    const picked = pickedFor(e);
+    if (!picked.length) return;
+    await save(e.id, {
+      seen: [...seenPatch(e), ...picked.map((s) => ({ name: s.name, from: 'you' as const, role: s.role, roleFrom: s.role ? ('you' as const) : undefined }))],
+    });
+  };
+  const withPicks = gap === 'seen' ? rows.filter((e) => pickedFor(e).length) : [];
+  const addAllFromTitles = async () => {
+    setBusy('title-add');
+    setError(null);
+    const list = withPicks;
+    for (const [i, e] of list.entries()) {
+      setNote(`Adding artists: ${i + 1} of ${list.length}…`);
+      await addFromTitle(e);
+    }
+    setNote(`Added artists to ${list.length} event${list.length === 1 ? '' : 's'}.`);
+    setBusy(null);
+  };
+  const mbRows = gap === 'seen' ? rows.filter((e) => !askedMb.has(e.id)) : [];
+  const checkMusicBrainz = async () => {
+    setBusy('mb');
+    setError(null);
+    stopMb.current = false;
+    let found = 0;
+    const list = mbRows;
+    for (const [i, e] of list.entries()) {
+      if (stopMb.current) break;
+      setNote(`Checking MusicBrainz: ${i + 1} of ${list.length} (about a second per name)…`);
+      try {
+        const more = await eventsApi.nameArtists(e.id);
+        if (more.length) found += 1;
+        offer(e.id, more);
+      } catch {
+        // One failure doesn't stop the rest.
+      }
+      setAskedMb((s) => new Set(s).add(e.id));
+    }
+    setNote(`MusicBrainz knew an artist in ${found} more title${found === 1 ? '' : 's'}. Tick the ones that are right.`);
+    setBusy(null);
+  };
+  const tickAll = () =>
+    setTicked((t) => {
+      const next = { ...t };
+      for (const e of rows) next[e.id] = new Set((offered[e.id] ?? []).map((s) => s.key));
+      return next;
+    });
+
   const lineupRows = rows.filter((e) => canFindLineup(e, lineups[e.id])).slice(0, 50);
   const findLineups = async () => {
     setBusy('lineups');
@@ -357,6 +503,48 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
             Find lineups for {lineupRows.length === 50 ? 'the first 50' : `these ${lineupRows.length}`}
           </button>
         )}
+        {gap === 'seen' && rows.length > 0 && (
+          <div className="space-y-2 rounded-xl border border-zinc-800 p-3">
+            <p className="text-xs text-zinc-400">
+              <Type className="mr-1 inline h-3.5 w-3.5" />
+              Artists named in the event titles are ticked below when a listing, lineup or one of your other events backs them. Untick any
+              that are wrong, then add.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={addAllFromTitles}
+                disabled={busy !== null || !withPicks.length}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+              >
+                {busy === 'title-add' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                Add ticked artists to {withPicks.length} event{withPicks.length === 1 ? '' : 's'}
+              </button>
+              {busy === 'mb' ? (
+                <button
+                  onClick={() => (stopMb.current = true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900"
+                >
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Stop checking
+                </button>
+              ) : (
+                mbRows.length > 0 && (
+                  <button
+                    onClick={checkMusicBrainz}
+                    disabled={busy !== null}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900 disabled:opacity-40"
+                  >
+                    <Search className="h-3.5 w-3.5" /> Check MusicBrainz for names in these {mbRows.length} titles
+                  </button>
+                )
+              )}
+              {rows.some((e) => (offered[e.id]?.length ?? 0) > (ticked[e.id]?.size ?? 0)) && (
+                <button onClick={tickAll} disabled={busy !== null} className="text-xs text-zinc-400 hover:text-zinc-200 hover:underline disabled:opacity-40">
+                  Tick all
+                </button>
+              )}
+            </div>
+          </div>
+        )}
         {gap === 'weather' && rows.length > 0 && (
           <button
             onClick={lookUpWeather}
@@ -394,6 +582,14 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
                 ) : (
                   <GapEditor event={e} gap={gap} suggestions={suggestions} onSave={(patch) => save(e.id, patch)} />
                 )}
+                {gap === 'seen' && offered[e.id]?.length ? (
+                  <TitleArtistsRow
+                    offered={offered[e.id]}
+                    ticked={ticked[e.id] ?? new Set()}
+                    onToggle={(key) => toggle(e.id, key)}
+                    onAdd={() => void addFromTitle(e)}
+                  />
+                ) : null}
                 {gap === 'weather' && weatherNotes[e.id] && <p className="text-[11px] text-amber-300/80">{weatherNotes[e.id]}</p>}
               </li>
             ))}
