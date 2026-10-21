@@ -154,7 +154,9 @@ export async function startLineupLookup(
   return { event: updated, job };
 }
 
-export const MAX_BULK_LOOKUPS = 50;
+// Per request. Each lookup queued costs several database calls and a
+// Cloudflare Worker request may make 50, so the Table sends a few at a time.
+export const MAX_BULK_LOOKUPS = 5;
 
 export interface BulkLookupResult {
   started: string[]; // event ids

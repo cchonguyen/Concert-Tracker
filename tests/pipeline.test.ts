@@ -154,10 +154,10 @@ test('review teaches aliases, the blocklist, source scores and the cache', async
 
 test('a blocklisted string is dropped once rejected twice on that site', async () => {
   const { store, deps } = await setup();
-  await store.bumpBlocklist('clashfinder.com', 'main stage');
-  await store.bumpBlocklist('fest.example', 'main stage');
-  await store.bumpBlocklist('fest.example', 'main stage');
-  await store.bumpBlocklist('clashfinder.com', 'main stage');
+  await store.bumpBlocklist([{ domain: 'clashfinder.com', normalized: 'main stage' }]);
+  await store.bumpBlocklist([{ domain: 'fest.example', normalized: 'main stage' }]);
+  await store.bumpBlocklist([{ domain: 'fest.example', normalized: 'main stage' }]);
+  await store.bumpBlocklist([{ domain: 'clashfinder.com', normalized: 'main stage' }]);
   const job = (await runJob(deps, (await createLookup(deps, { eventName: 'Fest', year: 2026 })).id))!;
   assert.ok(!job.candidate!.performers.some((p) => p.name === 'Main Stage'));
   assert.equal(job.candidate!.droppedCount, 2);
@@ -259,4 +259,71 @@ test('web search reads the event site first, as a promoter page, even if stored 
     performers: job!.candidate!.performers.map((p) => ({ key: p.key, name: p.name, accepted: true, seen: false })),
   });
   assert.equal((await store.getSeries('sun-soaked'))?.lineupUrl, 'https://sunsoaked.promoter.example/');
+});
+
+test('confirming a large lineup makes the same few store writes as a small one', async () => {
+  // Workers Free allows 50 subrequests per request; per-act writes broke
+  // confirming festival lineups (bumpSourceStat "Too many subrequests").
+  const inner = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'confirm-')));
+  const calls: string[] = [];
+  const store = new Proxy(inner, {
+    get(target, prop, receiver) {
+      const v = Reflect.get(target, prop, receiver);
+      return typeof v === 'function'
+        ? (...args: unknown[]) => {
+            calls.push(String(prop));
+            return v.apply(target, args);
+          }
+        : v;
+    },
+  });
+  const confirmWith = async (acts: number) => {
+    const names = Array.from({ length: acts }, (_, i) => `Act ${i}`);
+    const performers = names.map((name) => ({
+      key: name.toLowerCase(),
+      name,
+      days: [],
+      stages: [],
+      status: 'billed' as const,
+      confidence: 0.9,
+      flagged: false,
+      sources: [
+        { sourceType: 'clashfinder' as const, sourceUrl: 'https://clashfinder.com/s/fest/', quotedSpan: name, evidence: 'crowd' as const, extractor: 'clashfinder' },
+        { sourceType: 'promoter' as const, sourceUrl: 'https://fest.example/', quotedSpan: name, evidence: 'billed' as const, extractor: 'gemini:x' },
+      ],
+    }));
+    const job = {
+      id: `job-${acts}`,
+      kind: 'lineup' as const,
+      input: { eventName: `Fest ${acts}`, year: 2025 },
+      editionKey: `fest-${acts}/2025`,
+      status: 'needs_review' as const,
+      stage: 'done' as const,
+      attempts: 1,
+      pendingExtraction: [],
+      discoveryDone: true,
+      facts: {},
+      candidate: { editionKey: `fest-${acts}/2025`, cached: false, facts: { sources: {} }, performers, droppedCount: 0 },
+      log: [],
+      createdAt: '2025-06-01',
+      updatedAt: '2025-06-01',
+    };
+    await inner.createJob(job);
+    calls.length = 0;
+    await confirmLookup(store, job, {
+      facts: { name: `Fest ${acts}` },
+      performers: performers.map((p, i) => ({
+        key: p.key,
+        name: i % 7 === 0 ? `${p.name}!` : p.name, // some renames
+        accepted: i % 5 !== 0, // some rejections
+        rejectReason: 'not_an_act' as const,
+        seen: i % 3 === 0,
+      })),
+    });
+    return calls.length;
+  };
+  const small = await confirmWith(5);
+  const large = await confirmWith(150);
+  assert.equal(large, small);
+  assert.ok(large < 25, `${large} store calls`);
 });

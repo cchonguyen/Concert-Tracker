@@ -183,7 +183,7 @@ The browser keeps nothing of yours: every view reads the server (the Map view ke
 | `POST /api/events/:id/details` | Run stage 1 research |
 | `POST /api/events/:id/details/pick` | Pick a suggestion (`{ candidateId }`) or dismiss them (`{}`) |
 | `POST /api/events/:id/lineup` | Start stage 2 for the event (`{ lineupUrl? }`) |
-| `POST /api/events/lineups` | Queue stage 2 for up to 50 events (`{ ids }`); skips events with a confirmed lineup, a lookup that is not `failed`, or no date. Jobs are not kicked: the worker or the Cloudflare cron runs them one at a time |
+| `POST /api/events/lineups` | Queue stage 2 for up to 5 events per request (`{ ids }`; Fill gaps sends up to 50 in chunks); skips events with a confirmed lineup, a lookup that is not `failed`, or no date. Jobs are not kicked: the worker or the Cloudflare cron runs them one at a time |
 | `GET /api/events/:id/name-artists` | Parts of the event's name that MusicBrainz knows as artists, as suggestions |
 | `POST /api/events/name-artists` | The suggestions from `GET /api/events/:id` for up to 500 events (`{ ids }`), from stored data only (`storedNameSuggestions`); returns `{ suggestions: { [eventId]: [...] } }` |
 | `POST /api/events/:id/weather` | Look up the weather on the event's days; returns `{ event, note? }`, with a note saying why when there is none |
@@ -225,6 +225,8 @@ The `/api` routes live in `src/server/app.ts` and take a `JobRunner` that starts
 Workers Builds (the GitHub-connected build) deploys pull requests with `wrangler preview`, which reads the `previews` block in `wrangler.jsonc`. Previews get the plain settings but no secrets, so their API answers "not configured" and they never touch the Supabase data or start jobs.
 
 The queue consumer runs one message at a time (`max_concurrency: 1`), so the per-host spacing in `http.ts` still holds; the spacing lives in memory, so it is per isolate rather than global. Duplicate queue messages are harmless because `runJob` skips a job that is no longer `queued` or `waiting_quota`. A consumer killed mid-run (for example by the CPU limit on the Workers Free plan) leaves the job `running`; it does not resume on its own.
+
+Each Worker request may make at most 50 subrequests on Workers Free, and every Supabase call is one. So a request never makes store calls in proportion to a lineup's or a list's size: confirming a lineup gathers its corrections, source stats, blocklist entries, aliases and artists and saves each kind in one call (`addCorrections`, `bumpSourceStats`, `bumpBlocklist`, `putAliases`, `ensureArtists`; a stats or blocklist bump is one read and one write), `upsertEdition` adds missing artists in one upsert, adding email imports saves the events with one `putEvents`, bulk name suggestions read editions with `getEditions`, and `POST /api/events/lineups` takes 5 events per request (Fill gaps sends 50 in chunks). `tests/pipeline.test.ts` checks that confirming 150 acts makes as many store calls as confirming 5.
 
 ## Configuration
 
