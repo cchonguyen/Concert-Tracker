@@ -63,6 +63,27 @@ export interface SeenAct {
   from: 'you' | 'lineup';
   role?: Billing;
   roleFrom?: 'you' | 'lineup';
+  favourite?: boolean; // your set of the night; at most one per event
+}
+
+// The weather where and when the event was, from the Open-Meteo archive
+// (weather.ts). Fetched only when you ask, and only for a city it can place
+// exactly as you wrote it.
+export interface WeatherDay {
+  date: string; // YYYY-MM-DD
+  high?: number; // °C
+  low?: number; // °C
+  precipitation?: number; // mm
+  code?: number; // WMO weather code
+}
+
+export interface EventWeather {
+  place: string; // the place Open-Meteo matched to your city
+  latitude: number;
+  longitude: number;
+  days: WeatherDay[];
+  sourceUrl: string;
+  checkedAt: string;
 }
 
 // Concert or festival. Worked out from the event (scale.ts) unless you set it.
@@ -80,6 +101,7 @@ export interface LoggedEvent extends EventFacts {
   // What kind of night it was (club night, warehouse party, block party, ...),
   // in your words. Separate from kind, and never filled on its own.
   format?: string;
+  weather?: EventWeather;
   daysAttended: string[];
   companions: string[];
   rating?: number;

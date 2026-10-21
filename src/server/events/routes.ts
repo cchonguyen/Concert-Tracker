@@ -7,6 +7,7 @@ import { applyPatch, EventPatch, lineupSummary, newEvent, sortEvents, startBulkL
 import { LineupSummary } from './types';
 import { artistSuggestions, eventPerformers, nameArtistSuggestions, pastArtists } from './artists';
 import type { LineupFacts } from './scale';
+import { lookupWeather } from './weather';
 
 // /api/events: your event log. Stage 1 is capture plus details research;
 // stage 2 starts a lineup lookup from a saved event.
@@ -105,6 +106,22 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
       if (!event) return;
       const fields = Array.isArray(req.body?.fields) ? req.body.fields : undefined;
       const updated = pickCandidate(event, req.body?.candidateId, deps.now(), fields);
+      await deps.store.putEvent(updated);
+      res.json({ event: updated });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // The weather on the event's days, when you ask. Returns { event, note }:
+  // the event gains weather only when the archive had it.
+  router.post('/events/:id/weather', async (req, res) => {
+    try {
+      const event = await load(req.params.id, res);
+      if (!event) return;
+      const { weather, note } = await lookupWeather(event, deps.fetcher, deps.now());
+      if (!weather) return res.json({ event, note });
+      const updated = { ...event, weather, updatedAt: deps.now().toISOString() };
       await deps.store.putEvent(updated);
       res.json({ event: updated });
     } catch (err) {
