@@ -127,8 +127,15 @@ export function kindLabel(e: LoggedEvent, facts?: LineupFacts): string {
   return kind ? KIND_LABELS[kind] : '';
 }
 
-// One row per event, for a spreadsheet.
-export function eventsToCsv(events: LoggedEvent[], editions: Record<string, LineupFacts> = {}): string {
+export type SheetCell = string | number | undefined;
+
+// One row per event, for a spreadsheet: the CSV export and the linked Google
+// Sheet. "ID" is last so a sheet or file read back matches each row to its
+// event ("Import a list", "Sync with Google Sheets").
+export function eventRows(
+  events: LoggedEvent[],
+  editions: Record<string, LineupFacts> = {},
+): { header: string[]; rows: SheetCell[][] } {
   const header = [
     'Date',
     'End date',
@@ -149,11 +156,12 @@ export function eventsToCsv(events: LoggedEvent[], editions: Record<string, Line
     'Ticket price',
     'Weather',
     'Notes',
+    'ID',
   ];
   const rows = events.map((e) => [
     e.startDate,
     e.endDate,
-    e.startDate ? e.startDate.slice(0, 4) : e.year,
+    e.startDate ? Number(e.startDate.slice(0, 4)) : e.year,
     e.name,
     kindLabel(e, editions[e.id]),
     e.format,
@@ -169,7 +177,13 @@ export function eventsToCsv(events: LoggedEvent[], editions: Record<string, Line
     e.ticketPrice,
     weatherText(e),
     e.notes,
+    e.id,
   ]);
+  return { header, rows };
+}
+
+export function eventsToCsv(events: LoggedEvent[], editions: Record<string, LineupFacts> = {}): string {
+  const { header, rows } = eventRows(events, editions);
   return [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
 }
 
