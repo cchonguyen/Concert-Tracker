@@ -1,4 +1,5 @@
 import type { LineupSummary, LoggedEvent } from '../server/events/types';
+import { eventScale, LineupFacts } from '../server/events/scale';
 import { eventYear } from './format';
 
 // The Table view: filters, sorting and a summary over the event list the app
@@ -11,6 +12,7 @@ export const HAS_FIELDS: HasField[] = ['seen', 'rating', 'price', 'companions', 
 
 export type Needs = 'any' | 'date' | 'pick' | 'review';
 export type Origin = 'any' | 'typed' | 'email';
+export type KindFilter = 'any' | 'concert' | 'festival' | 'unknown';
 export type SortKey = 'date' | 'name' | 'venue' | 'city' | 'seen' | 'rating' | 'price';
 
 export interface TableFilters {
@@ -26,6 +28,7 @@ export interface TableFilters {
   has: Partial<Record<HasField, Has>>;
   needs: Needs;
   origin: Origin;
+  kind: KindFilter;
   sort: SortKey;
   desc: boolean;
 }
@@ -40,6 +43,7 @@ export const EMPTY_FILTERS: TableFilters = {
   has: {},
   needs: 'any',
   origin: 'any',
+  kind: 'any',
   sort: 'date',
   desc: true,
 };
@@ -73,7 +77,7 @@ export function needsOf(e: LoggedEvent, lineup?: LineupSummary): Exclude<Needs, 
   return null;
 }
 
-export function matches(e: LoggedEvent, f: TableFilters, lineup?: LineupSummary): boolean {
+export function matches(e: LoggedEvent, f: TableFilters, lineup?: LineupSummary, facts?: LineupFacts): boolean {
   const q = fold(f.q);
   if (q) {
     const text = [e.name, e.venue, e.city, e.country, e.notes, ...e.seen.map((s) => s.name), ...e.companions]
@@ -100,6 +104,7 @@ export function matches(e: LoggedEvent, f: TableFilters, lineup?: LineupSummary)
   }
   if (f.needs !== 'any' && needsOf(e, lineup) !== f.needs) return false;
   if (f.origin !== 'any' && fromEmail(e) !== (f.origin === 'email')) return false;
+  if (f.kind !== 'any' && (eventScale(e, facts).kind ?? 'unknown') !== f.kind) return false;
   return true;
 }
 
@@ -133,9 +138,14 @@ export function sortRows(events: LoggedEvent[], key: SortKey, desc: boolean): Lo
   });
 }
 
-export function filterEvents(events: LoggedEvent[], f: TableFilters, lineups: Record<string, LineupSummary> = {}): LoggedEvent[] {
+export function filterEvents(
+  events: LoggedEvent[],
+  f: TableFilters,
+  lineups: Record<string, LineupSummary> = {},
+  editions: Record<string, LineupFacts> = {},
+): LoggedEvent[] {
   return sortRows(
-    events.filter((e) => matches(e, f, lineups[e.id])),
+    events.filter((e) => matches(e, f, lineups[e.id], editions[e.id])),
     f.sort,
     f.desc,
   );
@@ -219,6 +229,7 @@ export function filtersToQuery(f: TableFilters): string {
   }
   if (f.needs !== 'any') p.set('needs', f.needs);
   if (f.origin !== 'any') p.set('from_source', f.origin);
+  if (f.kind !== 'any') p.set('type', f.kind);
   if (f.sort !== 'date' || !f.desc) p.set('sort', `${f.sort}${f.desc ? '' : ':asc'}`);
   return p.toString();
 }
@@ -251,6 +262,7 @@ export function filtersFromQuery(query: string): TableFilters {
     has,
     needs: oneOf(p.get('needs'), ['any', 'date', 'pick', 'review'] as const, 'any'),
     origin: oneOf(p.get('from_source'), ['any', 'typed', 'email'] as const, 'any'),
+    kind: oneOf(p.get('type'), ['any', 'concert', 'festival', 'unknown'] as const, 'any'),
     sort: oneOf(sort, ['date', 'name', 'venue', 'city', 'seen', 'rating', 'price'] as const, 'date'),
     desc: dir !== 'asc',
   };
@@ -262,6 +274,7 @@ export function activeFilterCount(f: TableFilters): number {
     [f.yearFrom, f.yearTo, f.minRating].filter((v) => v !== undefined).length +
     Object.values(f.has).filter((v) => v && v !== 'any').length +
     (f.needs !== 'any' ? 1 : 0) +
-    (f.origin !== 'any' ? 1 : 0)
+    (f.origin !== 'any' ? 1 : 0) +
+    (f.kind !== 'any' ? 1 : 0)
   );
 }

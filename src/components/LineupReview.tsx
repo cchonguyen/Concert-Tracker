@@ -17,6 +17,7 @@ interface Row {
   accepted: boolean;
   rejectReason: RejectReason;
   seen: boolean;
+  billing: '' | 'headliner' | 'support'; // '' : no lead stated (Artist)
   days: string[];
   stages: string[];
   confidence: number;
@@ -33,6 +34,8 @@ const input =
 export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, onClose, onSaved }) => {
   const candidate = job.candidate;
   const alreadySeen = new Set(event.seen.map((s) => s.key));
+  // A role you set on a seen act wins over the sources'.
+  const yourRole = new Map(event.seen.filter((s) => s.roleFrom === 'you').map((s) => [s.key, s.role ?? '']));
   const [rows, setRows] = useState<Row[]>(
     (candidate?.performers ?? []).map((p) => ({
       key: p.key,
@@ -41,6 +44,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, onClose,
       accepted: !p.flagged,
       rejectReason: 'not_an_act',
       seen: alreadySeen.has(p.key),
+      billing: (yourRole.get(p.key) ?? p.billing ?? '') as Row['billing'],
       days: p.days,
       stages: p.stages,
       confidence: p.confidence,
@@ -69,7 +73,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, onClose,
     if (!name) return;
     setRows((rs) => [
       ...rs,
-      { name, accepted: true, rejectReason: 'not_an_act', seen: true, days: [], stages: [], confidence: 1, flagged: false, status: 'billed', sources: [] },
+      { name, accepted: true, rejectReason: 'not_an_act', seen: true, billing: '', days: [], stages: [], confidence: 1, flagged: false, status: 'billed', sources: [] },
     ]);
     setNewAct('');
   };
@@ -85,6 +89,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, onClose,
           accepted: r.accepted,
           rejectReason: r.accepted ? undefined : r.rejectReason,
           seen: r.accepted && r.seen,
+          billing: r.billing || null,
           days: r.days,
           stages: r.stages,
         })),
@@ -139,6 +144,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, onClose,
                   <th className="p-2">Keep</th>
                   <th className="p-2">Act</th>
                   <th className="p-2">Sources</th>
+                  <th className="p-2">Billed as</th>
                   <th className="p-2">Day / stage</th>
                   <th className="p-2">Saw it</th>
                 </tr>
@@ -199,6 +205,18 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, onClose,
                           ),
                         )}
                       </div>
+                    </td>
+                    <td className="p-2 align-top">
+                      <select
+                        className="rounded border border-zinc-800 bg-zinc-900 px-1 py-1 text-xs text-zinc-200"
+                        value={row.billing}
+                        onChange={(e) => update(index, { billing: e.target.value as Row['billing'] })}
+                        title="Artist: headliner, or no lead stated. Supporting: billed as support."
+                      >
+                        <option value="">Artist</option>
+                        <option value="headliner">Headliner</option>
+                        <option value="support">Supporting</option>
+                      </select>
                     </td>
                     <td className="p-2 align-top text-[11px] text-zinc-400">
                       {row.days.join(', ')}

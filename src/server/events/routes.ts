@@ -5,6 +5,8 @@ import { DetailFinder, defaultFinders, pickCandidate, researchEvent } from './de
 import { citySuggestions } from './place';
 import { applyPatch, EventPatch, lineupSummary, newEvent, sortEvents, startLineupLookup } from './service';
 import { LineupSummary } from './types';
+import { artistSuggestions, eventPerformers } from './artists';
+import type { LineupFacts } from './scale';
 
 // /api/events: your event log. Stage 1 is capture plus details research;
 // stage 2 starts a lineup lookup from a saved event.
@@ -24,7 +26,13 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
       const jobs = await deps.store.getJobs(events.map((e) => e.lineupJobId).filter((id): id is string => Boolean(id)));
       const lineups: Record<string, LineupSummary> = {};
       for (const job of jobs) if (job.eventId) lineups[job.eventId] = lineupSummary(job);
-      res.json({ events, lineups });
+      // Size of each confirmed lineup, for Concert or Festival.
+      const byEdition = await deps.store.editionLineupFacts([
+        ...new Set(events.map((e) => e.editionId).filter((id): id is string => Boolean(id))),
+      ]);
+      const editions: Record<string, LineupFacts> = {};
+      for (const e of events) if (e.editionId && byEdition[e.editionId]) editions[e.id] = byEdition[e.editionId];
+      res.json({ events, lineups, editions });
     } catch (err) {
       fail(res, err);
     }
@@ -47,7 +55,8 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
       if (!event) return;
       const job = event.lineupJobId ? await deps.store.getJob(event.lineupJobId) : null;
       const edition = event.editionId ? await deps.store.getEdition(event.editionId) : null;
-      res.json({ event, job, edition });
+      const suggestions = artistSuggestions(event, eventPerformers(event, job, edition));
+      res.json({ event, job, edition, suggestions });
     } catch (err) {
       fail(res, err);
     }
