@@ -6,8 +6,8 @@ import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
 import { GmailApi, GmailAuthError, GmailMessage, messageBodies, toMessage } from '../src/server/events/email/gmail.ts';
-import { mergeImports, readEmails } from '../src/server/events/email/imports.ts';
-import { forwardQuery, GMAIL_SETTING, SCAN_SETTING, ScanSetting, scanStep, senderQuery } from '../src/server/events/email/scan.ts';
+import { mergeImports, READERS, readEmails } from '../src/server/events/email/imports.ts';
+import { forwardQuery, GMAIL_SETTING, SCAN_SETTING, ScanSetting, scanStep, sellerQuery } from '../src/server/events/email/scan.ts';
 import { importsRouter } from '../src/server/events/importRoutes.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import { PipelineDeps } from '../src/server/lineup/pipeline.ts';
@@ -35,7 +35,8 @@ const newsletter = (id: string, sentAt: string): GmailMessage => ({
   text: 'Shows we think you will like',
 });
 
-// A Gmail inbox: honours `after:` like Gmail does and lists newest first.
+// A Gmail inbox: honours `from:(domain)` and `after:` like Gmail does and
+// lists newest first.
 function fakeGmail(mail: GmailMessage[]) {
   const queries: string[] = [];
   const reads: string[] = [];
@@ -49,8 +50,9 @@ function fakeGmail(mail: GmailMessage[]) {
       queries.push(query);
       const after = Number(query.match(/after:(\d+)/)?.[1] ?? 0) * 1000;
       const forwards = query.startsWith('subject:(fwd');
+      const domain = query.match(/^from:\(([^)]+)\)/)?.[1];
       return mail
-        .filter((m) => m.receivedAt > after && (forwards ? /^fwd?:/i.test(m.subject) : !/@gmail\.com/.test(m.from)))
+        .filter((m) => m.receivedAt > after && (forwards ? /^fwd?:/i.test(m.subject) : m.from.includes(`@${domain}>`)))
         .sort((a, b) => b.receivedAt - a.receivedAt)
         .map((m) => m.id);
     },
@@ -65,12 +67,14 @@ function fakeGmail(mail: GmailMessage[]) {
 const newStore = async () => new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'scan-')));
 const connect = (store: FileLineupStore) => store.putSetting(GMAIL_SETTING, { refreshToken: 'refresh-1', connectedAt: NOW.toISOString() });
 
-test('senderQuery: one search over every seller that has a reader', () => {
-  const q = senderQuery();
-  for (const domain of ['ticketmaster.com', 'tixr.com', 'dice.fm', 'ra.co', 'eventbrite.com', 'axs.com', 'frontgatetickets.com']) {
-    assert.ok(q.includes(domain), domain);
+test('sellerQuery: one search per seller, narrowed to ticket mail for sellers that send many ads', () => {
+  const byDomain = Object.fromEntries(READERS.map((r) => [r.domain, sellerQuery(r)]));
+  for (const domain of ['ticketmaster.com', 'livenation.com', 'tixr.com', 'dice.fm', 'ra.co', 'eventbrite.com', 'axs.com', 'frontgatetickets.com', 'ticketweb.com']) {
+    assert.ok(byDomain[domain]?.startsWith(`from:(${domain})`), domain);
   }
-  assert.match(q, /^from:\(.+ OR .+\)$/);
+  assert.equal(byDomain['dice.fm'], 'from:(dice.fm)');
+  assert.match(byDomain['livenation.com'], /^from:\(livenation\.com\) subject:\(/);
+  assert.match(byDomain['ticketweb.com'], /^from:\(ticketweb\.com\) subject:\(/);
 });
 
 test('scanStep: starts after the newest email already imported, reads oldest first in batches, then stops', async () => {
@@ -87,8 +91,11 @@ test('scanStep: starts after the newest email already imported, reads oldest fir
   ]);
 
   const first = await scanStep(store, gmail.api, NOW, 2);
-  assert.match(gmail.queries[0], /after:\d+$/);
-  assert.equal(Number(gmail.queries[0].match(/after:(\d+)/)![1]) * 1000, Date.parse('2026-08-31T10:00:00Z')); // a day's lookback
+  const diceQuery = gmail.queries.find((q) => q.startsWith('from:(dice.fm)'))!;
+  assert.match(diceQuery, /after:\d+$/);
+  assert.equal(Number(diceQuery.match(/after:(\d+)/)![1]) * 1000, Date.parse('2026-08-31T10:00:00Z')); // a day's lookback
+  // A seller with nothing on the review list yet is searched through all past mail.
+  assert.doesNotMatch(gmail.queries.find((q) => q.startsWith('from:(ticketweb.com)'))!, /after:/);
   assert.deepEqual(gmail.reads, ['n1', 'n2']);
   assert.deepEqual({ read: first.read, remaining: first.remaining, added: first.added }, { read: 2, remaining: 1, added: 1 });
   assert.equal(first.lastCheckedAt, undefined);
@@ -113,14 +120,15 @@ test('scanStep: starts after the newest email already imported, reads oldest fir
   assert.deepEqual(gmail.reads.slice(3), ['n4']);
   assert.equal(fourth.added, 1);
   const state = (await store.getSetting<ScanSetting>(SCAN_SETTING))!;
-  assert.deepEqual(Object.keys(state.recent), ['n4']); // older ids fall out once outside the lookback
+  assert.deepEqual(Object.keys(state.sellers!['dice.fm'].recent), ['n4']); // older ids fall out once outside the lookback
 });
 
 test('scanStep: forwards are searched through all past mail once, then like the rest', async () => {
   const store = await newStore();
   await connect(store);
-  // Checked before forwards were searched: only the sellers' cursor exists.
+  // Checked before forwards were searched: only the shared cursor exists.
   await store.putSetting<ScanSetting>(SCAN_SETTING, { scannedThrough: '2026-10-01T00:00:00.000Z', lastCheckedAt: NOW.toISOString(), recent: {} });
+  await store.putImports(mergeImports([], readEmails([dice('d0', 'EARLIER', '2026-09-30T10:00:00Z')]).outcomes, [], NOW));
   const forwarded = (id: string, name: string, forwardedAt: string, sentAt: string): GmailMessage => ({
     ...dice(id, name, forwardedAt),
     from: 'Justin <jcho49@gmail.com>',
@@ -133,7 +141,9 @@ test('scanStep: forwards are searched through all past mail once, then like the 
 
   assert.match(forwardQuery(), /^subject:\(fwd OR fw\) -from:me \(.*dice\.fm/);
   const step = await scanStep(store, gmail.api, NOW);
-  assert.deepEqual(gmail.queries.map((q) => q.includes('after:')), [true, false]);
+  // DICE, which has rows, goes on from the shared cursor; forwards start from the beginning.
+  assert.ok(gmail.queries.find((q) => q.startsWith('from:(dice.fm)'))!.includes('after:'));
+  assert.ok(!gmail.queries[gmail.queries.length - 1].includes('after:'));
   assert.deepEqual(gmail.reads.sort(), ['d1']); // the sellers' mail first
   assert.equal(step.remaining, 1);
   const next = await scanStep(store, gmail.api, NOW);

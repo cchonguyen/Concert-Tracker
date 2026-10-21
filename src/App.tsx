@@ -198,7 +198,7 @@ export default function App() {
         )}
         {tab === 'map' && <MapView events={events} lineups={lineups} editions={editions} onOpen={setSelectedId} onOpenTable={openTable} />}
         {tab === 'stats' && <StatsView events={events} onOpen={setSelectedId} onOpenTable={openTable} />}
-        {tab === 'artists' && <ArtistsView events={events} onOpenEvent={setSelectedId} />}
+        {tab === 'artists' && <ArtistsView events={events} onOpenEvent={setSelectedId} onOpenTable={openTable} />}
       </main>
 
       <footer className="border-t border-zinc-900 py-5 text-xs text-zinc-500">

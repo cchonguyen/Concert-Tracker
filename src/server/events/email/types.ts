@@ -41,6 +41,7 @@ export interface ReadEmail {
 export interface EmailReader {
   seller: string; // shown to you: "Ticketmaster"
   domain: string; // its mail comes from this domain or a subdomain; "Check email" searches for it
+  search?: string; // Gmail search words that keep "Check email" to its ticket mail, for sellers that send many ads
   matches(from: string): boolean;
   // null: not a ticket email (ads, reminders). A subject that announces
   // tickets but whose body cannot be read throws UnreadableEmail.

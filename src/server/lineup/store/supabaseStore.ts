@@ -209,27 +209,36 @@ export class SupabaseLineupStore implements LineupStore {
 
   async listPerformerClaims(jobId: string) {
     const data = this.check(await this.db.from('performer_claims').select('*').eq('job_id', jobId), 'listPerformerClaims');
-    return (data ?? []).map(
-      (r: any): PerformerClaim => ({
-        id: r.id,
-        jobId: r.job_id,
-        documentId: r.document_id,
-        sourceType: r.source_type,
-        sourceUrl: r.source_url,
-        name: r.name,
-        quotedSpan: r.quoted_span,
-        evidence: r.evidence,
-        day: r.day ?? undefined,
-        stage: r.stage ?? undefined,
-        startTime: r.start_time ?? undefined,
-        endTime: r.end_time ?? undefined,
-        mbid: r.mbid ?? undefined,
-        billing: r.billing ?? undefined,
-        extractor: r.extractor,
-        extractorVersion: r.extractor_version,
-        createdAt: r.created_at,
-      }),
+    return (data ?? []).map(rowToClaim);
+  }
+
+  async findExtractedClaims(q: { editionKey: string; documentId: string; extractor: string; extractorVersion: string; excludeJobId: string }) {
+    const jobs = this.check(
+      await this.db
+        .from('lookup_jobs')
+        .select('id')
+        .eq('edition_key', q.editionKey)
+        .neq('id', q.excludeJobId)
+        .order('created_at', { ascending: false })
+        .limit(20),
+      'findExtractedClaims jobs',
     );
+    const jobIds = (jobs ?? []).map((j: { id: string }) => j.id);
+    if (!jobIds.length) return [];
+    const data = this.check(
+      await this.db
+        .from('performer_claims')
+        .select('*')
+        .in('job_id', jobIds)
+        .eq('document_id', q.documentId)
+        .eq('extractor', q.extractor)
+        .eq('extractor_version', q.extractorVersion),
+      'findExtractedClaims',
+    );
+    const claims = (data ?? []).map(rowToClaim);
+    // One earlier job's claims, so two cached runs are not added together.
+    const first = claims[0]?.jobId;
+    return claims.filter((c) => c.jobId === first);
   }
 
   // Canonical -------------------------------------------------------------
@@ -677,3 +686,24 @@ export class SupabaseLineupStore implements LineupStore {
     return (rows ?? []).map((r: any): ArtistIdentity => ({ key: r.key, name: r.name, mbid: r.mbid ?? undefined }));
   }
 }
+
+// performer_claims row to PerformerClaim.
+const rowToClaim = (r: any): PerformerClaim => ({
+  id: r.id,
+  jobId: r.job_id,
+  documentId: r.document_id,
+  sourceType: r.source_type,
+  sourceUrl: r.source_url,
+  name: r.name,
+  quotedSpan: r.quoted_span,
+  evidence: r.evidence,
+  day: r.day ?? undefined,
+  stage: r.stage ?? undefined,
+  startTime: r.start_time ?? undefined,
+  endTime: r.end_time ?? undefined,
+  mbid: r.mbid ?? undefined,
+  billing: r.billing ?? undefined,
+  extractor: r.extractor,
+  extractorVersion: r.extractor_version,
+  createdAt: r.created_at,
+});

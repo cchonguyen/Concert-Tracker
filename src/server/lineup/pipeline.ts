@@ -238,12 +238,33 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
     const docId = job.pendingExtraction[0];
     const doc = await deps.store.getDocument(docId);
     if (doc) {
-      await deps.quota!.acquire(now, { ignorePause: force });
-      const examples = await deps.store.getExamples(domainOf(doc.url));
       // A stored document keeps the type it was first saved with, so an event-site
       // page first found by search is recognised by its domain here too.
       const official = doc.sourceType !== 'discovered' || isEventDomain(doc.url, job.input.eventName);
       const sourceType = official && doc.sourceType === 'discovered' ? 'promoter' : doc.sourceType;
+      const extractor = `gemini:${deps.gemini!.model}`;
+      // Extraction cache: the same page (same content hash) already read for
+      // this edition with this model and prompt gives the same names, so reuse
+      // them instead of spending Gemini quota. Each is checked on the page again.
+      const cached = await deps.store.findExtractedClaims({
+        editionKey: job.editionKey,
+        documentId: doc.id,
+        extractor,
+        extractorVersion: EXTRACTION_PROMPT_VERSION,
+        excludeJobId: job.id,
+      });
+      if (cached.length > 0) {
+        const normalized = normalizeName(doc.body);
+        const reused = cached
+          .filter((c) => isVerbatim(c.name, c.quotedSpan, normalized))
+          .map((c): PerformerClaim => ({ ...c, id: randomUUID(), jobId: job.id, sourceType, createdAt: now.toISOString() }));
+        await deps.store.addPerformerClaims(reused);
+        log(job, `Read ${doc.url} from an earlier lookup of this edition: kept ${reused.length} name(s), no Gemini call.`, now);
+        job.pendingExtraction = job.pendingExtraction.slice(1);
+        return;
+      }
+      await deps.quota!.acquire(now, { ignorePause: force });
+      const examples = await deps.store.getExamples(domainOf(doc.url));
       const extracted = await deps.gemini!.extractPerformers({ text: doc.body, input: job.input, examples });
       const normalizedDoc = normalizeName(doc.body);
       const kept: PerformerClaim[] = [];
@@ -265,7 +286,7 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
           day: e.day && /^\d{4}-\d{2}-\d{2}$/.test(e.day) && normalizedDoc.includes(normalizeName(e.day)) ? e.day : undefined,
           stage: e.stage && normalizedDoc.includes(normalizeName(e.stage)) ? e.stage : undefined,
           billing: isBilling(e.billing) && quoteBacksBilling(e.quote, e.name, e.billing) ? e.billing : undefined,
-          extractor: `gemini:${deps.gemini!.model}`,
+          extractor,
           extractorVersion: EXTRACTION_PROMPT_VERSION,
           createdAt: now.toISOString(),
         });

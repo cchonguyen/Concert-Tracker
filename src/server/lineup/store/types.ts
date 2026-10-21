@@ -36,6 +36,9 @@ export interface LineupStore {
 
   addPerformerClaims(claims: PerformerClaim[]): Promise<void>;
   listPerformerClaims(jobId: string): Promise<PerformerClaim[]>;
+  // Claims an earlier job for the same edition took from this document with
+  // this extractor and prompt version (the extraction cache).
+  findExtractedClaims(q: { editionKey: string; documentId: string; extractor: string; extractorVersion: string; excludeJobId: string }): Promise<PerformerClaim[]>;
 
   getSeries(slug: string): Promise<SeriesRecord | null>;
   upsertSeries(series: SeriesRecord): Promise<void>;
