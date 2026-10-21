@@ -151,3 +151,45 @@ test('adding an act suggests ones you entered before, most seen first', () => {
   assert.deepEqual(matchArtists('ka', past, new Set(['kaskade'])), []); // already on the event
   assert.deepEqual(matchArtists('  ', past, new Set()), []);
 });
+
+test('artists from titles for many events come from stored data only', async () => {
+  const { storedNameSuggestions } = await import('../src/server/events/artists.ts');
+  const ev = (id: string, name: string, seen: string[] = [], extra: Partial<LoggedEvent> = {}): LoggedEvent => ({
+    ...newEvent(name, NOW),
+    id,
+    seen: seen.map((n) => ({ key: n.toLowerCase(), name: n, from: 'you' as const })),
+    ...extra,
+  });
+  const events = [
+    ev('a', 'Porter Robinson with special guest Wavedash', [], { lineupJobId: 'j1' }),
+    ev('b', 'Kaskade Redux 2024'),
+    ev('c', 'Warehouse Party'),
+    ev('d', 'Kaskade at the Shrine', ['Kaskade']),
+  ];
+  const job = {
+    id: 'j1',
+    candidate: {
+      performers: ['Porter Robinson', 'Wavedash'].map((name) => ({
+        key: name.toLowerCase(),
+        name,
+        sources: [{ sourceType: 'ticketmaster', sourceUrl: 'https://tm.example/1', quotedSpan: name, evidence: 'billed', extractor: 'tm' }],
+      })),
+    },
+  };
+  const store = {
+    listEvents: async () => events,
+    getJobs: async (ids: string[]) => (ids.includes('j1') ? [job as any] : []),
+    getEdition: async () => null,
+  };
+  const out = await storedNameSuggestions(store, ['a', 'b', 'c']);
+  assert.deepEqual(
+    out.a.map((s) => [s.name, s.role, s.sourceType]),
+    [
+      ['Porter Robinson', 'headliner', 'ticketmaster'],
+      ['Wavedash', 'support', 'ticketmaster'],
+    ],
+  );
+  assert.deepEqual(out.b.map((s) => [s.name, s.sourceType]), [['Kaskade', 'user']]); // seen at event d
+  assert.equal(out.c, undefined); // nothing to offer
+  assert.equal(out.d, undefined); // not asked for
+});
