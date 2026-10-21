@@ -49,17 +49,17 @@ const csvCell = (v: unknown) => {
 export const artistsOf = (seen: SeenAct[]) => seen.filter((s) => s.role !== 'support');
 export const supportOf = (seen: SeenAct[]) => seen.filter((s) => s.role === 'support');
 
-// Acts you've entered on your events, most seen first, one spelling each
+// Names you've entered on your events, most used first, one spelling each
 // (the one you used most).
-export function pastArtistNames(events: LoggedEvent[]): string[] {
+function pastNames(names: string[][]): string[] {
   const byKey = new Map<string, { count: number; names: Map<string, number> }>();
-  for (const e of events) {
-    for (const s of e.seen) {
-      const k = norm(s.name);
+  for (const list of names) {
+    for (const name of list) {
+      const k = norm(name);
       if (!k) continue;
       const entry = byKey.get(k) ?? { count: 0, names: new Map() };
       entry.count += 1;
-      entry.names.set(s.name, (entry.names.get(s.name) ?? 0) + 1);
+      entry.names.set(name, (entry.names.get(name) ?? 0) + 1);
       byKey.set(k, entry);
     }
   }
@@ -68,9 +68,13 @@ export function pastArtistNames(events: LoggedEvent[]): string[] {
     .map((e) => [...e.names.entries()].sort((a, b) => b[1] - a[1])[0][0]);
 }
 
+// Acts you've seen and people you went with, across your events.
+export const pastArtistNames = (events: LoggedEvent[]) => pastNames(events.map((e) => e.seen.map((s) => s.name)));
+export const pastCompanionNames = (events: LoggedEvent[]) => pastNames(events.map((e) => e.companions));
+
 // Names matching what you're typing: those starting with it first, then
-// those with a word starting with it. Acts already on the event are left out.
-export function matchArtists(query: string, names: string[], exclude: Set<string>, limit = 8): string[] {
+// those with a word starting with it. Names already on the event are left out.
+export function matchNames(query: string, names: string[], exclude: Set<string>, limit = 8): string[] {
   const q = norm(query);
   if (!q) return [];
   const starts: string[] = [];
