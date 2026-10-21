@@ -23,6 +23,7 @@ import type { EmailImport, LineupFacts, LineupSummary, LoggedEvent } from '../se
 import { artistsOf, downloadText, eventsToCsv, kindLabel, supportOf, whenLabel } from '../services/format';
 import {
   activeFilterCount,
+  actsInOrder,
   EMPTY_FILTERS,
   filterEvents,
   filterOptions,
@@ -159,9 +160,9 @@ const NeedsBadge: React.FC<{ needs: keyof typeof NEEDS_LABELS }> = ({ needs }) =
 };
 
 // At most a few names in a cell; the full list is in the tooltip.
-// Your favourite set comes first, with a heart.
+// Headliners come first, in bold, then your favourite set, with a heart.
 const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, muted }) => {
-  const acts = [...seen].sort((a, b) => Number(Boolean(b.favourite)) - Number(Boolean(a.favourite)));
+  const acts = actsInOrder(seen);
   const shown = acts.slice(0, 3);
   return (
     <span className={muted ? 'text-zinc-500' : 'text-zinc-200'}>
@@ -169,7 +170,13 @@ const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, 
         <React.Fragment key={s.key}>
           {i > 0 && ', '}
           {s.favourite && <Heart className="mr-0.5 inline h-3 w-3 -translate-y-px fill-rose-400 text-rose-400" />}
-          {s.name}
+          {s.role === 'headliner' ? (
+            <span className="font-semibold text-amber-100" title="Headliner">
+              {s.name}
+            </span>
+          ) : (
+            s.name
+          )}
         </React.Fragment>
       ))}
       {acts.length > 3 && <span className="text-zinc-500"> +{acts.length - 3}</span>}
