@@ -47,7 +47,7 @@ import { ListImport } from './ListImport';
 import { SheetSync } from './SheetSync';
 import { FillGaps } from './FillGaps';
 import { SeriesPanel } from './SeriesPanel';
-import { eventTitle } from '../services/series';
+import { EventTitle } from './EventTitle';
 import { SET_LABELS, seenSlots, slotId } from '../server/events/seen';
 
 interface TableViewProps {
@@ -569,7 +569,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                       </td>
                       <td className={cell}>
                         <div className="flex items-start gap-1.5 font-medium text-zinc-100">
-                          <span>{eventTitle(e)}</span>
+                          <span><EventTitle event={e} /></span>
                           {fromEmail(e) && (
                             <span title="Added from a ticket email">
                               <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" />
@@ -660,7 +660,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                       <DateCell e={e} />
                     </div>
                     <div className="min-w-0 flex-1 space-y-1">
-                      <div className="truncate font-medium text-zinc-100">{eventTitle(e)}</div>
+                      <div className="truncate font-medium text-zinc-100"><EventTitle event={e} /></div>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-400">
                         <KindBadge kind={kindLabel(e, editions[e.id])} />
                         {formatsOf(e.format).map((f) => (

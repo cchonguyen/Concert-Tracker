@@ -52,18 +52,26 @@ export function withPlace(name: string, city?: string): string {
 // Otherwise the name as you typed it. The name itself never changes and is
 // what a lineup lookup reads.
 export function eventTitle(e: LoggedEvent): string {
+  const { artists, name } = eventTitleParts(e);
+  return artists ? `${artists} - ${name}` : name;
+}
+
+// The same title in its two parts, so a view can set the acts apart from the
+// event's name: { artists: "Gryffin", name: "Alive Tour" }. Without acts in
+// front, the whole title is `name`.
+export function eventTitleParts(e: LoggedEvent): { artists?: string; name: string } {
   if (e.series) {
     const name = withPlace(e.series, e.city);
     const year = eventYear(e);
     const title = year ? `${name} ${year}` : name;
-    return e.weekend ? `${title} · Weekend ${e.weekend}` : title;
+    return { name: e.weekend ? `${title} · Weekend ${e.weekend}` : title };
   }
   const main = artistsOf(e.seen);
-  if (!main.length || main.length > 2 || eventScale(e).kind === 'festival') return e.name;
+  if (!main.length || main.length > 2 || eventScale(e).kind === 'festival') return { name: e.name };
   const name = ` ${seriesKey(e.name)} `;
-  if (main.some((a) => name.includes(` ${seriesKey(a.name)} `))) return e.name;
+  if (main.some((a) => name.includes(` ${seriesKey(a.name)} `))) return { name: e.name };
   const b2b = main.length === 2 && !!main[0].b2b?.includes(main[1].key);
-  return `${main.map((a) => a.name).join(b2b ? ' b2b ' : ', ')} - ${e.name}`;
+  return { artists: main.map((a) => a.name).join(b2b ? ' b2b ' : ', '), name: e.name };
 }
 
 // The weekend your own name for the event gives ("Weekend 2", "W1", "Wknd 1"),

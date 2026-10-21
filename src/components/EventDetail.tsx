@@ -21,6 +21,7 @@ import { LineupReview } from './LineupReview';
 import { norm } from '../services/listImport';
 import { leaveB2b, pairB2b, seenSlots, SET_LABELS, setSolo, SlotAct, slotId, toSeenInput } from '../server/events/seen';
 import { eventTitle, seriesList, seriesOffers, weekendFromName } from '../services/series';
+import { EventTitle } from './EventTitle';
 import { placePatch } from '../services/table';
 import { cityWithRegion } from '../server/events/regions';
 
@@ -729,7 +730,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           </div>
           {(event.series || eventTitle(event) !== event.name) && (
             <p className="text-[11px] text-zinc-500">
-              Shows as “{eventTitle(event)}”
+              Shows as “<EventTitle event={event} />”
               {(() => {
                 const n = seriesList(events).find((g) => g.name === event.series)?.events.length ?? 1;
                 return n > 1 ? ` · ${n} editions in your log` : '';
