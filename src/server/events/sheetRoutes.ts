@@ -4,10 +4,12 @@ import { InputError, PipelineDeps } from '../lineup/pipeline';
 import {
   LinkedSheet,
   parseSheetLink,
+  SHEETS_BASE_SETTING,
   SHEETS_OAUTH_SETTING,
   SHEETS_SETTING,
   SheetsApi,
   SheetsAuthError,
+  SheetsBase,
   SheetsError,
   SheetsSetting,
   SheetValue,
@@ -155,15 +157,21 @@ export function sheetsRouter(deps: PipelineDeps, sheets: SheetsApi | null): Rout
     if (!sheets) return res.status(503).json({ error: off });
     try {
       const s = await linked();
-      const values = await sheets.read(s.refreshToken, s.sheet.id, s.sheet.tab);
-      res.json({ values, version: sheetVersion(values), sheet: linkView(s.sheet) });
+      const [values, saved] = await Promise.all([
+        sheets.read(s.refreshToken, s.sheet.id, s.sheet.tab),
+        deps.store.getSetting<SheetsBase>(SHEETS_BASE_SETTING),
+      ]);
+      // The base only counts for the tab it was written to.
+      const base = saved?.rows && saved.id === s.sheet.id && saved.tab === s.sheet.tab ? saved.rows : undefined;
+      res.json({ values, version: sheetVersion(values), base, sheet: linkView(s.sheet) });
     } catch (err) {
       fail(res, err);
     }
   });
 
-  // Replace the tab with { rows } (header first). Refused with 409 when the
-  // tab changed since it was read at { version }.
+  // Replace the tab with { rows } (header first), and keep them as the base
+  // for the next sync. Refused with 409 when the tab changed since it was
+  // read at { version }.
   router.put('/sheets/values', async (req, res) => {
     if (!sheets) return res.status(503).json({ error: off });
     try {
@@ -175,6 +183,7 @@ export function sheetsRouter(deps: PipelineDeps, sheets: SheetsApi | null): Rout
         return res.status(409).json({ error: 'The sheet changed while you were reviewing it. Sync again to pick up the new edits.', changed: true });
       }
       await sheets.write(s.refreshToken, s.sheet.id, s.sheet.tab, rows);
+      await deps.store.putSetting<SheetsBase>(SHEETS_BASE_SETTING, { id: s.sheet.id, tab: s.sheet.tab, rows });
       const sheet = { ...s.sheet, syncedAt: deps.now().toISOString() };
       await deps.store.putSetting<SheetsSetting>(SHEETS_SETTING, { ...s, sheet });
       res.json({ sheet: linkView(sheet) });
