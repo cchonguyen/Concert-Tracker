@@ -259,3 +259,16 @@ test('table and CSV: type filter in the address, Artist and Supporting columns',
   assert.equal(cells[cols.indexOf('Artist')], 'Porter Robinson');
   assert.equal(cells[cols.indexOf('Supporting artists')], 'Wavedash');
 });
+
+test('the export reads back with every act, supporting ones included', async () => {
+  const { readList } = await import('../src/services/listImport.ts');
+  const show = ev('Porter Robinson', {
+    startDate: '2024-10-05',
+    seen: [
+      { key: 'porter robinson', name: 'Porter Robinson', from: 'you' },
+      { key: 'wavedash', name: 'Wavedash', from: 'you', role: 'support', roleFrom: 'you' },
+    ],
+  });
+  const read = readList(eventsToCsv([show]));
+  assert.deepEqual(read.rows[0].seen, ['Porter Robinson', 'Wavedash']);
+});

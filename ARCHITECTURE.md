@@ -66,6 +66,16 @@ Ticket confirmation emails are a stage 1 source for back-filling past shows. The
 5. **Review** (`ImportReview`, opened from "N events found in your email" on the Events view). Rows are grouped by year and start unticked, because a ticket is not proof you went. Shows still ahead are listed apart and come back once their date has passed. "Add" turns the ticked rows into events (`POST /api/imports/add`); "I didn't go" marks them skipped (`POST /api/imports/skip`, undoable).
 6. **Save** (`eventFromImport`). The event gets the name, dates, venue and city from the row, each field sourced as `email` with the message link and the quoted words; details status `resolved` when dated, else `needs_date`. Personal fields (seen acts, rating, ticket price, companions, notes) stay empty, even though the email states a total.
 
+## Importing a list
+
+A list of past events you kept elsewhere (a Notion database export, a spreadsheet, this app's own CSV export) is your own record, so its fields count as typed by you, personal ones included. Code: `src/services/listImport.ts` and `src/components/ListImport.tsx`, opened from "Import a list" in the Table view. It runs in the browser and writes only through the existing routes; no model is involved and nothing is stored until you press Import.
+
+1. **Read** (`readList`). Columns are mapped by header words (`Event`/`Name`, `Date`, `End date`, `Year`, `Venue`, `City`, `Country`, `Artist`/`Saw`, `Attendee`/`Went with`, `Rating`, `Ticket price`, `Notes`); others are listed as not imported. Dates are read only when full and unambiguous (`2024-05-17`, `May 17, 2024`, `17 May 2024`, and ranges joined by `→`, `–` or ` to `); anything else stays unread and is flagged. A row with no date takes the year written in its name, as capture does. `City ST` is written `City, ST`. List cells split on `;` when present, else `,`. Rows with the same name and date are combined into one.
+2. **Flag, never fix.** Each row lists what looks wrong: a date it could not read, a name whose year differs from its date, a `?` between letters (a character the export lost, such as `K?D`), no date. The value stays as the file has it.
+3. **Match** (`findMatches`), against your log and the open email review rows (status `new` or `skipped`, not yet linked). The same event is the email rule: the same start date and the same name or one containing the other; without dates, the same name and year. It is folded in by default. Another name on overlapping days ("EDC 2022" and "EDC Las Vegas") is offered as a possible match and the row waits until you choose same event, new event, or don't import.
+4. **Merge** (`fillPatch`). Folding into an event fills only its empty fields and appends acts and people it does not list; nothing already there changes. A matching email row is first added through `POST /api/imports/add` (restored first if you had skipped it), so the event keeps the email's fields and links, then filled from the list.
+5. **Save** (`runImport`). A new row is saved with `POST /api/events` (its name as the line) and then `PATCH /api/events/:id` with every field from the file, clearing whatever the capture parse read out of the name. Details research is not started; it can be run from the event. "Went with" names you mark as yourself are left out.
+
 ## Sources
 
 Each source is an adapter in `src/server/lineup/adapters/` implementing `SourceAdapter.collect()`. An adapter returns stored documents, performer claims, fact claims and documents that need extraction. Adapters that are not configured are skipped and reported in the job log.
@@ -140,7 +150,7 @@ Defined in [`supabase/migrations/0002_source_first_lineups.sql`](supabase/migrat
 
 Store selection: Supabase when `SUPABASE_URL` is set and the migration has been applied; otherwise a JSON store under `DATA_DIR` (default `./data`). Set `LINEUP_STORE=file` to force the local store. The local store does not survive a redeploy, so use Supabase for real data. On Cloudflare the server refuses to start without Supabase.
 
-The browser keeps nothing: every view reads the server. The interface is one page (`src/App.tsx`): the capture line and a summary of your log (`CaptureBar`, `EventsHome`, worked out in `src/services/home.ts`), an event panel for details, seen acts, the lineup and your notes (`EventDetail`, `LineupReview`), the Table view (`TableView`), and the Artists view (`ArtistsView`). The Table view filters, sorts and summarizes the same event list in the browser (`src/services/table.ts`), keeps its filters in the address (`?view=table&...`), and holds the CSV export, built from the rows it shows (`src/services/format.ts`). It reads nothing beyond `GET /api/events` and writes nothing. The Stats view (`StatsView`, worked out in `src/services/stats.ts`) is read-only over the same list too; its bars and rankings open the Table with matching filters.
+The browser keeps nothing: every view reads the server. The interface is one page (`src/App.tsx`): the capture line and a summary of your log (`CaptureBar`, `EventsHome`, worked out in `src/services/home.ts`), an event panel for details, seen acts, the lineup and your notes (`EventDetail`, `LineupReview`), the Table view (`TableView`), and the Artists view (`ArtistsView`). The Table view filters, sorts and summarizes the same event list in the browser (`src/services/table.ts`), keeps its filters in the address (`?view=table&...`), and holds the CSV export, built from the rows it shows (`src/services/format.ts`). Apart from "Import a list" (see Importing a list) it reads nothing beyond `GET /api/events` and writes nothing. The Stats view (`StatsView`, worked out in `src/services/stats.ts`) is read-only over the same list too; its bars and rankings open the Table with matching filters.
 
 ## API
 
@@ -188,7 +198,7 @@ See [`.env.example`](.env.example). Each source is optional; the app reports whi
 
 ## Testing
 
-`npm test` runs the node test suite in `tests/`: capture parsing, stage 1 research and its rules (`events.test.ts`), billing roles, type and name suggestions (`roles.test.ts`), email readers, the year rule, grouping and the import routes (`email.test.ts`), verbatim checks, merging and scoring, each adapter against recorded responses, quota parsing, and the full pipeline including quota parking, review learning and the cache. `npm run lint` typechecks. Add a test with every new adapter or rule.
+`npm test` runs the node test suite in `tests/`: capture parsing, stage 1 research and its rules (`events.test.ts`), billing roles, type and name suggestions (`roles.test.ts`), email readers, the year rule, grouping and the import routes (`email.test.ts`), list import reading, matching and merging (`listImport.test.ts`), verbatim checks, merging and scoring, each adapter against recorded responses, quota parsing, and the full pipeline including quota parking, review learning and the cache. `npm run lint` typechecks. Add a test with every new adapter or rule.
 
 ## Roadmap
 
@@ -196,7 +206,7 @@ See [`.env.example`](.env.example). Each source is optional; the app reports whi
 - Ideas ranked in REQUIREMENTS.md section 13 (artist pages, back-fill mode, setlists, share card).
 - A weekly refresh job for editions that are upcoming or ended in the last 14 days, to pick up cancellations and additions.
 - A regression command that re-runs extraction over stored documents and compares against confirmed lineups when the model or prompt changes.
-- In the Table view: bulk edit of personal fields, merging spellings of venues, cities and companions, CSV import, and sheet sync. Each writes through the existing event routes; none changes capture or lookup.
+- In the Table view: bulk edit of personal fields, merging spellings of venues, cities and companions, and sheet sync. Each writes through the existing event routes; none changes capture or lookup.
 - A Format field you pick (club night, warehouse party, block party, ...), separate from Concert or Festival, never filled on its own.
 - "Find lineups for all" in the Table, queueing stage 2 for many events, with a batch review.
 - Billing roles from promoter pages: an optional role in Gemini's extraction, kept only when its quote contains the marker words (checked in code, like `isVerbatim`).
