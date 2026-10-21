@@ -84,8 +84,12 @@ const Select: React.FC<{
 const dash = <span className="text-zinc-700">–</span>;
 
 // At most a few names in a cell; the full list is in the tooltip.
-const names = (acts: LoggedEvent['seen']) =>
-  acts.length > 3 ? `${acts.slice(0, 3).map((s) => s.name).join(', ')} +${acts.length - 3}` : acts.map((s) => s.name).join(', ');
+// Your favourite set comes first, with a heart.
+const names = (seen: LoggedEvent['seen']) => {
+  const acts = [...seen].sort((a, b) => Number(Boolean(b.favourite)) - Number(Boolean(a.favourite)));
+  const label = (s: LoggedEvent['seen'][number]) => (s.favourite ? `♥ ${s.name}` : s.name);
+  return acts.length > 3 ? `${acts.slice(0, 3).map(label).join(', ')} +${acts.length - 3}` : acts.map(label).join(', ');
+};
 
 // Every event as a row you can filter, sort and export. A row opens the usual
 // event panel for editing; "Import a list" adds events from a CSV you kept.

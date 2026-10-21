@@ -1,4 +1,4 @@
-import type { LoggedEvent, SeenAct } from '../server/events/types';
+import type { LoggedEvent, SeenAct, WeatherDay } from '../server/events/types';
 import { eventScale, KIND_LABELS, LineupFacts } from '../server/events/scale';
 
 const day = (iso: string, opts: Intl.DateTimeFormatOptions) =>
@@ -48,6 +48,43 @@ const csvCell = (v: unknown) => {
 export const artistsOf = (seen: SeenAct[]) => seen.filter((s) => s.role !== 'support');
 export const supportOf = (seen: SeenAct[]) => seen.filter((s) => s.role === 'support');
 
+export const favouriteOf = (seen: SeenAct[]) => seen.find((s) => s.favourite);
+
+// WMO weather codes, as Open-Meteo reports them.
+export function weatherWord(code?: number): string {
+  if (code === undefined) return '';
+  if (code === 0) return 'Clear';
+  if (code === 1) return 'Mainly clear';
+  if (code === 2) return 'Partly cloudy';
+  if (code === 3) return 'Overcast';
+  if (code === 45 || code === 48) return 'Fog';
+  if (code >= 51 && code <= 57) return 'Drizzle';
+  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return 'Rain';
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'Snow';
+  if (code >= 95) return 'Thunderstorm';
+  return '';
+}
+
+const f = (c: number) => Math.round((c * 9) / 5 + 32);
+
+// "Clear · 31°/22°C (88°/72°F) · 2 mm"
+export function weatherLine(d: WeatherDay): string {
+  const temps =
+    d.high !== undefined && d.low !== undefined
+      ? `${Math.round(d.high)}°/${Math.round(d.low)}°C (${f(d.high)}°/${f(d.low)}°F)`
+      : d.high !== undefined
+        ? `${Math.round(d.high)}°C (${f(d.high)}°F)`
+        : '';
+  const rain = d.precipitation ? `${Math.round(d.precipitation * 10) / 10} mm` : '';
+  return [weatherWord(d.code), temps, rain].filter(Boolean).join(' · ');
+}
+
+export function weatherText(e: LoggedEvent): string {
+  const days = e.weather?.days ?? [];
+  if (days.length === 1) return weatherLine(days[0]);
+  return days.map((d) => `${day(d.date, { month: 'short', day: 'numeric' })}: ${weatherLine(d)}`).join('; ');
+}
+
 // "Concert", "Festival", or empty while it is not known yet.
 export function kindLabel(e: LoggedEvent, facts?: LineupFacts): string {
   const kind = eventScale(e, facts).kind;
@@ -70,9 +107,11 @@ export function eventsToCsv(events: LoggedEvent[], editions: Record<string, Line
     'Saw',
     'Artist',
     'Supporting artists',
+    'Favourite set',
     'Went with',
     'Rating',
     'Ticket price',
+    'Weather',
     'Notes',
   ];
   const rows = events.map((e) => [
@@ -88,9 +127,11 @@ export function eventsToCsv(events: LoggedEvent[], editions: Record<string, Line
     e.seen.map((s) => s.name).join('; '),
     artistsOf(e.seen).map((s) => s.name).join('; '),
     supportOf(e.seen).map((s) => s.name).join('; '),
+    favouriteOf(e.seen)?.name,
     e.companions.join('; '),
     e.rating,
     e.ticketPrice,
+    weatherText(e),
     e.notes,
   ]);
   return [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
