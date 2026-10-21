@@ -5,6 +5,7 @@ import type { EventPatch } from '../server/events/service';
 import type { EmailImport } from '../server/events/email/types';
 import type { ArtistSuggestion } from '../server/events/artists';
 import type { LineupFacts } from '../server/events/scale';
+import type { CityPoint } from '../server/events/place';
 
 export type {
   LookupJob,
@@ -60,6 +61,10 @@ export const eventsApi = {
   findLineup: (id: string, lineupUrl?: string) =>
     request<{ event: LoggedEvent; job: LookupJob }>(`/api/events/${id}/lineup`, post({ lineupUrl })),
   cities: (q: string) => request<{ cities: string[] }>(`/api/places/cities?q=${encodeURIComponent(q)}`).then((r) => r.cities),
+  cityPoint: (city: string, country?: string) =>
+    request<{ point: CityPoint | null }>(
+      `/api/places/point?city=${encodeURIComponent(city)}${country ? `&country=${encodeURIComponent(country)}` : ''}`,
+    ).then((r) => r.point),
 };
 
 // "Check email": whether Gmail is connected and how far your mail was read.

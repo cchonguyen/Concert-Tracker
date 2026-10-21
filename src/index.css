@@ -1,1 +1,10 @@
 @import "tailwindcss";
+
+/* Map view: dark until the tiles load. */
+.leaflet-container {
+  background: #09090b;
+  font: inherit;
+}
+.leaflet-control-attribution {
+  font-size: 10px;
+}
