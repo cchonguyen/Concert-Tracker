@@ -90,7 +90,7 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 
 | ID | Requirement |
 | --- | --- |
-| R3.1 | Seen acts can be added by name on any event, with or without a lineup. |
+| R3.1 | Seen acts can be added by name on any event, with or without a lineup. While you type, acts you entered on other events are offered, spelled as you wrote them before. |
 | R3.2 | Optional, added any time: who you went with, notes, a rating (1 to 5), ticket price, which days you went for multi-day events, and the **Format** (club night, warehouse party, block party, ... in your words, separate from Concert or Festival). None is ever pre-filled. |
 | R3.3 | New personal fields are added to the event without making capture longer. They appear in the event's detail view and the export. |
 | R3.4 | Who you saw is shown as **Artist** and **Supporting**. Acts from a lineup carry its role; you can move any act between the two, and that choice is yours from then on. When the event's own name names an act that a source lists for this event (the Ticketmaster listing or setlist.fm show it was matched to, or the lineup), the event offers "X as Artist?" (or "as Supporting?" when the name says "X with Y") as one tap; nothing is added until you tap it. The same is offered for an act you saw at another event whose name appears in this one, and for a part of the name (before a subtitle, split on "with", "b2b" and commas) that MusicBrainz knows as an artist of exactly that name. |
