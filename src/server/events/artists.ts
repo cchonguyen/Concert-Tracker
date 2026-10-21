@@ -2,6 +2,7 @@ import type { Edition, Fetcher, LookupJob, SourceType } from '../lineup/types';
 import { Billing, billingFromTitle, placeInTitle, splitBill } from '../lineup/billing';
 import { artistNamed } from '../lineup/musicbrainz';
 import { normalizeName } from '../lineup/text';
+import type { LineupStore } from '../lineup/store/types';
 import type { LoggedEvent } from './types';
 
 // "Porter Robinson as Artist?": an act named in the event's own name, offered
@@ -112,4 +113,35 @@ export function artistSuggestions(event: LoggedEvent, performers: Performer[]): 
       const p = byKey.get(key)!;
       return { key, name: p.name, role: roles.get(key), sourceType: p.sourceType, sourceUrl: p.sourceUrl };
     });
+}
+
+export const MAX_BULK_SUGGESTIONS = 500;
+
+// Fill gaps, "Artists from titles": the same suggestions for many events at
+// once, from what is already stored (each event's listing, lookup and lineup,
+// and acts you saw elsewhere). No network, so it answers at once; MusicBrainz
+// is asked per event afterwards (GET /events/:id/name-artists). Events with
+// nothing to offer are left out.
+export async function storedNameSuggestions(
+  store: Pick<LineupStore, 'listEvents' | 'getJobs' | 'getEdition'>,
+  ids: string[],
+): Promise<Record<string, ArtistSuggestion[]>> {
+  const all = await store.listEvents();
+  const wanted = new Set(ids);
+  const events = all.filter((e) => wanted.has(e.id));
+  const jobs = new Map(
+    (await store.getJobs(events.map((e) => e.lineupJobId).filter((id): id is string => Boolean(id)))).map((j) => [j.id, j]),
+  );
+  const editions = new Map<string, Edition | null>();
+  for (const id of new Set(events.map((e) => e.editionId).filter((id): id is string => Boolean(id)))) {
+    editions.set(id, await store.getEdition(id));
+  }
+  const out: Record<string, ArtistSuggestion[]> = {};
+  for (const e of events) {
+    const job = e.lineupJobId ? jobs.get(e.lineupJobId) : null;
+    const edition = e.editionId ? editions.get(e.editionId) : null;
+    const list = artistSuggestions(e, [...eventPerformers(e, job, edition), ...pastArtists(all, e)]);
+    if (list.length) out[e.id] = list;
+  }
+  return out;
 }
