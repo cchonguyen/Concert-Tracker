@@ -2,7 +2,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { Router } from 'express';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
 import { eventFromImport, findLogged, mergeImports, pricesFromImports, readEmails, reviewList } from './email/imports';
-import { GmailApi, GmailAuthError } from './email/gmail';
+import { GmailApi, GmailAuthError, GmailBusy } from './email/gmail';
 import { GMAIL_SETTING, GmailSetting, NotConnected, SCAN_SETTING, ScanSetting, scanStep } from './email/scan';
 import { EmailImport, RawEmail } from './email/types';
 
@@ -153,6 +153,8 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
       res.json(await scanStep(deps.store, gmail, deps.now()));
     } catch (err) {
       if (err instanceof NotConnected || err instanceof GmailAuthError) return res.status(409).json({ error: err.message, connect: true });
+      // What was left to read is kept; the page waits and calls again.
+      if (err instanceof GmailBusy) return res.status(429).json({ error: err.message, retry: true });
       fail(res, err);
     }
   });
