@@ -19,7 +19,7 @@ import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
 import { norm } from '../services/listImport';
 import { leaveB2b, pairB2b, seenSlots, SET_LABELS, toSeenInput } from '../server/events/seen';
-import { eventTitle, seriesList, seriesOffers } from '../services/series';
+import { eventTitle, seriesList, seriesOffers, weekendFromName } from '../services/series';
 
 interface EventDetailProps {
   event: LoggedEvent;
@@ -587,13 +587,33 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         </div>
         {event.input && event.input !== event.name && <p className="-mt-4 text-xs text-zinc-600">You typed: “{event.input}”</p>}
         <div className="-mt-2 space-y-1">
-          <Field
-            label="Series"
-            value={event.series}
-            placeholder="Festival or tour it's one year of, e.g. EDC Las Vegas"
-            suggestions={seriesOffers(event, others)}
-            onSave={(v) => save({ series: text(v) })}
-          />
+          <div className="flex items-end gap-2">
+            <Field
+              label="Series"
+              value={event.series}
+              placeholder="Festival or tour it's one year of, e.g. EDC Las Vegas"
+              suggestions={seriesOffers(event, others)}
+              onSave={(v) => save({ series: text(v), ...(text(v) ? {} : { weekend: null }) })}
+              className="flex-1"
+            />
+            {event.series && (
+              <label className="space-y-1">
+                <span className="text-[11px] font-semibold text-zinc-400">Weekend</span>
+                <select
+                  className={input}
+                  value={event.weekend ?? ''}
+                  onChange={(e) => save({ weekend: e.target.value ? Number(e.target.value) : null })}
+                >
+                  <option value="">{weekendFromName(event.name) ? `Not set (name says ${weekendFromName(event.name)})` : 'Only one'}</option>
+                  {[1, 2, 3, 4].map((w) => (
+                    <option key={w} value={w}>
+                      Weekend {w}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
           {event.series && (
             <p className="text-[11px] text-zinc-500">
               Shows as “{eventTitle(event)}”

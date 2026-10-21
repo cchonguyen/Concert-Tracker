@@ -48,6 +48,7 @@ export interface EventPatch {
   kind?: EventKind | null; // null: worked out by the rule again
   format?: string | null;
   series?: string | null;
+  weekend?: number | null;
   daysAttended?: string[];
   companions?: string[];
   rating?: number | null;
@@ -87,6 +88,11 @@ export function applyPatch(event: LoggedEvent, patch: EventPatch, now: Date): Lo
   }
   if (patch.format !== undefined) next.format = text(patch.format);
   if (patch.series !== undefined) next.series = text(patch.series)?.replace(/\s+/g, ' ');
+  if (patch.weekend !== undefined) {
+    const w = patch.weekend === null ? undefined : Number(patch.weekend);
+    if (w !== undefined && (!Number.isInteger(w) || w < 1 || w > 9)) throw new InputError('Weekend is a number from 1 to 9.');
+    next.weekend = w;
+  }
   if (patch.daysAttended) next.daysAttended = patch.daysAttended.filter((d) => DATE.test(d));
   if (patch.companions) next.companions = [...new Set(patch.companions.map((c) => c.trim()).filter(Boolean))];
   if (patch.rating !== undefined) {
