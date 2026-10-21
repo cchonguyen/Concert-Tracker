@@ -6,6 +6,7 @@ import { EmailReader, UnreadableEmail } from './types';
 // "<venue> — <city>, <state>". The same layout since at least 2022.
 export const ticketmaster: EmailReader = {
   seller: 'Ticketmaster',
+  domain: 'ticketmaster.com',
   matches: (from) => fromDomain(from, 'ticketmaster.com'),
   read(email, lines) {
     const name = subjectAfter(email.subject, /^You Got Tickets To (.+)$/i);

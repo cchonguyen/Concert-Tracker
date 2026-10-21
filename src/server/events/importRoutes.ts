@@ -1,11 +1,15 @@
-import { timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { Router } from 'express';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
 import { eventFromImport, findLogged, mergeImports, readEmails, reviewList } from './email/imports';
+import { GmailApi, GmailAuthError } from './email/gmail';
+import { GMAIL_SETTING, GmailSetting, NotConnected, SCAN_SETTING, ScanSetting, scanStep } from './email/scan';
 import { EmailImport, RawEmail } from './email/types';
 
 // /api/imports: ticket emails in, a review list out, and your ticks back.
 // Posting mail needs IMPORT_TOKEN; reviewing works like the rest of the app.
+// "Check email" reads your Gmail directly once you connect it (GOOGLE_CLIENT_ID
+// and GOOGLE_CLIENT_SECRET set).
 
 const MAX_EMAILS = 100;
 
@@ -38,7 +42,7 @@ function rawEmails(body: any): RawEmail[] {
 
 const ids = (body: any): Set<string> => new Set(Array.isArray(body?.ids) ? body.ids.filter((v: unknown) => typeof v === 'string') : []);
 
-export function importsRouter(deps: PipelineDeps): Router {
+export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null): Router {
   const router = Router();
   const fail = (res: any, err: unknown) =>
     res.status(err instanceof InputError ? 400 : 500).json({ error: err instanceof Error ? err.message : String(err) });
@@ -114,6 +118,70 @@ export function importsRouter(deps: PipelineDeps): Router {
       res.json({ imports: changed });
     } catch (err) {
       fail(res, err);
+    }
+  });
+
+  // Check email: whether Gmail is connected and how far your mail was read.
+  router.get('/imports/scan', async (_req, res) => {
+    try {
+      if (!gmail) return res.json({ configured: false, connected: false });
+      const [login, scan] = await Promise.all([
+        deps.store.getSetting<GmailSetting>(GMAIL_SETTING),
+        deps.store.getSetting<ScanSetting>(SCAN_SETTING),
+      ]);
+      res.json({
+        configured: true,
+        connected: Boolean(login),
+        account: login?.account,
+        scannedThrough: scan?.scannedThrough,
+        lastCheckedAt: scan?.lastCheckedAt,
+      });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // One step of a check; the page calls again while `remaining` is above 0.
+  router.post('/imports/scan', async (_req, res) => {
+    if (!gmail) return res.status(503).json({ error: 'Check email is off: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not set.' });
+    try {
+      res.json(await scanStep(deps.store, gmail, deps.now()));
+    } catch (err) {
+      if (err instanceof NotConnected || err instanceof GmailAuthError) return res.status(409).json({ error: err.message, connect: true });
+      fail(res, err);
+    }
+  });
+
+  // Connect Gmail: Google's sign-in, then back to /api/gmail/callback.
+  const callbackUrl = (req: any) => `${process.env.APP_URL || `${req.protocol}://${req.get('host')}`}/api/gmail/callback`;
+  const OAUTH_SETTING = 'gmail_oauth';
+
+  router.get('/gmail/connect', async (req, res) => {
+    if (!gmail) return res.status(503).send('Check email is off: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not set.');
+    try {
+      const state = randomUUID();
+      await deps.store.putSetting(OAUTH_SETTING, { state, until: deps.now().getTime() + 10 * 60_000 });
+      res.redirect(gmail.authUrl(callbackUrl(req), state));
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.get('/gmail/callback', async (req, res) => {
+    const back = (result: string) => res.redirect(`/?gmail=${encodeURIComponent(result)}`);
+    if (!gmail) return back('Check email is off.');
+    try {
+      const pending = await deps.store.getSetting<{ state: string; until: number }>(OAUTH_SETTING);
+      const state = typeof req.query.state === 'string' ? req.query.state : '';
+      const code = typeof req.query.code === 'string' ? req.query.code : '';
+      if (!pending || pending.state !== state || pending.until < deps.now().getTime()) return back('That sign-in expired. Try Connect Gmail again.');
+      await deps.store.putSetting(OAUTH_SETTING, { state: '', until: 0 });
+      if (!code) return back('Gmail was not connected.');
+      const login = await gmail.connect(code, callbackUrl(req));
+      await deps.store.putSetting<GmailSetting>(GMAIL_SETTING, { ...login, connectedAt: deps.now().toISOString() });
+      back('connected');
+    } catch (err) {
+      back(err instanceof Error ? err.message : String(err));
     }
   });
 

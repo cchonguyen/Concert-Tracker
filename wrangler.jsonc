@@ -26,12 +26,15 @@
     // Google Search grounding has no free-tier quota on this key (every call
     // returns 429). Turn on once billing is enabled for the Gemini project.
     "GEMINI_SEARCH_DISCOVERY": "off",
-    "CLASHFINDER_HASH_FORMAT": "{username}{privateKey}"
+    "CLASHFINDER_HASH_FORMAT": "{username}{privateKey}",
+    // Where Google sends you back after "Connect Gmail".
+    "APP_URL": "https://concert.charliechonguyen.com"
   },
   // Secrets (wrangler secret put): GEMINI_API_KEY, SUPABASE_URL,
   // SUPABASE_SERVICE_ROLE_KEY, CONTACT_EMAIL, TICKETMASTER_API_KEY,
   // SETLISTFM_API_KEY, BRAVE_SEARCH_API_KEY, CLASHFINDER_USERNAME, CLASHFINDER_PUBLIC_KEY or
-  // CLASHFINDER_PRIVATE_KEY, IMPORT_TOKEN.
+  // CLASHFINDER_PRIVATE_KEY, IMPORT_TOKEN,
+  // GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET (Check email).
   "queues": {
     "producers": [{ "binding": "LOOKUP_QUEUE", "queue": "concert-tracker-lookups" }],
     "consumers": [

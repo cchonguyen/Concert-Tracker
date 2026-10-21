@@ -44,6 +44,7 @@ function place(line: string): Pick<ReadEmail, 'venue' | 'city'> {
 
 export const axs: EmailReader = {
   seller: 'AXS',
+  domain: 'axs.com',
   matches: (from) => fromDomain(from, 'axs.com'),
   read(email, lines) {
     if (/^Thank you for your order for /i.test(email.subject)) return order(email.subject, lines, email.sentAt);
