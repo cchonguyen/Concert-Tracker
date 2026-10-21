@@ -374,7 +374,10 @@ test('stage 1 reads the venue and city from the pages that confirmed the date', 
     const out = await researchEvent(typed, [braveFinder], fetcher, NOW);
     assert.equal(out.details.status, 'matched');
     assert.equal(out.venue, 'Greek Theatre');
-    assert.equal(out.city, 'Los Angeles, CA');
+    assert.equal(out.city, 'Los Angeles');
+    assert.equal(out.region, 'CA', 'the state is kept apart from the city');
+    assert.equal(out.country, 'United States');
+    assert.deepEqual(out.sources.region, out.sources.city);
     assert.deepEqual(out.sources.venue, { sourceType: 'discovered', sourceUrl: 'https://tickets.example/porter' });
     const placeSource = out.details.candidates[0].sources.find((s) => s.fields.includes('venue'));
     assert.equal(placeSource?.quote, 'Greek Theatre, Los Angeles, CA');
@@ -383,7 +386,8 @@ test('stage 1 reads the venue and city from the pages that confirmed the date', 
 
     const yours = await researchEvent(newEvent('Porter Robinson at The Greek, Oct 5 2024', NOW), [braveFinder], fetcher, NOW);
     assert.equal(yours.venue, 'The Greek', 'a venue you typed is never replaced');
-    assert.equal(yours.city, 'Los Angeles, CA', 'an empty city is filled');
+    assert.equal(yours.city, 'Los Angeles', 'an empty city is filled');
+    assert.equal(yours.region, 'CA');
   } finally {
     delete process.env.BRAVE_SEARCH_API_KEY;
   }
@@ -468,7 +472,8 @@ test('"Use this" takes one field from the confirmed suggestion and replaces what
   assert.equal(out.city, 'Pasadena', 'look again never replaces your city');
   assert.equal(out.venue, 'Brookside at the Rose Bowl');
   const used = pickCandidate(out, out.details.candidates[0].id, NOW, ['city']);
-  assert.equal(used.city, 'Pasadena, CA');
+  assert.equal(used.city, 'Pasadena');
+  assert.equal(used.region, 'CA');
   assert.equal(used.sources.city?.sourceType, 'discovered');
   assert.equal(used.details.status, 'matched', 'the suggestion stays');
   assert.throws(() => pickCandidate(out, out.details.candidates[0].id, NOW, ['name' as never]));

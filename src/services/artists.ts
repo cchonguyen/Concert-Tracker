@@ -1,5 +1,6 @@
 import type { LoggedEvent } from '../server/events/types';
 import { eventYear } from './format';
+import { cityWithRegion } from '../server/events/regions';
 
 // The Artists view: everyone you marked as seen, one entry per act, worked
 // out from your log each time. Roles and favourites count only where stored.
@@ -51,10 +52,11 @@ export function artistSummaries(events: LoggedEvent[]): ArtistSummary[] {
         a.firstYear = a.firstYear === undefined ? y : Math.min(a.firstYear, y);
         a.lastYear = a.lastYear === undefined ? y : Math.max(a.lastYear, y);
       }
-      if (e.city) {
-        const c = a.cityCounts.get(fold(e.city)) ?? { name: e.city, n: 0 };
+      const city = cityWithRegion(e.city, e.region);
+      if (city) {
+        const c = a.cityCounts.get(fold(city)) ?? { name: city, n: 0 };
         c.n += 1;
-        a.cityCounts.set(fold(e.city), c);
+        a.cityCounts.set(fold(city), c);
       }
     }
   }

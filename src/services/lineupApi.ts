@@ -5,7 +5,7 @@ import type { EventPatch } from '../server/events/service';
 import type { EmailImport } from '../server/events/email/types';
 import type { ArtistSuggestion } from '../server/events/artists';
 import type { LineupFacts } from '../server/events/scale';
-import type { CityPoint } from '../server/events/place';
+import type { CityPoint, PlaceGuess } from '../server/events/place';
 
 export type {
   LookupJob,
@@ -19,6 +19,7 @@ export type {
   EmailImport,
   ArtistSuggestion,
   LineupFacts,
+  PlaceGuess,
 };
 
 export interface LineupStatus {
@@ -63,6 +64,10 @@ export const eventsApi = {
   findLineup: (id: string, lineupUrl?: string) =>
     request<{ event: LoggedEvent; job: LookupJob }>(`/api/events/${id}/lineup`, post({ lineupUrl })),
   cities: (q: string) => request<{ cities: string[] }>(`/api/places/cities?q=${encodeURIComponent(q)}`).then((r) => r.cities),
+  placeGuess: (place: { city: string; region?: string; country?: string }) =>
+    request<{ guess: PlaceGuess | null; note?: string }>(
+      `/api/places/guess?${new URLSearchParams(Object.entries(place).filter((kv): kv is [string, string] => Boolean(kv[1])))}`,
+    ),
   cityPoint: (city: string, country?: string) =>
     request<{ point: CityPoint | null }>(
       `/api/places/point?city=${encodeURIComponent(city)}${country ? `&country=${encodeURIComponent(country)}` : ''}`,

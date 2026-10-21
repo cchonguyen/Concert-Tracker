@@ -1,3 +1,4 @@
+import { cityWithRegion, regionCode } from './regions';
 import type { Fetcher } from '../lineup/types';
 import { parseJson } from '../lineup/http';
 import { normalizeName } from '../lineup/text';
@@ -87,11 +88,13 @@ export async function lookupWeather(event: LoggedEvent, fetcher: Fetcher, now: D
   if (last > addDays(today, -ARCHIVE_LAG_DAYS)) return { note: `The weather archive fills in about ${ARCHIVE_LAG_DAYS} days after the event.` };
   const end = last > addDays(event.startDate, MAX_DAYS - 1) ? addDays(event.startDate, MAX_DAYS - 1) : last;
 
-  const name = event.city.split(',')[0].trim();
+  // A US or Canadian state is matched as "City, ST"; elsewhere the country decides.
+  const city = (regionCode(event.region) ? cityWithRegion(event.city, event.region) : undefined) ?? event.city;
+  const name = city.split(',')[0].trim();
   const geo = await fetcher.get(`${GEOCODE}?name=${encodeURIComponent(name)}&count=20&language=en&format=json`, { timeoutMs: 8000 });
-  const places = placesFor(parseJson<any>(geo)?.results ?? [], event.city, event.country);
-  if (places.length === 0) return { note: `Couldn't find "${event.city}" on the map. Write it as "City, ST" or "City, Country".` };
-  if (places.length > 1) return { note: `More than one place is called "${event.city}". Add the state or country.` };
+  const places = placesFor(parseJson<any>(geo)?.results ?? [], city, event.country);
+  if (places.length === 0) return { note: `Couldn't find "${city}" on the map. Add the state or country.` };
+  if (places.length > 1) return { note: `More than one place is called "${city}". Add the state or country.` };
   const place = places[0];
 
   const url =

@@ -15,6 +15,7 @@ import {
   SourceType,
 } from '../types';
 import { LoggedEvent } from '../../events/types';
+import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import { isStaleRun, LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS } from './types';
@@ -294,23 +295,23 @@ export class FileLineupStore implements LineupStore {
   }
 
   async putEvent(event: LoggedEvent) {
-    (await this.load()).events[event.id] = clone(event);
+    (await this.load()).events[event.id] = clone(splitEventCity(event));
     await this.save();
   }
 
   async putEvents(events: LoggedEvent[]) {
     const state = await this.load();
-    for (const e of events) state.events[e.id] = clone(e);
+    for (const e of events) state.events[e.id] = clone(splitEventCity(e));
     await this.save();
   }
 
   async getEvent(id: string) {
     const ev = (await this.load()).events[id];
-    return ev ? clone(ev) : null;
+    return ev ? clone(splitEventCity(ev)) : null;
   }
 
   async listEvents() {
-    return clone(Object.values((await this.load()).events));
+    return clone(Object.values((await this.load()).events).map((e) => splitEventCity(e)));
   }
 
   async deleteEvent(id: string) {
