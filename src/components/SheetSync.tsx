@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ExternalLink, Loader2, RefreshCw, Sheet, X } from 'lucide-react';
 import { EmailImport, eventsApi, LoggedEvent, SheetsStatus, sheetsApi } from '../services/lineupApi';
-import { ImportResult, readTable } from '../services/listImport';
+import { ImportResult, ReadList, readTable } from '../services/listImport';
 import { droppedColumns, rowsToReview, sheetRows, sheetTable } from '../services/sheetSync';
 import { ListImport } from './ListImport';
 
@@ -31,7 +31,9 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ events, imports, notice, o
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(notice && notice !== 'connected' ? notice : null);
   const [message, setMessage] = useState<string | null>(null);
-  const [review, setReview] = useState<{ title: string; table: string[][]; version: string; dropped: string[] } | null>(null);
+  const [review, setReview] = useState<{ title: string; table: string[][]; version: string; dropped: string[]; base?: ReadList } | null>(
+    null,
+  );
 
   const load = () =>
     sheetsApi
@@ -66,15 +68,16 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ events, imports, notice, o
 
   const sync = () =>
     run('sync', async () => {
-      const { values, version, sheet } = await sheetsApi.read();
+      const { values, version, base: written, sheet } = await sheetsApi.read();
+      const base = written ? readTable(sheetTable(written)) : undefined;
       const table = sheetTable(values);
       const list = readTable(table);
       if (list.error && list.rows.length === 0 && table.filter((r) => r.some((c) => c.trim())).length > 1) {
         // Cells the import can't place: never overwrite them.
         throw new Error(`The "${sheet.tab}" tab has data but no Event or Name column, so it was left alone. Link an empty tab or a new sheet.`);
       }
-      if (list.error || rowsToReview(list, events, imports) === 0) return write(version);
-      setReview({ title: sheet.title, table, version, dropped: droppedColumns(list) });
+      if (list.error || rowsToReview(list, events, imports, base) === 0) return write(version);
+      setReview({ title: sheet.title, table, version, dropped: droppedColumns(list), base });
     });
 
   const saved = (result: ImportResult) => {
@@ -95,7 +98,7 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ events, imports, notice, o
       <ListImport
         events={events}
         imports={imports}
-        sheet={{ title: review.title, table: review.table, dropped: review.dropped }}
+        sheet={{ title: review.title, table: review.table, dropped: review.dropped, base: review.base }}
         onDone={onDone}
         onSaved={saved}
         onClose={() => setReview(null)}
