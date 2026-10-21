@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ChevronDown, Crown, Heart, MapPin, Search, Table2 } from 'lucide-react';
 import type { LoggedEvent } from '../services/lineupApi';
 import { whenLabel } from '../services/format';
 import { EventTitle } from './EventTitle';
-import { ARTIST_SORTS, artistSummaries, ArtistSort, ArtistSummary, groupArtists } from '../services/artists';
+import { ARTIST_SORTS, artistSummaries, ArtistSort, ArtistSummary, groupArtists, jumpTargets } from '../services/artists';
 
 interface ArtistsViewProps {
   events: LoggedEvent[];
@@ -35,11 +35,13 @@ const initials = (name: string) =>
     .join('')
     .toUpperCase() || '?';
 
-// One-day events without the weekday, so the dates line up in a narrow column.
+// One-day events without the weekday, so the dates line up in their column.
 const shortWhen = (e: LoggedEvent) =>
   e.startDate && (!e.endDate || e.endDate === e.startDate)
     ? new Date(`${e.startDate}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' })
     : whenLabel(e);
+
+const groupId = (label: string) => `artists-${label.replace(/[^\w]+/g, '-')}`;
 
 const years = (a: ArtistSummary) =>
   a.firstYear === undefined ? null : a.firstYear === a.lastYear ? String(a.firstYear) : `${a.firstYear} – ${a.lastYear}`;
@@ -60,7 +62,7 @@ const ArtistCard: React.FC<{ artist: ArtistSummary; onOpenEvent: (id: string) =>
   const shown = open ? a.events : a.events.slice(0, SHOWN_EVENTS);
   const span = years(a);
   return (
-    <li className="flex gap-3 px-4 py-3">
+    <li className="flex gap-4 px-4 py-4 sm:px-5">
       <span
         aria-hidden
         className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white/90"
@@ -68,11 +70,11 @@ const ArtistCard: React.FC<{ artist: ArtistSummary; onOpenEvent: (id: string) =>
       >
         {initials(a.name)}
       </span>
-      <div className="min-w-0 flex-1 space-y-1.5">
+      <div className="min-w-0 flex-1 space-y-2.5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="truncate font-semibold text-zinc-100">{a.name}</div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-zinc-500">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 pt-0.5 text-xs text-zinc-500">
               {span && (
                 <span className="inline-flex items-center gap-1">
                   <CalendarDays className="h-3 w-3" />
@@ -125,12 +127,16 @@ const ArtistCard: React.FC<{ artist: ArtistSummary; onOpenEvent: (id: string) =>
           </div>
         )}
 
-        <ul className="space-y-0.5">
+        <ul className="-mx-2 divide-y divide-zinc-900/70">
           {shown.map((e) => (
             <li key={e.id}>
-              <button onClick={() => onOpenEvent(e.id)} className="group flex w-full items-baseline gap-2 text-left text-xs">
-                <span className="w-24 shrink-0 whitespace-nowrap tabular-nums text-zinc-500">{shortWhen(e) ?? 'Date unknown'}</span>
-                <span className="min-w-0 truncate text-zinc-300 group-hover:text-violet-300 group-hover:underline">
+              {/* The date gets its own line on a phone and a column wide enough for "May 15 – 17, 2026" above that. */}
+              <button
+                onClick={() => onOpenEvent(e.id)}
+                className="group flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left text-sm hover:bg-zinc-900/70 sm:flex-row sm:items-baseline sm:gap-4"
+              >
+                <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-zinc-500 sm:w-36">{shortWhen(e) ?? 'Date unknown'}</span>
+                <span className="min-w-0 truncate text-zinc-200 group-hover:text-violet-300">
                   <EventTitle event={e} />
                   {e.venue && <span className="text-zinc-600"> · {e.venue}</span>}
                 </span>
@@ -178,6 +184,38 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
     () => groupArtists(q ? artists.filter((a) => a.name.toLowerCase().includes(q)) : artists, sort),
     [artists, q, sort],
   );
+  const jumps = useMemo(() => jumpTargets(groups, sort), [groups, sort]);
+  // The page header is sticky; the jump bar and group headings sit just under it.
+  const [headerHeight, setHeaderHeight] = useState(56);
+  useEffect(() => {
+    const h = document.querySelector('header');
+    if (!h) return;
+    const measure = () => setHeaderHeight(h.getBoundingClientRect().height);
+    measure();
+    const o = new ResizeObserver(measure);
+    o.observe(h);
+    return () => o.disconnect();
+  }, []);
+  const barHeight = jumps.length ? 40 : 0;
+  // The group whose heading has scrolled under the bars, for the bar's highlight.
+  const [current, setCurrent] = useState<string | null>(null);
+  useEffect(() => {
+    if (!jumps.length) return;
+    const onScroll = () => {
+      let at: string | null = null;
+      for (const g of groups) {
+        const el = document.getElementById(groupId(g.label));
+        if (el && el.getBoundingClientRect().top <= headerHeight + barHeight + 8) at = g.label;
+      }
+      setCurrent(at);
+    };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [groups, jumps.length, headerHeight, barHeight]);
+  const jumpTo = (group: string) =>
+    document.getElementById(groupId(group))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
   const repeat = artists.filter((a) => a.events.length > 1).length;
   const favourites = artists.filter((a) => a.favourites > 0).length;
 
@@ -230,12 +268,39 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
         </div>
       </div>
 
+      {jumps.length > 0 && groups.length > 0 && (
+        <nav
+          aria-label="Jump to"
+          style={{ top: headerHeight }}
+          className="sticky z-20 -mx-4 flex h-10 items-center gap-0.5 overflow-x-auto bg-zinc-950 px-4 [scrollbar-width:none]"
+        >
+          {jumps.map((j) => (
+            <button
+              key={j.label}
+              disabled={!j.group}
+              onClick={() => j.group && jumpTo(j.group)}
+              className={`shrink-0 rounded-md py-1 text-xs font-semibold tabular-nums ${
+                sort === 'az' ? 'min-w-0 flex-1 px-0 sm:min-w-[1.5rem] sm:flex-none sm:px-1.5' : 'px-2.5'
+              } ${
+                !j.group
+                  ? 'text-zinc-700'
+                  : j.group === current
+                    ? 'bg-violet-600 text-white'
+                    : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100'
+              }`}
+            >
+              {j.label}
+            </button>
+          ))}
+        </nav>
+      )}
+
       {groups.length === 0 ? (
         <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">No artist matches “{filter}”.</p>
       ) : (
         groups.map((g) => (
-          <section key={g.label} className="space-y-1.5">
-            <h2 className="sticky top-14 z-10 -mx-1 flex items-baseline gap-2 bg-zinc-950/90 px-1 py-1 text-xs font-bold uppercase tracking-wide text-zinc-400 backdrop-blur">
+          <section key={g.label} id={groupId(g.label)} style={{ scrollMarginTop: headerHeight + barHeight }} className="space-y-2">
+            <h2 style={{ top: headerHeight + barHeight }} className="sticky z-10 -mx-1 flex items-baseline gap-2 bg-zinc-950 px-1 py-1 text-xs font-bold uppercase tracking-wide text-zinc-400 backdrop-blur">
               {g.label}
               <span className="font-medium normal-case tracking-normal text-zinc-600">{g.artists.length}</span>
             </h2>
