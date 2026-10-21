@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Download, SlidersHorizontal, X } from 'lucide-react';
-import type { LineupSummary, LoggedEvent } from '../services/lineupApi';
+import { ArrowDown, ArrowUp, Download, FileUp, SlidersHorizontal, X } from 'lucide-react';
+import type { EmailImport, LineupSummary, LoggedEvent } from '../services/lineupApi';
 import { downloadText, eventsToCsv, whenLabel } from '../services/format';
 import {
   activeFilterCount,
@@ -17,11 +17,14 @@ import {
   summarize,
   TableFilters,
 } from '../services/table';
+import { ListImport } from './ListImport';
 
 interface TableViewProps {
   events: LoggedEvent[];
   lineups: Record<string, LineupSummary>;
+  imports: EmailImport[];
   onOpen: (id: string) => void;
+  onImported: () => void;
 }
 
 const control =
@@ -74,10 +77,11 @@ const Select: React.FC<{
 
 const dash = <span className="text-zinc-700">–</span>;
 
-// Every event as a row you can filter, sort and export. Read-only: a row opens
-// the usual event panel for editing.
-export const TableView: React.FC<TableViewProps> = ({ events, lineups, onOpen }) => {
+// Every event as a row you can filter, sort and export. A row opens the usual
+// event panel for editing; "Import a list" adds events from a CSV you kept.
+export const TableView: React.FC<TableViewProps> = ({ events, lineups, imports, onOpen, onImported }) => {
   const [filters, setFilters] = useState<TableFilters>(readQuery);
+  const [importing, setImporting] = useState(false);
   const [showFilters, setShowFilters] = useState(() => activeFilterCount(readQuery()) > 0);
 
   useEffect(() => {
@@ -97,16 +101,28 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, onOpen })
   const year = (s: string) => (s ? Number(s) : undefined);
   const list = (values: string[]) => values.map((v) => ({ value: v, label: v }));
 
+  const importButton = (
+    <button onClick={() => setImporting(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+      <FileUp className="h-3.5 w-3.5" /> Import a list
+    </button>
+  );
+  const importPanel = importing && (
+    <ListImport events={events} imports={imports} onDone={onImported} onClose={() => setImporting(false)} />
+  );
+
   if (!events.length) {
     return (
-      <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">
-        Nothing to show yet. Events you add appear here as rows.
-      </p>
+      <div className="space-y-2 rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">
+        <p>Nothing to show yet. Events you add appear here as rows.</p>
+        <p className="text-xs text-zinc-400">{importButton}</p>
+        {importPanel}
+      </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      {importPanel}
       <div className="flex flex-wrap items-center gap-2">
         <input
           value={filters.q}
@@ -209,13 +225,16 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, onOpen })
           {summary.averageRating !== undefined && ` · rated ${summary.averageRating} on average (${summary.rated} rated)`}
           {summary.totalPrice !== undefined && ` · ${summary.totalPrice.toLocaleString()} spent (${summary.priced} priced)`}
         </span>
-        <button
+        <span className="flex items-center gap-4">
+          {importButton}
+          <button
           onClick={() => downloadText(`livearchive-${new Date().toISOString().slice(0, 10)}.csv`, eventsToCsv(rows))}
           disabled={!rows.length}
           className="inline-flex items-center gap-1.5 hover:text-zinc-200 disabled:opacity-40"
         >
           <Download className="h-3.5 w-3.5" /> {rows.length < events.length ? 'Export these rows' : 'Export all'} as CSV
-        </button>
+          </button>
+        </span>
       </div>
 
       {rows.length === 0 ? (
