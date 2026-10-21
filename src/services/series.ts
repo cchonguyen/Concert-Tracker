@@ -2,8 +2,10 @@ import type { LoggedEvent } from '../server/events/types';
 import { eventYear } from './format';
 
 // Series: the festival or tour an event is one edition of ("EDC Las Vegas"),
-// named by you. An event in a series shows as "<series> <year>", so its
-// editions read the same way however each one was typed or imported. The
+// named by you. An event in a series shows as "<series> <year>", with the
+// event's own city added when the series name does not already say it
+// ("EDC" in Las Vegas shows as "EDC Las Vegas 2024"), so its editions read
+// the same way however each one was typed or imported. The
 // name you typed stays on the event and is still what a lineup lookup reads.
 // Offers come only from your own event names; nothing is linked without a tap.
 
@@ -29,12 +31,34 @@ export const seriesKey = (name: string) =>
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 
-// What the app shows as the event's name: "EDC Las Vegas 2024" in a series,
-// otherwise the name as you typed it.
-export function eventTitle(e: Pick<LoggedEvent, 'name' | 'series' | 'startDate' | 'year'>): string {
+// The town of a stored city: "Las Vegas" from "Las Vegas, NV".
+export const townOf = (city?: string) => city?.split(',')[0].trim() || undefined;
+
+// A series name with the town added, unless the name already says it.
+export function withPlace(name: string, city?: string): string {
+  const town = townOf(city);
+  if (!town || ` ${seriesKey(name)} `.includes(` ${seriesKey(town)} `)) return name;
+  return `${name} ${town}`;
+}
+
+// What the app shows as the event's name: "EDC Las Vegas 2024" in a series
+// (the town from the event's city when the series name lacks it), otherwise
+// the name as you typed it.
+// "Coachella 2024 · Weekend 1" when you picked the weekend.
+export function eventTitle(e: Pick<LoggedEvent, 'name' | 'series' | 'startDate' | 'year' | 'city' | 'weekend'>): string {
   if (!e.series) return e.name;
+  const name = withPlace(e.series, e.city);
   const year = eventYear(e as LoggedEvent);
-  return year ? `${e.series} ${year}` : e.series;
+  const title = year ? `${name} ${year}` : name;
+  return e.weekend ? `${title} · Weekend ${e.weekend}` : title;
+}
+
+// The weekend your own name for the event gives ("Weekend 2", "W1", "Wknd 1"),
+// offered when you link it; never stored without your tap.
+export function weekendFromName(name: string): number | undefined {
+  const m = name.match(/\b(?:weekend|wknd)\s*(\d)\b|\bw(\d)\b/i);
+  const n = m ? Number(m[1] ?? m[2]) : NaN;
+  return n >= 1 && n <= 9 ? n : undefined;
 }
 
 export interface SeriesGroup {
@@ -67,23 +91,41 @@ export interface SeriesSuggestion {
   linked: number; // how many are in that series already
 }
 
-// Events whose names are the same once the year is taken out, and that are not
-// all in one series yet. Two or more, or one that matches a series you have.
+// Events whose names are the same once the year is taken out, in the same
+// city, and that are not all in one series yet. The name offered carries the
+// town ("EDC Las Vegas"), so the same festival in two cities is two series.
+// An event with no city joins the one city its name is known in, if just one.
 export function seriesSuggestions(events: LoggedEvent[]): SeriesSuggestion[] {
+  const townsByBase = new Map<string, Set<string>>();
+  for (const e of events) {
+    const base = seriesKey(seriesBase(e.name));
+    const town = townOf(e.city);
+    if (base && town) townsByBase.set(base, (townsByBase.get(base) ?? new Set()).add(town));
+  }
+  // The city an event is grouped by: its own, or the only one its name has.
+  const placeOf = (e: LoggedEvent) => {
+    if (e.city) return e.city;
+    const towns = townsByBase.get(seriesKey(seriesBase(e.name)));
+    return towns?.size === 1 ? [...towns][0] : undefined;
+  };
   const byKey = new Map<string, LoggedEvent[]>();
   const add = (key: string, e: LoggedEvent) => {
     if (!key) return;
     const list = byKey.get(key) ?? [];
     if (!list.includes(e)) byKey.set(key, [...list, e]);
   };
+  const keyOf = (name: string, e: LoggedEvent) => seriesKey(withPlace(name, placeOf(e)));
   for (const e of events) {
-    add(seriesKey(seriesBase(e.name)), e);
-    if (e.series) add(seriesKey(e.series), e);
+    const base = seriesBase(e.name);
+    if (base) add(keyOf(base, e), e);
+    if (e.series) add(keyOf(e.series, e), e);
   }
   const out: SeriesSuggestion[] = [];
   for (const [key, list] of byKey) {
-    const series = list.flatMap((e) => (e.series && seriesKey(e.series) === key ? [e.series] : []));
-    const name = series.length ? mostUsed(series) : mostUsed(list.map((e) => seriesBase(e.name)));
+    const series = list.flatMap((e) => (e.series && keyOf(e.series, e) === key ? [e.series] : []));
+    const name = series.length
+      ? mostUsed(series)
+      : mostUsed(list.flatMap((e) => (seriesBase(e.name) ? [withPlace(seriesBase(e.name), placeOf(e))] : [])));
     const linked = list.filter((e) => e.series === name).length;
     if (list.length < 2 || linked === list.length) continue;
     out.push({ key, name, events: [...list].sort(byDate), linked });
@@ -98,7 +140,7 @@ export function seriesOffers(event: LoggedEvent, events: LoggedEvent[]): string[
   const yours = seriesList(events)
     .map((g) => g.name)
     .filter((s) => name.includes(` ${seriesKey(s)} `));
-  const base = seriesBase(event.name);
+  const base = seriesBase(event.name) && withPlace(seriesBase(event.name), event.city);
   return [...new Set([...yours, ...(base ? [base] : []), ...seriesList(events).map((g) => g.name)])].filter(
     (s) => s !== event.series,
   );
