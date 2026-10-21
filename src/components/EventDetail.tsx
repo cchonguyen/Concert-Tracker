@@ -13,10 +13,11 @@ import {
   LookupJob,
   SOURCE_LABELS,
 } from '../services/lineupApi';
-import { artistsOf, dateConfirmations, datesBetween, matchArtists, pastArtistNames, supportOf, weatherLine, whenLabel } from '../services/format';
+import { artistsOf, dateConfirmations, datesBetween, matchNames, pastArtistNames, pastCompanionNames, supportOf, weatherLine, whenLabel } from '../services/format';
 import { actSets, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
+import { norm } from '../services/listImport';
 
 interface EventDetailProps {
   event: LoggedEvent;
@@ -95,41 +96,85 @@ const Field: React.FC<{
   );
 };
 
-// Chips with an input to add more (seen acts, companions).
+// Chips with an input to add more (companions). Typing offers names you've
+// entered on other events; a click, or arrow keys then Enter, adds one as you
+// spelled it before. Enter alone adds what you typed.
 const ChipInput: React.FC<{
   items: string[];
   placeholder: string;
+  past: string[];
+  label: string;
   onChange: (items: string[]) => void;
-}> = ({ items, placeholder, onChange }) => {
+}> = ({ items, placeholder, past, label, onChange }) => {
   const [draft, setDraft] = useState('');
-  const add = () => {
-    const names = draft.split(',').map((s) => s.trim()).filter(Boolean);
+  const [active, setActive] = useState(-1);
+  const matches = matchNames(draft, past, new Set(items.map(norm)));
+  const addNames = (names: string[]) => {
     if (names.length) onChange([...items, ...names]);
     setDraft('');
+    setActive(-1);
   };
+  const add = () => addNames(draft.split(',').map((s) => s.trim()).filter(Boolean));
   return (
-    <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 p-1.5">
-      {items.map((item, i) => (
-        <span key={`${item}-${i}`} className="inline-flex items-center gap-1 rounded-full bg-zinc-800 py-1 pl-2.5 pr-1.5 text-sm text-zinc-100">
-          {item}
-          <button onClick={() => onChange(items.filter((_, j) => j !== i))} aria-label={`Remove ${item}`} className="text-zinc-500 hover:text-zinc-200">
-            <X className="h-3 w-3" />
-          </button>
-        </span>
-      ))}
-      <input
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ',') {
-            e.preventDefault();
-            add();
-          }
-        }}
-        onBlur={add}
-        placeholder={placeholder}
-        className="min-w-[8rem] flex-1 bg-transparent px-1.5 py-1 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
-      />
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {items.map((item, i) => (
+          <span key={`${item}-${i}`} className="inline-flex items-center gap-1 rounded-full bg-zinc-800 py-1 pl-2.5 pr-1.5 text-sm text-zinc-100">
+            {item}
+            <button onClick={() => onChange(items.filter((_, j) => j !== i))} aria-label={`Remove ${item}`} className="text-zinc-500 hover:text-zinc-200">
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setActive(-1);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown' && matches.length) {
+              e.preventDefault();
+              setActive((i) => (i + 1) % matches.length);
+            } else if (e.key === 'ArrowUp' && matches.length) {
+              e.preventDefault();
+              setActive((i) => (i <= 0 ? matches.length - 1 : i - 1));
+            } else if (e.key === 'Enter' && matches[active]) {
+              e.preventDefault();
+              addNames([matches[active]]);
+            } else if (e.key === 'Enter' || e.key === ',') {
+              e.preventDefault();
+              add();
+            } else if (e.key === 'Escape') setDraft('');
+          }}
+          onBlur={add}
+          placeholder={placeholder}
+          aria-label={label}
+          className="min-w-[8rem] flex-1 bg-transparent px-1.5 py-1 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+        />
+      </div>
+      {matches.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 px-1.5 pb-1 pt-1.5" role="listbox" aria-label="Names you've entered before">
+          <span className="text-[11px] text-zinc-500">Before:</span>
+          {matches.map((name, i) => (
+            <button
+              key={name}
+              role="option"
+              aria-selected={i === active}
+              // mousedown, so the input's blur doesn't add the half-typed text first
+              onMouseDown={(e) => {
+                e.preventDefault();
+                addNames([name]);
+              }}
+              className={`rounded-full border px-2.5 py-0.5 text-xs ${
+                i === active ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-700 text-zinc-300 hover:border-violet-500'
+              }`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -154,7 +199,7 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
 }) => {
   const [draft, setDraft] = useState('');
   const [active, setActive] = useState(-1);
-  const matches = matchArtists(draft, past, new Set(seen.map((s) => s.key)));
+  const matches = matchNames(draft, past, new Set(seen.map((s) => s.key)));
   const addNames = (names: string[]) => {
     if (names.length) onChange([...toPatch(seen), ...names.map((name) => ({ name, from: 'you' as const }))]);
     setDraft('');
@@ -365,6 +410,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const citySuggestions = [...new Set([...pastCities, ...foundCities])];
   const formatSuggestions = [...new Set([...pastValues(others, 'format'), ...FORMAT_IDEAS])];
   const pastArtists = useMemo(() => pastArtistNames(others), [events, event.id]);
+  const pastCompanions = useMemo(() => pastCompanionNames(others), [events, event.id]);
 
   const load = useCallback(async () => {
     try {
@@ -729,7 +775,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           />
           <label className="block space-y-1">
             <span className="text-[11px] font-semibold text-zinc-400">Went with</span>
-            <ChipInput items={event.companions} placeholder="Add a name" onChange={(companions) => save({ companions })} />
+            <ChipInput items={event.companions} placeholder="Add a name" past={pastCompanions} label="Add who you went with" onChange={(companions) => save({ companions })} />
           </label>
           {days.length > 1 && (
             <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-300">
