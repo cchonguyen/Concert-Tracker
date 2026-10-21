@@ -16,7 +16,7 @@ import {
 import { LoggedEvent } from '../../events/types';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
-import { LineupStore, MAX_EXAMPLES_PER_DOMAIN } from './types';
+import { LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS } from './types';
 
 // Postgres-backed store. Tables are defined in
 // supabase/migrations/0002_source_first_lineups.sql, 0003_event_log.sql and
@@ -110,12 +110,16 @@ export class SupabaseLineupStore implements LineupStore {
 
   async dueJobs(now: Date, limit: number) {
     const iso = now.toISOString();
+    const staleIso = new Date(now.getTime() - STALE_RUN_MS).toISOString();
     const data = this.check(
       await this.db
         .from('lookup_jobs')
         .select('*')
-        .in('status', ['queued', 'waiting_quota'])
-        .or(`next_attempt_at.is.null,next_attempt_at.lte.${iso}`)
+        // Due queued or paused jobs, and runs that were cut off (isStaleRun).
+        .or(
+          `and(status.in.(queued,waiting_quota),or(next_attempt_at.is.null,next_attempt_at.lte.${iso})),` +
+            `and(status.eq.running,updated_at.lte.${staleIso})`,
+        )
         .order('created_at', { ascending: true })
         .limit(limit),
       'dueJobs',

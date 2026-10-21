@@ -11,7 +11,7 @@ import {
   SeriesRecord,
   SourceAdapter,
 } from './types';
-import { LineupStore } from './store/types';
+import { isStaleRun, LineupStore } from './store/types';
 import { GeminiClient, EXTRACTION_PROMPT_VERSION } from './gemini';
 import { QuotaExhaustedError, QuotaLedger } from './quota';
 import { appendFacts, mergeLineup } from './merge';
@@ -37,7 +37,9 @@ export interface PipelineDeps {
 }
 
 const MAX_ATTEMPTS = 3;
-const ARTISTS_PER_RESOLVE_RUN = 25;
+// Two subrequests per artist (MusicBrainz, then the store) plus the job's own
+// reads and writes must stay under the Workers limit of 50 per invocation.
+const ARTISTS_PER_RESOLVE_RUN = 20;
 
 export class InputError extends Error {}
 
@@ -230,7 +232,9 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
     log(job, `Gemini is not configured, so ${job.pendingExtraction.length} page(s) could not be read.`, now);
     job.pendingExtraction = [];
   }
-  while (job.pendingExtraction.length > 0) {
+  // One page per call: runJob saves the job between pages, and a Worker runs
+  // each page in its own invocation to stay under the subrequest limit.
+  if (job.pendingExtraction.length > 0) {
     const docId = job.pendingExtraction[0];
     const doc = await deps.store.getDocument(docId);
     if (doc) {
@@ -270,8 +274,7 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
       log(job, `Read ${doc.url}: kept ${kept.length} name(s), rejected ${rejected} not found verbatim on the page.`, now);
     }
     job.pendingExtraction = job.pendingExtraction.slice(1);
-    job.updatedAt = now.toISOString();
-    await deps.store.updateJob(job); // save progress per page
+    return;
   }
 
   const claims = await deps.store.listPerformerClaims(job.id);
@@ -362,15 +365,22 @@ async function runResolveArtists(deps: PipelineDeps, job: LookupJob, now: Date):
 
 // Runs stages until the job finishes or must wait. Never fabricates: a stage
 // that cannot run leaves the job parked with a reason. force = a person
-// pressed "retry now".
-export async function runJob(deps: PipelineDeps, jobId: string, opts: { force?: boolean } = {}): Promise<LookupJob | null> {
+// pressed "retry now". oneStep runs a single stage (or one page of
+// extraction) and leaves the job queued for the next call; the Worker uses it
+// so no single invocation exceeds the subrequest limit.
+export async function runJob(
+  deps: PipelineDeps,
+  jobId: string,
+  opts: { force?: boolean; oneStep?: boolean } = {},
+): Promise<LookupJob | null> {
   const force = Boolean(opts.force);
   const job = await deps.store.getJob(jobId);
-  if (!job || !['queued', 'waiting_quota'].includes(job.status)) return job;
   const now = deps.now();
+  if (!job || !(['queued', 'waiting_quota'].includes(job.status) || isStaleRun(job, now))) return job;
   job.status = 'running';
   job.waitingReason = undefined;
   job.nextAttemptAt = undefined;
+  job.updatedAt = now.toISOString();
   await deps.store.updateJob(job);
 
   try {
@@ -382,9 +392,11 @@ export async function runJob(deps: PipelineDeps, jobId: string, opts: { force?: 
         else if (job.stage === 'extract') await stageExtract(deps, job, now, force);
         else if (job.stage === 'discover') await stageDiscover(deps, job, now, force);
         else if (job.stage === 'merge') await stageMerge(deps, job, now);
-        job.updatedAt = now.toISOString();
+        if (opts.oneStep) break;
+        job.updatedAt = deps.now().toISOString();
         await deps.store.updateJob(job);
       }
+      if (job.stage !== 'done' && job.status === 'running') job.status = 'queued';
     }
   } catch (err) {
     if (err instanceof QuotaExhaustedError) {
@@ -406,7 +418,7 @@ export async function runJob(deps: PipelineDeps, jobId: string, opts: { force?: 
       }
     }
   }
-  job.updatedAt = now.toISOString();
+  job.updatedAt = deps.now().toISOString();
   await deps.store.updateJob(job);
   return job;
 }
