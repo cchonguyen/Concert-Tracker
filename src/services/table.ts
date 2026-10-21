@@ -61,8 +61,9 @@ export const cityOf = (e: Pick<LoggedEvent, 'city' | 'region'>) => cityWithRegio
 
 const fold = (s: string) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
+// Added from a ticket email; a price an email filled on an event you typed does not count.
 export function fromEmail(e: LoggedEvent): boolean {
-  return Object.values(e.sources).some((s) => s?.sourceType === 'email');
+  return Object.entries(e.sources).some(([f, s]) => f !== 'ticketPrice' && s?.sourceType === 'email');
 }
 
 function hasField(e: LoggedEvent, f: HasField): boolean {

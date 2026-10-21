@@ -102,7 +102,7 @@ function blank(key: string, seller: string, now: string): EmailImport {
 
 // Fills only what the row does not have yet, each value with its quote.
 function fill(row: EmailImport, read: ReadEmail, email: RawEmail): void {
-  const set = (field: ImportField, value: { value: string; quote: string } | undefined) => {
+  const set = (field: Exclude<ImportField, 'ticketPrice'>, value: { value: string; quote: string } | undefined) => {
     if (!value || row[field]) return;
     row[field] = value.value;
     row.sources[field] = source(email, value.quote);
@@ -115,6 +115,48 @@ function fill(row: EmailImport, read: ReadEmail, email: RawEmail): void {
   if (!row.startDate && !row.dateText && read.dateText) row.dateText = read.dateText;
   if (read.tickets && (!row.tickets || read.tickets > row.tickets)) row.tickets = read.tickets;
   row.total ??= read.total;
+  fillPrice(row, read, email);
+}
+
+// The first email that gives one ticket's cost sets the row's price.
+export function fillPrice(row: EmailImport, read: ReadEmail, email: RawEmail): boolean {
+  const price = ticketPriceOf(read);
+  if (!price || row.ticketPrice !== undefined) return false;
+  row.ticketPrice = price.value;
+  row.sources.ticketPrice = source(email, price.quote);
+  return true;
+}
+
+// One ticket's cost, when the same email gives a dollar total (fees in) and
+// how many tickets it covers. Other currencies are left out: the price has
+// no currency of its own.
+export function ticketPriceOf(read: ReadEmail): { value: number; quote: string } | undefined {
+  const total = read.total?.match(/^\$([\d,]+(?:\.\d{2})?)$/)?.[1] ?? (/^free$/i.test(read.total ?? '') ? '0' : undefined);
+  if (total === undefined || !read.tickets) return undefined;
+  const value = Math.round((Number(total.replace(/,/g, '')) / read.tickets) * 100) / 100;
+  if (!Number.isFinite(value)) return undefined;
+  return { value, quote: `${read.total} for ${read.tickets} ticket${read.tickets === 1 ? '' : 's'}` };
+}
+
+// Events in your log that have no price yet take the one an email about
+// them gives (a show you added from email, or one you typed that an email
+// was matched to). A price you typed or cleared is never replaced.
+export function pricesFromImports(rows: EmailImport[], events: LoggedEvent[], now: Date): LoggedEvent[] {
+  const byId = new Map(events.map((e) => [e.id, e]));
+  const changed = new Map<string, LoggedEvent>();
+  for (const row of rows) {
+    if (row.status !== 'new' && row.status !== 'added') continue;
+    const event = row.eventId ? (changed.get(row.eventId) ?? byId.get(row.eventId)) : undefined;
+    const s = row.sources.ticketPrice;
+    if (!event || row.ticketPrice === undefined || !s || event.ticketPrice !== undefined || event.sources.ticketPrice) continue;
+    changed.set(event.id, {
+      ...event,
+      ticketPrice: row.ticketPrice,
+      sources: { ...event.sources, ticketPrice: { sourceType: 'email', sourceUrl: s.link, quote: s.quote } },
+      updatedAt: now.toISOString(),
+    });
+  }
+  return [...changed.values()];
 }
 
 // The same show already in your log: same date and the same name, or one
@@ -229,6 +271,8 @@ export function eventFromImport(row: EmailImport, now: Date): LoggedEvent {
     const s = row.sources[f];
     if (row[f] && s) sources[f] = { sourceType: 'email', sourceUrl: s.link, quote: s.quote };
   }
+  const price = row.sources.ticketPrice;
+  if (row.ticketPrice !== undefined && price) sources.ticketPrice = { sourceType: 'email', sourceUrl: price.link, quote: price.quote };
   return {
     id: randomUUID(),
     input: row.name,
@@ -245,6 +289,7 @@ export function eventFromImport(row: EmailImport, now: Date): LoggedEvent {
     seen: [],
     daysAttended: [],
     companions: [],
+    ticketPrice: row.ticketPrice !== undefined && price ? row.ticketPrice : undefined,
     createdAt: iso,
     updatedAt: iso,
   };
