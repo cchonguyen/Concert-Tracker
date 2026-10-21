@@ -727,7 +727,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               </label>
             )}
           </div>
-          {event.series && (
+          {(event.series || eventTitle(event) !== event.name) && (
             <p className="text-[11px] text-zinc-500">
               Shows as “{eventTitle(event)}”
               {(() => {
