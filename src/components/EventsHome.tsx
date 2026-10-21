@@ -3,7 +3,7 @@ import { CalendarHeart, Check, ChevronRight, Loader2, Mail, Table2 } from 'lucid
 import type { LineupSummary, LoggedEvent } from '../services/lineupApi';
 import { dateConfirmations, placeLabel, whenLabel } from '../services/format';
 import { homeSummary } from '../services/home';
-import { eventTitle } from '../services/series';
+import { EventTitle } from './EventTitle';
 
 interface EventsHomeProps {
   events: LoggedEvent[];
@@ -54,7 +54,7 @@ const Row: React.FC<{ event: LoggedEvent; lineup?: LineupSummary; researching: b
           {dateConfirmations(event).length > 0 && <Check className="ml-1 inline h-3 w-3 text-emerald-400" aria-label="Date confirmed" />}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-zinc-100">{eventTitle(event)}</span>
+          <span className="block truncate text-sm font-medium text-zinc-100"><EventTitle event={event} /></span>
           <span className="block truncate text-xs text-zinc-500">
             {[place, seen && `saw ${seen}`].filter(Boolean).join(' · ')}
             {h && (
@@ -165,7 +165,7 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
           <span className="text-zinc-500">On this day:</span>
           {s.onThisDay.map((e, i) => (
             <button key={e.id} onClick={() => onOpen(e.id)} className="hover:text-violet-300 hover:underline">
-              {eventTitle(e)}, {yearsAgo(e)}{i < s.onThisDay.length - 1 ? ';' : ''}
+              <EventTitle event={e} />, {yearsAgo(e)}{i < s.onThisDay.length - 1 ? ';' : ''}
             </button>
           ))}
         </p>

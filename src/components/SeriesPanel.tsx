@@ -3,6 +3,7 @@ import { Check, Layers, Loader2, X } from 'lucide-react';
 import { EventPatch, eventsApi, LoggedEvent } from '../services/lineupApi';
 import { whenLabel } from '../services/format';
 import { eventTitle, seriesList, SeriesSuggestion, seriesSuggestions, weekendFromName } from '../services/series';
+import { EventTitle } from './EventTitle';
 
 interface SeriesPanelProps {
   events: LoggedEvent[]; // your whole log
@@ -153,7 +154,7 @@ const Series: React.FC<{
         {editions.map((e) => (
           <li key={e.id} className="flex items-baseline justify-between gap-2 py-1.5 text-sm">
             <button onClick={() => onOpen(e.id)} className="min-w-0 flex-1 text-left hover:text-violet-300">
-              <span className="font-medium text-zinc-100">{eventTitle(e)}</span>
+              <span className="font-medium text-zinc-100"><EventTitle event={e} /></span>
               <span className="text-xs text-zinc-500"> · {line(e)}</span>
               {e.name !== eventTitle(e) && <span className="block truncate text-[11px] text-zinc-600">typed as “{e.name}”</span>}
             </button>

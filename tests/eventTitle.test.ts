@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { newEvent } from '../src/server/events/service.ts';
 import { LoggedEvent } from '../src/server/events/types.ts';
-import { eventTitle } from '../src/services/series.ts';
+import { eventTitle, eventTitleParts } from '../src/services/series.ts';
 
 const NOW = new Date('2026-10-21T12:00:00Z');
 const ev = (line: string, extra: Partial<LoggedEvent> = {}): LoggedEvent => ({ ...newEvent(line, NOW), ...extra });
@@ -34,4 +34,10 @@ test('the name stays as typed when it names an act, has three or more, is a fest
   assert.equal(eventTitle({ ...tour, kind: 'festival' }), 'Alive Tour');
   assert.equal(eventTitle({ ...tour, startDate: '2024-05-17', endDate: '2024-05-19' }), 'Alive Tour');
   assert.equal(eventTitle({ ...tour, series: 'Alive Tour' }), 'Alive Tour');
+});
+
+test('the title in parts: the acts, and the name set apart from them', () => {
+  const e = ev('Alive Tour', { seen: [act('Gryffin')] });
+  assert.deepEqual(eventTitleParts(e), { artists: 'Gryffin', name: 'Alive Tour' });
+  assert.deepEqual(eventTitleParts({ ...e, seen: [] }), { name: 'Alive Tour' });
 });
