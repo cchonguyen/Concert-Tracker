@@ -1,5 +1,6 @@
 import type { LoggedEvent, SeenAct, WeatherDay } from '../server/events/types';
 import { eventScale, KIND_LABELS, LineupFacts } from '../server/events/scale';
+import { norm } from './listImport';
 
 const day = (iso: string, opts: Intl.DateTimeFormatOptions) =>
   new Date(`${iso}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', ...opts });
@@ -47,6 +48,41 @@ const csvCell = (v: unknown) => {
 // plus every act with no role stated; Supporting only acts billed as support.
 export const artistsOf = (seen: SeenAct[]) => seen.filter((s) => s.role !== 'support');
 export const supportOf = (seen: SeenAct[]) => seen.filter((s) => s.role === 'support');
+
+// Acts you've entered on your events, most seen first, one spelling each
+// (the one you used most).
+export function pastArtistNames(events: LoggedEvent[]): string[] {
+  const byKey = new Map<string, { count: number; names: Map<string, number> }>();
+  for (const e of events) {
+    for (const s of e.seen) {
+      const k = norm(s.name);
+      if (!k) continue;
+      const entry = byKey.get(k) ?? { count: 0, names: new Map() };
+      entry.count += 1;
+      entry.names.set(s.name, (entry.names.get(s.name) ?? 0) + 1);
+      byKey.set(k, entry);
+    }
+  }
+  return [...byKey.values()]
+    .sort((a, b) => b.count - a.count)
+    .map((e) => [...e.names.entries()].sort((a, b) => b[1] - a[1])[0][0]);
+}
+
+// Names matching what you're typing: those starting with it first, then
+// those with a word starting with it. Acts already on the event are left out.
+export function matchArtists(query: string, names: string[], exclude: Set<string>, limit = 8): string[] {
+  const q = norm(query);
+  if (!q) return [];
+  const starts: string[] = [];
+  const words: string[] = [];
+  for (const n of names) {
+    const k = norm(n);
+    if (exclude.has(k)) continue;
+    if (k.startsWith(q)) starts.push(n);
+    else if (` ${k}`.includes(` ${q}`)) words.push(n);
+  }
+  return [...starts, ...words].slice(0, limit);
+}
 
 export const favouriteOf = (seen: SeenAct[]) => seen.find((s) => s.favourite);
 

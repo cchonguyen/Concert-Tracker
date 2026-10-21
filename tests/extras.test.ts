@@ -6,7 +6,7 @@ import { PerformerClaim } from '../src/server/lineup/types.ts';
 import { actSets, setLabel } from '../src/server/events/sets.ts';
 import { applyPatch, newEvent } from '../src/server/events/service.ts';
 import { lookupWeather, placesFor, weatherDays } from '../src/server/events/weather.ts';
-import { eventsToCsv, weatherLine, weatherText } from '../src/services/format.ts';
+import { eventsToCsv, matchArtists, pastArtistNames, weatherLine, weatherText } from '../src/services/format.ts';
 import { hasGap } from '../src/services/table.ts';
 import { parseCsv } from '../src/services/listImport.ts';
 import { LoggedEvent } from '../src/server/events/types.ts';
@@ -137,4 +137,17 @@ test('Fill gaps finds a missing favourite and weather; CSV has both', () => {
   const [cols, cells] = parseCsv(eventsToCsv([fav]));
   assert.equal(cells[cols.indexOf('Favourite set')], 'Porter Robinson');
   assert.ok(cols.includes('Weather'));
+});
+
+test('adding an act suggests ones you entered before, most seen first', () => {
+  const ev = (seen: string[]): LoggedEvent => ({
+    ...newEvent('Show', NOW),
+    seen: seen.map((name) => ({ key: name.toLowerCase(), name, from: 'you' as const })),
+  });
+  const past = pastArtistNames([ev(['Kaskade', 'Zedd']), ev(['Kaskade', 'Fred again..']), ev(['kaskade', 'Deadmau5'])]);
+  assert.equal(past[0], 'Kaskade'); // seen three times, spelled this way twice
+  assert.deepEqual(matchArtists('ka', past, new Set()), ['Kaskade']);
+  assert.deepEqual(matchArtists('again', past, new Set()), ['Fred again..']); // a later word
+  assert.deepEqual(matchArtists('ka', past, new Set(['kaskade'])), []); // already on the event
+  assert.deepEqual(matchArtists('  ', past, new Set()), []);
 });
