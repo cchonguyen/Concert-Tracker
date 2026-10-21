@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, ExternalLink, Loader2, RefreshCw, Search, Star, X } from 'lucide-react';
+import { Check, CloudSun, ExternalLink, Heart, Loader2, RefreshCw, Search, Star, X } from 'lucide-react';
 import { eventsApi, lineupApi, LineupFacts, LineupSummary, LoggedEvent, LookupJob, EventPatch } from '../services/lineupApi';
 import { whenLabel } from '../services/format';
 import { canFindLineup, Gap, gapCounts, GAPS, hasGap } from '../services/table';
@@ -21,11 +21,13 @@ const GAP_LABELS: Record<Gap, string> = {
   city: 'City',
   type: 'Type',
   seen: 'Who you saw',
+  favourite: 'Favourite set',
   review: 'Lineup to review',
   format: 'Format',
   companions: 'Went with',
   rating: 'Rating',
   price: 'Price',
+  weather: 'Weather',
 };
 
 const control =
@@ -38,6 +40,7 @@ function byCount(values: string[]): string[] {
 }
 
 const list = (v: string) => v.split(',').map((s) => s.trim()).filter(Boolean);
+const seenPatch = (e: LoggedEvent) => e.seen.map(({ name, from, role, roleFrom, favourite }) => ({ name, from, role, roleFrom, favourite }));
 
 // One gap on one event: type the value and press Enter. Saving goes through
 // the usual event edit, so every value is sourced as yours.
@@ -67,7 +70,7 @@ const GapEditor: React.FC<{
       case 'format':
         return { format: v };
       case 'seen':
-        return { seen: [...event.seen.map(({ name, from, role, roleFrom }) => ({ name, from, role, roleFrom })), ...list(v).map((name) => ({ name, from: 'you' as const }))] };
+        return { seen: [...seenPatch(event), ...list(v).map((name) => ({ name, from: 'you' as const }))] };
       case 'companions':
         return { companions: [...event.companions, ...list(v)] };
       case 'price':
@@ -88,6 +91,22 @@ const GapEditor: React.FC<{
       </div>
     );
   }
+  if (gap === 'favourite') {
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {event.seen.map((s, i) => (
+          <button
+            key={s.key}
+            onClick={() => submit({ seen: seenPatch(event).map((p, j) => ({ ...p, favourite: i === j })) })}
+            className="inline-flex items-center gap-1 rounded-full border border-zinc-700 px-2.5 py-1 text-xs text-zinc-200 hover:border-amber-400"
+          >
+            <Heart className="h-3 w-3" /> {s.name}
+          </button>
+        ))}
+      </div>
+    );
+  }
+  if (gap === 'weather') return null;
   if (gap === 'rating') {
     return (
       <div className="flex items-center gap-0.5">
@@ -247,6 +266,28 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
     setBusy(null);
   };
 
+  // Weather for each row, one at a time; rows it can't place say why.
+  const [weatherNotes, setWeatherNotes] = useState<Record<string, string>>({});
+  const lookUpWeather = async () => {
+    setBusy('weather');
+    setError(null);
+    let found = 0;
+    for (const [i, e] of rows.entries()) {
+      setNote(`Looking up weather: ${i + 1} of ${rows.length}…`);
+      try {
+        const r = await eventsApi.weather(e.id);
+        if (r.event.weather) {
+          found += 1;
+          onChanged(r.event);
+        } else if (r.note) setWeatherNotes((n) => ({ ...n, [e.id]: r.note! }));
+      } catch (err) {
+        setWeatherNotes((n) => ({ ...n, [e.id]: err instanceof Error ? err.message : String(err) }));
+      }
+    }
+    setNote(`Found the weather for ${found} of ${rows.length}.`);
+    setBusy(null);
+  };
+
   const lineupRows = rows.filter((e) => canFindLineup(e, lineups[e.id])).slice(0, 50);
   const findLineups = async () => {
     setBusy('lineups');
@@ -316,6 +357,16 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
             Find lineups for {lineupRows.length === 50 ? 'the first 50' : `these ${lineupRows.length}`}
           </button>
         )}
+        {gap === 'weather' && rows.length > 0 && (
+          <button
+            onClick={lookUpWeather}
+            disabled={busy !== null}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900 disabled:opacity-40"
+          >
+            {busy === 'weather' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CloudSun className="h-3.5 w-3.5" />}
+            Look up weather for these {rows.length}
+          </button>
+        )}
         {note && <p className="text-xs text-zinc-400">{note}</p>}
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
 
@@ -343,6 +394,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
                 ) : (
                   <GapEditor event={e} gap={gap} suggestions={suggestions} onSave={(patch) => save(e.id, patch)} />
                 )}
+                {gap === 'weather' && weatherNotes[e.id] && <p className="text-[11px] text-amber-300/80">{weatherNotes[e.id]}</p>}
               </li>
             ))}
           </ul>
