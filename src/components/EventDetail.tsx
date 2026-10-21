@@ -213,8 +213,23 @@ const JOB_STATUS: Record<LookupJob['status'], string> = {
   failed: 'Failed',
 };
 
-// Venues and cities you've entered before, most used first.
-function pastValues(events: LoggedEvent[], field: 'venue' | 'city'): string[] {
+// A starting vocabulary for Format; your own past values come first.
+const FORMAT_IDEAS = [
+  'Club night',
+  'Warehouse party',
+  'Block party',
+  'Day party',
+  'Boat party',
+  'Rave',
+  'Residency',
+  'Live set',
+  'DJ set',
+  'Listening party',
+  'Livestream',
+];
+
+// Venues, cities and formats you've entered before, most used first.
+function pastValues(events: LoggedEvent[], field: 'venue' | 'city' | 'format'): string[] {
   const counts = new Map<string, number>();
   for (const e of events) {
     const v = e[field]?.trim();
@@ -253,6 +268,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const pastVenues = pastValues(others, 'venue');
   const pastCities = pastValues(others, 'city');
   const citySuggestions = [...new Set([...pastCities, ...foundCities])];
+  const formatSuggestions = [...new Set([...pastValues(others, 'format'), ...FORMAT_IDEAS])];
 
   const load = useCallback(async () => {
     try {
@@ -260,6 +276,11 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
       setJob(data.job);
       setEdition(data.edition);
       setSuggestions(data.suggestions ?? []);
+      // Slower: parts of the name MusicBrainz knows as artists.
+      eventsApi
+        .nameArtists(event.id)
+        .then((more) => setSuggestions((list) => [...list, ...more.filter((m) => !list.some((s) => s.key === m.key))]))
+        .catch(() => undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -461,7 +482,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                   onClick={() =>
                     save({ seen: [...toPatch(event.seen), { name: s.name, from: 'you', role: s.role, roleFrom: s.role ? 'you' : undefined }] })
                   }
-                  title={`Listed by ${SOURCE_LABELS[s.sourceType]}`}
+                  title={
+                    s.sourceType === 'user'
+                      ? 'You saw them at another event'
+                      : s.sourceType === 'musicbrainz'
+                        ? 'An artist of this name on MusicBrainz'
+                        : `Listed by ${SOURCE_LABELS[s.sourceType]}`
+                  }
                   className="inline-flex items-center gap-1 rounded-full border border-violet-500/50 px-2.5 py-1 text-violet-200 hover:bg-violet-950/40"
                 >
                   <Plus className="h-3 w-3" /> {s.name} as {roleName(s.role)}?
@@ -575,6 +602,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         {/* Your details */}
         <section className="space-y-3">
           <h3 className={sectionTitle}>Your notes</h3>
+          <Field
+            label="Format"
+            value={event.format}
+            placeholder="Club night, warehouse party, block party…"
+            suggestions={formatSuggestions}
+            onSave={(v) => save({ format: text(v) })}
+          />
           <label className="block space-y-1">
             <span className="text-[11px] font-semibold text-zinc-400">Went with</span>
             <ChipInput items={event.companions} placeholder="Add a name" onChange={(companions) => save({ companions })} />

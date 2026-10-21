@@ -3,9 +3,9 @@ import { InputError, PipelineDeps } from '../lineup/pipeline';
 import { JobRunner } from '../lineup/service';
 import { DetailFinder, defaultFinders, pickCandidate, researchEvent } from './details';
 import { citySuggestions } from './place';
-import { applyPatch, EventPatch, lineupSummary, newEvent, sortEvents, startLineupLookup } from './service';
+import { applyPatch, EventPatch, lineupSummary, newEvent, sortEvents, startBulkLookups, startLineupLookup } from './service';
 import { LineupSummary } from './types';
-import { artistSuggestions, eventPerformers } from './artists';
+import { artistSuggestions, eventPerformers, nameArtistSuggestions, pastArtists } from './artists';
 import type { LineupFacts } from './scale';
 
 // /api/events: your event log. Stage 1 is capture plus details research;
@@ -55,7 +55,8 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
       if (!event) return;
       const job = event.lineupJobId ? await deps.store.getJob(event.lineupJobId) : null;
       const edition = event.editionId ? await deps.store.getEdition(event.editionId) : null;
-      const suggestions = artistSuggestions(event, eventPerformers(event, job, edition));
+      const others = await deps.store.listEvents();
+      const suggestions = artistSuggestions(event, [...eventPerformers(event, job, edition), ...pastArtists(others, event)]);
       res.json({ event, job, edition, suggestions });
     } catch (err) {
       fail(res, err);
@@ -115,6 +116,29 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
   router.get('/places/cities', async (req, res) => {
     try {
       res.json({ cities: await citySuggestions(String(req.query.q ?? ''), deps.fetcher) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Parts of the event's name that MusicBrainz knows as artists, offered as
+  // one tap. Separate from GET /events/:id because it waits on MusicBrainz.
+  router.get('/events/:id/name-artists', async (req, res) => {
+    try {
+      const event = await load(req.params.id, res);
+      if (!event) return;
+      res.json({ suggestions: await nameArtistSuggestions(event, deps.fetcher) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Stage 2 for several events at once ({ ids }), from the Table. Queued only;
+  // the worker (or the Cloudflare cron) drains them one at a time.
+  router.post('/events/lineups', async (req, res) => {
+    try {
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+      res.status(201).json(await startBulkLookups(deps, ids));
     } catch (err) {
       fail(res, err);
     }

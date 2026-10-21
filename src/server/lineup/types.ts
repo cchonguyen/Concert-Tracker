@@ -142,6 +142,8 @@ export interface CandidatePerformer {
   status: 'billed' | 'performed';
   billing?: Billing; // when every source that states a role agrees
   confidence: number; // 0..1, computed from sources
+  // Sources that gave a full lineup for the edition without this act.
+  missingFrom?: SourceType[];
   flagged: boolean; // low evidence, needs a look
   sources: CandidateSource[];
 }
