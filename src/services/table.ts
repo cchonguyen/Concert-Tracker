@@ -287,8 +287,22 @@ export function activeFilterCount(f: TableFilters): number {
 }
 
 // "Fill gaps": what an event is missing, one kind of gap at a time.
-export type Gap = 'date' | 'venue' | 'city' | 'type' | 'format' | 'seen' | 'companions' | 'rating' | 'price' | 'review';
-export const GAPS: Gap[] = ['date', 'venue', 'city', 'type', 'seen', 'review', 'format', 'companions', 'rating', 'price'];
+export type Gap =
+  | 'date'
+  | 'venue'
+  | 'city'
+  | 'type'
+  | 'format'
+  | 'seen'
+  | 'favourite'
+  | 'companions'
+  | 'rating'
+  | 'price'
+  | 'weather'
+  | 'review';
+export const GAPS: Gap[] = ['date', 'venue', 'city', 'type', 'seen', 'review', 'favourite', 'format', 'companions', 'rating', 'price', 'weather'];
+
+const today = () => new Date().toISOString().slice(0, 10);
 
 export function hasGap(e: LoggedEvent, gap: Gap, lineup?: LineupSummary, facts?: LineupFacts): boolean {
   switch (gap) {
@@ -304,12 +318,17 @@ export function hasGap(e: LoggedEvent, gap: Gap, lineup?: LineupSummary, facts?:
       return !e.format;
     case 'seen':
       return e.seen.length === 0;
+    case 'favourite':
+      return e.seen.length > 0 && !e.seen.some((s) => s.favourite);
     case 'companions':
       return e.companions.length === 0;
     case 'rating':
       return typeof e.rating !== 'number';
     case 'price':
       return typeof e.ticketPrice !== 'number';
+    case 'weather':
+      // Only events it can be looked up for: a past date and a city.
+      return !e.weather && Boolean(e.startDate && e.city) && e.startDate! < today();
     case 'review':
       return lineup?.status === 'needs_review' && !e.editionId;
   }

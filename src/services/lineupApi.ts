@@ -50,6 +50,7 @@ export const eventsApi = {
     request<{ event: LoggedEvent }>(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }).then((r) => r.event),
   remove: (id: string) => request<unknown>(`/api/events/${id}`, { method: 'DELETE' }),
   research: (id: string) => request<{ event: LoggedEvent }>(`/api/events/${id}/details`, post()).then((r) => r.event),
+  weather: (id: string) => request<{ event: LoggedEvent; note?: string }>(`/api/events/${id}/weather`, post()),
   pick: (id: string, candidateId?: string, fields?: EventField[]) =>
     request<{ event: LoggedEvent }>(`/api/events/${id}/details/pick`, post({ candidateId, fields })).then((r) => r.event),
   nameArtists: (id: string) =>
