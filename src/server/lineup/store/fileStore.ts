@@ -164,6 +164,22 @@ export class FileLineupStore implements LineupStore {
     return clone((await this.load()).claims.filter((c) => c.jobId === jobId));
   }
 
+  async findExtractedClaims(q: { editionKey: string; documentId: string; extractor: string; extractorVersion: string; excludeJobId: string }) {
+    const state = await this.load();
+    const jobIds = new Set(
+      Object.values(state.jobs)
+        .filter((j) => j.editionKey === q.editionKey && j.id !== q.excludeJobId)
+        .map((j) => j.id),
+    );
+    const claims = state.claims.filter(
+      (c) =>
+        jobIds.has(c.jobId) && c.documentId === q.documentId && c.extractor === q.extractor && c.extractorVersion === q.extractorVersion,
+    );
+    // One earlier job's claims, so two cached runs are not added together.
+    const first = claims[0]?.jobId;
+    return clone(claims.filter((c) => c.jobId === first));
+  }
+
   async getSeries(slug: string) {
     const s = (await this.load()).series[slug];
     return s ? clone(s) : null;
