@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, CloudSun, ExternalLink, Heart, Loader2, Plus, RefreshCw, Search, Star, Type, X } from 'lucide-react';
+import { Check, CloudSun, ExternalLink, Heart, Loader2, MapPin, Plus, RefreshCw, Search, Star, Type, X } from 'lucide-react';
 import {
   ArtistSuggestion,
   eventsApi,
@@ -9,11 +9,13 @@ import {
   LoggedEvent,
   LookupJob,
   EventPatch,
+  PlaceGuess,
   SOURCE_LABELS,
 } from '../services/lineupApi';
 import { whenLabel } from '../services/format';
 import { toSeenInput } from '../server/events/seen';
-import { canFindLineup, Gap, gapCounts, GAPS, hasGap } from '../services/table';
+import { canFindLineup, cityOf, Gap, gapCounts, GAPS, hasGap, placePatch } from '../services/table';
+import { regionCode } from '../server/events/regions';
 import { eventTitle } from '../services/series';
 
 interface FillGapsProps {
@@ -31,6 +33,7 @@ const GAP_LABELS: Record<Gap, string> = {
   date: 'Date',
   venue: 'Venue',
   city: 'City',
+  place: 'State & country',
   type: 'Type',
   seen: 'Who you saw',
   favourite: 'Favourite set',
@@ -130,6 +133,15 @@ const GapEditor: React.FC<{
         return { venue: v };
       case 'city':
         return { city: v };
+      case 'place': {
+        // "NV, United States", or one of them: a US or Canadian state code
+        // or name is the state, anything else the country.
+        const [first, ...rest] = v.split(',').map((p) => p.trim());
+        const country = rest.join(', ');
+        if (!first) return null;
+        if (country) return { region: first, country };
+        return regionCode(first) || event.country ? { region: first } : { country: first };
+      }
       case 'format':
         return { format: v };
       case 'seen':
@@ -186,6 +198,7 @@ const GapEditor: React.FC<{
     seen: 'Names, separated by commas',
     companions: 'Names, separated by commas',
     city: 'City, ST',
+    place: 'State, Country',
   };
   return (
     <>
@@ -289,7 +302,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
       case 'venue':
         return byCount(all.flatMap((e) => (e.venue ? [e.venue] : [])));
       case 'city':
-        return byCount(all.flatMap((e) => (e.city ? [e.city] : [])));
+        return byCount(all.flatMap((e) => (e.city ? [cityOf(e)!] : [])));
       case 'format':
         return byCount(all.flatMap((e) => (e.format ? [e.format] : [])));
       case 'seen':
@@ -348,6 +361,47 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
       }
     }
     setNote(`Found the weather for ${found} of ${rows.length}.`);
+    setBusy(null);
+  };
+
+  // The state and country for each row's city, from the geocoder. Shown as
+  // offers; nothing is saved until you tap Use or Use all.
+  const [guesses, setGuesses] = useState<Record<string, PlaceGuess>>({});
+  const [placeNotes, setPlaceNotes] = useState<Record<string, string>>({});
+  const lookUpPlaces = async () => {
+    setBusy('places');
+    setError(null);
+    let found = 0;
+    for (const [i, e] of rows.entries()) {
+      setNote(`Looking up states and countries: ${i + 1} of ${rows.length}…`);
+      try {
+        const r = await eventsApi.placeGuess({ city: e.city!, region: e.region, country: e.country });
+        if (r.guess && placePatch(e, r.guess)) {
+          found += 1;
+          setGuesses((g) => ({ ...g, [e.id]: r.guess! }));
+        } else if (r.note) setPlaceNotes((n) => ({ ...n, [e.id]: r.note! }));
+      } catch (err) {
+        setPlaceNotes((n) => ({ ...n, [e.id]: err instanceof Error ? err.message : String(err) }));
+      }
+    }
+    setNote(`Found ${found} of ${rows.length}. Check them, then use them; the rest say why below.`);
+    setBusy(null);
+  };
+  const usePlace = async (e: LoggedEvent) => {
+    const g = guesses[e.id];
+    const patch = g && placePatch(e, g);
+    if (patch) await save(e.id, patch);
+  };
+  const guessed = gap === 'place' ? rows.filter((e) => guesses[e.id] && placePatch(e, guesses[e.id])) : [];
+  const useAllPlaces = async () => {
+    setBusy('places-use');
+    setError(null);
+    const list = guessed;
+    for (const [i, e] of list.entries()) {
+      setNote(`Saving: ${i + 1} of ${list.length}…`);
+      await usePlace(e);
+    }
+    setNote(`Added the state and country to ${list.length} event${list.length === 1 ? '' : 's'}.`);
     setBusy(null);
   };
 
@@ -567,6 +621,28 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
             Look up weather for these {rows.length}
           </button>
         )}
+        {gap === 'place' && rows.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={lookUpPlaces}
+              disabled={busy !== null}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900 disabled:opacity-40"
+            >
+              {busy === 'places' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MapPin className="h-3.5 w-3.5" />}
+              Look up from the city for these {rows.length}
+            </button>
+            {guessed.length > 0 && (
+              <button
+                onClick={useAllPlaces}
+                disabled={busy !== null}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+              >
+                {busy === 'places-use' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                Use all {guessed.length}
+              </button>
+            )}
+          </div>
+        )}
         {note && <p className="text-xs text-zinc-400">{note}</p>}
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
 
@@ -580,7 +656,11 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
                   <button onClick={() => onOpen(e.id)} className="truncate text-left text-sm font-medium text-zinc-100 hover:underline">
                     {eventTitle(e)}
                   </button>
-                  <span className="shrink-0 text-xs text-zinc-500">{[whenLabel(e) ?? 'Date unknown', e.venue].filter(Boolean).join(' · ')}</span>
+                  <span className="shrink-0 text-xs text-zinc-500">
+                    {[whenLabel(e) ?? 'Date unknown', e.venue, gap === 'place' ? [cityOf(e), e.country].filter(Boolean).join(', ') : undefined]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
                 </div>
                 {gap === 'review' ? (
                   <ReviewRow
@@ -603,6 +683,16 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
                   />
                 ) : null}
                 {gap === 'weather' && weatherNotes[e.id] && <p className="text-[11px] text-amber-300/80">{weatherNotes[e.id]}</p>}
+                {gap === 'place' && guesses[e.id] && placePatch(e, guesses[e.id]) && (
+                  <button
+                    onClick={() => void usePlace(e)}
+                    className="inline-flex items-center gap-1 rounded-full border border-violet-500/50 px-2.5 py-1 text-xs text-violet-200 hover:bg-violet-950/40"
+                  >
+                    <Check className="h-3 w-3" /> Use {guesses[e.id].label}
+                    {guesses[e.id].places > 1 && <span className="text-[10px] text-zinc-500">biggest of {guesses[e.id].places} by that name</span>}
+                  </button>
+                )}
+                {gap === 'place' && placeNotes[e.id] && <p className="text-[11px] text-amber-300/80">{placeNotes[e.id]}</p>}
               </li>
             ))}
           </ul>

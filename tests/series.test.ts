@@ -185,7 +185,7 @@ test('weekend: picked by you, shown with the series, read back from the CSV', as
   const groups = seriesSuggestions([ev('Coachella 2024 Weekend 1', { city: 'Indio, CA' }), ev('Coachella 2024 Weekend 2', { city: 'Indio, CA' })]);
   assert.equal(groups[0].name, 'Coachella Indio');
 
-  const e = applyPatch(ev('Coachella 2024 Weekend 1, April 12 2024', { city: 'Indio, CA' }), { series: 'Coachella', weekend: 1 }, NOW);
+  const e = applyPatch(ev('Coachella 2024 Weekend 1, April 12 2024', { city: 'Indio', region: 'CA' }), { series: 'Coachella', weekend: 1 }, NOW);
   assert.equal(eventTitle(e), 'Coachella Indio 2024 · Weekend 1');
   assert.throws(() => applyPatch(e, { weekend: 12 }, NOW), /Weekend/);
   assert.equal(applyPatch(e, { weekend: null }, NOW).weekend, undefined);

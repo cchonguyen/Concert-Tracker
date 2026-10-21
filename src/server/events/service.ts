@@ -6,6 +6,7 @@ import { parseEventInput } from './parse';
 import { isBilling } from '../lineup/billing';
 import { EVENT_FIELDS, EventField, EventKind, LineupSummary, LoggedEvent, SeenAct } from './types';
 import { isSetKind, SeenInput, withB2b } from './seen';
+import { cityWithRegion, regionCode, regionCountry, splitEventCity } from './regions';
 
 // Your event log. Stage 1 (capture and details) lives here; stage 2 hands the
 // event to the lineup pipeline. See REQUIREMENTS.md.
@@ -21,7 +22,7 @@ export function newEvent(line: string, now: Date): LoggedEvent {
   const sources: LoggedEvent['sources'] = {};
   for (const f of EVENT_FIELDS) if (parsed[f as keyof typeof parsed]) sources[f] = { sourceType: 'user' };
   const iso = now.toISOString();
-  return {
+  return splitEventCity({
     id: randomUUID(),
     input,
     ...parsed,
@@ -33,7 +34,7 @@ export function newEvent(line: string, now: Date): LoggedEvent {
     companions: [],
     createdAt: iso,
     updatedAt: iso,
-  };
+  });
 }
 
 export interface EventPatch {
@@ -43,6 +44,7 @@ export interface EventPatch {
   endDate?: string | null;
   venue?: string | null;
   city?: string | null;
+  region?: string | null;
   country?: string | null;
   seen?: SeenInput[];
   kind?: EventKind | null; // null: worked out by the rule again
@@ -71,6 +73,14 @@ export function applyPatch(event: LoggedEvent, patch: EventPatch, now: Date): Lo
     if (value && (f === 'startDate' || f === 'endDate') && !DATE.test(value)) throw new InputError(`${f} must be YYYY-MM-DD.`);
     setField(next, f, value);
   }
+  // "Las Vegas, NV" typed in the city box fills the state too. A US or
+  // Canadian state you type fills the country when none is stored.
+  let placed = 'city' in patch ? splitEventCity(next, true) : next;
+  const code = regionCode(placed.region);
+  if ('region' in patch && code && !placed.country) {
+    placed = { ...placed, country: regionCountry(code), sources: { ...placed.sources, country: { sourceType: 'user' } } };
+  }
+  Object.assign(next, placed);
   if (next.startDate) {
     next.year = Number(next.startDate.slice(0, 4));
     next.month = undefined;
@@ -155,7 +165,7 @@ export async function startLineupLookup(
       startDate: event.startDate,
       endDate: event.endDate,
       venue: event.venue,
-      city: event.city,
+      city: cityWithRegion(event.city, event.region),
       country: event.country,
       lineupUrl: text(lineupUrl),
     },

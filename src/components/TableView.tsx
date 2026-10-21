@@ -25,6 +25,7 @@ import { artistsOf, downloadText, eventsToCsv, kindLabel, supportOf, whenLabel }
 import {
   activeFilterCount,
   actsInOrder,
+  cityOf,
   EMPTY_FILTERS,
   filterEvents,
   filterOptions,
@@ -387,6 +388,9 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
           />
           <Select name="Venue" value={filters.venue} onChange={(v) => set({ venue: v })} options={list(options.venues)} />
           <Select name="City" value={filters.city} onChange={(v) => set({ city: v })} options={list(options.cities)} />
+          {options.regions.length > 1 && (
+            <Select name="State" value={filters.region} onChange={(v) => set({ region: v })} options={list(options.regions)} />
+          )}
           {options.countries.length > 1 && (
             <Select name="Country" value={filters.country} onChange={(v) => set({ country: v })} options={list(options.countries)} />
           )}
@@ -558,7 +562,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                             <div className="text-zinc-200">{e.venue ?? <span className="text-zinc-600">Venue not known</span>}</div>
                             {e.city && (
                               <div className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500">
-                                <MapPin className="h-3 w-3 shrink-0" /> {e.city}
+                                <MapPin className="h-3 w-3 shrink-0" /> {cityOf(e)}
                               </div>
                             )}
                           </>
@@ -625,7 +629,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                         {(e.venue || e.city) && (
                           <span className="inline-flex min-w-0 items-center gap-1 truncate">
                             <MapPin className="h-3 w-3 shrink-0 text-zinc-500" />
-                            {[e.venue, e.city].filter(Boolean).join(' · ')}
+                            {[e.venue, cityOf(e)].filter(Boolean).join(' · ')}
                           </span>
                         )}
                       </div>

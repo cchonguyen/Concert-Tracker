@@ -1,6 +1,6 @@
 import type { LoggedEvent } from '../server/events/types';
 import type { CityPoint } from '../server/events/place';
-import { regionCountry } from '../server/events/regions';
+import { cityWithRegion, regionCountry } from '../server/events/regions';
 import { eventYear } from './format';
 
 // The Map view: your events grouped by the city you stored, placed with the
@@ -8,8 +8,9 @@ import { eventYear } from './format';
 
 export type Points = Record<string, CityPoint | null>; // placeKey -> point, null = not found
 
-export function placeKey(e: Pick<LoggedEvent, 'city' | 'country'>): string | null {
-  const city = e.city?.trim();
+// "Las Vegas, NV|United States": the city with its state, and the country.
+export function placeKey(e: Pick<LoggedEvent, 'city' | 'region' | 'country'>): string | null {
+  const city = cityWithRegion(e.city, e.region);
   return city ? `${city}|${e.country?.trim() ?? ''}` : null;
 }
 
@@ -41,7 +42,7 @@ export function mapData(events: LoggedEvent[], points: Points): MapData {
     else if (!(key in points)) out.pending += 1;
     else if (points[key] === null) out.notFound.push(e);
     else {
-      const g = groups.get(key) ?? { key, city: e.city!.trim(), point: points[key]!, events: [] };
+      const g = groups.get(key) ?? { key, city: cityWithRegion(e.city, e.region)!, point: points[key]!, events: [] };
       g.events.push(e);
       groups.set(key, g);
     }

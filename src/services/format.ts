@@ -2,6 +2,7 @@ import type { LoggedEvent, SeenAct, WeatherDay } from '../server/events/types';
 import { eventScale, KIND_LABELS, LineupFacts } from '../server/events/scale';
 import { norm } from './listImport';
 import { seenSlots, slotLabel } from '../server/events/seen';
+import { cityWithRegion } from '../server/events/regions';
 
 const day = (iso: string, opts: Intl.DateTimeFormatOptions) =>
   new Date(`${iso}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', ...opts });
@@ -20,8 +21,8 @@ export function whenLabel(e: Pick<LoggedEvent, 'startDate' | 'endDate' | 'year' 
   return null;
 }
 
-export function placeLabel(e: Pick<LoggedEvent, 'venue' | 'city'>): string | null {
-  return [e.venue, e.city].filter(Boolean).join(' · ') || null;
+export function placeLabel(e: Pick<LoggedEvent, 'venue' | 'city' | 'region'>): string | null {
+  return [e.venue, cityWithRegion(e.city, e.region)].filter(Boolean).join(' · ') || null;
 }
 
 export function eventYear(e: LoggedEvent): number | null {
@@ -152,6 +153,7 @@ export function eventRows(
     'Format',
     'Venue',
     'City',
+    'State',
     'Country',
     // "Saw" comes first so reading this file back ("Import a list") takes every act.
     'Saw',
@@ -177,6 +179,7 @@ export function eventRows(
     e.format,
     e.venue,
     e.city,
+    e.region,
     e.country,
     e.seen.map((s) => s.name).join('; '),
     artistsOf(e.seen).map((s) => s.name).join('; '),

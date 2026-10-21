@@ -1,5 +1,6 @@
 import type { LoggedEvent } from '../server/events/types';
 import { eventYear } from './format';
+import { cityWithRegion } from '../server/events/regions';
 
 // The Stats view: counts and rankings worked out from your log each time.
 // Only events you have been to count (nothing dated after today), and figures
@@ -79,7 +80,8 @@ export function top(events: LoggedEvent[], by: RankBy, n = 10): Ranked[] {
   for (const e of events) {
     if (by === 'artist') for (const s of new Map(e.seen.map((s) => [s.key, s])).values()) add(s.key, s.name);
     if (by === 'venue' && e.venue) add(fold(e.venue), e.venue);
-    if (by === 'city' && e.city) add(fold(e.city), e.city);
+    const city = cityWithRegion(e.city, e.region);
+    if (by === 'city' && city) add(fold(city), city);
     if (by === 'companion') for (const c of new Set(e.companions)) add(fold(c), c);
   }
   return [...groups.entries()]

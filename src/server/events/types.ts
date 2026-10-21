@@ -5,8 +5,8 @@ import type { Billing } from '../lineup/billing';
 // name, date and place; stage 2 (the lineup lookup) links it to a canonical
 // edition. See REQUIREMENTS.md and ARCHITECTURE.md.
 
-export type EventField = 'startDate' | 'endDate' | 'venue' | 'city' | 'country';
-export const EVENT_FIELDS: EventField[] = ['startDate', 'endDate', 'venue', 'city', 'country'];
+export type EventField = 'startDate' | 'endDate' | 'venue' | 'city' | 'region' | 'country';
+export const EVENT_FIELDS: EventField[] = ['startDate', 'endDate', 'venue', 'city', 'region', 'country'];
 
 export interface EventFacts {
   name: string;
@@ -15,7 +15,8 @@ export interface EventFacts {
   startDate?: string; // YYYY-MM-DD
   endDate?: string; // YYYY-MM-DD
   venue?: string;
-  city?: string;
+  city?: string; // the city alone ("Las Vegas")
+  region?: string; // the state or province: "NV" in the US and Canada, in full elsewhere
   country?: string;
 }
 
@@ -33,7 +34,8 @@ export interface DetailCandidate {
   startDate?: string;
   endDate?: string;
   venue?: string;
-  city?: string;
+  city?: string; // "City, ST" as sources give it; split when it is stored
+  region?: string;
   country?: string;
   // quote: the words a web page used for the date, when it came from web search.
   sources: Array<{ sourceType: SourceType; sourceUrl: string; fields: EventField[]; quote?: string }>;

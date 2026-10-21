@@ -38,7 +38,8 @@ const show = ev('e1', {
   startDate: '2025-04-12',
   year: 2025,
   venue: 'The Greek',
-  city: 'Berkeley, CA',
+  city: 'Berkeley',
+  region: 'CA',
   seen: [
     { key: 'robyn', name: 'Robyn', from: 'lineup', role: 'headliner', roleFrom: 'lineup', favourite: true },
     { key: 'kim petras', name: 'Kim Petras', from: 'you' },
