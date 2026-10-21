@@ -1,5 +1,6 @@
 import type { LoggedEvent } from '../server/events/types';
-import { eventYear } from './format';
+import { eventScale } from '../server/events/scale';
+import { artistsOf, eventYear } from './format';
 
 // Series: the festival or tour an event is one edition of ("EDC Las Vegas"),
 // named by you. An event in a series shows as "<series> <year>", with the
@@ -42,15 +43,25 @@ export function withPlace(name: string, city?: string): string {
 }
 
 // What the app shows as the event's name: "EDC Las Vegas 2024" in a series
-// (the town from the event's city when the series name lacks it), otherwise
-// the name as you typed it.
-// "Coachella 2024 · Weekend 1" when you picked the weekend.
-export function eventTitle(e: Pick<LoggedEvent, 'name' | 'series' | 'startDate' | 'year' | 'city' | 'weekend'>): string {
-  if (!e.series) return e.name;
-  const name = withPlace(e.series, e.city);
-  const year = eventYear(e as LoggedEvent);
-  const title = year ? `${name} ${year}` : name;
-  return e.weekend ? `${title} · Weekend ${e.weekend}` : title;
+// (the town from the event's city when the series name lacks it), and
+// "Coachella 2024 · Weekend 1" when you picked the weekend. Outside a series,
+// an event that is not a festival with one or two main acts you saw (not
+// billed as support) shows them first: "Gryffin - Alive Tour", "Above &
+// Beyond, Seven Lions - Pier Party", unless the name already says one of them.
+// Otherwise the name as you typed it. The name itself never changes and is
+// what a lineup lookup reads.
+export function eventTitle(e: LoggedEvent): string {
+  if (e.series) {
+    const name = withPlace(e.series, e.city);
+    const year = eventYear(e);
+    const title = year ? `${name} ${year}` : name;
+    return e.weekend ? `${title} · Weekend ${e.weekend}` : title;
+  }
+  const main = artistsOf(e.seen);
+  if (!main.length || main.length > 2 || eventScale(e).kind === 'festival') return e.name;
+  const name = ` ${seriesKey(e.name)} `;
+  if (main.some((a) => name.includes(` ${seriesKey(a.name)} `))) return e.name;
+  return `${main.map((a) => a.name).join(', ')} - ${e.name}`;
 }
 
 // The weekend your own name for the event gives ("Weekend 2", "W1", "Wknd 1"),
