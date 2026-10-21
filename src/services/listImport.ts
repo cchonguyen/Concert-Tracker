@@ -26,6 +26,7 @@ export type ListField =
   | 'ticketPrice'
   | 'format'
   | 'series'
+  | 'weekend'
   | 'notes'
   | 'id';
 
@@ -45,6 +46,7 @@ const HEADERS: Record<ListField, string[]> = {
   ticketPrice: ['ticket price', 'price', 'cost', 'paid'],
   format: ['format'],
   series: ['series', 'festival series'],
+  weekend: ['weekend'],
   notes: ['notes', 'note', 'comments'],
   // This app's own export: the event the row came from.
   id: ['id'],
@@ -73,6 +75,7 @@ export interface ListRow {
   ticketPrice?: number;
   format?: string;
   series?: string;
+  weekend?: number;
   notes?: string;
   eventId?: string; // the ID column of this app's export
   unread: ListField[]; // cells with a value that couldn't be read
@@ -279,6 +282,15 @@ export function readTable(cells: string[][]): ReadList {
     row.country = place.country;
     row.seen = union([], splitList(get('seen')));
     row.companions = union([], splitList(get('companions')));
+    const weekend = get('weekend');
+    if (weekend) {
+      const w = Number(weekend.replace(/^(?:weekend|wknd|w)\s*/i, ''));
+      if (Number.isInteger(w) && w >= 1 && w <= 9) row.weekend = w;
+      else {
+        row.problems.push(`Weekend "${weekend}" isn't a number from 1 to 9, so it was left out.`);
+        row.unread.push('weekend');
+      }
+    }
     const rating = get('rating');
     if (rating) {
       const r = Number(rating);
@@ -315,7 +327,7 @@ export function readTable(cells: string[][]): ReadList {
     }
     combined++;
     earlier.lines.push(line);
-    for (const f of ['endDate', 'venue', 'city', 'region', 'country', 'rating', 'ticketPrice', 'format', 'series', 'notes'] as const) {
+    for (const f of ['endDate', 'venue', 'city', 'region', 'country', 'rating', 'ticketPrice', 'format', 'series', 'weekend', 'notes'] as const) {
       if (earlier[f] === undefined && row[f] !== undefined) (earlier as any)[f] = row[f];
     }
     earlier.seen = union(earlier.seen, row.seen);
@@ -438,6 +450,10 @@ export function fillPatch(row: ListRow, base: Partial<LoggedEvent>, leaveOut: Se
     patch.series = row.series;
     adds.push('series');
   }
+  if (base.weekend == null && row.weekend !== undefined) {
+    patch.weekend = row.weekend;
+    adds.push('weekend');
+  }
   if (!base.notes && row.notes) {
     patch.notes = row.notes;
     adds.push('notes');
@@ -464,6 +480,7 @@ export function newEventPatch(row: ListRow, leaveOut: Set<string> = new Set()): 
     ticketPrice: row.ticketPrice ?? null,
     format: row.format ?? null,
     series: row.series ?? null,
+    weekend: row.weekend ?? null,
     notes: row.notes ?? null,
   };
 }
@@ -486,7 +503,21 @@ export interface BaseRow {
 }
 
 type Scalar = string | number | null;
-type ScalarKey = 'name' | 'startDate' | 'endDate' | 'year' | 'venue' | 'city' | 'region' | 'country' | 'format' | 'series' | 'notes' | 'rating' | 'ticketPrice';
+type ScalarKey =
+  | 'name'
+  | 'startDate'
+  | 'endDate'
+  | 'year'
+  | 'venue'
+  | 'city'
+  | 'region'
+  | 'country'
+  | 'format'
+  | 'series'
+  | 'weekend'
+  | 'notes'
+  | 'rating'
+  | 'ticketPrice';
 
 const SCALARS: Array<[ScalarKey, string]> = [
   ['name', 'event'],
@@ -499,6 +530,7 @@ const SCALARS: Array<[ScalarKey, string]> = [
   ['country', 'country'],
   ['format', 'format'],
   ['series', 'series'],
+  ['weekend', 'weekend'],
   ['notes', 'notes'],
   ['rating', 'rating'],
   ['ticketPrice', 'ticket price'],
@@ -520,7 +552,7 @@ function rowValues(row: ListRow, present: ListField[]): Record<ScalarKey, Scalar
         : null
       : undefined;
   out.year = dated && !row.startDate && !row.yearFromName ? (row.year ?? null) : undefined;
-  for (const f of ['venue', 'city', 'region', 'country', 'format', 'series', 'notes', 'rating', 'ticketPrice'] as const) {
+  for (const f of ['venue', 'city', 'region', 'country', 'format', 'series', 'weekend', 'notes', 'rating', 'ticketPrice'] as const) {
     out[f] = has(f) ? (row[f] ?? null) : undefined;
   }
   return out;
@@ -538,6 +570,7 @@ function appValues(e: LoggedEvent): Record<ScalarKey, Scalar> {
     country: e.country ?? null,
     format: e.format ?? null,
     series: e.series ?? null,
+    weekend: e.weekend ?? null,
     notes: e.notes ?? null,
     rating: e.rating ?? null,
     ticketPrice: e.ticketPrice ?? null,
