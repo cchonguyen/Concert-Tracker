@@ -123,7 +123,7 @@ export const MAX_BULK_SUGGESTIONS = 500;
 // is asked per event afterwards (GET /events/:id/name-artists). Events with
 // nothing to offer are left out.
 export async function storedNameSuggestions(
-  store: Pick<LineupStore, 'listEvents' | 'getJobs' | 'getEdition'>,
+  store: Pick<LineupStore, 'listEvents' | 'getJobs' | 'getEditions'>,
   ids: string[],
 ): Promise<Record<string, ArtistSuggestion[]>> {
   const all = await store.listEvents();
@@ -132,10 +132,9 @@ export async function storedNameSuggestions(
   const jobs = new Map(
     (await store.getJobs(events.map((e) => e.lineupJobId).filter((id): id is string => Boolean(id)))).map((j) => [j.id, j]),
   );
-  const editions = new Map<string, Edition | null>();
-  for (const id of new Set(events.map((e) => e.editionId).filter((id): id is string => Boolean(id)))) {
-    editions.set(id, await store.getEdition(id));
-  }
+  const editions = new Map<string, Edition>(
+    (await store.getEditions([...new Set(events.map((e) => e.editionId).filter((id): id is string => Boolean(id)))])).map((ed) => [ed.id, ed]),
+  );
   const out: Record<string, ArtistSuggestion[]> = {};
   for (const e of events) {
     const job = e.lineupJobId ? jobs.get(e.lineupJobId) : null;
