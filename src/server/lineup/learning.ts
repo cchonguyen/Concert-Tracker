@@ -103,7 +103,8 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
 
   const now = new Date().toISOString();
   const slug = seriesSlugFor(job.input.eventName);
-  const fresh = !job.candidate?.cached; // cached lineups were already counted once
+  // Cached lineups and re-edits of a confirmed one were already counted once.
+  const fresh = !job.candidate?.cached && job.status !== 'confirmed';
   const byKey = new Map<string, CandidatePerformer>((job.candidate?.performers ?? []).map((p) => [p.key, p]));
   const performances: EditionPerformance[] = [];
   const ticked: SeenAct[] = [];
