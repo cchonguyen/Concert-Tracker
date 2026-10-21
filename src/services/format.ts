@@ -21,6 +21,19 @@ export function whenLabel(e: Pick<LoggedEvent, 'startDate' | 'endDate' | 'year' 
   return null;
 }
 
+// Format holds one or more values in your words, stored as one text field
+// separated by commas ("Club night, Rave"), so the CSV and the sheet keep it
+// in one column.
+export function formatsOf(format?: string | null): string[] {
+  const seen = new Set<string>();
+  return (format ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s && !seen.has(s.toLowerCase()) && seen.add(s.toLowerCase()));
+}
+
+export const joinFormats = (formats: string[]): string | null => formatsOf(formats.join(',')).join(', ') || null;
+
 export function placeLabel(e: Pick<LoggedEvent, 'venue' | 'city' | 'region'>): string | null {
   return [e.venue, cityWithRegion(e.city, e.region)].filter(Boolean).join(' · ') || null;
 }

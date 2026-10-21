@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
+  Check,
   CalendarX2,
   CircleCheck,
   Download,
@@ -12,6 +13,7 @@ import {
   ListChecks,
   Mail,
   MapPin,
+  Minus,
   Mic2,
   Sheet,
   SlidersHorizontal,
@@ -21,7 +23,7 @@ import {
   X,
 } from 'lucide-react';
 import type { EmailImport, LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
-import { artistsOf, downloadText, eventsToCsv, kindLabel, supportOf, whenLabel } from '../services/format';
+import { artistsOf, downloadText, eventsToCsv, formatsOf, kindLabel, supportOf, whenLabel } from '../services/format';
 import {
   activeFilterCount,
   actsInOrder,
@@ -60,14 +62,14 @@ interface TableViewProps {
 
 const control =
   'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
-const label = 'space-y-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500';
 
-const HAS_LABELS: Record<HasField, string> = {
-  seen: 'Has acts seen',
-  rating: 'Has a rating',
-  price: 'Has a price',
-  companions: 'Has who you went with',
-  lineup: 'Lineup confirmed',
+// Each "has" chip: its name, then what it reads when set to yes or no.
+const HAS_LABELS: Record<HasField, [string, string, string]> = {
+  seen: ['Acts seen?', 'Has acts seen', 'No acts seen'],
+  rating: ['Rated?', 'Rated', 'Not rated'],
+  price: ['Priced?', 'Has a price', 'No price'],
+  companions: ['With someone?', 'Went with someone', 'No one listed'],
+  lineup: ['Lineup confirmed?', 'Lineup confirmed', 'Lineup not confirmed'],
 };
 
 const NEEDS_LABELS = { date: 'A date', pick: 'A pick', review: 'Lineup review' } as const;
@@ -76,38 +78,65 @@ const NEEDS_LABELS = { date: 'A date', pick: 'A pick', review: 'Lineup review' }
 // by venue or city).
 const COLUMNS: Array<{ label: string; sorts?: Array<{ key: SortKey; label: string }>; className?: string }> = [
   { label: 'Date', sorts: [{ key: 'date', label: 'Date' }], className: 'w-36' },
-  { label: 'Event', sorts: [{ key: 'name', label: 'Event' }], className: 'min-w-56' },
-  { label: 'Where', sorts: [{ key: 'venue', label: 'Venue' }, { key: 'city', label: 'City' }], className: 'min-w-48' },
-  { label: 'Seen', sorts: [{ key: 'seen', label: 'Seen' }], className: 'min-w-64' },
+  { label: 'Event', sorts: [{ key: 'name', label: 'Event' }], className: 'min-w-48' },
+  { label: 'Format', className: 'min-w-32' },
+  { label: 'Where', sorts: [{ key: 'venue', label: 'Venue' }, { key: 'city', label: 'City' }], className: 'min-w-44' },
+  { label: 'Seen', sorts: [{ key: 'seen', label: 'Seen' }], className: 'min-w-56' },
   { label: 'With', className: 'min-w-32' },
   { label: 'Rating', sorts: [{ key: 'rating', label: 'Rating' }], className: 'w-28' },
-  { label: 'Price', sorts: [{ key: 'price', label: 'Price' }], className: 'w-20 text-right' },
-  { label: 'Status', className: 'w-36' },
+  { label: 'Status', className: 'w-32' },
 ];
 
 const NEEDS_ICONS = { date: CalendarX2, pick: ListChecks, review: Eye } as const;
 
 const readQuery = () => filtersFromQuery(typeof window === 'undefined' ? '' : window.location.search);
 
-const Select: React.FC<{
+// A filter as one small pill: it reads its own name until you pick a value,
+// then shows the value, highlighted.
+const Pick: React.FC<{
   name: string;
   value: string;
   onChange: (v: string) => void;
   options: Array<{ value: string; label: string }>;
-  anyLabel?: string;
-}> = ({ name, value, onChange, options, anyLabel = 'Any' }) => (
-  <label className={label}>
-    <span>{name}</span>
-    <select value={value} onChange={(e) => onChange(e.target.value)} className={control}>
-      <option value="">{anyLabel}</option>
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
-  </label>
+}> = ({ name, value, onChange, options }) => (
+  <select
+    aria-label={name}
+    value={value}
+    onChange={(e) => onChange(e.target.value)}
+    className={`field-sizing-content max-w-[14rem] cursor-pointer truncate rounded-full border py-1 pl-3 pr-2 text-xs focus:border-violet-500 focus:outline-none ${
+      value ? 'border-violet-500/70 bg-violet-600/20 text-violet-100' : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200'
+    }`}
+  >
+    <option value="">{name}</option>
+    {options.map((o) => (
+      <option key={o.value} value={o.value}>
+        {o.label}
+      </option>
+    ))}
+  </select>
 );
+
+// A "has" filter as a chip that cycles: any, has it, doesn't have it.
+const NEXT_HAS: Record<Has, Has> = { any: 'yes', yes: 'no', no: 'any' };
+const HasChip: React.FC<{ field: HasField; value: Has; onChange: (v: Has) => void }> = ({ field, value, onChange }) => {
+  const [name, yes, no] = HAS_LABELS[field];
+  return (
+    <button
+      onClick={() => onChange(NEXT_HAS[value])}
+      title="Tap to cycle: any, has it, doesn't"
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${
+        value === 'yes'
+          ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-200'
+          : value === 'no'
+            ? 'border-amber-500/50 bg-amber-500/10 text-amber-200'
+            : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'
+      }`}
+    >
+      {value === 'yes' ? <Check className="h-3 w-3" /> : value === 'no' ? <Minus className="h-3 w-3" /> : null}
+      {value === 'yes' ? yes : value === 'no' ? no : name}
+    </button>
+  );
+};
 
 const dash = <span className="text-zinc-700">–</span>;
 
@@ -141,6 +170,28 @@ const KindBadge: React.FC<{ kind: string }> = ({ kind }) => {
     <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${style.className}`}>
       <Icon className="h-3 w-3" /> {kind}
     </span>
+  );
+};
+
+const FormatChip: React.FC<{ value: string }> = ({ value }) => (
+  <span className="rounded-full bg-zinc-800/80 px-1.5 py-px text-[11px] text-zinc-300">{value}</span>
+);
+
+// Concert or Festival on top, then the formats you gave, one chip each.
+const FormatCell: React.FC<{ kind: string; format?: string }> = ({ kind, format }) => {
+  const formats = formatsOf(format);
+  if (!kind && !formats.length) return dash;
+  return (
+    <div className="space-y-1">
+      {kind && <KindBadge kind={kind} />}
+      {formats.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {formats.map((f) => (
+            <FormatChip key={f} value={f} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -373,87 +424,71 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
       </div>
 
       {showFilters && (
-        <div className="grid grid-cols-2 gap-3 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3 sm:grid-cols-3 lg:grid-cols-4">
-          <Select
-            name="From year"
-            value={filters.yearFrom ? String(filters.yearFrom) : ''}
-            onChange={(v) => set({ yearFrom: year(v) })}
-            options={options.years.map((y) => ({ value: String(y), label: String(y) }))}
-          />
-          <Select
-            name="To year"
-            value={filters.yearTo ? String(filters.yearTo) : ''}
-            onChange={(v) => set({ yearTo: year(v) })}
-            options={options.years.map((y) => ({ value: String(y), label: String(y) }))}
-          />
-          <Select name="Venue" value={filters.venue} onChange={(v) => set({ venue: v })} options={list(options.venues)} />
-          <Select name="City" value={filters.city} onChange={(v) => set({ city: v })} options={list(options.cities)} />
-          {options.regions.length > 1 && (
-            <Select name="State" value={filters.region} onChange={(v) => set({ region: v })} options={list(options.regions)} />
-          )}
-          {options.countries.length > 1 && (
-            <Select name="Country" value={filters.country} onChange={(v) => set({ country: v })} options={list(options.countries)} />
-          )}
-          {options.artists.length > 0 && (
-            <Select
-              name="Saw"
-              value={filters.artist}
-              onChange={(v) => set({ artist: v })}
-              options={options.artists.map((a) => ({ value: a.key, label: a.name }))}
+        <div className="space-y-2.5 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Pick
+              name="From year"
+              value={filters.yearFrom ? String(filters.yearFrom) : ''}
+              onChange={(v) => set({ yearFrom: year(v) })}
+              options={options.years.map((y) => ({ value: String(y), label: `From ${y}` }))}
             />
-          )}
-          {options.companions.length > 0 && (
-            <Select name="Went with" value={filters.companion} onChange={(v) => set({ companion: v })} options={list(options.companions)} />
-          )}
-          <Select
-            name="Rating"
-            value={filters.minRating ? String(filters.minRating) : ''}
-            onChange={(v) => set({ minRating: v ? Number(v) : undefined })}
-            options={[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: n === 5 ? '5' : `${n} or more` }))}
-          />
-          <Select
-            name="Needs"
-            value={filters.needs === 'any' ? '' : filters.needs}
-            onChange={(v) => set({ needs: (v || 'any') as TableFilters['needs'] })}
-            options={Object.entries(NEEDS_LABELS).map(([value, l]) => ({ value, label: l }))}
-          />
-          {options.formats.length > 0 && (
-            <Select name="Format" value={filters.format} onChange={(v) => set({ format: v })} options={list(options.formats)} />
-          )}
-          {options.series.length > 0 && (
-            <Select name="Series" value={filters.series} onChange={(v) => set({ series: v })} options={list(options.series)} />
-          )}
-          <Select
-            name="Type"
-            value={filters.kind === 'any' ? '' : filters.kind}
-            onChange={(v) => set({ kind: (v || 'any') as TableFilters['kind'] })}
-            options={[
-              { value: 'concert', label: 'Concert' },
-              { value: 'festival', label: 'Festival' },
-              { value: 'unknown', label: 'Not known yet' },
-            ]}
-          />
-          <Select
-            name="Added from"
-            value={filters.origin === 'any' ? '' : filters.origin}
-            onChange={(v) => set({ origin: (v || 'any') as TableFilters['origin'] })}
-            options={[
-              { value: 'typed', label: 'Typed by you' },
-              { value: 'email', label: 'Ticket email' },
-            ]}
-          />
-          {HAS_FIELDS.map((field) => (
-            <Select
-              key={field}
-              name={HAS_LABELS[field]}
-              value={filters.has[field] && filters.has[field] !== 'any' ? filters.has[field]! : ''}
-              onChange={(v) => setHas(field, (v || 'any') as Has)}
+            <Pick
+              name="To year"
+              value={filters.yearTo ? String(filters.yearTo) : ''}
+              onChange={(v) => set({ yearTo: year(v) })}
+              options={options.years.map((y) => ({ value: String(y), label: `To ${y}` }))}
+            />
+            <Pick
+              name="Type"
+              value={filters.kind === 'any' ? '' : filters.kind}
+              onChange={(v) => set({ kind: (v || 'any') as TableFilters['kind'] })}
               options={[
-                { value: 'yes', label: 'Yes' },
-                { value: 'no', label: 'No' },
+                { value: 'concert', label: 'Concerts' },
+                { value: 'festival', label: 'Festivals' },
+                { value: 'unknown', label: 'Type not known' },
               ]}
             />
-          ))}
+            {options.formats.length > 0 && <Pick name="Format" value={filters.format} onChange={(v) => set({ format: v })} options={list(options.formats)} />}
+            {options.series.length > 0 && <Pick name="Series" value={filters.series} onChange={(v) => set({ series: v })} options={list(options.series)} />}
+            {options.artists.length > 0 && (
+              <Pick name="Saw" value={filters.artist} onChange={(v) => set({ artist: v })} options={options.artists.map((a) => ({ value: a.key, label: a.name }))} />
+            )}
+            {options.companions.length > 0 && (
+              <Pick name="Went with" value={filters.companion} onChange={(v) => set({ companion: v })} options={list(options.companions)} />
+            )}
+            <Pick name="Venue" value={filters.venue} onChange={(v) => set({ venue: v })} options={list(options.venues)} />
+            <Pick name="City" value={filters.city} onChange={(v) => set({ city: v })} options={list(options.cities)} />
+            {options.regions.length > 1 && <Pick name="State" value={filters.region} onChange={(v) => set({ region: v })} options={list(options.regions)} />}
+            {options.countries.length > 1 && (
+              <Pick name="Country" value={filters.country} onChange={(v) => set({ country: v })} options={list(options.countries)} />
+            )}
+            <Pick
+              name="Rating"
+              value={filters.minRating ? String(filters.minRating) : ''}
+              onChange={(v) => set({ minRating: v ? Number(v) : undefined })}
+              options={[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: n === 5 ? '5 stars' : `${n}+ stars` }))}
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-zinc-900 pt-2.5">
+            {HAS_FIELDS.map((field) => (
+              <HasChip key={field} field={field} value={filters.has[field] ?? 'any'} onChange={(v) => setHas(field, v)} />
+            ))}
+            <Pick
+              name="Needs"
+              value={filters.needs === 'any' ? '' : filters.needs}
+              onChange={(v) => set({ needs: (v || 'any') as TableFilters['needs'] })}
+              options={Object.entries(NEEDS_LABELS).map(([value, l]) => ({ value, label: `Needs ${l.toLowerCase()}` }))}
+            />
+            <Pick
+              name="Added from"
+              value={filters.origin === 'any' ? '' : filters.origin}
+              onChange={(v) => set({ origin: (v || 'any') as TableFilters['origin'] })}
+              options={[
+                { value: 'typed', label: 'Typed by you' },
+                { value: 'email', label: 'From ticket emails' },
+              ]}
+            />
+          </div>
         </div>
       )}
 
@@ -539,9 +574,8 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                             </span>
                           )}
                         </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                          <KindBadge kind={kindLabel(e, editions[e.id])} />
-                          {e.series && (
+                        {e.series && (
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
                             <button
                               onClick={(ev) => {
                                 ev.stopPropagation();
@@ -552,9 +586,11 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                             >
                               <Layers className="h-3 w-3" /> {e.series}
                             </button>
-                          )}
-                          {e.format && <span className="text-[11px] text-zinc-500">{e.format}</span>}
-                        </div>
+                          </div>
+                        )}
+                      </td>
+                      <td className={cell}>
+                        <FormatCell kind={kindLabel(e, editions[e.id])} format={e.format} />
                       </td>
                       <td className={cell}>
                         {e.venue || e.city ? (
@@ -596,7 +632,6 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                       <td className={cell}>
                         <Stars rating={e.rating} />
                       </td>
-                      <td className={`${cell} text-right tabular-nums text-zinc-300`}>{e.ticketPrice ?? dash}</td>
                       <td className={cell}>
                         {needs ? (
                           <NeedsBadge needs={needs} />
@@ -626,6 +661,9 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                       <div className="truncate font-medium text-zinc-100">{eventTitle(e)}</div>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-400">
                         <KindBadge kind={kindLabel(e, editions[e.id])} />
+                        {formatsOf(e.format).map((f) => (
+                          <FormatChip key={f} value={f} />
+                        ))}
                         {(e.venue || e.city) && (
                           <span className="inline-flex min-w-0 items-center gap-1 truncate">
                             <MapPin className="h-3 w-3 shrink-0 text-zinc-500" />
