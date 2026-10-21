@@ -112,6 +112,9 @@ export interface LoggedEvent extends EventFacts {
   // your words. Editions with the same series show as "<series> <year>".
   // Set only by you; the Table can offer a name from your own event names.
   series?: string;
+  // Which weekend of a festival that runs more than one (Weekend 1, 2, ...),
+  // as you pick it. Shown with the series.
+  weekend?: number;
   weather?: EventWeather;
   daysAttended: string[];
   companions: string[];

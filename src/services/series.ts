@@ -44,11 +44,21 @@ export function withPlace(name: string, city?: string): string {
 // What the app shows as the event's name: "EDC Las Vegas 2024" in a series
 // (the town from the event's city when the series name lacks it), otherwise
 // the name as you typed it.
-export function eventTitle(e: Pick<LoggedEvent, 'name' | 'series' | 'startDate' | 'year' | 'city'>): string {
+// "Coachella 2024 · Weekend 1" when you picked the weekend.
+export function eventTitle(e: Pick<LoggedEvent, 'name' | 'series' | 'startDate' | 'year' | 'city' | 'weekend'>): string {
   if (!e.series) return e.name;
   const name = withPlace(e.series, e.city);
   const year = eventYear(e as LoggedEvent);
-  return year ? `${name} ${year}` : name;
+  const title = year ? `${name} ${year}` : name;
+  return e.weekend ? `${title} · Weekend ${e.weekend}` : title;
+}
+
+// The weekend your own name for the event gives ("Weekend 2", "W1", "Wknd 1"),
+// offered when you link it; never stored without your tap.
+export function weekendFromName(name: string): number | undefined {
+  const m = name.match(/\b(?:weekend|wknd)\s*(\d)\b|\bw(\d)\b/i);
+  const n = m ? Number(m[1] ?? m[2]) : NaN;
+  return n >= 1 && n <= 9 ? n : undefined;
 }
 
 export interface SeriesGroup {

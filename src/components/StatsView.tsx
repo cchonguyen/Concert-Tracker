@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { LoggedEvent } from '../services/lineupApi';
 import { whenLabel } from '../services/format';
-import { facts, pastEvents, perYear, RankBy, Ranked, top, yearInReview } from '../services/stats';
+import { facts, pastEvents, perYear, RankBy, Ranked, seriesStats, SeriesStat, top, yearInReview } from '../services/stats';
 import { eventTitle } from '../services/series';
 
 interface StatsViewProps {
@@ -100,6 +100,56 @@ const Tile: React.FC<{ value: React.ReactNode; label: string }> = ({ value, labe
   </div>
 );
 
+// Your series: editions, years in a row, cities, and acts you keep seeing
+// there. A row opens that series in the Table.
+const SeriesCard: React.FC<{ rows: SeriesStat[]; onPick: (name: string) => void }> = ({ rows, onPick }) => {
+  const max = Math.max(1, ...rows.map((r) => r.editions));
+  const best = rows.reduce<SeriesStat | undefined>((a, r) => (r.streak && (!a?.streak || r.streak.years > a.streak.years) ? r : a), undefined);
+  return (
+    <section className={`${card} space-y-3`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className={title}>Series</h2>
+        {best?.streak && (
+          <span className="text-xs text-zinc-400">
+            Longest run: <span className="text-zinc-200">{best.name}</span>, {best.streak.years} years in a row ({best.streak.from} to {best.streak.to})
+          </span>
+        )}
+      </div>
+      <ol className="space-y-3">
+        {rows.slice(0, 8).map((r) => (
+          <li key={r.name}>
+            <button onClick={() => onPick(r.name)} className="group w-full space-y-1 text-left">
+              <span className="flex items-baseline justify-between gap-2 text-sm">
+                <span className="truncate font-medium text-zinc-100 group-hover:text-violet-300">{r.name}</span>
+                <span className="shrink-0 tabular-nums text-zinc-400">{plural(r.editions, 'edition')}</span>
+              </span>
+              <span className="block h-1.5 rounded-full bg-zinc-800">
+                <span className="block h-1.5 rounded-full bg-violet-500 group-hover:bg-violet-300" style={{ width: `${(r.editions / max) * 100}%` }} />
+              </span>
+              <span className="block text-xs text-zinc-500">
+                {[
+                  r.years.length ? (r.years.length === 1 ? String(r.years[0]) : `${r.years[0]} to ${r.years[r.years.length - 1]}`) : null,
+                  r.streak ? `${r.streak.years} years in a row` : null,
+                  r.cities.length > 1 ? `${r.cities.length} cities` : r.cities[0] ?? null,
+                  r.acts ? plural(r.acts, 'act') + ' seen' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+              {r.regulars.length > 0 && (
+                <span className="block text-xs text-zinc-400">
+                  <span className="text-zinc-500">Regulars: </span>
+                  {r.regulars.map((a) => `${a.label} ×${a.count}`).join(', ')}
+                </span>
+              )}
+            </button>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+};
+
 export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTable }) => {
   const today = new Date().toISOString().slice(0, 10);
   const past = useMemo(() => pastEvents(events, today), [events, today]);
@@ -114,6 +164,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
     [past],
   );
   const filter = (param: string, value: string) => onOpenTable(`${param}=${encodeURIComponent(value)}`);
+  const series = useMemo(() => seriesStats(past), [past]);
 
   if (!past.length) {
     return (
@@ -218,6 +269,8 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
         <Ranking name="Top cities" rows={ranks.city} empty="No cities yet." onPick={(r) => filter('city', r.key)} />
         <Ranking name="Went with most" rows={ranks.companion} empty="Add who you went with on an event to see this." onPick={(r) => filter('with', r.key)} />
       </section>
+
+      {series.length > 0 && <SeriesCard rows={series} onPick={(name) => filter('series', name)} />}
 
       <section className={`${card} space-y-2`}>
         <h2 className={title}>Fun facts</h2>
