@@ -2,35 +2,14 @@ import type { Fetcher } from '../lineup/types';
 import { parseJson } from '../lineup/http';
 import { decodeEntities, normalizeName } from '../lineup/text';
 import { eventWords } from '../lineup/search';
+import { NORTH_AMERICA, regionCode } from './regions';
+
+export { regionCode, regionCountry } from './regions';
 
 // Where an event was held, read in code from structured data: schema.org
 // Event markup on a page, or the address fields an API returns. Cities are
 // written "City, ST" for the US and Canada, the way you'd type them.
 
-// Postal abbreviations, used only to write a region the source already gave
-// in the short form people type. Address formatting, not event knowledge.
-const REGION_CODES: Record<string, string> = {
-  alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA', colorado: 'CO', connecticut: 'CT',
-  delaware: 'DE', 'district of columbia': 'DC', florida: 'FL', georgia: 'GA', hawaii: 'HI', idaho: 'ID', illinois: 'IL',
-  indiana: 'IN', iowa: 'IA', kansas: 'KS', kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD',
-  massachusetts: 'MA', michigan: 'MI', minnesota: 'MN', mississippi: 'MS', missouri: 'MO', montana: 'MT',
-  nebraska: 'NE', nevada: 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY',
-  'north carolina': 'NC', 'north dakota': 'ND', ohio: 'OH', oklahoma: 'OK', oregon: 'OR', pennsylvania: 'PA',
-  'puerto rico': 'PR', 'rhode island': 'RI', 'south carolina': 'SC', 'south dakota': 'SD', tennessee: 'TN',
-  texas: 'TX', utah: 'UT', vermont: 'VT', virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI',
-  wyoming: 'WY', alberta: 'AB', 'british columbia': 'BC', manitoba: 'MB', 'new brunswick': 'NB',
-  'newfoundland and labrador': 'NL', 'nova scotia': 'NS', ontario: 'ON', 'prince edward island': 'PE', quebec: 'QC',
-  saskatchewan: 'SK',
-};
-const CODES = new Set(Object.values(REGION_CODES));
-const NORTH_AMERICA = new Set(['us', 'usa', 'united states', 'united states of america', 'ca', 'can', 'canada']);
-
-export function regionCode(region: string | undefined): string | undefined {
-  const r = region?.trim();
-  if (!r) return undefined;
-  if (CODES.has(r.toUpperCase()) && r.length === 2) return r.toUpperCase();
-  return REGION_CODES[normalizeName(r)];
-}
 
 // "Las Vegas, NV" in the US and Canada; just the city elsewhere.
 export function cityLabel(city: string | undefined, region?: string, country?: string): string | undefined {
@@ -152,4 +131,42 @@ export async function citySuggestions(query: string, fetcher: Fetcher): Promise<
   if (cityCache.size > 500) cityCache.clear();
   cityCache.set(key, out);
   return out;
+}
+
+export interface CityPoint {
+  lat: number;
+  lon: number;
+  // exact: the state or country you wrote matched; name: only the name did,
+  // so the biggest place by that name is shown and the map says so.
+  match: 'exact' | 'name';
+}
+
+const pointCache = new Map<string, CityPoint | null>();
+
+// Where a city you stored is, for the map: "City, ST" or "City, Country" from
+// the Open-Meteo geocoder. Shown on the map only; never stored on an event.
+export async function cityPoint(city: string, country: string | undefined, fetcher: Fetcher): Promise<CityPoint | null> {
+  const [name, qualifier] = city.split(',').map((s) => s.trim());
+  if (!name || name.length < 2) return null;
+  const key = `${normalizeName(city)}|${normalizeName(country ?? '')}`;
+  if (pointCache.has(key)) return pointCache.get(key)!;
+  const res = await fetcher.get(
+    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=20&language=en&format=json`,
+    { timeoutMs: 5000 },
+  );
+  const places: any[] = (parseJson<any>(res)?.results ?? [])
+    .filter((r: any) => typeof r.feature_code === 'string' && r.feature_code.startsWith('PPL'))
+    .filter((r: any) => typeof r.latitude === 'number' && typeof r.longitude === 'number')
+    .sort((a: any, b: any) => (b.population ?? 0) - (a.population ?? 0));
+  const want = normalizeName(qualifier ?? country ?? '');
+  const exact = want
+    ? places.find((r) =>
+        [regionCode(str(r.admin1)), str(r.admin1), str(r.country), str(r.country_code)].some((v) => v && normalizeName(v) === want),
+      )
+    : undefined;
+  const hit = exact ?? (qualifier ? undefined : places[0]);
+  const point: CityPoint | null = hit ? { lat: hit.latitude, lon: hit.longitude, match: exact ? 'exact' : 'name' } : null;
+  if (pointCache.size > 2000) pointCache.clear();
+  if (res.status === 200) pointCache.set(key, point);
+  return point;
 }

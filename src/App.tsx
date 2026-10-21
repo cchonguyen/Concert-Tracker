@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { BarChart3, Mic2, Radio, Table2, Ticket } from 'lucide-react';
+import { BarChart3, Map as MapIcon, Mic2, Radio, Table2, Ticket } from 'lucide-react';
 import {
   EmailImport,
   eventsApi,
@@ -19,11 +19,16 @@ import { ArtistsView } from './components/ArtistsView';
 import { ImportReview } from './components/ImportReview';
 import { TableView } from './components/TableView';
 import { StatsView } from './components/StatsView';
+import { MapView } from './components/MapView';
 
-type Tab = 'events' | 'table' | 'stats' | 'artists';
+type Tab = 'events' | 'table' | 'map' | 'stats' | 'artists';
 
-// The Table view keeps its filters in the address (?view=table&...).
-const initialTab = (): Tab => (new URLSearchParams(window.location.search).get('view') === 'table' ? 'table' : 'events');
+// The Table and Map views keep their filters in the address (?view=table&...).
+const FILTERED: Tab[] = ['table', 'map'];
+const initialTab = (): Tab => {
+  const view = new URLSearchParams(window.location.search).get('view') as Tab;
+  return FILTERED.includes(view) ? view : 'events';
+};
 
 export default function App() {
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -97,8 +102,14 @@ export default function App() {
     void refresh();
   };
 
+  // Moving between the Table and the Map keeps the same filters.
   const openTab = (next: Tab) => {
-    if (next !== 'table' && window.location.search) window.history.replaceState(null, '', window.location.pathname);
+    const params = new URLSearchParams(window.location.search);
+    if (FILTERED.includes(next) && FILTERED.includes(tab)) {
+      params.set('view', next);
+      window.history.replaceState(null, '', `${window.location.pathname}?${params}`);
+    } else if (FILTERED.includes(next)) window.history.replaceState(null, '', `${window.location.pathname}?view=${next}`);
+    else if (window.location.search) window.history.replaceState(null, '', window.location.pathname);
     setTab(next);
   };
 
@@ -116,7 +127,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-zinc-950 font-sans text-zinc-100 selection:bg-violet-600 selection:text-white flex flex-col">
       <header className="sticky top-0 z-30 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md">
-        <div className={`mx-auto flex ${tab === 'table' ? 'max-w-6xl' : 'max-w-3xl'} items-center justify-between gap-3 px-4 py-3`}>
+        <div className={`mx-auto flex ${tab === 'table' || tab === 'map' ? 'max-w-6xl' : 'max-w-3xl'} items-center justify-between gap-3 px-4 py-3`}>
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-violet-600 to-cyan-400">
               <Radio className="h-4 w-4 text-white" />
@@ -130,6 +141,7 @@ export default function App() {
               [
                 ['events', Ticket, `Events`, events.length],
                 ['table', Table2, `Table`, null],
+                ['map', MapIcon, `Map`, null],
                 ['stats', BarChart3, `Stats`, null],
                 ['artists', Mic2, `Artists`, seenCount],
               ] as const
@@ -151,7 +163,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className={`mx-auto w-full ${tab === 'table' ? 'max-w-6xl' : 'max-w-3xl'} flex-1 space-y-6 px-4 py-6`}>
+      <main className={`mx-auto w-full ${tab === 'table' || tab === 'map' ? 'max-w-6xl' : 'max-w-3xl'} flex-1 space-y-6 px-4 py-6`}>
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-3 text-sm text-rose-200">{error}</p>}
         {tab === 'events' && (
           <>
@@ -184,6 +196,7 @@ export default function App() {
             }}
           />
         )}
+        {tab === 'map' && <MapView events={events} lineups={lineups} editions={editions} onOpen={setSelectedId} onOpenTable={openTable} />}
         {tab === 'stats' && <StatsView events={events} onOpen={setSelectedId} onOpenTable={openTable} />}
         {tab === 'artists' && <ArtistsView events={events} onOpenEvent={setSelectedId} />}
       </main>
