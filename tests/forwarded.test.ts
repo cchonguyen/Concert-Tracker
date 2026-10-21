@@ -60,11 +60,11 @@ test('forwards: no readable Date line means the forward is listed as unreadable,
 
 test('forwards: personal mail and forwards from sellers without a reader are ignored', () => {
   const chat = forward({ subject: 'dinner?', text: 'are we still on for tonight' });
-  const ticketweb = forward({
-    subject: 'Fwd: Your TicketWeb Tickets Have Arrived!',
-    html: gmailForward('TicketWeb Orders <info@ticketweb.com>', 'Wed, Sep 4, 2024 at 10:02 PM', 'Your TicketWeb Tickets Have Arrived!', '<div>Event Details:</div>'),
+  const seetickets = forward({
+    subject: 'Fwd: Your See Tickets order',
+    html: gmailForward('See Tickets <orders@seetickets.us>', 'Wed, Sep 4, 2024 at 10:02 PM', 'Your See Tickets order', '<div>Event Details:</div>'),
   });
-  assert.deepEqual(readEmails([chat, ticketweb]), { outcomes: [], ignored: 2 });
+  assert.deepEqual(readEmails([chat, seetickets]), { outcomes: [], ignored: 2 });
 });
 
 test('AXS box office: the date line under the event is read when there is one', () => {
