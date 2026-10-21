@@ -26,6 +26,10 @@ export interface GmailApi {
 }
 
 export class GmailAuthError extends Error {}
+// Google asked the app to slow down; the check can go on in a moment.
+export class GmailBusy extends Error {}
+// One message could not be read (gone, or Google refused it).
+export class GmailReadError extends Error {}
 
 type Json = Record<string, any>;
 
@@ -84,8 +88,16 @@ export function createGmail(clientId: string, clientSecret: string): GmailApi {
     if (res.status === 400 || res.status === 401) {
       throw new GmailAuthError(`Gmail refused ${what} (${body.error_description ?? body.error?.message ?? body.error ?? res.status}). Connect Gmail again.`);
     }
-    if (!res.ok) throw new Error(`Gmail ${what} failed (${res.status}).`);
-    return body;
+    if (res.ok) return body;
+    // Google's reason ("rateLimitExceeded", "insufficientPermissions", ...).
+    const reason: string = body.error?.errors?.[0]?.reason ?? body.error?.details?.[0]?.reason ?? body.error?.status ?? '';
+    const detail = `${res.status}${reason ? `, ${reason}` : ''}`;
+    if (res.status === 429 || /rate ?limit|quota/i.test(reason)) throw new GmailBusy(`Gmail asked to slow down (${detail}).`);
+    if (res.status === 403 && /permission|scope|forbidden/i.test(reason)) {
+      throw new GmailAuthError(`Gmail did not let the app read your mail (${detail}). Connect Gmail again and allow reading your email.`);
+    }
+    if (res.status === 403 || res.status === 404) throw new GmailReadError(`Gmail ${what} failed (${detail}).`);
+    throw new Error(`Gmail ${what} failed (${detail}).`);
   }
 
   async function token(refreshToken: string, form: Record<string, string>): Promise<Json> {

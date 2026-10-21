@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
-import { GmailApi, GmailAuthError, GmailMessage, messageBodies, toMessage } from '../src/server/events/email/gmail.ts';
+import { createGmail, GmailApi, GmailAuthError, GmailBusy, GmailMessage, GmailReadError, messageBodies, toMessage } from '../src/server/events/email/gmail.ts';
 import { mergeImports, READERS, readEmails } from '../src/server/events/email/imports.ts';
 import { forwardQuery, GMAIL_SETTING, SCAN_SETTING, ScanSetting, scanStep, sellerQuery } from '../src/server/events/email/scan.ts';
 import { importsRouter } from '../src/server/events/importRoutes.ts';
@@ -251,4 +251,51 @@ test('scan routes: connect checks the sign-in state, then checking reads new mai
   const step = await (await call('/imports/scan', 'POST')).json();
   assert.deepEqual({ read: step.read, remaining: step.remaining, added: step.added }, { read: 1, remaining: 0, added: 1 });
   assert.deepEqual(await store.listEvents(), []);
+});
+
+test('scanStep: Gmail is searched once per check; a message it will not open is skipped; a busy Gmail keeps what is left', async () => {
+  const store = await newStore();
+  await connect(store);
+  const gmail = fakeGmail([dice('a1', 'ONE', '2026-10-01T10:00:00Z'), dice('a2', 'TWO', '2026-10-02T10:00:00Z'), dice('a3', 'THREE', '2026-10-03T10:00:00Z')]);
+  const getMessage = gmail.api.getMessage;
+  let busy = false;
+  gmail.api.getMessage = async (token, id) => {
+    if (busy) throw new GmailBusy('Gmail asked to slow down (429).');
+    if (id === 'a2') throw new GmailReadError('Gmail a read failed (404, notFound).');
+    return getMessage(token, id);
+  };
+
+  const first = await scanStep(store, gmail.api, NOW, 2);
+  const searches = gmail.queries.length;
+  assert.deepEqual([first.read, first.skipped, first.remaining], [1, 1, 1]);
+
+  busy = true;
+  await assert.rejects(scanStep(store, gmail.api, NOW, 2), GmailBusy);
+  busy = false;
+  const second = await scanStep(store, gmail.api, NOW, 2);
+  assert.deepEqual([second.read, second.skipped, second.remaining], [1, 0, 0]);
+  assert.equal(gmail.queries.length, searches); // no new searches within the check
+  assert.deepEqual((await store.listImports()).map((r) => r.name).sort(), ['ONE', 'THREE']);
+
+  // The next check searches again, from where this one read to.
+  const next = await scanStep(store, gmail.api, NOW, 2);
+  assert.ok(gmail.queries.length > searches);
+  assert.deepEqual([next.read, next.remaining], [0, 0]);
+});
+
+test('Gmail errors: a rate limit is busy, a missing permission asks to connect again, a missing message is skipped', async (t) => {
+  const answers: Array<[number, unknown]> = [];
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    if (String(url).includes('oauth2')) return new Response(JSON.stringify({ access_token: 'a', expires_in: 3600 }));
+    const [status, body] = answers.shift()!;
+    return new Response(JSON.stringify(body), { status });
+  });
+  const api = createGmail('id', 'secret');
+  const error = (reason: string) => ({ error: { code: 403, errors: [{ reason }] } });
+  answers.push([403, error('userRateLimitExceeded')]);
+  await assert.rejects(api.listIds('r', 'q'), GmailBusy);
+  answers.push([403, error('insufficientPermissions')]);
+  await assert.rejects(api.listIds('r', 'q'), (err) => err instanceof GmailAuthError && /allow reading your email/.test(err.message));
+  answers.push([404, { error: { code: 404, errors: [{ reason: 'notFound' }] } }], [200, { emailAddress: 'me@example.com' }]);
+  await assert.rejects(api.getMessage('r', 'gone'), (err) => err instanceof GmailReadError && /404, notFound/.test(err.message));
 });

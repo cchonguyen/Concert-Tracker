@@ -35,7 +35,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Request failed with HTTP ${res.status}`);
+  // `retry`: the server says to wait a moment and call again.
+  if (!res.ok) throw Object.assign(new Error(data.error || `Request failed with HTTP ${res.status}`), { retry: data.retry === true });
   return data as T;
 }
 
@@ -85,6 +86,7 @@ export interface EmailScanStatus {
 
 export interface EmailScanStep {
   read: number;
+  skipped: number;
   remaining: number;
   added: number;
   scannedThrough?: string;
