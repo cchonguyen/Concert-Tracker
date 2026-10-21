@@ -6,7 +6,7 @@ import { PerformerClaim } from '../src/server/lineup/types.ts';
 import { actSets, setLabel } from '../src/server/events/sets.ts';
 import { applyPatch, newEvent } from '../src/server/events/service.ts';
 import { lookupWeather, placesFor, weatherDays } from '../src/server/events/weather.ts';
-import { eventsToCsv, matchArtists, pastArtistNames, weatherLine, weatherText } from '../src/services/format.ts';
+import { eventsToCsv, matchNames, pastArtistNames, pastCompanionNames, weatherLine, weatherText } from '../src/services/format.ts';
 import { hasGap } from '../src/services/table.ts';
 import { parseCsv } from '../src/services/listImport.ts';
 import { LoggedEvent } from '../src/server/events/types.ts';
@@ -146,10 +146,19 @@ test('adding an act suggests ones you entered before, most seen first', () => {
   });
   const past = pastArtistNames([ev(['Kaskade', 'Zedd']), ev(['Kaskade', 'Fred again..']), ev(['kaskade', 'Deadmau5'])]);
   assert.equal(past[0], 'Kaskade'); // seen three times, spelled this way twice
-  assert.deepEqual(matchArtists('ka', past, new Set()), ['Kaskade']);
-  assert.deepEqual(matchArtists('again', past, new Set()), ['Fred again..']); // a later word
-  assert.deepEqual(matchArtists('ka', past, new Set(['kaskade'])), []); // already on the event
-  assert.deepEqual(matchArtists('  ', past, new Set()), []);
+  assert.deepEqual(matchNames('ka', past, new Set()), ['Kaskade']);
+  assert.deepEqual(matchNames('again', past, new Set()), ['Fred again..']); // a later word
+  assert.deepEqual(matchNames('ka', past, new Set(['kaskade'])), []); // already on the event
+  assert.deepEqual(matchNames('  ', past, new Set()), []);
+});
+
+test('adding who you went with suggests people from your other events', () => {
+  const ev = (companions: string[]): LoggedEvent => ({ ...newEvent('Show', NOW), companions });
+  const past = pastCompanionNames([ev(['Sam', 'Alex Kim']), ev(['sam', 'Jo']), ev(['Sam'])]);
+  assert.equal(past[0], 'Sam'); // three events, spelled this way twice
+  assert.deepEqual(matchNames('s', past, new Set()), ['Sam']);
+  assert.deepEqual(matchNames('kim', past, new Set()), ['Alex Kim']); // a later word
+  assert.deepEqual(matchNames('s', past, new Set(['sam'])), []); // already on the event
 });
 
 test('artists from titles for many events come from stored data only', async () => {
