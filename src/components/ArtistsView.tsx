@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowUp, CalendarDays, ChevronDown, Crown, Heart, MapPin, Search, Table2 } from 'lucide-react';
+import { ArrowUp, CalendarDays, ChevronDown, ChevronRight, Crown, Heart, LayoutList, List, MapPin, Search, Table2 } from 'lucide-react';
 import type { LoggedEvent } from '../services/lineupApi';
 import { whenLabel } from '../services/format';
 import { EventTitle } from './EventTitle';
@@ -13,6 +13,25 @@ interface ArtistsViewProps {
 
 const SORT_KEY = 'livearchive.artistSort.v1';
 const SHOWN_EVENTS = 3;
+
+const VIEW_KEY = 'livearchive.artistView.v1';
+type Density = 'compact' | 'detailed';
+
+// Remembered choices are a convenience only; storage may be unavailable.
+const remember = (key: string, value: string) => {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Nothing to do.
+  }
+};
+const readDensity = (): Density => {
+  try {
+    return window.localStorage.getItem(VIEW_KEY) === 'compact' ? 'compact' : 'detailed';
+  } catch {
+    return 'detailed';
+  }
+};
 
 const readSort = (): ArtistSort => {
   try {
@@ -53,6 +72,63 @@ const Pill: React.FC<{ icon: React.ReactNode; text: string; tone: string; title:
   </span>
 );
 
+const Avatar: React.FC<{ artist: ArtistSummary; small?: boolean }> = ({ artist: a, small }) => (
+  <span
+    aria-hidden
+    className={`flex shrink-0 items-center justify-center rounded-full font-bold text-white/90 ${
+      small ? 'h-7 w-7 text-[10px]' : 'mt-0.5 h-10 w-10 text-sm'
+    }`}
+    style={{ background: `hsl(${hue(a.key)} 45% 32%)` }}
+  >
+    {initials(a.name)}
+  </span>
+);
+
+// Compact: one line per artist; tapping it opens the detailed card in place.
+const ArtistRow: React.FC<{ artist: ArtistSummary; onOpenEvent: (id: string) => void; onOpenTable: (query: string) => void }> = ({
+  artist: a,
+  onOpenEvent,
+  onOpenTable,
+}) => {
+  const [open, setOpen] = useState(false);
+  if (open)
+    return (
+      <>
+        <li>
+          <button
+            onClick={() => setOpen(false)}
+            className="flex w-full items-center gap-1 px-4 pt-2 text-left text-[11px] text-zinc-500 hover:text-zinc-300 sm:px-5"
+          >
+            <ChevronDown className="h-3 w-3" /> Collapse
+          </button>
+        </li>
+        <ArtistCard artist={a} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} />
+      </>
+    );
+  const span = years(a);
+  return (
+    <li>
+      <button onClick={() => setOpen(true)} className="group flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-zinc-900/60 sm:px-5">
+        <Avatar artist={a} small />
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span className="truncate text-sm font-medium text-zinc-100">{a.name}</span>
+          {a.favourites > 0 && <Heart className="h-3 w-3 shrink-0 fill-current text-rose-400" aria-label="Favourite set" />}
+          {a.headlined > 0 && <Crown className="h-3 w-3 shrink-0 text-amber-400" aria-label="Headliner" />}
+        </span>
+        {a.cities.length > 0 && (
+          <span className="hidden max-w-[14rem] truncate text-xs text-zinc-500 md:block" title={a.cities.join(', ')}>
+            {a.cities[0]}
+            {a.cities.length > 1 && ` +${a.cities.length - 1}`}
+          </span>
+        )}
+        <span className="shrink-0 whitespace-nowrap text-right text-[11px] tabular-nums text-zinc-500 sm:w-24 sm:text-xs">{span}</span>
+        <span className="w-8 shrink-0 text-right text-sm font-bold tabular-nums text-zinc-100">{a.events.length}</span>
+        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-700 group-hover:text-zinc-400" />
+      </button>
+    </li>
+  );
+};
+
 const ArtistCard: React.FC<{ artist: ArtistSummary; onOpenEvent: (id: string) => void; onOpenTable: (query: string) => void }> = ({
   artist: a,
   onOpenEvent,
@@ -63,13 +139,7 @@ const ArtistCard: React.FC<{ artist: ArtistSummary; onOpenEvent: (id: string) =>
   const span = years(a);
   return (
     <li className="flex gap-4 px-4 py-4 sm:px-5">
-      <span
-        aria-hidden
-        className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white/90"
-        style={{ background: `hsl(${hue(a.key)} 45% 32%)` }}
-      >
-        {initials(a.name)}
-      </span>
+      <Avatar artist={a} />
       <div className="min-w-0 flex-1 space-y-2.5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -172,11 +242,12 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
   const [sort, setSortState] = useState<ArtistSort>(readSort);
   const setSort = (s: ArtistSort) => {
     setSortState(s);
-    try {
-      window.localStorage.setItem(SORT_KEY, s);
-    } catch {
-      // Remembering the order is a convenience only.
-    }
+    remember(SORT_KEY, s);
+  };
+  const [density, setDensityState] = useState<Density>(readDensity);
+  const setDensity = (d: Density) => {
+    setDensityState(d);
+    remember(VIEW_KEY, d);
   };
   const artists = useMemo(() => artistSummaries(events), [events]);
   const q = filter.trim().toLowerCase();
@@ -249,7 +320,8 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
         ))}
       </div>
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      {/* On a phone the order switch takes its own row under search and the view switch. */}
+      <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
         <label className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-600" />
           <input
@@ -259,7 +331,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
             className="w-full rounded-xl border border-zinc-800 bg-zinc-900 py-2 pl-9 pr-4 text-sm placeholder-zinc-600 focus:border-violet-500 focus:outline-none"
           />
         </label>
-        <div role="radiogroup" aria-label="Order" className="flex shrink-0 rounded-xl border border-zinc-800 bg-zinc-900 p-0.5 text-xs">
+        <div role="radiogroup" aria-label="Order" className="order-last flex w-full rounded-xl border border-zinc-800 bg-zinc-900 p-0.5 text-xs sm:order-none sm:w-auto sm:shrink-0">
           {ARTIST_SORTS.map((s) => (
             <button
               key={s.value}
@@ -271,6 +343,26 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
               }`}
             >
               {s.label}
+            </button>
+          ))}
+        </div>
+        <div role="radiogroup" aria-label="View" className="flex shrink-0 rounded-xl border border-zinc-800 bg-zinc-900 p-0.5">
+          {(
+            [
+              ['compact', List, 'Compact'],
+              ['detailed', LayoutList, 'Detailed'],
+            ] as const
+          ).map(([value, Icon, label]) => (
+            <button
+              key={value}
+              role="radio"
+              aria-checked={density === value}
+              aria-label={label}
+              title={label}
+              onClick={() => setDensity(value)}
+              className={`rounded-lg px-2 py-1.5 ${density === value ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+            >
+              <Icon className="h-3.5 w-3.5" />
             </button>
           ))}
         </div>
@@ -313,9 +405,13 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
               <span className="font-medium normal-case tracking-normal text-zinc-600">{g.artists.length}</span>
             </h2>
             <ul className="divide-y divide-zinc-900 rounded-xl border border-zinc-900 bg-zinc-900/20">
-              {g.artists.map((a) => (
-                <ArtistCard key={a.key} artist={a} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} />
-              ))}
+              {g.artists.map((a) =>
+                density === 'compact' ? (
+                  <ArtistRow key={a.key} artist={a} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} />
+                ) : (
+                  <ArtistCard key={a.key} artist={a} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} />
+                ),
+              )}
             </ul>
           </section>
         ))
