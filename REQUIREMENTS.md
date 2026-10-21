@@ -93,7 +93,7 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 
 | ID | Requirement |
 | --- | --- |
-| R4.1 | **Events**: the capture line at the top, then your events newest first, grouped by year. Each shows when, where, how many acts you saw, and what it still needs (a date, a pick, a lineup review) as a quiet hint, not a warning. |
+| R4.1 | **Events** (home): the capture line at the top, then a summary to take in at a glance: what needs you (email rows to review, events missing a date or a pick, lineups to review), tiles for events, artists seen, venues and this year so far, an "On this day" line on anniversaries, events just added, events still ahead, and your five most recent. Each row shows when, where, who you saw and what it still needs as a quiet hint, not a warning. The full list is the Table view. |
 | R4.2 | **Event detail**: edit fields, see each field's source, pick research candidates, manage seen acts and personal details, run and review the lineup lookup. |
 | R4.3 | **Artists**: everyone you've seen, with how many times and at which events. |
 | R4.4 | **Export**: download events as CSV (one row per event, seen acts joined) for a spreadsheet, from the Table view: all events, or only the rows the filters show. |
@@ -142,10 +142,9 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 
 Ranked by how much they serve the purpose for how little complexity they add.
 
-1. **On this day**: a quiet line on the Events view when today is the anniversary of something you went to.
-2. **Artist pages**: every time you saw someone, with the venues and who you were with.
-3. **Back-fill mode**: type one line per event in a box (a whole year at once) and stage 1 handles each.
-4. **Stats**: events per year, top artists, venues and cities, firsts and streaks, from the same data as the Table view. Figures built on optional fields (rating, price, companions) say how many events they cover.
-5. **Year in review**: events, new artists, most-seen artist, people you went with most.
-6. **Setlists**: for a seen act at a single-artist show, link the setlist.fm setlist for that night.
-7. **Share card**: an image of one event or one year, generated from your own data.
+1. **Artist pages**: every time you saw someone, with the venues and who you were with.
+2. **Back-fill mode**: type one line per event in a box (a whole year at once) and stage 1 handles each.
+3. **Stats**: events per year, top artists, venues and cities, firsts and streaks, from the same data as the Table view. Figures built on optional fields (rating, price, companions) say how many events they cover.
+4. **Year in review**: events, new artists, most-seen artist, people you went with most.
+5. **Setlists**: for a seen act at a single-artist show, link the setlist.fm setlist for that night.
+6. **Share card**: an image of one event or one year, generated from your own data.
