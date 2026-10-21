@@ -6,7 +6,7 @@ import { eventsApi, LineupFacts, LineupSummary, LoggedEvent } from '../services/
 import { eventYear, whenLabel } from '../services/format';
 import { EMPTY_FILTERS, filterEvents, filterOptions, filtersFromQuery, filtersToQuery, TableFilters } from '../services/table';
 import { mapData, MapPlace, placeKey, placeQuery, playbackYears, Points, trail, travel } from '../services/map';
-import { eventTitle } from '../services/series';
+import { EventTitle } from './EventTitle';
 
 interface MapViewProps {
   events: LoggedEvent[];
@@ -356,7 +356,7 @@ const PlacePanel: React.FC<{ place: MapPlace; onOpen: (id: string) => void; onCl
         <li key={e.id}>
           <button onClick={() => onOpen(e.id)} className="flex w-full items-baseline justify-between gap-3 py-1.5 text-left text-sm hover:text-violet-300">
             <span className="truncate text-zinc-200">
-              {eventTitle(e)}
+              <EventTitle event={e} />
               {e.venue && <span className="text-zinc-500"> · {e.venue}</span>}
             </span>
             <span className="shrink-0 text-xs text-zinc-500">{whenLabel(e) ?? 'Date unknown'}</span>
