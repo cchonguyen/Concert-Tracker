@@ -119,11 +119,11 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 | Clashfinder | 1, 2 | Festival editions with start dates; full festival lineups with stages and times, archived for past years | Crowd-sourced; mostly festivals; fantasy clashes are ignored |
 | Promoter pages (and Wayback) | 2 | The official lineup, read by Gemini | Pages are overwritten each year, hence archived copies |
 | Brave web search | 1, 2 | Confirms dates from result titles and descriptions (and venue and city from the event markup on those pages); finds lineup pages when nothing else did | Results can mix in other editions or tour dates, so strict same-event filtering applies; free plan has a monthly cap |
-| Your ticket emails | 1 | Name, date, venue and city of shows you bought tickets for, from Ticketmaster, Tixr, DICE, Resident Advisor and Eventbrite confirmations; refunds and cancellations | A ticket is not attendance; layouts change; many omit the year; other sellers' emails are listed as unreadable |
+| Your ticket emails | 1 | Name, date, venue and city of shows you bought tickets for, from Ticketmaster, Tixr, DICE, Resident Advisor, Eventbrite, AXS and Front Gate confirmations (and tickets friends transferred to you on AXS); refunds and cancellations | A ticket is not attendance; layouts change; many omit the year; other sellers' emails are listed as unreadable |
 | Gemini (free tier) | 2 only | Reads fetched pages and extracts names verbatim | Never answers from memory; ~50 calls/day budget |
 | Open-Meteo geocoding | capture | City suggestions as you type ("City, ST"); free, no key | Suggestions only; never fills a field on its own |
 | MusicBrainz | after 2 | Stable artist IDs | Not a lineup source |
-| AXS | none | n/a | No public API; scraping breaks its terms |
+| AXS website | none | n/a | No public API; scraping breaks its terms (your AXS ticket emails are read as above) |
 
 ## 11. Out of scope
 

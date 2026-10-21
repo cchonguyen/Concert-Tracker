@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { normalizeName } from '../../lineup/text';
 import type { LoggedEvent } from '../types';
+import { axs } from './axs';
 import { dice } from './dice';
 import { eventbrite } from './eventbrite';
+import { frontGate } from './frontGate';
 import { residentAdvisor } from './residentAdvisor';
 import { emailLines } from './text';
 import { ticketmaster } from './ticketmaster';
@@ -22,7 +24,7 @@ import {
 // From raw ticket emails to one review row per show. Nothing here saves an
 // event: rows wait for you to tick "I went" (addImports).
 
-export const READERS: EmailReader[] = [ticketmaster, tixr, dice, residentAdvisor, eventbrite];
+export const READERS: EmailReader[] = [ticketmaster, tixr, dice, residentAdvisor, eventbrite, axs, frontGate];
 
 export type ReadOutcome =
   | { email: RawEmail; seller: string; read: ReadEmail }
@@ -136,9 +138,24 @@ export function mergeImports(existing: EmailImport[], outcomes: ReadOutcome[], e
       continue;
     }
     if (o.read.kind !== 'order') continue;
+    // The receipt and the tickets for one order can name the show
+    // differently ("Second Show Added!", "(Saturday)"); one order on one date
+    // is one show.
     const key = importKey(o.seller, o.read);
-    const row = byKey.get(key) ?? blank(key, o.seller, iso);
+    const orderId = o.read.orderId;
+    const date = o.read.startDate?.value;
+    const sameOrder = orderId
+      ? [...byKey.values()].find(
+          (r) =>
+            r.seller === o.seller &&
+            r.status !== 'unreadable' &&
+            r.orderIds?.includes(orderId) &&
+            (!r.startDate || !date || r.startDate === date),
+        )
+      : undefined;
+    const row = byKey.get(key) ?? sameOrder ?? blank(key, o.seller, iso);
     if (known(row, o.email.id)) continue;
+    if (orderId && !row.orderIds?.includes(orderId)) row.orderIds = [...(row.orderIds ?? []), orderId];
     row.messages.push(message(o.email, 'order'));
     fill(row, o.read, o.email);
     if (row.status === 'new' && !row.eventId) row.eventId = findLogged(row, events)?.id;
@@ -218,10 +235,14 @@ export function eventFromImport(row: EmailImport, now: Date): LoggedEvent {
   };
 }
 
-// What the review screen lists, newest first; kept-aside flags stay hidden.
+// What the review screen lists, newest first. Kept-aside flags stay hidden,
+// and so does an email no reader understood once a newer reader has read it
+// into a show of its own.
 export function reviewList(rows: EmailImport[]): EmailImport[] {
   const when = (r: EmailImport) => r.startDate ?? '0000';
+  const read = new Set(rows.filter((r) => r.status !== 'unreadable').flatMap((r) => r.messages.map((m) => m.id)));
   return rows
     .filter((r) => r.status !== 'flag')
+    .filter((r) => r.status !== 'unreadable' || !r.messages.every((m) => read.has(m.id)))
     .sort((a, b) => when(b).localeCompare(when(a)) || b.createdAt.localeCompare(a.createdAt));
 }

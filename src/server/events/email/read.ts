@@ -43,6 +43,12 @@ export function dateFields(text: string, sentAt: string): Pick<ReadEmail, 'start
   };
 }
 
+// Sellers that name the ticket after the event ("DJ_Dave - Artist Presale",
+// "2025 EDC Las Vegas - 3-Day GA Experience Pass"): the event is the part
+// before the last " - " when that last part names a ticket type.
+const TICKET_TYPE = /\s-\s(?:(?!\s-\s).)*\b(?:presale|admissions?|ga|general admission|vip|pass(?:es)?|parking|shuttle)\b(?:(?!\s-\s).)*$/i;
+export const withoutTicketType = (name: string) => name.replace(TICKET_TYPE, '').trim() || name;
+
 // "Location TBA" and the like are not a venue.
 export function venueFrom(line: string | undefined): Quoted | undefined {
   const v = line?.trim();
@@ -54,8 +60,9 @@ export function venueFrom(line: string | undefined): Quoted | undefined {
 export function cityFrom(text: string | undefined): Quoted | undefined {
   const t = text?.trim();
   const m = t?.match(/^([^,\d]+),\s*([A-Za-z .]+)$/);
-  const label = m && cityLabel(m[1], m[2]);
-  return label && label !== m![1].trim() ? quoted(label, t!) : undefined;
+  if (!m || /^(tba|tbd)$/i.test(m[1].trim())) return undefined;
+  const label = cityLabel(m[1], m[2]);
+  return label && label !== m[1].trim() ? quoted(label, t!) : undefined;
 }
 
 // The city from a US or Canadian postal address line:
