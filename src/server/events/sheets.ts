@@ -16,6 +16,15 @@ const API = 'https://sheets.googleapis.com/v4/spreadsheets';
 
 export const SHEETS_SETTING = 'google_sheets';
 export const SHEETS_OAUTH_SETTING = 'google_sheets_oauth';
+// The rows last written to the linked tab: the base a sync compares the
+// sheet with, so only what changed in the sheet since is offered.
+export const SHEETS_BASE_SETTING = 'google_sheets_base';
+
+export interface SheetsBase {
+  id: string;
+  tab: string;
+  rows: Array<Array<SheetValue | null>>;
+}
 
 export type SheetValue = string | number | boolean;
 

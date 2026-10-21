@@ -121,7 +121,8 @@ export const sheetsApi = {
   create: () => request<{ sheet: LinkedSheetView }>('/api/sheets/link', post({ create: true })).then((r) => r.sheet),
   unlink: () => request<unknown>('/api/sheets/unlink', post()),
   disconnect: () => request<unknown>('/api/sheets/disconnect', post()),
-  read: () => request<{ values: SheetCellValue[][]; version: string; sheet: LinkedSheetView }>('/api/sheets/values'),
+  read: () =>
+    request<{ values: SheetCellValue[][]; version: string; base?: Array<Array<SheetCellValue | null>>; sheet: LinkedSheetView }>('/api/sheets/values'),
   write: (rows: Array<Array<string | number | null>>, version: string) =>
     request<{ sheet: LinkedSheetView }>('/api/sheets/values', { method: 'PUT', body: JSON.stringify({ rows, version }) }).then((r) => r.sheet),
 };

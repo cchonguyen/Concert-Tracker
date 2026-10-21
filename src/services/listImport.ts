@@ -452,107 +452,149 @@ export function newEventPatch(row: ListRow, leaveOut: Set<string> = new Set()): 
 
 export interface Change {
   field: string;
-  from: string; // empty: nothing there
-  to: string;
+  from: string; // the app's value; empty: nothing there
+  to: string; // the file's value
+  // The app's value changed too since the file was written (or that can't be
+  // told), so the file's value is not simply newer.
+  both?: boolean;
 }
 
 const shown = (v: unknown) => (v === undefined || v === null ? '' : String(v));
 
+// The same file or sheet row as the app last wrote it, when that is known.
+export interface BaseRow {
+  row: ListRow;
+  present: ListField[];
+}
+
+type Scalar = string | number | null;
+type ScalarKey = 'name' | 'startDate' | 'endDate' | 'year' | 'venue' | 'city' | 'country' | 'format' | 'series' | 'notes' | 'rating' | 'ticketPrice';
+
+const SCALARS: Array<[ScalarKey, string]> = [
+  ['name', 'event'],
+  ['startDate', 'date'],
+  ['endDate', 'end date'],
+  ['year', 'year'],
+  ['venue', 'venue'],
+  ['city', 'city'],
+  ['country', 'country'],
+  ['format', 'format'],
+  ['series', 'series'],
+  ['notes', 'notes'],
+  ['rating', 'rating'],
+  ['ticketPrice', 'ticket price'],
+];
+
+// What a row says for each field; undefined where it says nothing: no
+// column, or a cell that couldn't be read. The year counts only for a row
+// without a date, and not when it was read from the name.
+function rowValues(row: ListRow, present: ListField[]): Record<ScalarKey, Scalar | undefined> {
+  const has = (f: ListField) => present.includes(f) && !row.unread.includes(f);
+  const dated = has('startDate');
+  const out = {} as Record<ScalarKey, Scalar | undefined>;
+  out.name = row.name;
+  out.startDate = dated ? (row.startDate ?? null) : undefined;
+  out.endDate =
+    dated && !row.unread.includes('endDate') && (present.includes('endDate') || row.endDate !== undefined)
+      ? row.startDate
+        ? (row.endDate ?? null)
+        : null
+      : undefined;
+  out.year = dated && !row.startDate && !row.yearFromName ? (row.year ?? null) : undefined;
+  for (const f of ['venue', 'city', 'country', 'format', 'series', 'notes', 'rating', 'ticketPrice'] as const) {
+    out[f] = has(f) ? (row[f] ?? null) : undefined;
+  }
+  return out;
+}
+
+function appValues(e: LoggedEvent): Record<ScalarKey, Scalar> {
+  return {
+    name: e.name,
+    startDate: e.startDate ?? null,
+    endDate: e.endDate ?? null,
+    year: e.startDate ? Number(e.startDate.slice(0, 4)) : (e.year ?? null),
+    venue: e.venue ?? null,
+    city: e.city ?? null,
+    country: e.country ?? null,
+    format: e.format ?? null,
+    series: e.series ?? null,
+    notes: e.notes ?? null,
+    rating: e.rating ?? null,
+    ticketPrice: e.ticketPrice ?? null,
+  };
+}
+
 // What a row from this app's own export (a file or the linked sheet) changed
-// on the event it came from. Unlike fillPatch, the row is the newer copy:
-// a different value replaces the event's and an emptied cell clears it. Only
-// columns the file has count, and a cell that couldn't be read changes
-// nothing. Columns worked out by the app (Type, Artist, Supporting artists,
-// Favourite set, Sets, Weather) are not read back.
+// on the event it came from. With `base` (the row as the app last wrote it)
+// this is a three-way merge: only what the row changed since then counts,
+// so a value you changed in the app since is never put back to the old one.
+// A field changed on both sides is marked `both`. Without a base nothing
+// tells which side is newer, so every difference is marked `both`. With
+// `keepApp`, fields marked `both` keep the app's value. Acts and people are
+// merged as lists: what the row added or removed is applied to the app's
+// current list. Columns worked out by the app (Type, Artist, Supporting
+// artists, Favourite set, Sets, Weather) are not read back.
 export function editPatch(
   row: ListRow,
   event: LoggedEvent,
   present: ListField[],
   leaveOut: Set<string> = new Set(),
+  base?: BaseRow,
+  keepApp = false,
 ): { patch: EventPatch; changes: Change[] } {
   const has = (f: ListField) => present.includes(f) && !row.unread.includes(f);
   const patch: EventPatch = {};
   const changes: Change[] = [];
-  const change = (field: string, from: unknown, to: unknown) => changes.push({ field, from: shown(from), to: shown(to) });
+  const mine = rowValues(row, present);
+  const was = base ? rowValues(base.row, base.present) : undefined;
+  const app = appValues(event);
 
-  if (row.name !== event.name) {
-    patch.name = row.name;
-    change('event', event.name, row.name);
+  for (const [f, label] of SCALARS) {
+    const to = mine[f];
+    if (to === undefined || to === app[f]) continue;
+    const before = was?.[f];
+    if (before !== undefined && to === before) continue; // the row didn't change it; the app's value stands
+    const both = before === undefined || app[f] !== before;
+    changes.push({ field: label, from: shown(app[f]), to: shown(to), both });
+    if (keepApp && both) continue;
+    (patch as Record<string, unknown>)[f] = to;
   }
-  if (has('startDate')) {
-    const start = row.startDate ?? null;
-    const end = start ? (row.endDate ?? null) : null;
-    const beforeStart = event.startDate ?? null;
-    if (start !== beforeStart) {
-      patch.startDate = start;
-      change('date', beforeStart, start);
-    }
-    // The end date follows the row when it has an End date column (or a
-    // range in the date cell), or when the start date changed.
-    const endKnown = !row.unread.includes('endDate') && (present.includes('endDate') || row.endDate !== undefined || start !== beforeStart);
-    if (endKnown && end !== (event.endDate ?? null)) {
-      patch.endDate = end;
-      change('end date', event.endDate, end);
-    }
-    // Without a date, the year. One read from the name counts only when the
-    // date was just cleared, as capture would read it.
-    if (!start) {
-      const year = row.yearFromName && !beforeStart ? (event.year ?? null) : (row.year ?? null);
-      const before = beforeStart ? Number(beforeStart.slice(0, 4)) : (event.year ?? null);
-      if (year !== before || beforeStart) patch.year = year;
-      if (year !== before) change('year', before, year);
-    }
-  }
-  for (const [f, label] of [
-    ['venue', 'venue'],
-    ['city', 'city'],
-    ['country', 'country'],
-    ['format', 'format'],
-    ['series', 'series'],
-    ['notes', 'notes'],
-  ] as const) {
-    if (!has(f)) continue;
-    const to = row[f] ?? null;
-    if (to !== (event[f] ?? null)) {
-      patch[f] = to;
-      change(label, event[f], to);
-    }
-  }
-  for (const [f, label] of [
-    ['rating', 'rating'],
-    ['ticketPrice', 'ticket price'],
-  ] as const) {
-    if (!has(f)) continue;
-    const to = row[f] ?? null;
-    if (to !== (event[f] ?? null)) {
-      patch[f] = to;
-      change(label, event[f], to);
-    }
-  }
+
+  // Lists: with a base, what the row added and removed since; without one,
+  // the difference from the app, marked `both`.
+  const listChange = (mineList: string[], baseList: string[] | undefined, appList: string[]) => {
+    const key = (xs: string[]) => new Set(xs.map(norm));
+    const from = baseList ?? appList;
+    const fromKeys = key(from);
+    const mineKeys = key(mineList);
+    const appKeys = key(appList);
+    const added = mineList.filter((x) => !fromKeys.has(norm(x)) && !appKeys.has(norm(x)));
+    const removedKeys = new Set([...fromKeys].filter((k) => !mineKeys.has(k) && appKeys.has(k)));
+    return { added, removedKeys, both: !baseList };
+  };
   if (has('seen')) {
-    const want = new Set(row.seen.map(norm));
-    const kept = event.seen.filter((s) => want.has(norm(s.name)));
-    const have = new Set(event.seen.map((s) => norm(s.name)));
-    const added = row.seen.filter((a) => !have.has(norm(a)));
-    const removed = event.seen.filter((s) => !want.has(norm(s.name)));
-    if (added.length || removed.length) {
-      // Acts kept keep their role, source and your marks.
-      patch.seen = [
-        ...toSeenInput(kept),
-        ...added.map((name) => ({ name, from: 'you' as const })),
-      ];
-      change('acts seen', removed.map((s) => s.name).join(', '), added.join(', '));
+    const baseSeen = base && base.present.includes('seen') ? base.row.seen : undefined;
+    const d = listChange(row.seen, baseSeen, event.seen.map((s) => s.name));
+    if (d.added.length || d.removedKeys.size) {
+      const removed = event.seen.filter((s) => d.removedKeys.has(norm(s.name)));
+      changes.push({ field: 'acts seen', from: removed.map((s) => s.name).join(', '), to: d.added.join(', '), both: d.both });
+      if (!(keepApp && d.both)) {
+        // Acts kept keep their role, source and your marks.
+        patch.seen = [
+          ...toSeenInput(event.seen.filter((s) => !d.removedKeys.has(norm(s.name)))),
+          ...d.added.map((name) => ({ name, from: 'you' as const })),
+        ];
+      }
     }
   }
   if (has('companions')) {
     const want = row.companions.filter((c) => !leaveOut.has(norm(c)));
-    const before = new Set(event.companions.map(norm));
-    const after = new Set(want.map(norm));
-    const added = want.filter((c) => !before.has(norm(c)));
-    const removed = event.companions.filter((c) => !after.has(norm(c)));
-    if (added.length || removed.length) {
-      patch.companions = want;
-      change('went with', removed.join(', '), added.join(', '));
+    const basePeople = base && base.present.includes('companions') ? base.row.companions : undefined;
+    const d = listChange(want, basePeople, event.companions);
+    if (d.added.length || d.removedKeys.size) {
+      const removed = event.companions.filter((c) => d.removedKeys.has(norm(c)));
+      changes.push({ field: 'went with', from: removed.join(', '), to: d.added.join(', '), both: d.both });
+      if (!(keepApp && d.both)) patch.companions = [...event.companions.filter((c) => !d.removedKeys.has(norm(c))), ...d.added];
     }
   }
   return { patch, changes };
@@ -560,7 +602,12 @@ export function editPatch(
 
 // Your choice for a row: a new event, folded into a target, or not imported.
 // Or, for a row from this app's export, its changes applied to its event.
-export type Choice = { kind: 'new' } | { kind: 'skip' } | { kind: 'into'; target: Target } | { kind: 'edit'; event: LoggedEvent };
+// keepApp: fields changed on both sides keep the app's value.
+export type Choice =
+  | { kind: 'new' }
+  | { kind: 'skip' }
+  | { kind: 'into'; target: Target }
+  | { kind: 'edit'; event: LoggedEvent; base?: BaseRow; keepApp: boolean };
 
 export interface ImportApi {
   create(text: string): Promise<LoggedEvent>;
@@ -593,8 +640,8 @@ export async function runImport(
     try {
       if (choice.kind === 'skip') continue;
       if (choice.kind === 'edit') {
-        const { patch, changes } = editPatch(row, choice.event, present, leaveOut);
-        if (!changes.length) {
+        const { patch } = editPatch(row, choice.event, present, leaveOut, choice.base, choice.keepApp);
+        if (!Object.keys(patch).length) {
           result.unchanged++;
           continue;
         }
