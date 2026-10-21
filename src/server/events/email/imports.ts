@@ -4,6 +4,7 @@ import type { LoggedEvent } from '../types';
 import { axs } from './axs';
 import { dice } from './dice';
 import { eventbrite } from './eventbrite';
+import { unwrapForward } from './forwarded';
 import { frontGate } from './frontGate';
 import { residentAdvisor } from './residentAdvisor';
 import { emailLines } from './text';
@@ -38,14 +39,26 @@ export interface ReadSummary {
 export function readEmails(emails: RawEmail[]): ReadSummary {
   const outcomes: ReadOutcome[] = [];
   let ignored = 0;
-  for (const email of emails) {
-    const reader = READERS.find((r) => r.matches(email.from));
+  for (const raw of emails) {
+    let email = raw;
+    let lines = emailLines(raw);
+    let reader = READERS.find((r) => r.matches(email.from));
+    // Forwarded to you: read the original by its own seller's reader.
+    const forwarded = reader ? null : unwrapForward(raw, lines);
+    if (forwarded) {
+      email = forwarded.email;
+      lines = forwarded.lines;
+      reader = READERS.find((r) => r.matches(email.from));
+    }
     if (!reader) {
       ignored++;
       continue;
     }
     try {
-      const read = reader.read(email, emailLines(email));
+      // Without the original's send date, a date written without a year
+      // could land in the wrong year, so the forward is not read.
+      if (forwarded && !forwarded.dated) throw new UnreadableEmail('The forward does not say when the original was sent.');
+      const read = reader.read(email, lines);
       if (read) outcomes.push({ email, seller: reader.seller, read });
       else ignored++;
     } catch (err) {
