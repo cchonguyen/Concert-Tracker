@@ -13,6 +13,7 @@ import {
   SourceType,
 } from '../types';
 import { LoggedEvent } from '../../events/types';
+import type { LineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 
 // Persistence boundary for the lineup pipeline. Two implementations:
@@ -43,6 +44,8 @@ export interface LineupStore {
   getEdition(id: string): Promise<Edition | null>;
   upsertEdition(edition: Edition): Promise<void>;
   listEditions(limit: number): Promise<Edition[]>;
+  // Size of each confirmed lineup, by edition id, for Concert or Festival.
+  editionLineupFacts(ids: string[]): Promise<Record<string, LineupFacts>>;
 
   getQuota(key: string): Promise<QuotaUsage | null>;
   setQuota(usage: QuotaUsage): Promise<void>;

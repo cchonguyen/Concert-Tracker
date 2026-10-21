@@ -47,6 +47,8 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 | **Series** | Editions with the same name across years (EDC Las Vegas). Remembers where its lineup is published. |
 | **Act** | A performer billed at an edition. |
 | **Seen act** | An act you say you saw at an event. Can exist without any lineup lookup. |
+| **Billing role** | How an act was billed: *headliner*, *support*, or not stated. **Artist** lists headliners and acts with no role stated (co-bills, festivals); **Supporting artists** lists only acts a source explicitly bills as support, or that you moved there. |
+| **Type** | Concert or Festival: worked out from the event, or set by you. |
 | **Source** | Where a fact came from: you, or a fetched document with its URL and the quoted text. |
 | **Candidate** | A suggestion from a source (event details in stage 1, an act in stage 2) waiting for you to accept it. |
 
@@ -80,6 +82,7 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 | R2.6 | When Gemini quota runs out, the job waits with its progress kept and resumes on its own. No other model, no heuristic substitute. |
 | R2.7 | You review the lineup: accept, rename, reject with a reason, add a missing act, and tick who you saw. Review decisions teach future lookups (aliases, blocklist, source accuracy, lineup URLs). |
 | R2.8 | Confirming writes the canonical edition and updates your event's seen acts. Acts you had already marked as seen stay ticked; acts you added by hand that the lineup lacks are kept. |
+| R2.9 | A billing role is stored only when a source's own words bill the act ("X with special guest Y", "supported by", "w/"), with a billed act named on each side of the marker, and those words are kept as the quote. A title without a marker, or with no act before it ("An Evening with X"), gives no role. Sources that disagree give no role. In review you can set any act's role; your choice is kept and passed to your seen acts. |
 
 ## 7. Your details
 
@@ -88,6 +91,8 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 | R3.1 | Seen acts can be added by name on any event, with or without a lineup. |
 | R3.2 | Optional, added any time: who you went with, notes, a rating (1 to 5), ticket price, and which days you went for multi-day events. None is ever pre-filled. |
 | R3.3 | New personal fields are added to the event without making capture longer. They appear in the event's detail view and the export. |
+| R3.4 | Who you saw is shown as **Artist** and **Supporting**. Acts from a lineup carry its role; you can move any act between the two, and that choice is yours from then on. When the event's own name names an act that a source lists for this event (the Ticketmaster listing or setlist.fm show it was matched to, or the lineup), the event offers "X as Artist?" (or "as Supporting?" when the name says "X with Y") as one tap; nothing is added until you tap it. |
+| R3.5 | **Type**: an event is a **Festival** when it spans more than one day, more than 5 acts are known (confirmed lineup or acts you saw), or its date was matched to a Clashfinder edition; a **Concert** when a confirmed lineup has 5 acts or fewer on one day; otherwise **not known yet**. You can set it yourself, and your choice wins. Only your choice is stored; the rule is worked out again whenever dates or the lineup change. |
 
 ## 8. Views
 
@@ -96,8 +101,8 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 | R4.1 | **Events** (home): the capture line at the top, then a summary to take in at a glance: what needs you (email rows to review, events missing a date or a pick, lineups to review), tiles for events, artists seen, venues and this year so far, an "On this day" line on anniversaries, events just added, events still ahead, and your five most recent. Each row shows when, where, who you saw and what it still needs as a quiet hint, not a warning. The full list is the Table view. |
 | R4.2 | **Event detail**: edit fields, see each field's source, pick research candidates, manage seen acts and personal details, run and review the lineup lookup. |
 | R4.3 | **Artists**: everyone you've seen, with how many times and at which events. |
-| R4.4 | **Export**: download events as CSV (one row per event, seen acts joined) for a spreadsheet, from the Table view: all events, or only the rows the filters show. |
-| R4.7 | **Table**: every event as a sortable row, with filters for year range, venue, city, country, an act you saw, who you went with, minimum rating, what an event still needs, where it was added from (typed or ticket email), and whether seen acts, rating, price, companions or a confirmed lineup are set. Empty fields are gaps, not zeros: they sort last, can be filtered for, and summary figures say how many events they cover. Filters live in the page address so a view can be bookmarked. A row opens the event detail. It holds CSV import (R4.9) and is where bulk editing, data clean-up and sheet sync will live. |
+| R4.4 | **Export**: download events as CSV (one row per event, with its type, Artist and Supporting artists, and all seen acts joined) for a spreadsheet, from the Table view: all events, or only the rows the filters show. |
+| R4.7 | **Table**: every event as a sortable row, with filters for year range, type (concert, festival, not known yet), venue, city, country, an act you saw, who you went with, minimum rating, what an event still needs, where it was added from (typed or ticket email), and whether seen acts, rating, price, companions or a confirmed lineup are set. Empty fields are gaps, not zeros: they sort last, can be filtered for, and summary figures say how many events they cover. Filters live in the page address so a view can be bookmarked. Read-only; a row opens the event detail. It is also where bulk editing, data clean-up, CSV import and sheet sync will live. |
 | R4.9 | **Import a list**: read a CSV of past events you kept elsewhere (Notion, a spreadsheet, this app's export) into rows you check before saving. The same event already in your log or email review is merged into it, filling only empty fields and adding acts and people; one that only shares a day under another name waits for your choice. Unreadable dates and values that look wrong are flagged, never fixed. |
 | R4.8 | **Stats**: events per year (empty years shown as gaps, a bar opens that year in the Table), a year in review (events, artists, first-time artists, most seen, top venue, who you went with most, busiest month, average rating with how many are rated), top artists, venues, cities and companions (each opens the Table filtered to it), and fun facts (first event, busiest 30 days, longest break, acts per event). Only events you have been to count; events still ahead are left out. |
 | R4.5 | Operational detail (job logs, sources configured, quota) stays out of the way, one tap deep. |
@@ -137,7 +142,6 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 
 ## 12. Open questions
 
-- Should a single-artist event automatically offer its own name as a one-tap "I saw them" suggestion? (It would be your own text, so it is not a guess, but it is still a tap you must make.)
 - Photos per event: worth the storage, or link out to an album?
 
 ## 13. Ideas for delight (not yet built)

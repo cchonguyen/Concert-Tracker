@@ -45,7 +45,15 @@ These are enforced in code. A change that breaks one is a bug, even if the outpu
    Candidates on the same start date are merged, each field keeping the source that gave it. A failing finder is noted and the others still count. Cities are written `City, ST` in the US and Canada (`cityLabel` in `src/server/events/place.ts`, from the region a source gives) and as the city elsewhere.
 4. **Place from pages.** Search snippets give dates, not places. For the candidates that will be applied or shown, if a venue or city is missing, the pages that gave the date are fetched (at most 3 per research, never AXS) and their schema.org Event markup (`application/ld+json`) is read in code (`placeFromPage`): an event whose name or a performer has every word of yours, on a day the candidate covers, gives `location.name` as the venue and `addressLocality` plus `addressRegion` as the city. Several matching events at different places give nothing. The page is added as its own source for those fields, with the venue and city as the quote; it does not count as another date confirmation.
 5. **Decide.** No candidates: `none`. If you gave a full date and one candidate covers it (or one covering candidate has more sources than any other): `matched`. The date is shown as confirmed with each source and quote, and the candidate fills only empty fields. Otherwise `choose`: up to 5 candidates wait for your pick (`POST /api/events/:id/details/pick`), which fills date and place from the candidate (the name stays yours), or for "None of these". Research never replaces a filled field; where the confirmed candidate differs from a saved field, the event view offers "Use … from <source>" under it, which takes just that field (`{ candidateId, fields }`).
-6. **Edit** (`PATCH /api/events/:id`). Any field you change becomes a `user` source. In the event view, "Last day" shows the start date until you change it (so the date picker opens on the right month) and is stored only when it differs; venue and city suggest what you have entered on other events (picking a venue you always gave the same city for fills an empty city), and city also suggests places from the Open-Meteo geocoding API as you type (`GET /api/places/cities`, `citySuggestions`). Seen acts, companions, days attended, rating, ticket price and notes are edited the same way.
+6. **Edit** (`PATCH /api/events/:id`). Any field you change becomes a `user` source. `kind` (`concert`, `festival`, or `null` to go back to the rule) is your choice of type; seen acts may carry a `role` (`headliner` or `support`), kept as yours (`roleFrom: 'you'`) unless it is the lineup's role sent back. In the event view, "Last day" shows the start date until you change it (so the date picker opens on the right month) and is stored only when it differs; venue and city suggest what you have entered on other events (picking a venue you always gave the same city for fills an empty city), and city also suggests places from the Open-Meteo geocoding API as you type (`GET /api/places/cities`, `citySuggestions`). Seen acts, companions, days attended, rating, ticket price and notes are edited the same way.
+
+## Artist, Supporting and type
+
+**Billing roles** (`src/server/lineup/billing.ts`). A role is read in code from a title a source wrote. `splitBill` finds the first marker (`with special guest(s)`, `special guest(s)`, `supported by`, `support from`, `w/`, `with`, `plus`); `billingFromTitle` gives the acts before it `headliner` and after it `support`, but only when a billed act is named on each side, so "An Evening with Bonobo" and "Fred again.. & Four Tet" give no role. The Ticketmaster adapter (`ticketmaster@2`) applies it to each listing's name and attractions and keeps the listing name as the claim's quote. `mergeLineup` keeps a role only when every claim that states one agrees. Review sends each act's role (`ReviewedPerformer.billing`, `null` for none); confirming stores it on the performance and on the seen act, with `roleFrom` `lineup` when it matches the sources and `you` otherwise. Clashfinder, setlist.fm and Gemini-read pages give no roles today. "Artist" is every seen act whose role is not `support` (`artistsOf` in `src/services/format.ts`); "Supporting" is the rest.
+
+**From the event name** (`src/server/events/artists.ts`). `GET /api/events/:id` returns `suggestions`: acts named in the event's own name (whole words, after normalization) that a source lists for this event: the performers on the stage 1 candidate the event was matched to (Ticketmaster attractions, the setlist.fm artist; `DetailCandidate.performers`), the lookup's candidates, or the confirmed lineup. A marker in the name gives the role, by the same rule. The event view offers each as one tap; nothing is added on its own.
+
+**Concert or festival** (`src/server/events/scale.ts`, shared with the browser). `eventScale(event, lineupFacts)`: your `kind` wins; otherwise festival when the end date is after the start date, more than 5 acts are known (confirmed lineup acts that were not cancelled, or seen acts), or the edition or the confirmed stage 1 date came from Clashfinder; concert when a confirmed lineup has 1 to 5 acts; otherwise not known. `GET /api/events` returns `editions` (per event: `{ acts, clashfinder }`, from `LineupStore.editionLineupFacts`) so the Table can work it out without loading each lineup. Only `kind` is stored, so the answer follows the event's dates and lineup.
 
 ## Stage 1 from email
 
@@ -129,15 +137,15 @@ Cached editions are not counted again in source stats. Every claim records its e
 
 ## Data model
 
-Defined in [`supabase/migrations/0002_source_first_lineups.sql`](supabase/migrations/0002_source_first_lineups.sql) and [`0003_event_log.sql`](supabase/migrations/0003_event_log.sql); both must be applied (the server checks one table from each at start). [`0004_email_imports.sql`](supabase/migrations/0004_email_imports.sql) is needed only for email import; without it the rest of the app works and the import routes fail. The local file store (`store/fileStore.ts`) implements the same `LineupStore` interface for development.
+Defined in [`supabase/migrations/0002_source_first_lineups.sql`](supabase/migrations/0002_source_first_lineups.sql) and [`0003_event_log.sql`](supabase/migrations/0003_event_log.sql); both must be applied (the server checks one table from each at start). [`0004_email_imports.sql`](supabase/migrations/0004_email_imports.sql) is needed only for email import; without it the rest of the app works and the import routes fail. [`0005_billing_and_kind.sql`](supabase/migrations/0005_billing_and_kind.sql) adds `billing` to `performer_claims` and `performances` and `kind` to `logged_events`; apply it before deploying code that writes them. The local file store (`store/fileStore.ts`) implements the same `LineupStore` interface for development.
 
 | Layer | Tables |
 | --- | --- |
-| Canonical | `event_series`, `event_editions` (unique `key`), `canonical_artists` (normalized key, optional MBID), `performances` (per edition and artist, with status, confidence and sources) |
+| Canonical | `event_series`, `event_editions` (unique `key`), `canonical_artists` (normalized key, optional MBID), `performances` (per edition and artist, with status, billing role, confidence and sources) |
 | Evidence | `source_documents` (URL, hash, stored body), `performer_claims` (quoted span, extractor, version) |
 | Operations | `lookup_jobs`, `quota_ledger` |
 | Learning | `artist_aliases`, `extraction_blocklist`, `source_stats`, `corrections`, `extraction_examples` |
-| Personal | `logged_events` (one row per event you went to: fields, field sources, details research, lineup job and edition links, seen acts, companions, days, rating, price, notes). `attendance` and `seen_sets` from 0002 are no longer written; [`0003_event_log.sql`](supabase/migrations/0003_event_log.sql) copies them into `logged_events`. |
+| Personal | `logged_events` (one row per event you went to: fields, field sources, details research, lineup job and edition links, seen acts with their roles, your choice of type, companions, days, rating, price, notes). `attendance` and `seen_sets` from 0002 are no longer written; [`0003_event_log.sql`](supabase/migrations/0003_event_log.sql) copies them into `logged_events`. |
 | Import | `email_imports` (one row per show found in your ticket emails: status, read fields with their quotes and message links, flags, the event it became). Proposals only; never read as part of your log. |
 
 Store selection: Supabase when `SUPABASE_URL` is set and the migration has been applied; otherwise a JSON store under `DATA_DIR` (default `./data`). Set `LINEUP_STORE=file` to force the local store. The local store does not survive a redeploy, so use Supabase for real data. On Cloudflare the server refuses to start without Supabase.
@@ -148,9 +156,9 @@ The browser keeps nothing: every view reads the server. The interface is one pag
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET /api/events` | Your events, newest first, plus a summary of each one's lineup lookup |
+| `GET /api/events` | Your events, newest first, plus a summary of each one's lineup lookup and the size of each confirmed lineup (`editions`) |
 | `POST /api/events` | Save one typed line as an event (`{ text }`) |
-| `GET /api/events/:id` | The event with its lineup job and confirmed edition |
+| `GET /api/events/:id` | The event with its lineup job, confirmed edition and acts suggested from its name |
 | `PATCH /api/events/:id`, `DELETE /api/events/:id` | Edit or delete an event |
 | `POST /api/events/:id/details` | Run stage 1 research |
 | `POST /api/events/:id/details/pick` | Pick a suggestion (`{ candidateId }`) or dismiss them (`{}`) |
@@ -190,7 +198,7 @@ See [`.env.example`](.env.example). Each source is optional; the app reports whi
 
 ## Testing
 
-`npm test` runs the node test suite in `tests/`: capture parsing, stage 1 research and its rules (`events.test.ts`), email readers, the year rule, grouping and the import routes (`email.test.ts`), list import reading, matching and merging (`listImport.test.ts`), verbatim checks, merging and scoring, each adapter against recorded responses, quota parsing, and the full pipeline including quota parking, review learning and the cache. `npm run lint` typechecks. Add a test with every new adapter or rule.
+`npm test` runs the node test suite in `tests/`: capture parsing, stage 1 research and its rules (`events.test.ts`), billing roles, type and name suggestions (`roles.test.ts`), email readers, the year rule, grouping and the import routes (`email.test.ts`), list import reading, matching and merging (`listImport.test.ts`), verbatim checks, merging and scoring, each adapter against recorded responses, quota parsing, and the full pipeline including quota parking, review learning and the cache. `npm run lint` typechecks. Add a test with every new adapter or rule.
 
 ## Roadmap
 
@@ -199,4 +207,7 @@ See [`.env.example`](.env.example). Each source is optional; the app reports whi
 - A weekly refresh job for editions that are upcoming or ended in the last 14 days, to pick up cancellations and additions.
 - A regression command that re-runs extraction over stored documents and compares against confirmed lineups when the model or prompt changes.
 - In the Table view: bulk edit of personal fields, merging spellings of venues, cities and companions, and sheet sync. Each writes through the existing event routes; none changes capture or lookup.
+- A Format field you pick (club night, warehouse party, block party, ...), separate from Concert or Festival, never filled on its own.
+- "Find lineups for all" in the Table, queueing stage 2 for many events, with a batch review.
+- Billing roles from promoter pages: an optional role in Gemini's extraction, kept only when its quote contains the marker words (checked in code, like `isVerbatim`).
 - Per-series source priority editing in the UI (`event_series.source_priority` is already read by the merge step).

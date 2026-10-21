@@ -3,7 +3,8 @@ import { createLookup, InputError, PipelineDeps } from '../lineup/pipeline';
 import { LookupJob } from '../lineup/types';
 import { normalizeName } from '../lineup/text';
 import { parseEventInput } from './parse';
-import { EVENT_FIELDS, EventField, LineupSummary, LoggedEvent, SeenAct } from './types';
+import { isBilling } from '../lineup/billing';
+import { EVENT_FIELDS, EventField, EventKind, LineupSummary, LoggedEvent, SeenAct } from './types';
 
 // Your event log. Stage 1 (capture and details) lives here; stage 2 hands the
 // event to the lineup pipeline. See REQUIREMENTS.md.
@@ -42,7 +43,8 @@ export interface EventPatch {
   venue?: string | null;
   city?: string | null;
   country?: string | null;
-  seen?: Array<{ name: string; from?: SeenAct['from'] }>;
+  seen?: Array<{ name: string; from?: SeenAct['from']; role?: SeenAct['role'] | null; roleFrom?: SeenAct['roleFrom'] }>;
+  kind?: EventKind | null; // null: worked out by the rule again
   daysAttended?: string[];
   companions?: string[];
   rating?: number | null;
@@ -76,6 +78,10 @@ export function applyPatch(event: LoggedEvent, patch: EventPatch, now: Date): Lo
   }
   if (next.endDate && (!next.startDate || next.endDate < next.startDate)) setField(next, 'endDate', undefined);
   if (patch.seen) next.seen = cleanSeen(patch.seen);
+  if (patch.kind !== undefined) {
+    if (patch.kind !== null && patch.kind !== 'concert' && patch.kind !== 'festival') throw new InputError('Type is concert or festival.');
+    next.kind = patch.kind ?? undefined;
+  }
   if (patch.daysAttended) next.daysAttended = patch.daysAttended.filter((d) => DATE.test(d));
   if (patch.companions) next.companions = [...new Set(patch.companions.map((c) => c.trim()).filter(Boolean))];
   if (patch.rating !== undefined) {
@@ -99,12 +105,19 @@ function setField(ev: LoggedEvent, f: EventField, value: string | undefined): vo
   else delete ev.sources[f];
 }
 
-function cleanSeen(list: Array<{ name: string; from?: SeenAct['from'] }>): SeenAct[] {
+// A role you set is yours unless it is the lineup's role sent back unchanged.
+function cleanSeen(list: NonNullable<EventPatch['seen']>): SeenAct[] {
   const out = new Map<string, SeenAct>();
   for (const s of list) {
     const name = text(s.name);
     const key = name && normalizeName(name);
-    if (key && !out.has(key)) out.set(key, { key, name: name!, from: s.from === 'lineup' ? 'lineup' : 'you' });
+    if (!key || out.has(key)) continue;
+    const act: SeenAct = { key, name: name!, from: s.from === 'lineup' ? 'lineup' : 'you' };
+    if (isBilling(s.role)) {
+      act.role = s.role;
+      act.roleFrom = s.roleFrom === 'lineup' ? 'lineup' : 'you';
+    }
+    out.set(key, act);
   }
   return [...out.values()];
 }

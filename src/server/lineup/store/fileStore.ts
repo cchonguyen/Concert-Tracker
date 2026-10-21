@@ -15,6 +15,7 @@ import {
   SourceType,
 } from '../types';
 import { LoggedEvent } from '../../events/types';
+import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import { LineupStore, MAX_EXAMPLES_PER_DOMAIN } from './types';
 
@@ -185,6 +186,13 @@ export class FileLineupStore implements LineupStore {
   async upsertEdition(edition: Edition) {
     (await this.load()).editions[edition.id] = clone(edition);
     await this.save();
+  }
+
+  async editionLineupFacts(ids: string[]) {
+    const editions = (await this.load()).editions;
+    const out: Record<string, LineupFacts> = {};
+    for (const id of ids) out[id] = lineupFacts(editions[id] ?? { performances: [] });
+    return out;
   }
 
   async listEditions(limit: number) {

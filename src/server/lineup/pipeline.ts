@@ -86,6 +86,7 @@ export function candidateFromEdition(edition: Edition): CandidateLineup {
         days: p.days,
         stages: p.stages,
         status: p.status === 'performed' ? 'performed' : 'billed',
+        billing: p.billing,
         confidence: p.confidence,
         flagged: false,
         sources: p.sources,
