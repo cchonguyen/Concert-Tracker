@@ -30,6 +30,17 @@ export function gotTickets(email: RawEmail, lines: string[], name: string): Read
     venue: place ? venueFrom(place[1]) : undefined,
     city: place ? cityFrom(place[2]) : undefined,
     orderId: order?.replace(/^Order #\s*/, ''),
+    tickets: seats(lines),
     total: money(lines.find((l) => /^Total:/.test(l))),
   };
+}
+
+// "Sec 141LG, Row R, Seat 5 - 8" is four tickets; general admission names
+// no seats, so no count.
+function seats(lines: string[]): number | undefined {
+  const rows = [...new Set(lines)].map((l) => l.match(/^Sec .+, Row .+, Seats? (\d+)(?:\s*-\s*(\d+))?$/i)).filter((m) => m);
+  if (rows.length !== 1) return undefined;
+  const [, from, to] = rows[0]!;
+  const n = to ? Number(to) - Number(from) + 1 : 1;
+  return n > 0 ? n : undefined;
 }

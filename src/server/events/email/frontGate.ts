@@ -46,8 +46,19 @@ function receipt(lines: string[], sentAt: string): Omit<ReadEmail, 'kind'> {
       .slice(venueAt + 1, venueAt + 4)
       .map((l) => cityFrom(l))
       .find(Boolean),
-    total: money(lines.find((l) => /^Total:/i.test(l))),
+    ...onlyItem(lines),
   };
+}
+
+// "Quantity" / "Price" / the item / "2" / "$130.26" ... "Event Subtotal:
+// $130.26" (fees in). Read only when the receipt sells one item that is
+// not a shuttle or parking, so the count is the tickets the total paid for.
+function onlyItem(lines: string[]): Pick<ReadEmail, 'tickets' | 'total'> {
+  const heads = lines.flatMap((l, i) => (/^Quantity$/i.test(l) && /^Price$/i.test(lines[i + 1] ?? '') ? [i] : []));
+  if (heads.length !== 1 || lines.filter((l) => /^Event Subtotal:/i.test(l)).length !== 1) return {};
+  const [item, qty] = [lines[heads[0] + 2], lines[heads[0] + 3]];
+  if (!item || !/^\d+$/.test(qty ?? '') || /\b(shuttle|parking|depart|return)\b/i.test(item)) return {};
+  return { tickets: Number(qty), total: money(lines.find((l) => /^Event Subtotal:/i.test(l))) };
 }
 
 function tickets(lines: string[], sentAt: string): Omit<ReadEmail, 'kind'> {

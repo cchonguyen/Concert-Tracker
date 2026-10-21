@@ -1044,6 +1044,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               label="Ticket price"
               type="number"
               value={event.ticketPrice}
+              source={event.sources.ticketPrice}
               onSave={(v) => save({ ticketPrice: v ? Number(v) : null })}
               className="w-32"
             />
