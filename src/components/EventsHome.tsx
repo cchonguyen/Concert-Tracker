@@ -10,6 +10,7 @@ interface EventsHomeProps {
   researching: Set<string>;
   justAdded: string[]; // ids captured since the page loaded, newest first
   toReview: number; // email rows waiting for review
+  emailCheck: boolean; // Check email is set up, so the review list is worth opening when empty
   loaded: boolean;
   onOpen: (id: string) => void;
   onReviewEmail: () => void;
@@ -85,6 +86,7 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
   researching,
   justAdded,
   toReview,
+  emailCheck,
   loaded,
   onOpen,
   onReviewEmail,
@@ -113,6 +115,7 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
 
   const tasks = [
     toReview > 0 && { label: `${toReview} from your email to review`, icon: <Mail className="h-3.5 w-3.5" />, onClick: onReviewEmail },
+    !toReview && emailCheck && { label: 'Check email for new tickets', icon: <Mail className="h-3.5 w-3.5" />, onClick: onReviewEmail },
     s.needs.date > 0 && { label: `${s.needs.date} need a date`, onClick: () => onOpenTable('needs=date') },
     s.needs.pick > 0 && { label: `${s.needs.pick} waiting on a pick`, onClick: () => onOpenTable('needs=pick') },
     s.needs.review > 0 && { label: `${s.needs.review} lineup${s.needs.review === 1 ? '' : 's'} to review`, onClick: () => onOpenTable('needs=review') },

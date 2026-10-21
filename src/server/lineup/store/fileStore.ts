@@ -35,6 +35,7 @@ interface FileState {
   examples: ExtractionExample[];
   events: Record<string, LoggedEvent>;
   imports: Record<string, EmailImport>;
+  settings?: Record<string, unknown>;
   artists: Record<string, ArtistIdentity>;
 }
 
@@ -293,6 +294,17 @@ export class FileLineupStore implements LineupStore {
   async putImports(rows: EmailImport[]) {
     const state = await this.load();
     for (const row of rows) state.imports[row.id] = clone(row);
+    await this.save();
+  }
+
+  async getSetting<T>(key: string) {
+    const v = (await this.load()).settings?.[key];
+    return v === undefined ? null : clone(v as T);
+  }
+
+  async putSetting<T>(key: string, data: T) {
+    const state = await this.load();
+    state.settings = { ...state.settings, [key]: clone(data) };
     await this.save();
   }
 
