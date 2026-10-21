@@ -154,6 +154,9 @@ export interface CandidatePerformer {
   // Sources that gave a full lineup for the edition without this act.
   missingFrom?: SourceType[];
   flagged: boolean; // low evidence, needs a look
+  // From the lineup's own words ("A b2b B", "X DJ Set"); see actName.ts.
+  set?: 'dj';
+  b2b?: string[]; // keys of the acts billed with it as a B2B
   sources: CandidateSource[];
 }
 

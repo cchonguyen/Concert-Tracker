@@ -250,7 +250,7 @@ test('web search reads the event site first, as a promoter page, even if stored 
   };
   const job = await runJob(deps, (await createLookup(deps, { eventName: 'Sun Soaked', year: 2026 })).id);
   assert.ok(read[0].includes('ATICA'), 'the event site is read first');
-  assert.deepEqual(job!.candidate!.performers.map((p) => p.name).sort(), ['ATICA', 'Cut Snake']);
+  assert.deepEqual(job!.candidate!.performers.map((p) => p.name).sort(), ['Atica', 'Cut Snake']); // all caps on the page, put in Proper Case
   assert.ok(job!.candidate!.performers.every((p) => p.sources.every((s) => s.sourceType === 'promoter')));
 
   // Confirming teaches the series where its lineup lives.

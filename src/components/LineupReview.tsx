@@ -28,6 +28,8 @@ interface Row {
   flagged: boolean;
   missingFrom: string[];
   status: 'billed' | 'performed';
+  set: '' | 'dj' | 'live'; // yours, or as the lineup billed it
+  b2b?: string; // who it was billed B2B with
   sources: NonNullable<LookupJob['candidate']>['performers'][number]['sources'];
 }
 
@@ -40,6 +42,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
   const candidate = job.candidate;
   const alreadySeen = new Set(event.seen.map((s) => s.key));
   // A role you set on a seen act wins over the sources'.
+  const yourSet = new Map(event.seen.filter((s) => s.set).map((s) => [s.key, s.set!]));
   const yourRole = new Map(event.seen.filter((s) => s.roleFrom === 'you').map((s) => [s.key, s.role ?? '']));
   const [rows, setRows] = useState<Row[]>(
     startRows(candidate?.performers ?? [], edition).map((r) => ({
@@ -57,6 +60,8 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
       missingFrom: (r.candidate?.missingFrom ?? []).map((t) => SOURCE_LABELS[t]),
       status: r.candidate?.status === 'performed' ? 'performed' : 'billed',
       sources: r.candidate?.sources ?? [],
+      set: yourSet.get(r.seenKey) ?? r.candidate?.set ?? '',
+      b2b: r.candidate?.b2b?.map((k) => candidate?.performers.find((p) => p.key === k)?.name ?? k).join(', '),
     })),
   );
   const options = filterOptions(rows);
@@ -82,7 +87,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
     if (!name) return;
     setRows((rs) => [
       ...rs,
-      { name, accepted: true, rejectReason: 'not_an_act', seen: true, billing: '', days: [], stages: [], confidence: 1, flagged: false, missingFrom: [], status: 'billed', sources: [] },
+      { name, accepted: true, rejectReason: 'not_an_act', seen: true, billing: '', set: '', days: [], stages: [], confidence: 1, flagged: false, missingFrom: [], status: 'billed', sources: [] },
     ]);
     setNewAct('');
   };
@@ -99,6 +104,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
           rejectReason: r.accepted ? undefined : r.rejectReason,
           seen: r.accepted && r.seen,
           billing: r.billing || null,
+          set: r.set || null,
           days: r.days,
           stages: r.stages,
         })),
@@ -196,6 +202,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
                           </span>
                         )}
                         {row.status === 'performed' && <span className="text-emerald-300">confirmed performed</span>}
+                        {row.b2b && <span className="text-sky-300">b2b {row.b2b}</span>}
                         {row.sources.some((src) => src.sourceType !== 'user') && (
                           <span
                             className="text-zinc-500"
@@ -256,6 +263,16 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
                         <option value="">Artist</option>
                         <option value="headliner">Headliner</option>
                         <option value="support">Supporting</option>
+                      </select>
+                      <select
+                        className="mt-1 block rounded border border-zinc-800 bg-zinc-900 px-1 py-1 text-xs text-zinc-200"
+                        value={row.set}
+                        onChange={(e) => update(index, { set: e.target.value as Row['set'] })}
+                        aria-label={`Set type for ${row.name}`}
+                      >
+                        <option value="">Set type</option>
+                        <option value="dj">DJ set</option>
+                        <option value="live">Live set</option>
                       </select>
                     </td>
                     <td className="p-2 align-top text-[11px] text-zinc-400">
