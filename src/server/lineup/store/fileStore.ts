@@ -183,6 +183,11 @@ export class FileLineupStore implements LineupStore {
     const ed = (await this.load()).editions[id];
     return ed ? clone(ed) : null;
   }
+  async getEditions(ids: string[]) {
+    const editions = (await this.load()).editions;
+    return clone(ids.map((id) => editions[id]).filter((e): e is Edition => Boolean(e)));
+  }
+
 
   async upsertEdition(edition: Edition) {
     (await this.load()).editions[edition.id] = clone(edition);
@@ -215,8 +220,8 @@ export class FileLineupStore implements LineupStore {
     return clone((await this.load()).aliases);
   }
 
-  async putAlias(normalizedAlias: string, canonicalName: string) {
-    (await this.load()).aliases[normalizedAlias] = canonicalName;
+  async putAliases(aliases: Record<string, string>) {
+    Object.assign((await this.load()).aliases, aliases);
     await this.save();
   }
 
@@ -224,11 +229,13 @@ export class FileLineupStore implements LineupStore {
     return clone((await this.load()).blocklist.filter((b) => domains.includes(b.domain)));
   }
 
-  async bumpBlocklist(domain: string, normalized: string) {
+  async bumpBlocklist(entries: Array<{ domain: string; normalized: string }>) {
     const state = await this.load();
-    const entry = state.blocklist.find((b) => b.domain === domain && b.normalized === normalized);
-    if (entry) entry.rejections += 1;
-    else state.blocklist.push({ domain, normalized, rejections: 1 });
+    for (const { domain, normalized } of entries) {
+      const entry = state.blocklist.find((b) => b.domain === domain && b.normalized === normalized);
+      if (entry) entry.rejections += 1;
+      else state.blocklist.push({ domain, normalized, rejections: 1 });
+    }
     await this.save();
   }
 
@@ -236,20 +243,22 @@ export class FileLineupStore implements LineupStore {
     return clone((await this.load()).sourceStats);
   }
 
-  async bumpSourceStat(sourceType: SourceType, scope: string, accepted: boolean) {
+  async bumpSourceStats(deltas: SourceStat[]) {
     const state = await this.load();
-    let stat = state.sourceStats.find((s) => s.sourceType === sourceType && s.scope === scope);
-    if (!stat) {
-      stat = { sourceType, scope, accepted: 0, rejected: 0 };
-      state.sourceStats.push(stat);
+    for (const d of deltas) {
+      let stat = state.sourceStats.find((s) => s.sourceType === d.sourceType && s.scope === d.scope);
+      if (!stat) {
+        stat = { sourceType: d.sourceType, scope: d.scope, accepted: 0, rejected: 0 };
+        state.sourceStats.push(stat);
+      }
+      stat.accepted += d.accepted;
+      stat.rejected += d.rejected;
     }
-    if (accepted) stat.accepted += 1;
-    else stat.rejected += 1;
     await this.save();
   }
 
-  async addCorrection(correction: Correction) {
-    (await this.load()).corrections.push(clone(correction));
+  async addCorrections(corrections: Correction[]) {
+    (await this.load()).corrections.push(...clone(corrections));
     await this.save();
   }
 
@@ -270,6 +279,12 @@ export class FileLineupStore implements LineupStore {
 
   async putEvent(event: LoggedEvent) {
     (await this.load()).events[event.id] = clone(event);
+    await this.save();
+  }
+
+  async putEvents(events: LoggedEvent[]) {
+    const state = await this.load();
+    for (const e of events) state.events[e.id] = clone(e);
     await this.save();
   }
 
@@ -315,6 +330,12 @@ export class FileLineupStore implements LineupStore {
 
   async upsertArtist(artist: ArtistIdentity) {
     (await this.load()).artists[artist.key] = clone(artist);
+    await this.save();
+  }
+
+  async ensureArtists(artists: ArtistIdentity[]) {
+    const state = await this.load();
+    for (const a of artists) state.artists[a.key] ??= clone(a);
     await this.save();
   }
 

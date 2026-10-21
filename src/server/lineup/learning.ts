@@ -2,9 +2,11 @@ import { randomUUID } from 'node:crypto';
 import {
   CandidatePerformer,
   CandidateSource,
+  Correction,
   Edition,
   EditionPerformance,
   LookupJob,
+  SourceStat,
   SourceType,
 } from './types';
 import { LineupStore } from './store/types';
@@ -75,12 +77,14 @@ export function mergeSeen(before: SeenAct[], ticked: SeenAct[], reviewedKeys: Se
 
 const EXAMPLE_CHARS = 6000;
 
-async function bumpStats(store: LineupStore, types: SourceType[], slug: string, accepted: boolean) {
+// One review outcome per source type, for this series and overall.
+function statDeltas(types: SourceType[], slug: string, accepted: boolean): SourceStat[] {
+  const out: SourceStat[] = [];
   for (const t of new Set(types)) {
     if (t === 'user') continue;
-    await store.bumpSourceStat(t, slug, accepted);
-    await store.bumpSourceStat(t, '*', accepted);
+    for (const scope of [slug, '*']) out.push({ sourceType: t, scope, accepted: accepted ? 1 : 0, rejected: accepted ? 0 : 1 });
   }
+  return out;
 }
 
 export async function confirmLookup(store: LineupStore, job: LookupJob, req: ConfirmRequest): Promise<ConfirmResult> {
@@ -99,6 +103,12 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
   const ticked: SeenAct[] = [];
   const reviewedKeys = new Set<string>();
   const acceptedByDoc = new Map<string, string[]>();
+  // Learning writes are collected and saved in a few batched calls after the
+  // loop, so a large lineup stays within a Worker's subrequest limit.
+  const corrections: Correction[] = [];
+  const stats: SourceStat[] = [];
+  const blocked: Array<{ domain: string; normalized: string }> = [];
+  const aliases: Record<string, string> = {};
 
   for (const reviewed of req.performers) {
     const name = reviewed.name.trim();
@@ -113,7 +123,7 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
         performances.push({ ...toPerformance(cand, cand.name), status: 'cancelled' });
         continue;
       }
-      await store.addCorrection({
+      corrections.push({
         id: randomUUID(),
         editionKey: job.editionKey,
         kind: 'rejected',
@@ -122,19 +132,19 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
         sourceUrls: urls,
         createdAt: now,
       });
-      if (fresh) await bumpStats(store, types, slug, false);
+      if (fresh) stats.push(...statDeltas(types, slug, false));
       if (reviewed.rejectReason !== 'wrong_event') {
-        for (const domain of new Set(urls.map(domainOf))) await store.bumpBlocklist(domain, normalizeName(cand.name));
+        for (const domain of new Set(urls.map(domainOf))) blocked.push({ domain, normalized: normalizeName(cand.name) });
       }
       continue;
     }
     if (!reviewed.accepted) continue;
 
     if (cand) {
-      if (fresh) await bumpStats(store, types, slug, true);
+      if (fresh) stats.push(...statDeltas(types, slug, true));
       if (name !== cand.name) {
-        await store.putAlias(normalizeName(cand.name), name);
-        await store.addCorrection({
+        aliases[normalizeName(cand.name)] = name;
+        corrections.push({
           id: randomUUID(),
           editionKey: job.editionKey,
           kind: 'renamed',
@@ -146,7 +156,7 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
         });
       }
     } else {
-      await store.addCorrection({
+      corrections.push({
         id: randomUUID(),
         editionKey: job.editionKey,
         kind: 'added',
@@ -186,8 +196,13 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
         acceptedByDoc.set(s.sourceUrl, [...(acceptedByDoc.get(s.sourceUrl) ?? []), cand.name]);
       }
     }
-    if (!(await store.getArtist(perf.artistKey))) await store.upsertArtist({ key: perf.artistKey, name: perf.name });
   }
+
+  await store.addCorrections(corrections);
+  await store.bumpSourceStats(stats);
+  await store.bumpBlocklist(blocked);
+  await store.putAliases(aliases);
+  await store.ensureArtists(performances.map((p) => ({ key: p.artistKey, name: p.name })));
 
   const existing = await store.getEditionByKey(job.editionKey);
   const edition: Edition = {

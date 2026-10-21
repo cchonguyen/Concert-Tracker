@@ -260,6 +260,10 @@ export class SupabaseLineupStore implements LineupStore {
       await this.db.from('performances').select('*').eq('edition_id', row.id),
       'loadEdition performances',
     );
+    return this.toEdition(row, perfs ?? []);
+  }
+
+  private toEdition(row: any, perfs: any[]): Edition {
     return {
       id: row.id,
       key: row.key,
@@ -274,7 +278,7 @@ export class SupabaseLineupStore implements LineupStore {
       status: row.status,
       confirmedAt: row.confirmed_at ?? undefined,
       updatedAt: row.updated_at,
-      performances: (perfs ?? []).map((p: any) => ({
+      performances: perfs.map((p: any) => ({
         artistKey: p.artist_key,
         name: p.name,
         days: p.days ?? [],
@@ -285,6 +289,27 @@ export class SupabaseLineupStore implements LineupStore {
         sources: p.sources ?? [],
       })),
     };
+  }
+
+  // A few requests for many editions: ids go in the URL 100 at a time, and
+  // performances come in pages of 1000 (Supabase's row cap per select).
+  async getEditions(ids: string[]) {
+    const out: Edition[] = [];
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100);
+      const rows = this.check(await this.db.from('event_editions').select('*').in('id', chunk), 'getEditions');
+      const perfs: any[] = [];
+      for (let from = 0; ; from += 1000) {
+        const page = this.check(
+          await this.db.from('performances').select('*').in('edition_id', chunk).order('edition_id').order('artist_key').range(from, from + 999),
+          'getEditions performances',
+        );
+        perfs.push(...(page ?? []));
+        if ((page ?? []).length < 1000) break;
+      }
+      for (const r of rows ?? []) out.push(this.toEdition(r, perfs.filter((p: any) => p.edition_id === r.id)));
+    }
+    return out;
   }
 
   async getEditionByKey(key: string) {
@@ -318,9 +343,7 @@ export class SupabaseLineupStore implements LineupStore {
       }),
       'upsertEdition',
     );
-    for (const p of e.performances) {
-      if (!(await this.getArtist(p.artistKey))) await this.upsertArtist({ key: p.artistKey, name: p.name });
-    }
+    await this.ensureArtists(e.performances.map((p) => ({ key: p.artistKey, name: p.name })));
     this.check(await this.db.from('performances').delete().eq('edition_id', e.id), 'upsertEdition clear');
     if (e.performances.length > 0) {
       this.check(
@@ -386,11 +409,9 @@ export class SupabaseLineupStore implements LineupStore {
     return out;
   }
 
-  async putAlias(normalizedAlias: string, canonicalName: string) {
-    this.check(
-      await this.db.from('artist_aliases').upsert({ alias_normalized: normalizedAlias, canonical_name: canonicalName }),
-      'putAlias',
-    );
+  async putAliases(aliases: Record<string, string>) {
+    const rows = Object.entries(aliases).map(([alias, name]) => ({ alias_normalized: alias, canonical_name: name }));
+    if (rows.length) this.check(await this.db.from('artist_aliases').upsert(rows), 'putAliases');
   }
 
   async getBlocklist(domains: string[]) {
@@ -398,17 +419,29 @@ export class SupabaseLineupStore implements LineupStore {
     return (rows ?? []).map((r: any): BlocklistEntry => ({ domain: r.domain, normalized: r.normalized, rejections: r.rejections }));
   }
 
-  async bumpBlocklist(domain: string, normalized: string) {
-    const existing = this.check(
-      await this.db.from('extraction_blocklist').select('*').eq('domain', domain).eq('normalized', normalized).maybeSingle(),
-      'bumpBlocklist lookup',
-    );
-    this.check(
+  // One read and one write for the whole list.
+  async bumpBlocklist(entries: Array<{ domain: string; normalized: string }>) {
+    if (!entries.length) return;
+    const counts = new Map<string, { domain: string; normalized: string; rejections: number }>();
+    for (const { domain, normalized } of entries) {
+      const k = `${domain}\u0000${normalized}`;
+      const c = counts.get(k) ?? { domain, normalized, rejections: 0 };
+      c.rejections += 1;
+      counts.set(k, c);
+    }
+    const rows = this.check(
       await this.db
         .from('extraction_blocklist')
-        .upsert({ domain, normalized, rejections: (existing?.rejections ?? 0) + 1 }),
-      'bumpBlocklist',
+        .select('*')
+        .in('domain', [...new Set(entries.map((e) => e.domain))])
+        .in('normalized', [...new Set(entries.map((e) => e.normalized))]),
+      'bumpBlocklist lookup',
     );
+    for (const r of rows ?? []) {
+      const c = counts.get(`${r.domain}\u0000${r.normalized}`);
+      if (c) c.rejections += r.rejections;
+    }
+    this.check(await this.db.from('extraction_blocklist').upsert([...counts.values()]), 'bumpBlocklist');
   }
 
   async getSourceStats() {
@@ -418,35 +451,51 @@ export class SupabaseLineupStore implements LineupStore {
     );
   }
 
-  async bumpSourceStat(sourceType: SourceType, scope: string, accepted: boolean) {
-    const r = this.check(
-      await this.db.from('source_stats').select('*').eq('source_type', sourceType).eq('scope', scope).maybeSingle(),
-      'bumpSourceStat lookup',
+  // One read and one write for the whole list.
+  async bumpSourceStats(deltas: SourceStat[]) {
+    if (!deltas.length) return;
+    const sums = new Map<string, { source_type: SourceType; scope: string; accepted: number; rejected: number }>();
+    for (const d of deltas) {
+      const k = `${d.sourceType}\u0000${d.scope}`;
+      const s = sums.get(k) ?? { source_type: d.sourceType, scope: d.scope, accepted: 0, rejected: 0 };
+      s.accepted += d.accepted;
+      s.rejected += d.rejected;
+      sums.set(k, s);
+    }
+    const rows = this.check(
+      await this.db
+        .from('source_stats')
+        .select('*')
+        .in('source_type', [...new Set(deltas.map((d) => d.sourceType))])
+        .in('scope', [...new Set(deltas.map((d) => d.scope))]),
+      'bumpSourceStats lookup',
     );
-    this.check(
-      await this.db.from('source_stats').upsert({
-        source_type: sourceType,
-        scope,
-        accepted: (r?.accepted ?? 0) + (accepted ? 1 : 0),
-        rejected: (r?.rejected ?? 0) + (accepted ? 0 : 1),
-      }),
-      'bumpSourceStat',
-    );
+    for (const r of rows ?? []) {
+      const s = sums.get(`${r.source_type}\u0000${r.scope}`);
+      if (s) {
+        s.accepted += r.accepted;
+        s.rejected += r.rejected;
+      }
+    }
+    this.check(await this.db.from('source_stats').upsert([...sums.values()]), 'bumpSourceStats');
   }
 
-  async addCorrection(c: Correction) {
+  async addCorrections(list: Correction[]) {
+    if (!list.length) return;
     this.check(
-      await this.db.from('corrections').insert({
-        id: c.id,
-        edition_key: c.editionKey,
-        kind: c.kind,
-        original: c.original ?? null,
-        corrected: c.corrected ?? null,
-        source_types: c.sourceTypes,
-        source_urls: c.sourceUrls,
-        created_at: c.createdAt,
-      }),
-      'addCorrection',
+      await this.db.from('corrections').insert(
+        list.map((c) => ({
+          id: c.id,
+          edition_key: c.editionKey,
+          kind: c.kind,
+          original: c.original ?? null,
+          corrected: c.corrected ?? null,
+          source_types: c.sourceTypes,
+          source_urls: c.sourceUrls,
+          created_at: c.createdAt,
+        })),
+      ),
+      'addCorrections',
     );
   }
 
@@ -540,6 +589,10 @@ export class SupabaseLineupStore implements LineupStore {
     this.check(await this.db.from('logged_events').upsert(this.eventToRow(e)), 'putEvent');
   }
 
+  async putEvents(list: LoggedEvent[]) {
+    if (list.length) this.check(await this.db.from('logged_events').upsert(list.map((e) => this.eventToRow(e))), 'putEvents');
+  }
+
   async getEvent(id: string) {
     const r = this.check(await this.db.from('logged_events').select('*').eq('id', id).maybeSingle(), 'getEvent');
     return r ? this.rowToEvent(r) : null;
@@ -590,6 +643,15 @@ export class SupabaseLineupStore implements LineupStore {
   async getArtist(key: string) {
     const r = this.check(await this.db.from('canonical_artists').select('*').eq('key', key).maybeSingle(), 'getArtist');
     return r ? { key: r.key, name: r.name, mbid: r.mbid ?? undefined, resolvedAt: r.resolved_at ?? undefined } : null;
+  }
+
+  async ensureArtists(list: ArtistIdentity[]) {
+    const rows = [...new Map(list.map((a) => [a.key, { key: a.key, name: a.name }])).values()];
+    if (!rows.length) return;
+    this.check(
+      await this.db.from('canonical_artists').upsert(rows, { onConflict: 'key', ignoreDuplicates: true }),
+      'ensureArtists',
+    );
   }
 
   async upsertArtist(a: ArtistIdentity) {

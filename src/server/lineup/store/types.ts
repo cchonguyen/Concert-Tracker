@@ -42,6 +42,7 @@ export interface LineupStore {
 
   getEditionByKey(key: string): Promise<Edition | null>;
   getEdition(id: string): Promise<Edition | null>;
+  getEditions(ids: string[]): Promise<Edition[]>;
   upsertEdition(edition: Edition): Promise<void>;
   listEditions(limit: number): Promise<Edition[]>;
   // Size of each confirmed lineup, by edition id, for Concert or Festival.
@@ -52,21 +53,26 @@ export interface LineupStore {
 
   // Normalized alias -> canonical display name.
   getAliases(): Promise<Record<string, string>>;
-  putAlias(normalizedAlias: string, canonicalName: string): Promise<void>;
+  putAliases(aliases: Record<string, string>): Promise<void>;
 
   getBlocklist(domains: string[]): Promise<BlocklistEntry[]>;
-  bumpBlocklist(domain: string, normalized: string): Promise<void>;
+  // One rejection each; repeats in the list count again.
+  bumpBlocklist(entries: Array<{ domain: string; normalized: string }>): Promise<void>;
 
   getSourceStats(): Promise<SourceStat[]>;
-  bumpSourceStat(sourceType: SourceType, scope: string, accepted: boolean): Promise<void>;
+  // Adds each entry's accepted and rejected counts. Writes that grow with a
+  // lineup's size take lists, so a confirm stays within a Worker's
+  // subrequest limit (Workers Free allows 50 per request).
+  bumpSourceStats(deltas: SourceStat[]): Promise<void>;
 
-  addCorrection(correction: Correction): Promise<void>;
+  addCorrections(corrections: Correction[]): Promise<void>;
 
   getExamples(domain: string): Promise<ExtractionExample[]>;
   addExample(example: ExtractionExample): Promise<void>;
 
   // Your event log (stage 1), separate from canonical editions.
   putEvent(event: LoggedEvent): Promise<void>;
+  putEvents(events: LoggedEvent[]): Promise<void>;
   getEvent(id: string): Promise<LoggedEvent | null>;
   listEvents(): Promise<LoggedEvent[]>;
   deleteEvent(id: string): Promise<void>;
@@ -81,6 +87,8 @@ export interface LineupStore {
 
   getArtist(key: string): Promise<ArtistIdentity | null>;
   upsertArtist(artist: ArtistIdentity): Promise<void>;
+  // Adds the artists not stored yet; existing ones are left as they are.
+  ensureArtists(artists: ArtistIdentity[]): Promise<void>;
   listUnresolvedArtists(limit: number): Promise<ArtistIdentity[]>;
 }
 
