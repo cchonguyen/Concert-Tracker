@@ -125,12 +125,21 @@ export type JobStatus =
 
 export type JobStage = 'collect' | 'extract' | 'discover' | 'merge' | 'done';
 
+// One set as a source times it (Clashfinder gives stage, start and end).
+export interface SetTime {
+  day?: string; // YYYY-MM-DD, the festival day
+  stage?: string;
+  start?: string; // "YYYY-MM-DD HH:MM", local to the event
+  end?: string;
+}
+
 export interface CandidateSource {
   sourceType: SourceType;
   sourceUrl: string;
   quotedSpan: string;
   evidence: EvidenceKind;
   extractor: string;
+  sets?: SetTime[]; // the sets this source times for the act, if any
 }
 
 export interface CandidatePerformer {

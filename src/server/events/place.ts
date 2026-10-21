@@ -124,6 +124,12 @@ export function placeFromPage(html: string, eventName: string, startDate: string
 
 const cityCache = new Map<string, string[]>();
 
+// How a geocoding result is written: "Las Vegas, NV", "Berlin, Germany".
+export function geocodeLabel(r: any): string | undefined {
+  const city = cityLabel(str(r?.name), str(r?.admin1), str(r?.country_code));
+  return city && city === str(r?.name) && str(r?.country) ? `${city}, ${str(r.country)}` : city;
+}
+
 // City suggestions while you type, from the Open-Meteo geocoding API (free,
 // no key, GeoNames data). Only populated places, biggest first, as "City, ST".
 export async function citySuggestions(query: string, fetcher: Fetcher): Promise<string[]> {
@@ -142,10 +148,7 @@ export async function citySuggestions(query: string, fetcher: Fetcher): Promise<
       results
         .filter((r) => typeof r.feature_code === 'string' && r.feature_code.startsWith('PPL'))
         .sort((a, b) => (b.population ?? 0) - (a.population ?? 0))
-        .map((r) => {
-          const city = cityLabel(str(r.name), str(r.admin1), str(r.country_code));
-          return city === str(r.name) && r.country ? `${city}, ${r.country}` : city;
-        })
+        .map(geocodeLabel)
         .filter((c): c is string => Boolean(c)),
     ),
   ].slice(0, 6);

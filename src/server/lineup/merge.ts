@@ -3,10 +3,12 @@ import {
   CandidateFacts,
   CandidateLineup,
   CandidatePerformer,
+  CandidateSource,
   EditionFacts,
   FactClaim,
   LookupInput,
   PerformerClaim,
+  SetTime,
   SourceStat,
   SourceType,
 } from './types';
@@ -135,6 +137,26 @@ export interface MergeContext {
   priority?: SourceType[];
 }
 
+// One source entry per page, carrying every set that page times for the act
+// (an act can play twice: two stages, or both weekends).
+function sourcesOf(claims: PerformerClaim[]): CandidateSource[] {
+  const bySource = new Map<string, CandidateSource>();
+  for (const c of claims) {
+    const k = `${c.sourceType}|${c.sourceUrl}`;
+    let src = bySource.get(k);
+    if (!src) {
+      src = { sourceType: c.sourceType, sourceUrl: c.sourceUrl, quotedSpan: c.quotedSpan, evidence: c.evidence, extractor: c.extractor };
+      bySource.set(k, src);
+    }
+    if (c.startTime || c.endTime) {
+      const set: SetTime = { day: c.day, stage: c.stage, start: c.startTime, end: c.endTime };
+      const same = (x: SetTime) => x.start === set.start && x.stage === set.stage;
+      if (!src.sets?.some(same)) src.sets = [...(src.sets ?? []), set];
+    }
+  }
+  return [...bySource.values()];
+}
+
 export function mergeLineup(ctx: MergeContext): CandidateLineup {
   const priority = ctx.priority?.length ? ctx.priority : DEFAULT_PRIORITY;
   const groups = new Map<string, PerformerClaim[]>();
@@ -174,7 +196,6 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
     const missingFrom = fullLineups.filter((t) => !types.includes(t));
     const reliability = (t: SourceType) => sourceReliability(t, ctx.seriesSlug, ctx.stats);
     const confidence = combineConfidence(types.map(reliability), missingFrom.map(reliability));
-    const sourceUrls = new Set<string>();
     performers.push({
       key,
       name: aliasName ?? byPriority[0].name.trim(),
@@ -190,20 +211,7 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
         (discoveredPages.size >= 2 &&
           claims.every((c) => c.sourceType === 'discovered') &&
           new Set(claims.map((c) => c.sourceUrl)).size === 1),
-      sources: byPriority
-        .filter((c) => {
-          const k = `${c.sourceType}|${c.sourceUrl}`;
-          if (sourceUrls.has(k)) return false;
-          sourceUrls.add(k);
-          return true;
-        })
-        .map((c) => ({
-          sourceType: c.sourceType,
-          sourceUrl: c.sourceUrl,
-          quotedSpan: c.quotedSpan,
-          evidence: c.evidence,
-          extractor: c.extractor,
-        })),
+      sources: sourcesOf(byPriority),
     });
   }
 

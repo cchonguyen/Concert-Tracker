@@ -65,7 +65,11 @@ function editionFacts(job: LookupJob, event: LoggedEvent | null, sent?: EditionF
 export function mergeSeen(before: SeenAct[], ticked: SeenAct[], reviewedKeys: Set<string>): SeenAct[] {
   const out = new Map<string, SeenAct>();
   for (const s of before) if (!reviewedKeys.has(s.key)) out.set(s.key, s);
-  for (const s of ticked) out.set(s.key, s);
+  for (const s of ticked) {
+    // Your favourite mark outlives a review of the lineup.
+    const kept = before.find((b) => b.key === s.key)?.favourite;
+    out.set(s.key, kept ? { ...s, favourite: true } : s);
+  }
   return [...out.values()];
 }
 
