@@ -43,7 +43,7 @@ export interface EventPatch {
   venue?: string | null;
   city?: string | null;
   country?: string | null;
-  seen?: Array<{ name: string; from?: SeenAct['from']; role?: SeenAct['role'] | null; roleFrom?: SeenAct['roleFrom'] }>;
+  seen?: Array<{ name: string; from?: SeenAct['from']; role?: SeenAct['role'] | null; roleFrom?: SeenAct['roleFrom']; favourite?: boolean }>;
   kind?: EventKind | null; // null: worked out by the rule again
   format?: string | null;
   daysAttended?: string[];
@@ -108,8 +108,10 @@ function setField(ev: LoggedEvent, f: EventField, value: string | undefined): vo
 }
 
 // A role you set is yours unless it is the lineup's role sent back unchanged.
+// Only the first act marked favourite keeps the mark.
 function cleanSeen(list: NonNullable<EventPatch['seen']>): SeenAct[] {
   const out = new Map<string, SeenAct>();
+  let favourite = false;
   for (const s of list) {
     const name = text(s.name);
     const key = name && normalizeName(name);
@@ -119,6 +121,7 @@ function cleanSeen(list: NonNullable<EventPatch['seen']>): SeenAct[] {
       act.role = s.role;
       act.roleFrom = s.roleFrom === 'lineup' ? 'lineup' : 'you';
     }
+    if (s.favourite === true && !favourite) favourite = act.favourite = true;
     out.set(key, act);
   }
   return [...out.values()];

@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowDown, ArrowUp, Check, ExternalLink, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowDown, ArrowUp, Check, CloudSun, ExternalLink, Heart, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import {
   ArtistSuggestion,
   DetailCandidate,
@@ -13,7 +13,8 @@ import {
   LookupJob,
   SOURCE_LABELS,
 } from '../services/lineupApi';
-import { artistsOf, dateConfirmations, datesBetween, supportOf, whenLabel } from '../services/format';
+import { artistsOf, dateConfirmations, datesBetween, matchArtists, pastArtistNames, supportOf, weatherLine, whenLabel } from '../services/format';
+import { actSets, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
 
@@ -136,24 +137,48 @@ const ChipInput: React.FC<{
 type Seen = LoggedEvent['seen'][number];
 type SeenPatch = NonNullable<EventPatch['seen']>;
 
-const toPatch = (seen: Seen[]): SeenPatch => seen.map(({ name, from, role, roleFrom }) => ({ name, from, role, roleFrom }));
+const toPatch = (seen: Seen[]): SeenPatch =>
+  seen.map(({ name, from, role, roleFrom, favourite }) => ({ name, from, role, roleFrom, favourite }));
 
 // Who you saw, in two rows: Artist (headliners and acts with no role stated)
 // and Supporting (acts billed as support). Moving an act sets its role as yours.
-const SeenActs: React.FC<{ seen: Seen[]; onChange: (seen: SeenPatch) => void }> = ({ seen, onChange }) => {
+// The heart marks your favourite set of the night; sets shows each act's
+// stage and time where a source times it.
+// Typing offers acts you've entered on other events; a click, or arrow keys
+// then Enter, adds one as you spelled it before. Enter alone adds what you typed.
+const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string[]; onChange: (seen: SeenPatch) => void }> = ({
+  seen,
+  sets,
+  past,
+  onChange,
+}) => {
   const [draft, setDraft] = useState('');
-  const add = () => {
-    const names = draft.split(',').map((s) => s.trim()).filter(Boolean);
+  const [active, setActive] = useState(-1);
+  const matches = matchArtists(draft, past, new Set(seen.map((s) => s.key)));
+  const addNames = (names: string[]) => {
     if (names.length) onChange([...toPatch(seen), ...names.map((name) => ({ name, from: 'you' as const }))]);
     setDraft('');
+    setActive(-1);
   };
+  const add = () => addNames(draft.split(',').map((s) => s.trim()).filter(Boolean));
   const setRole = (key: string, role: Seen['role'] | null) =>
     onChange(toPatch(seen).map((s, i) => (seen[i].key === key ? { ...s, role, roleFrom: 'you' as const } : s)));
   const remove = (key: string) => onChange(toPatch(seen.filter((s) => s.key !== key)));
+  const favourite = (key: string) =>
+    onChange(toPatch(seen).map((s, i) => ({ ...s, favourite: seen[i].key === key && !seen[i].favourite })));
   const chip = (s: Seen) => (
     <span key={s.key} className="inline-flex items-center gap-1 rounded-full bg-zinc-800 py-1 pl-2.5 pr-1.5 text-sm text-zinc-100">
+      <button
+        onClick={() => favourite(s.key)}
+        aria-label={s.favourite ? `${s.name} is your favourite set` : `Mark ${s.name} as your favourite set`}
+        title={s.favourite ? 'Favourite set of the night' : 'Mark as favourite set'}
+        className={s.favourite ? 'text-rose-400' : 'text-zinc-600 hover:text-rose-300'}
+      >
+        <Heart className={`h-3 w-3 ${s.favourite ? 'fill-rose-400' : ''}`} />
+      </button>
       {s.name}
       {s.role === 'headliner' && <span className="text-[10px] uppercase text-amber-300/80">headliner</span>}
+      {sets.get(s.key) && <span className="text-[10px] text-zinc-500">{sets.get(s.key)}</span>}
       <button
         onClick={() => setRole(s.key, s.role === 'support' ? null : 'support')}
         aria-label={s.role === 'support' ? `Move ${s.name} to Artist` : `Move ${s.name} to Supporting`}
@@ -184,17 +209,87 @@ const SeenActs: React.FC<{ seen: Seen[]; onChange: (seen: SeenPatch) => void }> 
       )}
       <input
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          setActive(-1);
+        }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ',') {
+          if (e.key === 'ArrowDown' && matches.length) {
+            e.preventDefault();
+            setActive((i) => (i + 1) % matches.length);
+          } else if (e.key === 'ArrowUp' && matches.length) {
+            e.preventDefault();
+            setActive((i) => (i <= 0 ? matches.length - 1 : i - 1));
+          } else if (e.key === 'Enter' && matches[active]) {
+            e.preventDefault();
+            addNames([matches[active]]);
+          } else if (e.key === 'Enter' || e.key === ',') {
             e.preventDefault();
             add();
-          }
+          } else if (e.key === 'Escape') setDraft('');
         }}
         onBlur={add}
         placeholder={seen.length ? 'Add another' : 'Type a name and press Enter'}
+        aria-label="Add an act you saw"
         className="w-full bg-transparent px-1.5 py-1 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
       />
+      {matches.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 px-1.5 pb-1" role="listbox" aria-label="Acts you've entered before">
+          <span className="text-[11px] text-zinc-500">Seen before:</span>
+          {matches.map((name, i) => (
+            <button
+              key={name}
+              role="option"
+              aria-selected={i === active}
+              // mousedown, so the input's blur doesn't add the half-typed text first
+              onMouseDown={(e) => {
+                e.preventDefault();
+                addNames([name]);
+              }}
+              className={`rounded-full border px-2.5 py-0.5 text-xs ${
+                i === active ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-700 text-zinc-300 hover:border-violet-500'
+              }`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// The weather on the event's days, with where it was read from; or a button
+// to look it up once there is a past date and a city.
+const Weather: React.FC<{ event: LoggedEvent; busy: boolean; note: string | null; onLookUp: () => void }> = ({ event, busy, note, onLookUp }) => {
+  const w = event.weather;
+  if (w) {
+    return (
+      <div className="space-y-0.5 text-xs">
+        <p className="inline-flex items-center gap-1 text-zinc-300">
+          <CloudSun className="h-3.5 w-3.5 text-zinc-500" /> Weather
+        </p>
+        <ul className="space-y-0.5 text-zinc-400">
+          {w.days.map((d) => (
+            <li key={d.date}>
+              {w.days.length > 1 && <span className="text-zinc-500">{whenLabel({ startDate: d.date })}: </span>}
+              {weatherLine(d) || 'No reading'}
+            </li>
+          ))}
+        </ul>
+        <a href={w.sourceUrl} target="_blank" rel="noreferrer" className="text-zinc-600 hover:text-violet-300">
+          Open-Meteo archive, {w.place} <ExternalLink className="inline h-2.5 w-2.5" />
+        </a>
+      </div>
+    );
+  }
+  if (!event.startDate || !event.city) return null;
+  return (
+    <div className="space-y-1">
+      <button onClick={onLookUp} disabled={busy} className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-50">
+        {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CloudSun className="h-3 w-3" />} Look up the weather
+      </button>
+      {note && <p className="text-xs text-zinc-500">{note}</p>}
     </div>
   );
 };
@@ -269,6 +364,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const pastCities = pastValues(others, 'city');
   const citySuggestions = [...new Set([...pastCities, ...foundCities])];
   const formatSuggestions = [...new Set([...pastValues(others, 'format'), ...FORMAT_IDEAS])];
+  const pastArtists = useMemo(() => pastArtistNames(others), [events, event.id]);
 
   const load = useCallback(async () => {
     try {
@@ -309,10 +405,30 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     }
   };
   const save = (patch: EventPatch) => run('save', () => eventsApi.update(event.id, patch));
+  const [weatherNote, setWeatherNote] = useState<string | null>(null);
+  const lookUpWeather = () =>
+    run('weather', async () => {
+      const r = await eventsApi.weather(event.id);
+      setWeatherNote(r.note ?? null);
+      return r.event;
+    });
   const text = (v: string) => (v.trim() ? v.trim() : null);
 
   const seenKeys = new Set(event.seen.map((s) => s.key));
   const lineupActs = (edition?.performances ?? []).filter((p) => p.status !== 'cancelled');
+  // Stage and set time per act, from timed sources (Clashfinder). Days you
+  // went narrow it when you gave them.
+  const multiDay = Boolean(event.endDate && event.endDate !== event.startDate);
+  const sets = new Map<string, string>();
+  for (const p of [
+    ...(job?.candidate?.performers ?? []).map((c) => ({ key: c.key, sources: c.sources })),
+    ...lineupActs.map((c) => ({ key: c.artistKey, sources: c.sources })),
+  ]) {
+    const all = actSets(p);
+    const onDays = all.filter((s) => s.day && event.daysAttended.includes(s.day));
+    const shown = onDays.length ? onDays : all;
+    if (shown.length) sets.set(p.key, shown.map((s) => setLabel(s, multiDay)).join('; '));
+  }
   const days = datesBetween(event.startDate, event.endDate);
   const details = event.details;
 
@@ -467,12 +583,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           {details.status === 'none' && <p className="text-xs text-zinc-500">No listing found. It's saved as you typed it.</p>}
           {details.status === 'needs_date' && <p className="text-xs text-amber-300/90">Add when it was (a year is enough), then look again.</p>}
           {details.status === 'off' && <p className="text-xs text-zinc-500">No event source is set up, so details are as you typed them.</p>}
+          <Weather event={event} busy={busy === 'weather'} note={weatherNote} onLookUp={lookUpWeather} />
         </section>
 
         {/* Who you saw */}
         <section className="space-y-3">
           <h3 className={sectionTitle}>Who you saw</h3>
-          <SeenActs seen={event.seen} onChange={(seen) => save({ seen })} />
+          <SeenActs seen={event.seen} sets={sets} past={pastArtists} onChange={(seen) => save({ seen })} />
           {offered.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
               <span className="text-zinc-500">From the event name:</span>
@@ -512,7 +629,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                             : [...toPatch(event.seen), { name: p.name, from: 'lineup', role: p.billing, roleFrom: p.billing ? 'lineup' : undefined }],
                         })
                       }
-                      title={p.billing ? `Billed as ${p.billing}` : undefined}
+                      title={[p.billing && `Billed as ${p.billing}`, sets.get(p.artistKey)].filter(Boolean).join(' · ') || undefined}
                       className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
                     >
                       {p.name}
