@@ -23,6 +23,7 @@ export function gotTickets(email: RawEmail, lines: string[], name: string): Read
   if (!date.startDate && !date.dateText) throw new UnreadableEmail('No event date after the event name.');
   const place = lines[at + 2]?.match(/^(.+?)\s+[—–]\s+(.+)$/);
   const order = lines.find((l) => /^Order #\s*\S/.test(l));
+  const tickets = seats(lines);
   return {
     kind: 'order',
     name: quoted(name, lines[at]),
@@ -30,8 +31,8 @@ export function gotTickets(email: RawEmail, lines: string[], name: string): Read
     venue: place ? venueFrom(place[1]) : undefined,
     city: place ? cityFrom(place[2]) : undefined,
     orderId: order?.replace(/^Order #\s*/, ''),
-    tickets: seats(lines),
     total: money(lines.find((l) => /^Total:/.test(l))),
+    ...(tickets ? { tickets } : {}),
   };
 }
 
