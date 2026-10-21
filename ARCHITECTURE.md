@@ -132,7 +132,7 @@ Defined in [`supabase/migrations/0002_source_first_lineups.sql`](supabase/migrat
 
 Store selection: Supabase when `SUPABASE_URL` is set and the migration has been applied; otherwise a JSON store under `DATA_DIR` (default `./data`). Set `LINEUP_STORE=file` to force the local store. The local store does not survive a redeploy, so use Supabase for real data. On Cloudflare the server refuses to start without Supabase.
 
-The browser keeps nothing: every view reads the server. The interface is one page (`src/App.tsx`): the capture line and your events by year (`CaptureBar`, `EventList`), an event panel for details, seen acts, the lineup and your notes (`EventDetail`, `LineupReview`), and the Artists view (`ArtistsView`). CSV export is built in the browser from the event list (`src/services/format.ts`).
+The browser keeps nothing: every view reads the server. The interface is one page (`src/App.tsx`): the capture line and your events by year (`CaptureBar`, `EventList`), an event panel for details, seen acts, the lineup and your notes (`EventDetail`, `LineupReview`), the Table view (`TableView`), and the Artists view (`ArtistsView`). The Table view filters, sorts and summarizes the same event list in the browser (`src/services/table.ts`), keeps its filters in the address (`?view=table&...`), and holds the CSV export, built from the rows it shows (`src/services/format.ts`). It reads nothing beyond `GET /api/events` and writes nothing.
 
 ## API
 
@@ -188,4 +188,6 @@ See [`.env.example`](.env.example). Each source is optional; the app reports whi
 - Ideas ranked in REQUIREMENTS.md section 13 (on this day, artist pages, back-fill mode, year in review).
 - A weekly refresh job for editions that are upcoming or ended in the last 14 days, to pick up cancellations and additions.
 - A regression command that re-runs extraction over stored documents and compares against confirmed lineups when the model or prompt changes.
+- In the Table view: bulk edit of personal fields, merging spellings of venues, cities and companions, CSV import, and sheet sync. Each writes through the existing event routes; none changes capture or lookup.
+- A Stats view over the same event list (REQUIREMENTS.md section 13).
 - Per-series source priority editing in the UI (`event_series.source_priority` is already read by the merge step).
