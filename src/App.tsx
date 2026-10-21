@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Mail, Mic2, Radio, Table2, Ticket } from 'lucide-react';
+import { Mic2, Radio, Table2, Ticket } from 'lucide-react';
 import { EmailImport, eventsApi, importsApi, isActive, LineupStatus, LineupSummary, lineupApi, LoggedEvent, SOURCE_LABELS } from './services/lineupApi';
 import { CaptureBar } from './components/CaptureBar';
-import { EventList } from './components/EventList';
+import { EventsHome } from './components/EventsHome';
 import { EventDetail } from './components/EventDetail';
 import { ArtistsView } from './components/ArtistsView';
 import { ImportReview } from './components/ImportReview';
@@ -24,6 +24,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [imports, setImports] = useState<EmailImport[]>([]);
   const [reviewing, setReviewing] = useState(false);
+  const [justAdded, setJustAdded] = useState<string[]>([]);
 
   const refresh = useCallback(async () => {
     try {
@@ -58,6 +59,7 @@ export default function App() {
   // Stage 1: the event is saved; details research follows on its own.
   const handleCaptured = async (event: LoggedEvent) => {
     upsert(event);
+    setJustAdded((ids) => [event.id, ...ids.filter((id) => id !== event.id)]);
     setResearching((s) => new Set(s).add(event.id));
     try {
       upsert(await eventsApi.research(event.id));
@@ -76,6 +78,12 @@ export default function App() {
   const openTab = (next: Tab) => {
     if (next !== 'table' && window.location.search) window.history.replaceState(null, '', window.location.pathname);
     setTab(next);
+  };
+
+  // Open the Table with these filters (a query string, as the Table writes it).
+  const openTable = (query: string) => {
+    window.history.replaceState(null, '', `${window.location.pathname}?view=table${query ? `&${query}` : ''}`);
+    setTab('table');
   };
 
   const seenCount = new Set(events.flatMap((e) => e.seen.map((s) => s.key))).size;
@@ -124,15 +132,17 @@ export default function App() {
         {tab === 'events' && (
           <>
             <CaptureBar onCaptured={handleCaptured} />
-            {toReview > 0 && (
-              <button
-                onClick={() => setReviewing(true)}
-                className="inline-flex items-center gap-1.5 text-sm text-violet-300 hover:text-violet-200"
-              >
-                <Mail className="h-3.5 w-3.5" /> {toReview} event{toReview === 1 ? '' : 's'} found in your email. Review
-              </button>
-            )}
-            <EventList events={events} lineups={lineups} researching={researching} loaded={loaded} onOpen={setSelectedId} />
+            <EventsHome
+              events={events}
+              lineups={lineups}
+              researching={researching}
+              justAdded={justAdded}
+              toReview={toReview}
+              loaded={loaded}
+              onOpen={setSelectedId}
+              onReviewEmail={() => setReviewing(true)}
+              onOpenTable={openTable}
+            />
           </>
         )}
         {tab === 'table' && <TableView events={events} lineups={lineups} onOpen={setSelectedId} />}
