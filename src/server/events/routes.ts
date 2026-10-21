@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
 import { JobRunner } from '../lineup/service';
 import { DetailFinder, defaultFinders, pickCandidate, researchEvent } from './details';
-import { citySuggestions } from './place';
+import { cityPoint, citySuggestions } from './place';
 import { applyPatch, EventPatch, lineupSummary, newEvent, sortEvents, startBulkLookups, startLineupLookup } from './service';
 import { LineupSummary } from './types';
 import { artistSuggestions, eventPerformers, nameArtistSuggestions, pastArtists } from './artists';
@@ -116,6 +116,17 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
   router.get('/places/cities', async (req, res) => {
     try {
       res.json({ cities: await citySuggestions(String(req.query.q ?? ''), deps.fetcher) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Where a city you stored is, for the map (?city=Las Vegas, NV&country=).
+  router.get('/places/point', async (req, res) => {
+    try {
+      const city = String(req.query.city ?? '').slice(0, 200);
+      const country = req.query.country ? String(req.query.country).slice(0, 100) : undefined;
+      res.json({ point: await cityPoint(city, country, deps.fetcher) });
     } catch (err) {
       fail(res, err);
     }
