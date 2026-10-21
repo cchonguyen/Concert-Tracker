@@ -36,7 +36,10 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [imports, setImports] = useState<EmailImport[]>([]);
-  const [reviewing, setReviewing] = useState(false);
+  // Back from Connect Gmail (?gmail=connected, or what went wrong): open the review list.
+  const [gmailNotice] = useState(() => new URLSearchParams(window.location.search).get('gmail'));
+  const [reviewing, setReviewing] = useState(Boolean(gmailNotice));
+  const [emailCheck, setEmailCheck] = useState(false);
   const [justAdded, setJustAdded] = useState<string[]>([]);
 
   const refresh = useCallback(async () => {
@@ -58,6 +61,11 @@ export default function App() {
     lineupApi.status().then(setStatus).catch(() => undefined);
     // Nothing to show when email import was never run (or its table is missing).
     importsApi.list().then(setImports).catch(() => undefined);
+    importsApi
+      .scanStatus()
+      .then((s) => setEmailCheck(s.configured))
+      .catch(() => undefined);
+    if (new URLSearchParams(window.location.search).has('gmail')) window.history.replaceState(null, '', window.location.pathname);
   }, [refresh]);
 
   // Poll while a lineup lookup is running somewhere.
@@ -154,6 +162,7 @@ export default function App() {
               researching={researching}
               justAdded={justAdded}
               toReview={toReview}
+              emailCheck={emailCheck}
               loaded={loaded}
               onOpen={setSelectedId}
               onReviewEmail={() => setReviewing(true)}
@@ -200,6 +209,7 @@ export default function App() {
             void refresh();
           }}
           onClose={() => setReviewing(false)}
+          notice={gmailNotice}
         />
       )}
 

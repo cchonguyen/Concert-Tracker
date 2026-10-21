@@ -62,8 +62,27 @@ export const eventsApi = {
   cities: (q: string) => request<{ cities: string[] }>(`/api/places/cities?q=${encodeURIComponent(q)}`).then((r) => r.cities),
 };
 
+// "Check email": whether Gmail is connected and how far your mail was read.
+export interface EmailScanStatus {
+  configured: boolean;
+  connected: boolean;
+  account?: string;
+  scannedThrough?: string;
+  lastCheckedAt?: string;
+}
+
+export interface EmailScanStep {
+  read: number;
+  remaining: number;
+  added: number;
+  scannedThrough?: string;
+  lastCheckedAt?: string;
+}
+
 // Ticket emails waiting for your review (stage 1 from email).
 export const importsApi = {
+  scanStatus: () => request<EmailScanStatus>('/api/imports/scan'),
+  scan: () => request<EmailScanStep>('/api/imports/scan', post()),
   list: () => request<{ imports: EmailImport[] }>('/api/imports').then((r) => r.imports),
   add: (ids: string[]) => request<{ events: LoggedEvent[]; imports: EmailImport[] }>('/api/imports/add', post({ ids })),
   skip: (ids: string[], restore = false) =>

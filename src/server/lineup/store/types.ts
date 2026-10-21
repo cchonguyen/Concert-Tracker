@@ -74,6 +74,10 @@ export interface LineupStore {
   // Ticket emails waiting for your review (stage 1 from email).
   listImports(): Promise<EmailImport[]>;
   putImports(rows: EmailImport[]): Promise<void>;
+  // Small JSON settings by key (app_settings): the Gmail sign-in, how far
+  // your mail has been read.
+  getSetting<T>(key: string): Promise<T | null>;
+  putSetting<T>(key: string, data: T): Promise<void>;
 
   getArtist(key: string): Promise<ArtistIdentity | null>;
   upsertArtist(artist: ArtistIdentity): Promise<void>;

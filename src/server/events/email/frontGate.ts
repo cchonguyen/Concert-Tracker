@@ -15,6 +15,7 @@ const SUBJECT = /^Your .+? (Receipt - Order|Digital Tickets\s*:\s*Order) #(\d+)$
 
 export const frontGate: EmailReader = {
   seller: 'Front Gate',
+  domain: 'frontgatetickets.com',
   matches: (from) => fromDomain(from, 'frontgatetickets.com'),
   read(email, lines) {
     const subject = subjectAfter(email.subject, SUBJECT);
