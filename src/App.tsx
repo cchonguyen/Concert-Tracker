@@ -127,7 +127,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-zinc-950 font-sans text-zinc-100 selection:bg-violet-600 selection:text-white flex flex-col">
       <header className="sticky top-0 z-30 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md">
-        <div className={`mx-auto flex ${tab === 'table' || tab === 'map' ? 'max-w-6xl' : 'max-w-3xl'} items-center justify-between gap-3 px-4 py-3`}>
+        <div className={`mx-auto flex ${tab === 'table' ? 'max-w-7xl' : tab === 'map' ? 'max-w-6xl' : 'max-w-3xl'} items-center justify-between gap-3 px-4 py-3`}>
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-violet-600 to-cyan-400">
               <Radio className="h-4 w-4 text-white" />
@@ -163,7 +163,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className={`mx-auto w-full ${tab === 'table' || tab === 'map' ? 'max-w-6xl' : 'max-w-3xl'} flex-1 space-y-6 px-4 py-6`}>
+      <main className={`mx-auto w-full ${tab === 'table' ? 'max-w-7xl' : tab === 'map' ? 'max-w-6xl' : 'max-w-3xl'} flex-1 space-y-6 px-4 py-6`}>
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-3 text-sm text-rose-200">{error}</p>}
         {tab === 'events' && (
           <>
