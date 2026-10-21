@@ -1,0 +1,162 @@
+import type { LoggedEvent } from '../server/events/types';
+import { eventYear } from './format';
+
+// The Stats view: counts and rankings worked out from your log each time.
+// Only events you have been to count (nothing dated after today), and figures
+// built on optional fields say how many events they cover.
+
+const fold = (s: string) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+const DAY = 86_400_000;
+const days = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / DAY);
+
+// Events that have happened: dated today or earlier, or only a year up to this one.
+export function pastEvents(events: LoggedEvent[], today: string): LoggedEvent[] {
+  const year = Number(today.slice(0, 4));
+  return events.filter((e) => (e.startDate ? e.startDate <= today : e.year !== undefined ? e.year <= year : true));
+}
+
+export interface YearCount {
+  year: number;
+  events: number;
+  newArtists: number; // acts seen for the first time that year
+}
+
+// One entry per year from your first to your last, so empty years show as gaps.
+export function perYear(events: LoggedEvent[]): { years: YearCount[]; undated: number } {
+  const byYear = new Map<number, LoggedEvent[]>();
+  let undated = 0;
+  for (const e of events) {
+    const y = eventYear(e);
+    if (y === null) undated += 1;
+    else byYear.set(y, [...(byYear.get(y) ?? []), e]);
+  }
+  if (!byYear.size) return { years: [], undated };
+  const first = firstSeen(events);
+  const keys = [...byYear.keys()];
+  const years: YearCount[] = [];
+  for (let y = Math.min(...keys); y <= Math.max(...keys); y++) {
+    years.push({
+      year: y,
+      events: byYear.get(y)?.length ?? 0,
+      newArtists: [...first.values()].filter((f) => f.year === y).length,
+    });
+  }
+  return { years, undated };
+}
+
+// The year you first saw each act (by key), from dated or year-only events.
+function firstSeen(events: LoggedEvent[]): Map<string, { name: string; year: number }> {
+  const out = new Map<string, { name: string; year: number }>();
+  for (const e of events) {
+    const y = eventYear(e);
+    if (y === null) continue;
+    for (const s of e.seen) {
+      const cur = out.get(s.key);
+      if (!cur || y < cur.year) out.set(s.key, { name: s.name, year: y });
+    }
+  }
+  return out;
+}
+
+export type RankBy = 'artist' | 'venue' | 'city' | 'companion';
+
+export interface Ranked {
+  key: string; // what the Table filters by: an act's key, or the value as most often written
+  label: string;
+  count: number; // events
+}
+
+// Most frequent first; ties by name. Spellings that differ only by case or
+// accents count together and show as their most common form.
+export function top(events: LoggedEvent[], by: RankBy, n = 10): Ranked[] {
+  const groups = new Map<string, { label: string; count: number; spellings: Map<string, number> }>();
+  const add = (key: string, label: string) => {
+    const g = groups.get(key) ?? { label, count: 0, spellings: new Map() };
+    g.count += 1;
+    g.spellings.set(label, (g.spellings.get(label) ?? 0) + 1);
+    groups.set(key, g);
+  };
+  for (const e of events) {
+    if (by === 'artist') for (const s of new Map(e.seen.map((s) => [s.key, s])).values()) add(s.key, s.name);
+    if (by === 'venue' && e.venue) add(fold(e.venue), e.venue);
+    if (by === 'city' && e.city) add(fold(e.city), e.city);
+    if (by === 'companion') for (const c of new Set(e.companions)) add(fold(c), c);
+  }
+  return [...groups.entries()]
+    .map(([key, g]) => {
+      const label = [...g.spellings.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
+      return { key: by === 'artist' ? key : label, label: by === 'artist' ? g.label : label, count: g.count };
+    })
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, n);
+}
+
+export interface YearReview {
+  year: number;
+  events: number;
+  artists: number;
+  newArtists: string[]; // names, first seen this year
+  topArtist?: Ranked; // only when seen more than once
+  topVenue?: Ranked;
+  topCompanion?: Ranked;
+  busiestMonth?: { month: number; events: number }; // 1-12, from dated events
+  rated: number;
+  averageRating?: number;
+}
+
+export function yearInReview(events: LoggedEvent[], year: number): YearReview {
+  const inYear = events.filter((e) => eventYear(e) === year);
+  const first = firstSeen(events);
+  const months = new Map<number, number>();
+  for (const e of inYear) if (e.startDate) months.set(Number(e.startDate.slice(5, 7)), (months.get(Number(e.startDate.slice(5, 7))) ?? 0) + 1);
+  const busiest = [...months.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0];
+  const ratings = inYear.flatMap((e) => (typeof e.rating === 'number' ? [e.rating] : []));
+  const repeat = (r?: Ranked) => (r && r.count > 1 ? r : undefined);
+  return {
+    year,
+    events: inYear.length,
+    artists: new Set(inYear.flatMap((e) => e.seen.map((s) => s.key))).size,
+    newArtists: [...first.values()].filter((f) => f.year === year).map((f) => f.name).sort((a, b) => a.localeCompare(b)),
+    topArtist: repeat(top(inYear, 'artist', 1)[0]),
+    topVenue: repeat(top(inYear, 'venue', 1)[0]),
+    topCompanion: top(inYear, 'companion', 1)[0],
+    busiestMonth: busiest && busiest[1] > 1 ? { month: busiest[0], events: busiest[1] } : undefined,
+    rated: ratings.length,
+    averageRating: ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10 : undefined,
+  };
+}
+
+export interface Facts {
+  first?: LoggedEvent; // your earliest dated event
+  longestGap?: { days: number; from: LoggedEvent; to: LoggedEvent };
+  busiestStretch?: { events: number; from: string; to: string }; // most events within 30 days
+  mostSeen?: Ranked;
+  actsPerEvent?: { average: number; events: number }; // over events with acts marked
+}
+
+export function facts(events: LoggedEvent[]): Facts {
+  const dated = events.filter((e) => e.startDate).sort((a, b) => a.startDate!.localeCompare(b.startDate!));
+  const out: Facts = {};
+  if (dated.length) out.first = dated[0];
+  for (let i = 1; i < dated.length; i++) {
+    // A multi-day event ends on its last day.
+    const gap = days(dated[i - 1].endDate ?? dated[i - 1].startDate!, dated[i].startDate!);
+    if (gap > 0 && (!out.longestGap || gap > out.longestGap.days)) out.longestGap = { days: gap, from: dated[i - 1], to: dated[i] };
+  }
+  let j = 0;
+  for (let i = 0; i < dated.length; i++) {
+    while (days(dated[j].startDate!, dated[i].startDate!) >= 30) j++;
+    const n = i - j + 1;
+    if (n > 1 && (!out.busiestStretch || n > out.busiestStretch.events))
+      out.busiestStretch = { events: n, from: dated[j].startDate!, to: dated[i].startDate! };
+  }
+  const most = top(events, 'artist', 1)[0];
+  if (most && most.count > 1) out.mostSeen = most;
+  const withActs = events.filter((e) => e.seen.length > 0);
+  if (withActs.length)
+    out.actsPerEvent = {
+      average: Math.round((withActs.reduce((a, e) => a + e.seen.length, 0) / withActs.length) * 10) / 10,
+      events: withActs.length,
+    };
+  return out;
+}
