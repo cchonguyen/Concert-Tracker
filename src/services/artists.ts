@@ -106,3 +106,17 @@ export function groupArtists(list: ArtistSummary[], sort: ArtistSort): Array<{ l
   }
   return groups;
 }
+
+export interface JumpTarget {
+  label: string; // shown in the jump bar: a letter, a year, or "?" for no date
+  group?: string; // the group it scrolls to; none when that letter has nobody
+}
+
+// The quick-jump bar over the groups: every letter (greyed when empty) for A
+// to Z, the years you have for the date orders, nothing for Most seen.
+export function jumpTargets(groups: Array<{ label: string }>, sort: ArtistSort): JumpTarget[] {
+  const have = new Set(groups.map((g) => g.label));
+  if (sort === 'az') return ['#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map((l) => ({ label: l, group: have.has(l) ? l : undefined }));
+  if (sort === 'most') return [];
+  return groups.map((g) => ({ label: g.label === 'Date unknown' ? '?' : g.label, group: g.label }));
+}
