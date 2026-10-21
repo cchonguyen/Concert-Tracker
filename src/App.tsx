@@ -1,17 +1,20 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Download, Mail, Mic2, Radio, Ticket } from 'lucide-react';
+import { Mail, Mic2, Radio, Table2, Ticket } from 'lucide-react';
 import { EmailImport, eventsApi, importsApi, isActive, LineupStatus, LineupSummary, lineupApi, LoggedEvent, SOURCE_LABELS } from './services/lineupApi';
-import { downloadText, eventsToCsv } from './services/format';
 import { CaptureBar } from './components/CaptureBar';
 import { EventList } from './components/EventList';
 import { EventDetail } from './components/EventDetail';
 import { ArtistsView } from './components/ArtistsView';
 import { ImportReview } from './components/ImportReview';
+import { TableView } from './components/TableView';
 
-type Tab = 'events' | 'artists';
+type Tab = 'events' | 'table' | 'artists';
+
+// The Table view keeps its filters in the address (?view=table&...).
+const initialTab = (): Tab => (new URLSearchParams(window.location.search).get('view') === 'table' ? 'table' : 'events');
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('events');
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [events, setEvents] = useState<LoggedEvent[]>([]);
   const [lineups, setLineups] = useState<Record<string, LineupSummary>>({});
   const [researching, setResearching] = useState<Set<string>>(new Set());
@@ -70,6 +73,11 @@ export default function App() {
     void refresh();
   };
 
+  const openTab = (next: Tab) => {
+    if (next !== 'table' && window.location.search) window.history.replaceState(null, '', window.location.pathname);
+    setTab(next);
+  };
+
   const seenCount = new Set(events.flatMap((e) => e.seen.map((s) => s.key))).size;
   const selected = events.find((e) => e.id === selectedId) ?? null;
   const today = new Date().toISOString().slice(0, 10);
@@ -78,12 +86,12 @@ export default function App() {
   return (
     <div className="min-h-screen bg-zinc-950 font-sans text-zinc-100 selection:bg-violet-600 selection:text-white flex flex-col">
       <header className="sticky top-0 z-30 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
+        <div className={`mx-auto flex ${tab === 'table' ? 'max-w-6xl' : 'max-w-3xl'} items-center justify-between gap-3 px-4 py-3`}>
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-violet-600 to-cyan-400">
               <Radio className="h-4 w-4 text-white" />
             </div>
-            <span className="text-base font-extrabold tracking-tight">
+            <span className="hidden text-base font-extrabold tracking-tight sm:inline">
               Live<span className="text-violet-400">Archive</span>
             </span>
           </div>
@@ -91,26 +99,27 @@ export default function App() {
             {(
               [
                 ['events', Ticket, `Events`, events.length],
+                ['table', Table2, `Table`, null],
                 ['artists', Mic2, `Artists`, seenCount],
               ] as const
             ).map(([id, Icon, label, count]) => (
               <button
                 key={id}
-                onClick={() => setTab(id)}
+                onClick={() => openTab(id)}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-colors ${
                   tab === id ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 <Icon className="h-3.5 w-3.5" />
                 {label}
-                <span className="text-[11px] opacity-70">{count}</span>
+                {count !== null && <span className="text-[11px] opacity-70">{count}</span>}
               </button>
             ))}
           </nav>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-3xl flex-1 space-y-6 px-4 py-6">
+      <main className={`mx-auto w-full ${tab === 'table' ? 'max-w-6xl' : 'max-w-3xl'} flex-1 space-y-6 px-4 py-6`}>
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-3 text-sm text-rose-200">{error}</p>}
         {tab === 'events' && (
           <>
@@ -126,18 +135,12 @@ export default function App() {
             <EventList events={events} lineups={lineups} researching={researching} loaded={loaded} onOpen={setSelectedId} />
           </>
         )}
+        {tab === 'table' && <TableView events={events} lineups={lineups} onOpen={setSelectedId} />}
         {tab === 'artists' && <ArtistsView events={events} onOpenEvent={setSelectedId} />}
       </main>
 
       <footer className="border-t border-zinc-900 py-5 text-xs text-zinc-500">
-        <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 px-4">
-          <button
-            onClick={() => downloadText(`livearchive-${new Date().toISOString().slice(0, 10)}.csv`, eventsToCsv(events))}
-            disabled={!events.length}
-            className="inline-flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 disabled:opacity-40"
-          >
-            <Download className="h-3.5 w-3.5" /> Export as spreadsheet (CSV)
-          </button>
+        <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-end gap-3 px-4">
           {status && (
             <span title="Where event details and lineups come from">
               Sources:{' '}
