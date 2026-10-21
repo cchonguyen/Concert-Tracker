@@ -1,6 +1,7 @@
 import type { LoggedEvent, SeenAct, WeatherDay } from '../server/events/types';
 import { eventScale, KIND_LABELS, LineupFacts } from '../server/events/scale';
 import { norm } from './listImport';
+import { seenSlots, slotLabel } from '../server/events/seen';
 
 const day = (iso: string, opts: Intl.DateTimeFormatOptions) =>
   new Date(`${iso}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', ...opts });
@@ -145,6 +146,7 @@ export function eventRows(
     'End date',
     'Year',
     'Event',
+    'Series',
     'Type',
     'Format',
     'Venue',
@@ -155,6 +157,7 @@ export function eventRows(
     'Artist',
     'Supporting artists',
     'Favourite set',
+    'Sets',
     'Went with',
     'Rating',
     'Ticket price',
@@ -167,6 +170,7 @@ export function eventRows(
     e.endDate,
     e.startDate ? Number(e.startDate.slice(0, 4)) : e.year,
     e.name,
+    e.series,
     kindLabel(e, editions[e.id]),
     e.format,
     e.venue,
@@ -176,6 +180,10 @@ export function eventRows(
     artistsOf(e.seen).map((s) => s.name).join('; '),
     supportOf(e.seen).map((s) => s.name).join('; '),
     favouriteOf(e.seen)?.name,
+    seenSlots(e.seen)
+      .filter((slot) => slot.length > 1 || slot[0].set)
+      .map(slotLabel)
+      .join('; '),
     e.companions.join('; '),
     e.rating,
     e.ticketPrice,

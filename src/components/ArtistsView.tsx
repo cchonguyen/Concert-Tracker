@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { LoggedEvent } from '../services/lineupApi';
 import { whenLabel } from '../services/format';
+import { eventTitle } from '../services/series';
 
 interface ArtistsViewProps {
   events: LoggedEvent[];
@@ -46,7 +47,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent })
               <div className="flex flex-wrap gap-x-3 gap-y-1 pt-0.5 text-xs text-zinc-400">
                 {a.events.map((e) => (
                   <button key={e.id} onClick={() => onOpenEvent(e.id)} className="hover:text-violet-300 hover:underline">
-                    {e.name}
+                    {eventTitle(e)}
                     {whenLabel(e) ? `, ${whenLabel(e)}` : ''}
                   </button>
                 ))}

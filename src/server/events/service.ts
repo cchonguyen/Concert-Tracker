@@ -5,6 +5,7 @@ import { normalizeName } from '../lineup/text';
 import { parseEventInput } from './parse';
 import { isBilling } from '../lineup/billing';
 import { EVENT_FIELDS, EventField, EventKind, LineupSummary, LoggedEvent, SeenAct } from './types';
+import { isSetKind, SeenInput, withB2b } from './seen';
 
 // Your event log. Stage 1 (capture and details) lives here; stage 2 hands the
 // event to the lineup pipeline. See REQUIREMENTS.md.
@@ -43,9 +44,10 @@ export interface EventPatch {
   venue?: string | null;
   city?: string | null;
   country?: string | null;
-  seen?: Array<{ name: string; from?: SeenAct['from']; role?: SeenAct['role'] | null; roleFrom?: SeenAct['roleFrom']; favourite?: boolean }>;
+  seen?: SeenInput[];
   kind?: EventKind | null; // null: worked out by the rule again
   format?: string | null;
+  series?: string | null;
   daysAttended?: string[];
   companions?: string[];
   rating?: number | null;
@@ -84,6 +86,7 @@ export function applyPatch(event: LoggedEvent, patch: EventPatch, now: Date): Lo
     next.kind = patch.kind ?? undefined;
   }
   if (patch.format !== undefined) next.format = text(patch.format);
+  if (patch.series !== undefined) next.series = text(patch.series)?.replace(/\s+/g, ' ');
   if (patch.daysAttended) next.daysAttended = patch.daysAttended.filter((d) => DATE.test(d));
   if (patch.companions) next.companions = [...new Set(patch.companions.map((c) => c.trim()).filter(Boolean))];
   if (patch.rating !== undefined) {
@@ -108,7 +111,8 @@ function setField(ev: LoggedEvent, f: EventField, value: string | undefined): vo
 }
 
 // A role you set is yours unless it is the lineup's role sent back unchanged.
-// Only the first act marked favourite keeps the mark.
+// Only the first act marked favourite keeps the mark. DJ set, live set and
+// B2B are yours; a B2B partner must be another act on this event.
 function cleanSeen(list: NonNullable<EventPatch['seen']>): SeenAct[] {
   const out = new Map<string, SeenAct>();
   let favourite = false;
@@ -122,9 +126,11 @@ function cleanSeen(list: NonNullable<EventPatch['seen']>): SeenAct[] {
       act.roleFrom = s.roleFrom === 'lineup' ? 'lineup' : 'you';
     }
     if (s.favourite === true && !favourite) favourite = act.favourite = true;
+    if (isSetKind(s.set)) act.set = s.set;
+    if (Array.isArray(s.b2b)) act.b2b = s.b2b.map((k) => normalizeName(String(k))).filter((k) => k && k !== key);
     out.set(key, act);
   }
-  return [...out.values()];
+  return withB2b([...out.values()]);
 }
 
 // Stage 2: a lineup lookup built from the event's own facts.

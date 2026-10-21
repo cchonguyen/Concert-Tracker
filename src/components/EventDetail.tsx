@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Check, CloudSun, ExternalLink, Heart, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, CloudSun, ExternalLink, Heart, Link2, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import {
   ArtistSuggestion,
   DetailCandidate,
@@ -18,6 +18,8 @@ import { actSets, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
 import { norm } from '../services/listImport';
+import { leaveB2b, pairB2b, seenSlots, SET_LABELS, toSeenInput } from '../server/events/seen';
+import { eventTitle, seriesList, seriesOffers } from '../services/series';
 
 interface EventDetailProps {
   event: LoggedEvent;
@@ -182,14 +184,17 @@ const ChipInput: React.FC<{
 type Seen = LoggedEvent['seen'][number];
 type SeenPatch = NonNullable<EventPatch['seen']>;
 
-const toPatch = (seen: Seen[]): SeenPatch =>
-  seen.map(({ name, from, role, roleFrom, favourite }) => ({ name, from, role, roleFrom, favourite }));
+const toPatch = (seen: Seen[]): SeenPatch => toSeenInput(seen);
+const NEXT_SET: Record<string, Seen['set'] | null> = { none: 'dj', dj: 'live', live: null };
 
 // Who you saw, in two rows: Artist (headliners and acts with no role stated)
 // and Supporting (acts billed as support). Moving an act, or tapping its name
 // to mark it headliner, sets its role as yours.
 // The heart marks your favourite set of the night; sets shows each act's
 // stage and time where a source times it.
+// The set button cycles DJ set, live set and unmarked. The link button pairs
+// acts as a B2B: tap it on one act, then on the other. Each act in a B2B is
+// still its own seen act, so each is credited.
 // Typing offers acts you've entered on other events; a click, or arrow keys
 // then Enter, adds one as you spelled it before. Enter alone adds what you typed.
 const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string[]; onChange: (seen: SeenPatch) => void }> = ({
@@ -200,6 +205,7 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
 }) => {
   const [draft, setDraft] = useState('');
   const [active, setActive] = useState(-1);
+  const [pairing, setPairing] = useState<string | null>(null);
   const matches = matchNames(draft, past, new Set(seen.map((s) => s.key)));
   const addNames = (names: string[]) => {
     if (names.length) onChange([...toPatch(seen), ...names.map((name) => ({ name, from: 'you' as const }))]);
@@ -212,8 +218,25 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
   const remove = (key: string) => onChange(toPatch(seen.filter((s) => s.key !== key)));
   const favourite = (key: string) =>
     onChange(toPatch(seen).map((s, i) => ({ ...s, favourite: seen[i].key === key && !seen[i].favourite })));
+  const cycleSet = (key: string) =>
+    onChange(toPatch(seen).map((s, i) => (seen[i].key === key ? { ...s, set: NEXT_SET[seen[i].set ?? 'none'] } : s)));
+  const b2bTap = (s: Seen) => {
+    if (pairing === s.key) return setPairing(null);
+    if (pairing) {
+      onChange(toPatch(pairB2b(seen, pairing, s.key)));
+      return setPairing(null);
+    }
+    if (s.b2b?.length) return onChange(toPatch(leaveB2b(seen, s.key)));
+    setPairing(s.key);
+  };
+  const pairingName = seen.find((s) => s.key === pairing)?.name;
   const chip = (s: Seen) => (
-    <span key={s.key} className="inline-flex items-center gap-1 rounded-full bg-zinc-800 py-1 pl-2.5 pr-1.5 text-sm text-zinc-100">
+    <span
+      key={s.key}
+      className={`inline-flex items-center gap-1 rounded-full py-1 pl-2.5 pr-1.5 text-sm text-zinc-100 ${
+        pairing === s.key ? 'bg-violet-700/50 ring-1 ring-violet-400' : 'bg-zinc-800'
+      }`}
+    >
       <button
         onClick={() => favourite(s.key)}
         aria-label={s.favourite ? `${s.name} is your favourite set` : `Mark ${s.name} as your favourite set`}
@@ -234,6 +257,28 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
       {s.role === 'headliner' && <span className="text-[10px] uppercase text-amber-300/80">headliner</span>}
       {sets.get(s.key) && <span className="text-[10px] text-zinc-500">{sets.get(s.key)}</span>}
       <button
+        onClick={() => cycleSet(s.key)}
+        aria-label={s.set ? `${s.name}: ${SET_LABELS[s.set]}. Change` : `Mark ${s.name} as DJ set or live set`}
+        title={s.set ? `${SET_LABELS[s.set]} (tap to change)` : 'DJ set or live set?'}
+        className={`rounded px-1 text-[10px] uppercase ${s.set ? 'bg-sky-500/15 text-sky-300' : 'text-zinc-600 hover:text-zinc-300'}`}
+      >
+        {s.set === 'dj' ? 'DJ' : s.set === 'live' ? 'Live' : 'set'}
+      </button>
+      <button
+        onClick={() => b2bTap(s)}
+        aria-label={
+          pairing && pairing !== s.key
+            ? `B2B with ${pairingName}`
+            : s.b2b?.length
+              ? `Take ${s.name} out of the B2B`
+              : `Pair ${s.name} B2B with another act`
+        }
+        title={pairing && pairing !== s.key ? `B2B with ${pairingName}` : s.b2b?.length ? 'Take out of the B2B' : 'B2B with another act'}
+        className={s.b2b?.length || pairing === s.key ? 'text-violet-300' : 'text-zinc-600 hover:text-zinc-300'}
+      >
+        <Link2 className="h-3 w-3" />
+      </button>
+      <button
         onClick={() => setRole(s.key, s.role === 'support' ? null : 'support')}
         aria-label={s.role === 'support' ? `Move ${s.name} to Artist` : `Move ${s.name} to Supporting`}
         title={s.role === 'support' ? 'Move to Artist' : 'Move to Supporting'}
@@ -248,18 +293,40 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
   );
   const artists = artistsOf(seen);
   const support = supportOf(seen);
+  // A B2B shows as one slot: its acts side by side, joined by "b2b".
+  const slot = (acts: Seen[]) =>
+    acts.length === 1 ? (
+      chip(acts[0])
+    ) : (
+      <span key={acts.map((a) => a.key).join('+')} className="inline-flex flex-wrap items-center gap-1 rounded-full border border-violet-500/30 p-0.5">
+        {acts.map((a, i) => (
+          <React.Fragment key={a.key}>
+            {i > 0 && <span className="text-[10px] font-semibold uppercase text-violet-300/80">b2b</span>}
+            {chip(a)}
+          </React.Fragment>
+        ))}
+      </span>
+    );
   return (
     <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900 p-2">
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="w-20 shrink-0 text-[11px] font-semibold text-zinc-500">Artist</span>
-        {artists.map(chip)}
+        {seenSlots(artists).map(slot)}
         {!artists.length && <span className="text-xs text-zinc-600">None yet</span>}
       </div>
       {support.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="w-20 shrink-0 text-[11px] font-semibold text-zinc-500">Supporting</span>
-          {support.map(chip)}
+          {seenSlots(support).map(slot)}
         </div>
+      )}
+      {pairingName && (
+        <p className="text-xs text-violet-300">
+          Tap the link on the act {pairingName} played B2B with.{' '}
+          <button onClick={() => setPairing(null)} className="text-zinc-400 hover:underline">
+            Cancel
+          </button>
+        </p>
       )}
       <input
         value={draft}
@@ -519,6 +586,24 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           </button>
         </div>
         {event.input && event.input !== event.name && <p className="-mt-4 text-xs text-zinc-600">You typed: “{event.input}”</p>}
+        <div className="-mt-2 space-y-1">
+          <Field
+            label="Series"
+            value={event.series}
+            placeholder="Festival or tour it's one year of, e.g. EDC Las Vegas"
+            suggestions={seriesOffers(event, others)}
+            onSave={(v) => save({ series: text(v) })}
+          />
+          {event.series && (
+            <p className="text-[11px] text-zinc-500">
+              Shows as “{eventTitle(event)}”
+              {(() => {
+                const n = seriesList(events).find((g) => g.name === event.series)?.events.length ?? 1;
+                return n > 1 ? ` · ${n} editions in your log` : '';
+              })()}
+            </p>
+          )}
+        </div>
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
 
         {/* Stage 1: when and where */}
@@ -836,7 +921,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         <div className="flex items-center justify-between border-t border-zinc-900 pt-4">
           <button
             onClick={() =>
-              window.confirm(`Delete "${event.name}" from your log?`) &&
+              window.confirm(`Delete "${eventTitle(event)}" from your log?`) &&
               run('delete', async () => {
                 await eventsApi.remove(event.id);
                 onDeleted();

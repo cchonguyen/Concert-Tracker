@@ -8,6 +8,7 @@ import {
   Eye,
   FileUp,
   Heart,
+  Layers,
   ListChecks,
   Mail,
   MapPin,
@@ -41,6 +42,9 @@ import {
 import { ListImport } from './ListImport';
 import { SheetSync } from './SheetSync';
 import { FillGaps } from './FillGaps';
+import { SeriesPanel } from './SeriesPanel';
+import { eventTitle } from '../services/series';
+import { SET_LABELS, seenSlots } from '../server/events/seen';
 
 interface TableViewProps {
   events: LoggedEvent[];
@@ -160,19 +164,35 @@ const NeedsBadge: React.FC<{ needs: keyof typeof NEEDS_LABELS }> = ({ needs }) =
 
 // At most a few names in a cell; the full list is in the tooltip.
 // Your favourite set comes first, with a heart.
+// A B2B counts as one slot ("A b2b B"); DJ and live sets are tagged.
 const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, muted }) => {
-  const acts = [...seen].sort((a, b) => Number(Boolean(b.favourite)) - Number(Boolean(a.favourite)));
-  const shown = acts.slice(0, 3);
+  const fav = (slot: LoggedEvent['seen']) => Number(slot.some((s) => s.favourite));
+  const slots = seenSlots([...seen]).sort((a, b) => fav(b) - fav(a));
+  const shown = slots.slice(0, 3);
   return (
     <span className={muted ? 'text-zinc-500' : 'text-zinc-200'}>
-      {shown.map((s, i) => (
-        <React.Fragment key={s.key}>
-          {i > 0 && ', '}
-          {s.favourite && <Heart className="mr-0.5 inline h-3 w-3 -translate-y-px fill-rose-400 text-rose-400" />}
-          {s.name}
-        </React.Fragment>
-      ))}
-      {acts.length > 3 && <span className="text-zinc-500"> +{acts.length - 3}</span>}
+      {shown.map((slot, i) => {
+        const set = new Set(slot.map((s) => s.set)).size === 1 ? slot[0].set : undefined;
+        return (
+          <React.Fragment key={slot[0].key}>
+            {i > 0 && ', '}
+            {slot.some((s) => s.favourite) && <Heart className="mr-0.5 inline h-3 w-3 -translate-y-px fill-rose-400 text-rose-400" />}
+            {slot.map((s, j) => (
+              <React.Fragment key={s.key}>
+                {j > 0 && <span className="text-[10px] uppercase text-violet-300/80"> b2b </span>}
+                {s.name}
+                {!set && s.set && <span className="ml-1 text-[10px] uppercase text-sky-300/80">{s.set === 'dj' ? 'DJ' : 'Live'}</span>}
+              </React.Fragment>
+            ))}
+            {set && (
+              <span className="ml-1 text-[10px] uppercase text-sky-300/80" title={SET_LABELS[set]}>
+                {set === 'dj' ? 'DJ' : 'Live'}
+              </span>
+            )}
+          </React.Fragment>
+        );
+      })}
+      {slots.length > 3 && <span className="text-zinc-500"> +{slots.length - 3}</span>}
     </span>
   );
 };
@@ -210,6 +230,7 @@ const People: React.FC<{ names: string[] }> = ({ names }) =>
 // event panel for editing; "Import a list" adds events from a CSV you kept.
 export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, imports, onOpen, onImported, onChanged }) => {
   const [filling, setFilling] = useState(false);
+  const [linking, setLinking] = useState(false);
   const [filters, setFilters] = useState<TableFilters>(readQuery);
   const [importing, setImporting] = useState(false);
   // Back from Google's sign-in (?sheets=connected, or what went wrong).
@@ -250,6 +271,11 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const sheetPanel = syncing && (
     <SheetSync events={events} imports={imports} notice={sheetsNotice} onDone={onImported} onClose={() => setSyncing(false)} />
   );
+  const seriesButton = (
+    <button onClick={() => setLinking(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+      <Layers className="h-3.5 w-3.5" /> Series
+    </button>
+  );
   const fillButton = (
     <button onClick={() => setFilling(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
       <Sparkles className="h-3.5 w-3.5" /> Fill gaps
@@ -274,6 +300,17 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
     <div className="space-y-3">
       {importPanel}
       {sheetPanel}
+      {linking && (
+        <SeriesPanel
+          events={events}
+          onChanged={onChanged}
+          onOpen={(id) => {
+            setLinking(false);
+            onOpen(id);
+          }}
+          onClose={() => setLinking(false)}
+        />
+      )}
       {filling && (
         <FillGaps
           events={rows}
@@ -359,6 +396,9 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
           {options.formats.length > 0 && (
             <Select name="Format" value={filters.format} onChange={(v) => set({ format: v })} options={list(options.formats)} />
           )}
+          {options.series.length > 0 && (
+            <Select name="Series" value={filters.series} onChange={(v) => set({ series: v })} options={list(options.series)} />
+          )}
           <Select
             name="Type"
             value={filters.kind === 'any' ? '' : filters.kind}
@@ -406,6 +446,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
         </span>
         <span className="flex flex-wrap items-center gap-x-4 gap-y-1 whitespace-nowrap">
           {fillButton}
+          {seriesButton}
           {importButton}
           {sheetButton}
           <button
@@ -467,7 +508,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                       </td>
                       <td className={cell}>
                         <div className="flex items-start gap-1.5 font-medium text-zinc-100">
-                          <span>{e.name}</span>
+                          <span>{eventTitle(e)}</span>
                           {fromEmail(e) && (
                             <span title="Added from a ticket email">
                               <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" />
@@ -546,7 +587,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                       <DateCell e={e} />
                     </div>
                     <div className="min-w-0 flex-1 space-y-1">
-                      <div className="truncate font-medium text-zinc-100">{e.name}</div>
+                      <div className="truncate font-medium text-zinc-100">{eventTitle(e)}</div>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-400">
                         <KindBadge kind={kindLabel(e, editions[e.id])} />
                         {(e.venue || e.city) && (
