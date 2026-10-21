@@ -114,6 +114,172 @@ test('email: each seller reader copies only what its email states, with the word
   assert.equal(read.Eventbrite.total, '$15.00');
 });
 
+test('email: Eventbrite orders from 2013 and 2015 to 2018 are read too', () => {
+  const y2013 = mail({
+    from: 'Eventbrite <orders@eventbrite.com>',
+    subject: 'Order Confirmation for Garage Night',
+    sentAt: '2013-09-06T18:00:00Z',
+    text: 'Your order for Garage Night is complete!\nSaturday, September 14, 2013 at 10:00 PM - Sunday, September 15, 2013 at 6:00 AM (PDT)\nGarage Night\nThe Basement\n401 6th St\nSan Francisco, CA 94103\nOrder #: 8040538467-201364573\nTOTAL\n$12.00',
+  });
+  const y2015 = mail({
+    from: 'Eventbrite <orders@eventbrite.com>',
+    subject: 'Your Tickets for Costume Party',
+    sentAt: '2015-10-04T18:00:00Z',
+    text: 'Hi Sam , this is your order confirmation for Costume Party\nOrganized by Party People\nOrder Summary\nOrder #: 460826444\nAbout this event\nSaturday, October 17, 2015 at 9:30 PM - Sunday, October 18, 2015 at 2:00 AM (PDT)\nRickshaw Stop\n155 Fell St\nSan Francisco, CA 94102\nAdd to my calendar:\nGoogle',
+  });
+  // The organizer shares the event's name; the order card is the one with a date.
+  const organizer = mail({
+    from: 'Eventbrite <noreply@order.eventbrite.com>',
+    subject: 'Your Tickets for Grave Rave',
+    sentAt: '2023-04-25T18:00:00Z',
+    text: 'Go to My Tickets\nGrave Rave\n5 x Tickets\nOrder total: Free\nSaturday, April 29, 2023 at 9:00 PM - Sunday, April 30, 2023 at 2:00 AM (PT)\nAdd to\nGoogle\nOrigin\n1538 Fillmore Street\nSan Francisco, CA 94115\nGrave Rave\nFollow\n#6501812269 - April 25, 2023',
+  });
+  const [a, b, c] = readEmails([y2013, y2015, organizer]).outcomes.map((o) => ('read' in o ? o.read : assert.fail(o.unreadable)));
+  assert.deepEqual(
+    [a.startDate?.value, a.endDate, a.venue?.value, a.city?.value, a.orderId, a.total],
+    ['2013-09-14', undefined, 'The Basement', 'San Francisco, CA', '8040538467-201364573', '$12.00'],
+  );
+  assert.equal(a.name.quote, 'Garage Night');
+  assert.deepEqual(
+    [b.startDate?.value, b.venue?.value, b.city?.value, b.orderId],
+    ['2015-10-17', 'Rickshaw Stop', 'San Francisco, CA', '460826444'],
+  );
+  assert.equal(b.name.quote, 'Hi Sam , this is your order confirmation for Costume Party');
+  assert.deepEqual([c.startDate?.value, c.venue?.value, c.tickets, c.orderId], ['2023-04-29', 'Origin', 5, '6501812269']);
+});
+
+test('email: AXS orders, deliveries and transfers from friends are read; resale mail is not', () => {
+  const ordered = mail({
+    from: 'AXS Guest Services <guestservices@axs.com>',
+    subject: 'Thank you for your order for Night Bloom -  Artist Presale',
+    sentAt: '2026-07-29T18:00:00Z',
+    text: 'Thank you for your order. Your confirmation number is 17870089 . Please keep this number.\nOrder details for Night Bloom - Artist Presale at El Rey Theatre scheduled on 10/1/2026 8:00 PM\nGrand Total:\n$36.50',
+  });
+  const delivered = mail({
+    from: 'guestservices@axs.com',
+    subject: 'Your tickets were delivered to your account!',
+    sentAt: '2026-07-29T18:01:00Z',
+    text: 'YOUR TICKETS ARE HERE!\nThu Oct 1, 2026 - 8:00 PM\nNight Bloom - Admissions\nEl Rey, Los Angeles, CA\nHere is how to use your tickets:',
+  });
+  const oldTransfer = mail({
+    from: 'axs@axs.com',
+    subject: 'Tickets Just Got Sent To You',
+    sentAt: '2023-09-21T02:00:00Z',
+    text: 'TICKETS JUST GOT SENT TO YOU\nSam Lee transferred 2 tickets to you for Lantern Fest at The Greek Theatre, Los Angeles, CA on Friday 9-22-23 at 6:45 pm PDT.',
+  });
+  const wrongDay = mail({
+    ...oldTransfer,
+    id: 'wrong-day',
+    text: oldTransfer.text!.replace('Friday', 'Monday'),
+  });
+  const resale = mail({
+    from: 'axs@axs.com',
+    subject: 'Your Tickets are No Longer for Sale',
+    text: 'You deleted your ticket listing for the following event:\nLantern Fest at The Greek Theatre',
+  });
+  const noEvent = mail({
+    from: 'axs@axs.com',
+    subject: 'Your tickets were delivered to your account!',
+    text: 'YOUR TICKETS ARE HERE\nGood news – your tickets are in your account.',
+  });
+
+  const { outcomes, ignored } = readEmails([ordered, delivered, oldTransfer, wrongDay, resale, noEvent]);
+  assert.equal(ignored, 2);
+  const [o, d, t, w] = outcomes.map((x) => ('read' in x ? x.read : assert.fail(x.unreadable)));
+  assert.deepEqual(
+    [o.name.value, o.startDate?.value, o.venue?.value, o.city, o.orderId, o.total],
+    ['Night Bloom', '2026-10-01', 'El Rey Theatre', undefined, '17870089', '$36.50'],
+  );
+  assert.equal(o.name.quote, 'Order details for Night Bloom - Artist Presale at El Rey Theatre scheduled on 10/1/2026 8:00 PM');
+  assert.deepEqual(
+    [d.name.value, d.startDate?.value, d.venue?.value, d.city?.value],
+    ['Night Bloom', '2026-10-01', 'El Rey', 'Los Angeles, CA'],
+  );
+  assert.deepEqual(
+    [t.name.value, t.startDate?.value, t.venue?.value, t.city?.value, t.tickets],
+    ['Lantern Fest', '2023-09-22', 'The Greek Theatre', 'Los Angeles, CA', 2],
+  );
+  // The weekday does not fit the date: no date.
+  assert.equal(w.startDate, undefined);
+
+  // The order and the delivery are one show; the delivery adds the city.
+  const rows = mergeImports([], readEmails([ordered, delivered]).outcomes, [], NOW);
+  assert.equal(rows.length, 1);
+  assert.deepEqual([rows[0].venue, rows[0].city, rows[0].messages.length], ['El Rey Theatre', 'Los Angeles, CA', 2]);
+});
+
+test('email: Front Gate receipts and tickets name the show in the body; one order is one show', () => {
+  const receipt = (id: string, order: string, item: string, date: string) =>
+    mail({
+      id,
+      from: 'Lights Out <order-support@frontgatetickets.com>',
+      subject: `Your Insomniac Events Receipt - Order #${order}`,
+      sentAt: '2025-03-12T18:00:00Z',
+      text: `Order #${order}\nYour order with Insomniac Events has been successfully processed.\nShipping Address\nSam Lee\n${item}\n${date}\nat LA State Historic Park\n1245 North Spring Street\nLos Angeles, CA\n- 90012\nTicket\nGeneral Admission\n2\nTotal: $130.04`.replace(
+        '\n\n',
+        '\n',
+      ),
+    });
+  const tickets = mail({
+    from: 'order-support@frontgatetickets.com',
+    subject: 'Your Insomniac Events Digital Tickets : Order #162556776',
+    sentAt: '2025-06-26T18:00:00Z',
+    text: 'Hey Sam,\nOrder #162556776\nOrder Details\nGarrix Live (Saturday)\nAges 18+ Only\nGeneral Admission (Tier 1)\nSaturday, June 28, 2025\nShow Time: 5:00PM\nLos Angeles State Historic Park\n1245 North Spring Street\nLos Angeles, CA 90012\n1 of 2\nGarrix Live (Saturday)\n2 of 2',
+  });
+  const first = receipt('r1', '162554138', 'Garrix Live - Second Show Added!', 'Saturday, June 28, 2025');
+  const second = receipt('r2', '162556776', 'Garrix Live - Second Show Added!', 'Saturday, June 28, 2025');
+  const undated = receipt('r3', '176801155', '2027 Desert Fest - Second Weekend Passes (May 21-23)', '');
+  const reminder = mail({
+    from: 'order-support@frontgatetickets.com',
+    subject: 'Order Update: Your next layaway payment is upcoming',
+    text: 'Your next automatic payment',
+  });
+
+  const { outcomes, ignored } = readEmails([first, second, tickets, undated, reminder]);
+  assert.equal(ignored, 1);
+  const read = outcomes.map((x) => ('read' in x ? x.read : assert.fail(x.unreadable)));
+  assert.deepEqual(
+    [read[0].name.value, read[0].startDate?.value, read[0].venue?.value, read[0].city?.value, read[0].orderId],
+    ['Garrix Live - Second Show Added!', '2025-06-28', 'LA State Historic Park', 'Los Angeles, CA', '162554138'],
+  );
+  assert.deepEqual(
+    [read[2].name.value, read[2].venue?.value, read[2].city?.value, read[2].tickets],
+    ['Garrix Live (Saturday)', 'Los Angeles State Historic Park', 'Los Angeles, CA', 2],
+  );
+  // A pass sold before its dates were set: the show, no date.
+  assert.deepEqual(
+    [read[3].name.value, read[3].name.quote, read[3].startDate],
+    ['2027 Desert Fest', '2027 Desert Fest - Second Weekend Passes (May 21-23)', undefined],
+  );
+
+  // The tickets name the show differently, but their order is already on the row.
+  const rows = mergeImports([], outcomes, [], NOW);
+  const garrix = rows.filter((r) => r.startDate === '2025-06-28');
+  assert.equal(garrix.length, 1);
+  assert.deepEqual(garrix[0].orderIds, ['162554138', '162556776']);
+  assert.equal(garrix[0].messages.length, 3);
+});
+
+test('email imports: an email once unreadable leaves the review list when a reader learns its layout', () => {
+  const old = mail({
+    from: 'Eventbrite <orders@eventbrite.com>',
+    subject: 'Your Tickets for Costume Party',
+    sentAt: '2015-10-04T18:00:00Z',
+    text: 'Something new',
+  });
+  const before = mergeImports([], readEmails([old]).outcomes, [], NOW);
+  assert.equal(reviewList(before)[0].status, 'unreadable');
+  const learned = {
+    ...old,
+    text: 'Hi Sam , this is your order confirmation for Costume Party\nAbout this event\nSaturday, October 17, 2015 at 9:30 PM\nRickshaw Stop\nSan Francisco, CA 94102',
+  };
+  const after = [...before, ...mergeImports(before, readEmails([learned]).outcomes, [], NOW)];
+  assert.deepEqual(
+    reviewList(after).map((r) => [r.status, r.name]),
+    [['new', 'Costume Party']],
+  );
+});
+
 test('email: ads and senders without a reader are ignored; a ticket email in an unknown layout is kept as unreadable', () => {
   const ad = mail({ from: 'Ticketmaster <news@email.ticketmaster.com>', subject: 'Presale this Friday', text: 'Get tickets' });
   const stranger = mail({ from: 'Friend <a@example.com>', subject: 'You Got Tickets To Nothing', text: 'hi' });
