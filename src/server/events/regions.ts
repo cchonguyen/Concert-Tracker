@@ -37,3 +37,69 @@ export function regionCountry(code: string): 'United States' | 'Canada' | undefi
   return CANADA.has(code) ? 'Canada' : 'United States';
 }
 
+
+const COUNTRY_NAMES: Record<'United States' | 'Canada', string[]> = {
+  'United States': ['us', 'usa', 'united states', 'united states of america'],
+  Canada: ['can', 'canada'],
+};
+const isNorthAmerican = (country: string | undefined) => !country || NORTH_AMERICA.has(normalizeName(country));
+
+// "Las Vegas, NV", or the city alone when no state is stored: how a city is
+// shown and searched. Outside the US and Canada a state is written in full
+// ("London, England").
+export function cityWithRegion(city: string | undefined, region?: string): string | undefined {
+  const c = city?.trim();
+  if (!c) return undefined;
+  const r = region?.trim();
+  return r ? `${c}, ${regionCode(r) ?? r}` : c;
+}
+
+export interface PlaceParts {
+  city?: string;
+  region?: string;
+  country?: string;
+}
+
+// A city written with its state in one box ("Las Vegas, NV", "Austin, TX,
+// USA"), split into city and state, and the country the state code belongs
+// to when no country is stored. Only rearranges what was written: a part
+// after the comma that is not a US or Canadian postal code stays in the city
+// (the Fill gaps lookup can place it). With `replace`, the state in the city
+// box wins over a stored one, because both were just written together.
+// Without `withCountry` the country is left as it was (a file read back only
+// says what it says).
+export function splitCity(place: PlaceParts, replace = false, withCountry = true): PlaceParts {
+  const parts = place.city?.split(',').map((s) => s.trim()) ?? [];
+  if (parts.length < 2 || parts.length > 3 || !parts[0]) return place;
+  let country: string | undefined;
+  if (parts.length === 3) {
+    country = (Object.keys(COUNTRY_NAMES) as Array<keyof typeof COUNTRY_NAMES>).find((c) =>
+      COUNTRY_NAMES[c].includes(normalizeName(parts[2])),
+    );
+    if (!country) return place;
+  }
+  const code = parts[1].length === 2 && parts[1] === parts[1].toUpperCase() ? regionCode(parts[1]) : undefined;
+  if (!code || !isNorthAmerican(place.country ?? country)) return place;
+  if (!replace && place.region && regionCode(place.region) !== code) return place;
+  const inferred = regionCountry(code);
+  if (country && country !== inferred) return place;
+  return {
+    city: parts[0],
+    region: replace || !place.region ? code : place.region,
+    country: place.country || (withCountry ? inferred : undefined),
+  };
+}
+
+// The same split on an event, with each part sourced like the city it came
+// from. The country is filled only when none is stored.
+export function splitEventCity<
+  T extends PlaceParts & { sources: Partial<Record<'city' | 'region' | 'country', unknown>> },
+>(e: T, replace = false): T {
+  const split = splitCity(e, replace);
+  if (split === e || split.city === e.city) return e;
+  const next = { ...e, ...split, sources: { ...e.sources } };
+  const src = e.sources.city;
+  if (src && next.region !== e.region) next.sources.region = src;
+  if (src && next.country !== e.country) next.sources.country = src;
+  return next;
+}

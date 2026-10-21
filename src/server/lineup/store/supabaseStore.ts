@@ -14,6 +14,7 @@ import {
   SourceType,
 } from '../types';
 import { LoggedEvent } from '../../events/types';
+import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import { LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS } from './types';
@@ -538,7 +539,8 @@ export class SupabaseLineupStore implements LineupStore {
 
   // Personal --------------------------------------------------------------
 
-  private eventToRow(e: LoggedEvent) {
+  private eventToRow(event: LoggedEvent) {
+    const e = splitEventCity(event);
     return {
       id: e.id,
       input: e.input,
@@ -549,6 +551,7 @@ export class SupabaseLineupStore implements LineupStore {
       end_date: e.endDate ?? null,
       venue: e.venue ?? null,
       city: e.city ?? null,
+      region: e.region ?? null,
       country: e.country ?? null,
       sources: e.sources,
       details: e.details,
@@ -569,8 +572,9 @@ export class SupabaseLineupStore implements LineupStore {
     };
   }
 
+  // Rows saved before the state had its own column still read "City, ST".
   private rowToEvent(r: any): LoggedEvent {
-    return {
+    return splitEventCity({
       id: r.id,
       input: r.input ?? '',
       name: r.name,
@@ -580,6 +584,7 @@ export class SupabaseLineupStore implements LineupStore {
       endDate: r.end_date ?? undefined,
       venue: r.venue ?? undefined,
       city: r.city ?? undefined,
+      region: r.region ?? undefined,
       country: r.country ?? undefined,
       sources: r.sources ?? {},
       details: r.details ?? { status: 'pending', candidates: [], notes: [] },
@@ -597,7 +602,7 @@ export class SupabaseLineupStore implements LineupStore {
       notes: r.notes ?? undefined,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
-    };
+    });
   }
 
   async putEvent(e: LoggedEvent) {

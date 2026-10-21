@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
 import { JobRunner } from '../lineup/service';
 import { DetailFinder, defaultFinders, pickCandidate, researchEvent } from './details';
-import { cityPoint, citySuggestions } from './place';
+import { cityPoint, citySuggestions, placeGuess } from './place';
 import { applyPatch, EventPatch, lineupSummary, newEvent, sortEvents, startBulkLookups, startLineupLookup } from './service';
 import { LineupSummary } from './types';
 import { artistSuggestions, eventPerformers, nameArtistSuggestions, pastArtists, MAX_BULK_SUGGESTIONS, storedNameSuggestions } from './artists';
@@ -144,6 +144,17 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
       const city = String(req.query.city ?? '').slice(0, 200);
       const country = req.query.country ? String(req.query.country).slice(0, 100) : undefined;
       res.json({ point: await cityPoint(city, country, deps.fetcher) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // The state and country a stored city is in, offered for one tap
+  // (?city=Las Vegas&region=&country=). Never saved here.
+  router.get('/places/guess', async (req, res) => {
+    try {
+      const q = (k: string, max: number) => (req.query[k] ? String(req.query[k]).slice(0, max) : undefined);
+      res.json(await placeGuess({ city: q('city', 200) ?? '', region: q('region', 100), country: q('country', 100) }, deps.fetcher));
     } catch (err) {
       fail(res, err);
     }

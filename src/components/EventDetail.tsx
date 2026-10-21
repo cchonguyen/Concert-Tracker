@@ -11,6 +11,7 @@ import {
   lineupApi,
   LoggedEvent,
   LookupJob,
+  PlaceGuess,
   SOURCE_LABELS,
 } from '../services/lineupApi';
 import { artistsOf, dateConfirmations, datesBetween, matchNames, pastArtistNames, pastCompanionNames, supportOf, weatherLine, whenLabel } from '../services/format';
@@ -20,6 +21,8 @@ import { LineupReview } from './LineupReview';
 import { norm } from '../services/listImport';
 import { leaveB2b, pairB2b, seenSlots, SET_LABELS, toSeenInput } from '../server/events/seen';
 import { eventTitle, seriesList, seriesOffers } from '../services/series';
+import { placePatch } from '../services/table';
+import { cityWithRegion } from '../server/events/regions';
 
 interface EventDetailProps {
   event: LoggedEvent;
@@ -482,8 +485,42 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
 
   const others = events.filter((e) => e.id !== event.id);
   const pastVenues = pastValues(others, 'venue');
-  const pastCities = pastValues(others, 'city');
+  // Cities you gave before, as "Las Vegas, NV": picking one brings its state
+  // and, when none is stored, its country.
+  const pastPlaces = useMemo(() => {
+    const out = new Map<string, Pick<LoggedEvent, 'city' | 'region' | 'country'>>();
+    for (const e of others) {
+      const label = cityWithRegion(e.city, e.region);
+      if (label && !out.has(label)) out.set(label, { city: e.city, region: e.region, country: e.country });
+    }
+    return out;
+  }, [events, event.id]);
+  const pastCities = pastValues(others.map((e) => ({ ...e, city: cityWithRegion(e.city, e.region) })), 'city');
   const citySuggestions = [...new Set([...pastCities, ...foundCities])];
+  const saveCity = (v: string) => {
+    const typed = text(v);
+    const past = typed ? pastPlaces.get(typed) : undefined;
+    // A new city drops the old one's state; "City, ST" brings its own.
+    if (past) return save({ city: past.city, region: past.region ?? null, ...(event.country || !past.country ? {} : { country: past.country }) });
+    return save({ city: typed, region: null });
+  };
+
+  // The state and country the map service gives for your city, offered
+  // under State when either is missing. Saved only when you tap it.
+  const [placeGuess, setPlaceGuess] = useState<PlaceGuess | null>(null);
+  useEffect(() => {
+    setPlaceGuess(null);
+    if (!event.city || (event.region && event.country)) return;
+    let live = true;
+    eventsApi.placeGuess({ city: event.city, region: event.region, country: event.country }).then(
+      (r) => live && setPlaceGuess(r.guess),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [event.city, event.region, event.country]);
+  const guessed = placeGuess ? placePatch(event, placeGuess) : null;
   const formatSuggestions = [...new Set([...pastValues(others, 'format'), ...FORMAT_IDEAS])];
   const pastArtists = useMemo(() => pastArtistNames(others), [events, event.id]);
   const pastCompanions = useMemo(() => pastCompanionNames(others), [events, event.id]);
@@ -559,7 +596,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const confirmed = details.status === 'matched' || details.status === 'resolved' ? details.candidates[0] : undefined;
   const offer = (field: EventField) => {
     const v = confirmed?.[field];
-    if (!confirmed || !v || v === event[field]) return undefined;
+    // Sources write "Las Vegas, NV": the same as your city and state.
+    const yours = field === 'city' ? cityWithRegion(event.city, event.region) : event[field];
+    if (!confirmed || !v || v === yours || (field === 'city' && v === event.city)) return undefined;
     const src = confirmed.sources.find((s) => s.fields.includes(field));
     return {
       value: field === 'endDate' ? whenLabel({ startDate: v }) ?? v : v,
@@ -649,12 +688,25 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             <Field
               label="City"
               value={event.city}
-              placeholder="City, State"
+              placeholder="City"
               source={event.sources.city}
               suggestions={citySuggestions}
               offer={offer('city')}
               onType={setCityQuery}
-              onSave={(v) => save({ city: text(v) })}
+              onSave={(v) => void saveCity(v)}
+            />
+            <Field
+              label="State"
+              value={event.region}
+              placeholder="NV, or the region"
+              source={event.sources.region}
+              offer={
+                offer('region') ??
+                (guessed && placeGuess
+                  ? { value: placeGuess.label, from: placeGuess.places > 1 ? 'the map (the biggest by that name)' : 'the map', onUse: () => void save(guessed) }
+                  : undefined)
+              }
+              onSave={(v) => save({ region: text(v) })}
             />
             <Field label="Country" value={event.country} source={event.sources.country} offer={offer('country')} onSave={(v) => save({ country: text(v) })} />
             <label className="space-y-1">

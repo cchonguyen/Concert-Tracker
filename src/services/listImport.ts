@@ -2,6 +2,7 @@ import type { EventPatch } from '../server/events/service';
 import type { EmailImport } from '../server/events/email/types';
 import type { LoggedEvent } from '../server/events/types';
 import { toSeenInput } from '../server/events/seen';
+import { splitCity } from '../server/events/regions';
 
 // A list of past events you kept elsewhere (a Notion export, a spreadsheet,
 // this app's own CSV export) read into rows you review in the Table view.
@@ -17,6 +18,7 @@ export type ListField =
   | 'year'
   | 'venue'
   | 'city'
+  | 'region'
   | 'country'
   | 'seen'
   | 'companions'
@@ -35,6 +37,7 @@ const HEADERS: Record<ListField, string[]> = {
   year: ['year'],
   venue: ['venue', 'location', 'place'],
   city: ['city', 'town'],
+  region: ['state', 'region', 'province', 'state/province', 'state / province'],
   country: ['country'],
   seen: ['artist', 'artists', 'saw', 'seen', 'acts', 'acts seen', 'performers'],
   companions: ['attendee', 'attendees', 'went with', 'with', 'companions', 'people', 'friends'],
@@ -62,6 +65,7 @@ export interface ListRow {
   yearFromName?: boolean; // no date in the row; the year is the one in its name
   venue?: string;
   city?: string;
+  region?: string;
   country?: string;
   seen: string[];
   companions: string[];
@@ -260,8 +264,19 @@ export function readTable(cells: string[][]): ReadList {
     }
     if (!row.startDate) row.problems.push(row.year ? 'No date, only a year.' : 'No date or year.');
     row.venue = get('venue') || undefined;
-    row.city = get('city') ? cityLabel(get('city')) : undefined;
-    row.country = get('country') || undefined;
+    // "Las Vegas, NV" in the city column is split like the app splits it.
+    const place = splitCity(
+      {
+        city: get('city') ? cityLabel(get('city')) : undefined,
+        region: get('region') || undefined,
+        country: get('country') || undefined,
+      },
+      false,
+      false,
+    );
+    row.city = place.city;
+    row.region = place.region;
+    row.country = place.country;
     row.seen = union([], splitList(get('seen')));
     row.companions = union([], splitList(get('companions')));
     const rating = get('rating');
@@ -300,7 +315,7 @@ export function readTable(cells: string[][]): ReadList {
     }
     combined++;
     earlier.lines.push(line);
-    for (const f of ['endDate', 'venue', 'city', 'country', 'rating', 'ticketPrice', 'format', 'series', 'notes'] as const) {
+    for (const f of ['endDate', 'venue', 'city', 'region', 'country', 'rating', 'ticketPrice', 'format', 'series', 'notes'] as const) {
       if (earlier[f] === undefined && row[f] !== undefined) (earlier as any)[f] = row[f];
     }
     earlier.seen = union(earlier.seen, row.seen);
@@ -385,10 +400,12 @@ export function fillPatch(row: ListRow, base: Partial<LoggedEvent>, leaveOut: Se
     patch.year = row.year;
     adds.push('year');
   }
-  for (const f of ['venue', 'city', 'country'] as const) {
-    if (!base[f] && row[f]) {
+  for (const f of ['venue', 'city', 'region', 'country'] as const) {
+    // A state belongs to its city: taken only for the same city, or with it.
+    if (f === 'region' && base.city && norm(base.city) !== norm(row.city ?? '')) continue;
+    if (!(base as Partial<LoggedEvent>)[f] && row[f]) {
       patch[f] = row[f];
-      adds.push(f);
+      adds.push(f === 'region' ? 'state' : f);
     }
   }
   const seen = base.seen ?? [];
@@ -439,6 +456,7 @@ export function newEventPatch(row: ListRow, leaveOut: Set<string> = new Set()): 
     year: row.startDate ? undefined : (row.year ?? null),
     venue: row.venue ?? null,
     city: row.city ?? null,
+    region: row.region ?? null,
     country: row.country ?? null,
     seen: row.seen.map((name) => ({ name, from: 'you' as const })),
     companions: row.companions.filter((c) => !leaveOut.has(norm(c))),
@@ -468,7 +486,7 @@ export interface BaseRow {
 }
 
 type Scalar = string | number | null;
-type ScalarKey = 'name' | 'startDate' | 'endDate' | 'year' | 'venue' | 'city' | 'country' | 'format' | 'series' | 'notes' | 'rating' | 'ticketPrice';
+type ScalarKey = 'name' | 'startDate' | 'endDate' | 'year' | 'venue' | 'city' | 'region' | 'country' | 'format' | 'series' | 'notes' | 'rating' | 'ticketPrice';
 
 const SCALARS: Array<[ScalarKey, string]> = [
   ['name', 'event'],
@@ -477,6 +495,7 @@ const SCALARS: Array<[ScalarKey, string]> = [
   ['year', 'year'],
   ['venue', 'venue'],
   ['city', 'city'],
+  ['region', 'state'],
   ['country', 'country'],
   ['format', 'format'],
   ['series', 'series'],
@@ -501,7 +520,7 @@ function rowValues(row: ListRow, present: ListField[]): Record<ScalarKey, Scalar
         : null
       : undefined;
   out.year = dated && !row.startDate && !row.yearFromName ? (row.year ?? null) : undefined;
-  for (const f of ['venue', 'city', 'country', 'format', 'series', 'notes', 'rating', 'ticketPrice'] as const) {
+  for (const f of ['venue', 'city', 'region', 'country', 'format', 'series', 'notes', 'rating', 'ticketPrice'] as const) {
     out[f] = has(f) ? (row[f] ?? null) : undefined;
   }
   return out;
@@ -515,6 +534,7 @@ function appValues(e: LoggedEvent): Record<ScalarKey, Scalar> {
     year: e.startDate ? Number(e.startDate.slice(0, 4)) : (e.year ?? null),
     venue: e.venue ?? null,
     city: e.city ?? null,
+    region: e.region ?? null,
     country: e.country ?? null,
     format: e.format ?? null,
     series: e.series ?? null,

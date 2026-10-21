@@ -173,3 +173,75 @@ export async function cityPoint(city: string, country: string | undefined, fetch
   if (res.status === 200) pointCache.set(key, point);
   return point;
 }
+
+export interface PlaceGuess {
+  city: string; // the city alone, as you wrote it (a state or country after a comma is taken off)
+  region?: string; // "NV" in the US and Canada, in full elsewhere ("England")
+  country?: string; // "United States"
+  label: string; // the place it was matched to: "Las Vegas, Nevada, United States"
+  places: number; // states or countries with a place of that name that fits what you wrote
+}
+
+const guessCache = new Map<string, { guess: PlaceGuess | null; note?: string }>();
+
+// The state and country of a city you stored, from the Open-Meteo geocoder
+// (GeoNames data). Only populated places that fit the state or country you
+// wrote count. Taken when they all sit in one state and country, or when the
+// biggest is at least ten times the size of the next one elsewhere (Las
+// Vegas, NV over Las Vegas, NM). Anything closer is left for you, with a
+// note. Only ever offered; saving it is your tap.
+export async function placeGuess(
+  place: { city: string; region?: string; country?: string },
+  fetcher: Fetcher,
+): Promise<{ guess: PlaceGuess | null; note?: string }> {
+  const [name, ...rest] = place.city.split(',').map((s) => s.trim());
+  if (!name || name.length < 2) return { guess: null, note: 'Add the city first.' };
+  const key = [place.city, place.region ?? '', place.country ?? ''].map(normalizeName).join('|');
+  const cached = guessCache.get(key);
+  if (cached) return cached;
+  const res = await fetcher.get(
+    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=20&language=en&format=json`,
+    { timeoutMs: 5000 },
+  );
+  const canon = (v: string) => {
+    const n = normalizeName(v);
+    return n === 'usa' || n === 'united states of america' ? 'united states' : n;
+  };
+  const fits = (r: any, want: string) =>
+    [regionCode(str(r.admin1)), str(r.admin1), str(r.country), str(r.country_code)].some((v) => v && canon(v) === canon(want));
+  const wanted = [...rest, place.region, place.country].filter((w): w is string => Boolean(w?.trim()));
+  const found: any[] = (parseJson<any>(res)?.results ?? [])
+    .filter((r: any) => typeof r.feature_code === 'string' && r.feature_code.startsWith('PPL') && str(r.country))
+    .filter((r: any) => wanted.every((w) => fits(r, w)));
+  // One entry per state and country, by its biggest place.
+  const groups = new Map<string, any>();
+  for (const r of found) {
+    const k = `${str(r.admin1) ?? ''}|${str(r.country)}`;
+    if ((groups.get(k)?.population ?? -1) < (r.population ?? 0)) groups.set(k, r);
+  }
+  const ranked = [...groups.values()].sort((a, b) => (b.population ?? 0) - (a.population ?? 0));
+  const [top, next] = ranked;
+  let out: { guess: PlaceGuess | null; note?: string };
+  if (!top) {
+    out = { guess: null, note: `Couldn't find "${place.city}" on the map.` };
+  } else if (next && !((top.population ?? 0) > 0 && (top.population ?? 0) >= 10 * (next.population ?? 0))) {
+    const where = ranked.slice(0, 3).map((r) => [str(r.admin1), str(r.country)].filter(Boolean).join(', '));
+    out = { guess: null, note: `More than one place is called ${name} (${where.join('; ')}). Type the state.` };
+  } else {
+    const admin1 = str(top.admin1);
+    const country = str(top.country)!;
+    const na = NORTH_AMERICA.has(normalizeName(country));
+    out = {
+      guess: {
+        city: name,
+        region: admin1 ? (na ? (regionCode(admin1) ?? admin1) : admin1) : undefined,
+        country,
+        label: [str(top.name), admin1, country].filter(Boolean).join(', '),
+        places: ranked.length,
+      },
+    };
+  }
+  if (guessCache.size > 2000) guessCache.clear();
+  if (res.status === 200) guessCache.set(key, out);
+  return out;
+}

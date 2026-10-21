@@ -73,7 +73,9 @@ test('readList maps Notion columns and reads each row without filling gaps', () 
   assert.equal(fest.name, 'Spring Fest 2023');
   assert.equal(fest.startDate, '2023-05-19');
   assert.equal(fest.endDate, '2023-05-21');
-  assert.equal(fest.city, 'Las Vegas, NV');
+  assert.equal(fest.city, 'Las Vegas');
+  assert.equal(fest.region, 'NV', '"Las Vegas NV" is split into city and state');
+  assert.equal(fest.country, undefined, 'the file gives no country; the server fills it from the state');
   assert.equal(fest.venue, 'Speedway');
   assert.deepEqual(fest.seen, ['Alpha', 'Beta']);
   assert.deepEqual(fest.companions, ['Sam', 'Lee']);
@@ -121,7 +123,8 @@ test('readList reads this app\'s own CSV export', () => {
   const row = list.rows[0];
   assert.deepEqual(row.seen, ['Alpha, the Band', 'Beta']);
   assert.deepEqual(row.companions, ['Sam', 'Lee']);
-  assert.equal(row.city, 'Indio, CA');
+  assert.equal(row.city, 'Indio');
+  assert.equal(row.region, 'CA');
   assert.equal(row.rating, 4);
   assert.equal(row.ticketPrice, 120);
   assert.equal(row.notes, 'Hot');
@@ -182,13 +185,14 @@ test('fillPatch only fills empty fields and adds new acts and people', () => {
   const { patch, adds } = fillPatch(fest, base, new Set(['sam']));
   assert.deepEqual(patch, {
     endDate: '2023-05-21',
-    city: 'Las Vegas, NV',
+    city: 'Las Vegas',
+    region: 'NV',
     seen: [
       { name: 'ALPHA', from: 'lineup' },
       { name: 'Beta', from: 'you' },
     ],
   });
-  assert.deepEqual(adds, ['end date', 'city', '1 act seen']);
+  assert.deepEqual(adds, ['end date', 'city', 'state', '1 act seen']);
   assert.equal(fillPatch(fest, { ...base, endDate: '2023-05-21', city: 'X', seen: [{ key: 'a', name: 'Alpha', from: 'you' }, { key: 'b', name: 'Beta', from: 'you' }], companions: ['Sam', 'Lee'] }).adds.length, 0);
 });
 
@@ -263,7 +267,7 @@ test('runImport creates, merges, adds email rows first, and builds on earlier me
     new Set(['sam']),
   );
   assert.deepEqual(result, { created: 1, merged: 3, edited: 0, unchanged: 0, failed: [] });
-  assert.deepEqual(calls.slice(0, 3), ['restore mail', 'add mail', 'update email-mail endDate,city,seen,companions']);
+  assert.deepEqual(calls.slice(0, 3), ['restore mail', 'add mail', 'update email-mail endDate,city,region,seen,companions']);
   assert.equal(store.get('email-mail')!.venue, 'Speedway');
   assert.deepEqual(
     store.get('logged')!.seen.map((s) => s.name),
@@ -272,7 +276,7 @@ test('runImport creates, merges, adds email rows first, and builds on earlier me
   assert.deepEqual(store.get('logged')!.companions, ['Lee']);
   assert.equal(calls[calls.length - 2], 'create Lost Fest 2022');
   const created = store.get('new1')!;
-  assert.equal(created.city, 'Las Vegas, NV');
+  assert.equal(created.city, 'Las Vegas');
   assert.deepEqual(created.companions, []);
 });
 
