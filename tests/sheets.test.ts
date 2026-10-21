@@ -13,6 +13,7 @@ import { sheetsRouter } from '../src/server/events/sheetRoutes.ts';
 import { importsRouter } from '../src/server/events/importRoutes.ts';
 import { parseSheetLink, SHEETS_SETTING, SheetsApi, SheetsAuthError, SheetValue, sheetVersion } from '../src/server/events/sheets.ts';
 import { editPatch, findMatches, ImportApi, readTable, runImport } from '../src/services/listImport.ts';
+import { SHEETS_BASE_SETTING } from '../src/server/events/sheets.ts';
 import { droppedColumns, rowsToReview, serialToDate, sheetRows, sheetTable } from '../src/services/sheetSync.ts';
 import { fakeFetcher } from './fakes.ts';
 
@@ -83,6 +84,74 @@ test('round trip: an untouched sheet changes nothing and needs no review', () =>
   assert.deepEqual(droppedColumns(list), []);
 });
 
+// The tab as the app wrote it at the last sync, read back as a base.
+const baseOf = (events: LoggedEvent[]) => {
+  const base = readTable(sheetTable(asRead(sheetRows(events))));
+  return (id: string) => ({ row: base.rows.find((r) => r.eventId === id)!, present: base.present });
+};
+
+test('three-way: edits made in the app since the last sync are never undone by the stale sheet', () => {
+  const base = baseOf([show]);
+  // In the app since: new venue, rating, an act and a person. The sheet is untouched.
+  const now = ev('e1', {
+    ...show,
+    venue: 'Greek Theatre',
+    rating: 5,
+    seen: [...show.seen, { key: 'charli xcx', name: 'Charli XCX', from: 'you' }],
+    companions: ['Sam', 'Lee'],
+  });
+  const sheet = readTable(sheetTable(asRead(sheetRows([show]))));
+  assert.deepEqual(editPatch(sheet.rows[0], now, sheet.present, new Set(), base('e1')).changes, []);
+  const written = readTable(sheetTable(asRead(sheetRows([show]))));
+  assert.equal(rowsToReview(sheet, [now], [], written), 0);
+  // Without the base the same sheet looks like edits, all marked as unknown.
+  const blind = editPatch(sheet.rows[0], now, sheet.present);
+  assert.equal(blind.changes.length > 0 && blind.changes.every((c) => c.both), true);
+});
+
+test('three-way: a field changed in the sheet applies; one changed on both sides is flagged and kept with keepApp', () => {
+  const base = baseOf([show]);
+  const now = ev('e1', { ...show, venue: 'Greek Theatre', notes: 'app note' });
+  const rows = sheetRows([show]);
+  const header = rows[0] as string[];
+  const set = (col: string, v: string | number | null) => (rows[1][header.indexOf(col)] = v);
+  set('Rating', 3); // only the sheet changed it
+  set('Venue', 'Hearst Greek'); // both changed it
+  set('Saw', 'Robyn; Kim Petras; Tove Lo'); // the sheet added an act
+  const sheet = readTable(sheetTable(asRead(rows)));
+  const all = editPatch(sheet.rows[0], now, sheet.present, new Set(), base('e1'));
+  assert.deepEqual(
+    all.changes.map((c) => [c.field, c.from, c.to, c.both]),
+    [
+      ['venue', 'Greek Theatre', 'Hearst Greek', true],
+      ['rating', '4', '3', false],
+      ['acts seen', '', 'Tove Lo', false],
+    ],
+  );
+  const kept = editPatch(sheet.rows[0], now, sheet.present, new Set(), base('e1'), true).patch;
+  assert.equal('venue' in kept, false);
+  assert.equal('notes' in kept, false);
+  assert.equal(kept.rating, 3);
+  assert.deepEqual(
+    kept.seen?.map((s) => s.name),
+    ['Robyn', 'Kim Petras', 'Tove Lo'],
+  );
+});
+
+test('three-way: lists merge, so an act added in the app and one removed in the sheet both stand', () => {
+  const base = baseOf([show]);
+  const now = ev('e1', { ...show, seen: [...show.seen, { key: 'charli xcx', name: 'Charli XCX', from: 'you' }], companions: ['Sam', 'Lee'] });
+  const rows = sheetRows([show]);
+  const header = rows[0] as string[];
+  rows[1][header.indexOf('Saw')] = 'Robyn';
+  rows[1][header.indexOf('Went with')] = 'Sam; Ana';
+  const sheet = readTable(sheetTable(asRead(rows)));
+  const { patch, changes } = editPatch(sheet.rows[0], now, sheet.present, new Set(), base('e1'));
+  assert.deepEqual(patch.seen?.map((s) => s.name), ['Robyn', 'Charli XCX']);
+  assert.deepEqual(patch.companions, ['Sam', 'Lee', 'Ana']);
+  assert.equal(changes.every((c) => !c.both), true);
+});
+
 test('editPatch: edited cells replace values, emptied cells clear them, unreadable cells change nothing', () => {
   const rows = sheetRows([show]);
   const header = rows[0] as string[];
@@ -110,7 +179,10 @@ test('editPatch: edited cells replace values, emptied cells clear them, unreadab
     { name: 'Charli XCX', from: 'you' },
   ]);
   assert.deepEqual(patch.companions, ['Sam', 'Lee']);
-  assert.deepEqual(changes.find((c) => c.field === 'acts seen'), { field: 'acts seen', from: 'Kim Petras', to: 'Charli XCX' });
+  // Without a base, nothing says the sheet is newer.
+  assert.deepEqual(changes.find((c) => c.field === 'acts seen'), { field: 'acts seen', from: 'Kim Petras', to: 'Charli XCX', both: true });
+  assert.equal(changes.every((c) => c.both), true);
+  assert.deepEqual(editPatch(list.rows[0], show, list.present, new Set(), undefined, true).patch, {});
 });
 
 test('editPatch: dates, end dates and the year', () => {
@@ -125,11 +197,11 @@ test('editPatch: dates, end dates and the year', () => {
   assert.equal(out.patch.startDate, '2025-04-13');
   assert.equal(out.patch.endDate, '2025-04-14');
 
-  // Clearing the date keeps the year column.
+  // Clearing the date keeps the year (the server keeps it from the date).
   list = read({ ...base, Year: 2025 });
   out = editPatch(list.rows[0], show, list.present);
   assert.equal(out.patch.startDate, null);
-  assert.equal(out.patch.year, 2025);
+  assert.equal('year' in out.patch, false);
   assert.deepEqual(out.changes.map((c) => c.field), ['date']);
 
   // A date the code can't read (05/06/2025) changes nothing.
@@ -159,7 +231,7 @@ test('runImport applies edits through PATCH and counts untouched rows', async ()
     restoreEmail: async () => assert.fail('no email rows'),
   };
   const events = [show, ev('e2', { name: 'Other', year: 2024 })];
-  const items = list.rows.map((row) => ({ row, choice: { kind: 'edit' as const, event: findMatches(row, events, []).edit! } }));
+  const items = list.rows.map((row) => ({ row, choice: { kind: 'edit' as const, event: findMatches(row, events, []).edit!, keepApp: false } }));
   const result = await runImport(items, api, new Set(), list.present);
   assert.deepEqual(result, { created: 0, merged: 0, edited: 1, unchanged: 1, failed: [] });
   assert.deepEqual(patches, [{ id: 'e1', patch: { rating: 5 } }]);
@@ -288,6 +360,10 @@ test('sheets routes: sign in through the shared callback, link a tab, and refuse
   assert.equal(ok.status, 200, await ok.clone().text());
   assert.equal((await ok.json()).sheet.syncedAt, NOW.toISOString());
   assert.deepEqual(fake.state.writes[0], [['Event', 'ID'], ['Robyn', 'e1'], ['Bicep', null]]);
+  // What was written is the base for the next sync.
+  const next = await (await call('/sheets/values')).json();
+  assert.deepEqual(next.base, [['Event', 'ID'], ['Robyn', 'e1'], ['Bicep', null]]);
+  assert.deepEqual((await store.getSetting<{ tab: string }>(SHEETS_BASE_SETTING))?.tab, '2025');
 
   await call('/sheets/disconnect', 'POST');
   assert.deepEqual(await (await call('/sheets')).json(), { configured: true, connected: false });

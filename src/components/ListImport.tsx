@@ -2,7 +2,10 @@ import React, { useMemo, useState } from 'react';
 import { AlertTriangle, FileUp, Loader2, X } from 'lucide-react';
 import { EmailImport, eventsApi, importsApi, LoggedEvent } from '../services/lineupApi';
 import { placeLabel, whenLabel } from '../services/format';
+import { baseRows } from '../services/sheetSync';
 import {
+  BaseRow,
+  Change,
   Choice,
   editPatch,
   fillPatch,
@@ -33,7 +36,8 @@ interface ListImportProps {
   imports: EmailImport[];
   onDone: () => void;
   onClose: () => void;
-  sheet?: { title: string; table: string[][]; dropped: string[] };
+  // base: the tab as the app last wrote it, so only what the sheet changed since counts.
+  sheet?: { title: string; table: string[][]; dropped: string[]; base?: ReadList };
   onSaved?: (result: ImportResult) => void;
 }
 
@@ -68,15 +72,30 @@ const targetLabel = (t: Target) => {
 const baseOf = (t: Target): Partial<LoggedEvent> =>
   t.kind === 'event' ? t.event : { startDate: t.row.startDate, endDate: t.row.endDate, venue: t.row.venue, city: t.row.city };
 
-const choiceValue = (c: Choice | undefined) => (!c ? '' : c.kind === 'into' ? targetId(c.target) : c.kind);
+const choiceValue = (c: Choice | undefined) =>
+  !c ? '' : c.kind === 'into' ? targetId(c.target) : c.kind === 'edit' && c.keepApp ? 'keep' : c.kind;
+
+type Bases = Map<string, BaseRow>;
+const basesOf = baseRows;
+
+// Changed on both sides, or not known: the app's value is kept unless you say.
+// Only the sheet changed it: applied.
+function editChoice(changes: Change[]): 'edit' | 'keep' | 'skip' {
+  const both = changes.filter((c) => c.both).length;
+  return both === 0 ? 'edit' : both === changes.length ? 'skip' : 'keep';
+}
 
 // The same event is folded in; a day shared with another name waits for you.
-function initialChoices(read: ReadList, events: LoggedEvent[], imports: EmailImport[]): Record<string, Choice | undefined> {
+function initialChoices(read: ReadList, events: LoggedEvent[], imports: EmailImport[], bases: Bases): Record<string, Choice | undefined> {
   const initial: Record<string, Choice | undefined> = {};
   for (const row of read.rows) {
     const m = findMatches(row, events, imports);
+    const base = row.eventId ? bases.get(row.eventId) : undefined;
+    const pick = m.edit ? editChoice(editPatch(row, m.edit, read.present, new Set(), base).changes) : undefined;
     initial[row.id] = m.edit
-      ? { kind: 'edit', event: m.edit }
+      ? pick === 'skip'
+        ? { kind: 'skip' }
+        : { kind: 'edit', event: m.edit, base, keepApp: pick === 'keep' }
       : m.exact
         ? { kind: 'into', target: m.exact }
         : m.nearby.length
@@ -89,8 +108,10 @@ function initialChoices(read: ReadList, events: LoggedEvent[], imports: EmailImp
 export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone, onClose, sheet, onSaved }) => {
   const [file, setFile] = useState<string | null>(sheet ? sheet.title : null);
   const [list, setList] = useState<ReadList | null>(() => (sheet ? readTable(sheet.table) : null));
+  const bases = useMemo(() => basesOf(sheet?.base), [sheet]);
+  const baseFor = (row: ListRow) => (row.eventId ? bases.get(row.eventId) : undefined);
   const [choices, setChoices] = useState<Record<string, Choice | undefined>>(() =>
-    sheet ? initialChoices(readTable(sheet.table), events, imports) : {},
+    sheet ? initialChoices(readTable(sheet.table), events, imports, basesOf(sheet.base)) : {},
   );
   const [leaveOut, setLeaveOut] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -122,7 +143,7 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
     setFile(f.name);
     setList(read);
     if (read.error) setError(read.error);
-    setChoices(initialChoices(read, events, imports));
+    setChoices(initialChoices(read, events, imports, bases));
     setLeaveOut(new Set());
   };
 
@@ -137,14 +158,14 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
     for (const row of rows) {
       const m = matches[row.id];
       if (m?.edit) {
-        if (editPatch(row, m.edit, present, leaveOut).changes.length) edited.push(row);
+        if (editPatch(row, m.edit, present, leaveOut, baseFor(row)).changes.length) edited.push(row);
         else same++;
       } else if (m?.exact) merge.push(row);
       else if (m?.nearby.length) choose.push(row);
       else fresh.push(row);
     }
     return { choose, merge, fresh, edited, same };
-  }, [rows, matches, present, leaveOut]);
+  }, [rows, matches, present, leaveOut, bases]);
 
   const undecided = rows.filter((r) => !choices[r.id]).length;
   const chosen = rows.filter((r) => choices[r.id] && choices[r.id]!.kind !== 'skip');
@@ -154,8 +175,8 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
     const targets = [m?.exact, ...(m?.nearby ?? [])].filter((t): t is Target => Boolean(t));
     const target = targets.find((t) => targetId(t) === value);
     const next: Choice | undefined =
-      value === 'edit' && m?.edit
-        ? { kind: 'edit', event: m.edit }
+      (value === 'edit' || value === 'keep') && m?.edit
+        ? { kind: 'edit', event: m.edit, base: baseFor(row), keepApp: value === 'keep' }
         : value === 'new'
           ? { kind: 'new' }
           : value === 'skip'
@@ -194,7 +215,9 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
   const renderEdit = (row: ListRow) => {
     const m = matches[row.id];
     if (!m?.edit) return null;
-    const { changes } = editPatch(row, m.edit, present, leaveOut);
+    const base = baseFor(row);
+    const { changes } = editPatch(row, m.edit, present, leaveOut, base);
+    const both = changes.filter((c) => c.both).length;
     const choice = choices[row.id];
     return (
       <div key={row.id} className="space-y-2 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">
@@ -212,6 +235,12 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
                   <span className="text-zinc-500 line-through">{c.from || 'empty'}</span> → <span className="text-zinc-100">{c.to || 'empty'}</span>
                 </>
               )}
+              {c.both && (
+                <span className="text-amber-300/90">
+                  {' '}
+                  {base ? '(changed in the app too)' : "(can't tell which is newer)"}
+                </span>
+              )}
             </p>
           ))}
           {row.problems
@@ -223,7 +252,10 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
             ))}
         </div>
         <select value={choiceValue(choice)} onChange={(e) => setChoice(row, e.target.value)} className={control}>
-          <option value="edit">Apply these changes</option>
+          <option value="edit">{both ? `Use the ${sheet ? 'sheet' : 'file'}'s value for all of these` : 'Apply these changes'}</option>
+          {both > 0 && both < changes.length && (
+            <option value="keep">Apply only what changed in the {sheet ? 'sheet' : 'file'}; keep the app's value where both changed</option>
+          )}
           <option value="skip">Keep the app's version{sheet ? ' (the sheet is set back)' : ''}</option>
         </select>
       </div>
@@ -350,7 +382,7 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
                 Read {rows.length} event{rows.length === 1 ? '' : 's'}
                 {list.combined ? `, after combining ${list.combined} repeated row${list.combined === 1 ? '' : 's'}` : ''}. Columns:{' '}
                 {list.columns.map((c) => `${c.header} → ${c.field ? FIELD_LABELS[c.field] : 'not imported'}`).join(' · ')}
-                {groups.same ? `. ${groups.same} row${groups.same === 1 ? '' : 's'} match the app exactly.` : ''}
+                {groups.same ? `. ${groups.same} row${groups.same === 1 ? '' : 's'} with nothing new.` : ''}
               </p>
               {sheet && sheet.dropped.length > 0 && (
                 <p className="flex items-start gap-1 text-xs text-amber-300/90">
