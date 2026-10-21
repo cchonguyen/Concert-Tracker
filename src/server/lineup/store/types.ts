@@ -93,3 +93,10 @@ export interface LineupStore {
 }
 
 export const MAX_EXAMPLES_PER_DOMAIN = 3;
+
+// A job left "running" this long was cut off mid-run (a Worker hit its
+// subrequest or CPU limit, or the process died) and may be picked up again.
+export const STALE_RUN_MS = 10 * 60_000;
+export function isStaleRun(job: LookupJob, now: Date): boolean {
+  return job.status === 'running' && Date.parse(job.updatedAt) <= now.getTime() - STALE_RUN_MS;
+}
