@@ -20,6 +20,11 @@ test('an event with one or two main acts shows them before its name', () => {
   assert.equal(eventTitle({ ...e, seen: [act('Above & Beyond'), act('Seven Lions')] }), 'Above & Beyond, Seven Lions - Alive Tour');
 });
 
+test('two main acts that played B2B show as a B2B', () => {
+  const e = ev('Pier Party', { seen: [act('Sasha', { b2b: ['john digweed'] }), act('John Digweed', { b2b: ['sasha'] })] });
+  assert.equal(eventTitle(e), 'Sasha b2b John Digweed - Pier Party');
+});
+
 test('the name stays as typed when it names an act, has three or more, is a festival or in a series', () => {
   const e = ev('Gryffin Alive Tour', { seen: [act('Gryffin')] });
   assert.equal(eventTitle(e), 'Gryffin Alive Tour');

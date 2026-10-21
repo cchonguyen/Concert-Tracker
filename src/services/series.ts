@@ -47,7 +47,8 @@ export function withPlace(name: string, city?: string): string {
 // "Coachella 2024 · Weekend 1" when you picked the weekend. Outside a series,
 // an event that is not a festival with one or two main acts you saw (not
 // billed as support) shows them first: "Gryffin - Alive Tour", "Above &
-// Beyond, Seven Lions - Pier Party", unless the name already says one of them.
+// Beyond, Seven Lions - Pier Party", or "Sasha b2b John Digweed - Pier Party"
+// when the two played B2B, unless the name already says one of them.
 // Otherwise the name as you typed it. The name itself never changes and is
 // what a lineup lookup reads.
 export function eventTitle(e: LoggedEvent): string {
@@ -61,7 +62,8 @@ export function eventTitle(e: LoggedEvent): string {
   if (!main.length || main.length > 2 || eventScale(e).kind === 'festival') return e.name;
   const name = ` ${seriesKey(e.name)} `;
   if (main.some((a) => name.includes(` ${seriesKey(a.name)} `))) return e.name;
-  return `${main.map((a) => a.name).join(', ')} - ${e.name}`;
+  const b2b = main.length === 2 && !!main[0].b2b?.includes(main[1].key);
+  return `${main.map((a) => a.name).join(b2b ? ' b2b ' : ', ')} - ${e.name}`;
 }
 
 // The weekend your own name for the event gives ("Weekend 2", "W1", "Wknd 1"),
