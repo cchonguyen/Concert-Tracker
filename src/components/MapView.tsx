@@ -145,9 +145,10 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
   useEffect(() => {
     if (!box.current || map.current) return;
     map.current = L.map(box.current, { worldCopyJump: true, zoomControl: true }).setView([30, -40], 2);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
+    // OpenStreetMap's own tiles need no key; the map-tiles class darkens them in CSS.
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      className: 'map-tiles',
       maxZoom: 19,
     }).addTo(map.current);
     layer.current = L.layerGroup().addTo(map.current);
