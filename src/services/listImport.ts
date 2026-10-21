@@ -21,7 +21,9 @@ export type ListField =
   | 'companions'
   | 'rating'
   | 'ticketPrice'
-  | 'notes';
+  | 'format'
+  | 'notes'
+  | 'id';
 
 // Header words each field answers to, compared lowercased.
 const HEADERS: Record<ListField, string[]> = {
@@ -36,7 +38,10 @@ const HEADERS: Record<ListField, string[]> = {
   companions: ['attendee', 'attendees', 'went with', 'with', 'companions', 'people', 'friends'],
   rating: ['rating', 'stars', 'score'],
   ticketPrice: ['ticket price', 'price', 'cost', 'paid'],
+  format: ['format'],
   notes: ['notes', 'note', 'comments'],
+  // This app's own export: the event the row came from.
+  id: ['id'],
 };
 
 export interface ListColumn {
@@ -59,12 +64,16 @@ export interface ListRow {
   companions: string[];
   rating?: number;
   ticketPrice?: number;
+  format?: string;
   notes?: string;
+  eventId?: string; // the ID column of this app's export
+  unread: ListField[]; // cells with a value that couldn't be read
   problems: string[]; // things you should look at; none is fixed for you
 }
 
 export interface ReadList {
   columns: ListColumn[];
+  present: ListField[]; // fields the file has a column for
   rows: ListRow[];
   combined: number; // rows folded into an earlier row of the same file
   error?: string;
@@ -190,11 +199,17 @@ export function mapColumns(header: string[]): ListColumn[] {
 }
 
 export function readList(text: string): ReadList {
-  const table = parseCsv(text).filter((r) => r.some((c) => c.trim()));
-  if (table.length < 2) return { columns: [], rows: [], combined: 0, error: 'The file has no rows under its header.' };
+  return readTable(parseCsv(text));
+}
+
+// Rows of cells (a CSV, or a Google Sheet's tab) with a header row first.
+export function readTable(cells: string[][]): ReadList {
+  const table = cells.filter((r) => r.some((c) => c.trim()));
+  if (table.length < 2) return { columns: [], present: [], rows: [], combined: 0, error: 'The file has no rows under its header.' };
   const columns = mapColumns(table[0]);
-  if (!columns.some((c) => c.field === 'name')) {
-    return { columns, rows: [], combined: 0, error: 'No column for the event name (expected a header like "Event" or "Name").' };
+  const present = columns.flatMap((c) => (c.field ? [c.field] : []));
+  if (!present.includes('name')) {
+    return { columns, present, rows: [], combined: 0, error: 'No column for the event name (expected a header like "Event" or "Name").' };
   }
   const rows: ListRow[] = [];
   const byKey = new Map<string, ListRow>();
@@ -207,16 +222,22 @@ export function readList(text: string): ReadList {
     };
     const name = get('name').replace(/\s+/g, ' ');
     if (!name) return;
-    const row: ListRow = { id: `line-${line}`, lines: [line], name, seen: [], companions: [], problems: [] };
+    const row: ListRow = { id: `line-${line}`, lines: [line], name, seen: [], companions: [], unread: [], problems: [] };
     const dates = readDates(get('startDate'));
-    if (dates.unread) row.problems.push(`Couldn't read the date "${dates.unread}".`);
+    if (dates.unread) {
+      row.problems.push(`Couldn't read the date "${dates.unread}".`);
+      row.unread.push('startDate');
+    }
     row.startDate = dates.startDate;
     row.endDate = dates.endDate;
     const end = get('endDate');
     if (end && !row.endDate) {
       const d = readDate(end);
       if (d) row.endDate = d !== row.startDate ? d : undefined;
-      else row.problems.push(`Couldn't read the end date "${end}".`);
+      else {
+        row.problems.push(`Couldn't read the end date "${end}".`);
+        row.unread.push('endDate');
+      }
     }
     if (row.endDate && (!row.startDate || row.endDate < row.startDate)) {
       row.problems.push('The end date is before the start date, so it was left out.');
@@ -243,20 +264,29 @@ export function readList(text: string): ReadList {
     if (rating) {
       const r = Number(rating);
       if (Number.isInteger(r) && r >= 1 && r <= 5) row.rating = r;
-      else row.problems.push(`Rating "${rating}" isn't 1 to 5, so it was left out.`);
+      else {
+        row.problems.push(`Rating "${rating}" isn't 1 to 5, so it was left out.`);
+        row.unread.push('rating');
+      }
     }
     const price = get('ticketPrice').replace(/[$€£,\s]/g, '');
     if (price) {
       const p = Number(price);
       if (Number.isFinite(p) && p >= 0) row.ticketPrice = p;
-      else row.problems.push(`Price "${get('ticketPrice')}" isn't a number, so it was left out.`);
+      else {
+        row.problems.push(`Price "${get('ticketPrice')}" isn't a number, so it was left out.`);
+        row.unread.push('ticketPrice');
+      }
     }
+    row.format = get('format') || undefined;
     row.notes = get('notes') || undefined;
+    row.eventId = get('id') || undefined;
     const lost = [name, ...row.seen].filter((s) => LOST.test(s));
     if (lost.length) row.problems.push(`${lost.map((s) => `"${s}"`).join(', ')} may have lost a character in the export.`);
 
-    // The same event twice in one file becomes one row.
-    const key = `${norm(name)}|${row.startDate ?? row.year ?? ''}`;
+    // The same event twice in one file becomes one row. Rows from this app's
+    // export are told apart by their ID.
+    const key = row.eventId ? `id|${row.eventId}` : `${norm(name)}|${row.startDate ?? row.year ?? ''}`;
     const earlier = byKey.get(key);
     if (!earlier) {
       byKey.set(key, row);
@@ -265,14 +295,15 @@ export function readList(text: string): ReadList {
     }
     combined++;
     earlier.lines.push(line);
-    for (const f of ['endDate', 'venue', 'city', 'country', 'rating', 'ticketPrice', 'notes'] as const) {
+    for (const f of ['endDate', 'venue', 'city', 'country', 'rating', 'ticketPrice', 'format', 'notes'] as const) {
       if (earlier[f] === undefined && row[f] !== undefined) (earlier as any)[f] = row[f];
     }
     earlier.seen = union(earlier.seen, row.seen);
     earlier.companions = union(earlier.companions, row.companions);
+    earlier.unread = [...new Set([...earlier.unread, ...row.unread])];
     earlier.problems = [...new Set([...earlier.problems, ...row.problems])];
   });
-  return { columns, rows, combined };
+  return { columns, present, rows, combined };
 }
 
 // What a row can be folded into: a logged event, or a show still waiting in
@@ -313,11 +344,14 @@ function sameDays(row: ListRow, f: Facts): boolean {
 }
 
 export interface Matches {
+  edit?: LoggedEvent; // the event this row was exported from
   exact?: Target;
   nearby: Target[];
 }
 
 export function findMatches(row: ListRow, events: LoggedEvent[], emails: EmailImport[]): Matches {
+  const edit = row.eventId ? events.find((e) => e.id === row.eventId) : undefined;
+  if (edit) return { edit, nearby: [] };
   // An email row already linked to an event is that event.
   const open = emails.filter((r) => (r.status === 'new' || r.status === 'skipped') && !r.eventId);
   const targets: Target[] = [
@@ -374,6 +408,10 @@ export function fillPatch(row: ListRow, base: Partial<LoggedEvent>, leaveOut: Se
     patch.ticketPrice = row.ticketPrice;
     adds.push('price');
   }
+  if (!base.format && row.format) {
+    patch.format = row.format;
+    adds.push('format');
+  }
   if (!base.notes && row.notes) {
     patch.notes = row.notes;
     adds.push('notes');
@@ -397,12 +435,121 @@ export function newEventPatch(row: ListRow, leaveOut: Set<string> = new Set()): 
     companions: row.companions.filter((c) => !leaveOut.has(norm(c))),
     rating: row.rating ?? null,
     ticketPrice: row.ticketPrice ?? null,
+    format: row.format ?? null,
     notes: row.notes ?? null,
   };
 }
 
+export interface Change {
+  field: string;
+  from: string; // empty: nothing there
+  to: string;
+}
+
+const shown = (v: unknown) => (v === undefined || v === null ? '' : String(v));
+
+// What a row from this app's own export (a file or the linked sheet) changed
+// on the event it came from. Unlike fillPatch, the row is the newer copy:
+// a different value replaces the event's and an emptied cell clears it. Only
+// columns the file has count, and a cell that couldn't be read changes
+// nothing. Columns worked out by the app (Type, Artist, Supporting artists,
+// Favourite set, Weather) are not read back.
+export function editPatch(
+  row: ListRow,
+  event: LoggedEvent,
+  present: ListField[],
+  leaveOut: Set<string> = new Set(),
+): { patch: EventPatch; changes: Change[] } {
+  const has = (f: ListField) => present.includes(f) && !row.unread.includes(f);
+  const patch: EventPatch = {};
+  const changes: Change[] = [];
+  const change = (field: string, from: unknown, to: unknown) => changes.push({ field, from: shown(from), to: shown(to) });
+
+  if (row.name !== event.name) {
+    patch.name = row.name;
+    change('event', event.name, row.name);
+  }
+  if (has('startDate')) {
+    const start = row.startDate ?? null;
+    const end = start ? (row.endDate ?? null) : null;
+    const beforeStart = event.startDate ?? null;
+    if (start !== beforeStart) {
+      patch.startDate = start;
+      change('date', beforeStart, start);
+    }
+    // The end date follows the row when it has an End date column (or a
+    // range in the date cell), or when the start date changed.
+    const endKnown = !row.unread.includes('endDate') && (present.includes('endDate') || row.endDate !== undefined || start !== beforeStart);
+    if (endKnown && end !== (event.endDate ?? null)) {
+      patch.endDate = end;
+      change('end date', event.endDate, end);
+    }
+    // Without a date, the year. One read from the name counts only when the
+    // date was just cleared, as capture would read it.
+    if (!start) {
+      const year = row.yearFromName && !beforeStart ? (event.year ?? null) : (row.year ?? null);
+      const before = beforeStart ? Number(beforeStart.slice(0, 4)) : (event.year ?? null);
+      if (year !== before || beforeStart) patch.year = year;
+      if (year !== before) change('year', before, year);
+    }
+  }
+  for (const [f, label] of [
+    ['venue', 'venue'],
+    ['city', 'city'],
+    ['country', 'country'],
+    ['format', 'format'],
+    ['notes', 'notes'],
+  ] as const) {
+    if (!has(f)) continue;
+    const to = row[f] ?? null;
+    if (to !== (event[f] ?? null)) {
+      patch[f] = to;
+      change(label, event[f], to);
+    }
+  }
+  for (const [f, label] of [
+    ['rating', 'rating'],
+    ['ticketPrice', 'ticket price'],
+  ] as const) {
+    if (!has(f)) continue;
+    const to = row[f] ?? null;
+    if (to !== (event[f] ?? null)) {
+      patch[f] = to;
+      change(label, event[f], to);
+    }
+  }
+  if (has('seen')) {
+    const want = new Set(row.seen.map(norm));
+    const kept = event.seen.filter((s) => want.has(norm(s.name)));
+    const have = new Set(event.seen.map((s) => norm(s.name)));
+    const added = row.seen.filter((a) => !have.has(norm(a)));
+    const removed = event.seen.filter((s) => !want.has(norm(s.name)));
+    if (added.length || removed.length) {
+      // Acts kept keep their role, source and favourite mark.
+      patch.seen = [
+        ...kept.map((s) => ({ name: s.name, from: s.from, role: s.role, roleFrom: s.roleFrom, favourite: s.favourite })),
+        ...added.map((name) => ({ name, from: 'you' as const })),
+      ];
+      change('acts seen', removed.map((s) => s.name).join(', '), added.join(', '));
+    }
+  }
+  if (has('companions')) {
+    const want = row.companions.filter((c) => !leaveOut.has(norm(c)));
+    const before = new Set(event.companions.map(norm));
+    const after = new Set(want.map(norm));
+    const added = want.filter((c) => !before.has(norm(c)));
+    const removed = event.companions.filter((c) => !after.has(norm(c)));
+    if (added.length || removed.length) {
+      patch.companions = want;
+      change('went with', removed.join(', '), added.join(', '));
+    }
+  }
+  return { patch, changes };
+}
+
 // Your choice for a row: a new event, folded into a target, or not imported.
-export type Choice = { kind: 'new' } | { kind: 'skip' } | { kind: 'into'; target: Target };
+// Or, for a row from this app's export, its changes applied to its event.
+export type Choice = { kind: 'new' } | { kind: 'skip' } | { kind: 'into'; target: Target } | { kind: 'edit'; event: LoggedEvent };
 
 export interface ImportApi {
   create(text: string): Promise<LoggedEvent>;
@@ -414,6 +561,7 @@ export interface ImportApi {
 export interface ImportResult {
   created: number;
   merged: number;
+  edited: number;
   unchanged: number;
   failed: Array<{ row: ListRow; error: string }>;
 }
@@ -424,14 +572,25 @@ export async function runImport(
   items: Array<{ row: ListRow; choice: Choice }>,
   api: ImportApi,
   leaveOut: Set<string> = new Set(),
+  present: ListField[] = [],
 ): Promise<ImportResult> {
-  const result: ImportResult = { created: 0, merged: 0, unchanged: 0, failed: [] };
+  const result: ImportResult = { created: 0, merged: 0, edited: 0, unchanged: 0, failed: [] };
   // Two rows can fold into one event: the second builds on the first.
   const latest = new Map<string, LoggedEvent>();
   const fromEmail = new Map<string, string>();
   for (const { row, choice } of items) {
     try {
       if (choice.kind === 'skip') continue;
+      if (choice.kind === 'edit') {
+        const { patch, changes } = editPatch(row, choice.event, present, leaveOut);
+        if (!changes.length) {
+          result.unchanged++;
+          continue;
+        }
+        await api.update(choice.event.id, patch);
+        result.edited++;
+        continue;
+      }
       if (choice.kind === 'new') {
         const event = await api.create(row.name);
         await api.update(event.id, newEventPatch(row, leaveOut));

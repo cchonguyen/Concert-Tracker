@@ -89,6 +89,36 @@ export const importsApi = {
     request<{ imports: EmailImport[] }>('/api/imports/skip', post({ ids, restore })).then((r) => r.imports),
 };
 
+// "Sync with Google Sheets" in the Table view.
+export interface LinkedSheetView {
+  id: string;
+  title: string;
+  tab: string;
+  url: string;
+  linkedAt: string;
+  syncedAt?: string;
+}
+
+export interface SheetsStatus {
+  configured: boolean;
+  connected: boolean;
+  account?: string;
+  sheet?: LinkedSheetView;
+}
+
+export type SheetCellValue = string | number | boolean;
+
+export const sheetsApi = {
+  status: () => request<SheetsStatus>('/api/sheets'),
+  link: (url: string) => request<{ sheet: LinkedSheetView }>('/api/sheets/link', post({ url })).then((r) => r.sheet),
+  create: () => request<{ sheet: LinkedSheetView }>('/api/sheets/link', post({ create: true })).then((r) => r.sheet),
+  unlink: () => request<unknown>('/api/sheets/unlink', post()),
+  disconnect: () => request<unknown>('/api/sheets/disconnect', post()),
+  read: () => request<{ values: SheetCellValue[][]; version: string; sheet: LinkedSheetView }>('/api/sheets/values'),
+  write: (rows: Array<Array<string | number | null>>, version: string) =>
+    request<{ sheet: LinkedSheetView }>('/api/sheets/values', { method: 'PUT', body: JSON.stringify({ rows, version }) }).then((r) => r.sheet),
+};
+
 export const lineupApi = {
   status: () => request<LineupStatus>('/api/lineup/status'),
   retry: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}/run`, post()).then((r) => r.job),
