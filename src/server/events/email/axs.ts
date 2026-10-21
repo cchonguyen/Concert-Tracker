@@ -9,7 +9,8 @@ import type { EmailReader, Quoted, ReadEmail } from './types';
 // - "Thank you for your Order for <event>" (festival box office, 2026):
 //   the order date, the event, then "Fri" / "April 9 -" / "12:00 PM".
 // - "Thank you for your order for GA" (festival box office, 2023 to 2025):
-//   "TICKET DETAILS" and the event; no event date.
+//   "TICKET DETAILS" and the event, then its date on some ("Saturday,
+//   October 19, 2024 4:00 PM").
 // - "Your tickets were delivered" and "You Received Tickets": the date, the
 //   event, then "Venue, City, ST". Before 2025 the delivery email named no
 //   event and is not read.
@@ -88,6 +89,7 @@ function order(subject: string, lines: string[], sentAt: string): ReadEmail | nu
     return {
       kind: 'order',
       name: named(event, event),
+      ...dateFields(lines[ticketDetails + 2] ?? '', sentAt),
       orderId: confirmation,
       total,
     };

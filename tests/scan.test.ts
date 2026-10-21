@@ -7,7 +7,7 @@ import type { AddressInfo } from 'node:net';
 import express from 'express';
 import { GmailApi, GmailAuthError, GmailMessage, messageBodies, toMessage } from '../src/server/events/email/gmail.ts';
 import { mergeImports, readEmails } from '../src/server/events/email/imports.ts';
-import { GMAIL_SETTING, SCAN_SETTING, ScanSetting, scanStep, senderQuery } from '../src/server/events/email/scan.ts';
+import { forwardQuery, GMAIL_SETTING, SCAN_SETTING, ScanSetting, scanStep, senderQuery } from '../src/server/events/email/scan.ts';
 import { importsRouter } from '../src/server/events/importRoutes.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import { PipelineDeps } from '../src/server/lineup/pipeline.ts';
@@ -48,8 +48,9 @@ function fakeGmail(mail: GmailMessage[]) {
     listIds: async (_token, query) => {
       queries.push(query);
       const after = Number(query.match(/after:(\d+)/)?.[1] ?? 0) * 1000;
+      const forwards = query.startsWith('subject:(fwd');
       return mail
-        .filter((m) => m.receivedAt > after)
+        .filter((m) => m.receivedAt > after && (forwards ? /^fwd?:/i.test(m.subject) : !/@gmail\.com/.test(m.from)))
         .sort((a, b) => b.receivedAt - a.receivedAt)
         .map((m) => m.id);
     },
@@ -113,6 +114,40 @@ test('scanStep: starts after the newest email already imported, reads oldest fir
   assert.equal(fourth.added, 1);
   const state = (await store.getSetting<ScanSetting>(SCAN_SETTING))!;
   assert.deepEqual(Object.keys(state.recent), ['n4']); // older ids fall out once outside the lookback
+});
+
+test('scanStep: forwards are searched through all past mail once, then like the rest', async () => {
+  const store = await newStore();
+  await connect(store);
+  // Checked before forwards were searched: only the sellers' cursor exists.
+  await store.putSetting<ScanSetting>(SCAN_SETTING, { scannedThrough: '2026-10-01T00:00:00.000Z', lastCheckedAt: NOW.toISOString(), recent: {} });
+  const forwarded = (id: string, name: string, forwardedAt: string, sentAt: string): GmailMessage => ({
+    ...dice(id, name, forwardedAt),
+    from: 'Justin <justin@example.com>',
+    subject: `Fwd: Your tickets: ${name}`,
+    text: `---------- Forwarded message ---------\nFrom: DICE <hello@dice.fm>\nDate: ${sentAt}\nSubject: Your tickets: ${name}\nTo: <justin@example.com>\n\n${dice(id, name, forwardedAt).text}`,
+  });
+  // Forwarded after the show: read from the forward's own date, "Sat 17 Oct"
+  // would have no year (Oct 17, 2027 is a Sunday).
+  const gmail = fakeGmail([forwarded('f1', 'OLD FORWARD', '2026-10-19T10:00:00Z', 'Tue, Sep 1, 2026 at 9:00 AM'), dice('d1', 'NEW', '2026-10-10T10:00:00Z')]);
+
+  assert.match(forwardQuery(), /^subject:\(fwd OR fw\) -from:me \(.*dice\.fm/);
+  const step = await scanStep(store, gmail.api, NOW);
+  assert.deepEqual(gmail.queries.map((q) => q.includes('after:')), [true, false]);
+  assert.deepEqual(gmail.reads.sort(), ['d1']); // the sellers' mail first
+  assert.equal(step.remaining, 1);
+  const next = await scanStep(store, gmail.api, NOW);
+  assert.deepEqual(gmail.reads, ['d1', 'f1']);
+  assert.equal(next.remaining, 0);
+  const rows = await store.listImports();
+  const old = rows.find((r) => r.name === 'OLD FORWARD')!;
+  assert.equal(old.seller, 'DICE');
+  assert.equal(old.startDate, '2026-10-17');
+  assert.equal(old.status, 'new');
+
+  // The next check searches forwards only from the newest one read.
+  await scanStep(store, gmail.api, NOW);
+  assert.match(gmail.queries[gmail.queries.length - 1], /after:\d+$/);
 });
 
 test('scanStep: needs Gmail connected', async () => {
