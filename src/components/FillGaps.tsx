@@ -16,7 +16,7 @@ import { formatsOf, whenLabel } from '../services/format';
 import { toSeenInput } from '../server/events/seen';
 import { canFindLineup, cityOf, Gap, gapCounts, GAPS, hasGap, placePatch } from '../services/table';
 import { regionCode } from '../server/events/regions';
-import { eventTitle } from '../services/series';
+import { EventTitle } from './EventTitle';
 
 interface FillGapsProps {
   events: LoggedEvent[]; // the rows the Table shows
@@ -654,7 +654,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
               <li key={e.id} className="space-y-1.5 px-3 py-2.5">
                 <div className="flex items-baseline justify-between gap-2">
                   <button onClick={() => onOpen(e.id)} className="truncate text-left text-sm font-medium text-zinc-100 hover:underline">
-                    {eventTitle(e)}
+                    <EventTitle event={e} />
                   </button>
                   <span className="shrink-0 text-xs text-zinc-500">
                     {[whenLabel(e) ?? 'Date unknown', e.venue, gap === 'place' ? [cityOf(e), e.country].filter(Boolean).join(', ') : undefined]
