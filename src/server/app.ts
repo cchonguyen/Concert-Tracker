@@ -5,6 +5,8 @@ import { lineupRouter } from './lineup/routes';
 import { eventsRouter } from './events/routes';
 import { importsRouter } from './events/importRoutes';
 import { gmailFromEnv } from './events/email/gmail';
+import { sheetsRouter } from './events/sheetRoutes';
+import { sheetsFromEnv } from './events/sheets';
 
 // The /api routes, shared by the Node server (server.ts) and the Cloudflare
 // Worker (worker/index.ts). Static files and the job runner are wired by each host.
@@ -20,6 +22,9 @@ export function createApiApp(lineupDeps: PipelineDeps, runner: JobRunner): expre
 
   // Your event log: capture and details (stage 1), then lineup lookups (stage 2).
   app.use('/api', eventsRouter(lineupDeps, runner));
+  // Google Sheets sync for the Table view. Before the imports router: it
+  // shares the Google sign-in callback with Connect Gmail.
+  app.use('/api', sheetsRouter(lineupDeps, sheetsFromEnv()));
   // Stage 1 from email: ticket emails become a review list (see ARCHITECTURE.md).
   app.use('/api', importsRouter(lineupDeps, gmailFromEnv()));
   // Lineup lookup jobs and review (see ARCHITECTURE.md)

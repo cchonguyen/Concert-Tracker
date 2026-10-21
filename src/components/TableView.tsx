@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Download, FileUp, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Download, FileUp, Sheet, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import type { EmailImport, LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
 import { artistsOf, downloadText, eventsToCsv, kindLabel, supportOf, whenLabel } from '../services/format';
 import {
@@ -18,6 +18,7 @@ import {
   TableFilters,
 } from '../services/table';
 import { ListImport } from './ListImport';
+import { SheetSync } from './SheetSync';
 import { FillGaps } from './FillGaps';
 
 interface TableViewProps {
@@ -97,6 +98,9 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const [filling, setFilling] = useState(false);
   const [filters, setFilters] = useState<TableFilters>(readQuery);
   const [importing, setImporting] = useState(false);
+  // Back from Google's sign-in (?sheets=connected, or what went wrong).
+  const [sheetsNotice] = useState(() => new URLSearchParams(window.location.search).get('sheets'));
+  const [syncing, setSyncing] = useState(Boolean(sheetsNotice));
   const [showFilters, setShowFilters] = useState(() => activeFilterCount(readQuery()) > 0);
 
   useEffect(() => {
@@ -124,6 +128,14 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const importPanel = importing && (
     <ListImport events={events} imports={imports} onDone={onImported} onClose={() => setImporting(false)} />
   );
+  const sheetButton = (
+    <button onClick={() => setSyncing(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+      <Sheet className="h-3.5 w-3.5" /> Google Sheets
+    </button>
+  );
+  const sheetPanel = syncing && (
+    <SheetSync events={events} imports={imports} notice={sheetsNotice} onDone={onImported} onClose={() => setSyncing(false)} />
+  );
   const fillButton = (
     <button onClick={() => setFilling(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
       <Sparkles className="h-3.5 w-3.5" /> Fill gaps
@@ -134,8 +146,12 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
     return (
       <div className="space-y-2 rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">
         <p>Nothing to show yet. Events you add appear here as rows.</p>
-        <p className="text-xs text-zinc-400">{importButton}</p>
+        <p className="flex justify-center gap-4 text-xs text-zinc-400">
+          {importButton}
+          {sheetButton}
+        </p>
         {importPanel}
+        {sheetPanel}
       </div>
     );
   }
@@ -143,6 +159,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   return (
     <div className="space-y-3">
       {importPanel}
+      {sheetPanel}
       {filling && (
         <FillGaps
           events={rows}
@@ -276,6 +293,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
         <span className="flex items-center gap-4">
           {fillButton}
           {importButton}
+          {sheetButton}
           <button
           onClick={() => downloadText(`livearchive-${new Date().toISOString().slice(0, 10)}.csv`, eventsToCsv(rows, editions))}
           disabled={!rows.length}

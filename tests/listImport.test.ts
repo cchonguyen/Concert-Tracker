@@ -262,7 +262,7 @@ test('runImport creates, merges, adds email rows first, and builds on earlier me
     api,
     new Set(['sam']),
   );
-  assert.deepEqual(result, { created: 1, merged: 3, unchanged: 0, failed: [] });
+  assert.deepEqual(result, { created: 1, merged: 3, edited: 0, unchanged: 0, failed: [] });
   assert.deepEqual(calls.slice(0, 3), ['restore mail', 'add mail', 'update email-mail endDate,city,seen,companions']);
   assert.equal(store.get('email-mail')!.venue, 'Speedway');
   assert.deepEqual(
