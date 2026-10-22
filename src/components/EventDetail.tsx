@@ -9,6 +9,7 @@ import {
   eventsApi,
   isActive,
   lineupApi,
+  LineupStatus,
   LoggedEvent,
   LookupJob,
   PlaceGuess,
@@ -540,6 +541,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lineupUrl, setLineupUrl] = useState('');
+  // Whether Gemini is set up and how much of today's budget is left, for
+  // "Look again with Gemini".
+  const [lineupStatus, setLineupStatus] = useState<LineupStatus | null>(null);
+  useEffect(() => {
+    lineupApi.status().then(setLineupStatus, () => setLineupStatus(null));
+  }, [event.details.checkedAt]);
   const [showLog, setShowLog] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [cityQuery, setCityQuery] = useState('');
@@ -744,13 +751,31 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className={sectionTitle}>When and where</h3>
-            <button
-              onClick={() => run('research', () => eventsApi.research(event.id))}
-              disabled={busy === 'research'}
-              className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-50"
-            >
-              {busy === 'research' ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Look again
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => run('research', () => eventsApi.research(event.id))}
+                disabled={busy === 'research' || busy === 'research-gemini'}
+                className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-50"
+              >
+                {busy === 'research' ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Look again
+              </button>
+              {/* Spends Gemini calls only when you press it. */}
+              {lineupStatus?.gemini && (
+                <button
+                  onClick={() => run('research-gemini', () => eventsApi.research(event.id, true))}
+                  disabled={busy === 'research' || busy === 'research-gemini'}
+                  title={`Gemini reads up to 3 of the pages found, one call each${
+                    lineupStatus.quota ? `; ${Math.max(0, lineupStatus.quota.limit - lineupStatus.quota.used)} of ${lineupStatus.quota.limit} left today` : ''
+                  }.`}
+                  className="inline-flex items-center gap-1 text-xs text-violet-300 hover:text-violet-200 disabled:opacity-50"
+                >
+                  {busy === 'research-gemini' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />} Look again with Gemini
+                  {lineupStatus.quota && (
+                    <span className="text-zinc-500">({Math.max(0, lineupStatus.quota.limit - lineupStatus.quota.used)} left)</span>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Date" type="date" value={event.startDate} source={event.sources.startDate} onSave={(v) => save({ startDate: text(v) })} />
@@ -826,7 +851,19 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </label>
           </div>
 
-          {details.status === 'choose' && (
+          {/* What Gemini did on the last "Look again with Gemini". */}
+          {details.notes.some((n) => n.startsWith('gemini:')) && (
+            <ul className="space-y-0.5 text-[11px] text-zinc-500">
+              {details.notes
+                .filter((n) => n.startsWith('gemini:'))
+                .map((n, i) => (
+                  <li key={i} className="break-all">
+                    {n.replace(/^gemini: /, 'Gemini: ')}
+                  </li>
+                ))}
+            </ul>
+          )}
+                    {details.status === 'choose' && (
             <div className="space-y-2 rounded-xl border border-violet-500/30 bg-violet-950/20 p-3">
               <p className="text-sm text-violet-200">
                 {event.startDate ? 'Sources give a different date. Is it one of these?' : 'Is it one of these?'}
@@ -842,7 +879,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                     <span className="block truncate text-[11px] text-zinc-500">
                       {c.name && `${c.name} · `}
                       {c.sources.length > 1 ? `${c.sources.length} sources: ` : ''}
-                      {[...new Set(c.sources.map((s) => SOURCE_LABELS[s.sourceType]))].join(', ')}
+                      {[...new Set(c.sources.map((s) => SOURCE_LABELS[s.sourceType] + (s.readBy === 'gemini' ? ' (read by Gemini)' : '')))].join(', ')}
                     </span>
                   </span>
                   <Check className="mt-0.5 h-4 w-4 shrink-0 text-violet-300" />

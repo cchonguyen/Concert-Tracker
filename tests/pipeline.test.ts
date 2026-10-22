@@ -62,6 +62,9 @@ function fakeGemini(state: { quotaOut: boolean; calls: number }): GeminiClient {
         { name: 'Main Stage', quote: 'Main Stage' },
       ];
     },
+    async extractEventDetails() {
+      return {};
+    },
     async discoverLineupUrls() {
       return [];
     },
@@ -188,6 +191,9 @@ test('web search only reads pages that name the event and year, and keeps only q
         { name: 'Zedd', quote: 'Zedd' }, // not on the page
       ];
     },
+    async extractEventDetails() {
+      return {};
+    },
     async discoverLineupUrls() {
       throw new Error('grounded search must not be used when another provider is set');
     },
@@ -232,6 +238,9 @@ test('web search reads the event site first, as a promoter page, even if stored 
         { name: 'ATICA', quote: 'Friday: ATICA' },
         { name: 'Cut Snake', quote: 'Saturday: Cut Snake' },
       ];
+    },
+    async extractEventDetails() {
+      return {};
     },
     async discoverLineupUrls() {
       return [];
