@@ -38,7 +38,9 @@ export interface DetailCandidate {
   region?: string;
   country?: string;
   // quote: the words a web page used for the date, when it came from web search.
-  sources: Array<{ sourceType: SourceType; sourceUrl: string; fields: EventField[]; quote?: string }>;
+  // readBy: 'gemini' when you asked Gemini to read the page (the quote is still
+  // checked against the page in code).
+  sources: Array<{ sourceType: SourceType; sourceUrl: string; fields: EventField[]; quote?: string; readBy?: 'gemini' }>;
   // Performers the listing names (Ticketmaster attractions, the setlist.fm
   // artist). Used only to confirm an act named in the event's own name.
   performers?: Array<{ name: string; sourceType: SourceType; sourceUrl: string }>;

@@ -18,7 +18,7 @@ Read [REQUIREMENTS.md](REQUIREMENTS.md) first: it says what the app is for (reme
 - Keep the canonical lineup and the personal event log (`logged_events`) separate.
 - Ticket emails are read by per-seller code under `src/server/events/email/`, never by Gemini. An imported show becomes an event only when you tick it, and never fills personal fields, except a ticket price worked out from the same email's dollar total and ticket count, and only where the event has no price you set or cleared.
 - Capture is two stages. Saving an event (stage 1) never waits on research, quota or a lineup; the lineup lookup (stage 2) only starts when asked for on a saved event.
-- Stage 1 research uses structured APIs and web search results read in code, never Gemini. Its results are candidates: they never overwrite a field you typed, and fill empty fields on their own only when they match the full date you gave.
+- Stage 1 research uses structured APIs and web search results read in code. Gemini runs in stage 1 only when you press "Look again with Gemini" on an event, reads only pages the app fetched, and its dates are read in code from the quote it gives (`src/server/events/detailsGemini.ts`). Never call it from saving, plain "Look again" or Fill gaps. Its results are candidates: they never overwrite a field you typed, and fill empty fields on their own only when they match the full date you gave.
 - Parse the capture line in code (`src/server/events/parse.ts`); text it cannot place stays in the name. Never add a model call to parsing.
 - Keep capture to one line of text. New personal fields go on the event detail, not on capture.
 - No demo or seeded data in the app.
