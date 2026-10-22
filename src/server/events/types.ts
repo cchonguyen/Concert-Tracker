@@ -1,5 +1,6 @@
 import type { JobStatus, SourceType } from '../lineup/types';
 import type { Billing } from '../lineup/billing';
+import type { Attendance } from './attendance';
 
 // Your personal log: one LoggedEvent per thing you attended. Stage 1 fills its
 // name, date and place; stage 2 (the lineup lookup) links it to a canonical
@@ -124,6 +125,9 @@ export interface LoggedEvent extends EventFacts {
   // Which weekend of a festival that runs more than one (Weekend 1, 2, ...),
   // as you pick it. Shown with the series.
   weekend?: number;
+  // 'planned': added before it happened, not yet confirmed; 'missed': you
+  // said you didn't go. Absent: you went. See attendance.ts.
+  attendance?: Attendance;
   weather?: EventWeather;
   daysAttended: string[];
   companions: string[];

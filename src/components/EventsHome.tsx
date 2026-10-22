@@ -37,13 +37,15 @@ function hint(e: LoggedEvent, lineup: LineupSummary | undefined, researching: bo
   return null;
 }
 
-const Row: React.FC<{ event: LoggedEvent; lineup?: LineupSummary; researching: boolean; onOpen: () => void }> = ({
+const Row: React.FC<{ event: LoggedEvent; lineup?: LineupSummary; researching: boolean; ask?: boolean; onOpen: () => void }> = ({
   event,
   lineup,
   researching,
+  ask,
   onOpen,
 }) => {
-  const h = hint(event, lineup, researching);
+  // Over and not confirmed: the one thing it needs is your answer.
+  const h = ask ? { text: 'Tap to say whether you went and who you saw', tone: 'text-violet-300' } : hint(event, lineup, researching);
   const place = placeLabel(event);
   const seen = event.seen.map((s) => s.name).join(', ');
   return (
@@ -117,16 +119,20 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
   const tasks = [
     toReview > 0 && { label: `${toReview} from your email to review`, icon: <Mail className="h-3.5 w-3.5" />, onClick: onReviewEmail },
     !toReview && emailCheck && { label: 'Check email for new tickets', icon: <Mail className="h-3.5 w-3.5" />, onClick: onReviewEmail },
+    s.toConfirm.length > 0 && {
+      label: `${s.toConfirm.length} to confirm you went`,
+      onClick: () => (s.toConfirm.length === 1 ? onOpen(s.toConfirm[0].id) : onOpenTable('went=confirm')),
+    },
     s.needs.date > 0 && { label: `${s.needs.date} need a date`, onClick: () => onOpenTable('needs=date') },
     s.needs.pick > 0 && { label: `${s.needs.pick} waiting on a pick`, onClick: () => onOpenTable('needs=pick') },
     s.needs.review > 0 && { label: `${s.needs.review} lineup${s.needs.review === 1 ? '' : 's'} to review`, onClick: () => onOpenTable('needs=review') },
   ].filter(Boolean) as Array<{ label: string; icon?: React.ReactNode; onClick: () => void }>;
 
   const tiles: Array<[string, number, string]> = [
-    ['Events', s.events, ''],
+    ['Events', s.events, 'went=went'],
     ['Artists seen', s.artists, ''],
     ['Venues', s.venues, ''],
-    [`In ${today.slice(0, 4)}`, s.thisYear, `from=${today.slice(0, 4)}&to=${today.slice(0, 4)}`],
+    [`In ${today.slice(0, 4)}`, s.thisYear, `from=${today.slice(0, 4)}&to=${today.slice(0, 4)}&went=went`],
   ];
 
   return (
@@ -171,6 +177,13 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
         </p>
       )}
 
+      {s.toConfirm.length > 0 && (
+        <Section title="Did you go?">
+          {s.toConfirm.map((e) => (
+            <Row key={e.id} event={e} lineup={lineups[e.id]} researching={false} ask onOpen={() => onOpen(e.id)} />
+          ))}
+        </Section>
+      )}
       {added.length > 0 && <Section title="Just added">{added.map(row)}</Section>}
       {s.upcoming.some((e) => !addedIds.has(e.id)) && (
         <Section title="Coming up">{s.upcoming.filter((e) => !addedIds.has(e.id)).map(row)}</Section>
@@ -178,7 +191,7 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
       {recent.length > 0 && <Section title="Recent">{recent.map(row)}</Section>}
 
       <button onClick={() => onOpenTable('')} className="inline-flex items-center gap-1.5 text-sm text-violet-300 hover:text-violet-200">
-        <Table2 className="h-3.5 w-3.5" /> See all {s.events} events in the Table
+        <Table2 className="h-3.5 w-3.5" /> See all {events.length} events in the Table
       </button>
     </div>
   );
