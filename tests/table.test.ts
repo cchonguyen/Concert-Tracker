@@ -101,10 +101,27 @@ test('table summary counts only what is set', () => {
     averageRating: 5,
     priced: 1,
     totalPrice: 80,
+    upcoming: 0,
+    toConfirm: 0,
   });
   const empty = summarize([events[3]]);
   assert.equal(empty.averageRating, undefined);
   assert.equal(empty.firstYear, undefined);
+  // Upcoming and unconfirmed events are counted apart, never in the figures.
+  const planned = [
+    ...events,
+    ev('u', { startDate: '2026-12-01', attendance: 'planned', rating: 1, seen: [{ key: 'x', name: 'X', from: 'you' }] }),
+    ev('p', { startDate: '2026-10-01', attendance: 'planned', venue: 'Shrine' }),
+    ev('m', { startDate: '2026-09-01', attendance: 'missed', ticketPrice: 50 }),
+  ];
+  const s = summarize(planned, '2026-10-21');
+  assert.equal(s.events, 4);
+  assert.equal(s.acts, 2);
+  assert.equal(s.venues, 1);
+  assert.equal(s.averageRating, 5);
+  assert.equal(s.totalPrice, 80);
+  assert.equal(s.upcoming, 1);
+  assert.equal(s.toConfirm, 1);
 });
 
 test('table pick lists come from your own log, most used first', () => {

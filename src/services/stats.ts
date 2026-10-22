@@ -1,19 +1,20 @@
 import type { LoggedEvent } from '../server/events/types';
 import { eventYear } from './format';
 import { cityWithRegion } from '../server/events/regions';
+import { wentTo } from '../server/events/attendance';
 
 // The Stats view: counts and rankings worked out from your log each time.
-// Only events you have been to count (nothing dated after today), and figures
+// Only events you went to count (nothing still ahead, nothing you haven't
+// confirmed going to), and figures
 // built on optional fields say how many events they cover.
 
 const fold = (s: string) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 const DAY = 86_400_000;
 const days = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / DAY);
 
-// Events that have happened: dated today or earlier, or only a year up to this one.
+// Events you went to: not still ahead, not waiting for you to confirm, not missed.
 export function pastEvents(events: LoggedEvent[], today: string): LoggedEvent[] {
-  const year = Number(today.slice(0, 4));
-  return events.filter((e) => (e.startDate ? e.startDate <= today : e.year !== undefined ? e.year <= year : true));
+  return wentTo(events, today);
 }
 
 export interface YearCount {

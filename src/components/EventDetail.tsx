@@ -25,6 +25,8 @@ import { eventTitle, seriesList, seriesOffers, weekendFromName } from '../servic
 import { EventTitle } from './EventTitle';
 import { placePatch } from '../services/table';
 import { cityWithRegion } from '../server/events/regions';
+import { attendanceOf, lastDay } from '../server/events/attendance';
+import type { EditionPerformance } from '../server/lineup/types';
 
 interface EventDetailProps {
   event: LoggedEvent;
@@ -224,6 +226,122 @@ type SeenPatch = NonNullable<EventPatch['seen']>;
 
 const toPatch = (seen: Seen[]): SeenPatch => toSeenInput(seen);
 const NEXT_SET: Record<string, Seen['set'] | null> = { none: 'dj', dj: 'live', live: null };
+
+// Whether you went, for an event added before it happened. Until you say,
+// it is left out of Stats, Artists and the Map. Once it is over the app
+// asks; "Yes" counts it at once, then offers the acts you planned to see
+// and the lineup to tick, and the days you went. Nothing is ticked for you
+// that wasn't already on the event.
+type Offered = { key: string; name: string; from: 'you' | 'lineup'; role?: Seen['role'] };
+const WentCard: React.FC<{
+  event: LoggedEvent;
+  lineupActs: EditionPerformance[];
+  days: string[];
+  canReview: boolean;
+  onSave: (patch: EventPatch) => void;
+  onReview: () => void;
+}> = ({ event, lineupActs, days, canReview, onSave, onReview }) => {
+  const [offered, setOffered] = useState<Offered[] | null>(null);
+  const state = attendanceOf(event, new Date().toISOString().slice(0, 10));
+  const seenKeys = new Set(event.seen.map((s) => s.key));
+  const box = 'space-y-2 rounded-xl border p-3 text-sm';
+
+  if (offered) {
+    const toggle = (o: Offered) =>
+      onSave({
+        seen: seenKeys.has(o.key)
+          ? toPatch(event.seen.filter((s) => s.key !== o.key))
+          : [...toPatch(event.seen), { name: o.name, from: o.from, role: o.role, roleFrom: o.role ? o.from : undefined }],
+      });
+    return (
+      <div className={`${box} border-emerald-500/30 bg-emerald-950/20`}>
+        <p className="inline-flex items-center gap-1 font-semibold text-emerald-200">
+          <Check className="h-4 w-4" /> Counted. Who did you see?
+        </p>
+        {offered.length > 0 && (
+          <>
+            <p className="text-xs text-zinc-400">
+              {event.seen.length || offered.some((o) => o.from === 'you') ? 'Untick anyone you missed' : 'Tap who you saw'}
+              {lineupActs.length ? ', and tap anyone else from the lineup.' : '.'}
+            </p>
+            <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-auto">
+              {offered.map((o) => {
+                const on = seenKeys.has(o.key);
+                return (
+                  <button
+                    key={o.key}
+                    onClick={() => toggle(o)}
+                    aria-pressed={on}
+                    className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
+                  >
+                    {o.name}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+        {days.length > 1 && <DaysWent days={days} attended={event.daysAttended} onChange={(daysAttended) => onSave({ daysAttended })} />}
+        <div className="flex flex-wrap items-center gap-3">
+          {canReview && (
+            <button onClick={onReview} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500">
+              Review the lineup
+            </button>
+          )}
+          <button onClick={() => setOffered(null)} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900">
+            Done
+          </button>
+          <span className="text-xs text-zinc-500">Add anyone else under Who you saw.</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === 'upcoming') {
+    const last = lastDay(event);
+    return (
+      <p className={`${box} border-sky-500/30 bg-sky-950/20 text-sky-200`}>
+        Upcoming. It isn't counted in Stats, Artists or the Map yet
+        {last ? `; after ${whenLabel({ startDate: last }) ?? last} the app asks whether you went.` : '.'}
+      </p>
+    );
+  }
+
+  if (state === 'missed') {
+    return (
+      <div className={`${box} flex flex-wrap items-center justify-between gap-2 border-zinc-800 text-zinc-400`}>
+        <span>You didn't go, so it isn't counted.</span>
+        <button onClick={() => onSave({ attendance: null })} className="text-xs text-zinc-300 hover:underline">
+          I did go
+        </button>
+      </div>
+    );
+  }
+
+  if (state !== 'confirm') return null;
+  const went = () => {
+    onSave({ attendance: null });
+    const acts: Offered[] = [
+      ...event.seen.map((s) => ({ key: s.key, name: s.name, from: s.from, role: s.role })),
+      ...lineupActs.filter((p) => !seenKeys.has(p.artistKey)).map((p) => ({ key: p.artistKey, name: p.name, from: 'lineup' as const, role: p.billing })),
+    ];
+    if (acts.length || days.length > 1 || canReview) setOffered(acts);
+  };
+  return (
+    <div className={`${box} border-violet-500/40 bg-violet-950/30`}>
+      <p className="font-semibold text-violet-100">Did you go?</p>
+      <p className="text-xs text-zinc-400">It's over, and it stays out of Stats, Artists and the Map until you say.</p>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={went} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500">
+          Yes, I went
+        </button>
+        <button onClick={() => onSave({ attendance: 'missed' })} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900">
+          No, I didn't go
+        </button>
+      </div>
+    </div>
+  );
+};
 
 // Who you saw, in two rows: Artist (headliners and acts with no role stated)
 // and Supporting (acts billed as support). Moving an act, or tapping its name
@@ -746,6 +864,14 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           )}
         </div>
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
+        <WentCard
+          event={event}
+          lineupActs={lineupActs}
+          days={days}
+          canReview={Boolean(job && job.status === 'needs_review' && !edition)}
+          onSave={(patch) => void save(patch)}
+          onReview={() => setReviewing(true)}
+        />
 
         {/* Stage 1: when and where */}
         <section className="space-y-3">

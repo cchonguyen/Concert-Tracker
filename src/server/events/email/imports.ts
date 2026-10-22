@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { normalizeName } from '../../lineup/text';
 import type { LoggedEvent } from '../types';
+import { isAhead } from '../attendance';
 import { axs } from './axs';
 import { dice } from './dice';
 import { eventbrite } from './eventbrite';
@@ -290,6 +291,8 @@ export function eventFromImport(row: EmailImport, now: Date): LoggedEvent {
     daysAttended: [],
     companions: [],
     ticketPrice: row.ticketPrice !== undefined && price ? row.ticketPrice : undefined,
+    // A show still ahead is added as upcoming; it counts once you say you went.
+    ...(isAhead({ startDate: row.startDate }, iso.slice(0, 10)) ? { attendance: 'planned' as const } : {}),
     createdAt: iso,
     updatedAt: iso,
   };

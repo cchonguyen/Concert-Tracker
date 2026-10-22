@@ -585,7 +585,7 @@ function appValues(e: LoggedEvent): Record<ScalarKey, Scalar> {
 // tells which side is newer, so every difference is marked `both`. With
 // `keepApp`, fields marked `both` keep the app's value. Acts and people are
 // merged as lists: what the row added or removed is applied to the app's
-// current list. Columns worked out by the app (Type, Artist, Supporting
+// current list. Columns worked out by the app (Type, Went, Artist, Supporting
 // artists, Favourite set, Sets, Weather) are not read back.
 export function editPatch(
   row: ListRow,
