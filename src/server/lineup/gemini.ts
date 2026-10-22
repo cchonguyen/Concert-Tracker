@@ -3,7 +3,7 @@ import { ExtractionExample, LookupInput } from './types';
 import { lineupWindow } from './text';
 import { parseRateLimitError } from './quota';
 
-// Gemini is a reader, never a memory. It only extracts names from text the
+// Gemini is a reader, never a memory. It only extracts from text the
 // app fetched, and must quote the span each name came from; the caller drops
 // any name whose quote is not in the document. It is never asked for
 // confidence scores, dates it was not shown, or URLs it did not find.
@@ -25,7 +25,40 @@ export interface GeminiClient {
   }): Promise<ExtractedName[]>;
   // Grounded search used only to find candidate lineup URLs.
   discoverLineupUrls(input: LookupInput): Promise<string[]>;
+  // Stage 1, only when you ask for it ("Look again with Gemini"): the words a
+  // page uses for the event's date and place. Values are checked against the
+  // page, and dates are read from the quote in code (events/detailsGemini.ts).
+  extractEventDetails(args: { text: string; eventName: string; year?: number }): Promise<ExtractedDetails>;
 }
+
+export interface ExtractedDetails {
+  dateQuote?: string;
+  venue?: string;
+  city?: string;
+  country?: string;
+  placeQuote?: string;
+}
+
+export const DETAILS_PROMPT_VERSION = 'details@1';
+
+const DETAILS_SYSTEM = `You copy where and when one event took place out of a web page. Rules:
+- Use only the PAGE TEXT provided. Never use outside knowledge and never guess.
+- The event is named below. Ignore other events, dates, cities or editions the page lists.
+- "dateQuote": an exact substring of the page text (up to 120 characters) that states the event's date or dates, written as on the page. Leave it out if the page does not state a full date for this event.
+- "venue", "city", "country": copied exactly as written on the page, each only if the page states it for this event.
+- "placeQuote": an exact substring of the page text (up to 200 characters) that contains every place value you gave.
+- If the page is not about this event, return an empty object.`;
+
+const DETAILS_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    dateQuote: { type: Type.STRING },
+    venue: { type: Type.STRING },
+    city: { type: Type.STRING },
+    country: { type: Type.STRING },
+    placeQuote: { type: Type.STRING },
+  },
+};
 
 // @5: an optional billing role, kept only when the quote states it.
 export const EXTRACTION_PROMPT_VERSION = 'extract@5';
@@ -95,6 +128,27 @@ export function createGeminiClient(apiKey: string, model: string): GeminiClient 
         return Array.isArray(parsed.performers) ? parsed.performers : [];
       } catch (err) {
         if (err instanceof SyntaxError) return [];
+        rethrowQuota(err);
+      }
+    },
+
+    async extractEventDetails({ text, eventName, year }) {
+      const contents = `EVENT: ${eventName}${year ? ` (${year})` : ''}\n\nPAGE TEXT:\n${text.slice(0, MAX_DOC_CHARS)}`;
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents,
+          config: {
+            systemInstruction: DETAILS_SYSTEM,
+            responseMimeType: 'application/json',
+            responseSchema: DETAILS_SCHEMA,
+            temperature: 0,
+          },
+        });
+        const parsed = JSON.parse(response.text ?? '{}');
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch (err) {
+        if (err instanceof SyntaxError) return {};
         rethrowQuota(err);
       }
     },
