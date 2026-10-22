@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { LoggedEvent } from '../services/lineupApi';
 import { whenLabel } from '../services/format';
+import { attendanceOf } from '../server/events/attendance';
 import { facts, pastEvents, perYear, RankBy, Ranked, seriesStats, SeriesStat, top, yearInReview } from '../services/stats';
 import { EventTitle } from './EventTitle';
 
@@ -166,6 +167,33 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
   const filter = (param: string, value: string) => onOpenTable(`${param}=${encodeURIComponent(value)}`);
   const series = useMemo(() => seriesStats(past), [past]);
 
+  // What is held back, so the counts below never look like they lost events.
+  const held = useMemo(() => {
+    const n = { upcoming: 0, confirm: 0 };
+    for (const e of events) {
+      const a = attendanceOf(e, today);
+      if (a === 'upcoming' || a === 'confirm') n[a] += 1;
+    }
+    return n;
+  }, [events, today]);
+  const heldNote = (held.upcoming > 0 || held.confirm > 0) && (
+    <p className="text-xs text-zinc-500">
+      Not counted yet:{' '}
+      {held.upcoming > 0 && (
+        <button onClick={() => onOpenTable('went=upcoming')} className="hover:text-zinc-300 hover:underline">
+          {held.upcoming} upcoming
+        </button>
+      )}
+      {held.upcoming > 0 && held.confirm > 0 && ', '}
+      {held.confirm > 0 && (
+        <button onClick={() => onOpenTable('went=confirm')} className="text-violet-300 hover:underline">
+          {held.confirm} waiting for you to say you went
+        </button>
+      )}
+      .
+    </p>
+  );
+
   if (!past.length) {
     return (
       <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">
@@ -176,6 +204,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
 
   return (
     <div className="space-y-6">
+      {heldNote}
       {years.length > 0 && (
         <section className={`${card} space-y-2`}>
           <h2 className={title}>Events per year</h2>

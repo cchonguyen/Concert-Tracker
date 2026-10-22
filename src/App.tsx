@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BarChart3, Map as MapIcon, Mic2, Radio, Table2, Ticket } from 'lucide-react';
 import {
   EmailImport,
@@ -20,6 +20,7 @@ import { ImportReview } from './components/ImportReview';
 import { TableView } from './components/TableView';
 import { StatsView } from './components/StatsView';
 import { MapView } from './components/MapView';
+import { wentTo } from './server/events/attendance';
 
 type Tab = 'events' | 'table' | 'map' | 'stats' | 'artists';
 
@@ -119,9 +120,12 @@ export default function App() {
     setTab('table');
   };
 
-  const seenCount = new Set(events.flatMap((e) => e.seen.map((s) => s.key))).size;
-  const selected = events.find((e) => e.id === selectedId) ?? null;
   const today = new Date().toISOString().slice(0, 10);
+  // Artists and the Map count only events you went to; upcoming ones and
+  // ones you haven't confirmed wait in the Table and on the Events home.
+  const went = useMemo(() => wentTo(events, today), [events, today]);
+  const seenCount = new Set(went.flatMap((e) => e.seen.map((s) => s.key))).size;
+  const selected = events.find((e) => e.id === selectedId) ?? null;
   const toReview = imports.filter((r) => r.status === 'new' && !r.eventId && !(r.startDate && r.startDate > today)).length;
 
   return (
@@ -190,15 +194,16 @@ export default function App() {
             imports={imports}
             onOpen={setSelectedId}
             onChanged={upsert}
+            onCaptured={handleCaptured}
             onImported={() => {
               void refresh();
               importsApi.list().then(setImports).catch(() => undefined);
             }}
           />
         )}
-        {tab === 'map' && <MapView events={events} lineups={lineups} editions={editions} onOpen={setSelectedId} onOpenTable={openTable} />}
+        {tab === 'map' && <MapView events={went} lineups={lineups} editions={editions} onOpen={setSelectedId} onOpenTable={openTable} />}
         {tab === 'stats' && <StatsView events={events} onOpen={setSelectedId} onOpenTable={openTable} />}
-        {tab === 'artists' && <ArtistsView events={events} onOpenEvent={setSelectedId} onOpenTable={openTable} />}
+        {tab === 'artists' && <ArtistsView events={went} onOpenEvent={setSelectedId} onOpenTable={openTable} />}
       </main>
 
       <footer className="border-t border-zinc-900 py-5 text-xs text-zinc-500">
