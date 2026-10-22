@@ -3,19 +3,22 @@ import { CalendarDays, Loader2, MapPin, Plus } from 'lucide-react';
 import { parseEventInput } from '../server/events/parse';
 import { eventsApi, LoggedEvent } from '../services/lineupApi';
 import { whenLabel } from '../services/format';
+import { isAhead } from '../server/events/attendance';
 
 interface CaptureBarProps {
   onCaptured: (event: LoggedEvent) => void;
+  compact?: boolean; // in the Table: no focus grab, shorter label
 }
 
 // Stage 1: one line in, saved at once. The preview shows how the line will be
 // split, so nothing surprising is stored.
-export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured }) => {
+export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured, compact }) => {
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const parsed = useMemo(() => (text.trim() ? parseEventInput(text) : null), [text]);
   const when = parsed && whenLabel(parsed);
+  const ahead = parsed ? isAhead(parsed, new Date().toISOString().slice(0, 10)) : false;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,12 +38,12 @@ export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured }) => {
   return (
     <form onSubmit={submit} className="space-y-2">
       <label className="block text-sm font-semibold text-zinc-300" htmlFor="capture">
-        What did you go to?
+        {compact ? 'Add an event, past or upcoming' : 'What did you go to?'}
       </label>
       <div className="flex gap-2">
         <input
           id="capture"
-          autoFocus
+          autoFocus={!compact}
           autoComplete="off"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -62,6 +65,11 @@ export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured }) => {
           <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 ${when ? 'bg-zinc-800 text-zinc-200' : 'text-zinc-500'}`}>
             <CalendarDays className="h-3 w-3" /> {when ?? 'no date yet (that’s fine)'}
           </span>
+          {ahead && (
+            <span className="rounded-full bg-sky-500/10 px-2.5 py-1 text-sky-300" title="Counted once you say you went">
+              Upcoming: you'll be asked if you went
+            </span>
+          )}
           {(parsed.venue || parsed.city) && (
             <span className="inline-flex items-center gap-1 rounded-full bg-zinc-800 px-2.5 py-1 text-zinc-200">
               <MapPin className="h-3 w-3" /> {[parsed.venue, parsed.city].filter(Boolean).join(', ')}

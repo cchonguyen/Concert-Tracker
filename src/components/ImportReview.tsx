@@ -220,7 +220,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
     }
   };
 
-  const chosen = toReview.filter((r) => ticked.has(r.id)).map((r) => r.id);
+  const chosen = [...toReview, ...upcoming].filter((r) => ticked.has(r.id)).map((r) => r.id);
   const add = () =>
     act(async () => {
       const res = await importsApi.add(chosen);
@@ -286,9 +286,11 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
           {upcoming.length > 0 && (
             <section className="space-y-2">
               <h3 className={sectionTitle}>Still ahead ({upcoming.length})</h3>
-              <p className="text-xs text-zinc-600">These come back here for review once their date has passed.</p>
+              <p className="text-xs text-zinc-600">
+                Tick one to add it as upcoming: it isn't counted until you say you went, and once it's over the app asks. Unticked ones stay here.
+              </p>
               {upcoming.map((r) => (
-                <Row key={r.id} row={r} />
+                <Row key={r.id} row={r} ticked={ticked.has(r.id)} onTick={() => toggle([r.id])} />
               ))}
             </section>
           )}
@@ -330,7 +332,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
           )}
         </div>
 
-        {toReview.length > 0 && (
+        {(toReview.length > 0 || upcoming.length > 0) && (
           <div className="flex items-center justify-between gap-3 border-t border-zinc-900 p-4">
             <button
               onClick={() => skip(chosen)}

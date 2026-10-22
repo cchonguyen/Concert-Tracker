@@ -409,7 +409,7 @@ test('import routes: posting mail needs the import token', async (t) => {
   assert.deepEqual(await ok.json(), { read: 2, unreadable: 0, ignored: 0, changed: 2 });
 });
 
-test('import routes: nothing is saved until you tick it; future shows wait; skips can be undone', async (t) => {
+test('import routes: nothing is saved until you tick it; future shows are added as upcoming; skips can be undone', async (t) => {
   const { store, call } = await server(t);
   process.env.IMPORT_TOKEN = 'right-token';
   t.after(() => delete process.env.IMPORT_TOKEN);
@@ -420,9 +420,11 @@ test('import routes: nothing is saved until you tick it; future shows wait; skip
   const id = (name: string) => imports.find((r: any) => r.name === name).id;
 
   const added = await (await call('/imports/add', { ids: [id('Porter Robinson'), id('Deep Space')] })).json();
-  assert.deepEqual(added.events.map((e: any) => e.name), ['Porter Robinson']);
+  assert.deepEqual(added.events.map((e: any) => e.name), ['Porter Robinson', 'Deep Space']);
+  // The show still ahead waits for you to say you went; the past one counts.
+  assert.deepEqual(added.events.map((e: any) => e.attendance), [undefined, 'planned']);
   const events = await store.listEvents();
-  assert.deepEqual(events.map((e) => e.name), ['Porter Robinson']);
+  assert.deepEqual(events.map((e) => e.name).sort(), ['Deep Space', 'Porter Robinson']);
 
   // Adding again does not duplicate it.
   assert.deepEqual((await (await call('/imports/add', { ids: [id('Porter Robinson')] })).json()).events, []);
@@ -431,5 +433,5 @@ test('import routes: nothing is saved until you tick it; future shows wait; skip
   assert.equal(skipped.imports[0].status, 'skipped');
   const restored = await (await call('/imports/skip', { ids: [id('MAURICE')], restore: true })).json();
   assert.equal(restored.imports[0].status, 'new');
-  assert.equal((await store.listEvents()).length, 1);
+  assert.equal((await store.listEvents()).length, 2);
 });

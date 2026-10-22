@@ -7,6 +7,7 @@ import { isBilling } from '../lineup/billing';
 import { EVENT_FIELDS, EventField, EventKind, LineupSummary, LoggedEvent, SeenAct } from './types';
 import { isSetKind, SeenInput, withB2b } from './seen';
 import { cityWithRegion, regionCode, regionCountry, splitEventCity } from './regions';
+import { isAhead, isAttendance } from './attendance';
 
 // Your event log. Stage 1 (capture and details) lives here; stage 2 hands the
 // event to the lineup pipeline. See REQUIREMENTS.md.
@@ -27,6 +28,8 @@ export function newEvent(line: string, now: Date): LoggedEvent {
     input,
     ...parsed,
     name: parsed.name || input,
+    // Still ahead: counted once you say you went.
+    ...(isAhead(parsed, iso.slice(0, 10)) ? { attendance: 'planned' as const } : {}),
     sources,
     details: { status: 'pending', candidates: [], notes: [] },
     seen: [],
@@ -51,6 +54,7 @@ export interface EventPatch {
   format?: string | null;
   series?: string | null;
   weekend?: number | null;
+  attendance?: 'planned' | 'missed' | null; // null: you went
   daysAttended?: string[];
   companions?: string[];
   rating?: number | null;
@@ -91,6 +95,14 @@ export function applyPatch(event: LoggedEvent, patch: EventPatch, now: Date): Lo
     next.month = undefined;
   }
   if (next.endDate && (!next.startDate || next.endDate < next.startDate)) setField(next, 'endDate', undefined);
+  if (patch.attendance !== undefined) {
+    if (patch.attendance !== null && !isAttendance(patch.attendance)) throw new InputError('Attendance is planned, missed, or null for went.');
+    next.attendance = patch.attendance ?? undefined;
+  } else if (!next.attendance && ('startDate' in patch || 'endDate' in patch || 'year' in patch) && isAhead(next, now.toISOString().slice(0, 10))) {
+    // Moved to a date still ahead (or saved from a list with one): you
+    // can't have been yet, so it waits for you to say you went.
+    next.attendance = 'planned';
+  }
   if (patch.seen) next.seen = cleanSeen(patch.seen);
   if (patch.kind !== undefined) {
     if (patch.kind !== null && patch.kind !== 'concert' && patch.kind !== 'festival') throw new InputError('Type is concert or festival.');

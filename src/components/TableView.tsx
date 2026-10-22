@@ -15,6 +15,7 @@ import {
   MapPin,
   Minus,
   Mic2,
+  Plus,
   Sheet,
   SlidersHorizontal,
   Sparkles,
@@ -49,6 +50,8 @@ import { FillGaps } from './FillGaps';
 import { SeriesPanel } from './SeriesPanel';
 import { EventTitle } from './EventTitle';
 import { SET_LABELS, seenSlots, slotId } from '../server/events/seen';
+import { ATTENDANCE_LABELS, attendanceOf, AttendanceState } from '../server/events/attendance';
+import { CaptureBar } from './CaptureBar';
 
 interface TableViewProps {
   events: LoggedEvent[];
@@ -58,6 +61,7 @@ interface TableViewProps {
   onOpen: (id: string) => void;
   onImported: () => void;
   onChanged: (event: LoggedEvent) => void;
+  onCaptured: (event: LoggedEvent) => void; // a line typed in the Table's Add box
 }
 
 const control =
@@ -206,6 +210,24 @@ const Stars: React.FC<{ rating?: number | null }> = ({ rating }) =>
     dash
   );
 
+// Upcoming, waiting for you to say you went, or missed. Nothing for an
+// event you went to.
+const WentBadge: React.FC<{ state: AttendanceState }> = ({ state }) =>
+  state === 'went' ? null : (
+    <span
+      title={state === 'confirm' ? "Over: open it to say whether you went. Not counted until then." : 'Not counted in Stats, Artists or the Map'}
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+        state === 'confirm'
+          ? 'border-violet-500/40 bg-violet-600/15 text-violet-200'
+          : state === 'upcoming'
+            ? 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+            : 'border-zinc-700 text-zinc-500'
+      }`}
+    >
+      {ATTENDANCE_LABELS[state]}
+    </span>
+  );
+
 const NeedsBadge: React.FC<{ needs: keyof typeof NEEDS_LABELS }> = ({ needs }) => {
   const Icon = NEEDS_ICONS[needs];
   return (
@@ -289,8 +311,9 @@ const People: React.FC<{ names: string[] }> = ({ names }) =>
 
 // Every event as a row you can filter, sort and export. A row opens the usual
 // event panel for editing; "Import a list" adds events from a CSV you kept.
-export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, imports, onOpen, onImported, onChanged }) => {
+export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, imports, onOpen, onImported, onChanged, onCaptured }) => {
   const [filling, setFilling] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [linking, setLinking] = useState(false);
   const [filters, setFilters] = useState<TableFilters>(readQuery);
   const [importing, setImporting] = useState(false);
@@ -308,6 +331,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const options = useMemo(() => filterOptions(events), [events]);
   const rows = useMemo(() => filterEvents(events, filters, lineups, editions), [events, filters, lineups, editions]);
   const summary = useMemo(() => summarize(rows), [rows]);
+  const today = new Date().toISOString().slice(0, 10);
   const active = activeFilterCount(filters);
   const set = (patch: Partial<TableFilters>) => setFilters((f) => ({ ...f, ...patch }));
   const setHas = (field: HasField, v: Has) => setFilters((f) => ({ ...f, has: { ...f.has, [field]: v } }));
@@ -399,6 +423,14 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
           className={`${control} min-w-0 flex-1 py-2`}
         />
         <button
+          onClick={() => setAdding((a) => !a)}
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm ${
+            adding ? 'border-violet-500 text-violet-200' : 'border-zinc-800 text-zinc-300 hover:text-zinc-100'
+          }`}
+        >
+          <Plus className="h-3.5 w-3.5" /> Add
+        </button>
+        <button
           onClick={() => setShowFilters((s) => !s)}
           className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm ${
             showFilters ? 'border-violet-500 text-violet-200' : 'border-zinc-800 text-zinc-300 hover:text-zinc-100'
@@ -424,6 +456,12 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
           </button>
         )}
       </div>
+
+      {adding && (
+        <div className="rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">
+          <CaptureBar compact onCaptured={onCaptured} />
+        </div>
+      )}
 
       {showFilters && (
         <div className="space-y-2.5 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">
@@ -482,6 +520,17 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
               options={Object.entries(NEEDS_LABELS).map(([value, l]) => ({ value, label: `Needs ${l.toLowerCase()}` }))}
             />
             <Pick
+              name="Went"
+              value={filters.went === 'any' ? '' : filters.went}
+              onChange={(v) => set({ went: (v || 'any') as TableFilters['went'] })}
+              options={[
+                { value: 'went', label: 'Went' },
+                { value: 'upcoming', label: 'Upcoming' },
+                { value: 'confirm', label: 'Did you go? (to confirm)' },
+                { value: 'missed', label: "Didn't go" },
+              ]}
+            />
+            <Pick
               name="Added from"
               value={filters.origin === 'any' ? '' : filters.origin}
               onChange={(v) => set({ origin: (v || 'any') as TableFilters['origin'] })}
@@ -496,14 +545,26 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
 
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
         <span>
-          {summary.events} event{summary.events === 1 ? '' : 's'}
-          {summary.events < events.length && <span className="text-zinc-600"> of {events.length}</span>}
+          {summary.events} event{summary.events === 1 ? '' : 's'} you went to
+          {rows.length < events.length && <span className="text-zinc-600"> ({rows.length} of {events.length} shown)</span>}
           {' · '}
           {summary.acts} act{summary.acts === 1 ? '' : 's'} seen · {summary.venues} venue{summary.venues === 1 ? '' : 's'}
           {summary.firstYear !== undefined &&
             ` · ${summary.firstYear === summary.lastYear ? summary.firstYear : `${summary.firstYear} to ${summary.lastYear}`}`}
           {summary.averageRating !== undefined && ` · rated ${summary.averageRating} on average (${summary.rated} rated)`}
           {summary.totalPrice !== undefined && ` · ${summary.totalPrice.toLocaleString()} spent (${summary.priced} priced)`}
+          {summary.upcoming > 0 && (
+            <button onClick={() => set({ went: 'upcoming' })} className="text-sky-300/90 hover:underline">
+              {' · '}
+              {summary.upcoming} upcoming
+            </button>
+          )}
+          {summary.toConfirm > 0 && (
+            <button onClick={() => set({ went: 'confirm' })} className="text-violet-300 hover:underline">
+              {' · '}
+              {summary.toConfirm} to confirm
+            </button>
+          )}
         </span>
         <span className="flex flex-wrap items-center gap-x-4 gap-y-1 whitespace-nowrap">
           {fillButton}
@@ -570,6 +631,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                       <td className={cell}>
                         <div className="flex items-start gap-1.5 font-medium text-zinc-100">
                           <span><EventTitle event={e} /></span>
+                          <WentBadge state={attendanceOf(e, today)} />
                           {fromEmail(e) && (
                             <span title="Added from a ticket email">
                               <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" />
@@ -662,6 +724,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="truncate font-medium text-zinc-100"><EventTitle event={e} /></div>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-400">
+                        <WentBadge state={attendanceOf(e, today)} />
                         <KindBadge kind={kindLabel(e, editions[e.id])} />
                         {formatsOf(e.format).map((f) => (
                           <FormatChip key={f} value={f} />

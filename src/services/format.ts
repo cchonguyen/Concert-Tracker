@@ -3,6 +3,7 @@ import { eventScale, KIND_LABELS, LineupFacts } from '../server/events/scale';
 import { norm } from './listImport';
 import { seenSlots, slotLabel } from '../server/events/seen';
 import { cityWithRegion } from '../server/events/regions';
+import { attendanceOf, AttendanceState } from '../server/events/attendance';
 
 const day = (iso: string, opts: Intl.DateTimeFormatOptions) =>
   new Date(`${iso}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', ...opts });
@@ -148,6 +149,8 @@ export function kindLabel(e: LoggedEvent, facts?: LineupFacts): string {
 
 export type SheetCell = string | number | undefined;
 
+const WENT_CELL: Record<AttendanceState, string> = { went: 'Yes', upcoming: 'Upcoming', confirm: 'Not confirmed', missed: 'No' };
+
 // One row per event, for a spreadsheet: the CSV export and the linked Google
 // Sheet. "ID" is last so a sheet or file read back matches each row to its
 // event ("Import a list", "Sync with Google Sheets").
@@ -163,6 +166,8 @@ export function eventRows(
     'Series',
     'Weekend',
     'Type',
+    // Worked out, not read back: Yes, Upcoming, Not confirmed or No.
+    'Went',
     'Format',
     'Venue',
     'City',
@@ -181,6 +186,7 @@ export function eventRows(
     'Notes',
     'ID',
   ];
+  const today = new Date().toISOString().slice(0, 10);
   const rows = events.map((e) => [
     e.startDate,
     e.endDate,
@@ -189,6 +195,7 @@ export function eventRows(
     e.series,
     e.weekend,
     kindLabel(e, editions[e.id]),
+    WENT_CELL[attendanceOf(e, today)],
     e.format,
     e.venue,
     e.city,

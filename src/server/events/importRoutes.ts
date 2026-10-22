@@ -91,8 +91,6 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
           changed.push({ ...row, eventId: logged.id, updatedAt: now.toISOString() });
           continue;
         }
-        // A show still ahead waits on the list until it has happened.
-        if (row.startDate && row.startDate > now.toISOString().slice(0, 10)) continue;
         const event = eventFromImport(row, now);
         added.push(event);
         events.push(event);

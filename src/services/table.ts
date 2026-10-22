@@ -3,6 +3,7 @@ import { eventScale, LineupFacts } from '../server/events/scale';
 import { eventYear, formatsOf } from './format';
 import { eventTitle } from './series';
 import { cityWithRegion, NORTH_AMERICA } from '../server/events/regions';
+import { attendanceOf, AttendanceState } from '../server/events/attendance';
 
 // The Table view: filters, sorting and a summary over the event list the app
 // already loaded. Read-only; nothing here is stored. An empty field is a gap,
@@ -15,6 +16,7 @@ export const HAS_FIELDS: HasField[] = ['seen', 'rating', 'price', 'companions', 
 export type Needs = 'any' | 'date' | 'pick' | 'review';
 export type Origin = 'any' | 'typed' | 'email';
 export type KindFilter = 'any' | 'concert' | 'festival' | 'unknown';
+export type WentFilter = 'any' | AttendanceState;
 export type SortKey = 'date' | 'name' | 'venue' | 'city' | 'seen' | 'rating' | 'price';
 
 export interface TableFilters {
@@ -34,6 +36,7 @@ export interface TableFilters {
   kind: KindFilter;
   format: string;
   series: string;
+  went: WentFilter; // went, upcoming, waiting for you to confirm, or didn't go
   sort: SortKey;
   desc: boolean;
 }
@@ -52,6 +55,7 @@ export const EMPTY_FILTERS: TableFilters = {
   kind: 'any',
   format: '',
   series: '',
+  went: 'any',
   sort: 'date',
   desc: true,
 };
@@ -128,7 +132,9 @@ export function needsOf(e: LoggedEvent, lineup?: LineupSummary): Exclude<Needs, 
   return null;
 }
 
-export function matches(e: LoggedEvent, f: TableFilters, lineup?: LineupSummary, facts?: LineupFacts): boolean {
+const today = () => new Date().toISOString().slice(0, 10);
+
+export function matches(e: LoggedEvent, f: TableFilters, lineup?: LineupSummary, facts?: LineupFacts, day = today()): boolean {
   const q = fold(f.q);
   if (q) {
     const text = [e.name, e.series, e.venue, e.city, e.region, e.country, e.notes, ...e.seen.map((s) => s.name), ...e.companions]
@@ -159,6 +165,7 @@ export function matches(e: LoggedEvent, f: TableFilters, lineup?: LineupSummary,
   if (f.kind !== 'any' && (eventScale(e, facts).kind ?? 'unknown') !== f.kind) return false;
   if (f.format && !formatsOf(e.format).some((v) => v.toLowerCase() === f.format.toLowerCase())) return false;
   if (f.series && e.series !== f.series) return false;
+  if (f.went !== 'any' && attendanceOf(e, day) !== f.went) return false;
   return true;
 }
 
@@ -252,9 +259,16 @@ export interface Summary {
   averageRating?: number;
   priced: number;
   totalPrice?: number;
+  upcoming: number; // not counted above
+  toConfirm: number; // over, not counted until you say you went
 }
 
-export function summarize(events: LoggedEvent[]): Summary {
+// Counts only events you went to; upcoming ones and ones you haven't
+// confirmed are counted apart.
+export function summarize(all: LoggedEvent[], day = today()): Summary {
+  const events = all.filter((e) => attendanceOf(e, day) === 'went');
+  const ahead = all.filter((e) => attendanceOf(e, day) === 'upcoming').length;
+  const toConfirm = all.filter((e) => attendanceOf(e, day) === 'confirm').length;
   const years = events.map(eventYear).filter((y): y is number => y !== null);
   const ratings = events.flatMap((e) => (typeof e.rating === 'number' ? [e.rating] : []));
   const prices = events.flatMap((e) => (typeof e.ticketPrice === 'number' ? [e.ticketPrice] : []));
@@ -268,6 +282,8 @@ export function summarize(events: LoggedEvent[]): Summary {
     averageRating: ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10 : undefined,
     priced: prices.length,
     totalPrice: prices.length ? Math.round(prices.reduce((a, b) => a + b, 0) * 100) / 100 : undefined,
+    upcoming: ahead,
+    toConfirm,
   };
 }
 
@@ -293,6 +309,7 @@ export function filtersToQuery(f: TableFilters): string {
   if (f.kind !== 'any') p.set('type', f.kind);
   if (f.format) p.set('format', f.format);
   if (f.series) p.set('series', f.series);
+  if (f.went !== 'any') p.set('went', f.went);
   if (f.sort !== 'date' || !f.desc) p.set('sort', `${f.sort}${f.desc ? '' : ':asc'}`);
   return p.toString();
 }
@@ -329,6 +346,7 @@ export function filtersFromQuery(query: string): TableFilters {
     kind: oneOf(p.get('type'), ['any', 'concert', 'festival', 'unknown'] as const, 'any'),
     format: p.get('format') ?? '',
     series: p.get('series') ?? '',
+    went: oneOf(p.get('went'), ['any', 'went', 'upcoming', 'confirm', 'missed'] as const, 'any'),
     sort: oneOf(sort, ['date', 'name', 'venue', 'city', 'seen', 'rating', 'price'] as const, 'date'),
     desc: dir !== 'asc',
   };
@@ -341,7 +359,8 @@ export function activeFilterCount(f: TableFilters): number {
     Object.values(f.has).filter((v) => v && v !== 'any').length +
     (f.needs !== 'any' ? 1 : 0) +
     (f.origin !== 'any' ? 1 : 0) +
-    (f.kind !== 'any' ? 1 : 0)
+    (f.kind !== 'any' ? 1 : 0) +
+    (f.went !== 'any' ? 1 : 0)
   );
 }
 
@@ -362,9 +381,11 @@ export type Gap =
   | 'review';
 export const GAPS: Gap[] = ['date', 'venue', 'city', 'place', 'type', 'seen', 'review', 'favourite', 'format', 'companions', 'rating', 'price', 'weather'];
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Who you saw, your favourite set and a rating wait until you have been.
+const AFTER_YOU_WENT: Gap[] = ['seen', 'favourite', 'rating'];
 
 export function hasGap(e: LoggedEvent, gap: Gap, lineup?: LineupSummary, facts?: LineupFacts): boolean {
+  if (AFTER_YOU_WENT.includes(gap) && attendanceOf(e, today()) !== 'went') return false;
   switch (gap) {
     case 'date':
       return !e.startDate;
