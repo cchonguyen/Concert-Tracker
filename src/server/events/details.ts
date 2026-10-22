@@ -12,8 +12,9 @@ import { cityWithRegion, splitEventCity } from './regions';
 import { DetailCandidate, EventDetails, EventField, EVENT_FIELDS, LoggedEvent } from './types';
 
 // Stage 1 research: find and verify an event's date and place from structured
-// sources and web search results. No Gemini here, so it never waits on quota
-// (REQUIREMENTS.md, principle 8).
+// sources and web search results. No Gemini here unless you ask for it with
+// "Look again with Gemini" (a DetailReader, events/detailsGemini.ts), so it
+// never waits on quota (REQUIREMENTS.md, principle 8).
 // Results are candidates with sources; applying one is decided in code below
 // and never overwrites what you typed.
 
@@ -183,25 +184,35 @@ const stripTags = (html: string) => decodeEntities(html.replace(/<[^>]+>/g, ' ')
 // and a date counts only if it is written there in full and falls in the
 // window; the words it was read from are kept as the quote. Pages agreeing
 // on a date merge into one candidate with several sources.
+// The Brave results whose own title and description name every word of the
+// event (and, without a year, the place you gave).
+export async function braveResults(q: DetailQuery, fetcher: Fetcher): Promise<Array<{ url: string; text: string }>> {
+  const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(webQuery(q))}&count=10`;
+  const res = await fetcher.get(url, {
+    headers: { Accept: 'application/json', 'X-Subscription-Token': process.env.BRAVE_SEARCH_API_KEY! },
+  });
+  if (res.status === 429) throw new Error('Brave Search limit reached; look again later.');
+  const results: Array<{ url?: string; title?: string; description?: string }> = parseJson<any>(res)?.web?.results ?? [];
+  const words = [...eventWords(q.name), ...placeWords(q)];
+  const out: Array<{ url: string; text: string }> = [];
+  for (const r of results) {
+    if (!r.url) continue;
+    const text = stripTags(`${r.title ?? ''}. ${r.description ?? ''}`);
+    const norm = ` ${normalizeName(text)} `;
+    if (words.length && words.every((word) => norm.includes(` ${word} `))) out.push({ url: r.url, text });
+  }
+  return out;
+}
+
 export const braveFinder: DetailFinder = {
   id: 'discovered',
   enabled: () => Boolean(process.env.BRAVE_SEARCH_API_KEY),
   withoutYear: true,
   async find(q, fetcher) {
-    const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(webQuery(q))}&count=10`;
-    const res = await fetcher.get(url, {
-      headers: { Accept: 'application/json', 'X-Subscription-Token': process.env.BRAVE_SEARCH_API_KEY! },
-    });
-    if (res.status === 429) throw new Error('Brave Search limit reached; look again later.');
-    const results: Array<{ url?: string; title?: string; description?: string }> = parseJson<any>(res)?.web?.results ?? [];
-    const words = [...eventWords(q.name), ...placeWords(q)];
     const w = searchWindow(q);
     const out: DetailCandidate[] = [];
-    for (const r of results) {
-      if (!r.url) continue;
-      const text = stripTags(`${r.title ?? ''}. ${r.description ?? ''}`);
-      const norm = ` ${normalizeName(text)} `;
-      if (!words.length || !words.every((word) => norm.includes(` ${word} `))) continue;
+    for (const r of await braveResults(q, fetcher)) {
+      const text = r.text;
       const seen = new Set<string>();
       for (const d of findDates(text)) {
         if (!inWindow(d.startDate, w) || seen.has(d.startDate)) continue;
@@ -290,12 +301,19 @@ export function applyCandidate(event: LoggedEvent, c: DetailCandidate, picked: b
   return next.city !== event.city ? splitEventCity(next, picked) : next;
 }
 
+// Reads whole pages for an event's date and place when you ask for it (Gemini,
+// events/detailsGemini.ts). urls: the pages the finders' results came from.
+export interface DetailReader {
+  read(q: DetailQuery, urls: string[], fetcher: Fetcher, notes: string[]): Promise<DetailCandidate[]>;
+}
+
 // Runs every configured finder and decides what to do with the results.
 export async function researchEvent(
   event: LoggedEvent,
   finders: DetailFinder[],
   fetcher: Fetcher,
   now: Date,
+  reader?: DetailReader,
 ): Promise<LoggedEvent> {
   const checkedAt = now.toISOString();
   const year = event.year ?? (event.startDate ? Number(event.startDate.slice(0, 4)) : undefined);
@@ -305,7 +323,7 @@ export async function researchEvent(
     updatedAt: checkedAt,
   });
   const enabled = finders.filter((f) => f.enabled() && (year || f.withoutYear));
-  if (!enabled.length) {
+  if (!enabled.length && !reader) {
     return year
       ? done({ status: 'off', candidates: [], notes: ['No event source is configured.'] })
       : done({ status: 'needs_date', candidates: [], notes: ['Add when it was (a year is enough) to look it up.'] });
@@ -339,6 +357,10 @@ export async function researchEvent(
   // first typed is tried once.
   const typedName = parseEventInput(event.input ?? '').name;
   if (!found.length && typedName && normalizeName(typedName) !== normalizeName(event.name)) await search({ ...q, name: typedName });
+  if (reader) {
+    const urls = found.flatMap((c) => c.sources.filter((s) => s.sourceType === 'discovered').map((s) => s.sourceUrl));
+    found.push(...(await reader.read(q, [...new Set(urls)], fetcher, notes)));
+  }
 
   const merged = mergeCandidates(found).sort(
     (a, b) => b.sources.length - a.sources.length || (a.startDate ?? '9999').localeCompare(b.startDate ?? '9999'),

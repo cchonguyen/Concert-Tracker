@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
 import { JobRunner } from '../lineup/service';
 import { DetailFinder, defaultFinders, pickCandidate, researchEvent } from './details';
+import { geminiReader } from './detailsGemini';
 import { cityPoint, citySuggestions, placeGuess } from './place';
 import { applyPatch, EventPatch, lineupSummary, newEvent, sortEvents, startBulkLookups, startLineupLookup } from './service';
 import { LineupSummary } from './types';
@@ -85,12 +86,19 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
     }
   });
 
-  // Stage 1 research: structured sources only, finished within the request.
+  // Stage 1 research: structured sources and search results read in code,
+  // finished within the request. { useGemini: true } (you chose "Look again
+  // with Gemini") also has Gemini read the pages found.
   router.post('/events/:id/details', async (req, res) => {
     try {
       const event = await load(req.params.id, res);
       if (!event) return;
-      const updated = await researchEvent(event, finders, deps.fetcher, deps.now());
+      let reader;
+      if (req.body?.useGemini === true) {
+        if (!deps.gemini || !deps.quota) throw new InputError('Gemini is not set up on this server.');
+        reader = geminiReader(deps.gemini, deps.quota, deps.now);
+      }
+      const updated = await researchEvent(event, finders, deps.fetcher, deps.now(), reader);
       await deps.store.putEvent(updated);
       res.json({ event: updated });
     } catch (err) {
