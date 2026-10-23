@@ -22,6 +22,7 @@ import { LineupReview } from './LineupReview';
 import { norm } from '../services/listImport';
 import { leaveB2b, pairB2b, seenSlots, SET_LABELS, setSolo, SlotAct, slotId, toSeenInput } from '../server/events/seen';
 import { eventTitle, seriesList, seriesOffers, weekendFromName } from '../services/series';
+import { SuggestInput } from './SuggestInput';
 import { EventTitle } from './EventTitle';
 import { placePatch } from '../services/table';
 import { cityWithRegion } from '../server/events/regions';
@@ -56,7 +57,6 @@ const Field: React.FC<{
   min?: string;
   className?: string;
 }> = ({ label, value, type = 'text', placeholder, source, onSave, onType, suggestions, offer, min, className }) => {
-  const listId = React.useId();
   const [draft, setDraft] = useState(value === undefined ? '' : String(value));
   useEffect(() => setDraft(value === undefined ? '' : String(value)), [value]);
   return (
@@ -75,32 +75,43 @@ const Field: React.FC<{
           </a>
         )}
       </span>
-      <input
-        className={input}
-        type={type}
-        value={draft}
-        min={min}
-        placeholder={placeholder}
-        list={suggestions?.length ? listId : undefined}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          onType?.(e.target.value);
-        }}
-        onBlur={() => draft !== (value === undefined ? '' : String(value)) && onSave(draft)}
-        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-      />
+      {suggestions ? (
+        <SuggestInput
+          className={input}
+          value={draft}
+          placeholder={placeholder}
+          suggestions={suggestions}
+          onPick={(v) => {
+            setDraft(v);
+            onType?.(v);
+          }}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            onType?.(e.target.value);
+          }}
+          onBlur={() => draft !== (value === undefined ? '' : String(value)) && onSave(draft)}
+          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+        />
+      ) : (
+        <input
+          className={input}
+          type={type}
+          value={draft}
+          min={min}
+          placeholder={placeholder}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            onType?.(e.target.value);
+          }}
+          onBlur={() => draft !== (value === undefined ? '' : String(value)) && onSave(draft)}
+          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+        />
+      )}
       {offer && (
         <button type="button" onClick={offer.onUse} className="block w-full truncate text-left text-[11px] text-violet-300 hover:underline">
           Use “{offer.value}” from {offer.from}
         </button>
       )}
-      {suggestions?.length ? (
-        <datalist id={listId}>
-          {suggestions.map((s) => (
-            <option key={s} value={s} />
-          ))}
-        </datalist>
-      ) : null}
     </label>
   );
 };
