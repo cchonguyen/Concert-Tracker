@@ -17,6 +17,7 @@ import { toSeenInput } from '../server/events/seen';
 import { canFindLineup, cityOf, Gap, gapCounts, GAPS, hasGap, placePatch } from '../services/table';
 import { regionCode } from '../server/events/regions';
 import { EventTitle } from './EventTitle';
+import { SuggestInput } from './SuggestInput';
 
 interface FillGapsProps {
   events: LoggedEvent[]; // the rows the Table shows
@@ -117,7 +118,6 @@ const GapEditor: React.FC<{
   onSave: (patch: EventPatch) => Promise<void>;
 }> = ({ event, gap, suggestions, onSave }) => {
   const [draft, setDraft] = useState('');
-  const listId = React.useId();
   const submit = (patch: EventPatch | null) => {
     if (!patch) return;
     setDraft('');
@@ -200,29 +200,35 @@ const GapEditor: React.FC<{
     city: 'City, ST',
     place: 'State, Country',
   };
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submit(fromDraft());
+    }
+  };
   return (
     <>
-      <input
-        className={control}
-        type={gap === 'date' ? 'text' : gap === 'price' ? 'number' : 'text'}
-        value={draft}
-        placeholder={placeholder[gap] ?? GAP_LABELS[gap]}
-        list={suggestions.length ? listId : undefined}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            submit(fromDraft());
-          }
-        }}
-        onBlur={() => submit(fromDraft())}
-      />
-      {suggestions.length > 0 && (
-        <datalist id={listId}>
-          {suggestions.slice(0, 200).map((s) => (
-            <option key={s} value={s} />
-          ))}
-        </datalist>
+      {gap === 'price' ? (
+        <input
+          className={control}
+          type="number"
+          value={draft}
+          placeholder={placeholder[gap] ?? GAP_LABELS[gap]}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={onKeyDown}
+          onBlur={() => submit(fromDraft())}
+        />
+      ) : (
+        <SuggestInput
+          className={control}
+          value={draft}
+          placeholder={placeholder[gap] ?? GAP_LABELS[gap]}
+          suggestions={suggestions}
+          onPick={setDraft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={onKeyDown}
+          onBlur={() => submit(fromDraft())}
+        />
       )}
     </>
   );

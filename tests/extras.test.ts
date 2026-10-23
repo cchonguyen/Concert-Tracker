@@ -6,7 +6,7 @@ import { PerformerClaim } from '../src/server/lineup/types.ts';
 import { actSets, setLabel } from '../src/server/events/sets.ts';
 import { applyPatch, newEvent } from '../src/server/events/service.ts';
 import { lookupWeather, placesFor, weatherDays } from '../src/server/events/weather.ts';
-import { eventsToCsv, matchNames, pastArtistNames, pastCompanionNames, weatherLine, weatherText } from '../src/services/format.ts';
+import { eventsToCsv, matchNames, pastArtistNames, pastCompanionNames, suggestionsFor, weatherLine, weatherText } from '../src/services/format.ts';
 import { hasGap } from '../src/services/table.ts';
 import { parseCsv } from '../src/services/listImport.ts';
 import { LoggedEvent } from '../src/server/events/types.ts';
@@ -201,4 +201,12 @@ test('artists from titles for many events come from stored data only', async () 
   assert.deepEqual(out.b.map((s) => [s.name, s.sourceType]), [['Kaskade', 'user']]); // seen at event d
   assert.equal(out.c, undefined); // nothing to offer
   assert.equal(out.d, undefined); // not asked for
+});
+
+test('suggestionsFor lists the first few when empty, else matches without the value itself', () => {
+  const all = ['EDC Las Vegas', 'EDC Orlando', 'Coachella Indio', 'Lost Lands'];
+  assert.deepEqual(suggestionsFor('', all, 2), ['EDC Las Vegas', 'EDC Orlando']);
+  assert.deepEqual(suggestionsFor('edc', all), ['EDC Las Vegas', 'EDC Orlando']);
+  assert.deepEqual(suggestionsFor('las', all), ['EDC Las Vegas']);
+  assert.deepEqual(suggestionsFor('EDC Orlando', all), []);
 });
