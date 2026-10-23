@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { normalizeName } from '../../lineup/text';
 import type { LoggedEvent } from '../types';
 import { isAhead } from '../attendance';
+import { cityWithRegion, splitEventCity } from '../regions';
 import { axs } from './axs';
 import { dice } from './dice';
 import { eventbrite } from './eventbrite';
@@ -20,6 +21,7 @@ import {
   EmailSource,
   ImportField,
   ImportFlag,
+  MergeField,
   RawEmail,
   ReadEmail,
   UnreadableEmail,
@@ -296,6 +298,81 @@ export function eventFromImport(row: EmailImport, now: Date): LoggedEvent {
     createdAt: iso,
     updatedAt: iso,
   };
+}
+
+// "Same as one of mine": an email's show merged into an event you entered.
+// Only empty fields are filled, each sourced to the email; a field you
+// already have keeps your value even when the email says otherwise (it is
+// listed as kept, and nothing is overwritten).
+export interface MergeResult {
+  event: LoggedEvent;
+  filled: MergeField[];
+  kept: Array<{ field: MergeField; yours: string; email: string }>;
+}
+
+export function mergeIntoEvent(row: EmailImport, event: LoggedEvent, now: Date): MergeResult {
+  let next: LoggedEvent = { ...event, sources: { ...event.sources } };
+  const filled: MergeField[] = [];
+  const kept: MergeResult['kept'] = [];
+  const fill = (field: MergeField, value: string | number | undefined, same: (a: string) => boolean, yours: string | undefined) => {
+    const s = row.sources[field];
+    if (value === undefined || value === '' || !s) return false;
+    if (yours !== undefined && yours !== '') {
+      if (!same(yours)) kept.push({ field, yours, email: String(value) });
+      return false;
+    }
+    (next as any)[field] = value;
+    next.sources[field] = { sourceType: 'email', sourceUrl: s.link, quote: s.quote };
+    filled.push(field);
+    return true;
+  };
+  const eq = (a: string, b: string) => normalizeName(a) === normalizeName(b);
+
+  // A year you gave that the email's date is not in is a different date.
+  const yearClash = row.startDate && !event.startDate && event.year && event.year !== Number(row.startDate.slice(0, 4));
+  if (yearClash) kept.push({ field: 'startDate', yours: String(event.year), email: row.startDate! });
+  else if (fill('startDate', row.startDate, (a) => a === row.startDate, event.startDate)) {
+    next.year = Number(row.startDate!.slice(0, 4));
+    next.month = undefined;
+  }
+  if (next.startDate === row.startDate) fill('endDate', row.endDate, (a) => a === row.endDate, event.endDate);
+  fill('venue', row.venue, (a) => eq(a, row.venue!), event.venue);
+  const yourCity = cityWithRegion(event.city, event.region);
+  if (fill('city', row.city, (a) => eq(a, row.city!) || eq(event.city ?? '', row.city!.split(',')[0]), yourCity || undefined)) {
+    next = splitEventCity(next);
+  }
+  if (!event.sources.ticketPrice && event.ticketPrice === undefined) fill('ticketPrice', row.ticketPrice, () => true, undefined);
+  else if (row.ticketPrice !== undefined && event.ticketPrice !== undefined && event.ticketPrice !== row.ticketPrice) {
+    kept.push({ field: 'ticketPrice', yours: String(event.ticketPrice), email: String(row.ticketPrice) });
+  }
+  if (filled.length) next.updatedAt = now.toISOString();
+  return { event: filled.length ? next : event, filled, kept };
+}
+
+// Undo a merge: each field the email filled is cleared again, unless you
+// have changed it since (its source is no longer that email).
+export function unmergeFromEvent(row: EmailImport, event: LoggedEvent, now: Date): LoggedEvent {
+  const next: LoggedEvent = { ...event, sources: { ...event.sources } };
+  let changed = false;
+  for (const field of row.mergedFields ?? []) {
+    const s = next.sources[field];
+    const from = row.sources[field];
+    if (!s || s.sourceType !== 'email' || !from || s.quote !== from.quote || s.sourceUrl !== from.link) continue;
+    (next as any)[field] = undefined;
+    delete next.sources[field];
+    if (field === 'city') {
+      for (const part of ['region', 'country'] as const) {
+        const p = next.sources[part];
+        if (p?.sourceType === 'email' && p.quote === from.quote) {
+          next[part] = undefined;
+          delete next.sources[part];
+        }
+      }
+    }
+    changed = true;
+  }
+  if (changed) next.updatedAt = now.toISOString();
+  return changed ? next : event;
 }
 
 // What the review screen lists, newest first. Kept-aside flags stay hidden,

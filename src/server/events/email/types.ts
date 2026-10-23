@@ -50,6 +50,8 @@ export interface EmailReader {
 
 export class UnreadableEmail extends Error {}
 
+export type MergeField = 'startDate' | 'endDate' | 'venue' | 'city' | 'ticketPrice';
+
 export interface EmailSource {
   messageId: string;
   link?: string;
@@ -86,6 +88,9 @@ export interface EmailImport {
   // from the first email that gives both.
   ticketPrice?: number;
   eventId?: string; // the event it became, or the one already in your log
+  // Fields this row's emails filled on an event you had entered, when you
+  // merged it into that event (so the merge can be undone).
+  mergedFields?: MergeField[];
   createdAt: string;
   updatedAt: string;
 }
