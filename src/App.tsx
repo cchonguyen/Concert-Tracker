@@ -221,6 +221,8 @@ export default function App() {
       {reviewing && (
         <ImportReview
           imports={imports}
+          events={events}
+          onEventChanged={upsert}
           onChange={setImports}
           onAdded={(added) => {
             added.forEach(upsert);
