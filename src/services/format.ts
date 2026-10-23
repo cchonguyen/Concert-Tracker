@@ -104,6 +104,14 @@ export function matchNames(query: string, names: string[], exclude: Set<string>,
   return [...starts, ...words].slice(0, limit);
 }
 
+// What a suggestion field lists under the input: the first few when it is
+// empty (as a browser's own list does on focus), else the matches for what
+// you typed, leaving out the value already there.
+export function suggestionsFor(query: string, suggestions: string[], limit = 8): string[] {
+  if (!norm(query)) return suggestions.slice(0, limit);
+  return matchNames(query, suggestions, new Set([norm(query)]), limit);
+}
+
 export const favouriteOf = (seen: SeenAct[]) => seen.find((s) => s.favourite);
 
 // WMO weather codes, as Open-Meteo reports them.
