@@ -1,7 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { Router } from 'express';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
-import { eventFromImport, findLogged, mergeImports, pricesFromImports, readEmails, reviewList } from './email/imports';
+import { eventFromImport, findLogged, mergeImports, mergeIntoEvent, pricesFromImports, readEmails, reviewList, unmergeFromEvent } from './email/imports';
 import { GmailApi, GmailAuthError, GmailBusy } from './email/gmail';
 import { GMAIL_SETTING, GmailSetting, NotConnected, SCAN_SETTING, ScanSetting, scanStep } from './email/scan';
 import { EmailImport, RawEmail } from './email/types';
@@ -103,6 +103,44 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
       await deps.store.putEvents([...added.filter((e) => !pricedIds.has(e.id)), ...priced]);
       await deps.store.putImports(changed);
       res.json({ events: added, imports: changed });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // "Same as one of mine" ({ id, eventId }): the email's show is merged into
+  // an event you entered. Only its empty fields are filled; yours are kept.
+  router.post('/imports/merge', async (req, res) => {
+    try {
+      const now = deps.now();
+      const [rows, events] = await Promise.all([deps.store.listImports(), deps.store.listEvents()]);
+      const row = rows.find((r) => r.id === req.body?.id);
+      const event = events.find((e) => e.id === req.body?.eventId);
+      if (!row || row.status !== 'new') throw new InputError('That email is not waiting for review.');
+      if (!event) throw new InputError('That event is not in your log.');
+      const result = mergeIntoEvent(row, event, now);
+      const merged: EmailImport = { ...row, status: 'added', eventId: event.id, mergedFields: result.filled, updatedAt: now.toISOString() };
+      if (result.filled.length) await deps.store.putEvents([result.event]);
+      await deps.store.putImports([merged]);
+      res.json({ event: result.event, import: merged, filled: result.filled, kept: result.kept });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Undo a merge ({ id }): the fields it filled are cleared unless you changed them since.
+  router.post('/imports/unmerge', async (req, res) => {
+    try {
+      const now = deps.now();
+      const [rows, events] = await Promise.all([deps.store.listImports(), deps.store.listEvents()]);
+      const row = rows.find((r) => r.id === req.body?.id);
+      if (!row || row.status !== 'added' || !row.mergedFields) throw new InputError('That email was not merged into an event.');
+      const event = events.find((e) => e.id === row.eventId);
+      const restored = event ? unmergeFromEvent(row, event, now) : undefined;
+      if (restored && restored !== event) await deps.store.putEvents([restored]);
+      const back: EmailImport = { ...row, status: 'new', eventId: undefined, mergedFields: undefined, updatedAt: now.toISOString() };
+      await deps.store.putImports([back]);
+      res.json({ event: restored, import: back });
     } catch (err) {
       fail(res, err);
     }

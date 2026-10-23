@@ -2,7 +2,7 @@ import type { Edition, LookupJob, SourceType } from '../server/lineup/types';
 import type { ConfirmRequest } from '../server/lineup/learning';
 import type { DetailCandidate, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
 import type { EventPatch } from '../server/events/service';
-import type { EmailImport } from '../server/events/email/types';
+import type { EmailImport, MergeField } from '../server/events/email/types';
 import type { ArtistSuggestion } from '../server/events/artists';
 import type { LineupFacts } from '../server/events/scale';
 import type { CityPoint, PlaceGuess } from '../server/events/place';
@@ -102,6 +102,13 @@ export const importsApi = {
   add: (ids: string[]) => request<{ events: LoggedEvent[]; imports: EmailImport[] }>('/api/imports/add', post({ ids })),
   skip: (ids: string[], restore = false) =>
     request<{ imports: EmailImport[] }>('/api/imports/skip', post({ ids, restore })).then((r) => r.imports),
+  // "Same as one of mine": fills only the event's empty fields; yours are kept.
+  merge: (id: string, eventId: string) =>
+    request<{ event: LoggedEvent; import: EmailImport; filled: MergeField[]; kept: Array<{ field: MergeField; yours: string; email: string }> }>(
+      '/api/imports/merge',
+      post({ id, eventId }),
+    ),
+  unmerge: (id: string) => request<{ event?: LoggedEvent; import: EmailImport }>('/api/imports/unmerge', post({ id })),
 };
 
 // "Sync with Google Sheets" in the Table view.
