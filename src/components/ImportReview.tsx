@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, ExternalLink, Loader2, Mail, RefreshCw, Undo2, X } from 'lucide-react';
+import { Check, ExternalLink, GitMerge, Loader2, Mail, RefreshCw, Undo2, X } from 'lucide-react';
 import { EmailImport, EmailScanStatus, importsApi, LoggedEvent } from '../services/lineupApi';
+import type { MergeField } from '../server/events/email/types';
 import { placeLabel, whenLabel } from '../services/format';
 
 // Stage 1 from email: shows found in your ticket emails. A ticket is not
@@ -11,6 +12,8 @@ interface ImportReviewProps {
   imports: EmailImport[];
   onChange: (imports: EmailImport[]) => void;
   onAdded: (events: LoggedEvent[]) => void;
+  events: LoggedEvent[]; // your log, to merge an email's show into one you entered
+  onEventChanged: (event: LoggedEvent) => void;
   onClose: () => void;
   notice?: string | null; // the result of Connect Gmail, when you just came back from it
 }
@@ -129,7 +132,13 @@ const CheckEmail: React.FC<{ onFound: (imports: EmailImport[]) => void }> = ({ o
   );
 };
 
-const Row: React.FC<{ row: EmailImport; ticked?: boolean; onTick?: () => void; action?: React.ReactNode }> = ({ row, ticked, onTick, action }) => {
+const Row: React.FC<{ row: EmailImport; ticked?: boolean; onTick?: () => void; action?: React.ReactNode; note?: string }> = ({
+  row,
+  ticked,
+  onTick,
+  action,
+  note,
+}) => {
   const when = whenLabel(row) ?? row.dateText;
   const place = placeLabel(row);
   const facts = [row.tickets ? `${row.tickets} ticket${row.tickets === 1 ? '' : 's'}` : null, row.total].filter(Boolean).join(' · ');
@@ -149,6 +158,7 @@ const Row: React.FC<{ row: EmailImport; ticked?: boolean; onTick?: () => void; a
       )}
       <div className="min-w-0 flex-1 space-y-0.5">
         <p className="text-sm font-semibold text-zinc-100">{row.name}</p>
+        {note && <p className="text-xs text-violet-300/80">{note}</p>}
         <p className="text-xs text-zinc-400">
           {[when ?? 'No date in the email', place].filter(Boolean).join(' · ')}
         </p>
@@ -167,7 +177,72 @@ const Row: React.FC<{ row: EmailImport; ticked?: boolean; onTick?: () => void; a
   );
 };
 
-export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, onAdded, onClose, notice }) => {
+const FIELD_LABELS: Record<MergeField, string> = { startDate: 'date', endDate: 'last day', venue: 'venue', city: 'city', ticketPrice: 'ticket price' };
+
+// What a merge did, in a sentence: what it filled and what it left as yours.
+function mergeSummary(name: string, filled: MergeField[], kept: Array<{ field: MergeField; yours: string; email: string }>): string {
+  const parts = [`Merged into “${name}”.`];
+  parts.push(filled.length ? `Filled ${filled.map((f) => FIELD_LABELS[f]).join(', ')} from the email.` : 'Nothing was empty to fill.');
+  if (kept.length) parts.push(`Kept yours: ${kept.map((k) => `${FIELD_LABELS[k.field]} (the email says ${k.email})`).join(', ')}.`);
+  return parts.join(' ');
+}
+
+// "Same as one of mine": pick the event you already entered for this
+// email's show. Events nearest its date come first; typing narrows by name.
+const MergePicker: React.FC<{ row: EmailImport; events: LoggedEvent[]; busy: boolean; onPick: (event: LoggedEvent) => void; onCancel: () => void }> = ({
+  row,
+  events,
+  busy,
+  onPick,
+  onCancel,
+}) => {
+  const [q, setQ] = useState('');
+  const options = useMemo(() => {
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const at = row.startDate ? Date.parse(row.startDate) : undefined;
+    const distance = (e: LoggedEvent) => {
+      const d = e.startDate ? Date.parse(e.startDate) : e.year ? Date.UTC(e.year, 6, 1) : undefined;
+      return at === undefined || d === undefined ? Infinity : Math.abs(d - at);
+    };
+    return events
+      .filter((e) => words.every((w) => `${e.name} ${e.venue ?? ''}`.toLowerCase().includes(w)))
+      .sort((a, b) => distance(a) - distance(b) || a.name.localeCompare(b.name))
+      .slice(0, 8);
+  }, [q, events, row.startDate]);
+  return (
+    <div className="space-y-2 rounded-xl border border-violet-500/30 bg-violet-950/20 p-3">
+      <div className="flex items-center gap-2">
+        <input
+          autoFocus
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Which of your events is this?"
+          className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-violet-500 focus:outline-none"
+        />
+        <button onClick={onCancel} className="text-xs text-zinc-400 hover:text-zinc-200">
+          Cancel
+        </button>
+      </div>
+      {!options.length && <p className="text-xs text-zinc-500">No event of yours matches.</p>}
+      {options.map((e) => (
+        <button
+          key={e.id}
+          disabled={busy}
+          onClick={() => onPick(e)}
+          className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-zinc-900 disabled:opacity-40"
+        >
+          <span className="block text-sm text-zinc-100">{e.name}</span>
+          <span className="block text-xs text-zinc-500">{[whenLabel(e) ?? 'No date', placeLabel(e)].filter(Boolean).join(' · ')}</span>
+        </button>
+      ))}
+      <p className="text-[11px] text-zinc-600">Only empty fields are filled from the email; what you entered stays as it is.</p>
+    </div>
+  );
+};
+
+export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, onAdded, events, onEventChanged, onClose, notice }) => {
+  const [merging, setMerging] = useState<string | null>(null);
+  const [merged, setMerged] = useState<string | null>(null);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -233,6 +308,44 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
       merge(await importsApi.skip(ids, restore));
       toggle(ids, false);
     });
+  const mergeInto = (row: EmailImport, event: LoggedEvent) =>
+    act(async () => {
+      const res = await importsApi.merge(row.id, event.id);
+      merge([res.import]);
+      onEventChanged(res.event);
+      toggle([row.id], false);
+      setMerging(null);
+      setMerged(mergeSummary(event.name, res.filled, res.kept));
+    });
+  const unmerge = (row: EmailImport) =>
+    act(async () => {
+      const res = await importsApi.unmerge(row.id);
+      merge([res.import]);
+      if (res.event) onEventChanged(res.event);
+      setMerged(null);
+    });
+  const nameOf = (id?: string) => events.find((e) => e.id === id)?.name;
+  // A row on the list, with "Same as one of mine" and its picker.
+  const reviewRow = (r: EmailImport) => (
+    <div key={r.id} className="space-y-2">
+      <Row
+        row={r}
+        ticked={ticked.has(r.id)}
+        onTick={() => toggle([r.id])}
+        action={
+          <button
+            onClick={() => setMerging(merging === r.id ? null : r.id)}
+            className="text-zinc-500 hover:text-violet-300"
+            aria-label="Same as one of my events"
+            title="Same as one of my events"
+          >
+            <GitMerge className="h-4 w-4" />
+          </button>
+        }
+      />
+      {merging === r.id && <MergePicker row={r} events={events} busy={busy} onPick={(e) => mergeInto(r, e)} onCancel={() => setMerging(null)} />}
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -265,6 +378,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
           )}
           <CheckEmail onFound={onChange} />
           {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
+          {merged && <p className="rounded-lg border border-violet-500/30 bg-violet-950/30 p-2 text-sm text-violet-200">{merged}</p>}
 
           {!toReview.length && <p className="text-sm text-zinc-500">Nothing left to review.</p>}
           {years.map((g) => (
@@ -277,9 +391,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
                   {g.rows.every((r) => ticked.has(r.id)) ? 'Untick all' : `Tick all in ${g.label}`}
                 </button>
               </div>
-              {g.rows.map((r) => (
-                <Row key={r.id} row={r} ticked={ticked.has(r.id)} onTick={() => toggle([r.id])} />
-              ))}
+              {g.rows.map(reviewRow)}
             </section>
           ))}
 
@@ -289,9 +401,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
               <p className="text-xs text-zinc-600">
                 Tick one to add it as upcoming: it isn't counted until you say you went, and once it's over the app asks. Unticked ones stay here.
               </p>
-              {upcoming.map((r) => (
-                <Row key={r.id} row={r} ticked={ticked.has(r.id)} onTick={() => toggle([r.id])} />
-              ))}
+              {upcoming.map(reviewRow)}
             </section>
           )}
 
@@ -299,7 +409,29 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
             <details className="space-y-2">
               <summary className={`${sectionTitle} cursor-pointer`}>Already in your log ({logged.length})</summary>
               {logged.map((r) => (
-                <Row key={r.id} row={r} />
+                <Row
+                  key={r.id}
+                  row={r}
+                  note={nameOf(r.eventId) && `${r.mergedFields ? 'Merged into' : r.status === 'added' ? 'Added as' : 'Matched to'} “${nameOf(r.eventId)}”`}
+                  action={
+                    r.mergedFields ? (
+                      <button onClick={() => unmerge(r)} className="text-zinc-500 hover:text-zinc-200" aria-label="Undo merge" title="Undo merge">
+                        <Undo2 className="h-4 w-4" />
+                      </button>
+                    ) : r.status === 'new' && events.some((e) => e.id === r.eventId) ? (
+                      // Matched on its own: merging fills the event's empty fields from the email.
+                      <button
+                        disabled={busy}
+                        onClick={() => mergeInto(r, events.find((e) => e.id === r.eventId)!)}
+                        className="text-zinc-500 hover:text-violet-300 disabled:opacity-40"
+                        aria-label="Merge into this event"
+                        title="Merge into this event"
+                      >
+                        <GitMerge className="h-4 w-4" />
+                      </button>
+                    ) : undefined
+                  }
+                />
               ))}
             </details>
           )}
