@@ -3,11 +3,13 @@ import type { ArtistGenres, GenreShare } from '../server/events/genreTypes';
 
 export type { ArtistGenres, GenreShare };
 
-// The genres to show for each act: music-story's when it has any, otherwise
+// The genres to show for each act: yours when you set any (an empty list of
+// yours means you say none), else music-story's when it has any, otherwise
 // MusicBrainz's. An act checked with no genre found keeps its empty row, so
 // the app can tell "none found" from "not looked up".
 export function genresByArtist(rows: ArtistGenres[]): Map<string, ArtistGenres> {
-  const rank = (r: ArtistGenres) => (r.genres.length ? 0 : 2) + (r.source === 'music-story' ? 0 : 1);
+  const rank = (r: ArtistGenres) =>
+    r.source === 'you' ? -1 : (r.genres.length ? 0 : 2) + (r.source === 'music-story' ? 0 : 1);
   const out = new Map<string, ArtistGenres>();
   for (const r of rows) {
     const had = out.get(r.key);
@@ -16,9 +18,9 @@ export function genresByArtist(rows: ArtistGenres[]): Map<string, ArtistGenres> 
   return out;
 }
 
-// Seen acts with no genre from music-story and no MusicBrainz check yet.
+// Seen acts with no genre from music-story, none of yours and no MusicBrainz check yet.
 export function missingGenreKeys(events: LoggedEvent[], rows: ArtistGenres[]): string[] {
-  const done = new Set(rows.filter((r) => r.source === 'musicbrainz' || r.genres.length).map((r) => r.key));
+  const done = new Set(rows.filter((r) => r.source !== 'music-story' || r.genres.length).map((r) => r.key));
   const keys = new Set<string>();
   for (const e of events) for (const s of e.seen) if (!done.has(s.key)) keys.add(s.key);
   return [...keys];

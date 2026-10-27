@@ -100,6 +100,7 @@ export interface LineupStore {
   listArtistGenres(): Promise<ArtistGenres[]>;
   // Replaces the rows with the same act and source.
   putArtistGenres(rows: ArtistGenres[]): Promise<void>;
+  deleteArtistGenres(key: string, source: ArtistGenres['source']): Promise<void>;
 }
 
 export const MAX_EXAMPLES_PER_DOMAIN = 3;

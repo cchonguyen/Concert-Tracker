@@ -381,4 +381,10 @@ export class FileLineupStore implements LineupStore {
     for (const r of rows) state.artistGenres[`${r.source}|${r.key}`] = clone(r);
     await this.save();
   }
+
+  async deleteArtistGenres(key: string, source: ArtistGenres['source']) {
+    const state = await this.load();
+    if (state.artistGenres) delete state.artistGenres[`${source}|${key}`];
+    await this.save();
+  }
 }

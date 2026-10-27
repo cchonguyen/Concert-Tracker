@@ -741,6 +741,13 @@ export class SupabaseLineupStore implements LineupStore {
       if (chunk.length) this.check(await this.db.from('artist_genres').upsert(chunk), 'putArtistGenres (apply 0013_artist_genres.sql)');
     }
   }
+
+  async deleteArtistGenres(key: string, source: ArtistGenres['source']) {
+    this.check(
+      await this.db.from('artist_genres').delete().eq('artist_key', key).eq('source', source),
+      'deleteArtistGenres (apply 0013_artist_genres.sql)',
+    );
+  }
 }
 
 // performer_claims row to PerformerClaim.

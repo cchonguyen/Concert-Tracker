@@ -44,6 +44,7 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
   const by = useMemo(() => genresByArtist(rows ?? []), [rows]);
   const known = [...seenKeys].filter((k) => by.get(k)?.genres.length);
   const fromFile = known.filter((k) => by.get(k)?.source === 'music-story').length;
+  const fromYou = known.filter((k) => by.get(k)?.source === 'you').length;
   const missing = useMemo(() => missingGenreKeys(events, rows ?? []), [events, rows]);
   const checkedNone = [...seenKeys].filter((k) => by.get(k) && !by.get(k)!.genres.length && by.get(k)!.source === 'musicbrainz').length;
 
@@ -133,7 +134,7 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
                   Genres known for <strong>{known.length}</strong> of the {seenKeys.size} acts you saw.
                 </p>
                 <p className="text-xs text-zinc-500">
-                  {fromFile} from music-story, {known.length - fromFile} from MusicBrainz
+                  {fromFile} from music-story, {known.length - fromFile - fromYou} from MusicBrainz{fromYou ? `, ${fromYou} set by you` : ''}
                   {checkedNone ? `, ${checkedNone} looked up with none found` : ''}.
                 </p>
               </section>
