@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import type { LoggedEvent } from '../services/lineupApi';
+import React, { useEffect, useMemo, useState } from 'react';
+import { genresApi, LoggedEvent } from '../services/lineupApi';
+import { ArtistGenres, GenreCount, genreMix, genresByArtist } from '../services/genres';
 import { whenLabel } from '../services/format';
 import { attendanceOf } from '../server/events/attendance';
 import { facts, pastEvents, perYear, RankBy, Ranked, seriesStats, SeriesStat, top, yearInReview } from '../services/stats';
@@ -94,6 +95,50 @@ const Ranking: React.FC<{ name: string; rows: Ranked[]; empty: string; onPick: (
   );
 };
 
+// What you see live by genre: each set you saw split across its act's genres.
+// Sets whose act has no genre are counted apart, not spread over the rest.
+const GenreBars: React.FC<{ name: string; rows: GenreCount[] }> = ({ name, rows }) => {
+  const max = Math.max(...rows.map((r) => r.share), 0.01);
+  return (
+    <div className="space-y-1.5">
+      <h3 className="text-xs text-zinc-500">{name}</h3>
+      <ol className="space-y-1.5">
+        {rows.map((r) => (
+          <li key={r.name} className="space-y-0.5" title={`${r.name}: ${r.sets.toFixed(1)} sets`}>
+            <span className="flex items-baseline justify-between gap-2 text-sm">
+              <span className="truncate text-zinc-200">{r.name}</span>
+              <span className="shrink-0 text-xs tabular-nums text-zinc-400">{Math.round(r.share * 100)}%</span>
+            </span>
+            <span className="block h-1.5 w-full rounded-full bg-zinc-900">
+              <span className="block h-full rounded-full bg-violet-500" style={{ width: `${(r.share / max) * 100}%` }} />
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+};
+
+const GenreCard: React.FC<{ events: LoggedEvent[]; rows: ArtistGenres[] }> = ({ events, rows }) => {
+  const mix = useMemo(() => genreMix(events, genresByArtist(rows)), [events, rows]);
+  if (!mix.known) return null;
+  return (
+    <section className={`${card} space-y-3`}>
+      <div>
+        <h2 className={title}>Genres you see live</h2>
+        <p className="text-xs text-zinc-500">
+          Share of the sets you saw, from {mix.known} of {plural(mix.sets, 'set')}
+          {mix.sets > mix.known && `; ${mix.sets - mix.known === 1 ? 'the other one has' : `the other ${mix.sets - mix.known} have`} no genre yet (Table, Genres)`}.
+        </p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <GenreBars name="Genre" rows={mix.parents.slice(0, 8)} />
+        <GenreBars name="Style" rows={mix.styles.slice(0, 10)} />
+      </div>
+    </section>
+  );
+};
+
 const Tile: React.FC<{ value: React.ReactNode; label: string }> = ({ value, label }) => (
   <div>
     <div className="text-xl font-extrabold tracking-tight text-zinc-100">{value}</div>
@@ -154,6 +199,14 @@ const SeriesCard: React.FC<{ rows: SeriesStat[]; onPick: (name: string) => void 
 export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTable }) => {
   const today = new Date().toISOString().slice(0, 10);
   const past = useMemo(() => pastEvents(events, today), [events, today]);
+  // Optional: without genres (or before 0013 is applied) the card is left out.
+  const [genreRows, setGenreRows] = useState<ArtistGenres[]>([]);
+  useEffect(() => {
+    genresApi
+      .list()
+      .then((r) => setGenreRows(r.genres))
+      .catch(() => setGenreRows([]));
+  }, []);
   const { years, undated } = useMemo(() => perYear(past), [past]);
   const [pickedYear, setPickedYear] = useState<number | null>(null);
   const reviewYears = years.filter((y) => y.events > 0).map((y) => y.year).reverse();
@@ -298,6 +351,8 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
         <Ranking name="Top cities" rows={ranks.city} empty="No cities yet." onPick={(r) => filter('city', r.key)} />
         <Ranking name="Went with most" rows={ranks.companion} empty="Add who you went with on an event to see this." onPick={(r) => filter('with', r.key)} />
       </section>
+
+      <GenreCard events={past} rows={genreRows} />
 
       {series.length > 0 && <SeriesCard rows={series} onPick={(name) => filter('series', name)} />}
 
