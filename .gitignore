@@ -15,6 +15,7 @@ data/
 .spec/.learn-staging.txt
 .spec/HANDOFF_PACKET.md
 .spec/.slice-checkpoint
+.spec/.vibe-checkpoint.json
 
 # External review dossier (/prep-review)
 audit-dossier.md
