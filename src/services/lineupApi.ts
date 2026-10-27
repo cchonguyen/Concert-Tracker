@@ -6,6 +6,7 @@ import type { EmailImport, MergeField } from '../server/events/email/types';
 import type { ArtistSuggestion } from '../server/events/artists';
 import type { LineupFacts } from '../server/events/scale';
 import type { CityPoint, PlaceGuess } from '../server/events/place';
+import type { ArtistGenres } from '../server/events/genreTypes';
 
 export type {
   LookupJob,
@@ -140,6 +141,15 @@ export const sheetsApi = {
     request<{ values: SheetCellValue[][]; version: string; base?: Array<Array<SheetCellValue | null>>; sheet: LinkedSheetView }>('/api/sheets/values'),
   write: (rows: Array<Array<string | number | null>>, version: string) =>
     request<{ sheet: LinkedSheetView }>('/api/sheets/values', { method: 'PUT', body: JSON.stringify({ rows, version }) }).then((r) => r.sheet),
+};
+
+// Genres of the acts you saw: the music-story file, then MusicBrainz on request.
+export const genresApi = {
+  list: () => request<{ genres: ArtistGenres[]; hasMap: boolean }>('/api/artist-genres'),
+  importMusicStory: (file: unknown) =>
+    request<{ matched: number; seen: number; inFile: number; mapTags: number }>('/api/artist-genres/music-story', post(file)),
+  musicBrainz: (keys: string[]) =>
+    request<{ genres: ArtistGenres[] }>('/api/artist-genres/musicbrainz', post({ keys })).then((r) => r.genres),
 };
 
 export const lineupApi = {

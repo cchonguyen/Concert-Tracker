@@ -20,6 +20,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Star,
+  Tags,
   Tent,
   X,
 } from 'lucide-react';
@@ -47,6 +48,7 @@ import {
 import { ListImport } from './ListImport';
 import { SheetSync } from './SheetSync';
 import { FillGaps } from './FillGaps';
+import { ArtistGenresPanel } from './ArtistGenresPanel';
 import { SeriesPanel } from './SeriesPanel';
 import { EventTitle } from './EventTitle';
 import { SET_LABELS, seenSlots, slotId } from '../server/events/seen';
@@ -317,6 +319,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const [linking, setLinking] = useState(false);
   const [filters, setFilters] = useState<TableFilters>(readQuery);
   const [importing, setImporting] = useState(false);
+  const [genres, setGenres] = useState(false);
   // Back from Google's sign-in (?sheets=connected, or what went wrong).
   const [sheetsNotice] = useState(() => new URLSearchParams(window.location.search).get('sheets'));
   const [syncing, setSyncing] = useState(Boolean(sheetsNotice));
@@ -356,6 +359,11 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const sheetPanel = syncing && (
     <SheetSync events={events} imports={imports} notice={sheetsNotice} onDone={onImported} onClose={() => setSyncing(false)} />
   );
+  const genresButton = (
+    <button onClick={() => setGenres(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+      <Tags className="h-3.5 w-3.5" /> Genres
+    </button>
+  );
   const seriesButton = (
     <button onClick={() => setLinking(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
       <Layers className="h-3.5 w-3.5" /> Series
@@ -385,6 +393,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
     <div className="space-y-3">
       {importPanel}
       {sheetPanel}
+      {genres && <ArtistGenresPanel events={events} onClose={() => setGenres(false)} />}
       {linking && (
         <SeriesPanel
           events={events}
@@ -569,6 +578,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
         <span className="flex flex-wrap items-center gap-x-4 gap-y-1 whitespace-nowrap">
           {fillButton}
           {seriesButton}
+          {genresButton}
           {importButton}
           {sheetButton}
           <button

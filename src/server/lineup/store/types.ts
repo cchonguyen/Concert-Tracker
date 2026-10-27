@@ -15,6 +15,7 @@ import {
 import { LoggedEvent } from '../../events/types';
 import type { LineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
+import type { ArtistGenres } from '../../events/genres';
 
 // Persistence boundary for the lineup pipeline. Two implementations:
 // fileStore (local dev, no setup) and supabaseStore (durable, used when
@@ -89,10 +90,16 @@ export interface LineupStore {
   putSetting<T>(key: string, data: T): Promise<void>;
 
   getArtist(key: string): Promise<ArtistIdentity | null>;
+  getArtists(keys: string[]): Promise<ArtistIdentity[]>;
   upsertArtist(artist: ArtistIdentity): Promise<void>;
   // Adds the artists not stored yet; existing ones are left as they are.
   ensureArtists(artists: ArtistIdentity[]): Promise<void>;
   listUnresolvedArtists(limit: number): Promise<ArtistIdentity[]>;
+
+  // Genres of acts you saw (0013), one row per act and source.
+  listArtistGenres(): Promise<ArtistGenres[]>;
+  // Replaces the rows with the same act and source.
+  putArtistGenres(rows: ArtistGenres[]): Promise<void>;
 }
 
 export const MAX_EXAMPLES_PER_DOMAIN = 3;

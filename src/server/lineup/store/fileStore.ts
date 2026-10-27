@@ -18,6 +18,7 @@ import { LoggedEvent } from '../../events/types';
 import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
+import type { ArtistGenres } from '../../events/genres';
 import { isStaleRun, LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS } from './types';
 
 type DocumentMeta = Omit<SourceDocument, 'body'>;
@@ -38,6 +39,7 @@ interface FileState {
   imports: Record<string, EmailImport>;
   settings?: Record<string, unknown>;
   artists: Record<string, ArtistIdentity>;
+  artistGenres?: Record<string, ArtistGenres>; // by `${source}|${key}`
 }
 
 function emptyState(): FileState {
@@ -345,6 +347,11 @@ export class FileLineupStore implements LineupStore {
     return a ? clone(a) : null;
   }
 
+  async getArtists(keys: string[]) {
+    const { artists } = await this.load();
+    return clone(keys.map((k) => artists[k]).filter((a): a is ArtistIdentity => Boolean(a)));
+  }
+
   async upsertArtist(artist: ArtistIdentity) {
     (await this.load()).artists[artist.key] = clone(artist);
     await this.save();
@@ -362,5 +369,16 @@ export class FileLineupStore implements LineupStore {
         .filter((a) => !a.resolvedAt)
         .slice(0, limit),
     );
+  }
+
+  async listArtistGenres() {
+    return clone(Object.values((await this.load()).artistGenres ?? {}));
+  }
+
+  async putArtistGenres(rows: ArtistGenres[]) {
+    const state = await this.load();
+    state.artistGenres ??= {};
+    for (const r of rows) state.artistGenres[`${r.source}|${r.key}`] = clone(r);
+    await this.save();
   }
 }
