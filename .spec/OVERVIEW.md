@@ -9,4 +9,4 @@
 ## Current Build Status
 - **Live & Verified:** Two-stage capture, lineup lookup and review, ticket-email import and merge (see git history up to PR #46).
 - **In Progress:** None
-- **Up Next:** Run `/triage` on the next feature.
+- **Up Next:** Theme picker, triaged 2026-10-27 (scope in `.spec/SYSTEM_SPEC.md`). Waiting on Charlie's choice: accent colors only, or a light mode too.
