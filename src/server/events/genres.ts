@@ -5,8 +5,8 @@ import { normalizeName } from '../lineup/text';
 import type { Fetcher } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
 import type { LoggedEvent } from './types';
-import { GENRE_MAP_SETTING, MAX_MUSICBRAINZ_GENRES, MIN_SHARE, MUSIC_STORY_FORMAT } from './genreTypes';
-import type { ArtistGenres, GenreMapEntry, GenreShare } from './genreTypes';
+import { GENRE_MAP_SETTING, MAX_GENRE_LENGTH, MAX_MUSICBRAINZ_GENRES, MAX_OWN_GENRES, MIN_SHARE, MUSIC_STORY_FORMAT } from './genreTypes';
+import type { ArtistGenres, GenreMapEntry, GenreShare, KnownGenre } from './genreTypes';
 
 export * from './genreTypes';
 
@@ -15,6 +15,7 @@ export * from './genreTypes';
 // genre map applied to Last.fm, Spotify and MusicBrainz tags), and, only when
 // you ask, MusicBrainz genres for acts that file does not cover, mapped through
 // the same genre map. An act with no genre from either stays without one.
+// Genres you set on an act yourself (source `you`) win over both.
 
 interface MusicStoryArtist {
   name: string;
@@ -171,4 +172,48 @@ export async function musicBrainzGenres(store: LineupStore, fetcher: Fetcher, ke
   }
   await store.putArtistGenres(rows);
   return rows;
+}
+
+// Every genre you can pick: the genre map's styles and those on stored acts,
+// yours included, by name.
+export function knownGenres(map: GenreMapEntry[], rows: ArtistGenres[]): KnownGenre[] {
+  const out = new Map<string, KnownGenre>();
+  for (const m of map) out.set(m.style.toLowerCase(), { style: m.style, parent: m.parent });
+  for (const r of rows) for (const g of r.genres) if (!out.has(g.style.toLowerCase())) out.set(g.style.toLowerCase(), { style: g.style, parent: g.parent });
+  return [...out.values()].sort((a, b) => a.style.localeCompare(b.style));
+}
+
+// Your own genres for one act you saw ({ name, styles }), equal weights. A
+// style you already know keeps its known spelling and parent genre; a new one
+// is its own parent. An empty list means you say it has none; `reset` drops
+// your genres so the found ones show again.
+export async function setOwnGenres(store: LineupStore, key: string, styles: unknown, now: Date, reset = false) {
+  const seen = (await store.listEvents()).flatMap((e) => e.seen).find((s) => s.key === key);
+  if (!seen) throw new InputError('Only acts you saw can have genres.');
+  if (reset) {
+    await store.deleteArtistGenres(key, 'you');
+    return null;
+  }
+  if (!Array.isArray(styles)) throw new InputError('Send { styles: [...] }.');
+  const [map, rows] = await Promise.all([store.getSetting<GenreMapEntry[]>(GENRE_MAP_SETTING), store.listArtistGenres()]);
+  const known = new Map(knownGenres(map ?? [], rows).map((g) => [g.style.toLowerCase(), g]));
+  const picked = new Map<string, KnownGenre>();
+  for (const raw of styles) {
+    const style = String(raw ?? '').replace(/\s+/g, ' ').trim();
+    if (!style) continue;
+    if (style.length > MAX_GENRE_LENGTH) throw new InputError(`A genre can be at most ${MAX_GENRE_LENGTH} characters.`);
+    const k = style.toLowerCase();
+    if (!picked.has(k)) picked.set(k, known.get(k) ?? { style, parent: style });
+  }
+  if (picked.size > MAX_OWN_GENRES) throw new InputError(`At most ${MAX_OWN_GENRES} genres per act.`);
+  const weight = picked.size ? Math.round((1 / picked.size) * 10_000) / 10_000 : 0;
+  const row: ArtistGenres = {
+    key,
+    name: seen.name,
+    source: 'you',
+    genres: [...picked.values()].map((g) => ({ ...g, weight })),
+    checkedAt: now.toISOString(),
+  };
+  await store.putArtistGenres([row]);
+  return row;
 }

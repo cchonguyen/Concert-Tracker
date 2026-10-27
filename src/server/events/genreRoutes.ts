@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
-import { GENRE_MAP_SETTING, GenreMapEntry, importMusicStory, musicBrainzGenres } from './genres';
+import { GENRE_MAP_SETTING, GenreMapEntry, importMusicStory, knownGenres, musicBrainzGenres, setOwnGenres } from './genres';
 
 // /api/artist-genres: genres of the acts you saw (see ARCHITECTURE.md, Artist genres).
 export function genresRouter(deps: PipelineDeps): Router {
@@ -14,7 +14,7 @@ export function genresRouter(deps: PipelineDeps): Router {
         deps.store.listArtistGenres(),
         deps.store.getSetting<GenreMapEntry[]>(GENRE_MAP_SETTING),
       ]);
-      res.json({ genres, hasMap: Boolean(map?.length) });
+      res.json({ genres, hasMap: Boolean(map?.length), known: knownGenres(map ?? [], genres) });
     } catch (err) {
       fail(res, err);
     }
@@ -34,6 +34,16 @@ export function genresRouter(deps: PipelineDeps): Router {
     try {
       const keys = Array.isArray(req.body?.keys) ? req.body.keys.map(String) : [];
       res.json({ genres: await musicBrainzGenres(deps.store, deps.fetcher, keys, deps.now()) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Your own genres for one act you saw: { styles: [...] }, or { reset: true }
+  // to drop them so the found ones show again.
+  router.put('/artist-genres/:key', async (req, res) => {
+    try {
+      res.json({ row: await setOwnGenres(deps.store, req.params.key, req.body?.styles, deps.now(), req.body?.reset === true) });
     } catch (err) {
       fail(res, err);
     }

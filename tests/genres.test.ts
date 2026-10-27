@@ -11,6 +11,8 @@ import {
   matchMusicStory,
   musicBrainzGenres,
   readMusicStory,
+  knownGenres,
+  setOwnGenres,
 } from '../src/server/events/genres.ts';
 import { genreMix, genresByArtist, missingGenreKeys, topStyles } from '../src/services/genres.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
@@ -152,7 +154,7 @@ test('the stored MusicBrainz ID is used without a search', async () => {
   assert.equal(calls.length, 1);
 });
 
-const row = (key: string, source: 'music-story' | 'musicbrainz', styles: Array<[string, string, number]>) => ({
+const row = (key: string, source: 'music-story' | 'musicbrainz' | 'you', styles: Array<[string, string, number]>) => ({
   key,
   name: key,
   source,
@@ -192,4 +194,42 @@ test('genreMix splits each seen set by weight and counts unknown sets apart', ()
   assert.deepEqual(mix.parents.map((p) => [p.name, p.sets]), [['electronic', 2], ['rock', 1]]);
   assert.deepEqual(mix.styles.map((p) => [p.name, p.sets]), [['house', 1], ['indie rock', 1], ['techno', 1]]);
   assert.equal(mix.parents[0].share, 2 / 3);
+});
+
+test('your own genres win, an empty list of yours means none, and missing skips them', () => {
+  const by = genresByArtist([
+    row('a', 'music-story', [['electronic', 'house', 1]]),
+    row('a', 'you', [['electronic', 'techno', 1]]),
+    row('b', 'musicbrainz', [['rock', 'indie rock', 1]]),
+    row('b', 'you', []),
+  ]);
+  assert.deepEqual(topStyles(by.get('a')), ['techno']);
+  assert.deepEqual(topStyles(by.get('b')), []);
+  assert.deepEqual(missingGenreKeys([ev('e', [act('C')])], [row('c', 'you', [])]), []);
+});
+
+test('knownGenres lists map styles and stored ones once, by name', () => {
+  const k = knownGenres(map, [row('a', 'you', [['footwork', 'footwork', 1], ['electronic', 'House', 1]])]);
+  assert.deepEqual(k.map((g) => g.style), ['deep house', 'footwork', 'house', 'indie rock', 'techno']);
+});
+
+test('setOwnGenres keeps known spellings and parents, adds new genres, and resets', async () => {
+  const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'genres-')));
+  await store.putEvent(ev('e1', [act('Bonobo')]));
+  await store.putSetting(GENRE_MAP_SETTING, map);
+  const now = new Date('2026-10-27T00:00:00Z');
+  await assert.rejects(setOwnGenres(store, 'nobody', ['house'], now), /Only acts you saw/);
+  await assert.rejects(setOwnGenres(store, 'bonobo', 'house', now), /styles/);
+  await assert.rejects(setOwnGenres(store, 'bonobo', ['x'.repeat(61)], now), /at most 60/);
+  const r = await setOwnGenres(store, 'bonobo', ['HOUSE', ' Downtempo  vibes ', 'house', ''], now);
+  assert.deepEqual(r?.genres, [
+    { style: 'house', parent: 'electronic', weight: 0.5 },
+    { style: 'Downtempo vibes', parent: 'Downtempo vibes', weight: 0.5 },
+  ]);
+  // A genre you made up is offered from then on.
+  const rows = await store.listArtistGenres();
+  assert.ok(knownGenres(map, rows).some((g) => g.style === 'Downtempo vibes'));
+  assert.deepEqual((await setOwnGenres(store, 'bonobo', [], now))?.genres, []);
+  assert.equal(await setOwnGenres(store, 'bonobo', undefined, now, true), null);
+  assert.deepEqual(await store.listArtistGenres(), []);
 });
