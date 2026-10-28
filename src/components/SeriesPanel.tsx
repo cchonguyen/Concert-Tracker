@@ -237,7 +237,7 @@ export const SeriesPanel: React.FC<SeriesPanelProps> = ({ events, onChanged, onO
       <div className="h-full w-full max-w-2xl space-y-5 overflow-y-auto border-l border-zinc-900 bg-zinc-950 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-white">Series</h2>
+            <h2 className="text-lg font-bold text-zinc-50">Series</h2>
             <p className="text-xs text-zinc-400">
               Link the years of a festival or tour so they read the same everywhere: EDC Las Vegas 2023, 2024, 2025. The name you typed stays on
               each event.
