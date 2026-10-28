@@ -27,7 +27,37 @@ Feature: **Manage section** (triaged 2026-10-28). Full design: [designs/manage-s
   - Reading edits back from Google Sheets or CSV into existing events.
   - Automatic merges of names that only look alike. These are offers only.
   - Dropping the old text columns in the same release as the ID backfill.
+  - No Labels category, category-attribute gap prompts or linked label suggestions in the MVP (step 5).
+  - No People first/last name split or adaptive display in the MVP (step 4). In the MVP a person is one record with a single name plus AKA, like the other kinds.
+  - No hard delete of entities. A record goes away only by being merged into another one.
   - The "hidden complexity" ideas (discovery story, MusicBrainz home city, lineup source per series, timezones, sourced capacity/status) and the "Do next" ideas (home city distance, spend per organization, crew view, B2B network).
 
 ## 3. Data Models & Module Boundaries
-- See ARCHITECTURE.md. Add feature-specific contracts here.
+- See ARCHITECTURE.md. Feature contracts for the Manage section (from the Gemini audit, 2026-10-28; see DECISIONS.md ADR-002):
+
+**Entities and aliases**
+- `entities`: `id uuid` primary key, `kind`, `name`, `name_normalized`, `attrs jsonb`, `merged_into_id uuid null references entities(id)` with `check (merged_into_id is distinct from id)`, timestamps. `unique (kind, name_normalized)` over rows that are not merged.
+- `entity_aliases`: `entity_id`, `kind`, `alias_normalized`, with `unique (kind, alias_normalized)`. The same name may exist under different kinds (an artist and a series can share a name), never twice within one kind.
+- Resolving or creating a record checks primary names and aliases of that kind together, using the same normalizer the app already uses for artist keys.
+- Merges are flattened. If A was merged into B and B is then merged into C, A is repointed to C, so `merged_into_id` never chains. Readers follow `merged_into_id` once.
+- No hard delete (see section 2).
+
+**Links**
+- `entity_links`: `primary key (from_id, to_id, role)`, `check (from_id <> to_id)`. Allowed `(from kind, role, to kind)` triples are listed in code and checked on write: venue `in` place, series `hosted_by` organization, and later labels and `introduced_me_to`. A merge moves links to the kept record and drops any that become duplicates.
+- `logged_events.venue_id`, `series_id` and `place_id` are real foreign keys. Person and artist IDs inside `companions` and `seen` JSON cannot have foreign keys, so the store checks they point at live (not merged) records on every write, and merge rewrites them.
+- `src/server/lineup/store/fileStore.ts` enforces the same rules as Supabase. Tests run against the file store.
+
+**Dual-write release (0014)**
+- The legacy text columns (`venue`, `city`, `region`, `country`, `series`, `companions`, seen act names) stay. Rename, Merge and venue → place changes **also rewrite those columns** on every affected event in the same operation, so a rollback to text-only reading loses nothing. "A rename touches no event rows" holds only after the later migration that drops the text columns.
+
+**History and undo**
+- `entity_history` rows hold a reverse-patch manifest in JSON: `{ operation, source_entity_id, target_entity_id, moved_event_ids, prior_event_act_snapshots, prior_companion_snapshots, moved_links, added_aliases, prior_attrs, prior_name }`. Undo applies the manifest exactly.
+- When two merged artists (or people) are both on one event, the entries are combined into one. Marks are unioned: favourite, set type and B2B, and solo set. The event's prior list is saved in the manifest first.
+
+**Venue → place provenance**
+- When an event's venue has a place, the event's `city`, `region` and `country` come from it with `sources.city/region/country = { sourceType: 'venue' }`. Stage 1 research and import location values are not applied to such an event; they stay offers on the event's venue instead.
+- If a venue's place changes later, events with stored weather for the old city are flagged (weather is not re-fetched on its own, per AGENTS.md).
+
+**Sheets, CSV and list import**
+- Sheet sync is one-way: the app writes the sheet, and nothing is read back from it.
+- In `src/services/listImport.ts`, a row that matches an event by the app's ID column uses `fillPatch` only (empty fields, plus acts or people not already there). `editPatch` and its three-way merge are retired. Acts and people are matched by resolved entity ID through aliases, so a different spelling of someone already on the event is not added twice.
