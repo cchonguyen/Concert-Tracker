@@ -65,3 +65,18 @@ test('gmail client: an expired token stops the scan', async () => {
   const gmail = (async () => new Response('{}', { status: 401 })) as typeof fetch;
   await assert.rejects(scanGmailInBrowser({ token: 't', fetch: gmail }), GmailTokenError);
 });
+
+test('gmail client: a 403 rate limit is waited out, not counted as a failure', async () => {
+  const inner = fakeGmail(tier1.slice(0, 1).map((f) => f.email));
+  let refused = false;
+  const gmail = (async (input: string | URL, init?: RequestInit) => {
+    if (!refused && String(input).includes('format=full')) {
+      refused = true;
+      return new Response(JSON.stringify({ error: { errors: [{ reason: 'rateLimitExceeded' }] } }), { status: 403 });
+    }
+    return inner(input, init);
+  }) as typeof fetch;
+  const result = await scanGmailInBrowser({ token: 't', fetch: gmail });
+  assert.equal(result.examined, 1);
+  assert.deepEqual(result.failed, []);
+});
