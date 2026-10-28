@@ -14,6 +14,10 @@ import {
   heatmapRows,
   heatmapYear,
   modeFromQuery,
+  monthFromQuery,
+  monthPage,
+  monthToQuery,
+  shiftMonth,
   spanBounds,
   spanInRange,
   weekday,
@@ -203,6 +207,7 @@ test('the view mode comes from the address, and a view not built yet opens Agend
   assert.equal(modeFromQuery('?view=timeline'), 'agenda');
   assert.equal(modeFromQuery('?view=timeline&mode=agenda'), 'agenda');
   assert.equal(modeFromQuery('?view=timeline&mode=heatmap'), 'heatmap');
+  assert.equal(modeFromQuery('?view=timeline&mode=month'), 'month');
   assert.equal(modeFromQuery('?view=timeline&mode=river'), 'agenda');
   assert.equal(modeFromQuery('?view=timeline&mode=nonsense'), 'agenda');
 });
@@ -231,4 +236,44 @@ test('heatmap rows run newest first to the earliest event, keeping this year and
     ['2026: 0 +0', 'gap 2025-2025', '2024: 0 +1', 'gap 2023-2019', '2018: 2 +0'],
   );
   assert.deepEqual(heatmapRows(buildTimelineModel([], TODAY)), []);
+});
+
+test('a month page runs Sunday to Saturday and lays runs of days out as bars on separate lanes', () => {
+  const m = buildTimelineModel(
+    [
+      ev('fest', { startDate: '2026-07-31', endDate: '2026-08-02', daysAttended: ['2026-07-31', '2026-08-02'], kind: 'festival' }),
+      ev('same', { startDate: '2026-08-01' }),
+      ev('later', { startDate: '2026-08-29', endDate: '2026-09-01' }),
+      ev('month', { year: 2026, month: 8 }),
+    ],
+    TODAY,
+  );
+  const page = monthPage(m, 2026, 8);
+  assert.equal(page.weeks.length, 6); // 1 Aug 2026 is a Saturday
+  assert.deepEqual(page.weeks[0].days.map((d) => d.inMonth), [false, false, false, false, false, false, true]);
+  const first = page.weeks[0].segments;
+  assert.deepEqual(
+    first.map((s) => [s.span.id, s.start, s.len, s.lane, s.before, s.after]),
+    [
+      ['fest', 5, 2, 0, false, true],
+      ['same', 6, 1, 1, false, false],
+    ],
+  );
+  assert.deepEqual(first[0].days, [
+    { date: '2026-07-31', went: true },
+    { date: '2026-08-01', went: false }, // a festival day you skipped
+  ]);
+  assert.deepEqual(page.weeks[1].segments.map((s) => [s.span.id, s.start, s.len, s.before]), [['fest', 0, 1, true]]);
+  assert.deepEqual(page.weeks[4].segments.map((s) => [s.span.id, s.start, s.len, s.after]), [['later', 6, 1, true]]);
+  assert.deepEqual(page.weeks[5].segments.map((s) => [s.span.id, s.start, s.len]), [['later', 0, 3]]); // Sun 30, Mon 31, Tue 1 Sep
+  assert.deepEqual(page.undayed.map((p) => p.id), ['month']);
+  assert.deepEqual(shiftMonth(2026, 12, 1), { year: 2027, month: 1 });
+  assert.deepEqual(shiftMonth(2026, 1, -1), { year: 2025, month: 12 });
+});
+
+test('the Month view keeps its month in the address', () => {
+  assert.deepEqual(monthFromQuery('?view=timeline&mode=month&month=2024-04', TODAY), { kind: 'month', year: 2024, month: 4 });
+  assert.deepEqual(monthFromQuery('?view=timeline&mode=month', TODAY), { kind: 'month', year: 2026, month: 10 });
+  assert.deepEqual(monthFromQuery('?month=2024-13', TODAY), { kind: 'month', year: 2026, month: 10 });
+  assert.equal(monthToQuery({ year: 2024, month: 4 }), '2024-04');
 });

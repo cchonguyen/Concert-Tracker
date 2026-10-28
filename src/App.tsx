@@ -110,7 +110,10 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     if (FILTERED.includes(next) && FILTERED.includes(tab)) {
       params.set('view', next);
-      if (next !== 'timeline') params.delete('mode');
+      if (next !== 'timeline') {
+        params.delete('mode');
+        params.delete('month');
+      }
       window.history.replaceState(null, '', `${window.location.pathname}?${params}`);
     } else if (FILTERED.includes(next)) window.history.replaceState(null, '', `${window.location.pathname}?view=${next}`);
     else if (window.location.search) window.history.replaceState(null, '', window.location.pathname);
