@@ -1,4 +1,5 @@
 import type { Edition, LookupJob, SourceType } from '../server/lineup/types';
+import type { NameIndex } from '../server/entities/link';
 import type { ConfirmRequest } from '../server/lineup/learning';
 import type { DetailCandidate, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
 import type { EventPatch } from '../server/events/service';
@@ -156,6 +157,11 @@ export const genresApi = {
     request<{ matched: number; seen: number; inFile: number; mapTags: number }>('/api/artist-genres/music-story', post(file)),
   musicBrainz: (keys: string[]) =>
     request<{ genres: ArtistGenres[] }>('/api/artist-genres/musicbrainz', post({ keys })).then((r) => r.genres),
+};
+
+// The records behind your events' names (src/server/entities/).
+export const entitiesApi = {
+  names: () => request<{ names: NameIndex }>('/api/entities/names').then((r) => r.names),
 };
 
 export const lineupApi = {

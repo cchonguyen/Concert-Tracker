@@ -528,7 +528,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
       <div className="h-full w-full max-w-2xl space-y-4 overflow-y-auto border-l border-zinc-900 bg-zinc-950 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-white">Fill gaps</h2>
+            <h2 className="text-lg font-bold text-zinc-50">Fill gaps</h2>
             <p className="text-xs text-zinc-400">
               Across the {events.length} event{events.length === 1 ? '' : 's'} the Table shows. Pick what's missing, type it in, press Enter.
             </p>

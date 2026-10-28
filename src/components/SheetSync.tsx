@@ -1,20 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { ExternalLink, Loader2, RefreshCw, Sheet, X } from 'lucide-react';
-import { EmailImport, eventsApi, LoggedEvent, SheetsStatus, sheetsApi } from '../services/lineupApi';
-import { ImportResult, ReadList, readTable } from '../services/listImport';
-import { droppedColumns, rowsToReview, sheetRows, sheetTable } from '../services/sheetSync';
-import { ListImport } from './ListImport';
+import { AlertTriangle, ExternalLink, Loader2, RefreshCw, Sheet, X } from 'lucide-react';
+import { eventsApi, SheetsStatus, sheetsApi } from '../services/lineupApi';
+import { readTable } from '../services/listImport';
+import { droppedColumns, outsideEdits, sheetRows, sheetTable } from '../services/sheetSync';
 
-// "Google Sheets" in the Table view: sign in, link a sheet, and sync. A sync
-// reads the linked tab first; what it changed, and rows it added, are
-// reviewed in the list import before anything is saved. Then the tab is
-// rewritten from your log. See ARCHITECTURE.md ("Google Sheets sync").
+// "Google Sheets" in the Table view: sign in, link a sheet, and update it.
+// One way: the app is the source of truth and writes your log into the tab;
+// nothing in the sheet is read back into the app. Before edits made in the
+// sheet are replaced, you're told how many. See ARCHITECTURE.md ("Google
+// Sheets sync").
 
 interface SheetSyncProps {
-  events: LoggedEvent[];
-  imports: EmailImport[];
   notice?: string | null; // back from Google's sign-in
-  onDone: () => void;
   onClose: () => void;
 }
 
@@ -25,15 +22,14 @@ const primary =
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
-export const SheetSync: React.FC<SheetSyncProps> = ({ events, imports, notice, onDone, onClose }) => {
+export const SheetSync: React.FC<SheetSyncProps> = ({ notice, onClose }) => {
   const [status, setStatus] = useState<SheetsStatus | null>(null);
   const [link, setLink] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(notice && notice !== 'connected' ? notice : null);
   const [message, setMessage] = useState<string | null>(null);
-  const [review, setReview] = useState<{ title: string; table: string[][]; version: string; dropped: string[]; base?: ReadList } | null>(
-    null,
-  );
+  // Edits made in the sheet that updating would replace, waiting for your OK.
+  const [confirm, setConfirm] = useState<{ version: string; edits: number; dropped: string[]; tab: string } | null>(null);
 
   const load = () =>
     sheetsApi
@@ -68,43 +64,19 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ events, imports, notice, o
 
   const sync = () =>
     run('sync', async () => {
+      setConfirm(null);
       const { values, version, base: written, sheet } = await sheetsApi.read();
-      const base = written ? readTable(sheetTable(written)) : undefined;
       const table = sheetTable(values);
       const list = readTable(table);
       if (list.error && list.rows.length === 0 && table.filter((r) => r.some((c) => c.trim())).length > 1) {
-        // Cells the import can't place: never overwrite them.
+        // Cells that aren't an events list: never overwrite them.
         throw new Error(`The "${sheet.tab}" tab has data but no Event or Name column, so it was left alone. Link an empty tab or a new sheet.`);
       }
-      if (list.error || rowsToReview(list, events, imports, base) === 0) return write(version);
-      setReview({ title: sheet.title, table, version, dropped: droppedColumns(list), base });
+      const edits = outsideEdits(table, written ? sheetTable(written) : undefined);
+      const dropped = list.error ? [] : droppedColumns(list);
+      if (!edits && !dropped.length) return write(version);
+      setConfirm({ version, edits, dropped, tab: sheet.tab });
     });
-
-  const saved = (result: ImportResult) => {
-    const r = review;
-    setReview(null);
-    if (!r) return;
-    if (result.failed.length) {
-      setError(
-        `${result.failed.map((f) => `${f.row.name}: ${f.error}`).join(' ')} The sheet was left as it is so nothing in it is lost; sync again after fixing these.`,
-      );
-      return;
-    }
-    void run('sync', () => write(r.version));
-  };
-
-  if (review) {
-    return (
-      <ListImport
-        events={events}
-        imports={imports}
-        sheet={{ title: review.title, table: review.table, dropped: review.dropped, base: review.base }}
-        onDone={onDone}
-        onSaved={saved}
-        onClose={() => setReview(null)}
-      />
-    );
-  }
 
   const sheet = status?.sheet;
   return (
@@ -120,8 +92,8 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ events, imports, notice, o
                 <Sheet className="h-4 w-4 text-violet-400" /> Google Sheets
               </h2>
               <p className="text-xs text-zinc-500">
-                Keep a Google Sheet in step with your log. Edit there or here; each sync shows what the sheet changed before saving it,
-                then rewrites the sheet from the app.
+                A copy of your log in a Google Sheet, for looking at, sorting or sharing. The app is the source of truth: updating writes
+                your log into the sheet, and nothing typed in the sheet comes back into the app. Make changes in the app.
               </p>
             </div>
             <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
@@ -168,8 +140,8 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ events, imports, notice, o
                   </button>
                 </div>
                 <p className="text-xs text-zinc-600">
-                  The tab open in the link is the one synced. Rows already in it are offered as events on the first sync; columns the app
-                  doesn't use are removed when it rewrites the tab.
+                  The tab open in the link is the one written. Use an empty tab: anything already in it is replaced (you're asked first).
+                  To bring events from a sheet into the app, download it as CSV and use Import a list.
                 </p>
               </div>
               <button
@@ -195,14 +167,36 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ events, imports, notice, o
                 </p>
               </div>
               <button onClick={sync} disabled={Boolean(busy)} className={primary}>
-                {busy === 'sync' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Sync now
+                {busy === 'sync' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Update the sheet
               </button>
-              <ul className="list-disc space-y-1 pl-4 text-xs text-zinc-500">
-                <li>Edit any column except Type, Artist, Supporting artists, Favourite set and Weather: those are worked out by the app. Edit acts in "Saw".</li>
-                <li>Add a row (leave ID empty) to add an event; it's matched against your log like an imported list.</li>
-                <li>Deleting a row doesn't delete the event. It comes back on the next sync; delete events in the app.</li>
-                <li>Keep the ID column: it's how a row finds its event.</li>
-              </ul>
+              {confirm && (
+                <div className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-950/20 p-3">
+                  {confirm.edits > 0 && (
+                    <p className="flex items-start gap-1.5 text-sm text-amber-200">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      {confirm.edits} row{confirm.edits === 1 ? '' : 's'} in "{confirm.tab}" {confirm.edits === 1 ? 'was' : 'were'} changed, added or
+                      removed in the sheet. Updating replaces {confirm.edits === 1 ? 'it' : 'them'} with your log; nothing from the sheet is
+                      saved to the app.
+                    </p>
+                  )}
+                  {confirm.dropped.length > 0 && (
+                    <p className="flex items-start gap-1.5 text-sm text-amber-200">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      The {confirm.dropped.map((d) => `"${d}"`).join(', ')} column{confirm.dropped.length === 1 ? ' is' : 's are'} not part of
+                      the app and will be removed.
+                    </p>
+                  )}
+                  <div className="flex gap-2">
+                    <button onClick={() => run('sync', async () => (setConfirm(null), write(confirm.version)))} disabled={Boolean(busy)} className={primary}>
+                      Replace the sheet
+                    </button>
+                    <button onClick={() => setConfirm(null)} className={button}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-zinc-500">Edits typed into the sheet are not read back. Change events in the app, then update the sheet.</p>
               <div className="flex gap-4 text-xs">
                 <button onClick={() => run('unlink', async () => (await sheetsApi.unlink(), load()))} className="text-zinc-500 hover:text-zinc-300">
                   Unlink this sheet

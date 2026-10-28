@@ -20,6 +20,7 @@ import { ImportReview } from './components/ImportReview';
 import { TableView } from './components/TableView';
 import { StatsView } from './components/StatsView';
 import { MapView } from './components/MapView';
+import { ThemePicker } from './components/ThemePicker';
 import { wentTo } from './server/events/attendance';
 
 type Tab = 'events' | 'table' | 'map' | 'stats' | 'artists';
@@ -140,30 +141,33 @@ export default function App() {
               Live<span className="text-violet-400">Archive</span>
             </span>
           </div>
-          <nav className="flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1 text-sm">
-            {(
-              [
-                ['events', Ticket, `Events`, events.length],
-                ['table', Table2, `Table`, null],
-                ['map', MapIcon, `Map`, null],
-                ['stats', BarChart3, `Stats`, null],
-                ['artists', Mic2, `Artists`, seenCount],
-              ] as const
-            ).map(([id, Icon, label, count]) => (
-              <button
-                key={id}
-                onClick={() => openTab(id)}
-                title={label}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-colors ${
-                  tab === id ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                <span className={tab === id ? '' : 'hidden sm:inline'}>{label}</span>
-                {count !== null && <span className="text-[11px] opacity-70">{count}</span>}
-              </button>
-            ))}
-          </nav>
+          <div className="flex items-center gap-2">
+            <nav className="flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1 text-sm">
+              {(
+                [
+                  ['events', Ticket, `Events`, events.length],
+                  ['table', Table2, `Table`, null],
+                  ['map', MapIcon, `Map`, null],
+                  ['stats', BarChart3, `Stats`, null],
+                  ['artists', Mic2, `Artists`, seenCount],
+                ] as const
+              ).map(([id, Icon, label, count]) => (
+                <button
+                  key={id}
+                  onClick={() => openTab(id)}
+                  title={label}
+                  className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 font-medium transition-colors sm:px-3 ${
+                    tab === id ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span className={tab === id ? '' : 'hidden sm:inline'}>{label}</span>
+                  {count !== null && <span className={`text-[11px] opacity-70 ${tab === id ? '' : 'hidden sm:inline'}`}>{count}</span>}
+                </button>
+              ))}
+            </nav>
+            <ThemePicker />
+          </div>
         </div>
       </header>
 

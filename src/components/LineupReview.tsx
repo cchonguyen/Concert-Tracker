@@ -129,7 +129,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
       <div className="w-full max-w-5xl space-y-5 rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-bold text-white">Who played <EventTitle event={event} /></h2>
+            <h2 className="text-lg font-bold text-zinc-50">Who played <EventTitle event={event} /></h2>
             <p className="text-xs text-zinc-400">
               {edition
                 ? 'Your saved lineup. Change anything and save again.'

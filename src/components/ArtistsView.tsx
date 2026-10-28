@@ -477,7 +477,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           aria-label="Back to top"
-          className="fixed bottom-5 right-5 z-30 inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/95 px-3.5 py-2 text-xs font-medium text-zinc-200 shadow-lg shadow-black/40 backdrop-blur hover:border-violet-500 hover:text-white"
+          className="fixed bottom-5 right-5 z-30 inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/95 px-3.5 py-2 text-xs font-medium text-zinc-200 shadow-lg shadow-black/40 backdrop-blur hover:border-violet-500 hover:text-zinc-50"
         >
           <ArrowUp className="h-3.5 w-3.5" /> Back to top
         </button>
