@@ -204,6 +204,9 @@ export const entitiesApi = {
     request<{ entry: HistoryEntry }>(`/api/entities/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }).then((r) => r.entry),
   updatePerson: (id: string, details: { first: string; last?: string; note?: string }) =>
     request<{ entry: HistoryEntry }>(`/api/entities/${id}/person`, { method: 'PATCH', body: JSON.stringify(details) }).then((r) => r.entry),
+  updateAttrs: (id: string, values: Record<string, string>) =>
+    request<{ entry: HistoryEntry }>(`/api/entities/${id}/attrs`, { method: 'PATCH', body: JSON.stringify(values) }).then((r) => r.entry),
+  createLabel: (name: string, group?: string) => request<{ entity: Entity; entry: HistoryEntry }>('/api/entities', post({ kind: 'label', name, group })),
   merge: (id: string, into: string) => request<{ entry: HistoryEntry }>(`/api/entities/${id}/merge`, post({ into })).then((r) => r.entry),
   addAlias: (id: string, name: string) => request<{ entry: HistoryEntry }>(`/api/entities/${id}/aliases`, post({ name })).then((r) => r.entry),
   removeAlias: (id: string, name: string) =>

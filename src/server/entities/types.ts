@@ -2,9 +2,9 @@
 // has a permanent ID; events point at them. Contracts: .spec/SYSTEM_SPEC.md
 // section 3.
 
-export type EntityKind = 'artist' | 'person' | 'venue' | 'place' | 'series' | 'organization';
+export type EntityKind = 'artist' | 'person' | 'venue' | 'place' | 'series' | 'organization' | 'label';
 
-export const ENTITY_KINDS: EntityKind[] = ['artist', 'person', 'venue', 'place', 'series', 'organization'];
+export const ENTITY_KINDS: EntityKind[] = ['artist', 'person', 'venue', 'place', 'series', 'organization', 'label'];
 
 export interface Entity {
   id: string;
@@ -25,7 +25,7 @@ export interface EntityAlias {
   aliasNormalized: string;
 }
 
-export type LinkRole = 'in' | 'hosted_by';
+export type LinkRole = 'in' | 'hosted_by' | 'has_label';
 
 export interface EntityLink {
   fromId: string;
@@ -38,6 +38,10 @@ export interface EntityLink {
 export const ALLOWED_LINKS: Array<{ from: EntityKind; role: LinkRole; to: EntityKind }> = [
   { from: 'venue', role: 'in', to: 'place' },
   { from: 'series', role: 'hosted_by', to: 'organization' },
+  // Labels (migration 0016): picked from your list, one per group (Indoor or
+  // Outdoor) on each record.
+  { from: 'venue', role: 'has_label', to: 'label' },
+  { from: 'series', role: 'has_label', to: 'label' },
 ];
 
 // One rename, merge, alias or link change, with everything needed to undo

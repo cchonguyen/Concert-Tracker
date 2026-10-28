@@ -7,6 +7,7 @@ import { withB2b } from '../events/seen';
 import { EntityIndex, linkEvent } from './link';
 import { ALLOWED_LINKS, Entity, EntityAlias, EntityKind, EntityLink, HistoryEntry, LinkRole } from './types';
 import { venuePlaceSplit, withVenuePlace } from './venuePlace';
+import { attrFields } from './attrs';
 
 // The Manage operations (0014): rename, merge, AKA and links. Each one is
 // planned in full from what is stored, written to entity_history first, and
@@ -276,6 +277,36 @@ function planPerson(world: World, id: string, details: PersonDetails, at: string
   };
 }
 
+// The attributes a kind keeps (attrs.ts), in your words. An empty value
+// removes it; other keys in attrs (a place's parts, a venue's place offers)
+// are left alone.
+function planAttrs(world: World, id: string, values: Record<string, unknown>, at: string): Plan {
+  const entity = live(world, id);
+  const fields = attrFields(entity.kind);
+  if (!fields.length) throw new ManageError(`A ${entity.kind} has no details to set here.`, 400);
+  const attrs: Record<string, unknown> = { ...entity.attrs };
+  for (const [key, raw] of Object.entries(values ?? {})) {
+    const field = fields.find((f) => f.key === key);
+    if (!field) throw new ManageError(`A ${entity.kind} has no "${key}".`, 400);
+    if (raw !== null && raw !== undefined && typeof raw !== 'string') throw new ManageError(`${field.label} must be text.`, 400);
+    const value = typeof raw === 'string' ? (field.multiline ? raw.trim() : raw.trim().replace(/\s+/g, ' ')) : '';
+    if (value.length > field.max) throw new ManageError(`${field.label} can be at most ${field.max} characters.`, 400);
+    if (value) attrs[key] = value;
+    else delete attrs[key];
+  }
+  if (JSON.stringify(attrs) === JSON.stringify(entity.attrs)) throw new ManageError('Nothing changed.', 400);
+  return {
+    operation: 'details',
+    summary: `Updated ${entity.name}'s details`,
+    sourceEntityId: id,
+    entities: { before: [entity], after: [{ ...entity, attrs, updatedAt: at }] },
+    touched: [id],
+    aliases: aliasesOf(world, [id]),
+    links: linksOf(world, [id]),
+    events: [],
+  };
+}
+
 function planMerge(world: World, sourceId: string, intoId: string, at: string): Plan {
   if (sourceId === intoId) throw new ManageError('A record cannot be merged into itself.', 400);
   const source = live(world, sourceId);
@@ -350,6 +381,8 @@ function planAlias(world: World, id: string, alias: unknown, add: boolean, at: s
   };
 }
 
+const labelGroup = (label?: Entity): string => normalizeName(String(label?.attrs.group ?? ''));
+
 function planLink(world: World, fromId: string, toId: string, role: unknown, add: boolean, at: string): Plan {
   const from = live(world, fromId);
   const to = live(world, toId);
@@ -360,14 +393,20 @@ function planLink(world: World, fromId: string, toId: string, role: unknown, add
   let links: EntityLink[];
   if (add) {
     if (current.some(same)) throw new ManageError('That link is already there.', 400);
-    // A venue is in one place; a series can have several hosts.
-    const kept = role === 'in' ? current.filter((l) => !(l.fromId === fromId && l.role === 'in')) : current;
+    // A venue is in one place; a series can have several hosts; a record has
+    // one label per group (Outdoor replaces Indoor).
+    const group = role === 'has_label' ? labelGroup(to) : '';
+    const replaced = (l: EntityLink) =>
+      l.fromId === fromId &&
+      l.role === role &&
+      (role === 'in' || (role === 'has_label' && Boolean(group) && labelGroup(world.byId.get(l.toId)) === group));
+    const kept = current.filter((l) => !replaced(l));
     links = [...kept, { fromId, toId, role: role as LinkRole, createdAt: at }];
   } else {
     if (!current.some(same)) throw new ManageError('There is no such link.', 404);
     links = current.filter((l) => !same(l));
   }
-  const verb = role === 'in' ? 'in' : 'hosted by';
+  const verb = role === 'in' ? 'in' : role === 'has_label' ? 'labelled' : 'hosted by';
   // A venue's place becomes the location of every event there.
   const events = add && role === 'in' ? venueRewrite(world, new Map([[fromId, toId]]), at) : [];
   return {
@@ -473,6 +512,11 @@ export async function updatePerson(store: LineupStore, id: string, details: Pers
   return apply(store, world, planPerson(world, id, details ?? {}, at), at);
 }
 
+export async function updateAttrs(store: LineupStore, id: string, values: Record<string, unknown>, at = now()): Promise<HistoryEntry> {
+  const world = await load(store);
+  return apply(store, world, planAttrs(world, id, values, at), at);
+}
+
 export async function mergeEntity(store: LineupStore, sourceId: string, intoId: string, at = now()): Promise<HistoryEntry> {
   const world = await load(store);
   return apply(store, world, planMerge(world, sourceId, intoId, at), at);
@@ -512,20 +556,31 @@ export async function removeLink(store: LineupStore, fromId: string, toId: strin
   return apply(store, world, planLink(world, fromId, toId, role, false, at), at);
 }
 
-// A record you add by hand. Only organizations: every other kind comes from
-// the names on your events.
-export async function createEntity(store: LineupStore, kind: unknown, name: unknown, at = now()): Promise<{ entity: Entity; entry: HistoryEntry }> {
-  if (kind !== 'organization') throw new ManageError('Only organizations are added here; the rest come from your events.', 400);
+// A record you add by hand: an organization, or a label (with its group,
+// such as Indoor/Outdoor). Every other kind comes from the names on your
+// events.
+export async function createEntity(
+  store: LineupStore,
+  kind: unknown,
+  name: unknown,
+  at = now(),
+  group?: unknown,
+): Promise<{ entity: Entity; entry: HistoryEntry }> {
+  if (kind !== 'organization' && kind !== 'label') {
+    throw new ManageError('Only organizations and labels are added here; the rest come from your events.', 400);
+  }
   const display = cleanName(name);
   const key = normalizeName(display);
   const world = await load(store);
   const other = holder(world, kind, key);
   if (other) throw taken(other, kind, other.nameNormalized === key ? '' : ' (as an AKA)');
-  const entity: Entity = { id: randomUUID(), kind, name: display, nameNormalized: key, attrs: {}, createdAt: at, updatedAt: at };
+  const groupName = typeof group === 'string' ? group.trim().replace(/\s+/g, ' ').slice(0, 60) : '';
+  const attrs = kind === 'label' && groupName ? { group: groupName } : {};
+  const entity: Entity = { id: randomUUID(), kind, name: display, nameNormalized: key, attrs, createdAt: at, updatedAt: at };
   const entry: HistoryEntry = {
     id: randomUUID(),
     operation: 'create',
-    summary: `Added organization "${display}"`,
+    summary: `Added ${kind} "${display}"`,
     sourceEntityId: entity.id,
     entities: { before: [], after: [entity] },
     touched: [entity.id],
