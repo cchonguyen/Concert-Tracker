@@ -21,6 +21,8 @@ import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
 import { Entity, EntityAlias, EntityLink } from '../../entities/types';
 import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../entities/integrity';
+import type { ShareLink } from '../../share/types';
+import { shareEventOnly } from '../../share/types';
 import { isStaleRun, LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS } from './types';
 
 type DocumentMeta = Omit<SourceDocument, 'body'>;
@@ -45,6 +47,7 @@ interface FileState {
   entities?: Record<string, Entity>;
   entityAliases?: EntityAlias[];
   entityLinks?: EntityLink[];
+  shareLinks?: Record<string, ShareLink>;
 }
 
 function emptyState(): FileState {
@@ -444,5 +447,24 @@ export class FileLineupStore implements LineupStore {
     checkLinks(new Map(Object.entries(state.entities ?? {})), fresh);
     state.entityLinks = [...existing, ...fresh.map(clone)];
     await this.save();
+  }
+
+  async listShareLinks() {
+    return clone(Object.values((await this.load()).shareLinks ?? {}));
+  }
+
+  async getShareLinkByHash(codeHash: string) {
+    const link = Object.values((await this.load()).shareLinks ?? {}).find((l) => l.codeHash === codeHash);
+    return link ? clone(link) : null;
+  }
+
+  async putShareLink(link: ShareLink) {
+    const state = await this.load();
+    state.shareLinks = { ...(state.shareLinks ?? {}), [link.id]: clone(link) };
+    await this.save();
+  }
+
+  async listShareEvents() {
+    return (await this.listEvents()).map(shareEventOnly);
   }
 }
