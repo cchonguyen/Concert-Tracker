@@ -14,9 +14,11 @@ import {
   heatmapRows,
   heatmapYear,
   modeFromQuery,
+  riverLayout,
   monthFromQuery,
   monthPage,
   monthToQuery,
+  dayNumber,
   shiftMonth,
   spanBounds,
   spanInRange,
@@ -203,12 +205,12 @@ test('date chips read like a calendar', () => {
   assert.equal(dateChip({ first: '2026-07-31', last: '2026-08-02' }), 'Fri 31 – Sun 2 Aug');
 });
 
-test('the view mode comes from the address, and a view not built yet opens Agenda', () => {
+test('the view mode comes from the address, and anything else opens Agenda', () => {
   assert.equal(modeFromQuery('?view=timeline'), 'agenda');
   assert.equal(modeFromQuery('?view=timeline&mode=agenda'), 'agenda');
   assert.equal(modeFromQuery('?view=timeline&mode=heatmap'), 'heatmap');
   assert.equal(modeFromQuery('?view=timeline&mode=month'), 'month');
-  assert.equal(modeFromQuery('?view=timeline&mode=river'), 'agenda');
+  assert.equal(modeFromQuery('?view=timeline&mode=river'), 'river');
   assert.equal(modeFromQuery('?view=timeline&mode=nonsense'), 'agenda');
 });
 
@@ -276,4 +278,26 @@ test('the Month view keeps its month in the address', () => {
   assert.deepEqual(monthFromQuery('?view=timeline&mode=month', TODAY), { kind: 'month', year: 2026, month: 10 });
   assert.deepEqual(monthFromQuery('?month=2024-13', TODAY), { kind: 'month', year: 2026, month: 10 });
   assert.equal(monthToQuery({ year: 2024, month: 4 }), '2024-04');
+});
+
+test('the river places marks by date, sizes them by acts, and stacks overlapping ones on lanes', () => {
+  const m = buildTimelineModel(
+    [
+      ev('fest', { startDate: '2025-01-02', endDate: '2025-01-04', seen: Array.from({ length: 12 }, (_, i) => ({ key: `a${i}`, name: `A${i}`, from: 'you' as const })) }),
+      ev('same', { startDate: '2025-01-03' }),
+      ev('later', { startDate: '2025-06-01' }),
+    ],
+    TODAY,
+  );
+  const r = riverLayout(m, 1)!;
+  assert.equal(r.width, dayNumber('2027-01-01') - dayNumber('2025-01-01')); // through this year
+  assert.equal(r.todayX, dayNumber(TODAY) - dayNumber('2025-01-01'));
+  const by = Object.fromEntries(r.items.map((i) => [i.span.id, i]));
+  assert.deepEqual([by.fest.x, by.fest.w, by.fest.r, by.fest.lane], [1, 3, 10, 0]);
+  assert.deepEqual([by.same.x, by.same.w, by.same.r, by.same.lane], [2, 0, 4, 1]); // no acts logged draws like one
+  assert.equal(by.later.lane, 0);
+  assert.equal(by.later.label, false);
+  assert.deepEqual(r.ticks.map((t) => t.label), ['2025', '2026']);
+  assert.ok(riverLayout(m, 4)!.ticks.some((t) => t.label === 'Jun 2025'));
+  assert.equal(riverLayout(buildTimelineModel([], TODAY), 1), null);
 });
