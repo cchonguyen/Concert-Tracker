@@ -252,7 +252,7 @@ The `/api` routes live in `src/server/app.ts` and take a `JobRunner` that starts
 
 | | Node (`server.ts`, `npm run dev`) | Cloudflare Worker (`worker/index.ts`, `wrangler.jsonc`) |
 | --- | --- | --- |
-| Frontend | Vite middleware in dev, `dist/` in production | Workers static assets from `dist/`, SPA fallback; only `/api/*` runs the Worker |
+| Frontend | Vite middleware in dev, `dist/` in production | Workers static assets from `dist/`, SPA fallback; only `/api/*` and the share page (`/s`, `/s/*`, `/S`, `/S/*`) run the Worker |
 | API | Express | The same Express app, through `handleAsNodeRequest` from `cloudflare:node` (`nodejs_compat`) |
 | Starting a job | `LookupWorker.kick` runs it in-process | A message on the `concert-tracker-lookups` Queue |
 | Due and parked jobs | `setInterval` every 20 s | Cron Trigger every minute sends due jobs to the Queue |
@@ -265,9 +265,18 @@ The queue consumer runs one message at a time (`max_concurrency: 1`), so the per
 
 Each Worker request may make at most 50 subrequests on Workers Free, and every Supabase call is one. So a request never makes store calls in proportion to a lineup's or a list's size: confirming a lineup gathers its corrections, source stats, blocklist entries, aliases and artists and saves each kind in one call (`addCorrections`, `bumpSourceStats`, `bumpBlocklist`, `putAliases`, `ensureArtists`; a stats or blocklist bump is one read and one write), `upsertEdition` adds missing artists in one upsert, adding email imports saves the events with one `putEvents`, bulk name suggestions read editions with `getEditions`, and `POST /api/events/lineups` takes 5 events per request (Fill gaps sends 50 in chunks). `tests/pipeline.test.ts` checks that confirming 150 acts makes as many store calls as confirming 5.
 
+## Share page
+
+A read-only page of your history at `/s/<code>` that anyone with the link can open without signing in (spec: Share page, 2026-10-28). Code in `src/server/share/`.
+
+- **Links** (`links.ts`, table `share_links`, migration 0015): a code is 16 random bytes as 22 URL-safe characters; only its SHA-256 hash is stored. One link is active at a time; a new one turns the old one off. Settings: display name (yours to set, never in the code), time zone (from your browser), and switches for dates and venues (on) and format (off).
+- **What it shows** (`view.ts`, `buildShareView`): the allow-list. The page is rendered from the returned `ShareView` alone: titles, years, city/state/country, Concert or Festival, act names, totals, most seen, series you went back to, cities; dates, venues and format only when switched on. Only events you went to whose last possible day is before today in the link's time zone (nothing today, underway, ahead, undated, planned or missed). No "last updated" date; with dates hidden, events in a year are listed A to Z. The store reads only `SHARE_EVENT_COLUMNS` (`listShareEvents`), so companions, notes, rating, price, weather, sources and the typed line never leave the database.
+- **The front door** (`door.ts`, first thing in `worker/index.ts`): any path under `/s` in either case is answered here and never reaches Express or the SPA fallback. Only GET or HEAD of exactly `/s/` plus a 22-character code can open a page; everything else, and unknown or turned-off codes, get the same 404 "not active" page. The page is plain HTML with inline styles and no scripts (`page.ts`), every value escaped, with `Cache-Control: no-store` (turning a link off works at once), a CSP that allows no scripts, `nosniff`, `DENY` framing, `no-referrer` and `noindex`. The route makes no writes and logs only the link id.
+- **Second lock** (`access.ts`): with `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` set, every other request the Worker sees needs a valid Cloudflare Access token (`Cf-Access-Jwt-Assertion`: RS256, signed by the team's keys, this application's audience, the team as issuer, not expired), so a path trick past the `/s/*` Access bypass (dot segments are normalized to `/api/...` before the Worker sees them) is still refused. Set both before turning on the bypass.
+
 ## Configuration
 
-See [`.env.example`](.env.example). Each source is optional; the app reports which ones are off and works with whatever is configured. `IMPORT_TOKEN` turns on posting ticket emails; it is a secret (`wrangler secret put IMPORT_TOKEN` on Cloudflare). `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` turn on Check email and Google Sheets sync (secrets too; Sheets also needs the Google Sheets API turned on in that Google Cloud project); `APP_URL` is the site's address, used for Google's redirect.
+See [`.env.example`](.env.example). Each source is optional; the app reports which ones are off and works with whatever is configured. `IMPORT_TOKEN` turns on posting ticket emails; it is a secret (`wrangler secret put IMPORT_TOKEN` on Cloudflare). `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` turn on Check email and Google Sheets sync (secrets too; Sheets also needs the Google Sheets API turned on in that Google Cloud project); `APP_URL` is the site's address, used for Google's redirect. `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` turn on the Worker's own Access token check (see Share page).
 
 ## Testing
 

@@ -16,8 +16,14 @@
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    // The share page (/s/<code>) is answered by the Worker before any static
+    // file or the single-page fallback, in either case of "s".
+    "run_worker_first": ["/api/*", "/s", "/s/*", "/S", "/S/*"]
   },
+  // ACCESS_TEAM_DOMAIN (https://<team>.cloudflareaccess.com) and ACCESS_AUD
+  // (the Access application's audience tag) turn on the Worker's own check of
+  // the Access sign-in token on every request except the share page. Leave
+  // them unset to rely on Cloudflare Access alone.
   "vars": {
     "NODE_ENV": "production",
     "GEMINI_EXTRACTION_MODEL": "gemini-flash-lite-latest",
