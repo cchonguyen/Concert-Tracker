@@ -1,4 +1,5 @@
 import type { Edition, LookupJob, SourceType } from '../server/lineup/types';
+import type { ShareSettings } from '../server/share/types';
 import type { NameIndex } from '../server/entities/link';
 import type { Entity, EntityAlias, EntityLink, HistoryEntry, LinkRole } from '../server/entities/types';
 import type { ConfirmRequest } from '../server/lineup/learning';
@@ -146,6 +147,22 @@ export const sheetsApi = {
     request<{ values: SheetCellValue[][]; version: string; base?: Array<Array<SheetCellValue | null>>; sheet: LinkedSheetView }>('/api/sheets/values'),
   write: (rows: Array<Array<string | number | null>>, version: string) =>
     request<{ sheet: LinkedSheetView }>('/api/sheets/values', { method: 'PUT', body: JSON.stringify({ rows, version }) }).then((r) => r.sheet),
+};
+
+// The share page's link and settings (src/server/share/). The code comes
+// back only when a link is made.
+export interface ShareLinkView {
+  id: string;
+  createdAt: string;
+  settings: ShareSettings;
+}
+export const shareApi = {
+  status: () => request<{ link: ShareLinkView | null }>('/api/share').then((r) => r.link),
+  create: (settings: ShareSettings) => request<{ link: ShareLinkView; code: string }>('/api/share', post({ settings })),
+  update: (settings: ShareSettings) =>
+    request<{ link: ShareLinkView }>('/api/share/settings', { method: 'PUT', body: JSON.stringify({ settings }) }).then((r) => r.link),
+  turnOff: () => request<unknown>('/api/share', { method: 'DELETE' }),
+  previewUrl: '/api/share/preview',
 };
 
 // Genres of the acts you saw: the music-story file, then MusicBrainz on request.
