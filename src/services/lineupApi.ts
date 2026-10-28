@@ -90,6 +90,8 @@ export interface EmailScanStatus {
   account?: string;
   scannedThrough?: string;
   lastCheckedAt?: string;
+  clientId?: string; // for the browser scan's Google sign-in
+  browserCursors?: { streamA?: string; streamB?: string };
 }
 
 export interface EmailScanStep {
@@ -105,6 +107,9 @@ export interface EmailScanStep {
 export const importsApi = {
   scanStatus: () => request<EmailScanStatus>('/api/imports/scan'),
   scan: () => request<EmailScanStep>('/api/imports/scan', post()),
+  // The browser scan's shows; cursors only when the watermark should move.
+  proposals: (body: { proposals: unknown[]; messages: unknown[]; updatedCursors?: { streamA?: string; streamB?: string } }) =>
+    request<{ changed: number; added: number; cursorsSaved: boolean }>('/api/imports/proposals', post(body)),
   list: () => request<{ imports: EmailImport[] }>('/api/imports').then((r) => r.imports),
   add: (ids: string[]) => request<{ events: LoggedEvent[]; imports: EmailImport[] }>('/api/imports/add', post({ ids })),
   skip: (ids: string[], restore = false) =>
