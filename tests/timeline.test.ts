@@ -1,7 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LoggedEvent } from '../src/server/events/types.ts';
-import { actsStep, addDays, buildTimelineModel, daysBetween, spanBounds, spanInRange, weekday } from '../src/services/timeline.ts';
+import {
+  actsStep,
+  addDays,
+  agendaBlocks,
+  AgendaBlock,
+  buildTimelineModel,
+  dateChip,
+  daysBetween,
+  firstToConfirm,
+  gapLabel,
+  modeFromQuery,
+  spanBounds,
+  spanInRange,
+  weekday,
+} from '../src/services/timeline.ts';
 
 const ev = (id: string, patch: Partial<LoggedEvent>): LoggedEvent => ({
   id,
@@ -118,4 +132,74 @@ test('spans are matched to a year or month range by any day they touch', () => {
 
 test('river dot size steps up with acts, and no acts logged draws like one', () => {
   assert.deepEqual([0, 1, 2, 4, 5, 9, 10, 40].map(actsStep), [1, 1, 2, 2, 3, 3, 4, 4]);
+});
+
+// A readable outline of the agenda: "2019", "2019-03: a, b", "gap Apr 2019 – Dec 2020".
+const outline = (blocks: AgendaBlock[]) =>
+  blocks.map((b) => {
+    if (b.kind === 'year') return String(b.year);
+    if (b.kind === 'gap') return `gap ${gapLabel(b)}`;
+    const rows = b.rows.map((r) => (r.kind === 'today' ? 'TODAY' : r.kind === 'span' ? r.span.id : `~${r.partial.id}`));
+    return `${b.year}-${b.month ? String(b.month).padStart(2, '0') : '??'}: ${rows.join(', ')}`;
+  });
+
+test('agenda runs oldest first by month under each year, with one gap line per run of empty months', () => {
+  const m = buildTimelineModel(
+    [
+      ev('mar', { startDate: '2019-03-09' }),
+      ev('mar2', { startDate: '2019-03-02' }),
+      ev('jan21', { startDate: '2021-01-15' }),
+      ev('feb21', { startDate: '2021-02-01' }),
+      ev('apr21', { startDate: '2021-04-30', endDate: '2021-05-02' }),
+    ],
+    TODAY,
+  );
+  assert.deepEqual(outline(agendaBlocks(m)), [
+    '2019',
+    '2019-03: mar2, mar',
+    'gap Apr 2019 – Dec 2020',
+    '2021',
+    '2021-01: jan21',
+    '2021-02: feb21',
+    'gap Mar 2021',
+    '2021-04: apr21', // a run into May stays in the month it starts
+    'gap May 2021 – Sep 2026',
+    '2026',
+    '2026-10: TODAY',
+  ]);
+});
+
+test('agenda puts year-only events first in their year and month-only ones first in their month', () => {
+  const m = buildTimelineModel(
+    [ev('day', { startDate: '2019-03-01' }), ev('month', { year: 2019, month: 3 }), ev('year', { year: 2019 })],
+    TODAY,
+  );
+  assert.deepEqual(outline(agendaBlocks(m, { kind: 'year', year: 2019 })), ['2019', '2019-??: ~year', '2019-03: ~month, day']);
+});
+
+test('the Today line sits after events on today and before the next upcoming one', () => {
+  const m = buildTimelineModel(
+    [
+      ev('today', { startDate: TODAY }),
+      ev('soon', { startDate: '2026-10-30', attendance: 'planned' }),
+      ev('ask', { startDate: '2026-10-01', attendance: 'planned' }),
+    ],
+    TODAY,
+  );
+  assert.deepEqual(outline(agendaBlocks(m)), ['2026', '2026-10: ask, today, TODAY, soon']);
+  assert.equal(firstToConfirm(m), 'ask');
+  assert.deepEqual(outline(agendaBlocks(buildTimelineModel([], TODAY))), []); // nothing logged: no lone Today line
+});
+
+test('date chips read like a calendar', () => {
+  assert.equal(dateChip({ first: '2026-03-14', last: '2026-03-14' }), 'Sat 14');
+  assert.equal(dateChip({ first: '2026-08-14', last: '2026-08-16' }), 'Fri 14 – Sun 16');
+  assert.equal(dateChip({ first: '2026-07-31', last: '2026-08-02' }), 'Fri 31 – Sun 2 Aug');
+});
+
+test('the view mode comes from the address, and a view not built yet opens Agenda', () => {
+  assert.equal(modeFromQuery('?view=timeline'), 'agenda');
+  assert.equal(modeFromQuery('?view=timeline&mode=agenda'), 'agenda');
+  assert.equal(modeFromQuery('?view=timeline&mode=heatmap'), 'agenda');
+  assert.equal(modeFromQuery('?view=timeline&mode=nonsense'), 'agenda');
 });

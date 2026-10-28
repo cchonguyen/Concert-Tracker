@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, FolderCog, Map as MapIcon, Mic2, Radio, Table2, Ticket } from 'lucide-react';
+import { BarChart3, FolderCog, GalleryHorizontalEnd, Map as MapIcon, Mic2, Radio, Table2, Ticket } from 'lucide-react';
 import {
   EmailImport,
   eventsApi,
@@ -20,14 +20,15 @@ import { ImportReview } from './components/ImportReview';
 import { TableView } from './components/TableView';
 import { StatsView } from './components/StatsView';
 import { MapView } from './components/MapView';
+import { TimelineTab } from './components/timeline/TimelineTab';
 import { ThemePicker } from './components/ThemePicker';
 import { ManageTarget, ManageView } from './components/ManageView';
 import { wentTo } from './server/events/attendance';
 
-type Tab = 'events' | 'table' | 'map' | 'stats' | 'artists' | 'manage';
+type Tab = 'events' | 'table' | 'timeline' | 'map' | 'stats' | 'artists' | 'manage';
 
-// The Table and Map views keep their filters in the address (?view=table&...).
-const FILTERED: Tab[] = ['table', 'map'];
+// The Table, Timeline and Map views keep their filters in the address (?view=table&...).
+const FILTERED: Tab[] = ['table', 'timeline', 'map'];
 const initialTab = (): Tab => {
   const view = new URLSearchParams(window.location.search).get('view') as Tab;
   return FILTERED.includes(view) ? view : 'events';
@@ -107,11 +108,12 @@ export default function App() {
     void refresh();
   };
 
-  // Moving between the Table and the Map keeps the same filters.
+  // Moving between the Table, Timeline and Map keeps the same filters.
   const openTab = (next: Tab) => {
     const params = new URLSearchParams(window.location.search);
     if (FILTERED.includes(next) && FILTERED.includes(tab)) {
       params.set('view', next);
+      if (next !== 'timeline') params.delete('mode');
       window.history.replaceState(null, '', `${window.location.pathname}?${params}`);
     } else if (FILTERED.includes(next)) window.history.replaceState(null, '', `${window.location.pathname}?view=${next}`);
     else if (window.location.search) window.history.replaceState(null, '', window.location.pathname);
@@ -157,6 +159,7 @@ export default function App() {
                 [
                   ['events', Ticket, `Events`, events.length],
                   ['table', Table2, `Table`, null],
+                  ['timeline', GalleryHorizontalEnd, `Timeline`, null],
                   ['map', MapIcon, `Map`, null],
                   ['stats', BarChart3, `Stats`, null],
                   ['artists', Mic2, `Artists`, seenCount],
@@ -217,6 +220,7 @@ export default function App() {
             }}
           />
         )}
+        {tab === 'timeline' && <TimelineTab events={events} lineups={lineups} editions={editions} onOpen={setSelectedId} onOpenTable={openTable} />}
         {tab === 'map' && <MapView events={went} lineups={lineups} editions={editions} onOpen={setSelectedId} onOpenTable={openTable} />}
         {tab === 'stats' && <StatsView events={events} onOpen={setSelectedId} onOpenTable={openTable} />}
         {tab === 'artists' && (

@@ -189,3 +189,122 @@ export function actsStep(acts: number): 1 | 2 | 3 | 4 {
   if (acts >= 2) return 2;
   return 1;
 }
+
+// The views the Timeline tab switches between. Only the ones marked ready
+// can be picked yet; the rest are built one at a time.
+export type TimelineMode = 'agenda' | 'month' | 'heatmap' | 'river';
+export interface TimelineViewInfo {
+  id: TimelineMode;
+  label: string;
+  sizes: TimelineSize[]; // sizes built so far
+  ready: boolean;
+}
+export const TIMELINE_VIEWS: TimelineViewInfo[] = [
+  { id: 'agenda', label: 'Agenda', sizes: ['large'], ready: true },
+  { id: 'month', label: 'Month', sizes: [], ready: false },
+  { id: 'heatmap', label: 'Heatmap', sizes: [], ready: false },
+  { id: 'river', label: 'River', sizes: [], ready: false },
+];
+export const DEFAULT_MODE: TimelineMode = 'agenda';
+
+// ?mode=... in the address; a view that is not ready opens Agenda.
+export function modeFromQuery(query: string): TimelineMode {
+  const mode = new URLSearchParams(query).get('mode');
+  return TIMELINE_VIEWS.find((v) => v.id === mode && v.ready)?.id ?? DEFAULT_MODE;
+}
+
+export const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+export const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Agenda: oldest first, grouped by month under each year, with a Today line.
+// An event spanning two months sits in the month it starts. Events with only
+// a year come first in that year ("Month unknown"); events with only a month
+// come first in that month ("Day unknown"). A run of empty months between two
+// months with events collapses into one gap line.
+export type AgendaRow =
+  | { kind: 'span'; span: TimelineSpan }
+  | { kind: 'partial'; partial: TimelinePartial }
+  | { kind: 'today' };
+
+export type AgendaBlock =
+  | { kind: 'year'; year: number }
+  | { kind: 'month'; year: number; month?: number; rows: AgendaRow[] } // no month: the year's "Month unknown" group
+  | { kind: 'gap'; from: { year: number; month: number }; to: { year: number; month: number } };
+
+const monthIndex = (year: number, month: number) => year * 12 + (month - 1);
+const fromIndex = (i: number) => ({ year: Math.floor(i / 12), month: (i % 12) + 1 });
+
+export function agendaBlocks(model: TimelineModel, range: TimelineRange = { kind: 'all' }, showToday = true): AgendaBlock[] {
+  // Sort keys: a year-only event is "YYYY-00-00", a month-only one "YYYY-MM-00",
+  // and the Today line comes right after events on today.
+  const entries: Array<{ key: string; row: AgendaRow }> = [];
+  for (const span of model.spans) if (spanInRange(span, range)) entries.push({ key: span.first, row: { kind: 'span', span } });
+  for (const partial of model.partial) {
+    if (range.kind !== 'all' && range.year !== partial.year) continue;
+    if (range.kind === 'month' && range.month !== partial.month) continue;
+    entries.push({ key: `${partial.year}-${partial.month ? pad(partial.month) : '00'}-00`, row: { kind: 'partial', partial } });
+  }
+  const todayInRange = spanInRange({ first: model.today, last: model.today }, range);
+  if (showToday && todayInRange && entries.length) entries.push({ key: `${model.today}~`, row: { kind: 'today' } });
+  entries.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+
+  const blocks: AgendaBlock[] = [];
+  let year: number | undefined;
+  let current: Extract<AgendaBlock, { kind: 'month' }> | undefined;
+  let lastMonth: number | undefined; // monthIndex of the last dated month block
+  for (const { key, row } of entries) {
+    const y = Number(key.slice(0, 4));
+    const m = Number(key.slice(5, 7)) || undefined;
+    if (current && current.year === y && current.month === m) {
+      current.rows.push(row);
+      continue;
+    }
+    if (m && lastMonth !== undefined && monthIndex(y, m) - lastMonth > 1) {
+      blocks.push({ kind: 'gap', from: fromIndex(lastMonth + 1), to: fromIndex(monthIndex(y, m) - 1) });
+    }
+    if (y !== year) {
+      blocks.push({ kind: 'year', year: y });
+      year = y;
+    }
+    current = { kind: 'month', year: y, month: m, rows: [row] };
+    blocks.push(current);
+    if (m) lastMonth = monthIndex(y, m);
+  }
+  return blocks;
+}
+
+// "Mar 2018" or "Mar 2018 – Aug 2021" for a gap line.
+export function gapLabel(gap: Extract<AgendaBlock, { kind: 'gap' }>): string {
+  const name = (p: { year: number; month: number }) => `${MONTH_NAMES[p.month - 1].slice(0, 3)} ${p.year}`;
+  const same = gap.from.year === gap.to.year && gap.from.month === gap.to.month;
+  return same ? name(gap.from) : `${name(gap.from)} – ${name(gap.to)}`;
+}
+
+// The date chip on an agenda row: "Sat 14", or "Fri 14 – Sun 16" for a run
+// of days, with the end month added when the run crosses into the next one.
+export function dateChip(span: Pick<TimelineSpan, 'first' | 'last'>): string {
+  const label = (iso: string) => `${WEEKDAY_SHORT[weekday(iso)]} ${Number(iso.slice(8))}`;
+  if (span.last === span.first) return label(span.first);
+  const end = span.last.slice(0, 7) === span.first.slice(0, 7) ? label(span.last) : `${label(span.last)} ${MONTH_NAMES[Number(span.last.slice(5, 7)) - 1].slice(0, 3)}`;
+  return `${label(span.first)} – ${end}`;
+}
+
+// The first event still waiting for you to say whether you went, for the
+// "N to confirm" chip to jump to.
+export const firstToConfirm = (model: TimelineModel): string | undefined =>
+  model.spans.find((s) => s.attendance === 'confirm')?.id ?? model.partial.find((p) => p.attendance === 'confirm')?.id;
+
+// What every timeline view takes, so views can be swapped or set side by side
+// later. A day and an event are selected apart (a festival covers several
+// days; a day can hold two shows). Hover stays inside each view.
+export interface TimelineViewProps {
+  model: TimelineModel;
+  size: TimelineSize;
+  range: TimelineRange;
+  onRangeChange?: (next: TimelineRange) => void;
+  selectedDate?: string | null;
+  selectedEventId?: string | null;
+  onSelectDate?: (date: string | null) => void;
+  onSelectEvent?: (eventId: string | null) => void;
+  onOpen: (eventId: string) => void;
+}
