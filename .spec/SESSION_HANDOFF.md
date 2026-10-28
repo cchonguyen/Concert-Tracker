@@ -1,8 +1,7 @@
 # Session Handoff
 
-- **Active slice:** none. M1a done (2026-10-28).
-- **Last step:** Slice M1a added migration 0014 (`entities`, `entity_aliases`, `entity_links`, `entity_history`, and the event ID columns). The store now dual-writes through `withEntityLinks` (`src/server/entities/linkingStore.ts`), so every event save points its names at records. `backfillEntities` links the older events once, from the Worker cron or at local startup. Both stores enforce `entities/integrity.ts`, and `possibleDuplicates` is ready for Data health (M3b). Tests are in `tests/entities.test.ts`. The SQL was checked on a local Postgres 16: it applies, can be re-run, and its constraints reject duplicate live names, self-merges and self-links.
-- **Deploy note:** 0014 is optional. Without it, events save with names only. Apply 0014 in Supabase, then deploy. The cron backfills within a minute and logs "Entity backfill: ...". A copy of the SQL is at /mnt/project-files/setup/0014_entities.sql.
-- **Known cost:** each event save now reads all entities and aliases first. That is about 4 extra Supabase requests per save, which is fine at today's size. Cache it per isolate if Worker subrequests get tight.
-- **Next step:** `/implement` Slice M1b: one-way sheet sync, and list import using `fillPatch` only with alias-resolved dedup.
+- **Active slice:** none. M1b done (2026-10-28).
+- **Last step:** M1b made Google Sheets sync one-way. "Update the sheet" writes your log into the tab. When rows were edited, added or removed in the sheet since the last write (`outsideEdits` in `src/services/sheetSync.ts`), or own columns would be dropped, it asks before replacing them. Nothing is read back. `editPatch` and its three-way merge are gone. Rows from the app's own export (with an ID) fold into their event through `fillPatch`, which only fills gaps. `fillPatch` takes a `NameIndex` from the new `GET /api/entities/names` (`src/server/entities/routes.ts`), so an act or person already on the event under an alias is not added twice. REQUIREMENTS R4.9 and R4.12 and ARCHITECTURE ("Importing a list", "Google Sheets sync") are updated.
+- **Deploy note:** no migration. Alias dedup only works once 0014 is applied; without it, names compare as written.
+- **Next step:** `/implement` Slice M2a: Manage operations (rename, merge with flattening and link/act/companion dedup, AKA add and remove, history manifest and undo, API routes).
 - **Blockers:** none.
