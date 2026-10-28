@@ -17,6 +17,8 @@ export function createApiApp(lineupDeps: PipelineDeps, runner: JobRunner): expre
   const app = express();
   // Ticket emails arrive in batches with their HTML, larger than other requests.
   app.use('/api/imports/email', express.json({ limit: '25mb' }));
+  // A full re-scan's proposals (quotes only, no mail bodies).
+  app.use('/api/imports/proposals', express.json({ limit: '10mb' }));
   // A music-story export lists every artist you have listened to.
   app.use('/api/artist-genres/music-story', express.json({ limit: '25mb' }));
   app.use(express.json());
