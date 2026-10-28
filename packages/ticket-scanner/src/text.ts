@@ -2,7 +2,21 @@
 // are dropped and each block or table cell becomes one line. Readers quote
 // these lines, so a quote matches what the mail client shows.
 
-const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+  mdash: '—',
+  ndash: '–',
+  middot: '·',
+  bull: '•',
+  hellip: '…',
+  lsquo: '‘',
+  rsquo: '’',
+  ldquo: '“',
+  rdquo: '”',
+  times: '×',
+  copy: '©',
+  reg: '®',
+  trade: '™',
+};
 
 const BLOCK = /<\/?(?:p|div|tr|table|tbody|thead|caption|header|footer|section|article|h[1-6]|li|ul|ol|center)\b[^>]*>|<br\s*\/?>/gi;
 // Zero-width and preheader padding characters some senders use.
@@ -35,4 +49,22 @@ function toLines(text: string): string[] {
     .split('\n')
     .map((line) => line.replace(/\s+/g, ' ').trim())
     .filter(Boolean);
+}
+
+// The HTML part is what you see; the plain part is often a stub, so it is
+// the fallback.
+export function emailLines(email: { html?: string; text?: string }): string[] {
+  const html = email.html ? htmlToLines(email.html) : [];
+  return html.length ? html : textToLines(email.text ?? '');
+}
+
+// The address inside "Name <address>".
+export function senderAddress(from: string): string {
+  const m = from.match(/<([^>]+)>/);
+  return (m ? m[1] : from).trim().toLowerCase();
+}
+
+export function fromDomain(from: string, domain: string): boolean {
+  const host = senderAddress(from).split('@')[1] ?? '';
+  return host === domain || host.endsWith(`.${domain}`);
 }
