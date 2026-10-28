@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, GalleryHorizontalEnd, Map as MapIcon, Mic2, Radio, Table2, Ticket } from 'lucide-react';
+import { BarChart3, FolderCog, GalleryHorizontalEnd, Map as MapIcon, Mic2, Radio, Table2, Ticket } from 'lucide-react';
 import {
   EmailImport,
   eventsApi,
@@ -22,9 +22,10 @@ import { StatsView } from './components/StatsView';
 import { MapView } from './components/MapView';
 import { TimelineTab } from './components/timeline/TimelineTab';
 import { ThemePicker } from './components/ThemePicker';
+import { ManageTarget, ManageView } from './components/ManageView';
 import { wentTo } from './server/events/attendance';
 
-type Tab = 'events' | 'table' | 'timeline' | 'map' | 'stats' | 'artists';
+type Tab = 'events' | 'table' | 'timeline' | 'map' | 'stats' | 'artists' | 'manage';
 
 // The Table, Timeline and Map views keep their filters in the address (?view=table&...).
 const FILTERED: Tab[] = ['table', 'timeline', 'map'];
@@ -49,6 +50,8 @@ export default function App() {
   const [reviewing, setReviewing] = useState(Boolean(gmailNotice));
   const [emailCheck, setEmailCheck] = useState(false);
   const [justAdded, setJustAdded] = useState<string[]>([]);
+  // What another tab asked Manage to open.
+  const [manageTarget, setManageTarget] = useState<ManageTarget | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -110,7 +113,10 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     if (FILTERED.includes(next) && FILTERED.includes(tab)) {
       params.set('view', next);
-      if (next !== 'timeline') params.delete('mode');
+      if (next !== 'timeline') {
+        params.delete('mode');
+        params.delete('month');
+      }
       window.history.replaceState(null, '', `${window.location.pathname}?${params}`);
     } else if (FILTERED.includes(next)) window.history.replaceState(null, '', `${window.location.pathname}?view=${next}`);
     else if (window.location.search) window.history.replaceState(null, '', window.location.pathname);
@@ -121,6 +127,13 @@ export default function App() {
   const openTable = (query: string) => {
     window.history.replaceState(null, '', `${window.location.pathname}?view=table${query ? `&${query}` : ''}`);
     setTab('table');
+  };
+
+  // Open a record in Manage (from the Artists tab, the Table or an event).
+  const openManage = (target: ManageTarget) => {
+    setSelectedId(null);
+    setManageTarget({ ...target });
+    openTab('manage');
   };
 
   const today = new Date().toISOString().slice(0, 10);
@@ -153,6 +166,7 @@ export default function App() {
                   ['map', MapIcon, `Map`, null],
                   ['stats', BarChart3, `Stats`, null],
                   ['artists', Mic2, `Artists`, seenCount],
+                  ['manage', FolderCog, `Manage`, null],
                 ] as const
               ).map(([id, Icon, label, count]) => (
                 <button
@@ -202,6 +216,7 @@ export default function App() {
             onOpen={setSelectedId}
             onChanged={upsert}
             onCaptured={handleCaptured}
+            onManage={openManage}
             onImported={() => {
               void refresh();
               importsApi.list().then(setImports).catch(() => undefined);
@@ -211,7 +226,19 @@ export default function App() {
         {tab === 'timeline' && <TimelineTab events={events} lineups={lineups} editions={editions} onOpen={setSelectedId} onOpenTable={openTable} />}
         {tab === 'map' && <MapView events={went} lineups={lineups} editions={editions} onOpen={setSelectedId} onOpenTable={openTable} />}
         {tab === 'stats' && <StatsView events={events} onOpen={setSelectedId} onOpenTable={openTable} />}
-        {tab === 'artists' && <ArtistsView events={went} onOpenEvent={setSelectedId} onOpenTable={openTable} />}
+        {tab === 'artists' && (
+          <ArtistsView events={went} onOpenEvent={setSelectedId} onOpenTable={openTable} onManage={(key) => openManage({ kind: 'artist', name: key })} />
+        )}
+        {tab === 'manage' && (
+          <ManageView
+            events={events}
+            target={manageTarget}
+            onOpenEvent={setSelectedId}
+            onOpenTable={openTable}
+            onEventsChanged={() => void refresh()}
+            onEventChanged={upsert}
+          />
+        )}
       </main>
 
       <footer className="border-t border-zinc-900 py-5 text-xs text-zinc-500">
@@ -255,6 +282,7 @@ export default function App() {
             void refresh();
           }}
           onClose={() => setSelectedId(null)}
+          onManage={openManage}
         />
       )}
     </div>

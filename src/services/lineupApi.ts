@@ -187,6 +187,13 @@ export const entitiesApi = {
   names: () => request<{ names: NameIndex }>('/api/entities/names').then((r) => r.names),
   list: () => request<{ entities: Entity[]; aliases: EntityAlias[]; links: EntityLink[]; duplicates: string[][] }>('/api/entities'),
   history: () => request<{ history: HistoryEntry[] }>('/api/entities/history').then((r) => r.history),
+  // Data health: venues whose events use more than one city, and look-alikes.
+  health: () =>
+    request<{ venuePlaces: Array<{ venueId: string; places: Array<{ placeId: string; events: number }> }>; duplicates: string[][] }>(
+      '/api/entities/health',
+    ),
+  // Puts venues whose events share one city in it (null: nothing to do).
+  linkVenuePlaces: () => request<{ entry: HistoryEntry | null }>('/api/entities/venues/places', post()).then((r) => r.entry),
   undo: (historyId: string) =>
     request<{ entry: HistoryEntry; restored: number; skipped: Array<{ id: string; name: string }> }>(
       `/api/entities/history/${historyId}/undo`,
@@ -223,6 +230,9 @@ export const SOURCE_LABELS: Record<SourceType, string> = {
   email: 'your email',
   user: 'You',
 };
+
+// Where an event field came from, which also covers the event's venue.
+export const FIELD_SOURCE_LABELS: Record<SourceType | 'venue', string> = { ...SOURCE_LABELS, venue: 'its venue' };
 
 export function isActive(status: LookupJob['status'] | undefined): boolean {
   return status === 'queued' || status === 'running';

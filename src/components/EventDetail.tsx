@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Check, CloudSun, ExternalLink, Heart, Link2, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, CloudSun, ExternalLink, FolderCog, Heart, Link2, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import {
   ArtistSuggestion,
   DetailCandidate,
@@ -13,6 +13,7 @@ import {
   LoggedEvent,
   LookupJob,
   PlaceGuess,
+  FIELD_SOURCE_LABELS,
   SOURCE_LABELS,
 } from '../services/lineupApi';
 import { artistsOf, dateConfirmations, datesBetween, formatsOf, joinFormats, matchNames, pastArtistNames, pastCompanionNames, supportOf, weatherLine, whenLabel } from '../services/format';
@@ -29,6 +30,7 @@ import { placePatch } from '../services/table';
 import { cityWithRegion } from '../server/events/regions';
 import { attendanceOf, lastDay } from '../server/events/attendance';
 import type { EditionPerformance } from '../server/lineup/types';
+import type { ManageTarget } from './ManageView';
 
 interface EventDetailProps {
   event: LoggedEvent;
@@ -37,6 +39,23 @@ interface EventDetailProps {
   onChange: (event: LoggedEvent) => void;
   onDeleted: () => void;
   onClose: () => void;
+  // Open a name's record in the Manage tab, to change it on every event.
+  onManage?: (target: ManageTarget) => void;
+}
+
+// The names on this event that have a record, for "Edit everywhere".
+function manageLinks(event: LoggedEvent): Array<{ label: string; target: ManageTarget }> {
+  const refs = event.refs;
+  if (!refs) return [];
+  const out: Array<{ label: string; target: ManageTarget }> = [];
+  if (event.venue && refs.venueId) out.push({ label: event.venue, target: { kind: 'venue', id: refs.venueId } });
+  if (event.city && refs.placeId) out.push({ label: event.city, target: { kind: 'place', id: refs.placeId } });
+  if (event.series && refs.seriesId) out.push({ label: event.series, target: { kind: 'series', id: refs.seriesId } });
+  event.companions.forEach((name, i) => {
+    const id = refs.companionIds[i];
+    if (id) out.push({ label: name, target: { kind: 'person', id } });
+  });
+  return out;
 }
 
 const input =
@@ -72,7 +91,7 @@ const Field: React.FC<{
             title={source.quote ? `“${source.quote}”` : undefined}
             className="inline-flex items-center gap-0.5 font-normal text-zinc-500 hover:text-violet-300"
           >
-            via {SOURCE_LABELS[source.sourceType]} <ExternalLink className="h-2.5 w-2.5" />
+            {source.sourceType === 'venue' ? 'from' : 'via'} {FIELD_SOURCE_LABELS[source.sourceType]} <ExternalLink className="h-2.5 w-2.5" />
           </a>
         )}
       </span>
@@ -664,7 +683,7 @@ function cityForVenue(events: LoggedEvent[], venue: string): string | undefined 
   return cities.size === 1 ? [...cities][0] : undefined;
 }
 
-export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChange, onDeleted, onClose }) => {
+export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChange, onDeleted, onClose, onManage }) => {
   const [job, setJob] = useState<LookupJob | null>(null);
   const [edition, setEdition] = useState<Edition | null>(null);
   const [suggestions, setSuggestions] = useState<ArtistSuggestion[]>([]);
@@ -814,7 +833,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     const src = confirmed.sources.find((s) => s.fields.includes(field));
     return {
       value: field === 'endDate' ? whenLabel({ startDate: v }) ?? v : v,
-      from: src ? SOURCE_LABELS[src.sourceType] : 'a source',
+      from: src ? FIELD_SOURCE_LABELS[src.sourceType] : 'a source',
       onUse: () => void run('save', () => eventsApi.pick(event.id, confirmed.id, [field])),
     };
   };
@@ -1205,6 +1224,20 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             <span className="text-[11px] font-semibold text-zinc-400">Went with</span>
             <ChipInput items={event.companions} placeholder="Add a name" past={pastCompanions} label="Add who you went with" onChange={(companions) => save({ companions })} />
           </label>
+          {onManage && manageLinks(event).length > 0 && (
+            <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500">
+              <FolderCog className="h-3 w-3" /> Edit on every event in Manage:
+              {manageLinks(event).map((m) => (
+                <button
+                  key={`${m.target.kind}:${m.target.id}`}
+                  onClick={() => onManage(m.target)}
+                  className="rounded-full border border-zinc-800 px-2 py-0.5 text-zinc-300 hover:text-violet-300"
+                >
+                  {m.label}
+                </button>
+              ))}
+            </p>
+          )}
           <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-1">
               <span className="text-[11px] font-semibold text-zinc-400">Rating</span>

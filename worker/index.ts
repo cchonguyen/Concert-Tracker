@@ -2,7 +2,7 @@ import { handleAsNodeRequest } from 'cloudflare:node';
 import { createApiApp } from '../src/server/app';
 import { PipelineDeps, runJob } from '../src/server/lineup/pipeline';
 import { createDeps, createStore } from '../src/server/lineup/service';
-import { backfillEntities } from '../src/server/entities/linkingStore';
+import { backfillEntities, backfillVenuePlaces } from '../src/server/entities/linkingStore';
 import { frontDoor } from '../src/server/share/door';
 import { accessConfigFromEnv } from '../src/server/share/access';
 
@@ -82,6 +82,11 @@ export default {
     try {
       const done = await backfillEntities(deps.store);
       if (done) console.log(`Entity backfill: ${done.events} events, ${done.entities} records, ${done.aliases} aliases.`);
+      // The next minute: venues whose events share one city are put in it.
+      else {
+        const venues = await backfillVenuePlaces(deps.store);
+        if (venues) console.log(`Venue places: ${venues.venues} venues, ${venues.events} events.`);
+      }
     } catch (err) {
       console.error('Entity backfill failed:', err instanceof Error ? err.message : String(err));
     }
