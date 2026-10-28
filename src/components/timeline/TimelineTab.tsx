@@ -6,6 +6,7 @@ import { buildTimelineModel, DEFAULT_MODE, firstToConfirm, modeFromQuery, monthF
 import { AgendaView } from './AgendaView';
 import { HeatmapView } from './HeatmapView';
 import { MonthView } from './MonthView';
+import { RiverView } from './RiverView';
 import { NoDateTray } from './parts';
 
 // The Timeline tab: the view switcher, filters shared with the Table and
@@ -141,6 +142,7 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({ events, lineups, editi
         <AgendaView model={model} size="large" range={ALL} selectedEventId={selectedEventId} onSelectEvent={setSelectedEventId} onOpen={onOpen} />
       )}
       {mode === 'month' && <MonthView model={model} size="large" range={monthRange} onRangeChange={setMonthRange} onOpen={onOpen} />}
+      {mode === 'river' && <RiverView model={model} size="large" range={ALL} onOpen={onOpen} />}
       {mode === 'heatmap' && (
         <HeatmapView model={model} size="large" range={ALL} selectedDate={selectedDate} onSelectDate={setSelectedDate} onOpen={onOpen} />
       )}
