@@ -11,5 +11,5 @@ export { readVerbatim, hasTicketSubject } from './verbatimReader.ts';
 export { unwrapForward } from './forwarded.ts';
 export type { EmailReader, ReadEmail, Quoted, EmailKind } from './readerTypes.ts';
 export { UnreadableEmail } from './readerTypes.ts';
-export { scanGmailInBrowser, summarizeScan, decodeBase64Url, GmailTokenError } from './gmailClient.ts';
+export { scanGmailInBrowser, summarizeScan, scanReportCsv, decodeBase64Url, GmailTokenError } from './gmailClient.ts';
 export type { EmailScanCursors, GmailScanOptions, GmailScanProgress, GmailScanResult, ScannedMessage, ScanSummary } from './gmailClient.ts';

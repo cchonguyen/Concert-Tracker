@@ -192,7 +192,10 @@ export interface ScanSummary {
 export function summarizeScan(proposals: EmailImportProposal[], messages: Array<{ id: string }>, failed = 0): ScanSummary {
   const shows = proposals.filter((p) => p.status === 'new');
   const bySeller: Record<string, number> = {};
-  for (const p of shows) bySeller[p.seller] = (bySeller[p.seller] ?? 0) + 1;
+  for (const p of shows) {
+    const seller = p.seller.replace(/^forwarded:/, '');
+    bySeller[seller] = (bySeller[seller] ?? 0) + 1;
+  }
   const unique = new Set(shows.map((p) => `${(p.name?.value ?? '').toLowerCase().trim()}|${p.date?.value ?? p.orderNumber ?? p.key}`));
   return {
     examined: messages.length,
@@ -203,4 +206,38 @@ export function summarizeScan(proposals: EmailImportProposal[], messages: Array<
     flagged: proposals.filter((p) => p.status === 'flag' || p.flags.length > 0).length,
     netUniqueEvents: unique.size,
   };
+}
+
+// One row per proposal, for auditing a scan by hand: what was read, from
+// which email, and the words it was read from.
+export function scanReportCsv(proposals: EmailImportProposal[], messages: ScannedMessage[]): string {
+  const byLink = new Map(messages.map((m) => [m.link, m]));
+  const cell = (v: unknown) => {
+    const t = v === undefined || v === null ? '' : String(v);
+    return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const head = ['status', 'seller', 'name', 'date', 'venue', 'city', 'ticket_price', 'flags', 'read_by', 'name_quote', 'subject', 'from', 'sent_at', 'emails', 'link'];
+  const rows = proposals.map((p) => {
+    const first = byLink.get(p.messageLinks[0]);
+    return [
+      p.status,
+      p.seller,
+      p.name?.value,
+      p.date?.value,
+      p.venue?.value,
+      p.city?.value,
+      p.ticketPrice?.amount,
+      p.flags.map((f) => f.kind).join(' '),
+      p.name?.readBy,
+      p.name?.quote,
+      first?.subject ?? p.rawSubject,
+      first?.from,
+      first?.sentAt,
+      p.messageLinks.length,
+      p.messageLinks[0],
+    ]
+      .map(cell)
+      .join(',');
+  });
+  return [head.join(','), ...rows].join('\n') + '\n';
 }
