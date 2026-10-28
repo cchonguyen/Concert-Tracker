@@ -13,6 +13,7 @@ import {
   removeAlias,
   removeLink,
   renameEntity,
+  updateAttrs,
   updatePerson,
   undoEntry,
   venuePlaceConflicts,
@@ -70,9 +71,10 @@ export function entitiesRouter(deps: PipelineDeps): Router {
   router.post('/entities/venues/places', manage(async () => ({ entry: await linkVenuePlaces(store) })));
   router.get('/entities/history', manage(async () => ({ history: await store.listEntityHistory(50) })));
   router.post('/entities/history/:id/undo', manage((req) => undoEntry(store, req.params.id)));
-  router.post('/entities', manage((req) => createEntity(store, req.body?.kind, req.body?.name)));
+  router.post('/entities', manage((req) => createEntity(store, req.body?.kind, req.body?.name, undefined, req.body?.group)));
   router.patch('/entities/:id', manage(async (req) => ({ entry: await renameEntity(store, req.params.id, req.body?.name) })));
   router.patch('/entities/:id/person', manage(async (req) => ({ entry: await updatePerson(store, req.params.id, req.body ?? {}) })));
+  router.patch('/entities/:id/attrs', manage(async (req) => ({ entry: await updateAttrs(store, req.params.id, req.body ?? {}) })));
   router.post('/entities/:id/merge', manage(async (req) => ({ entry: await mergeEntity(store, req.params.id, String(req.body?.into ?? '')) })));
   router.post('/entities/:id/aliases', manage(async (req) => ({ entry: await addAlias(store, req.params.id, req.body?.name) })));
   router.post('/entities/:id/aliases/remove', manage(async (req) => ({ entry: await removeAlias(store, req.params.id, req.body?.name) })));
