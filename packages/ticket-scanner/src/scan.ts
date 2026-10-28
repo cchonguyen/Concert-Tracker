@@ -13,6 +13,7 @@ import { liveNation } from './readers/liveNation.ts';
 import { residentAdvisor } from './readers/residentAdvisor.ts';
 import { ticketmaster } from './readers/ticketmaster.ts';
 import { ticketWeb } from './readers/ticketWeb.ts';
+import { brownPaperTickets } from './readers/brownPaperTickets.ts';
 import { tixr } from './readers/tixr.ts';
 import { hasTicketSubject, readVerbatim } from './verbatimReader.ts';
 import { BOUTIQUE } from './readers/boutique.ts';
@@ -24,7 +25,7 @@ import { emailLines, senderAddress } from './text.ts';
 import type { EmailImportProposal, FieldEvidence, RawEmailMessage } from './types.ts';
 import { normalize } from './verbatim.ts';
 
-export const READERS: EmailReader[] = [ticketmaster, liveNation, tixr, dice, residentAdvisor, eventbrite, axs, frontGate, ticketWeb, ...BOUTIQUE, ...RESALE];
+export const READERS: EmailReader[] = [ticketmaster, liveNation, tixr, dice, residentAdvisor, eventbrite, axs, frontGate, ticketWeb, brownPaperTickets, ...BOUTIQUE, ...RESALE];
 
 // A forward from a phone often keeps only the sender's name ("From:
 // Ticketmaster"). Then the reader is the one whose seller that name is.

@@ -33,8 +33,11 @@ function confirmation(lines: string[], sentAt: string): ReadEmail {
   if (summary < 0) throw new UnreadableEmail('The order summary was not found.');
   let at = summary + 1;
   if (/\bpresents$/i.test(lines[at] ?? '')) at++;
-  const name = lines[at];
-  const date = dateFields(lines[at + 1] ?? '', sentAt);
+  // An act name can wrap onto the next line ("Lost in Dreams ft." / "Secret Lineup").
+  const wraps = /(?:\bft\.|\bfeat\.|\bfeaturing|\bwith|&)$/i.test(lines[at] ?? '');
+  const name = wraps ? `${lines[at]} ${lines[at + 1] ?? ''}`.trim() : lines[at];
+  at += wraps ? 2 : 1;
+  const date = dateFields(lines[at] ?? '', sentAt);
   if (!name || (!date.startDate && !date.dateText)) throw new UnreadableEmail('No event date under the event name.');
   // The venue is the line above its street, which is above "City, ST 90028".
   const end = lines.findIndex((l, i) => i > at && /^Venue Directions$/i.test(l));
