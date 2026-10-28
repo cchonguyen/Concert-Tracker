@@ -232,15 +232,6 @@ export function eventsToCsv(events: LoggedEvent[], editions: Record<string, Line
   return [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
 }
 
-export function downloadText(filename: string, text: string, type = 'text/csv'): void {
-  const url = URL.createObjectURL(new Blob([text], { type }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 // The sources that confirm the event's current date, if stage 1 checked it.
 // Empty when the date is unchecked, or was changed after the check.
 export function dateConfirmations(e: LoggedEvent): LoggedEvent['details']['candidates'][number]['sources'] {

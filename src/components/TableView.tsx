@@ -25,7 +25,8 @@ import {
   X,
 } from 'lucide-react';
 import type { EmailImport, LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
-import { artistsOf, downloadText, eventsToCsv, formatsOf, kindLabel, supportOf, whenLabel } from '../services/format';
+import { artistsOf, eventsToCsv, formatsOf, kindLabel, supportOf, whenLabel } from '../services/format';
+import { downloadText } from '../services/download';
 import {
   activeFilterCount,
   actsInOrder,
