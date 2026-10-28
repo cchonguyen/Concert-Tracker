@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit && tsc --noEmit -p worker",
-    "test": "node --import tsx --test tests/*.test.ts",
+    "test": "node --import tsx --test tests/*.test.ts packages/ticket-scanner/tests/*.test.ts",
     "cf:dev": "wrangler dev",
     "cf:deploy": "wrangler deploy"
   },
