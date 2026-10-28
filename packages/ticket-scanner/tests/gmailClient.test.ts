@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { scanGmailInBrowser, GmailTokenError } from '../src/gmailClient.ts';
+import { scanGmailInBrowser, scanReportCsv, GmailTokenError } from '../src/gmailClient.ts';
 import { STREAM_A_QUERY } from '../src/queries.ts';
 import { buildCorpus } from './fixtures/corpus.ts';
 
@@ -79,4 +79,13 @@ test('gmail client: a 403 rate limit is waited out, not counted as a failure', a
   const result = await scanGmailInBrowser({ token: 't', fetch: gmail });
   assert.equal(result.examined, 1);
   assert.deepEqual(result.failed, []);
+});
+
+test('gmail client: the CSV report has one row per proposal, quoted safely', async () => {
+  const result = await scanGmailInBrowser({ token: 't', fetch: fakeGmail(tier1.map((f) => f.email)) });
+  const lines = scanReportCsv(result.proposals, result.messages).trim().split('\n');
+  assert.ok(lines[0].startsWith('status,seller,name,date'));
+  assert.equal(lines.length, result.proposals.length + 1);
+  const odd = scanReportCsv([{ key: 'k', status: 'unreadable', seller: 'X', flags: [], rawSubject: 'Hi, "you"', messageLinks: ['l'] }], []);
+  assert.equal(odd.split('\n')[1], 'unreadable,X,,,,,,,,,"Hi, ""you""",,,1,l');
 });
