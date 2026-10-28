@@ -13,6 +13,7 @@ import {
   LoggedEvent,
   LookupJob,
   PlaceGuess,
+  FIELD_SOURCE_LABELS,
   SOURCE_LABELS,
 } from '../services/lineupApi';
 import { artistsOf, dateConfirmations, datesBetween, formatsOf, joinFormats, matchNames, pastArtistNames, pastCompanionNames, supportOf, weatherLine, whenLabel } from '../services/format';
@@ -90,7 +91,7 @@ const Field: React.FC<{
             title={source.quote ? `“${source.quote}”` : undefined}
             className="inline-flex items-center gap-0.5 font-normal text-zinc-500 hover:text-violet-300"
           >
-            via {SOURCE_LABELS[source.sourceType]} <ExternalLink className="h-2.5 w-2.5" />
+            {source.sourceType === 'venue' ? 'from' : 'via'} {FIELD_SOURCE_LABELS[source.sourceType]} <ExternalLink className="h-2.5 w-2.5" />
           </a>
         )}
       </span>
@@ -832,7 +833,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     const src = confirmed.sources.find((s) => s.fields.includes(field));
     return {
       value: field === 'endDate' ? whenLabel({ startDate: v }) ?? v : v,
-      from: src ? SOURCE_LABELS[src.sourceType] : 'a source',
+      from: src ? FIELD_SOURCE_LABELS[src.sourceType] : 'a source',
       onUse: () => void run('save', () => eventsApi.pick(event.id, confirmed.id, [field])),
     };
   };

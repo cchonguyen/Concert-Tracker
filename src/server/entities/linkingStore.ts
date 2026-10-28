@@ -3,33 +3,70 @@ import { LineupStore } from '../lineup/store/types';
 import { LoggedEvent } from '../events/types';
 import { splitEventCity } from '../events/regions';
 import { EntityIndex, linkEvent } from './link';
-import { EntityAlias } from './types';
+import { Entity, EntityAlias, EntityLink } from './types';
+import { addPlaceOffers, PlaceOffer, venuePlaces, withVenuePlace } from './venuePlace';
+import { linkVenuePlaces } from './manage';
 
 const LINKED = Symbol('entity links');
+// putEvents for the first backfill: new venues are not put in a city by one
+// event, since their events may disagree (backfillVenuePlaces decides).
+const BACKFILL_PUT = Symbol('backfill put');
 
 export const isLinking = (store: LineupStore): boolean => Boolean((store as any)[LINKED]);
 
 // The store with dual-write (0014): every event save points the event's
 // names at records first, adding records for names not seen before, so all
 // the code that saves events (capture, edits, imports, email, lineups) links
-// without knowing about it. Names are never changed here.
+// without knowing about it. Names are never changed here. An event at a
+// venue that is in a place takes the place as its location (venuePlace.ts);
+// a new venue saved with a city is put in that city.
 export function withEntityLinks(store: LineupStore): LineupStore {
-  const link = async (events: LoggedEvent[]): Promise<LoggedEvent[]> => {
+  const link = async (events: LoggedEvent[], placeNewVenues = true): Promise<LoggedEvent[]> => {
     if (!events.length) return events;
-    const [entities, aliases, artistAliases] = await Promise.all([
+    const [entities, aliases, artistAliases, links] = await Promise.all([
       store.listEntities(),
       store.listEntityAliases(),
       store.getAliases(),
+      store.listEntityLinks(),
     ]);
-    const index = new EntityIndex(entities, aliases, artistAliases);
-    // Split "City, ST" first, as both stores do, so the place is the stored one.
-    const linked = events.map((e) => linkEvent(splitEventCity(e), index));
+    const at = new Date().toISOString();
+    const index = new EntityIndex(entities, aliases, artistAliases, () => at);
+    const placed = venuePlaces(links);
+    const fresh: EntityLink[] = [];
+    const offers = new Map<string, PlaceOffer[]>();
+    const live = (id: string | undefined): Entity | undefined => {
+      const e = id ? index.byId.get(id) : undefined;
+      return e?.mergedIntoId ? index.byId.get(e.mergedIntoId) : e;
+    };
+    const linked = events.map((raw) => {
+      // Split "City, ST" first, as both stores do, so the place is the stored one.
+      let event = splitEventCity(raw);
+      const venue = event.venue ? index.find('venue', normalizeName(event.venue)) : undefined;
+      const place = venue ? live(placed.get(venue.id)) : undefined;
+      if (venue && place) {
+        const r = withVenuePlace(event, place, at);
+        event = r.event;
+        if (r.offer) offers.set(venue.id, [...(offers.get(venue.id) ?? []), r.offer]);
+      }
+      const out = linkEvent(event, index);
+      const { venueId, placeId } = out.refs ?? {};
+      if (placeNewVenues && !venue && venueId && placeId && !placed.has(venueId)) {
+        placed.set(venueId, placeId);
+        fresh.push({ fromId: venueId, toId: placeId, role: 'in', createdAt: at });
+      }
+      return out;
+    });
     if (index.created.length) await store.addEntities(index.created);
+    if (fresh.length) await store.addEntityLinks(fresh);
+    if (offers.size) {
+      await store.putEntities([...offers].map(([id, list]) => addPlaceOffers(index.byId.get(id)!, list, at)));
+    }
     return linked;
   };
   return new Proxy(store, {
     get(target, prop, receiver) {
       if (prop === LINKED) return true;
+      if (prop === BACKFILL_PUT) return async (events: LoggedEvent[]) => target.putEvents(await link(events, false));
       if (prop === 'putEvent') return async (event: LoggedEvent) => target.putEvents(await link([event]));
       if (prop === 'putEvents') return async (events: LoggedEvent[]) => target.putEvents(await link(events));
       const value = Reflect.get(target, prop, receiver);
@@ -57,7 +94,7 @@ export async function backfillEntities(store: LineupStore, now = () => new Date(
   if (await store.getSetting<BackfillResult>(BACKFILL_SETTING)) return null;
   const before = (await store.listEntities()).length;
   const events = await store.listEvents();
-  await store.putEvents(events);
+  await (store as any)[BACKFILL_PUT](events);
 
   const entities = await store.listEntities();
   const artists = new Map(entities.filter((e) => e.kind === 'artist' && !e.mergedIntoId).map((e) => [e.nameNormalized, e]));
@@ -73,5 +110,28 @@ export async function backfillEntities(store: LineupStore, now = () => new Date(
 
   const result: BackfillResult = { events: events.length, entities: entities.length - before, aliases: aliases.length, at: now() };
   await store.putSetting(BACKFILL_SETTING, result);
+  return result;
+}
+
+export const VENUE_PLACES_SETTING = 'venue_places_backfill';
+
+export interface VenuePlacesResult {
+  venues: number; // put in a place
+  events: number; // whose location changed
+  historyId?: string;
+  at: string;
+}
+
+// Once, after the first backfill: venues whose events all use one city are
+// put in it (one undoable change); the rest wait for you in Data health.
+export async function backfillVenuePlaces(store: LineupStore, now = () => new Date().toISOString()): Promise<VenuePlacesResult | null> {
+  if (!isLinking(store)) return null;
+  if (!(await store.getSetting(BACKFILL_SETTING))) return null;
+  if (await store.getSetting<VenuePlacesResult>(VENUE_PLACES_SETTING)) return null;
+  const at = now();
+  const entry = await linkVenuePlaces(store, at);
+  const result: VenuePlacesResult = { venues: entry?.touched.length ?? 0, events: entry?.events.length ?? 0, at };
+  if (entry) result.historyId = entry.id;
+  await store.putSetting(VENUE_PLACES_SETTING, result);
   return result;
 }
