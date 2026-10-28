@@ -9,6 +9,21 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#022c22" />
     <title>LiveArchive</title>
+    <script>
+      // Apply the saved theme before the app draws (same keys as src/services/theme.ts).
+      (function () {
+        var mode = 'dark', accent = 'violet';
+        try {
+          mode = localStorage.getItem('livearchive.themeMode.v1') || mode;
+          accent = localStorage.getItem('livearchive.accent.v1') || accent;
+        } catch (e) {}
+        var light = mode === 'light' || (mode === 'system' && matchMedia('(prefers-color-scheme: light)').matches);
+        var root = document.documentElement;
+        root.dataset.theme = light ? 'light' : 'dark';
+        root.dataset.accent = accent;
+        if (light) document.querySelector('meta[name="theme-color"]').setAttribute('content', '#fafafa');
+      })();
+    </script>
     <meta name="description" content="Remember every show you went to and everyone you saw there." />
     <meta property="og:title" content="LiveArchive" />
     <meta property="og:description" content="Remember every show you went to and everyone you saw there." />
