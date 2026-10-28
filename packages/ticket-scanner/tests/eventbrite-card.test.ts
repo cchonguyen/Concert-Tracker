@@ -75,3 +75,19 @@ test('Eventbrite: a 2013 card with <BR>-packed venue and address is read', () =>
   assert.equal(p.venue?.value, 'The Example Hall');
   assert.equal(p.city?.value, 'San Francisco, CA');
 });
+
+test('a promotion with ticket words but no receipt wording is skipped, not unreadable', () => {
+  const out = readRawEmails([
+    {
+      id: 'promo',
+      link: 'https://mail.google.com/mail/u/0/#all/promo',
+      from: 'Example Promoter <news@promoter.example>',
+      subject: 'Zedd In The Park: Additional Tickets Released',
+      sentAt: '2024-08-22T12:00:00.000Z',
+      text: 'Lineup announced. Tickets are on sale now. Watch the video.',
+    },
+  ]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].status, 'skipped');
+  assert.equal(out[0].rawSubject, 'Zedd In The Park: Additional Tickets Released');
+});
