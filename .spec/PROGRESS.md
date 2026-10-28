@@ -4,6 +4,14 @@
 
 - [x] **Slice 1** `[CORE / DATA]`: Install v2.0 harness into LiveArchive — Target files: `.claude/`, `.harness/`, `.spec/`, `CLAUDE.md`, `.gitignore`
 
+## Share page (spec approved 2026-10-28 after Gemini review: https://claude.ai/artifact/9kJinrnXRiu4EMPNCA8VbK)
+A read-only page at `/s/<code>` outside Cloudflare Access. Only allow-listed fields; only events fully over in the link's time zone; the public route never writes. Migration 0015 (0014 is Manage's).
+
+- [x] **Slice S1** `[CORE / DATA]`: Share view and storage: migration 0015 `share_links`; share link and share-event store methods in both stores (named columns only); `buildShareView` returning only allow-listed fields; link code and settings helpers; allow-list, attendance, time zone, order and switch tests. Target files: `supabase/migrations/0015_share_links.sql`, `src/server/share/`, `src/server/lineup/store/types.ts`, `src/server/lineup/store/supabaseStore.ts`, `src/server/lineup/store/fileStore.ts`, `tests/share.test.ts`
+- [ ] **Slice S2** `[CORE / DATA]`: Public page route: strict raw-path match and Access token check at the top of the Worker, GET and HEAD `/s/:code`, server-rendered HTML, security headers, identical "not active" page, `run_worker_first`; path-trick, escaping, header, method and stats-match tests. Target files: `worker/index.ts`, `wrangler.jsonc`, `src/server/share/`, `tests/shareRoute.test.ts`
+- [ ] **Slice S3** `[UI / VISUAL]`: Share panel in the Stats tab (create, copy, settings, preview, turn off, new link) and locked `/api/share` routes. Target files: `src/server/share/`, `src/server/app.ts`, `src/services/lineupApi.ts`, `src/components/SharePanel.tsx`, `src/components/StatsView.tsx`, `tests/share.test.ts`
+- [ ] **Slice S4** `[CORE / DATA]`: Release: Access bypass and rate-limit steps, injection-off rule, Access token settings, migration SQL, REQUIREMENTS.md and ARCHITECTURE.md updates, release checks. Target files: `REQUIREMENTS.md`, `ARCHITECTURE.md`, `wrangler.jsonc`
+
 ## Manage section (triaged 2026-10-28, revised after Gemini audit)
 Contracts: SYSTEM_SPEC.md section 3. `[CORE / DATA]` slices need passing unit tests (`npm test`, Node's test runner over `tests/*.test.ts`); `[UI / VISUAL]` slices run `npm run lint`, and per AGENTS.md also `npm test`, before commit.
 

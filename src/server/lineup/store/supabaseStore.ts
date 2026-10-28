@@ -21,6 +21,7 @@ import type { ArtistGenres } from '../../events/genres';
 import { LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS } from './types';
 import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import { checkLinks } from '../../entities/integrity';
+import { SHARE_EVENT_COLUMNS, type ShareLink } from '../../share/types';
 
 // Postgres-backed store. Tables are defined in
 // supabase/migrations/0002_source_first_lineups.sql, 0003_event_log.sql and
@@ -924,7 +925,49 @@ export class SupabaseLineupStore implements LineupStore {
     );
     return (rows ?? []).map((r: any) => r.manifest as HistoryEntry);
   }
+
+  // share_links (0015) is optional: only the share page needs it.
+  async listShareLinks() {
+    const rows = this.check(await this.db.from('share_links').select('*'), 'listShareLinks (apply 0015_share_links.sql)');
+    return (rows ?? []).map(rowToShareLink);
+  }
+
+  async getShareLinkByHash(codeHash: string) {
+    const r = this.check(
+      await this.db.from('share_links').select('*').eq('code_hash', codeHash).maybeSingle(),
+      'getShareLinkByHash (apply 0015_share_links.sql)',
+    );
+    return r ? rowToShareLink(r) : null;
+  }
+
+  async putShareLink(l: ShareLink) {
+    this.check(
+      await this.db.from('share_links').upsert({
+        id: l.id,
+        code_hash: l.codeHash,
+        settings: l.settings,
+        created_at: l.createdAt,
+        revoked_at: l.revokedAt ?? null,
+      }),
+      'putShareLink (apply 0015_share_links.sql)',
+    );
+  }
+
+  // Only the named columns are read, so private fields never leave the
+  // database for the share page.
+  async listShareEvents() {
+    const rows = this.check(await this.db.from('logged_events').select(SHARE_EVENT_COLUMNS.join(',')), 'listShareEvents');
+    return (rows ?? []).map((r: any) => this.rowToEvent(r));
+  }
 }
+
+const rowToShareLink = (r: any): ShareLink => ({
+  id: r.id,
+  codeHash: r.code_hash,
+  settings: r.settings,
+  createdAt: r.created_at,
+  revokedAt: r.revoked_at ?? undefined,
+});
 
 // performer_claims row to PerformerClaim.
 const rowToClaim = (r: any): PerformerClaim => ({

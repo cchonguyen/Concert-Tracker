@@ -17,6 +17,7 @@ import type { LineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
 import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
+import type { ShareLink } from '../../share/types';
 
 // Persistence boundary for the lineup pipeline. Two implementations:
 // fileStore (local dev, no setup) and supabaseStore (durable, used when
@@ -124,6 +125,15 @@ export interface LineupStore {
   getEntityHistory(id: string): Promise<HistoryEntry | null>;
   // Newest first.
   listEntityHistory(limit: number): Promise<HistoryEntry[]>;
+
+  // Share page links (0015, src/server/share/). Optional: only the share
+  // page needs the table.
+  listShareLinks(): Promise<ShareLink[]>;
+  getShareLinkByHash(codeHash: string): Promise<ShareLink | null>;
+  putShareLink(link: ShareLink): Promise<void>;
+  // Your events with only the columns the share page reads
+  // (SHARE_EVENT_COLUMNS); every other field comes back empty.
+  listShareEvents(): Promise<LoggedEvent[]>;
 }
 
 export const MAX_EXAMPLES_PER_DOMAIN = 3;
