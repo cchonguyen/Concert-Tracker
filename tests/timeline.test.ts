@@ -11,6 +11,8 @@ import {
   daysBetween,
   firstToConfirm,
   gapLabel,
+  heatmapRows,
+  heatmapYear,
   modeFromQuery,
   spanBounds,
   spanInRange,
@@ -200,6 +202,33 @@ test('date chips read like a calendar', () => {
 test('the view mode comes from the address, and a view not built yet opens Agenda', () => {
   assert.equal(modeFromQuery('?view=timeline'), 'agenda');
   assert.equal(modeFromQuery('?view=timeline&mode=agenda'), 'agenda');
-  assert.equal(modeFromQuery('?view=timeline&mode=heatmap'), 'agenda');
+  assert.equal(modeFromQuery('?view=timeline&mode=heatmap'), 'heatmap');
+  assert.equal(modeFromQuery('?view=timeline&mode=river'), 'agenda');
   assert.equal(modeFromQuery('?view=timeline&mode=nonsense'), 'agenda');
+});
+
+test('a heatmap year has a square for every day, Sunday first, with 53 or 54 week columns', () => {
+  const y2026 = heatmapYear(2026); // starts on a Thursday
+  assert.equal(y2026.cells.length, 365);
+  assert.deepEqual(y2026.cells[0], { date: '2026-01-01', week: 0, dow: 4 });
+  assert.deepEqual(y2026.cells[364], { date: '2026-12-31', week: 52, dow: 4 });
+  assert.equal(y2026.weeks, 53);
+  assert.equal(y2026.months.length, 12);
+  assert.deepEqual(y2026.months[1], { month: 2, week: 5 }); // Sun 1 Feb opens a new column
+  const y2028 = heatmapYear(2028); // a leap year starting on a Saturday
+  assert.equal(y2028.cells.length, 366);
+  assert.equal(y2028.weeks, 54);
+  assert.equal(y2028.cells.at(-1)!.date, '2028-12-31');
+});
+
+test('heatmap rows run newest first to the earliest event, keeping this year and collapsing empty years', () => {
+  const m = buildTimelineModel(
+    [ev('a', { startDate: '2018-06-01' }), ev('b', { startDate: '2018-08-01' }), ev('c', { year: 2024, month: 5 })],
+    TODAY,
+  );
+  assert.deepEqual(
+    heatmapRows(m).map((r) => (r.kind === 'gap' ? `gap ${r.to}-${r.from}` : `${r.year}: ${r.events} +${r.undayed.length}`)),
+    ['2026: 0 +0', 'gap 2025-2025', '2024: 0 +1', 'gap 2023-2019', '2018: 2 +0'],
+  );
+  assert.deepEqual(heatmapRows(buildTimelineModel([], TODAY)), []);
 });
