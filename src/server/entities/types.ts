@@ -39,3 +39,22 @@ export const ALLOWED_LINKS: Array<{ from: EntityKind; role: LinkRole; to: Entity
   { from: 'venue', role: 'in', to: 'place' },
   { from: 'series', role: 'hosted_by', to: 'organization' },
 ];
+
+// One rename, merge, alias or link change, with everything needed to undo
+// it exactly (entity_history). Lists hold the full before and after state of
+// what the change touched; events hold only the fields it changed.
+export interface HistoryEntry {
+  id: string;
+  operation: 'rename' | 'merge' | 'alias-add' | 'alias-remove' | 'link-add' | 'link-remove' | 'create';
+  summary: string;
+  sourceEntityId: string;
+  targetEntityId?: string;
+  entities: { before: Entity[]; after: Entity[] };
+  // Aliases and links of these records, before and after.
+  touched: string[];
+  aliases: { before: EntityAlias[]; after: EntityAlias[] };
+  links: { before: EntityLink[]; after: EntityLink[] };
+  events: Array<{ id: string; before: Record<string, unknown>; after: Record<string, unknown> }>;
+  createdAt: string;
+  undoneAt?: string;
+}

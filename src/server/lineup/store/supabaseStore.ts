@@ -19,7 +19,7 @@ import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
 import { LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS } from './types';
-import { Entity, EntityAlias, EntityLink } from '../../entities/types';
+import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import { checkLinks } from '../../entities/integrity';
 import { SHARE_EVENT_COLUMNS, type ShareLink } from '../../share/types';
 
@@ -860,6 +860,70 @@ export class SupabaseLineupStore implements LineupStore {
         ),
       'addEntityLinks',
     );
+  }
+
+  private entityRow(e: Entity) {
+    return {
+      id: e.id,
+      kind: e.kind,
+      name: e.name,
+      name_normalized: e.nameNormalized,
+      attrs: e.attrs,
+      merged_into_id: e.mergedIntoId ?? null,
+      created_at: e.createdAt,
+      updated_at: e.updatedAt,
+    };
+  }
+
+  // Merge targets first, so a record is never written merged into one
+  // that is not there yet.
+  async putEntities(list: Entity[]) {
+    if (!list.length) return;
+    const rows = [...list].sort((a, b) => Number(Boolean(a.mergedIntoId)) - Number(Boolean(b.mergedIntoId))).map((e) => this.entityRow(e));
+    this.check(await this.db.from('entities').upsert(rows, { onConflict: 'id' }), 'putEntities');
+  }
+
+  // Not one transaction: the delete and the insert are two requests. The
+  // history entry written before them holds what to put back.
+  async replaceEntityAliases(entityIds: string[], aliases: EntityAlias[]) {
+    if (entityIds.length) this.check(await this.db.from('entity_aliases').delete().in('entity_id', entityIds), 'replaceEntityAliases');
+    const rows = [...new Map(aliases.map((a) => [`${a.kind}\u0000${a.aliasNormalized}`, a])).values()];
+    if (rows.length) {
+      this.check(
+        await this.db.from('entity_aliases').insert(rows.map((a) => ({ entity_id: a.entityId, kind: a.kind, alias_normalized: a.aliasNormalized }))),
+        'replaceEntityAliases',
+      );
+    }
+  }
+
+  async replaceEntityLinks(entityIds: string[], links: EntityLink[]) {
+    if (entityIds.length) {
+      const ids = entityIds.join(',');
+      this.check(await this.db.from('entity_links').delete().or(`from_id.in.(${ids}),to_id.in.(${ids})`), 'replaceEntityLinks');
+    }
+    await this.addEntityLinks(links);
+  }
+
+  async putEntityHistory(h: HistoryEntry) {
+    this.check(
+      await this.db
+        .from('entity_history')
+        .upsert({ id: h.id, operation: h.operation, manifest: h, created_at: h.createdAt, undone_at: h.undoneAt ?? null }),
+      'putEntityHistory',
+    );
+  }
+
+  async getEntityHistory(id: string) {
+    const r = this.check(await this.db.from('entity_history').select('manifest').eq('id', id).maybeSingle(), 'getEntityHistory');
+    return r ? ((r as any).manifest as HistoryEntry) : null;
+  }
+
+  async listEntityHistory(limit: number) {
+    const rows = this.check(
+      await this.db.from('entity_history').select('manifest').order('created_at', { ascending: false }).limit(limit),
+      'listEntityHistory',
+    );
+    return (rows ?? []).map((r: any) => r.manifest as HistoryEntry);
   }
 
   // share_links (0015) is optional: only the share page needs it.
