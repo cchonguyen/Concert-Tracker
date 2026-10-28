@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, CalendarRange, Grid3x3, ListOrdered, Table2, Waves } from 'lucide-react';
 import type { LineupFacts, LineupSummary, LoggedEvent } from '../../services/lineupApi';
 import { activeFilterCount, EMPTY_FILTERS, filterEvents, filterOptions, filtersFromQuery, filtersToQuery, TableFilters } from '../../services/table';
-import { buildTimelineModel, DEFAULT_MODE, firstToConfirm, modeFromQuery, TIMELINE_VIEWS, TimelineMode, TimelineRange } from '../../services/timeline';
+import { buildTimelineModel, DEFAULT_MODE, firstToConfirm, modeFromQuery, monthFromQuery, monthToQuery, TIMELINE_VIEWS, TimelineMode, TimelineRange } from '../../services/timeline';
 import { AgendaView } from './AgendaView';
 import { HeatmapView } from './HeatmapView';
+import { MonthView } from './MonthView';
 import { NoDateTray } from './parts';
 
 // The Timeline tab: the view switcher, filters shared with the Table and
@@ -37,6 +38,7 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({ events, lineups, editi
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const today = new Date().toISOString().slice(0, 10);
+  const [monthRange, setMonthRange] = useState<TimelineRange>(() => monthFromQuery(window.location.search, today));
   const options = useMemo(() => filterOptions(events), [events]);
   const filtered = useMemo(() => filterEvents(events, filters, lineups, editions), [events, filters, lineups, editions]);
   const model = useMemo(() => buildTimelineModel(filtered, today, editions), [filtered, today, editions]);
@@ -49,8 +51,9 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({ events, lineups, editi
   useEffect(() => {
     const q = filtersToQuery(filters);
     const m = mode === DEFAULT_MODE ? '' : `&mode=${mode}`;
-    window.history.replaceState(null, '', `${window.location.pathname}?view=timeline${m}${q ? `&${q}` : ''}`);
-  }, [filters, mode]);
+    const at = mode === 'month' && monthRange.kind === 'month' ? `&month=${monthToQuery(monthRange)}` : '';
+    window.history.replaceState(null, '', `${window.location.pathname}?view=timeline${m}${at}${q ? `&${q}` : ''}`);
+  }, [filters, mode, monthRange]);
 
   const confirmId = firstToConfirm(model);
   const tableQuery = filtersToQuery({ ...filters, sort: EMPTY_FILTERS.sort, desc: EMPTY_FILTERS.desc });
@@ -137,6 +140,7 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({ events, lineups, editi
       {mode === 'agenda' && (
         <AgendaView model={model} size="large" range={ALL} selectedEventId={selectedEventId} onSelectEvent={setSelectedEventId} onOpen={onOpen} />
       )}
+      {mode === 'month' && <MonthView model={model} size="large" range={monthRange} onRangeChange={setMonthRange} onOpen={onOpen} />}
       {mode === 'heatmap' && (
         <HeatmapView model={model} size="large" range={ALL} selectedDate={selectedDate} onSelectDate={setSelectedDate} onOpen={onOpen} />
       )}

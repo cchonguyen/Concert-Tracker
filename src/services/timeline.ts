@@ -201,7 +201,7 @@ export interface TimelineViewInfo {
 }
 export const TIMELINE_VIEWS: TimelineViewInfo[] = [
   { id: 'agenda', label: 'Agenda', sizes: ['large'], ready: true },
-  { id: 'month', label: 'Month', sizes: [], ready: false },
+  { id: 'month', label: 'Month', sizes: ['large'], ready: true },
   { id: 'heatmap', label: 'Heatmap', sizes: ['large'], ready: true },
   { id: 'river', label: 'River', sizes: [], ready: false },
 ];
@@ -372,3 +372,78 @@ export function heatmapRows(model: TimelineModel, range: TimelineRange = { kind:
   }
   return rows;
 }
+
+// Month: a Sunday-first calendar page. Every event touching the page is a
+// segment within a week row: a one-day event fills its day, a run of days is
+// a bar across them (cut at the week's edge and carried on the next row),
+// with the days you went marked so skipped festival days can show faint.
+// Segments that overlap go on separate lanes.
+export interface MonthSegment {
+  span: TimelineSpan;
+  start: number; // column, 0 = Sunday
+  len: number; // days covered in this week
+  lane: number;
+  days: Array<{ date: string; went: boolean }>;
+  before: boolean; // the run started in an earlier week
+  after: boolean; // the run carries on into the next week
+}
+export interface MonthWeek {
+  days: Array<{ date: string; inMonth: boolean }>;
+  segments: MonthSegment[];
+  lanes: number;
+}
+export interface MonthPage {
+  year: number;
+  month: number;
+  weeks: MonthWeek[];
+  undayed: TimelinePartial[]; // events with this month but no day
+}
+
+export function monthPage(model: TimelineModel, year: number, month: number): MonthPage {
+  const first = isoDate(year, month, 1);
+  const last = isoDate(year, month + 1, 0);
+  const prefix = first.slice(0, 7);
+  const weeks: MonthWeek[] = [];
+  for (let start = addDays(first, -weekday(first)); start <= last; start = addDays(start, 7)) {
+    const end = addDays(start, 6);
+    const days = daysBetween(start, end).map((date) => ({ date, inMonth: date.startsWith(prefix) }));
+    const segments: MonthSegment[] = [];
+    const laneEnds: number[] = []; // last column used on each lane
+    for (const span of model.spans) {
+      if (span.last < start || span.first > end) continue;
+      const from = span.first > start ? span.first : start;
+      const to = span.last < end ? span.last : end;
+      const col = weekday(from);
+      const len = weekday(to) - col + 1;
+      let lane = laneEnds.findIndex((e) => e < col);
+      if (lane < 0) lane = laneEnds.push(0) - 1;
+      laneEnds[lane] = col + len - 1;
+      segments.push({
+        span,
+        start: col,
+        len,
+        lane,
+        days: daysBetween(from, to).map((date) => ({ date, went: span.days.includes(date) })),
+        before: span.first < start,
+        after: span.last > end,
+      });
+    }
+    weeks.push({ days, segments, lanes: laneEnds.length });
+  }
+  return { year, month, weeks, undayed: model.partial.filter((p) => p.year === year && p.month === month) };
+}
+
+// The month before or after.
+export function shiftMonth(year: number, month: number, by: number): { year: number; month: number } {
+  const i = year * 12 + (month - 1) + by;
+  return { year: Math.floor(i / 12), month: (i % 12) + 1 };
+}
+
+// ?month=YYYY-MM in the address for the Month view; this month when missing or malformed.
+export function monthFromQuery(query: string, today: string): Extract<TimelineRange, { kind: 'month' }> {
+  const m = /^(\d{4})-(\d{2})$/.exec(new URLSearchParams(query).get('month') ?? '');
+  const month = m ? Number(m[2]) : 0;
+  if (m && month >= 1 && month <= 12) return { kind: 'month', year: Number(m[1]), month };
+  return { kind: 'month', year: Number(today.slice(0, 4)), month: Number(today.slice(5, 7)) };
+}
+export const monthToQuery = (r: { year: number; month: number }) => `${r.year}-${pad(r.month)}`;
