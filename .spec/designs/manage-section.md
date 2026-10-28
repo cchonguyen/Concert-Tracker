@@ -131,3 +131,7 @@ Genres and music-story are left out for now.
 1. **Backfill conflicts:** a venue whose events disagree on city keeps its place empty. Data health asks you once per venue, offering the cities its events use, and sets it only when you pick one.
 2. **Organizations** ship in the Manage step, right after Series, with "Hosted by".
 3. **Sheets and CSV are outputs.** The app is the only source of truth. Sheet sync becomes one-way (app writes the sheet; edits made in the sheet are not read back) and CSV is export. "Import a list" stays only as a way to add new events and fill empty fields through its review, never to change what the app already holds. This removes the sheet-to-app half of today's sync, and with it the three-way-merge risk noted above.
+
+## Revised after the Gemini audit (2026-10-28)
+
+The verdict was approved with revisions. The binding contracts (alias uniqueness per kind, merge flattening, no hard delete, dual-write of the old text columns, undo manifests, venue provenance, list import rules) are in [SYSTEM_SPEC.md](../SYSTEM_SPEC.md) section 3. The build slices M1a to M6 are in [PROGRESS.md](../PROGRESS.md). In the MVP a person has a single name; first and last name come in slice M4.
