@@ -7,7 +7,7 @@ import { b2bGroups, leaveB2b, pairB2b, seenSlots, setSolo, slotLabel, toSeenInpu
 import { eventTitle, seriesBase, seriesList, seriesOffers, seriesSuggestions, withPlace } from '../src/services/series.ts';
 import { EMPTY_FILTERS, filterEvents, filtersFromQuery, filtersToQuery } from '../src/services/table.ts';
 import { eventsToCsv } from '../src/services/format.ts';
-import { editPatch, readList } from '../src/services/listImport.ts';
+import { fillPatch, readList } from '../src/services/listImport.ts';
 
 const NOW = new Date('2026-10-21T12:00:00Z');
 const ev = (line: string, extra: Partial<LoggedEvent> = {}): LoggedEvent => ({ ...newEvent(line, NOW), ...extra });
@@ -65,7 +65,10 @@ test('series goes out in the CSV and comes back in', () => {
   assert.match(csv.split('\n')[0], /^Date,End date,Year,Event,Series,/);
   const list = readList(csv.replace(',EDC Las Vegas,', ',EDC LV,'));
   assert.ok(list.present.includes('series'));
-  assert.deepEqual(editPatch(list.rows[0], e, list.present).patch, { series: 'EDC LV' });
+  assert.equal(list.rows[0].series, 'EDC LV');
+  // Read back only into an event without one: the app's own value stands.
+  assert.deepEqual(fillPatch(list.rows[0], e).patch, {});
+  assert.deepEqual(fillPatch(list.rows[0], { ...e, series: undefined }).patch, { series: 'EDC LV' });
 });
 
 const act = (name: string, extra: Partial<LoggedEvent['seen'][number]> = {}) => ({
@@ -193,7 +196,9 @@ test('weekend: picked by you, shown with the series, read back from the CSV', as
   const csv = eventsToCsv([e]);
   assert.match(csv.split('\n')[0], /,Series,Weekend,/);
   const list = readList(csv.replace(',Coachella,1,', ',Coachella,Weekend 2,'));
-  assert.deepEqual(editPatch(list.rows[0], e, list.present).patch, { weekend: 2 });
+  assert.equal(list.rows[0].weekend, 2);
+  assert.deepEqual(fillPatch(list.rows[0], e).patch, {});
+  assert.deepEqual(fillPatch(list.rows[0], { ...e, weekend: undefined }).patch, { weekend: 2 });
 });
 
 test('an act in a B2B can also have its own solo set, credited once', () => {

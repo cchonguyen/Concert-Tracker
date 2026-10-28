@@ -3,6 +3,7 @@ import type { EmailImport } from '../server/events/email/types';
 import type { LoggedEvent } from '../server/events/types';
 import { toSeenInput } from '../server/events/seen';
 import { splitCity } from '../server/events/regions';
+import type { NameIndex } from '../server/entities/link';
 
 // A list of past events you kept elsewhere (a Notion export, a spreadsheet,
 // this app's own CSV export) read into rows you review in the Table view.
@@ -376,14 +377,17 @@ function sameDays(row: ListRow, f: Facts): boolean {
 }
 
 export interface Matches {
-  edit?: LoggedEvent; // the event this row was exported from
+  // The row came from this app's export (its ID column names the event).
+  // It is folded into that event like any match: the app is the source of
+  // truth, so the row only fills what the event lacks.
+  exported?: boolean;
   exact?: Target;
   nearby: Target[];
 }
 
 export function findMatches(row: ListRow, events: LoggedEvent[], emails: EmailImport[]): Matches {
-  const edit = row.eventId ? events.find((e) => e.id === row.eventId) : undefined;
-  if (edit) return { edit, nearby: [] };
+  const own = row.eventId ? events.find((e) => e.id === row.eventId) : undefined;
+  if (own) return { exported: true, exact: { kind: 'event', event: own }, nearby: [] };
   // An email row already linked to an event is that event.
   const open = emails.filter((r) => (r.status === 'new' || r.status === 'skipped') && !r.eventId);
   const targets: Target[] = [
@@ -397,7 +401,14 @@ export function findMatches(row: ListRow, events: LoggedEvent[], emails: EmailIm
 
 // What the row adds to an event that already has `base`: only empty fields,
 // plus acts and people it does not list yet. Nothing already there changes.
-export function fillPatch(row: ListRow, base: Partial<LoggedEvent>, leaveOut: Set<string> = new Set()): { patch: EventPatch; adds: string[] } {
+// With `names` (the records' names and aliases), an act or person already on
+// the event under another of its names is not added again.
+export function fillPatch(
+  row: ListRow,
+  base: Partial<LoggedEvent>,
+  leaveOut: Set<string> = new Set(),
+  names: NameIndex = {},
+): { patch: EventPatch; adds: string[] } {
   const patch: EventPatch = {};
   const adds: string[] = [];
   if (!base.startDate && row.startDate) {
@@ -420,16 +431,20 @@ export function fillPatch(row: ListRow, base: Partial<LoggedEvent>, leaveOut: Se
       adds.push(f === 'region' ? 'state' : f);
     }
   }
+  // Who a name is: its record when one is known, else the name itself.
+  const artist = (name: string) => names.artist?.[norm(name)] ?? `name:${norm(name)}`;
+  const person = (name: string) => names.person?.[norm(name)] ?? `name:${norm(name)}`;
+  const firstTime = (known: Set<string>, key: string) => !known.has(key) && Boolean(known.add(key));
   const seen = base.seen ?? [];
-  const known = new Set(seen.map((s) => norm(s.name)));
-  const newActs = row.seen.filter((a) => !known.has(norm(a)));
+  const known = new Set(seen.map((s) => s.artistId ?? artist(s.name)));
+  const newActs = row.seen.filter((a) => firstTime(known, artist(a)));
   if (newActs.length) {
     patch.seen = [...toSeenInput(seen), ...newActs.map((name) => ({ name, from: 'you' as const }))];
     adds.push(`${newActs.length} act${newActs.length === 1 ? '' : 's'} seen`);
   }
   const people = base.companions ?? [];
-  const knownPeople = new Set(people.map(norm));
-  const newPeople = row.companions.filter((c) => !leaveOut.has(norm(c)) && !knownPeople.has(norm(c)));
+  const knownPeople = new Set(people.map((c, i) => base.refs?.companionIds[i] ?? person(c)));
+  const newPeople = row.companions.filter((c) => !leaveOut.has(norm(c)) && firstTime(knownPeople, person(c)));
   if (newPeople.length) {
     patch.companions = [...people, ...newPeople];
     adds.push(newPeople.join(', '));
@@ -485,182 +500,8 @@ export function newEventPatch(row: ListRow, leaveOut: Set<string> = new Set()): 
   };
 }
 
-export interface Change {
-  field: string;
-  from: string; // the app's value; empty: nothing there
-  to: string; // the file's value
-  // The app's value changed too since the file was written (or that can't be
-  // told), so the file's value is not simply newer.
-  both?: boolean;
-}
-
-const shown = (v: unknown) => (v === undefined || v === null ? '' : String(v));
-
-// The same file or sheet row as the app last wrote it, when that is known.
-export interface BaseRow {
-  row: ListRow;
-  present: ListField[];
-}
-
-type Scalar = string | number | null;
-type ScalarKey =
-  | 'name'
-  | 'startDate'
-  | 'endDate'
-  | 'year'
-  | 'venue'
-  | 'city'
-  | 'region'
-  | 'country'
-  | 'format'
-  | 'series'
-  | 'weekend'
-  | 'notes'
-  | 'rating'
-  | 'ticketPrice';
-
-const SCALARS: Array<[ScalarKey, string]> = [
-  ['name', 'event'],
-  ['startDate', 'date'],
-  ['endDate', 'end date'],
-  ['year', 'year'],
-  ['venue', 'venue'],
-  ['city', 'city'],
-  ['region', 'state'],
-  ['country', 'country'],
-  ['format', 'format'],
-  ['series', 'series'],
-  ['weekend', 'weekend'],
-  ['notes', 'notes'],
-  ['rating', 'rating'],
-  ['ticketPrice', 'ticket price'],
-];
-
-// What a row says for each field; undefined where it says nothing: no
-// column, or a cell that couldn't be read. The year counts only for a row
-// without a date, and not when it was read from the name.
-function rowValues(row: ListRow, present: ListField[]): Record<ScalarKey, Scalar | undefined> {
-  const has = (f: ListField) => present.includes(f) && !row.unread.includes(f);
-  const dated = has('startDate');
-  const out = {} as Record<ScalarKey, Scalar | undefined>;
-  out.name = row.name;
-  out.startDate = dated ? (row.startDate ?? null) : undefined;
-  out.endDate =
-    dated && !row.unread.includes('endDate') && (present.includes('endDate') || row.endDate !== undefined)
-      ? row.startDate
-        ? (row.endDate ?? null)
-        : null
-      : undefined;
-  out.year = dated && !row.startDate && !row.yearFromName ? (row.year ?? null) : undefined;
-  for (const f of ['venue', 'city', 'region', 'country', 'format', 'series', 'weekend', 'notes', 'rating', 'ticketPrice'] as const) {
-    out[f] = has(f) ? (row[f] ?? null) : undefined;
-  }
-  return out;
-}
-
-function appValues(e: LoggedEvent): Record<ScalarKey, Scalar> {
-  return {
-    name: e.name,
-    startDate: e.startDate ?? null,
-    endDate: e.endDate ?? null,
-    year: e.startDate ? Number(e.startDate.slice(0, 4)) : (e.year ?? null),
-    venue: e.venue ?? null,
-    city: e.city ?? null,
-    region: e.region ?? null,
-    country: e.country ?? null,
-    format: e.format ?? null,
-    series: e.series ?? null,
-    weekend: e.weekend ?? null,
-    notes: e.notes ?? null,
-    rating: e.rating ?? null,
-    ticketPrice: e.ticketPrice ?? null,
-  };
-}
-
-// What a row from this app's own export (a file or the linked sheet) changed
-// on the event it came from. With `base` (the row as the app last wrote it)
-// this is a three-way merge: only what the row changed since then counts,
-// so a value you changed in the app since is never put back to the old one.
-// A field changed on both sides is marked `both`. Without a base nothing
-// tells which side is newer, so every difference is marked `both`. With
-// `keepApp`, fields marked `both` keep the app's value. Acts and people are
-// merged as lists: what the row added or removed is applied to the app's
-// current list. Columns worked out by the app (Type, Went, Artist, Supporting
-// artists, Favourite set, Sets, Weather) are not read back.
-export function editPatch(
-  row: ListRow,
-  event: LoggedEvent,
-  present: ListField[],
-  leaveOut: Set<string> = new Set(),
-  base?: BaseRow,
-  keepApp = false,
-): { patch: EventPatch; changes: Change[] } {
-  const has = (f: ListField) => present.includes(f) && !row.unread.includes(f);
-  const patch: EventPatch = {};
-  const changes: Change[] = [];
-  const mine = rowValues(row, present);
-  const was = base ? rowValues(base.row, base.present) : undefined;
-  const app = appValues(event);
-
-  for (const [f, label] of SCALARS) {
-    const to = mine[f];
-    if (to === undefined || to === app[f]) continue;
-    const before = was?.[f];
-    if (before !== undefined && to === before) continue; // the row didn't change it; the app's value stands
-    const both = before === undefined || app[f] !== before;
-    changes.push({ field: label, from: shown(app[f]), to: shown(to), both });
-    if (keepApp && both) continue;
-    (patch as Record<string, unknown>)[f] = to;
-  }
-
-  // Lists: with a base, what the row added and removed since; without one,
-  // the difference from the app, marked `both`.
-  const listChange = (mineList: string[], baseList: string[] | undefined, appList: string[]) => {
-    const key = (xs: string[]) => new Set(xs.map(norm));
-    const from = baseList ?? appList;
-    const fromKeys = key(from);
-    const mineKeys = key(mineList);
-    const appKeys = key(appList);
-    const added = mineList.filter((x) => !fromKeys.has(norm(x)) && !appKeys.has(norm(x)));
-    const removedKeys = new Set([...fromKeys].filter((k) => !mineKeys.has(k) && appKeys.has(k)));
-    return { added, removedKeys, both: !baseList };
-  };
-  if (has('seen')) {
-    const baseSeen = base && base.present.includes('seen') ? base.row.seen : undefined;
-    const d = listChange(row.seen, baseSeen, event.seen.map((s) => s.name));
-    if (d.added.length || d.removedKeys.size) {
-      const removed = event.seen.filter((s) => d.removedKeys.has(norm(s.name)));
-      changes.push({ field: 'acts seen', from: removed.map((s) => s.name).join(', '), to: d.added.join(', '), both: d.both });
-      if (!(keepApp && d.both)) {
-        // Acts kept keep their role, source and your marks.
-        patch.seen = [
-          ...toSeenInput(event.seen.filter((s) => !d.removedKeys.has(norm(s.name)))),
-          ...d.added.map((name) => ({ name, from: 'you' as const })),
-        ];
-      }
-    }
-  }
-  if (has('companions')) {
-    const want = row.companions.filter((c) => !leaveOut.has(norm(c)));
-    const basePeople = base && base.present.includes('companions') ? base.row.companions : undefined;
-    const d = listChange(want, basePeople, event.companions);
-    if (d.added.length || d.removedKeys.size) {
-      const removed = event.companions.filter((c) => d.removedKeys.has(norm(c)));
-      changes.push({ field: 'went with', from: removed.join(', '), to: d.added.join(', '), both: d.both });
-      if (!(keepApp && d.both)) patch.companions = [...event.companions.filter((c) => !d.removedKeys.has(norm(c))), ...d.added];
-    }
-  }
-  return { patch, changes };
-}
-
 // Your choice for a row: a new event, folded into a target, or not imported.
-// Or, for a row from this app's export, its changes applied to its event.
-// keepApp: fields changed on both sides keep the app's value.
-export type Choice =
-  | { kind: 'new' }
-  | { kind: 'skip' }
-  | { kind: 'into'; target: Target }
-  | { kind: 'edit'; event: LoggedEvent; base?: BaseRow; keepApp: boolean };
+export type Choice = { kind: 'new' } | { kind: 'skip' } | { kind: 'into'; target: Target };
 
 export interface ImportApi {
   create(text: string): Promise<LoggedEvent>;
@@ -672,7 +513,6 @@ export interface ImportApi {
 export interface ImportResult {
   created: number;
   merged: number;
-  edited: number;
   unchanged: number;
   failed: Array<{ row: ListRow; error: string }>;
 }
@@ -683,25 +523,15 @@ export async function runImport(
   items: Array<{ row: ListRow; choice: Choice }>,
   api: ImportApi,
   leaveOut: Set<string> = new Set(),
-  present: ListField[] = [],
+  names: NameIndex = {},
 ): Promise<ImportResult> {
-  const result: ImportResult = { created: 0, merged: 0, edited: 0, unchanged: 0, failed: [] };
+  const result: ImportResult = { created: 0, merged: 0, unchanged: 0, failed: [] };
   // Two rows can fold into one event: the second builds on the first.
   const latest = new Map<string, LoggedEvent>();
   const fromEmail = new Map<string, string>();
   for (const { row, choice } of items) {
     try {
       if (choice.kind === 'skip') continue;
-      if (choice.kind === 'edit') {
-        const { patch } = editPatch(row, choice.event, present, leaveOut, choice.base, choice.keepApp);
-        if (!Object.keys(patch).length) {
-          result.unchanged++;
-          continue;
-        }
-        await api.update(choice.event.id, patch);
-        result.edited++;
-        continue;
-      }
       if (choice.kind === 'new') {
         const event = await api.create(row.name);
         await api.update(event.id, newEventPatch(row, leaveOut));
@@ -724,7 +554,7 @@ export async function runImport(
         latest.set(event.id, event);
       }
       if (!event) throw new Error('The event to merge into is gone.');
-      const { patch, adds } = fillPatch(row, event, leaveOut);
+      const { patch, adds } = fillPatch(row, event, leaveOut, names);
       if (!adds.length) {
         if (t.kind === 'email') result.merged++;
         else result.unchanged++;

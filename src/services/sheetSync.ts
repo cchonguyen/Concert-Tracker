@@ -1,12 +1,12 @@
 import type { LoggedEvent } from '../server/events/types';
 import type { LineupFacts } from '../server/events/scale';
-import type { EmailImport } from '../server/events/email/types';
 import { eventRows } from './format';
-import { BaseRow, editPatch, findMatches, mapColumns, ReadList } from './listImport';
+import { mapColumns, ReadList } from './listImport';
 
-// The linked Google Sheet in the browser: its cells turned into the rows the
-// list import reads, and your log turned back into cells. See ARCHITECTURE.md
-// ("Google Sheets sync").
+// The linked Google Sheet in the browser. Sync is one way: the app is the
+// source of truth and writes your log into the tab; nothing is read back.
+// The tab is read only to warn before edits made there are replaced. See
+// ARCHITECTURE.md ("Google Sheets sync").
 
 export type SheetValue = string | number | boolean;
 
@@ -45,26 +45,30 @@ export function sheetRows(events: LoggedEvent[], editions: Record<string, Lineup
   return [header, ...rows.map((r) => r.map((v) => (v === undefined || v === '' ? null : v)))];
 }
 
-// The tab as the app last wrote it, by event ID.
-export function baseRows(base: ReadList | undefined): Map<string, BaseRow> {
-  const out = new Map<string, BaseRow>();
-  for (const row of base?.rows ?? []) if (row.eventId) out.set(row.eventId, { row, present: base!.present });
-  return out;
+// Rows of the tab that differ from what the app last wrote there (edited,
+// added or removed in the sheet), which updating the sheet replaces.
+// Without a base (never written by the app), every row with data counts.
+export function outsideEdits(table: string[][], base?: string[][]): number {
+  const key = (r: string[]) => JSON.stringify(r.map((c) => c.trim()).filter((c, i, all) => all.slice(i).some(Boolean)));
+  const filled = (rows: string[][]) => rows.filter((r) => r.some((c) => c.trim()));
+  const mine = filled(table);
+  if (!base) return Math.max(0, mine.length - 1);
+  const was = new Map<string, number>();
+  for (const r of filled(base)) was.set(key(r), (was.get(key(r)) ?? 0) + 1);
+  let differ = 0;
+  for (const r of mine) {
+    const k = key(r);
+    const left = was.get(k) ?? 0;
+    if (left) was.set(k, left - 1);
+    else differ++;
+  }
+  let removed = 0;
+  for (const n of was.values()) removed += n;
+  return Math.max(differ, removed);
 }
 
-// Rows that need a look before the sheet is rewritten: everything except
-// rows from this app's export that the sheet didn't change since the base
-// (or, without one, that match their event exactly).
-export function rowsToReview(list: ReadList, events: LoggedEvent[], imports: EmailImport[], base?: ReadList): number {
-  const bases = baseRows(base);
-  return list.rows.filter((row) => {
-    const m = findMatches(row, events, imports);
-    return !m.edit || editPatch(row, m.edit, list.present, new Set(), bases.get(m.edit.id)).changes.length > 0;
-  }).length;
-}
-
-// Columns of the sheet that are neither read back nor written by the app;
-// syncing rewrites the tab, so they are lost.
+// Columns of the sheet the app doesn't write; updating rewrites the tab, so
+// they are lost.
 export function droppedColumns(list: ReadList): string[] {
   const ours = new Set(eventRows([]).header.map((h) => h.toLowerCase()));
   return list.columns.filter((c) => c.header && !c.field && !ours.has(c.header.toLowerCase())).map((c) => c.header);

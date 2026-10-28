@@ -1,4 +1,5 @@
 import type { Edition, LookupJob, SourceType } from '../server/lineup/types';
+import type { NameIndex } from '../server/entities/link';
 import type { ConfirmRequest } from '../server/lineup/learning';
 import type { DetailCandidate, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
 import type { EventPatch } from '../server/events/service';
@@ -140,6 +141,11 @@ export const sheetsApi = {
     request<{ values: SheetCellValue[][]; version: string; base?: Array<Array<SheetCellValue | null>>; sheet: LinkedSheetView }>('/api/sheets/values'),
   write: (rows: Array<Array<string | number | null>>, version: string) =>
     request<{ sheet: LinkedSheetView }>('/api/sheets/values', { method: 'PUT', body: JSON.stringify({ rows, version }) }).then((r) => r.sheet),
+};
+
+// The records behind your events' names (src/server/entities/).
+export const entitiesApi = {
+  names: () => request<{ names: NameIndex }>('/api/entities/names').then((r) => r.names),
 };
 
 export const lineupApi = {

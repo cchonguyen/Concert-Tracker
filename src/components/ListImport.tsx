@@ -1,14 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, FileUp, Loader2, X } from 'lucide-react';
-import { EmailImport, eventsApi, importsApi, LoggedEvent } from '../services/lineupApi';
+import { EmailImport, entitiesApi, eventsApi, importsApi, LoggedEvent } from '../services/lineupApi';
+import type { NameIndex } from '../server/entities/link';
 import { placeLabel, whenLabel } from '../services/format';
 import { splitCity } from '../server/events/regions';
-import { baseRows } from '../services/sheetSync';
 import {
-  BaseRow,
-  Change,
   Choice,
-  editPatch,
   fillPatch,
   findMatches,
   ImportResult,
@@ -28,18 +25,15 @@ import {
 // you check before anything is saved. Rows that are the same event as one in
 // your log, or a show waiting in the email review, are folded into it; rows
 // that only share a day with one wait for you to say. See ARCHITECTURE.md
-// ("Importing a list"). Rows from this app's own export carry an ID and show
-// what you changed on their event. The Google Sheets sync passes the linked
-// tab in as `sheet`, and gets the result back to write the sheet afterwards.
+// ("Importing a list"). Rows from this app's own export carry an ID and are
+// folded into that event the same way: the app is the source of truth, so a
+// file only fills what an event lacks.
 
 interface ListImportProps {
   events: LoggedEvent[];
   imports: EmailImport[];
   onDone: () => void;
   onClose: () => void;
-  // base: the tab as the app last wrote it, so only what the sheet changed since counts.
-  sheet?: { title: string; table: string[][]; dropped: string[]; base?: ReadList };
-  onSaved?: (result: ImportResult) => void;
 }
 
 const FIELD_LABELS: Record<ListField, string> = {
@@ -77,47 +71,27 @@ const baseOf = (t: Target): Partial<LoggedEvent> =>
     ? t.event
     : { startDate: t.row.startDate, endDate: t.row.endDate, venue: t.row.venue, ...splitCity({ city: t.row.city }) };
 
-const choiceValue = (c: Choice | undefined) =>
-  !c ? '' : c.kind === 'into' ? targetId(c.target) : c.kind === 'edit' && c.keepApp ? 'keep' : c.kind;
-
-type Bases = Map<string, BaseRow>;
-const basesOf = baseRows;
-
-// Changed on both sides, or not known: the app's value is kept unless you say.
-// Only the sheet changed it: applied.
-function editChoice(changes: Change[]): 'edit' | 'keep' | 'skip' {
-  const both = changes.filter((c) => c.both).length;
-  return both === 0 ? 'edit' : both === changes.length ? 'skip' : 'keep';
-}
+const choiceValue = (c: Choice | undefined) => (!c ? '' : c.kind === 'into' ? targetId(c.target) : c.kind);
 
 // The same event is folded in; a day shared with another name waits for you.
-function initialChoices(read: ReadList, events: LoggedEvent[], imports: EmailImport[], bases: Bases): Record<string, Choice | undefined> {
+function initialChoices(read: ReadList, events: LoggedEvent[], imports: EmailImport[]): Record<string, Choice | undefined> {
   const initial: Record<string, Choice | undefined> = {};
   for (const row of read.rows) {
     const m = findMatches(row, events, imports);
-    const base = row.eventId ? bases.get(row.eventId) : undefined;
-    const pick = m.edit ? editChoice(editPatch(row, m.edit, read.present, new Set(), base).changes) : undefined;
-    initial[row.id] = m.edit
-      ? pick === 'skip'
-        ? { kind: 'skip' }
-        : { kind: 'edit', event: m.edit, base, keepApp: pick === 'keep' }
-      : m.exact
-        ? { kind: 'into', target: m.exact }
-        : m.nearby.length
-          ? undefined
-          : { kind: 'new' };
+    initial[row.id] = m.exact ? { kind: 'into', target: m.exact } : m.nearby.length ? undefined : { kind: 'new' };
   }
   return initial;
 }
 
-export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone, onClose, sheet, onSaved }) => {
-  const [file, setFile] = useState<string | null>(sheet ? sheet.title : null);
-  const [list, setList] = useState<ReadList | null>(() => (sheet ? readTable(sheet.table) : null));
-  const bases = useMemo(() => basesOf(sheet?.base), [sheet]);
-  const baseFor = (row: ListRow) => (row.eventId ? bases.get(row.eventId) : undefined);
-  const [choices, setChoices] = useState<Record<string, Choice | undefined>>(() =>
-    sheet ? initialChoices(readTable(sheet.table), events, imports, basesOf(sheet.base)) : {},
-  );
+export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone, onClose }) => {
+  const [file, setFile] = useState<string | null>(null);
+  const [list, setList] = useState<ReadList | null>(null);
+  const [choices, setChoices] = useState<Record<string, Choice | undefined>>({});
+  // Without the entity tables this stays empty and names match as written.
+  const [names, setNames] = useState<NameIndex>({});
+  useEffect(() => {
+    entitiesApi.names().then(setNames, () => setNames({}));
+  }, []);
   const [leaveOut, setLeaveOut] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -148,29 +122,27 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
     setFile(f.name);
     setList(read);
     if (read.error) setError(read.error);
-    setChoices(initialChoices(read, events, imports, bases));
+    setChoices(initialChoices(read, events, imports));
     setLeaveOut(new Set());
   };
 
   const rows = list?.rows ?? [];
-  const present = list?.present ?? [];
   const groups = useMemo(() => {
     const choose: ListRow[] = [];
     const merge: ListRow[] = [];
     const fresh: ListRow[] = [];
-    const edited: ListRow[] = [];
     let same = 0;
     for (const row of rows) {
       const m = matches[row.id];
-      if (m?.edit) {
-        if (editPatch(row, m.edit, present, leaveOut, baseFor(row)).changes.length) edited.push(row);
-        else same++;
-      } else if (m?.exact) merge.push(row);
-      else if (m?.nearby.length) choose.push(row);
+      if (m?.exact) {
+        // A row from the app's own export that adds nothing is just counted.
+        if (m.exported && !fillPatch(row, baseOf(m.exact), leaveOut, names).adds.length) same++;
+        else merge.push(row);
+      } else if (m?.nearby.length) choose.push(row);
       else fresh.push(row);
     }
-    return { choose, merge, fresh, edited, same };
-  }, [rows, matches, present, leaveOut, bases]);
+    return { choose, merge, fresh, same };
+  }, [rows, matches, leaveOut, names]);
 
   const undecided = rows.filter((r) => !choices[r.id]).length;
   const chosen = rows.filter((r) => choices[r.id] && choices[r.id]!.kind !== 'skip');
@@ -180,9 +152,7 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
     const targets = [m?.exact, ...(m?.nearby ?? [])].filter((t): t is Target => Boolean(t));
     const target = targets.find((t) => targetId(t) === value);
     const next: Choice | undefined =
-      (value === 'edit' || value === 'keep') && m?.edit
-        ? { kind: 'edit', event: m.edit, base: baseFor(row), keepApp: value === 'keep' }
-        : value === 'new'
+      value === 'new'
           ? { kind: 'new' }
           : value === 'skip'
             ? { kind: 'skip' }
@@ -205,11 +175,10 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
           restoreEmail: (ids) => importsApi.skip(ids, true),
         },
         leaveOut,
-        present,
+        names,
       );
       onDone();
-      if (onSaved) onSaved(res);
-      else setResult(res);
+      setResult(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -217,61 +186,11 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
     }
   };
 
-  const renderEdit = (row: ListRow) => {
-    const m = matches[row.id];
-    if (!m?.edit) return null;
-    const base = baseFor(row);
-    const { changes } = editPatch(row, m.edit, present, leaveOut, base);
-    const both = changes.filter((c) => c.both).length;
-    const choice = choices[row.id];
-    return (
-      <div key={row.id} className="space-y-2 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">
-        <div className="space-y-0.5">
-          <p className="text-sm font-semibold text-zinc-100">{m.edit.name}</p>
-          {changes.map((c) => (
-            <p key={c.field} className="text-xs text-zinc-400">
-              <span className="text-zinc-500">{c.field}:</span>{' '}
-              {c.field === 'acts seen' || c.field === 'went with' ? (
-                <>
-                  {c.to && <span className="text-emerald-300">+ {c.to}</span>} {c.from && <span className="text-rose-300">− {c.from}</span>}
-                </>
-              ) : (
-                <>
-                  <span className="text-zinc-500 line-through">{c.from || 'empty'}</span> → <span className="text-zinc-100">{c.to || 'empty'}</span>
-                </>
-              )}
-              {c.both && (
-                <span className="text-amber-300/90">
-                  {' '}
-                  {base ? '(changed in the app too)' : "(can't tell which is newer)"}
-                </span>
-              )}
-            </p>
-          ))}
-          {row.problems
-            .filter((p) => !p.startsWith('No date'))
-            .map((p) => (
-              <p key={p} className="flex items-start gap-1 text-[11px] text-amber-300/90">
-                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> {p}
-              </p>
-            ))}
-        </div>
-        <select value={choiceValue(choice)} onChange={(e) => setChoice(row, e.target.value)} className={control}>
-          <option value="edit">{both ? `Use the ${sheet ? 'sheet' : 'file'}'s value for all of these` : 'Apply these changes'}</option>
-          {both > 0 && both < changes.length && (
-            <option value="keep">Apply only what changed in the {sheet ? 'sheet' : 'file'}; keep the app's value where both changed</option>
-          )}
-          <option value="skip">Keep the app's version{sheet ? ' (the sheet is set back)' : ''}</option>
-        </select>
-      </div>
-    );
-  };
-
   const renderRow = (row: ListRow) => {
     const m = matches[row.id];
     const targets = [m?.exact, ...(m?.nearby ?? [])].filter((t): t is Target => Boolean(t));
     const choice = choices[row.id];
-    const adds = choice?.kind === 'into' ? fillPatch(row, baseOf(choice.target), leaveOut).adds : null;
+    const adds = choice?.kind === 'into' ? fillPatch(row, baseOf(choice.target), leaveOut, names).adds : null;
     const when = whenLabel(row) ?? (row.year ? String(row.year) : null);
     const people = row.companions.filter((c) => !leaveOut.has(norm(c)));
     return (
@@ -314,14 +233,14 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
     );
   };
 
-  const renderSection = (title: string, note: string, rows: ListRow[], render: (row: ListRow) => React.ReactNode = renderRow) =>
+  const renderSection = (title: string, note: string, rows: ListRow[]) =>
     rows.length ? (
       <section className="space-y-2">
         <h3 className={sectionTitle}>
           {title} ({rows.length})
         </h3>
         <p className="text-xs text-zinc-600">{note}</p>
-        {rows.map(render)}
+        {rows.map(renderRow)}
       </section>
     ) : null;
 
@@ -335,12 +254,12 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="flex items-center gap-2 text-lg font-bold">
-                <FileUp className="h-4 w-4 text-violet-400" /> {sheet ? `Sync with ${sheet.title}` : 'Import a list'}
+                <FileUp className="h-4 w-4 text-violet-400" /> Import a list
               </h2>
               <p className="text-xs text-zinc-500">
-                {sheet
-                  ? "What the sheet changed since the last sync. Nothing is saved until you press Save; then the sheet is rewritten from your log, so it matches the app."
-                  : "A CSV of events you went to, from Notion, a spreadsheet or this app's export. Nothing is saved until you press Import, and nothing the file doesn't say is filled in."}
+                A CSV of events you went to, from Notion, a spreadsheet or this app's export. Nothing is saved until you press Import.
+                The file only adds: new events, and empty fields, acts and people on events you already have. It never changes what your
+                log already says.
               </p>
             </div>
             <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
@@ -348,7 +267,6 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
             </button>
           </div>
 
-          {!sheet && (
           <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:text-zinc-100">
             <FileUp className="h-3.5 w-3.5" /> {file ? `${file} (choose another)` : 'Choose a CSV file'}
             <input
@@ -362,7 +280,6 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
               }}
             />
           </label>
-          )}
 
           {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
 
@@ -370,7 +287,6 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
             <div className="space-y-1 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-3 text-sm text-emerald-200">
               <p>
                 {result.created} new event{result.created === 1 ? '' : 's'}, {result.merged} merged into existing ones
-                {result.edited ? `, ${result.edited} changed` : ''}
                 {result.unchanged ? `, ${result.unchanged} already complete` : ''}.
               </p>
               {result.failed.map((f) => (
@@ -389,12 +305,6 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
                 {list.columns.map((c) => `${c.header} → ${c.field ? FIELD_LABELS[c.field] : 'not imported'}`).join(' · ')}
                 {groups.same ? `. ${groups.same} row${groups.same === 1 ? '' : 's'} with nothing new.` : ''}
               </p>
-              {sheet && sheet.dropped.length > 0 && (
-                <p className="flex items-start gap-1 text-xs text-amber-300/90">
-                  <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> The sheet's {sheet.dropped.map((d) => `"${d}"`).join(', ')}{' '}
-                  column{sheet.dropped.length === 1 ? ' is' : 's are'} not part of the app and will be removed when the sheet is rewritten.
-                </p>
-              )}
 
               {people.length > 0 && (
                 <section className="space-y-2">
@@ -423,48 +333,36 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
               )}
 
               {renderSection(
-                sheet ? 'Changed in the sheet' : 'Changed since the export',
-                'Rows with an ID from this app. Applying a change replaces the value in your log; an emptied cell clears it.',
-                groups.edited,
-                renderEdit,
-              )}
-              {renderSection(
                 'Same day as another event',
                 "These share a day with something in your log or your email review under another name. Say whether they're the same event.",
                 groups.choose,
               )}
               {renderSection(
                 'Already in your log or email review',
-                'Folded into the matching event: only its empty fields are filled, and acts and people are added to its lists.',
+                "Folded into the matching event (rows from this app's export, by their ID): only its empty fields are filled, and acts and people it doesn't have yet are added.",
                 groups.merge,
               )}
               {renderSection(
                 'New',
-                sheet
-                  ? "Each becomes an event with the sheet's fields. Rows you don't import are removed from the sheet."
-                  : "Each becomes an event with the file's fields.",
+                "Each becomes an event with the file's fields.",
                 groups.fresh,
               )}
             </>
           )}
         </div>
 
-        {list && !list.error && !result && (rows.length > 0 || sheet) && (
+        {list && !list.error && !result && rows.length > 0 && (
           <div className="flex items-center justify-between gap-3 border-t border-zinc-900 p-4">
             <span className="text-xs text-zinc-500">
-              {undecided
-                ? sheet
-                  ? `${undecided} still need your choice before the sheet can be updated.`
-                  : `${undecided} still need your choice and won't be imported yet.`
-                : ''}
+              {undecided ? `${undecided} still need your choice and won't be imported yet.` : ''}
             </span>
             <button
               onClick={go}
-              disabled={busy || (sheet ? undecided > 0 : !chosen.length)}
+              disabled={busy || !chosen.length}
               className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40"
             >
               {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {sheet ? 'Save and update the sheet' : `Import ${chosen.length || ''} event${chosen.length === 1 ? '' : 's'}`}
+              {`Import ${chosen.length || ''} event${chosen.length === 1 ? '' : 's'}`}
             </button>
           </div>
         )}
