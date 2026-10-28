@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { FlaskConical, Loader2, ScanSearch } from 'lucide-react';
-import { scanGmailInBrowser, type GmailScanProgress, type GmailScanResult } from '@livearchive/ticket-scanner';
+import { Download, FlaskConical, Loader2, ScanSearch } from 'lucide-react';
+import { scanGmailInBrowser, scanReportCsv, type GmailScanProgress, type GmailScanResult } from '@livearchive/ticket-scanner';
 import { EmailImport, EmailScanStatus, importsApi } from '../services/lineupApi';
 
 // The browser scan: a one-time Google sign-in (gmail.readonly, nothing kept),
@@ -89,6 +89,17 @@ export const BrowserScan: React.FC<{ status: EmailScanStatus; onFound: (imports:
     }
   };
 
+  const download = () => {
+    if (!report) return;
+    const csv = scanReportCsv(report.result.proposals, report.result.messages);
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ticket-scan-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const button = 'inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:border-zinc-500 disabled:opacity-40';
   const s = report?.result.summary;
 
@@ -127,6 +138,9 @@ export const BrowserScan: React.FC<{ status: EmailScanStatus; onFound: (imports:
           <p className="font-semibold text-zinc-200">
             {report.mode === 'full' ? 'Full re-scan' : 'Check'} {report.dryRun ? '(dry run, nothing saved)' : report.saved ? `: ${report.saved.added} new on the review list, ${report.saved.changed} rows updated` : ''}
           </p>
+          <button className={button} onClick={download}>
+            <Download className="h-3.5 w-3.5" /> Download report (CSV)
+          </button>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-0.5 sm:grid-cols-3">
             <dt className="text-zinc-500">Ticket emails examined</dt>
             <dd>
