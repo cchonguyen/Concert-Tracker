@@ -18,7 +18,7 @@ Ranked goals:
 
 ## 2. Who uses it
 
-- One person (the owner). No accounts, sharing or social features.
+- One person (the owner). No accounts for others, no social features. The one exception is a read-only share page of your past events, at a link you create and can turn off at any time (see ARCHITECTURE.md, Share page).
 - Tens to a few hundred events over a lifetime; a festival can have 200+ acts.
 - Used on a phone right after a show and on a laptop when catching up on old ones.
 - The owner is not a developer and should never need to read logs, pick a data source or understand quotas to use the app.
@@ -151,7 +151,7 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 
 ## 11. Out of scope
 
-- Multiple users, sharing, social feeds, recommendations.
+- Multiple users (other people's own accounts), social feeds, recommendations. Sharing is limited to the read-only share page.
 - Ticket purchasing, calendars of upcoming shows beyond your own, notifications (the "Did you go?" prompt waits in the app).
 - Inferring what you saw from lineups (you tick it, or it isn't recorded).
 - Importing from email without review, or signing in to ticket accounts (connecting your own Gmail read-only for Check email is in scope).
