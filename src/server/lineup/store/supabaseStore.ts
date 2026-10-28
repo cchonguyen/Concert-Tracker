@@ -17,6 +17,7 @@ import { LoggedEvent } from '../../events/types';
 import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
+import type { ArtistGenres } from '../../events/genres';
 import { LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS } from './types';
 import { Entity, EntityAlias, EntityLink } from '../../entities/types';
 import { checkLinks } from '../../entities/integrity';
@@ -685,6 +686,19 @@ export class SupabaseLineupStore implements LineupStore {
     return r ? { key: r.key, name: r.name, mbid: r.mbid ?? undefined, resolvedAt: r.resolved_at ?? undefined } : null;
   }
 
+  async getArtists(keys: string[]) {
+    const out: ArtistIdentity[] = [];
+    // In chunks, so the query string stays short.
+    for (let i = 0; i < keys.length; i += 200) {
+      const rows = this.check(
+        await this.db.from('canonical_artists').select('*').in('key', keys.slice(i, i + 200)),
+        'getArtists',
+      );
+      for (const r of (rows ?? []) as any[]) out.push({ key: r.key, name: r.name, mbid: r.mbid ?? undefined, resolvedAt: r.resolved_at ?? undefined });
+    }
+    return out;
+  }
+
   async ensureArtists(list: ArtistIdentity[]) {
     const rows = [...new Map(list.map((a) => [a.key, { key: a.key, name: a.name }])).values()];
     if (!rows.length) return;
@@ -711,6 +725,23 @@ export class SupabaseLineupStore implements LineupStore {
     return (rows ?? []).map((r: any): ArtistIdentity => ({ key: r.key, name: r.name, mbid: r.mbid ?? undefined }));
   }
 
+  // artist_genres (0013) is optional: only genres need it.
+  async listArtistGenres() {
+    const rows = this.check(await this.db.from('artist_genres').select('*'), 'listArtistGenres (apply 0013_artist_genres.sql)');
+    return ((rows ?? []) as any[]).map(
+      (r): ArtistGenres => ({
+        key: r.artist_key,
+        name: r.name,
+        source: r.source,
+        mbid: r.mbid ?? undefined,
+        genres: r.genres ?? [],
+        sourceUrl: r.source_url ?? undefined,
+        inputs: r.inputs?.length ? r.inputs : undefined,
+        checkedAt: r.checked_at,
+      }),
+    );
+  }
+
   // Entities (0014) -------------------------------------------------------
 
   // Every row of a table, a page at a time (PostgREST returns 1000 at most).
@@ -735,6 +766,29 @@ export class SupabaseLineupStore implements LineupStore {
         createdAt: r.created_at,
         updatedAt: r.updated_at,
       }),
+    );
+  }
+
+  async putArtistGenres(rows: ArtistGenres[]) {
+    for (let i = 0; i < rows.length; i += 500) {
+      const chunk = rows.slice(i, i + 500).map((r) => ({
+        artist_key: r.key,
+        source: r.source,
+        name: r.name,
+        mbid: r.mbid ?? null,
+        genres: r.genres,
+        source_url: r.sourceUrl ?? null,
+        inputs: r.inputs ?? [],
+        checked_at: r.checkedAt,
+      }));
+      if (chunk.length) this.check(await this.db.from('artist_genres').upsert(chunk), 'putArtistGenres (apply 0013_artist_genres.sql)');
+    }
+  }
+
+  async deleteArtistGenres(key: string, source: ArtistGenres['source']) {
+    this.check(
+      await this.db.from('artist_genres').delete().eq('artist_key', key).eq('source', source),
+      'deleteArtistGenres (apply 0013_artist_genres.sql)',
     );
   }
 
