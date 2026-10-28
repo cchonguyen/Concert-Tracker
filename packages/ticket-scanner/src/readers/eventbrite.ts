@@ -35,7 +35,8 @@ export const eventbrite: EmailReader = {
   matches: (from) => fromDomain(from, 'eventbrite.com'),
   read(email, lines) {
     const name = subjectAfter(email.subject, /^(?:Your Tickets for|Order Confirmation for)\s+(.+)$/i);
-    if (!name) return null;
+    // A shuttle or parking pass sold for a show is not a show.
+    if (!name || /\b(shuttles?|parking)\b/i.test(name)) return null;
     // 2015 to 2018 name the event only inside a sentence ("this is your
     // order confirmation for <event>").
     const nameLine = lines.find((l) => same(l, name)) ?? lines.find((l) => ` ${normalizeName(l)} `.includes(` ${normalizeName(name)} `));
@@ -44,14 +45,17 @@ export const eventbrite: EmailReader = {
     if (!card) throw new UnreadableEmail('No event date on the order card.');
     let v = card.venueAt;
     while (v < lines.length && CALENDAR.test(lines[v])) v++;
-    const address = lines.slice(v, v + 4).find((l) => cityFromAddress(l));
+    // The 2013 card packs the venue and address into one line, split by <BR>.
+    const packed = (lines[v] ?? '').split(/<br\s*\/?>/i).map((p) => p.trim()).filter(Boolean);
+    const address = packed.length > 1 ? packed.slice(1).find((l) => cityFromAddress(l)) : lines.slice(v, v + 4).find((l) => cityFromAddress(l));
+    const venueLine = packed.length > 1 ? packed[0] : lines[v];
     const order = lines.map((l) => l.match(/^(?:Order #:\s*|#)(\d[\d-]*)/)?.[1]).find(Boolean);
     const between = card.nameAt >= 0 && card.nameAt < card.dateAt ? lines.slice(card.nameAt + 1, card.dateAt) : [];
     return {
       kind: 'order',
       name: quoted(name, card.nameAt >= 0 ? lines[card.nameAt] : nameLine),
       ...dateFields(lines[card.dateAt], email.sentAt),
-      venue: address === lines[v] ? undefined : venueFrom(lines[v]),
+      venue: address === venueLine ? undefined : venueFrom(venueLine),
       city: cityFromAddress(address),
       orderId: order,
       tickets: count(between.find((l) => /^\d+\s*x\s/i.test(l))),
