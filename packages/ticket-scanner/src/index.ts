@@ -6,3 +6,8 @@ export { isVerbatim, normalize } from './verbatim.ts';
 export { STREAM_A_QUERY, STREAM_B_QUERY, queriesSince, LOOKBACK_DAYS } from './queries.ts';
 export { readPkpass, unzipEntry } from './markup.ts';
 export type { PassTicket, PassField } from './markup.ts';
+export { readRawEmails, READERS } from './scan.ts';
+export { readVerbatim, hasTicketSubject } from './verbatimReader.ts';
+export { unwrapForward } from './forwarded.ts';
+export type { EmailReader, ReadEmail, Quoted, EmailKind } from './readerTypes.ts';
+export { UnreadableEmail } from './readerTypes.ts';
