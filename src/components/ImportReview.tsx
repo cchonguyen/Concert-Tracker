@@ -3,6 +3,7 @@ import { Check, ExternalLink, GitMerge, Loader2, Mail, RefreshCw, Undo2, X } fro
 import { EmailImport, EmailScanStatus, importsApi, LoggedEvent } from '../services/lineupApi';
 import type { MergeField } from '../server/events/email/types';
 import { placeLabel, whenLabel } from '../services/format';
+import { BrowserScan } from './BrowserScan';
 
 // Stage 1 from email: shows found in your ticket emails. A ticket is not
 // proof you went, so nothing starts ticked and nothing is saved until you
@@ -128,6 +129,7 @@ const CheckEmail: React.FC<{ onFound: (imports: EmailImport[]) => void }> = ({ o
       </div>
       {status.connected && status.account && <p className="text-[11px] text-zinc-600">{status.account}</p>}
       {error && <p className="text-xs text-rose-300">{error}</p>}
+      <BrowserScan status={status} onFound={onFound} />
     </div>
   );
 };
