@@ -35,7 +35,8 @@ export const eventbrite: EmailReader = {
   matches: (from) => fromDomain(from, 'eventbrite.com'),
   read(email, lines) {
     const name = subjectAfter(email.subject, /^(?:Your Tickets for|Order Confirmation for)\s+(.+)$/i);
-    if (!name) return null;
+    // A shuttle or parking pass sold for a show is not a show.
+    if (!name || /\b(shuttles?|parking)\b/i.test(name)) return null;
     // 2015 to 2018 name the event only inside a sentence ("this is your
     // order confirmation for <event>").
     const nameLine = lines.find((l) => same(l, name)) ?? lines.find((l) => ` ${normalizeName(l)} `.includes(` ${normalizeName(name)} `));
