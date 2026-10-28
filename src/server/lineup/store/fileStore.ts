@@ -18,6 +18,8 @@ import { LoggedEvent } from '../../events/types';
 import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
+import { Entity, EntityAlias, EntityLink } from '../../entities/types';
+import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../entities/integrity';
 import { isStaleRun, LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS } from './types';
 
 type DocumentMeta = Omit<SourceDocument, 'body'>;
@@ -38,6 +40,9 @@ interface FileState {
   imports: Record<string, EmailImport>;
   settings?: Record<string, unknown>;
   artists: Record<string, ArtistIdentity>;
+  entities?: Record<string, Entity>;
+  entityAliases?: EntityAlias[];
+  entityLinks?: EntityLink[];
 }
 
 function emptyState(): FileState {
@@ -295,12 +300,15 @@ export class FileLineupStore implements LineupStore {
   }
 
   async putEvent(event: LoggedEvent) {
-    (await this.load()).events[event.id] = clone(splitEventCity(event));
-    await this.save();
+    await this.putEvents([event]);
   }
 
   async putEvents(events: LoggedEvent[]) {
     const state = await this.load();
+    // The foreign keys Supabase has on venue_id, place_id and series_id,
+    // plus the IDs inside companions and seen that it cannot check.
+    const entities = new Map(Object.entries(state.entities ?? {}));
+    for (const e of events) checkEventRefs(entities, e);
     for (const e of events) state.events[e.id] = clone(splitEventCity(e));
     await this.save();
   }
@@ -362,5 +370,55 @@ export class FileLineupStore implements LineupStore {
         .filter((a) => !a.resolvedAt)
         .slice(0, limit),
     );
+  }
+
+  async listEntities() {
+    return clone(Object.values((await this.load()).entities ?? {}));
+  }
+
+  async addEntities(entities: Entity[]) {
+    const state = await this.load();
+    const all = new Map(Object.entries(state.entities ?? {}));
+    const fresh = [...new Map(entities.filter((e) => !all.has(e.id)).map((e) => [e.id, e])).values()];
+    checkEntities(all, fresh);
+    state.entities = { ...state.entities };
+    for (const e of fresh) state.entities[e.id] = clone(e);
+    await this.save();
+  }
+
+  async listEntityAliases() {
+    return clone((await this.load()).entityAliases ?? []);
+  }
+
+  async addEntityAliases(aliases: EntityAlias[]) {
+    const state = await this.load();
+    const existing = state.entityAliases ?? [];
+    const held = new Set(existing.map((a) => `${a.kind}\u0000${a.aliasNormalized}\u0000${a.entityId}`));
+    const fresh = aliases.filter((a) => !held.has(`${a.kind}\u0000${a.aliasNormalized}\u0000${a.entityId}`));
+    checkAliases(new Map(Object.entries(state.entities ?? {})), existing, fresh);
+    const seen = new Set<string>();
+    state.entityAliases = [
+      ...existing,
+      ...fresh.filter((a) => {
+        const k = `${a.kind}\u0000${a.aliasNormalized}`;
+        return !seen.has(k) && seen.add(k);
+      }).map(clone),
+    ];
+    await this.save();
+  }
+
+  async listEntityLinks() {
+    return clone((await this.load()).entityLinks ?? []);
+  }
+
+  async addEntityLinks(links: EntityLink[]) {
+    const state = await this.load();
+    const existing = state.entityLinks ?? [];
+    const pk = (l: EntityLink) => `${l.fromId}\u0000${l.toId}\u0000${l.role}`;
+    const have = new Set(existing.map(pk));
+    const fresh = [...new Map(links.filter((l) => !have.has(pk(l))).map((l) => [pk(l), l])).values()];
+    checkLinks(new Map(Object.entries(state.entities ?? {})), fresh);
+    state.entityLinks = [...existing, ...fresh.map(clone)];
+    await this.save();
   }
 }

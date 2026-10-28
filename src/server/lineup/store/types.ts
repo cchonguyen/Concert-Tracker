@@ -15,6 +15,7 @@ import {
 import { LoggedEvent } from '../../events/types';
 import type { LineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
+import { Entity, EntityAlias, EntityLink } from '../../entities/types';
 
 // Persistence boundary for the lineup pipeline. Two implementations:
 // fileStore (local dev, no setup) and supabaseStore (durable, used when
@@ -93,6 +94,19 @@ export interface LineupStore {
   // Adds the artists not stored yet; existing ones are left as they are.
   ensureArtists(artists: ArtistIdentity[]): Promise<void>;
   listUnresolvedArtists(limit: number): Promise<ArtistIdentity[]>;
+
+  // Records with permanent IDs (0014, src/server/entities/). Optional until
+  // the Manage tab: createStore only links events when the tables exist.
+  // Records are never deleted. Both stores enforce entities/integrity.ts.
+  listEntities(): Promise<Entity[]>;
+  // Adds records; an ID already stored is left as it is.
+  addEntities(entities: Entity[]): Promise<void>;
+  listEntityAliases(): Promise<EntityAlias[]>;
+  // Adds aliases; one already held by the same record is left as it is.
+  addEntityAliases(aliases: EntityAlias[]): Promise<void>;
+  listEntityLinks(): Promise<EntityLink[]>;
+  // Adds links; one already stored is left as it is.
+  addEntityLinks(links: EntityLink[]): Promise<void>;
 }
 
 export const MAX_EXAMPLES_PER_DOMAIN = 3;
