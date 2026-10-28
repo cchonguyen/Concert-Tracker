@@ -7,12 +7,14 @@ import {
   addAlias,
   addLink,
   createEntity,
+  linkVenuePlaces,
   ManageError,
   mergeEntity,
   removeAlias,
   removeLink,
   renameEntity,
   undoEntry,
+  venuePlaceConflicts,
 } from './manage';
 
 // /api/entities: the records behind your events' names (0014).
@@ -56,6 +58,15 @@ export function entitiesRouter(deps: PipelineDeps): Router {
       return { entities, aliases, links, duplicates: possibleDuplicates(entities).map((g) => g.map((e) => e.id)) };
     }),
   );
+  // Data health: venues whose events use more than one city, and look-alikes.
+  router.get(
+    '/entities/health',
+    manage(async () => ({
+      venuePlaces: await venuePlaceConflicts(store),
+      duplicates: possibleDuplicates(await store.listEntities()).map((g) => g.map((e) => e.id)),
+    })),
+  );
+  router.post('/entities/venues/places', manage(async () => ({ entry: await linkVenuePlaces(store) })));
   router.get('/entities/history', manage(async () => ({ history: await store.listEntityHistory(50) })));
   router.post('/entities/history/:id/undo', manage((req) => undoEntry(store, req.params.id)));
   router.post('/entities', manage((req) => createEntity(store, req.body?.kind, req.body?.name)));
