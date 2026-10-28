@@ -96,3 +96,21 @@ export function moneyAfter(lines: string[], label: RegExp): string | undefined {
   const next = lines[at + 1];
   return money(lines[at].replace(label, '')) ?? (next && /^[$€£]\s?[\d,]+(?:\.\d{2})?$/.test(next) ? money(next) : undefined);
 }
+
+// "Label: value" on one line, or "Label" with its value on the next line.
+export function labeled(lines: string[], labels: string[]): { value: string; quote: string } | undefined {
+  for (const label of labels) {
+    const same = lines.find((l) => new RegExp(`^${label}\\s*:\\s*\\S`, 'i').test(l));
+    if (same) return { value: same.replace(new RegExp(`^${label}\\s*:\\s*`, 'i'), '').trim(), quote: same };
+    const next = valueAfter(lines, label) ?? valueAfter(lines, `${label}:`);
+    if (next?.value) return { value: next.value, quote: next.value };
+  }
+  return undefined;
+}
+
+
+// A priced line for something that is not a ticket (parking, merch, a
+// shuttle). Its cost may be inside the total, so the total over the ticket
+// count is not one ticket's price.
+export const hasAddOn = (lines: string[]) =>
+  lines.some((l) => /\b(parking|shuttle|merch(?:andise)?|t-shirt|add-?on|locker)\b/i.test(l) && /[$€£]\s?\d/.test(l));

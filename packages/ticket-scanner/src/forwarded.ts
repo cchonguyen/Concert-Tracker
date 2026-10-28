@@ -7,7 +7,9 @@ import type { RawEmailMessage as RawEmail } from './types.ts';
 // below the innermost header (a forward of a forward has one header per
 // hop). See ARCHITECTURE.md ("Stage 1 from email").
 
-const MARKER = /^(?:-+\s*Forwarded message\s*-+|Begin forwarded message:?)$/i;
+// Outlook writes "-----Original Message-----" or a rule of underscores;
+// Yahoo writes "----- Forwarded Message -----".
+const MARKER = /^(?:-+\s*Forwarded message\s*-+|Begin forwarded message:?|-+\s*Original Message\s*-+|_{10,})$/i;
 const HEADER = /^(From|Date|Sent|Subject|To|Cc|Reply-To):\s*(.*)$/i;
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 // "Wed, Apr 1, 2026 at 10:06 AM", "July 14, 2023 at 12:39:07 PM PDT", "Tue, Feb 7, 2023, 3:52 PM"
