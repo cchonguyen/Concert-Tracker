@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import { LoggedEvent } from '../src/server/events/types.ts';
-import { EntityIndex, entityIdFor, linkEvent, placeOf, possibleDuplicates } from '../src/server/entities/link.ts';
+import { EntityIndex, entityIdFor, linkEvent, nameIndex, placeOf, possibleDuplicates } from '../src/server/entities/link.ts';
+import { fillPatch, readTable } from '../src/services/listImport.ts';
 import { backfillEntities, BACKFILL_SETTING, withEntityLinks } from '../src/server/entities/linkingStore.ts';
 import { Entity } from '../src/server/entities/types.ts';
 import { EntityIntegrityError } from '../src/server/entities/integrity.ts';
@@ -186,4 +187,38 @@ test('backfill links events saved before 0014 once, and bridges learned artist s
   assert.ok(await store.getSetting(BACKFILL_SETTING));
   assert.equal(await backfillEntities(store, () => AT), null, 'runs once');
   assert.equal(await backfillEntities(plain, () => AT), null, 'does nothing without the linking store');
+});
+
+test('nameIndex maps names and aliases to live records, merged ones to their target', () => {
+  const dm = entity('artist', 'deadmau5');
+  const old = entity('artist', 'dead mau5', { mergedIntoId: dm.id });
+  const mike = entity('person', 'mike');
+  const names = nameIndex([dm, old, mike, entity('venue', 'echoplex')], [{ entityId: dm.id, kind: 'artist', aliasNormalized: 'joel zimmerman' }], ['artist', 'person']);
+  assert.deepEqual(names, {
+    artist: { deadmau5: dm.id, 'dead mau5': dm.id, 'joel zimmerman': dm.id },
+    person: { mike: mike.id },
+  });
+});
+
+test('list import does not add an act or person already on the event under another of its names', () => {
+  const dm = entity('artist', 'deadmau5');
+  const mike = entity('person', 'mike rivera');
+  const names = nameIndex([dm, mike], [
+    { entityId: dm.id, kind: 'artist', aliasNormalized: 'joel zimmerman' },
+    { entityId: mike.id, kind: 'person', aliasNormalized: 'mike r' },
+  ], ['artist', 'person']);
+  const e = event({
+    seen: [{ key: 'deadmau5', name: 'deadmau5', from: 'you', artistId: dm.id }],
+    companions: ['Mike Rivera'],
+    refs: { venueId: null, placeId: null, seriesId: null, companionIds: [mike.id] },
+  });
+  const list = readTable([
+    ['Event', 'Saw', 'Went with'],
+    ['Night', 'Joel Zimmerman; Kaskade', 'Mike R.; Ana'],
+  ]);
+  const { patch } = fillPatch(list.rows[0], e, new Set(), names);
+  assert.deepEqual(patch.seen?.map((a) => a.name), ['deadmau5', 'Kaskade']);
+  assert.deepEqual(patch.companions, ['Mike Rivera', 'Ana']);
+  // Without the records, the other spellings look new.
+  assert.deepEqual(fillPatch(list.rows[0], e).patch.companions, ['Mike Rivera', 'Mike R.', 'Ana']);
 });

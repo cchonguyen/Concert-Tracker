@@ -12,9 +12,9 @@ import { LoggedEvent } from '../src/server/events/types.ts';
 import { sheetsRouter } from '../src/server/events/sheetRoutes.ts';
 import { importsRouter } from '../src/server/events/importRoutes.ts';
 import { parseSheetLink, SHEETS_SETTING, SheetsApi, SheetsAuthError, SheetValue, sheetVersion } from '../src/server/events/sheets.ts';
-import { editPatch, findMatches, ImportApi, readTable, runImport } from '../src/services/listImport.ts';
+import { fillPatch, findMatches, ImportApi, readTable, runImport } from '../src/services/listImport.ts';
 import { SHEETS_BASE_SETTING } from '../src/server/events/sheets.ts';
-import { droppedColumns, rowsToReview, serialToDate, sheetRows, sheetTable } from '../src/services/sheetSync.ts';
+import { droppedColumns, outsideEdits, serialToDate, sheetRows, sheetTable } from '../src/services/sheetSync.ts';
 import { fakeFetcher } from './fakes.ts';
 
 const NOW = new Date('2026-10-21T12:00:00Z');
@@ -74,179 +74,87 @@ test('sheetTable: date serials in date columns become dates; numbers elsewhere s
   ]);
 });
 
-test('round trip: an untouched sheet changes nothing and needs no review', () => {
+test('round trip: an untouched sheet has no outside edits, and its rows add nothing to their events', () => {
   const table = sheetTable(asRead(sheetRows([show])));
+  assert.equal(outsideEdits(table, table), 0);
   const list = readTable(table);
   assert.equal(list.rows[0].eventId, 'e1');
   const m = findMatches(list.rows[0], [show], []);
-  assert.equal(m.edit, show);
-  assert.deepEqual(editPatch(list.rows[0], show, list.present).changes, []);
-  assert.equal(rowsToReview(list, [show], []), 0);
+  assert.equal(m.exported, true);
+  assert.deepEqual(m.exact, { kind: 'event', event: show });
+  assert.deepEqual(fillPatch(list.rows[0], show).adds, []);
   assert.deepEqual(droppedColumns(list), []);
 });
 
-// The tab as the app wrote it at the last sync, read back as a base.
-const baseOf = (events: LoggedEvent[]) => {
-  const base = readTable(sheetTable(asRead(sheetRows(events))));
-  return (id: string) => ({ row: base.rows.find((r) => r.eventId === id)!, present: base.present });
-};
-
-test('three-way: edits made in the app since the last sync are never undone by the stale sheet', () => {
-  const base = baseOf([show]);
-  // In the app since: new venue, rating, an act and a person. The sheet is untouched.
-  const now = ev('e1', {
-    ...show,
-    venue: 'Greek Theatre',
-    rating: 5,
-    seen: [...show.seen, { key: 'charli xcx', name: 'Charli XCX', from: 'you' }],
-    companions: ['Sam', 'Lee'],
-  });
-  const sheet = readTable(sheetTable(asRead(sheetRows([show]))));
-  assert.deepEqual(editPatch(sheet.rows[0], now, sheet.present, new Set(), base('e1')).changes, []);
-  const written = readTable(sheetTable(asRead(sheetRows([show]))));
-  assert.equal(rowsToReview(sheet, [now], [], written), 0);
-  // Without the base the same sheet looks like edits, all marked as unknown.
-  const blind = editPatch(sheet.rows[0], now, sheet.present);
-  assert.equal(blind.changes.length > 0 && blind.changes.every((c) => c.both), true);
+test('outsideEdits counts rows edited, added or removed in the sheet since the app wrote it', () => {
+  const written = sheetTable(asRead(sheetRows([show, ev('e2', { name: 'Other', year: 2024 })])));
+  const header = written[0];
+  const edited = written.map((r) => [...r]);
+  edited[1][header.indexOf('Rating')] = '3';
+  assert.equal(outsideEdits(edited, written), 1);
+  assert.equal(outsideEdits([...written, header.map((h) => (h === 'Event' ? 'Added' : ''))], written), 1);
+  assert.equal(outsideEdits(written.slice(0, 2), written), 1, 'a removed row counts');
+  assert.equal(outsideEdits([...written, header.map(() => '')], written), 0, 'blank rows do not');
+  // Never written by the app: every row with data would be replaced.
+  assert.equal(outsideEdits(written), 2);
+  assert.equal(outsideEdits([]), 0);
 });
 
-test('three-way: a field changed in the sheet applies; one changed on both sides is flagged and kept with keepApp', () => {
-  const base = baseOf([show]);
-  const now = ev('e1', { ...show, venue: 'Greek Theatre', notes: 'app note' });
+test('the app is the source of truth: an edited export row never changes what the event says', () => {
+  const now = ev('e1', { ...show, notes: undefined, ticketPrice: undefined });
   const rows = sheetRows([show]);
   const header = rows[0] as string[];
   const set = (col: string, v: string | number | null) => (rows[1][header.indexOf(col)] = v);
-  set('Rating', 3); // only the sheet changed it
-  set('Venue', 'Hearst Greek'); // both changed it
-  set('Saw', 'Robyn; Kim Petras; Tove Lo'); // the sheet added an act
-  const sheet = readTable(sheetTable(asRead(rows)));
-  const all = editPatch(sheet.rows[0], now, sheet.present, new Set(), base('e1'));
+  set('Venue', 'Hearst Greek'); // the event has a venue: kept
+  set('Rating', 2); // kept
+  set('Saw', 'Robyn; Tove Lo'); // Kim Petras is not removed; Tove Lo is new
+  set('Went with', ''); // Sam is not removed
+  set('Notes', 'from the sheet'); // the event has none: filled
+  const list = readTable(sheetTable(asRead(rows)));
+  const { patch, adds } = fillPatch(list.rows[0], now);
+  assert.equal('venue' in patch, false);
+  assert.equal('rating' in patch, false);
+  assert.equal('companions' in patch, false);
+  assert.equal(patch.notes, 'from the sheet');
   assert.deepEqual(
-    all.changes.map((c) => [c.field, c.from, c.to, c.both]),
-    [
-      ['venue', 'Greek Theatre', 'Hearst Greek', true],
-      ['rating', '4', '3', false],
-      ['acts seen', '', 'Tove Lo', false],
-    ],
-  );
-  const kept = editPatch(sheet.rows[0], now, sheet.present, new Set(), base('e1'), true).patch;
-  assert.equal('venue' in kept, false);
-  assert.equal('notes' in kept, false);
-  assert.equal(kept.rating, 3);
-  assert.deepEqual(
-    kept.seen?.map((s) => s.name),
+    patch.seen?.map((s) => s.name),
     ['Robyn', 'Kim Petras', 'Tove Lo'],
   );
+  assert.deepEqual(adds, ['1 act seen', 'notes']);
 });
 
-test('three-way: lists merge, so an act added in the app and one removed in the sheet both stand', () => {
-  const base = baseOf([show]);
-  const now = ev('e1', { ...show, seen: [...show.seen, { key: 'charli xcx', name: 'Charli XCX', from: 'you' }], companions: ['Sam', 'Lee'] });
-  const rows = sheetRows([show]);
+test('runImport folds export rows into their events through PATCH, filling only gaps', async () => {
+  const other = ev('e2', { name: 'Other', year: 2024 });
+  const rows = sheetRows([show, other]);
   const header = rows[0] as string[];
-  rows[1][header.indexOf('Saw')] = 'Robyn';
-  rows[1][header.indexOf('Went with')] = 'Sam; Ana';
-  const sheet = readTable(sheetTable(asRead(rows)));
-  const { patch, changes } = editPatch(sheet.rows[0], now, sheet.present, new Set(), base('e1'));
-  assert.deepEqual(patch.seen?.map((s) => s.name), ['Robyn', 'Charli XCX']);
-  assert.deepEqual(patch.companions, ['Sam', 'Lee', 'Ana']);
-  assert.equal(changes.every((c) => !c.both), true);
-});
-
-test('editPatch: edited cells replace values, emptied cells clear them, unreadable cells change nothing', () => {
-  const rows = sheetRows([show]);
-  const header = rows[0] as string[];
-  const row = [...rows[1]];
-  const set = (col: string, v: string | number | null) => (row[header.indexOf(col)] = v);
-  set('Venue', 'Greek Theatre');
-  set('City', null);
-  set('Rating', 'great'); // not 1 to 5: flagged, left alone
-  set('Saw', 'Robyn; Charli XCX');
-  set('Went with', 'Sam; Lee');
-  set('Notes', 'Encore was Dancing On My Own');
-  const list = readTable(sheetTable(asRead([header, row])));
-  const { patch, changes } = editPatch(list.rows[0], show, list.present);
-  assert.deepEqual(
-    changes.map((c) => c.field),
-    ['venue', 'city', 'notes', 'acts seen', 'went with'],
-  );
-  assert.equal(patch.venue, 'Greek Theatre');
-  assert.equal(patch.city, null);
-  assert.equal('rating' in patch, false);
-  assert.equal(patch.notes, 'Encore was Dancing On My Own');
-  // Robyn keeps the lineup's role and the favourite mark; Kim Petras is gone.
-  assert.deepEqual(patch.seen, [
-    { name: 'Robyn', from: 'lineup', role: 'headliner', roleFrom: 'lineup', favourite: true },
-    { name: 'Charli XCX', from: 'you' },
-  ]);
-  assert.deepEqual(patch.companions, ['Sam', 'Lee']);
-  // Without a base, nothing says the sheet is newer.
-  assert.deepEqual(changes.find((c) => c.field === 'acts seen'), { field: 'acts seen', from: 'Kim Petras', to: 'Charli XCX', both: true });
-  assert.equal(changes.every((c) => c.both), true);
-  assert.deepEqual(editPatch(list.rows[0], show, list.present, new Set(), undefined, true).patch, {});
-});
-
-test('editPatch: dates, end dates and the year', () => {
-  const header = sheetRows([])[0] as string[];
-  const read = (cells: Record<string, string | number>) =>
-    readTable(sheetTable([header, header.map((h) => cells[h] ?? '')]));
-  const base = { Event: 'Robyn', ID: 'e1', Venue: 'The Greek', City: 'Berkeley, CA', Saw: 'Robyn; Kim Petras', 'Went with': 'Sam', Rating: 4 };
-
-  // A typed date (a serial) moves the event and adds an end date.
-  let list = read({ ...base, Date: 45760, 'End date': 45761, Year: 2025 });
-  let out = editPatch(list.rows[0], show, list.present);
-  assert.equal(out.patch.startDate, '2025-04-13');
-  assert.equal(out.patch.endDate, '2025-04-14');
-
-  // Clearing the date keeps the year (the server keeps it from the date).
-  list = read({ ...base, Year: 2025 });
-  out = editPatch(list.rows[0], show, list.present);
-  assert.equal(out.patch.startDate, null);
-  assert.equal('year' in out.patch, false);
-  assert.deepEqual(out.changes.map((c) => c.field), ['date']);
-
-  // A date the code can't read (05/06/2025) changes nothing.
-  list = read({ ...base, Date: '05/06/2025', Year: 2025 });
-  out = editPatch(list.rows[0], show, list.present);
-  assert.deepEqual(out.changes, []);
-
-  // An undated event: a year read from its name is not a change you made.
-  const undated = ev('e2', { name: 'Coachella 2019', seen: [], companions: [] });
-  list = read({ Event: 'Coachella 2019', ID: 'e2' });
-  assert.deepEqual(editPatch(list.rows[0], undated, list.present).changes, []);
-});
-
-test('runImport applies edits through PATCH and counts untouched rows', async () => {
-  const rows = sheetRows([show, ev('e2', { name: 'Other', year: 2024 })]);
-  const header = rows[0] as string[];
-  rows[1][header.indexOf('Rating')] = 5;
+  rows[1][header.indexOf('Rating')] = 5; // show is rated: ignored
+  rows[2][header.indexOf('Rating')] = 3; // other is not: filled
   const list = readTable(sheetTable(asRead(rows)));
   const patches: Array<{ id: string; patch: EventPatch }> = [];
   const api: ImportApi = {
     create: async () => assert.fail('nothing is created'),
     update: async (id, patch) => {
       patches.push({ id, patch });
-      return show;
+      return other;
     },
     addEmail: async () => assert.fail('no email rows'),
     restoreEmail: async () => assert.fail('no email rows'),
   };
-  const events = [show, ev('e2', { name: 'Other', year: 2024 })];
-  const items = list.rows.map((row) => ({ row, choice: { kind: 'edit' as const, event: findMatches(row, events, []).edit!, keepApp: false } }));
-  const result = await runImport(items, api, new Set(), list.present);
-  assert.deepEqual(result, { created: 0, merged: 0, edited: 1, unchanged: 1, failed: [] });
-  assert.deepEqual(patches, [{ id: 'e1', patch: { rating: 5 } }]);
+  const events = [show, other];
+  const items = list.rows.map((row) => ({ row, choice: { kind: 'into' as const, target: findMatches(row, events, []).exact! } }));
+  const result = await runImport(items, api);
+  assert.deepEqual(result, { created: 0, merged: 1, unchanged: 1, failed: [] });
+  assert.deepEqual(patches, [{ id: 'e2', patch: { rating: 3 } }]);
 });
 
-test('a row added in the sheet without an ID goes through the usual list matching', () => {
+test('a row without an ID goes through the usual list matching', () => {
   const rows = sheetRows([show]);
   const header = rows[0] as string[];
   const added = header.map((h) => (h === 'Event' ? 'Robyn - Sexistential Tour' : h === 'Date' ? '2025-04-12' : h === 'Notes' ? 'mine' : null));
   const list = readTable(sheetTable(asRead([...rows, added])));
   const m = findMatches(list.rows[1], [show], []);
-  assert.equal(m.edit, undefined);
+  assert.equal(m.exported, undefined);
   assert.equal(m.exact?.kind, 'event');
-  assert.equal(rowsToReview(list, [show], []), 1);
 });
 
 test('droppedColumns: columns of your own are named before the tab is rewritten', () => {
