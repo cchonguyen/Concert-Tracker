@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Building2, HeartPulse, History, Layers, Loader2, MapPin, Mic2, Plus, Search, Undo2, Users } from 'lucide-react';
+import { Building2, HeartPulse, History, Layers, Loader2, MapPin, Mic2, Plus, Search, Tag, Undo2, Users } from 'lucide-react';
 import { entitiesApi, LoggedEvent } from '../services/lineupApi';
 import type { Entity, EntityAlias, EntityKind, EntityLink, HistoryEntry } from '../server/entities/types';
 import { norm } from '../services/listImport';
@@ -8,7 +8,7 @@ import { ManageEntry } from './ManageEntry';
 import { SeriesPanel } from './SeriesPanel';
 
 // The Manage tab: the records behind your events' names (artists, people,
-// venues, places, series, organizations), one list per kind. Open one to
+// venues, places, series, organizations, labels), one list per kind. Open one to
 // rename it everywhere, merge it into another, give it AKAs or links, and
 // undo any change from History. See ARCHITECTURE.md ("Records").
 
@@ -44,6 +44,7 @@ export const KINDS: Array<{ kind: ManageKind; label: string; one: string; icon: 
   { kind: 'place', label: 'Places', one: 'place', icon: MapPin },
   { kind: 'series', label: 'Series', one: 'series', icon: Layers },
   { kind: 'organization', label: 'Organizations', one: 'organization', icon: Building2 },
+  { kind: 'label', label: 'Labels', one: 'label', icon: Tag },
 ];
 
 // "Los Angeles, CA, United States" for a place; the name for the rest.
@@ -88,6 +89,8 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   const [notice, setNotice] = useState<{ text: string; undo?: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [newOrg, setNewOrg] = useState('');
+  const [newLabel, setNewLabel] = useState('');
+  const [newGroup, setNewGroup] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -162,6 +165,20 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
     try {
       const { entity, entry } = await entitiesApi.createOrganization(newOrg);
       setNewOrg('');
+      await changed(entry, false);
+      setOpenId(entity.id);
+    } catch (err) {
+      setNotice({ text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const addLabel = async () => {
+    setBusy('label');
+    try {
+      const { entity, entry } = await entitiesApi.createLabel(newLabel, newGroup.trim() || undefined);
+      setNewLabel('');
       await changed(entry, false);
       setOpenId(entity.id);
     } catch (err) {
@@ -247,6 +264,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
       {kind === 'health' ? (
         <DataHealth
           data={data}
+          events={events}
           counts={counts}
           onOpen={(id) => {
             const e = byId.get(id);
@@ -339,6 +357,37 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
               </button>
             </form>
           )}
+          {kind === 'label' && (
+            <form
+              className="flex flex-wrap gap-2 sm:flex-nowrap"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (newLabel.trim()) void addLabel();
+              }}
+            >
+              <input className={control} value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="Outdoor" aria-label="New label" />
+              <input
+                className={control}
+                value={newGroup}
+                onChange={(e) => setNewGroup(e.target.value)}
+                placeholder="Group (optional): Indoor/Outdoor"
+                aria-label="Label group"
+                list="label-groups"
+              />
+              <datalist id="label-groups">
+                {[...new Set(data.entities.filter((e) => e.kind === 'label' && typeof e.attrs.group === 'string').map((e) => String(e.attrs.group)))].map((g) => (
+                  <option key={g} value={g} />
+                ))}
+              </datalist>
+              <button
+                type="submit"
+                disabled={!newLabel.trim() || Boolean(busy)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40"
+              >
+                {busy === 'label' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add
+              </button>
+            </form>
+          )}
           <label className="relative block">
             <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-zinc-600" />
             <input
@@ -352,7 +401,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
           {list.length ? (
             <ul className="divide-y divide-zinc-900 rounded-xl border border-zinc-900">
               {list.map((e) => {
-                const n = counts.get(e.id)?.length ?? 0;
+                const n = e.kind === 'label' ? data.links.filter((l) => l.toId === e.id && l.role === 'has_label').length : (counts.get(e.id)?.length ?? 0);
                 const akas = data.aliases.filter((a) => a.entityId === e.id).length;
                 const hosts = e.kind === 'series' ? data.links.filter((l) => l.fromId === e.id && l.role === 'hosted_by').length : 0;
                 return (
@@ -366,6 +415,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
                       )}
                       {akas > 0 && <span className="shrink-0 text-[11px] text-zinc-500">{akas} AKA</span>}
                       {hosts > 0 && <span className="shrink-0 text-[11px] text-zinc-500">hosted</span>}
+                      {e.kind === 'label' && typeof e.attrs.group === 'string' && <span className="shrink-0 text-[11px] text-zinc-500">{e.attrs.group}</span>}
                       <span className="w-10 shrink-0 text-right text-xs tabular-nums text-zinc-400">{e.kind === 'organization' ? '' : n}</span>
                     </button>
                   </li>
@@ -377,7 +427,9 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
               {live.length
                 ? 'Nothing matches.'
                 : kind === 'organization'
-                  ? 'No organizations yet. Add the promoters and labels that put on your series.'
+                  ? 'No organizations yet. Add the promoters and record labels that put on your series.'
+                  : kind === 'label'
+                    ? 'No labels yet. Add one, such as Outdoor with the group Indoor/Outdoor, then put it on venues and series.'
                   : `No ${meta?.label.toLowerCase()} yet. They appear here from the names on your events.`}
             </p>
           )}
