@@ -23,6 +23,7 @@ import { norm } from '../services/listImport';
 import { leaveB2b, pairB2b, seenSlots, SET_LABELS, setSolo, SlotAct, slotId, toSeenInput } from '../server/events/seen';
 import { eventTitle, seriesList, seriesOffers, weekendFromName } from '../services/series';
 import { SuggestInput } from './SuggestInput';
+import { SeenGenres } from './SeenGenres';
 import { EventTitle } from './EventTitle';
 import { placePatch } from '../services/table';
 import { cityWithRegion } from '../server/events/regions';
@@ -1054,6 +1055,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         <section className="space-y-3">
           <h3 className={sectionTitle}>Who you saw</h3>
           <SeenActs seen={event.seen} sets={sets} past={pastArtists} onChange={(seen) => save({ seen })} />
+          <SeenGenres event={event} />
           {offered.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
               <span className="text-zinc-500">From the event name:</span>
