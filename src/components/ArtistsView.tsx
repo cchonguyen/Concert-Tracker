@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowUp, CalendarDays, ChevronDown, ChevronRight, Crown, FolderCog, Heart, LayoutList, List, MapPin, Search, Table2, Tags } from 'lucide-react';
 import { genresApi, LoggedEvent } from '../services/lineupApi';
 import { ArtistGenres, genresByArtist, topStyles } from '../services/genres';
+import { artistGaps, spanLabel } from '../services/insights';
 import { whenLabel } from '../services/format';
 import { EventTitle } from './EventTitle';
 import { ARTIST_SORTS, artistSummaries, ArtistSort, ArtistSummary, groupArtists, jumpTargets } from '../services/artists';
@@ -150,6 +151,7 @@ const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOp
   const [open, setOpen] = useState(false);
   const shown = open ? a.events : a.events.slice(0, SHOWN_EVENTS);
   const span = years(a);
+  const gaps = artistGaps(a.events, new Date().toISOString().slice(0, 10));
   return (
     <li className="flex gap-4 px-4 py-4 sm:px-5">
       <Avatar artist={a} />
@@ -186,6 +188,13 @@ const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOp
             <div className="text-[10px] uppercase tracking-wide text-zinc-500">{a.events.length === 1 ? 'time' : 'times'}</div>
           </div>
         </div>
+
+        {gaps.sinceLast !== undefined && (
+          <p className="text-xs text-zinc-400" title={gaps.dated < gaps.total ? `Based on the ${gaps.dated} of ${gaps.total} events dated to the day` : undefined}>
+            Last seen {gaps.sinceLast === 0 ? 'today' : `${spanLabel(gaps.sinceLast)} ago`}
+            {gaps.longest && <> · longest wait {spanLabel(gaps.longest.days)}</>}
+          </p>
+        )}
 
         {(a.headlined > 0 || a.supported > 0 || a.favourites > 0) && (
           <div className="flex flex-wrap gap-1.5">

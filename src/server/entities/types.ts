@@ -25,7 +25,7 @@ export interface EntityAlias {
   aliasNormalized: string;
 }
 
-export type LinkRole = 'in' | 'hosted_by' | 'has_label';
+export type LinkRole = 'in' | 'hosted_by' | 'has_label' | 'introduced_me_to';
 
 export interface EntityLink {
   fromId: string;
@@ -42,6 +42,8 @@ export const ALLOWED_LINKS: Array<{ from: EntityKind; role: LinkRole; to: Entity
   // Outdoor) on each record.
   { from: 'venue', role: 'has_label', to: 'label' },
   { from: 'series', role: 'has_label', to: 'label' },
+  // Who got you into an artist (Manage step 6).
+  { from: 'person', role: 'introduced_me_to', to: 'artist' },
 ];
 
 // One rename, merge, alias or link change, with everything needed to undo
