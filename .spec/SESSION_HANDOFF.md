@@ -1,7 +1,5 @@
-# Session Handoff
-
-- **Active slice:** none. M1b done (2026-10-28).
-- **Last step:** M1b made Google Sheets sync one-way. "Update the sheet" writes your log into the tab. When rows were edited, added or removed in the sheet since the last write (`outsideEdits` in `src/services/sheetSync.ts`), or own columns would be dropped, it asks before replacing them. Nothing is read back. `editPatch` and its three-way merge are gone. Rows from the app's own export (with an ID) fold into their event through `fillPatch`, which only fills gaps. `fillPatch` takes a `NameIndex` from the new `GET /api/entities/names` (`src/server/entities/routes.ts`), so an act or person already on the event under an alias is not added twice. REQUIREMENTS R4.9 and R4.12 and ARCHITECTURE ("Importing a list", "Google Sheets sync") are updated.
-- **Deploy note:** no migration. Alias dedup only works once 0014 is applied; without it, names compare as written.
-- **Next step:** `/implement` Slice M2a: Manage operations (rename, merge with flattening and link/act/companion dedup, AKA add and remove, history manifest and undo, API routes).
-- **Blockers:** none.
+# Session Handoff Snapshot (<500 Tokens)
+- **Active Slice:** None (Share page S1 done; Manage M2a onward is another thread's work).
+- **Last Completed Step:** Slice S1: migration 0015 `share_links` (not yet applied in Supabase); `src/server/share/` (types, `buildShareView` allow-list, `isOver`/`todayIn` in the link's time zone, link codes stored as SHA-256 hashes, one active link); store methods `listShareLinks`, `getShareLinkByHash`, `putShareLink`, `listShareEvents` (named columns only) in both stores; `tests/share.test.ts`.
+- **Exact Next Step:** `/implement` Slice S2: strict raw-path match `^/s/[A-Za-z0-9_-]{22}$` and Access token check at the top of `worker/index.ts`, GET/HEAD `/s/:code` rendering HTML from `buildShareView` only, headers per the spec, identical "not active" page, `/s/*` in `run_worker_first`.
+- **Blockers / Open Decisions:** Spec and Gemini review log: https://claude.ai/artifact/9kJinrnXRiu4EMPNCA8VbK. S2's Access token check needs the Access team domain and application audience tag from Charlie at release (S4).
