@@ -51,6 +51,7 @@ import { SheetSync } from './SheetSync';
 import { FillGaps } from './FillGaps';
 import { ArtistGenresPanel } from './ArtistGenresPanel';
 import { SeriesPanel } from './SeriesPanel';
+import type { ManageTarget } from './ManageView';
 import { EventTitle } from './EventTitle';
 import { SET_LABELS, seenSlots, slotId } from '../server/events/seen';
 import { ATTENDANCE_LABELS, attendanceOf, AttendanceState } from '../server/events/attendance';
@@ -65,6 +66,8 @@ interface TableViewProps {
   onImported: () => void;
   onChanged: (event: LoggedEvent) => void;
   onCaptured: (event: LoggedEvent) => void; // a line typed in the Table's Add box
+  // Series live in the Manage tab; without it, the Series panel opens here.
+  onManage?: (target: ManageTarget) => void;
 }
 
 const control =
@@ -314,7 +317,7 @@ const People: React.FC<{ names: string[] }> = ({ names }) =>
 
 // Every event as a row you can filter, sort and export. A row opens the usual
 // event panel for editing; "Import a list" adds events from a CSV you kept.
-export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, imports, onOpen, onImported, onChanged, onCaptured }) => {
+export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, imports, onOpen, onImported, onChanged, onCaptured, onManage }) => {
   const [filling, setFilling] = useState(false);
   const [adding, setAdding] = useState(false);
   const [linking, setLinking] = useState(false);
@@ -366,7 +369,11 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
     </button>
   );
   const seriesButton = (
-    <button onClick={() => setLinking(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+    <button
+      onClick={() => (onManage ? onManage({ kind: 'series' }) : setLinking(true))}
+      className="inline-flex items-center gap-1.5 hover:text-zinc-200"
+      title={onManage ? 'Series are in the Manage tab' : undefined}
+    >
       <Layers className="h-3.5 w-3.5" /> Series
     </button>
   );

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowUp, CalendarDays, ChevronDown, ChevronRight, Crown, Heart, LayoutList, List, MapPin, Search, Table2, Tags } from 'lucide-react';
+import { ArrowUp, CalendarDays, ChevronDown, ChevronRight, Crown, FolderCog, Heart, LayoutList, List, MapPin, Search, Table2, Tags } from 'lucide-react';
 import { genresApi, LoggedEvent } from '../services/lineupApi';
 import { ArtistGenres, genresByArtist, topStyles } from '../services/genres';
 import { whenLabel } from '../services/format';
@@ -10,6 +10,7 @@ interface ArtistsViewProps {
   events: LoggedEvent[];
   onOpenEvent: (id: string) => void;
   onOpenTable: (query: string) => void;
+  onManage?: (key: string) => void; // the artist's record in Manage
 }
 
 const SORT_KEY = 'livearchive.artistSort.v1';
@@ -90,6 +91,7 @@ interface ArtistProps {
   genre?: ArtistGenres;
   onOpenEvent: (id: string) => void;
   onOpenTable: (query: string) => void;
+  onManage?: (key: string) => void;
 }
 
 // Where an act's genres came from, for the tooltip.
@@ -99,7 +101,7 @@ const genreTitle = (g: ArtistGenres) =>
   }`;
 
 // Compact: one line per artist; tapping it opens the detailed card in place.
-const ArtistRow: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpenTable }) => {
+const ArtistRow: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpenTable, onManage }) => {
   const [open, setOpen] = useState(false);
   if (open)
     return (
@@ -112,7 +114,7 @@ const ArtistRow: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpe
             <ChevronDown className="h-3 w-3" /> Collapse
           </button>
         </li>
-        <ArtistCard artist={a} genre={genre} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} />
+        <ArtistCard artist={a} genre={genre} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} onManage={onManage} />
       </>
     );
   const span = years(a);
@@ -144,7 +146,7 @@ const ArtistRow: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpe
   );
 };
 
-const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpenTable }) => {
+const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpenTable, onManage }) => {
   const [open, setOpen] = useState(false);
   const shown = open ? a.events : a.events.slice(0, SHOWN_EVENTS);
   const span = years(a);
@@ -246,6 +248,11 @@ const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOp
               <Table2 className="h-3 w-3" /> In the Table
             </button>
           )}
+          {onManage && (
+            <button onClick={() => onManage(a.key)} className="inline-flex items-center gap-1 text-zinc-500 hover:text-violet-300">
+              <FolderCog className="h-3 w-3" /> In Manage
+            </button>
+          )}
         </div>
       </div>
     </li>
@@ -254,7 +261,7 @@ const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOp
 
 // Everyone you've seen, from the acts you marked on each event, in groups you
 // can scan: by how often, when you last or first saw them, or by name.
-export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, onOpenTable }) => {
+export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, onOpenTable, onManage }) => {
   const [filter, setFilter] = useState('');
   const [sort, setSortState] = useState<ArtistSort>(readSort);
   const setSort = (s: ArtistSort) => {
@@ -463,9 +470,9 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
             <ul className="divide-y divide-zinc-900 rounded-xl border border-zinc-900 bg-zinc-900/20">
               {g.artists.map((a) =>
                 density === 'compact' ? (
-                  <ArtistRow key={a.key} artist={a} genre={genres.get(a.key)} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} />
+                  <ArtistRow key={a.key} artist={a} genre={genres.get(a.key)} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} onManage={onManage} />
                 ) : (
-                  <ArtistCard key={a.key} artist={a} genre={genres.get(a.key)} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} />
+                  <ArtistCard key={a.key} artist={a} genre={genres.get(a.key)} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} onManage={onManage} />
                 ),
               )}
             </ul>
