@@ -3,6 +3,7 @@ import { getSupabaseClient } from '../supabase';
 import { createRateLimitedFetcher } from './http';
 import { createGeminiClient } from './gemini';
 import { QuotaLedger } from './quota';
+import { withEntityLinks } from '../entities/linkingStore';
 import { FileLineupStore } from './store/fileStore';
 import { SupabaseLineupStore } from './store/supabaseStore';
 import { LineupStore } from './store/types';
@@ -21,11 +22,11 @@ import { braveSearch, geminiSearch, LineupSearch } from './search';
 // so a missing database fails loudly instead of losing data.
 export async function createStore(opts: { requireSupabase?: boolean } = {}): Promise<LineupStore> {
   const fileStore = () => new FileLineupStore(process.env.DATA_DIR || path.resolve(process.cwd(), 'data'));
-  if (!opts.requireSupabase && process.env.LINEUP_STORE === 'file') return fileStore();
+  if (!opts.requireSupabase && process.env.LINEUP_STORE === 'file') return withEntityLinks(fileStore());
   const client = getSupabaseClient();
   if (!client) {
     if (opts.requireSupabase) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required on this host.');
-    return fileStore();
+    return withEntityLinks(fileStore());
   }
   // Probe one table from each migration so a missing one fails clearly.
   for (const [table, migration] of [
@@ -37,9 +38,17 @@ export async function createStore(opts: { requireSupabase?: boolean } = {}): Pro
     const message = `Supabase table ${table} unavailable (${probe.error.message}). Apply supabase/migrations/${migration}.`;
     if (opts.requireSupabase) throw new Error(message);
     console.warn(`${message} Using the local file store.`);
-    return fileStore();
+    return withEntityLinks(fileStore());
   }
-  return new SupabaseLineupStore(client);
+  const store = new SupabaseLineupStore(client);
+  // The entity tables (0014) are optional for now: without them events save
+  // with their names only, as before.
+  const entities = await client.from('entities').select('id').limit(1);
+  if (entities.error) {
+    console.warn(`Supabase table entities unavailable (${entities.error.message}). Apply supabase/migrations/0014_entities.sql; saving events without record IDs until then.`);
+    return store;
+  }
+  return withEntityLinks(store);
 }
 
 export function createDeps(store: LineupStore): PipelineDeps {

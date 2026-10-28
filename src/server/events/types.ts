@@ -80,6 +80,9 @@ export interface SeenAct {
   // how that set was played. Still one seen act, credited once.
   solo?: boolean;
   soloSet?: SetKind;
+  // The artist record this act points at (src/server/entities/). Filled from
+  // the name on every save while names stay the source of truth.
+  artistId?: string;
 }
 
 // The weather where and when the event was, from the Open-Meteo archive
@@ -134,8 +137,19 @@ export interface LoggedEvent extends EventFacts {
   rating?: number;
   ticketPrice?: number;
   notes?: string;
+  // The records this event's names point at, filled from those names on
+  // every save (src/server/entities/link.ts). Absent when the entity tables
+  // (migration 0014) are not there yet.
+  refs?: EventRefs;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface EventRefs {
+  venueId: string | null;
+  placeId: string | null;
+  seriesId: string | null;
+  companionIds: Array<string | null>; // in the order of `companions`; null for a name with no letters or digits
 }
 
 // What the event list shows about a running or finished lineup lookup.

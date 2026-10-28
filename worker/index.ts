@@ -2,6 +2,7 @@ import { handleAsNodeRequest } from 'cloudflare:node';
 import { createApiApp } from '../src/server/app';
 import { PipelineDeps, runJob } from '../src/server/lineup/pipeline';
 import { createDeps, createStore } from '../src/server/lineup/service';
+import { backfillEntities } from '../src/server/entities/linkingStore';
 
 // Cloudflare Worker entry. Static files are served from ./dist by Workers
 // static assets (wrangler.jsonc); only /api/* reaches this code.
@@ -67,6 +68,13 @@ export default {
 
   async scheduled(_controller, env) {
     const deps = await getDeps();
+    // Once, after 0014: point events saved before it at their records.
+    try {
+      const done = await backfillEntities(deps.store);
+      if (done) console.log(`Entity backfill: ${done.events} events, ${done.entities} records, ${done.aliases} aliases.`);
+    } catch (err) {
+      console.error('Entity backfill failed:', err instanceof Error ? err.message : String(err));
+    }
     const due = await deps.store.dueJobs(deps.now(), 5);
     if (due.length) await env.LOOKUP_QUEUE.sendBatch(due.map((job) => ({ body: { jobId: job.id } })));
   },
