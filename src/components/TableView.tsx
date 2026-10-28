@@ -56,6 +56,8 @@ import { EventTitle } from './EventTitle';
 import { SET_LABELS, seenSlots, slotId } from '../server/events/seen';
 import { ATTENDANCE_LABELS, attendanceOf, AttendanceState } from '../server/events/attendance';
 import { CaptureBar } from './CaptureBar';
+import { PersonName } from './PersonName';
+import { nameForms } from '../services/people';
 
 interface TableViewProps {
   events: LoggedEvent[];
@@ -286,29 +288,22 @@ const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, 
   );
 };
 
-const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0].toUpperCase())
-    .join('');
-
 const People: React.FC<{ names: string[] }> = ({ names }) =>
   names.length ? (
-    <span className="flex items-center gap-2" title={names.join(', ')}>
-      <span className="flex -space-x-1.5">
+    <span className="flex min-w-0 items-center gap-2" title={names.join(', ')}>
+      <span className="flex shrink-0 -space-x-1.5">
         {names.slice(0, 3).map((n) => (
           <span
             key={n}
             className="grid h-6 w-6 place-items-center rounded-full border border-zinc-950 bg-zinc-800 text-[10px] font-semibold text-zinc-300"
           >
-            {initials(n)}
+            {nameForms(n).initials.slice(0, 2)}
           </span>
         ))}
       </span>
-      <span className="truncate text-xs text-zinc-400">
-        {names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`}
+      <span className="flex min-w-0 text-xs text-zinc-400">
+        <PersonName name={names[0]} />
+        {names.length > 1 && <span className="shrink-0">&nbsp;+{names.length - 1}</span>}
       </span>
     </span>
   ) : (
