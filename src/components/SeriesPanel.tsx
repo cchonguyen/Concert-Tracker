@@ -11,6 +11,11 @@ interface SeriesPanelProps {
   onOpen: (id: string) => void;
   onShow: (series: string) => void; // filter the Table to it
   onClose: () => void;
+  // In the Manage tab: shown in place, not as a panel.
+  embedded?: boolean;
+  // Renames the series record everywhere (Manage); without it, each event
+  // is saved with the new name.
+  onRename?: (from: string, to: string) => Promise<void>;
 }
 
 const control =
@@ -126,10 +131,11 @@ const Series: React.FC<{
   others: LoggedEvent[];
   busy: boolean;
   onSet: (series: string | null, events: LoggedEvent[]) => void;
+  onRename?: (to: string) => void;
   onWeekend: (event: LoggedEvent, weekend: number | null) => void;
   onOpen: (id: string) => void;
   onShow: () => void;
-}> = ({ name, editions, others, busy, onSet, onWeekend, onOpen, onShow }) => {
+}> = ({ name, editions, others, busy, onSet, onRename, onWeekend, onOpen, onShow }) => {
   const [draft, setDraft] = useState(name);
   useEffect(() => setDraft(name), [name]);
   const renamed = draft.trim() && draft.trim() !== name;
@@ -139,7 +145,7 @@ const Series: React.FC<{
         <input className={control} value={draft} onChange={(e) => setDraft(e.target.value)} aria-label={`Rename ${name}`} />
         {renamed && (
           <button
-            onClick={() => onSet(draft.trim(), editions)}
+            onClick={() => (onRename ? onRename(draft.trim()) : onSet(draft.trim(), editions))}
             disabled={busy}
             className="shrink-0 rounded-lg border border-violet-500/50 px-2.5 py-1.5 text-xs text-violet-200 hover:bg-violet-950/40 disabled:opacity-40"
           >
@@ -196,7 +202,7 @@ const Series: React.FC<{
 // Series in the Table: link the years of a festival or tour so they show as
 // "EDC Las Vegas 2023", "EDC Las Vegas 2024", ... The name you typed stays on
 // each event. Saves one event at a time through the event route.
-export const SeriesPanel: React.FC<SeriesPanelProps> = ({ events, onChanged, onOpen, onShow, onClose }) => {
+export const SeriesPanel: React.FC<SeriesPanelProps> = ({ events, onChanged, onOpen, onShow, onClose, embedded, onRename }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -232,9 +238,24 @@ export const SeriesPanel: React.FC<SeriesPanelProps> = ({ events, onChanged, onO
       (n) => (series ? `${events_(n)} now in “${series}”.` : `${events_(n)} taken out of the series.`),
     );
 
-  return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="h-full w-full max-w-2xl space-y-5 overflow-y-auto border-l border-zinc-900 bg-zinc-950 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+  const rename = async (from: string, to: string) => {
+    if (!onRename) return;
+    setBusy(true);
+    setError(null);
+    setDone(null);
+    try {
+      await onRename(from, to);
+      setDone(`Renamed to “${to}” on every event.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const body = (
+    <>
+      {!embedded && (
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-zinc-50">Series</h2>
@@ -247,55 +268,64 @@ export const SeriesPanel: React.FC<SeriesPanelProps> = ({ events, onChanged, onO
             <X className="h-5 w-5" />
           </button>
         </div>
-        {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
-        {done && (
-          <p className="inline-flex items-center gap-1 text-sm text-emerald-300">
-            <Check className="h-4 w-4" /> {done}
-          </p>
+      )}
+      {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
+      {done && (
+        <p className="inline-flex items-center gap-1 text-sm text-emerald-300">
+          <Check className="h-4 w-4" /> {done}
+        </p>
+      )}
+
+      <section className="space-y-2">
+        <h3 className={sectionTitle}>Same name, different years</h3>
+        {suggestions.length ? (
+          <ul className="space-y-2">
+            {suggestions.map((s) => (
+              <Suggestion
+                key={`${s.key}-${s.events.length}-${s.linked}`}
+                s={s}
+                busy={busy}
+                onLink={(name, changes) => void apply(changes, (n) => `${events_(n)} now in “${name}”.`)}
+              />
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-zinc-500">No events left whose names match once the year is taken out.</p>
         )}
+      </section>
 
-        <section className="space-y-2">
-          <h3 className={sectionTitle}>Same name, different years</h3>
-          {suggestions.length ? (
-            <ul className="space-y-2">
-              {suggestions.map((s) => (
-                <Suggestion
-                  key={`${s.key}-${s.events.length}-${s.linked}`}
-                  s={s}
-                  busy={busy}
-                  onLink={(name, changes) => void apply(changes, (n) => `${events_(n)} now in “${name}”.`)}
-                />
-              ))}
-            </ul>
-          ) : (
-            <p className="text-xs text-zinc-500">No events left whose names match once the year is taken out.</p>
-          )}
-        </section>
-
-        <section className="space-y-2">
-          <h3 className={sectionTitle}>Your series</h3>
-          {yours.length ? (
-            <ul className="space-y-2">
-              {yours.map((g) => (
-                <Series
-                  key={g.name}
-                  name={g.name}
-                  editions={g.events}
-                  others={unlinked}
-                  busy={busy}
-                  onSet={(series, list) => void setSeries(series, list)}
-                  onWeekend={(event, weekend) =>
-                    void apply([{ event, patch: { weekend } }], () => (weekend ? `${eventTitle({ ...event, weekend })} saved.` : 'Weekend cleared.'))
-                  }
-                  onOpen={onOpen}
-                  onShow={() => onShow(g.name)}
-                />
-              ))}
-            </ul>
-          ) : (
-            <p className="text-xs text-zinc-500">None yet. Link a suggestion above, or type a series on an event.</p>
-          )}
-        </section>
+      <section className="space-y-2">
+        <h3 className={sectionTitle}>Your series</h3>
+        {yours.length ? (
+          <ul className="space-y-2">
+            {yours.map((g) => (
+              <Series
+                key={g.name}
+                name={g.name}
+                editions={g.events}
+                others={unlinked}
+                busy={busy}
+                onSet={(series, list) => void setSeries(series, list)}
+                onRename={onRename ? (to) => void rename(g.name, to) : undefined}
+                onWeekend={(event, weekend) =>
+                  void apply([{ event, patch: { weekend } }], () => (weekend ? `${eventTitle({ ...event, weekend })} saved.` : 'Weekend cleared.'))
+                }
+                onOpen={onOpen}
+                onShow={() => onShow(g.name)}
+              />
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-zinc-500">None yet. Link a suggestion above, or type a series on an event.</p>
+        )}
+      </section>
+    </>
+  );
+  if (embedded) return <div className="space-y-5">{body}</div>;
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="h-full w-full max-w-2xl space-y-5 overflow-y-auto border-l border-zinc-900 bg-zinc-950 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        {body}
       </div>
     </div>
   );

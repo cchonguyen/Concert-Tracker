@@ -1,8 +1,8 @@
 # Session Handoff
 
-- **Active slice:** none. M2a done (2026-10-28).
-- **Last step:** M2a added the Manage operations in `src/server/entities/manage.ts` and their routes under `/api/entities` (`routes.ts`): rename, merge (flattened; AKAs and links moved with duplicates dropped; acts and companions on one event combined, target's marks first), AKA add and remove, links (venue `in` one place, series `hosted_by` organizations), and adding an organization. Rename and merge rewrite event names (dual-write). Each change writes a `HistoryEntry` manifest first; `undoEntry` restores it, skips events changed since, and refuses while a later change touched the same records. New store primitives in both stores: `putEntities`, `replaceEntityAliases`, `replaceEntityLinks`, entity history. Client calls: `entitiesApi` in `src/services/lineupApi.ts`. Tests: `tests/manage.test.ts`.
-- **Deploy note:** no new migration (uses 0014). Without 0014 the Manage routes answer 503.
-- **Known limits:** Supabase alias and link replacement are separate requests (not one transaction); the history entry written first holds what to restore. A renamed artist's new key no longer matches an old spelling in a canonical lineup's review.
-- **Next step:** `/implement` Slice M2b: the Manage tab UI.
+- **Active slice:** none. M2b done (2026-10-28).
+- **Last step:** M2b added the Manage tab (`src/components/ManageView.tsx`, `ManageEntry.tsx`): a list per kind (Artists, People, Venues, Places, Series, Organizations) with event counts, look-alike badges and search; a record page with Rename everywhere, AKAs, Merge into (confirmed, with look-alike offers and a "Merge into" button on a name conflict), venue place, series Hosted by, organization's series, and the record's events; an Undo notice after each change and a History list. The Series panel is embedded in Manage's Series list (rename goes through the series record); the Table's Series button opens it. The Artists tab cards (In Manage) and the event view (Edit on every event in Manage) link in. Checked in a browser on a scratch file store: merge, rename, history and undo all work, and the page fits a phone.
+- **Deploy note:** no migration beyond 0014. Without 0014 the Manage tab shows the 503 message.
+- **Known limits:** AKAs show normalized (lower case). Artists in an event aren't linked from the event view (the Artists tab covers them).
+- **Next step:** `/implement` Slice M3a: venue → place.
 - **Blockers:** none.
