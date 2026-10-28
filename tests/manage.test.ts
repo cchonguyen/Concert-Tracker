@@ -123,8 +123,8 @@ test('merge folds one record into another, its events, AKAs and links', async ()
   const source = id('venue', 'shrine expo');
   const place = id('place', 'los angeles united states');
   await addAlias(store, source, 'Shrine Auditorium Expo');
-  await addLink(store, source, place, 'in');
-  await addLink(store, into, place, 'in');
+  // Both venues were put in Los Angeles when first saved with it.
+  assert.equal((await store.listEntityLinks()).length, 2);
   const entry = await mergeEntity(store, source, into);
 
   assert.equal(entry.operation, 'merge');
@@ -235,8 +235,10 @@ test('organizations are added by hand and host series', async () => {
 test('a venue is in one place: linking a second moves it', async () => {
   const store = await setup([event('a', { venue: 'Shrine', city: 'Los Angeles' }), event('b', { city: 'Pasadena' })]);
   const venue = id('venue', 'shrine');
-  await addLink(store, venue, id('place', 'los angeles'), 'in');
+  // Put in Los Angeles when first saved with it.
+  await rejects(() => addLink(store, venue, id('place', 'los angeles'), 'in'), 400);
   await addLink(store, venue, id('place', 'pasadena'), 'in');
+  assert.equal((await get(store, 'a')).city, 'Pasadena');
   assert.deepEqual(
     (await store.listEntityLinks()).map((l) => l.toId),
     [id('place', 'pasadena')],
@@ -250,7 +252,8 @@ test('undo a merge puts records, AKAs, links and event names back', async () => 
   ]);
   const source = id('venue', 'shrine expo');
   const into = id('venue', 'shrine expo hall');
-  await addLink(store, source, id('place', 'los angeles'), 'in');
+  // The source venue was put in Los Angeles when first saved with it.
+  assert.equal((await store.listEntityLinks()).length, 1);
   const before = {
     entities: await store.listEntities(),
     aliases: await store.listEntityAliases(),
