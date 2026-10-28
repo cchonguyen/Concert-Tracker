@@ -6,6 +6,7 @@ import { splitEventCity } from '../events/regions';
 import { withB2b } from '../events/seen';
 import { EntityIndex, linkEvent } from './link';
 import { ALLOWED_LINKS, Entity, EntityAlias, EntityKind, EntityLink, HistoryEntry, LinkRole } from './types';
+import { venuePlaceSplit, withVenuePlace } from './venuePlace';
 
 // The Manage operations (0014): rename, merge, AKA and links. Each one is
 // planned in full from what is stored, written to entity_history first, and
@@ -25,7 +26,7 @@ export class ManageError extends Error {
   }
 }
 
-const EVENT_FIELDS = ['venue', 'series', 'city', 'region', 'country', 'companions', 'seen', 'sources'] as const;
+const EVENT_FIELDS = ['venue', 'series', 'city', 'region', 'country', 'companions', 'seen', 'sources', 'weather'] as const;
 type EventField = (typeof EVENT_FIELDS)[number];
 
 interface World {
@@ -169,7 +170,8 @@ function rewriteEvents(world: World, kind: EntityKind, ids: Set<string>, target:
       for (const f of ['city', 'region', 'country'] as const) {
         if ((stored[f] ?? undefined) !== want[f]) {
           next[f] = want[f] ?? null;
-          sources[f] = you;
+          // Still the venue's place, under its new name.
+          sources[f] = stored.sources[f]?.sourceType === 'venue' ? stored.sources[f]! : you;
         }
       }
     }
@@ -248,10 +250,13 @@ function planMerge(world: World, sourceId: string, intoId: string, at: string): 
   if (source.kind !== 'place') names.add(source.nameNormalized);
   names.delete(target.nameNormalized);
   const aliases = [...names].map((aliasNormalized) => ({ entityId: intoId, kind: target.kind, aliasNormalized }));
-  // Links move to the target; duplicates and links to itself are dropped.
+  // Links move to the target; duplicates and links to itself are dropped. A
+  // venue is in one place: the target's own wins over the source's.
   const pk = (l: EntityLink) => `${l.fromId}\u0000${l.toId}\u0000${l.role}`;
   const links = new Map<string, EntityLink>();
+  const targetIn = world.links.some((l) => l.fromId === intoId && l.role === 'in');
   for (const l of linksOf(world, touched)) {
+    if (targetIn && l.fromId === sourceId && l.role === 'in') continue;
     const moved = { ...l, fromId: l.fromId === sourceId ? intoId : l.fromId, toId: l.toId === sourceId ? intoId : l.toId };
     if (moved.fromId !== moved.toId && !links.has(pk(moved))) links.set(pk(moved), moved);
   }
@@ -319,16 +324,67 @@ function planLink(world: World, fromId: string, toId: string, role: unknown, add
     links = current.filter((l) => !same(l));
   }
   const verb = role === 'in' ? 'in' : 'hosted by';
+  // A venue's place becomes the location of every event there.
+  const events = add && role === 'in' ? venueRewrite(world, new Map([[fromId, toId]]), at) : [];
   return {
     operation: add ? 'link-add' : 'link-remove',
-    summary: `${add ? 'Set' : 'Removed'} "${from.name}" ${verb} "${to.name}"`,
+    summary: `${add ? 'Set' : 'Removed'} "${from.name}" ${verb} "${to.name}"${events.length ? ` (${plural(events.length, 'event')})` : ''}`,
     sourceEntityId: fromId,
     targetEntityId: toId,
     entities: { before: [from], after: [{ ...from, updatedAt: at }] },
     touched: [fromId],
     aliases: aliasesOf(world, [fromId]),
     links,
-    events: [],
+    events,
+  };
+}
+
+// Events at these venues (venue ID to place ID) with the place as their
+// location. Only the fields that change are kept.
+function venueRewrite(world: World, places: Map<string, string>, at: string): HistoryEntry['events'] {
+  const out: HistoryEntry['events'] = [];
+  for (const linked of world.linked) {
+    const placeId = linked.refs?.venueId ? places.get(linked.refs.venueId) : undefined;
+    const place = placeId ? world.byId.get(placeId) : undefined;
+    if (!place) continue;
+    const stored = world.stored.get(linked.id)!;
+    const { event } = withVenuePlace(splitEventCity(stored), place, at);
+    const before: Record<string, unknown> = {};
+    const after: Record<string, unknown> = {};
+    for (const f of ['city', 'region', 'country', 'sources', 'weather'] as const) {
+      if (JSON.stringify(stored[f]) === JSON.stringify(event[f])) continue;
+      before[f] = stored[f] ?? null;
+      after[f] = event[f] ?? null;
+    }
+    if (Object.keys(after).length) out.push({ id: stored.id, before, after });
+  }
+  return out;
+}
+
+// Venues with no place whose events all use the same city are put in it,
+// and their events without a city get it: one change, undone as one.
+// Venues whose events disagree are left for you (venuePlaceConflicts).
+function planVenuePlaces(world: World, at: string): Plan | null {
+  const venues = [...world.byId.values()].filter((e) => e.kind === 'venue');
+  const { agree } = venuePlaceSplit(venues, world.links, world.linked);
+  const usable = agree.filter((a) => world.byId.get(a.placeId) && !world.byId.get(a.placeId)!.mergedIntoId);
+  if (!usable.length) return null;
+  const touched = usable.map((a) => a.venueId);
+  const before = touched.map((id) => world.byId.get(id)!);
+  const links = [
+    ...linksOf(world, touched),
+    ...usable.map((a) => ({ fromId: a.venueId, toId: a.placeId, role: 'in' as const, createdAt: at })),
+  ];
+  const events = venueRewrite(world, new Map(usable.map((a) => [a.venueId, a.placeId])), at);
+  return {
+    operation: 'link-add',
+    summary: `Put ${plural(usable.length, 'venue')} in the city their events share (${plural(events.length, 'event')} filled)`,
+    sourceEntityId: touched[0],
+    entities: { before, after: before.map((e) => ({ ...e, updatedAt: at })) },
+    touched,
+    aliases: aliasesOf(world, touched),
+    links,
+    events,
   };
 }
 
@@ -381,6 +437,20 @@ export async function addAlias(store: LineupStore, id: string, alias: unknown, a
 export async function removeAlias(store: LineupStore, id: string, alias: unknown, at = now()): Promise<HistoryEntry> {
   const world = await load(store);
   return apply(store, world, planAlias(world, id, alias, false, at), at);
+}
+
+// See planVenuePlaces. Null when there was nothing to link.
+export async function linkVenuePlaces(store: LineupStore, at = now()): Promise<HistoryEntry | null> {
+  const world = await load(store);
+  const plan = planVenuePlaces(world, at);
+  return plan ? apply(store, world, plan, at) : null;
+}
+
+// Venues with no place whose events use more than one city, for Data health.
+export async function venuePlaceConflicts(store: LineupStore) {
+  const world = await load(store);
+  const venues = [...world.byId.values()].filter((e) => e.kind === 'venue');
+  return venuePlaceSplit(venues, world.links, world.linked).conflicts;
 }
 
 export async function addLink(store: LineupStore, fromId: string, toId: string, role: unknown, at = now()): Promise<HistoryEntry> {

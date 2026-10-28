@@ -57,7 +57,8 @@ Feature: **Manage section** (triaged 2026-10-28). Full design: [designs/manage-s
 
 **Venue → place provenance**
 - When an event's venue has a place, the event's `city`, `region` and `country` come from it with `sources.city/region/country = { sourceType: 'venue' }`. Stage 1 research and import location values are not applied to such an event; they stay offers on the event's venue instead.
-- If a venue's place changes later, events with stored weather for the old city are flagged (weather is not re-fetched on its own, per AGENTS.md).
+- If a venue's place changes later, events with stored weather for the old city are flagged (`weather.cityChanged`; weather is not re-fetched on its own, per AGENTS.md).
+- Built in M3a (`src/server/entities/venuePlace.ts`): applied on every save by the linking store; the replaced location is kept in the venue's `attrs.placeOffers` (newest per place, at most 20). A venue first saved with a city is put in it. The first backfill does not do that; a one-time pass afterwards (`venue_places_backfill` setting) puts in a place only venues whose events all use one city, as one undoable history entry, and `GET /api/entities/health` lists the venues whose events disagree. Merging venues keeps the target's place.
 
 **Sheets, CSV and list import**
 - Sheet sync is one-way: the app writes the sheet, and nothing is read back from it.

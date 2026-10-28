@@ -11,11 +11,13 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 
 import { createDeps, createStore, LookupWorker } from './src/server/lineup/service';
 import { createApiApp } from './src/server/app';
-import { backfillEntities } from './src/server/entities/linkingStore';
+import { backfillEntities, backfillVenuePlaces } from './src/server/entities/linkingStore';
 
 async function main() {
   const lineupStore = await createStore();
-  await backfillEntities(lineupStore).catch((err) => console.warn('Entity backfill failed:', err instanceof Error ? err.message : err));
+  await backfillEntities(lineupStore)
+    .then(() => backfillVenuePlaces(lineupStore))
+    .catch((err) => console.warn('Entity backfill failed:', err instanceof Error ? err.message : err));
   const lineupDeps = createDeps(lineupStore);
   const worker = new LookupWorker(lineupDeps);
   const app = createApiApp(lineupDeps, worker);
