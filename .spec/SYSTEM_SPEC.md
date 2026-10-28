@@ -51,7 +51,8 @@ Feature: **Manage section** (triaged 2026-10-28). Full design: [designs/manage-s
 - The legacy text columns (`venue`, `city`, `region`, `country`, `series`, `companions`, seen act names) stay. Rename, Merge and venue → place changes **also rewrite those columns** on every affected event in the same operation, so a rollback to text-only reading loses nothing. "A rename touches no event rows" holds only after the later migration that drops the text columns.
 
 **History and undo**
-- `entity_history` rows hold a reverse-patch manifest in JSON: `{ operation, source_entity_id, target_entity_id, moved_event_ids, prior_event_act_snapshots, prior_companion_snapshots, moved_links, added_aliases, prior_attrs, prior_name }`. Undo applies the manifest exactly.
+- `entity_history` rows hold a manifest in JSON (`HistoryEntry` in `src/server/entities/types.ts`): the operation and its records, the full before and after state of the touched records, their aliases and their links, and for each event the fields the change rewrote, before and after (empty fields as null). It is written before anything else changes. Undo applies `before` exactly.
+- Undo is refused while a touched record, its aliases or its links differ from `after` (undo the later change first). An event changed since (its rewritten fields differ from `after`) is left as it is and listed; the rest are put back. Adding an organization is recorded but not undoable (records are never deleted).
 - When two merged artists (or people) are both on one event, the entries are combined into one. Marks are unioned: favourite, set type and B2B, and solo set. The event's prior list is saved in the manifest first.
 
 **Venue → place provenance**
