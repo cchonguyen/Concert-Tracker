@@ -1,0 +1,125 @@
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Minus, Plus } from 'lucide-react';
+import { RIVER_ZOOMS, riverLayout, RiverItem, TimelineViewProps } from '../../services/timeline';
+
+// River: events along a left-to-right time axis you drag or scroll, zoomed
+// from about a decade down to a month. Concerts are dots, runs of days are
+// bars, sized in steps by acts you logged (none logged draws like one act),
+// with a line for today. Names show beside the marks once zoomed in; until
+// then the browser's tooltip names them. Only the large size is built so far.
+
+const LANE = 26;
+const AXIS = 24;
+
+const MARK_CLASS = (item: RiverItem) => {
+  if (item.span.attendance === 'confirm') return 'fill-transparent stroke-amber-400';
+  if (item.span.attendance === 'upcoming') return 'fill-transparent stroke-violet-400';
+  return item.span.kind === 'festival' ? 'fill-violet-400' : 'fill-violet-600';
+};
+
+export const RiverView: React.FC<TimelineViewProps> = ({ model, onOpen }) => {
+  const [zoom, setZoom] = useState(1);
+  const layout = useMemo(() => riverLayout(model, RIVER_ZOOMS[zoom]), [model, zoom]);
+  const box = useRef<HTMLDivElement>(null);
+  const centre = useRef<number | null>(null); // the share of the width at the middle of the screen, kept across zooms
+  const drag = useRef<{ x: number; left: number } | null>(null);
+  const moved = useRef(false); // you scrolled or dragged; until then zooming stays on today
+
+  // Open on today; after a zoom, keep the same moment in the middle.
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el || !layout) return;
+    const share = centre.current ?? layout.todayX / layout.width;
+    el.scrollLeft = share * layout.width - el.clientWidth / 2;
+  }, [layout]);
+
+  const zoomTo = (next: number) => {
+    const el = box.current;
+    if (el && layout) centre.current = moved.current ? (el.scrollLeft + el.clientWidth / 2) / layout.width : layout.todayX / layout.width;
+    setZoom(Math.max(0, Math.min(RIVER_ZOOMS.length - 1, next)));
+  };
+
+  if (!layout) return <p className="py-10 text-center text-sm text-zinc-500">No dated events match these filters.</p>;
+  const height = AXIS + Math.max(1, layout.lanes) * LANE + 8;
+  const y = (lane: number) => AXIS + lane * LANE + LANE / 2;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-xs text-zinc-500">
+        <span>Drag or scroll sideways. Tap a mark to open it.</span>
+        <span className="flex items-center gap-1">
+          <button onClick={() => zoomTo(zoom - 1)} disabled={zoom === 0} aria-label="Zoom out" className="rounded-lg border border-zinc-800 p-1 hover:border-zinc-600 disabled:opacity-40">
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => zoomTo(zoom + 1)}
+            disabled={zoom === RIVER_ZOOMS.length - 1}
+            aria-label="Zoom in"
+            className="rounded-lg border border-zinc-800 p-1 hover:border-zinc-600 disabled:opacity-40"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </span>
+      </div>
+      <div
+        ref={box}
+        className="cursor-grab overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/30 active:cursor-grabbing"
+        onWheel={() => (moved.current = true)}
+        onTouchStart={() => (moved.current = true)}
+        onPointerDown={(e) => {
+          moved.current = true;
+          if (e.pointerType !== 'mouse' || (e.target as Element).closest('[data-mark]')) return;
+          drag.current = { x: e.clientX, left: e.currentTarget.scrollLeft };
+        }}
+        onPointerMove={(e) => {
+          if (drag.current) e.currentTarget.scrollLeft = drag.current.left - (e.clientX - drag.current.x);
+        }}
+        onPointerUp={() => (drag.current = null)}
+        onPointerLeave={() => (drag.current = null)}
+      >
+        <svg width={layout.width} height={height} className="block select-none" role="img" aria-label="Events along a time axis">
+          {layout.ticks.map((t) => (
+            <g key={`${t.label}-${t.x}`}>
+              <line x1={t.x} x2={t.x} y1={t.major ? 4 : 14} y2={height} className={t.major ? 'stroke-zinc-700' : 'stroke-zinc-800/70'} strokeWidth={1} />
+              <text x={t.x + 3} y={t.major ? 14 : 20} className={t.major ? 'fill-zinc-300 text-[11px] font-bold' : 'fill-zinc-500 text-[9px]'}>
+                {t.label}
+              </text>
+            </g>
+          ))}
+          <line x1={layout.todayX} x2={layout.todayX} y1={4} y2={height} className="stroke-violet-400" strokeWidth={1.5} strokeDasharray="3 3" />
+          <text x={layout.todayX + 3} y={height - 4} className="fill-violet-300 text-[9px] font-bold uppercase">
+            Today
+          </text>
+          {layout.items.map((item) => {
+            const cy = y(item.lane);
+            const outlined = item.span.attendance !== 'went';
+            const common = {
+              className: `${MARK_CLASS(item)} cursor-pointer hover:brightness-125`,
+              strokeWidth: outlined ? 1.5 : 0,
+              strokeDasharray: outlined ? '3 2' : undefined,
+            };
+            return (
+              <g key={item.span.id} data-mark onClick={() => onOpen(item.span.id)}>
+                <title>
+                  {item.span.title}
+                  {item.span.attendance === 'confirm' ? ' (did you go?)' : item.span.attendance === 'upcoming' ? ' (upcoming)' : ''}
+                </title>
+                {item.w > 0 ? (
+                  <rect x={item.x} y={cy - item.r} width={Math.max(item.w, item.r * 2)} height={item.r * 2} rx={item.r} {...common} />
+                ) : (
+                  <circle cx={item.x + item.r} cy={cy} r={item.r} {...common} />
+                )}
+                {item.label && (
+                  <text x={item.x + Math.max(item.w, item.r * 2) + 5} y={cy + 4} className="pointer-events-none fill-zinc-200 text-[11px]">
+                    {item.span.attendance === 'confirm' ? '? ' : ''}
+                    {item.span.title}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+};

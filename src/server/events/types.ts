@@ -21,9 +21,10 @@ export interface EventFacts {
   country?: string;
 }
 
-// Where a field's value came from: you, or a cited source.
+// Where a field's value came from: you, a cited source, or (city, state and
+// country) the place of the event's venue (src/server/entities/venuePlace.ts).
 export interface FieldSource {
-  sourceType: SourceType;
+  sourceType: SourceType | 'venue';
   sourceUrl?: string;
   quote?: string; // the words it was read from (an email, say)
 }
@@ -103,6 +104,9 @@ export interface EventWeather {
   days: WeatherDay[];
   sourceUrl: string;
   checkedAt: string;
+  // The event's city changed after this was looked up (its venue's place
+  // filled another one). Kept as it is; look it up again to replace it.
+  cityChanged?: boolean;
 }
 
 // Concert or festival. Worked out from the event (scale.ts) unless you set it.
