@@ -5,6 +5,7 @@ import type { Entity, HistoryEntry, LinkRole } from '../server/entities/types';
 import { whenLabel } from '../services/format';
 import { norm } from '../services/listImport';
 import { EventTitle } from './EventTitle';
+import { personParts } from '../services/people';
 import { entityLabel, KINDS, ManageData } from './ManageView';
 
 // One record in the Manage tab: its events, Rename everywhere, Merge into
@@ -158,7 +159,9 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
         </div>
       )}
 
-      <div className="space-y-1.5">
+      {entity.kind === 'person' && <PersonDetails entity={entity} events={events.length} busy={busy} run={run} />}
+
+      <div className={`space-y-1.5 ${entity.kind === 'person' ? 'hidden' : ''}`}>
         <h3 className={sectionTitle}>{entity.kind === 'place' ? 'City' : 'Name'}</h3>
         <form
           className="flex gap-2"
@@ -367,5 +370,56 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
         </div>
       )}
     </section>
+  );
+};
+
+// A person's first and last name and your note. Saving a new name renames
+// them on every event, keeping the old name as an AKA.
+const PersonDetails: React.FC<{
+  entity: Entity;
+  events: number;
+  busy: string | null;
+  run: (what: string, fn: () => Promise<HistoryEntry>) => Promise<void>;
+}> = ({ entity, events, busy, run }) => {
+  const parts = personParts(entity.name, entity.attrs);
+  const savedNote = typeof entity.attrs.note === 'string' ? entity.attrs.note : '';
+  const [first, setFirst] = useState(parts.first);
+  const [last, setLast] = useState(parts.last ?? '');
+  const [note, setNote] = useState(savedNote);
+  const name = [first.trim(), last.trim()].filter(Boolean).join(' ').replace(/\s+/g, ' ');
+  const set = typeof entity.attrs.first === 'string';
+  const changed = !set || name !== entity.name || note.trim() !== savedNote;
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (first.trim() && changed) void run('person', () => entitiesApi.updatePerson(entity.id, { first, last, note }));
+      }}
+    >
+      <h3 className={sectionTitle}>Name</h3>
+      <div className="grid grid-cols-2 gap-2">
+        <input className={control} value={first} onChange={(e) => setFirst(e.target.value)} placeholder="First name" aria-label="First name" />
+        <input className={control} value={last} onChange={(e) => setLast(e.target.value)} placeholder="Last name (optional)" aria-label="Last name" />
+      </div>
+      <textarea
+        className={`${control} min-h-[4rem]`}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        maxLength={2000}
+        placeholder="A note about them (how you met, what they like)"
+        aria-label="Note"
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="submit" disabled={!first.trim() || !changed || Boolean(busy)} className={primary}>
+          {busy === 'person' && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Save
+        </button>
+        {name && name !== entity.name && (
+          <p className="text-xs text-zinc-500">
+            Shows as “{name}” on {events} event{events === 1 ? '' : 's'}; “{entity.name}” is kept as an AKA.
+          </p>
+        )}
+      </div>
+    </form>
   );
 };

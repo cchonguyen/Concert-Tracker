@@ -23,6 +23,7 @@ import { MapView } from './components/MapView';
 import { TimelineTab } from './components/timeline/TimelineTab';
 import { ThemePicker } from './components/ThemePicker';
 import { ManageTarget, ManageView } from './components/ManageView';
+import { PeopleProvider } from './components/PersonName';
 import { wentTo } from './server/events/attendance';
 
 type Tab = 'events' | 'table' | 'timeline' | 'map' | 'stats' | 'artists' | 'manage';
@@ -188,6 +189,7 @@ export default function App() {
         </div>
       </header>
 
+      <PeopleProvider events={events} version={events}>
       <main className={`mx-auto w-full ${tab === 'table' ? 'max-w-7xl' : tab === 'map' ? 'max-w-6xl' : 'max-w-3xl'} flex-1 space-y-6 px-4 py-6`}>
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-3 text-sm text-rose-200">{error}</p>}
         {tab === 'events' && (
@@ -240,6 +242,7 @@ export default function App() {
           />
         )}
       </main>
+      </PeopleProvider>
 
       <footer className="border-t border-zinc-900 py-5 text-xs text-zinc-500">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-end gap-3 px-4">

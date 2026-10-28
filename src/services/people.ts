@@ -1,4 +1,4 @@
-import { normalizeName } from '../server/lineup/text';
+import { norm as normalizeName } from './listImport';
 
 // How the people you went with are named on screen (Manage step 4). A
 // person record keeps the name you gave and, once you set them, a first and
