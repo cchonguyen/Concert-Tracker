@@ -6,6 +6,7 @@ export type EmailKind = 'order' | 'refund' | 'cancelled' | 'transferred_away';
 export interface Quoted {
   value: string;
   quote: string; // the words in the email it was read from
+  by?: 'schema_org' | 'pkpass' | 'ics'; // set when machine markup, not the body, gave it
 }
 
 export interface ReadEmail {

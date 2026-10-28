@@ -13,25 +13,36 @@ It has no knowledge of any database. The host app writes the results.
 
 ## Status
 
-Built: query strings, HTML-to-lines, the weekday year rule, the verbatim
-check, the `.pkpass` reader, the nine seller layout readers (Ticketmaster, Live
-Nation, Tixr, DICE, Resident Advisor, Eventbrite, AXS, Front Gate, TicketWeb),
-the forwarded-email unwrapper, the Layer 4 verbatim reader for other senders,
-and `readRawEmails(RawEmailMessage[]) -> EmailImportProposal[]`.
+Built:
 
-Not yet built:
+- Layer 1: Stream A and Stream B Gmail queries with watermarks.
+- Layer 2: schema.org `EventReservation` (JSON-LD and microdata), Apple Wallet
+  `.pkpass` (only `eventTicket` passes) and `.ics` invites, read by
+  `scanEmails`. Markup fills what the body lacks; the body's values win.
+- Layer 3: the nine Tier 1 seller readers, 15 boutique and resale readers
+  (`src/readers/boutique.ts`, `src/readers/resale.ts`), and the forward
+  unwrapper (Gmail, Apple Mail, Outlook, Yahoo, multi-hop, and name-only
+  senders such as "From: Ticketmaster").
+- Layer 4: the verbatim reader for everyone else, with an order-anchor gate,
+  non-show filters, and an `unreadable` fallback for ticket subjects.
+- A per-ticket price is never claimed when a parking, merch or other add-on
+  line has a price.
 
-- Dedicated readers for the 15 boutique and resale sellers. Mail from them goes
-  through the Layer 4 reader until real samples exist to write layouts from.
-- `.pkpass` and schema.org results are not yet fed into `readRawEmails`
-  (`readPkpass` exists on its own).
-- The 100-message golden corpus. `tests/corpus/fixtures.ts` holds 10 synthetic
-  show emails and 5 non-show traps, so the 92% / 0% false-positive gate runs
-  but proves little until real, anonymized mail is added.
+The boutique and resale layouts were written from public samples, not real
+mail, so expect to adjust their labels once real messages arrive.
 
-The host app still reads email with its own copy under
-`src/server/events/email/`; nothing imports this package yet. Both copies must
-be kept in step until the host switches over.
+## The corpus
+
+`tests/fixtures/corpus.ts` builds 100 synthetic messages (50 Tier 1, 20
+boutique and resale, 15 forwards, 10 long tail and wallet or calendar
+attachments, 5 traps) with messy HTML, `&nbsp;`, names split across inline
+markup, overnight and multi-day dates, and add-on fees. `tests/corpus.test.ts`
+enforces the PRD gate: at least 92% exact structured extraction, at least 98%
+surfacing, no output at all from the traps, and every quote verbatim.
+
+This is an invariant and regression harness. The fixtures and the readers were
+written together, so passing it does not predict recall on a real inbox. Add
+anonymized real messages to measure that.
 
 ## Tests
 
