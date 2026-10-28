@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Building2, History, Layers, Loader2, MapPin, Mic2, Plus, Search, Undo2, Users } from 'lucide-react';
+import { Building2, HeartPulse, History, Layers, Loader2, MapPin, Mic2, Plus, Search, Undo2, Users } from 'lucide-react';
 import { entitiesApi, LoggedEvent } from '../services/lineupApi';
 import type { Entity, EntityAlias, EntityKind, EntityLink, HistoryEntry } from '../server/entities/types';
 import { norm } from '../services/listImport';
+import { DataHealth } from './DataHealth';
 import { ManageEntry } from './ManageEntry';
 import { SeriesPanel } from './SeriesPanel';
 
@@ -80,7 +81,7 @@ const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyl
 export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEvent, onOpenTable, onEventsChanged, onEventChanged }) => {
   const [data, setData] = useState<ManageData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [kind, setKind] = useState<ManageKind | 'history'>(target?.kind ?? 'artist');
+  const [kind, setKind] = useState<ManageKind | 'history' | 'health'>(target?.kind ?? 'artist');
   const [openId, setOpenId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [history, setHistory] = useState<HistoryEntry[] | null>(null);
@@ -183,7 +184,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   if (!data) return <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />;
 
   const open = openId ? byId.get(openId) : undefined;
-  const live = kind === 'history' ? [] : data.entities.filter((e) => e.kind === kind && !e.mergedIntoId);
+  const live = kind === 'history' || kind === 'health' ? [] : data.entities.filter((e) => e.kind === kind && !e.mergedIntoId);
   const q = norm(query);
   const matches = (e: Entity) =>
     !q || norm(entityLabel(e)).includes(q) || data.aliases.some((a) => a.entityId === e.id && a.aliasNormalized.includes(q));
@@ -217,6 +218,9 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
             <span className="text-[11px] opacity-70">{data.entities.filter((e) => e.kind === k && !e.mergedIntoId).length}</span>
           </button>
         ))}
+        <button onClick={() => (setKind('health'), setOpenId(null))} className={pill(kind === 'health')}>
+          <HeartPulse className="h-3.5 w-3.5" /> Data health
+        </button>
         <button onClick={() => (setKind('history'), setOpenId(null))} className={pill(kind === 'history')}>
           <History className="h-3.5 w-3.5" /> History
         </button>
@@ -240,7 +244,18 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
         </div>
       )}
 
-      {kind === 'history' ? (
+      {kind === 'health' ? (
+        <DataHealth
+          data={data}
+          counts={counts}
+          onOpen={(id) => {
+            const e = byId.get(id);
+            if (e) setKind(e.kind);
+            setOpenId(id);
+          }}
+          onChanged={changed}
+        />
+      ) : kind === 'history' ? (
         <section className="space-y-2">
           {!history ? (
             <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />
