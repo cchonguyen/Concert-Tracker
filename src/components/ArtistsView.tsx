@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowUp, CalendarDays, ChevronDown, ChevronRight, Crown, Heart, LayoutList, List, MapPin, Search, Table2 } from 'lucide-react';
-import type { LoggedEvent } from '../services/lineupApi';
+import { ArrowUp, CalendarDays, ChevronDown, ChevronRight, Crown, Heart, LayoutList, List, MapPin, Search, Table2, Tags } from 'lucide-react';
+import { genresApi, LoggedEvent } from '../services/lineupApi';
+import { ArtistGenres, genresByArtist, topStyles } from '../services/genres';
 import { whenLabel } from '../services/format';
 import { EventTitle } from './EventTitle';
 import { ARTIST_SORTS, artistSummaries, ArtistSort, ArtistSummary, groupArtists, jumpTargets } from '../services/artists';
@@ -84,12 +85,21 @@ const Avatar: React.FC<{ artist: ArtistSummary; small?: boolean }> = ({ artist: 
   </span>
 );
 
+interface ArtistProps {
+  artist: ArtistSummary;
+  genre?: ArtistGenres;
+  onOpenEvent: (id: string) => void;
+  onOpenTable: (query: string) => void;
+}
+
+// Where an act's genres came from, for the tooltip.
+const genreTitle = (g: ArtistGenres) =>
+  `${g.genres.map((x) => `${x.style} (${x.parent}) ${Math.round(x.weight * 100)}%`).join(', ')}\nFrom ${
+    g.source === 'music-story' ? 'your music-story listening history' : `MusicBrainz: ${g.sourceUrl}`
+  }`;
+
 // Compact: one line per artist; tapping it opens the detailed card in place.
-const ArtistRow: React.FC<{ artist: ArtistSummary; onOpenEvent: (id: string) => void; onOpenTable: (query: string) => void }> = ({
-  artist: a,
-  onOpenEvent,
-  onOpenTable,
-}) => {
+const ArtistRow: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpenTable }) => {
   const [open, setOpen] = useState(false);
   if (open)
     return (
@@ -102,7 +112,7 @@ const ArtistRow: React.FC<{ artist: ArtistSummary; onOpenEvent: (id: string) => 
             <ChevronDown className="h-3 w-3" /> Collapse
           </button>
         </li>
-        <ArtistCard artist={a} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} />
+        <ArtistCard artist={a} genre={genre} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} />
       </>
     );
   const span = years(a);
@@ -115,6 +125,11 @@ const ArtistRow: React.FC<{ artist: ArtistSummary; onOpenEvent: (id: string) => 
           {a.favourites > 0 && <Heart className="h-3 w-3 shrink-0 fill-current text-rose-400" aria-label="Favourite set" />}
           {a.headlined > 0 && <Crown className="h-3 w-3 shrink-0 text-amber-400" aria-label="Headliner" />}
         </span>
+        {genre?.genres.length ? (
+          <span className="hidden max-w-[10rem] truncate text-xs text-zinc-500 lg:block" title={genreTitle(genre)}>
+            {topStyles(genre, 1)[0]}
+          </span>
+        ) : null}
         {a.cities.length > 0 && (
           <span className="hidden max-w-[14rem] truncate text-xs text-zinc-500 md:block" title={a.cities.join(', ')}>
             {a.cities[0]}
@@ -129,11 +144,7 @@ const ArtistRow: React.FC<{ artist: ArtistSummary; onOpenEvent: (id: string) => 
   );
 };
 
-const ArtistCard: React.FC<{ artist: ArtistSummary; onOpenEvent: (id: string) => void; onOpenTable: (query: string) => void }> = ({
-  artist: a,
-  onOpenEvent,
-  onOpenTable,
-}) => {
+const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpenTable }) => {
   const [open, setOpen] = useState(false);
   const shown = open ? a.events : a.events.slice(0, SHOWN_EVENTS);
   const span = years(a);
@@ -160,6 +171,12 @@ const ArtistCard: React.FC<{ artist: ArtistSummary; onOpenEvent: (id: string) =>
                   </span>
                 </span>
               )}
+              {genre?.genres.length ? (
+                <span className="inline-flex min-w-0 items-center gap-1" title={genreTitle(genre)}>
+                  <Tags className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{topStyles(genre).join(', ')}</span>
+                </span>
+              ) : null}
             </div>
           </div>
           <div className="shrink-0 text-right">
@@ -250,10 +267,32 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
     remember(VIEW_KEY, d);
   };
   const artists = useMemo(() => artistSummaries(events), [events]);
+  // Genres are optional: without them (or before 0013 is applied) the view is unchanged.
+  const [genreRows, setGenreRows] = useState<ArtistGenres[]>([]);
+  useEffect(() => {
+    genresApi
+      .list()
+      .then((r) => setGenreRows(r.genres))
+      .catch(() => setGenreRows([]));
+  }, []);
+  const genres = useMemo(() => genresByArtist(genreRows), [genreRows]);
+  const parents = useMemo(
+    () => [...new Set(artists.flatMap((a) => (genres.get(a.key)?.genres ?? []).map((g) => g.parent)))].sort(),
+    [artists, genres],
+  );
+  const [genre, setGenre] = useState('');
   const q = filter.trim().toLowerCase();
   const groups = useMemo(
-    () => groupArtists(q ? artists.filter((a) => a.name.toLowerCase().includes(q)) : artists, sort),
-    [artists, q, sort],
+    () =>
+      groupArtists(
+        artists.filter(
+          (a) =>
+            (!q || a.name.toLowerCase().includes(q)) &&
+            (!genre || (genres.get(a.key)?.genres ?? []).some((g) => g.parent === genre)),
+        ),
+        sort,
+      ),
+    [artists, q, sort, genre, genres],
   );
   const jumps = useMemo(() => jumpTargets(groups, sort), [groups, sort]);
   // The page header is sticky; the jump bar and group headings sit just under it.
@@ -331,6 +370,21 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
             className="w-full rounded-xl border border-zinc-800 bg-zinc-900 py-2 pl-9 pr-4 text-sm placeholder-zinc-600 focus:border-violet-500 focus:outline-none"
           />
         </label>
+        {parents.length > 0 && (
+          <select
+            value={genre}
+            onChange={(e) => setGenre(e.target.value)}
+            aria-label="Genre"
+            className="shrink-0 rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 focus:border-violet-500 focus:outline-none"
+          >
+            <option value="">All genres</option>
+            {parents.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        )}
         <div role="radiogroup" aria-label="Order" className="order-last flex w-full rounded-xl border border-zinc-800 bg-zinc-900 p-0.5 text-xs sm:order-none sm:w-auto sm:shrink-0">
           {ARTIST_SORTS.map((s) => (
             <button
@@ -396,7 +450,9 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
       )}
 
       {groups.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">No artist matches “{filter}”.</p>
+        <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">
+          No artist matches{filter ? ` “${filter}”` : ''}{genre ? ` in ${genre}` : ''}.
+        </p>
       ) : (
         groups.map((g) => (
           <section key={g.label} id={groupId(g.label)} style={{ scrollMarginTop: headerHeight + barHeight }} className="space-y-2">
@@ -407,9 +463,9 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
             <ul className="divide-y divide-zinc-900 rounded-xl border border-zinc-900 bg-zinc-900/20">
               {g.artists.map((a) =>
                 density === 'compact' ? (
-                  <ArtistRow key={a.key} artist={a} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} />
+                  <ArtistRow key={a.key} artist={a} genre={genres.get(a.key)} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} />
                 ) : (
-                  <ArtistCard key={a.key} artist={a} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} />
+                  <ArtistCard key={a.key} artist={a} genre={genres.get(a.key)} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} />
                 ),
               )}
             </ul>
@@ -421,7 +477,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           aria-label="Back to top"
-          className="fixed bottom-5 right-5 z-30 inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/95 px-3.5 py-2 text-xs font-medium text-zinc-200 shadow-lg shadow-black/40 backdrop-blur hover:border-violet-500 hover:text-white"
+          className="fixed bottom-5 right-5 z-30 inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/95 px-3.5 py-2 text-xs font-medium text-zinc-200 shadow-lg shadow-black/40 backdrop-blur hover:border-violet-500 hover:text-zinc-50"
         >
           <ArrowUp className="h-3.5 w-3.5" /> Back to top
         </button>

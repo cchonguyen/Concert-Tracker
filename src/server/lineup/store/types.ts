@@ -15,6 +15,7 @@ import {
 import { LoggedEvent } from '../../events/types';
 import type { LineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
+import type { ArtistGenres } from '../../events/genres';
 import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 
 // Persistence boundary for the lineup pipeline. Two implementations:
@@ -90,11 +91,17 @@ export interface LineupStore {
   putSetting<T>(key: string, data: T): Promise<void>;
 
   getArtist(key: string): Promise<ArtistIdentity | null>;
+  getArtists(keys: string[]): Promise<ArtistIdentity[]>;
   upsertArtist(artist: ArtistIdentity): Promise<void>;
   // Adds the artists not stored yet; existing ones are left as they are.
   ensureArtists(artists: ArtistIdentity[]): Promise<void>;
   listUnresolvedArtists(limit: number): Promise<ArtistIdentity[]>;
 
+  // Genres of acts you saw (0013), one row per act and source.
+  listArtistGenres(): Promise<ArtistGenres[]>;
+  // Replaces the rows with the same act and source.
+  putArtistGenres(rows: ArtistGenres[]): Promise<void>;
+  deleteArtistGenres(key: string, source: ArtistGenres['source']): Promise<void>;
   // Records with permanent IDs (0014, src/server/entities/). Optional until
   // the Manage tab: createStore only links events when the tables exist.
   // Records are never deleted. Both stores enforce entities/integrity.ts.
