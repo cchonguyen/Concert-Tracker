@@ -16,7 +16,7 @@ import { LoggedEvent } from '../../events/types';
 import type { LineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
-import { Entity, EntityAlias, EntityLink } from '../../entities/types';
+import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 
 // Persistence boundary for the lineup pipeline. Two implementations:
 // fileStore (local dev, no setup) and supabaseStore (durable, used when
@@ -114,6 +114,16 @@ export interface LineupStore {
   listEntityLinks(): Promise<EntityLink[]>;
   // Adds links; one already stored is left as it is.
   addEntityLinks(links: EntityLink[]): Promise<void>;
+  // Writes records as given (renames, merges, undo).
+  putEntities(entities: Entity[]): Promise<void>;
+  // Replaces every alias of these records with `aliases`.
+  replaceEntityAliases(entityIds: string[], aliases: EntityAlias[]): Promise<void>;
+  // Replaces every link from or to these records with `links`.
+  replaceEntityLinks(entityIds: string[], links: EntityLink[]): Promise<void>;
+  putEntityHistory(entry: HistoryEntry): Promise<void>;
+  getEntityHistory(id: string): Promise<HistoryEntry | null>;
+  // Newest first.
+  listEntityHistory(limit: number): Promise<HistoryEntry[]>;
 }
 
 export const MAX_EXAMPLES_PER_DOMAIN = 3;

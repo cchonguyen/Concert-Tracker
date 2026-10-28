@@ -19,7 +19,7 @@ import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
-import { Entity, EntityAlias, EntityLink } from '../../entities/types';
+import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../entities/integrity';
 import { isStaleRun, LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS } from './types';
 
@@ -45,6 +45,7 @@ interface FileState {
   entities?: Record<string, Entity>;
   entityAliases?: EntityAlias[];
   entityLinks?: EntityLink[];
+  entityHistory?: Record<string, HistoryEntry>;
 }
 
 function emptyState(): FileState {
@@ -444,5 +445,54 @@ export class FileLineupStore implements LineupStore {
     checkLinks(new Map(Object.entries(state.entities ?? {})), fresh);
     state.entityLinks = [...existing, ...fresh.map(clone)];
     await this.save();
+  }
+
+  async putEntities(entities: Entity[]) {
+    const state = await this.load();
+    checkEntities(new Map(Object.entries(state.entities ?? {})), entities);
+    state.entities = { ...state.entities };
+    for (const e of entities) state.entities[e.id] = clone(e);
+    await this.save();
+  }
+
+  async replaceEntityAliases(entityIds: string[], aliases: EntityAlias[]) {
+    const state = await this.load();
+    const ids = new Set(entityIds);
+    const kept = (state.entityAliases ?? []).filter((a) => !ids.has(a.entityId));
+    checkAliases(new Map(Object.entries(state.entities ?? {})), kept, aliases);
+    const seen = new Set<string>();
+    const fresh = aliases.filter((a) => {
+      const k = `${a.kind}\u0000${a.aliasNormalized}`;
+      return !seen.has(k) && Boolean(seen.add(k));
+    });
+    state.entityAliases = [...kept, ...fresh.map(clone)];
+    await this.save();
+  }
+
+  async replaceEntityLinks(entityIds: string[], links: EntityLink[]) {
+    const state = await this.load();
+    const ids = new Set(entityIds);
+    const kept = (state.entityLinks ?? []).filter((l) => !ids.has(l.fromId) && !ids.has(l.toId));
+    checkLinks(new Map(Object.entries(state.entities ?? {})), links);
+    const pk = (l: EntityLink) => `${l.fromId}\u0000${l.toId}\u0000${l.role}`;
+    const have = new Set(kept.map(pk));
+    state.entityLinks = [...kept, ...links.filter((l) => !have.has(pk(l)) && Boolean(have.add(pk(l)))).map(clone)];
+    await this.save();
+  }
+
+  async putEntityHistory(entry: HistoryEntry) {
+    const state = await this.load();
+    state.entityHistory = { ...state.entityHistory, [entry.id]: clone(entry) };
+    await this.save();
+  }
+
+  async getEntityHistory(id: string) {
+    const h = (await this.load()).entityHistory?.[id];
+    return h ? clone(h) : null;
+  }
+
+  async listEntityHistory(limit: number) {
+    const all = Object.values((await this.load()).entityHistory ?? {});
+    return clone(all.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit));
   }
 }
