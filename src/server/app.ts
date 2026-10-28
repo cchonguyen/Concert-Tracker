@@ -9,6 +9,7 @@ import { sheetsRouter } from './events/sheetRoutes';
 import { sheetsFromEnv } from './events/sheets';
 import { genresRouter } from './events/genreRoutes';
 import { entitiesRouter } from './entities/routes';
+import { shareRouter } from './share/routes';
 
 // The /api routes, shared by the Node server (server.ts) and the Cloudflare
 // Worker (worker/index.ts). Static files and the job runner are wired by each host.
@@ -35,6 +36,8 @@ export function createApiApp(lineupDeps: PipelineDeps, runner: JobRunner): expre
   app.use('/api', importsRouter(lineupDeps, gmailFromEnv()));
   // The records behind your events' names (src/server/entities/).
   app.use('/api', entitiesRouter(lineupDeps));
+  // The owner's controls for the share page (src/server/share/).
+  app.use('/api', shareRouter(lineupDeps));
   // Lineup lookup jobs and review (see ARCHITECTURE.md)
   app.use('/api', lineupRouter(lineupDeps, runner));
 
