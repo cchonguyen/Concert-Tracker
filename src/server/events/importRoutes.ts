@@ -83,7 +83,7 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
       if (!Array.isArray(proposals)) throw new InputError('Send { proposals: [...] }.');
       if (proposals.length > MAX_PROPOSALS) throw new InputError(`Send at most ${MAX_PROPOSALS} proposals at a time.`);
       for (const p of proposals)
-        if (typeof p?.seller !== 'string' || !['new', 'flag', 'unreadable'].includes(p?.status) || !Array.isArray(p?.messageLinks) || !Array.isArray(p?.flags))
+        if (typeof p?.seller !== 'string' || !['new', 'flag', 'unreadable', 'skipped'].includes(p?.status) || !Array.isArray(p?.messageLinks) || !Array.isArray(p?.flags))
           throw new InputError('Each proposal needs seller, status, messageLinks and flags.');
       const now = deps.now();
       const [existing, events] = await Promise.all([deps.store.listImports(), deps.store.listEvents()]);
