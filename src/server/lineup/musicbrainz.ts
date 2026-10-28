@@ -2,8 +2,8 @@ import { ArtistIdentity, Fetcher } from './types';
 import { parseJson } from './http';
 import { normalizeName } from './text';
 
-// MusicBrainz is used for one thing: a stable artist ID so spelling variants
-// merge. Matches are accepted only on an exact normalized name or alias match
+// MusicBrainz gives a stable artist ID so spelling variants merge, and, only
+// when you ask, an artist's genres (src/server/events/genres.ts). Matches are accepted only on an exact normalized name or alias match
 // with a high search score; otherwise the artist stays unresolved.
 
 interface MbArtist {
@@ -14,7 +14,7 @@ interface MbArtist {
 }
 
 // Artists whose name or an alias is exactly this name, with a high score.
-async function exactMatches(fetcher: Fetcher, name: string): Promise<MbArtist[]> {
+export async function exactMatches(fetcher: Fetcher, name: string): Promise<MbArtist[]> {
   const url = `https://musicbrainz.org/ws/2/artist/?query=${encodeURIComponent(`artist:"${name}"`)}&fmt=json&limit=5`;
   const data = parseJson<{ artists?: MbArtist[] }>(await fetcher.get(url, { headers: { Accept: 'application/json' } }));
   const wanted = normalizeName(name);
@@ -38,4 +38,13 @@ export async function resolveArtist(fetcher: Fetcher, artist: ArtistIdentity): P
 export async function artistNamed(fetcher: Fetcher, name: string): Promise<string | null> {
   const [first] = await exactMatches(fetcher, name);
   return first ? `https://musicbrainz.org/artist/${first.id}` : null;
+}
+
+// An artist's genres as MusicBrainz users voted them: tag name and vote count.
+export async function artistGenreTags(fetcher: Fetcher, mbid: string): Promise<Array<{ name: string; count: number }>> {
+  const url = `https://musicbrainz.org/ws/2/artist/${encodeURIComponent(mbid)}?inc=genres&fmt=json`;
+  const data = parseJson<{ genres?: Array<{ name: string; count?: number }> }>(
+    await fetcher.get(url, { headers: { Accept: 'application/json' } }),
+  );
+  return (data.genres ?? []).map((g) => ({ name: g.name, count: g.count ?? 1 }));
 }
