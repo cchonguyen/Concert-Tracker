@@ -1,5 +1,6 @@
 import type { Edition, LookupJob, SourceType } from '../server/lineup/types';
 import type { NameIndex } from '../server/entities/link';
+import type { Entity, EntityAlias, EntityLink, HistoryEntry, LinkRole } from '../server/entities/types';
 import type { ConfirmRequest } from '../server/lineup/learning';
 import type { DetailCandidate, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
 import type { EventPatch } from '../server/events/service';
@@ -38,7 +39,10 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   });
   const data = await res.json().catch(() => ({}));
   // `retry`: the server says to wait a moment and call again.
-  if (!res.ok) throw Object.assign(new Error(data.error || `Request failed with HTTP ${res.status}`), { retry: data.retry === true });
+  // `conflict`: a record that already has the name (Manage), to merge into.
+  if (!res.ok) {
+    throw Object.assign(new Error(data.error || `Request failed with HTTP ${res.status}`), { retry: data.retry === true, conflict: data.conflict });
+  }
   return data as T;
 }
 
@@ -160,8 +164,28 @@ export const genresApi = {
 };
 
 // The records behind your events' names (src/server/entities/).
+// Manage: the records behind your events' names. Every change returns its
+// history entry, which undo takes back.
 export const entitiesApi = {
   names: () => request<{ names: NameIndex }>('/api/entities/names').then((r) => r.names),
+  list: () => request<{ entities: Entity[]; aliases: EntityAlias[]; links: EntityLink[]; duplicates: string[][] }>('/api/entities'),
+  history: () => request<{ history: HistoryEntry[] }>('/api/entities/history').then((r) => r.history),
+  undo: (historyId: string) =>
+    request<{ entry: HistoryEntry; restored: number; skipped: Array<{ id: string; name: string }> }>(
+      `/api/entities/history/${historyId}/undo`,
+      post(),
+    ),
+  createOrganization: (name: string) => request<{ entity: Entity; entry: HistoryEntry }>('/api/entities', post({ kind: 'organization', name })),
+  rename: (id: string, name: string) =>
+    request<{ entry: HistoryEntry }>(`/api/entities/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }).then((r) => r.entry),
+  merge: (id: string, into: string) => request<{ entry: HistoryEntry }>(`/api/entities/${id}/merge`, post({ into })).then((r) => r.entry),
+  addAlias: (id: string, name: string) => request<{ entry: HistoryEntry }>(`/api/entities/${id}/aliases`, post({ name })).then((r) => r.entry),
+  removeAlias: (id: string, name: string) =>
+    request<{ entry: HistoryEntry }>(`/api/entities/${id}/aliases/remove`, post({ name })).then((r) => r.entry),
+  link: (id: string, to: string, role: LinkRole) =>
+    request<{ entry: HistoryEntry }>(`/api/entities/${id}/links`, post({ to, role })).then((r) => r.entry),
+  unlink: (id: string, to: string, role: LinkRole) =>
+    request<{ entry: HistoryEntry }>(`/api/entities/${id}/links/remove`, post({ to, role })).then((r) => r.entry),
 };
 
 export const lineupApi = {
