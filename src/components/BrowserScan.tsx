@@ -129,7 +129,10 @@ export const BrowserScan: React.FC<{ status: EmailScanStatus; onFound: (imports:
           </p>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-0.5 sm:grid-cols-3">
             <dt className="text-zinc-500">Ticket emails examined</dt>
-            <dd>{s.examined}{s.failed ? ` (+${s.failed} Gmail would not open)` : ''}</dd>
+            <dd>
+              {s.examined}
+              {s.failed ? ` (+${s.failed} Gmail would not open${report.result.failureReason ? `: ${report.result.failureReason}` : ''})` : ''}
+            </dd>
             <dt className="text-zinc-500">Concert proposals</dt>
             <dd>{s.proposals}</dd>
             <dt className="text-zinc-500">Net unique events</dt>

@@ -49,6 +49,7 @@ export interface GmailScanResult {
   updatedCursors: EmailScanCursors;
   examined: number;
   failed: string[]; // ids Gmail would not hand over
+  failureReason?: string; // Gmail's answer for the last one refused
   summary: ScanSummary;
 }
 
@@ -64,11 +65,14 @@ export async function scanGmailInBrowser(options: GmailScanOptions): Promise<Gma
       const res = await doFetch(url, { headers: { Authorization: `Bearer ${options.token}` }, signal: options.signal });
       if (res.ok) return res.json();
       if (res.status === 401) throw new GmailTokenError('The Google sign-in expired. Sign in again.');
-      if ((res.status === 429 || res.status >= 500) && attempt < 4) {
-        await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
+      // Gmail says "slow down" with 429, or with 403 and a rateLimitExceeded reason.
+      const body = res.status === 403 ? await res.text().catch(() => '') : '';
+      const slowDown = res.status === 429 || res.status >= 500 || /rate ?limit|quota/i.test(body);
+      if (slowDown && attempt < 6) {
+        await new Promise((r) => setTimeout(r, Math.min(32000, 1000 * 2 ** attempt) + Math.random() * 500));
         continue;
       }
-      throw new Error(`Gmail answered ${res.status}.`);
+      throw new Error(`Gmail answered ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`);
     }
   };
 
@@ -91,22 +95,34 @@ export async function scanGmailInBrowser(options: GmailScanOptions): Promise<Gma
   const failed: string[] = [];
   let found = 0;
   let next = 0;
-  const worker = async () => {
-    while (next < ids.length) {
-      const id = ids[next++];
-      try {
-        const raw = await fetchMessage(get, id);
-        raws.push(raw);
-        messages.push({ id, link: raw.link, from: raw.from, subject: raw.subject, sentAt: raw.sentAt, stream: streamOf.get(id)! });
-        found += (await scanEmails([raw])).filter((p) => p.status !== 'unreadable').length;
-      } catch (err) {
-        if (err instanceof GmailTokenError || options.signal?.aborted) throw err;
-        failed.push(id);
-      }
-      progress({ phase: 'reading', examined: raws.length + failed.length, total: ids.length, found });
+  let lastError: string | undefined;
+  const read = async (id: string, queue: string[]) => {
+    try {
+      const raw = await fetchMessage(get, id);
+      raws.push(raw);
+      messages.push({ id, link: raw.link, from: raw.from, subject: raw.subject, sentAt: raw.sentAt, stream: streamOf.get(id)! });
+      found += (await scanEmails([raw])).filter((p) => p.status !== 'unreadable').length;
+    } catch (err) {
+      if (err instanceof GmailTokenError || options.signal?.aborted) throw err;
+      lastError = err instanceof Error ? err.message : String(err);
+      queue.push(id);
     }
   };
-  await Promise.all(Array.from({ length: Math.max(1, options.concurrency ?? 4) }, worker));
+  const retry: string[] = [];
+  const worker = async () => {
+    while (next < ids.length) {
+      await read(ids[next++], retry);
+      progress({ phase: 'reading', examined: raws.length + retry.length, total: ids.length, found });
+    }
+  };
+  // Gmail allows a user about 50 message reads a second; two at a time stays well under.
+  await Promise.all(Array.from({ length: Math.max(1, options.concurrency ?? 2) }, worker));
+  // What Gmail refused is tried once more, one at a time, after a pause.
+  if (retry.length) await new Promise((r) => setTimeout(r, 5000));
+  for (const id of retry) {
+    await read(id, failed);
+    progress({ phase: 'reading', examined: raws.length + failed.length, total: ids.length, found });
+  }
 
   // Grouping needs every message at once (receipt + tickets + refund).
   raws.sort((a, b) => a.sentAt.localeCompare(b.sentAt));
@@ -118,7 +134,7 @@ export async function scanGmailInBrowser(options: GmailScanOptions): Promise<Gma
   }
   const summary = summarizeScan(proposals, messages, failed.length);
   progress({ phase: 'done', examined: messages.length + failed.length, total: ids.length, found: summary.proposals });
-  return { proposals, messages, updatedCursors, examined: messages.length, failed, summary };
+  return { proposals, messages, updatedCursors, examined: messages.length, failed, failureReason: failed.length ? lastError : undefined, summary };
 }
 
 async function fetchMessage(get: (url: string) => Promise<any>, id: string): Promise<RawEmailMessage> {
