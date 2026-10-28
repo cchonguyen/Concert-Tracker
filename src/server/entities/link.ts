@@ -136,3 +136,28 @@ export function possibleDuplicates(entities: Entity[]): Entity[][] {
   }
   return [...groups.values()].filter((g) => g.length > 1);
 }
+
+// Normalized name or alias to the live record's ID, per kind, for code that
+// only has names (the list import in the browser). Merged records' names
+// lead to their target.
+export type NameIndex = Partial<Record<EntityKind, Record<string, string>>>;
+
+export function nameIndex(entities: Entity[], aliases: EntityAlias[], kinds: EntityKind[]): NameIndex {
+  const byId = new Map(entities.map((e) => [e.id, e]));
+  const live = (id: string) => byId.get(id)?.mergedIntoId ?? id;
+  const out: NameIndex = {};
+  for (const kind of kinds) out[kind] = {};
+  for (const e of entities) {
+    const names = out[e.kind];
+    if (names && !e.mergedIntoId) names[e.nameNormalized] = e.id;
+  }
+  for (const e of entities) {
+    const names = out[e.kind];
+    if (names && e.mergedIntoId) names[e.nameNormalized] ??= live(e.id);
+  }
+  for (const a of aliases) {
+    const names = out[a.kind];
+    if (names && byId.has(a.entityId)) names[a.aliasNormalized] ??= live(a.entityId);
+  }
+  return out;
+}
