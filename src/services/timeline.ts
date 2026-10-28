@@ -202,7 +202,7 @@ export interface TimelineViewInfo {
 export const TIMELINE_VIEWS: TimelineViewInfo[] = [
   { id: 'agenda', label: 'Agenda', sizes: ['large'], ready: true },
   { id: 'month', label: 'Month', sizes: [], ready: false },
-  { id: 'heatmap', label: 'Heatmap', sizes: [], ready: false },
+  { id: 'heatmap', label: 'Heatmap', sizes: ['large'], ready: true },
   { id: 'river', label: 'River', sizes: [], ready: false },
 ];
 export const DEFAULT_MODE: TimelineMode = 'agenda';
@@ -307,4 +307,68 @@ export interface TimelineViewProps {
   onSelectDate?: (date: string | null) => void;
   onSelectEvent?: (eventId: string | null) => void;
   onOpen: (eventId: string) => void;
+}
+
+// Heatmap: one row per year, a column per week (Sunday first), a square per
+// day. A year needs 53 columns, or 54 when a leap year starts on a Saturday,
+// so a New Year's Eve show is never cut off.
+export interface HeatmapCell {
+  date: string;
+  week: number; // column, from 0
+  dow: number; // row, 0 = Sunday
+}
+export interface HeatmapYear {
+  year: number;
+  weeks: number;
+  cells: HeatmapCell[];
+  months: Array<{ month: number; week: number }>; // the column each month starts in
+}
+
+export function heatmapYear(year: number): HeatmapYear {
+  const offset = weekday(`${year}-01-01`);
+  const cells: HeatmapCell[] = [];
+  const months: HeatmapYear['months'] = [];
+  let i = 0;
+  for (let date = `${year}-01-01`; date.startsWith(String(year)); date = addDays(date, 1), i++) {
+    const week = Math.floor((i + offset) / 7);
+    if (date.endsWith('-01')) months.push({ month: Number(date.slice(5, 7)), week });
+    cells.push({ date, week, dow: (i + offset) % 7 });
+  }
+  return { year, weeks: cells[cells.length - 1].week + 1, cells, months };
+}
+
+export type HeatmapRow =
+  | {
+      kind: 'year';
+      year: number;
+      events: number; // dated events starting this year
+      undayed: TimelinePartial[]; // events with only this year or a month in it
+    }
+  | { kind: 'gap'; from: number; to: number }; // a run of years with nothing in them
+
+// The years the heatmap shows, newest first: from the latest event (or this
+// year) back to the earliest. A run of years with nothing in them collapses
+// into one gap line; this year is always shown.
+export function heatmapRows(model: TimelineModel, range: TimelineRange = { kind: 'all' }): HeatmapRow[] {
+  const years = [
+    ...model.spans.flatMap((s) => [Number(s.first.slice(0, 4)), Number(s.last.slice(0, 4))]),
+    ...model.partial.map((p) => p.year),
+  ];
+  if (!years.length) return [];
+  const thisYear = Number(model.today.slice(0, 4));
+  const from = range.kind === 'all' ? Math.min(...years) : range.year;
+  const to = range.kind === 'all' ? Math.max(...years, thisYear) : range.year;
+  const rows: HeatmapRow[] = [];
+  for (let year = to; year >= from; year--) {
+    const lit = model.spans.some((s) => s.first.slice(0, 4) <= String(year) && s.last.slice(0, 4) >= String(year));
+    const undayed = model.partial.filter((p) => p.year === year);
+    if (!lit && !undayed.length && year !== thisYear) {
+      const last = rows[rows.length - 1];
+      if (last?.kind === 'gap') last.from = year;
+      else rows.push({ kind: 'gap', from: year, to: year });
+      continue;
+    }
+    rows.push({ kind: 'year', year, events: model.spans.filter((s) => s.first.startsWith(String(year))).length, undayed });
+  }
+  return rows;
 }
