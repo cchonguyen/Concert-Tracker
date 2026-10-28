@@ -435,3 +435,7 @@ test('import routes: nothing is saved until you tick it; future shows are added 
   assert.equal(restored.imports[0].status, 'new');
   assert.equal((await store.listEvents()).length, 2);
 });
+
+test('email: a name wrapped by a newline in the HTML source stays one line', () => {
+  assert.deepEqual(htmlToLines('<table><tr><td><span>Velvet</span>\n  <span>Tide</span></td></tr><tr><td>The Echo</td></tr></table>'), ['Velvet Tide', 'The Echo']);
+});

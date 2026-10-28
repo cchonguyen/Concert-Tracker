@@ -10,7 +10,9 @@ const BLOCK = /<\/?(?:p|div|tr|table|tbody|thead|caption|header|footer|section|a
 const INVISIBLE = /[­͏​-‍⁠﻿]/g;
 
 export function htmlToLines(html: string): string[] {
+  // A newline in the source is only whitespace; lines come from block tags.
   const text = html
+    .replace(/\r?\n/g, ' ')
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<(script|style|head|title)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
     .replace(BLOCK, '\n')
