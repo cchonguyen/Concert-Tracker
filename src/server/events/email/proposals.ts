@@ -24,7 +24,7 @@ const FLAGS: Record<EmailImportProposal['flags'][number]['kind'], ImportFlag> = 
 const idOfLink = (link: string) => link.split(/[/#]/).pop() ?? link;
 
 function keyOf(p: EmailImportProposal, firstId: string): string {
-  if (p.status === 'unreadable') return `unreadable|${firstId}`;
+  if (p.status === 'unreadable' || p.status === 'skipped') return `${p.status}|${firstId}`;
   const name = p.name ? normalizeName(p.name.value) : '';
   if (p.status === 'flag') return `flag|${normalizeName(p.seller)}|${name}`;
   if (name && p.date) return `${name}|${p.date.value}`;
@@ -56,7 +56,7 @@ export function mergeProposals(
     let touched = false;
     if (!row) {
       row = { id: randomUUID(), key, status: p.status, seller: p.seller, sources: {}, messages: [], flags: [], createdAt: iso, updatedAt: iso };
-      if (p.status === 'unreadable') row.name = p.rawSubject;
+      if (p.status === 'unreadable' || p.status === 'skipped') row.name = p.rawSubject;
       rows.push(row);
       touched = true;
     } else if (row.status === 'unreadable' && p.status === 'new') {
@@ -70,7 +70,7 @@ export function mergeProposals(
       row.messages.push(m);
       touched = true;
     }
-    if (p.status !== 'unreadable') {
+    if (p.status !== 'unreadable' && p.status !== 'skipped') {
       const set = (field: 'name' | 'startDate' | 'endDate' | 'venue' | 'city', ev: FieldEvidence | undefined) => {
         if (!ev || row![field]) return;
         row![field] = ev.value;

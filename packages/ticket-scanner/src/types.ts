@@ -28,7 +28,7 @@ export interface FieldEvidence {
 
 export interface EmailImportProposal {
   key: string; // "<name>|<startDate>" or "<seller>|<orderNumber>"
-  status: 'new' | 'flag' | 'unreadable';
+  status: 'new' | 'flag' | 'unreadable' | 'skipped';
   seller: string;
   orderNumber?: string;
   name?: FieldEvidence;
@@ -51,6 +51,6 @@ export interface EmailImportProposal {
     messageLink: string;
     sentAt: string;
   }>;
-  rawSubject?: string; // kept on 'unreadable' rows so the user can find the email
+  rawSubject?: string; // kept on 'unreadable' and 'skipped' rows so the user can find the email
   messageLinks: string[];
 }

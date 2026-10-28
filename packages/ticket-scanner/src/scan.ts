@@ -15,7 +15,7 @@ import { ticketmaster } from './readers/ticketmaster.ts';
 import { ticketWeb } from './readers/ticketWeb.ts';
 import { brownPaperTickets } from './readers/brownPaperTickets.ts';
 import { tixr } from './readers/tixr.ts';
-import { hasTicketSubject, readVerbatim } from './verbatimReader.ts';
+import { NO_RECEIPT, hasTicketSubject, readVerbatim } from './verbatimReader.ts';
 import { BOUTIQUE } from './readers/boutique.ts';
 import { RESALE } from './readers/resale.ts';
 import { passRead, readIcs, readPkpass, readSchemaOrg, type MarkupRead } from './markup.ts';
@@ -48,6 +48,7 @@ interface Outcome {
   lines: string[];
   read?: ReadEmail;
   unreadable?: string;
+  skipped?: string; // not a receipt (promotion, newsletter): listed, not reviewed
   source: string[]; // machine markup a quote may also come from
 }
 
@@ -138,6 +139,8 @@ function outcomeOf(raw: RawEmailMessage, markup: MarkupRead[]): Outcome[] {
     read = (reader ? reader.read(email, lines) : readVerbatim(email, lines)) ?? undefined;
   } catch (err) {
     if (!(err instanceof UnreadableEmail)) throw err;
+    // No order or confirmation wording: a promotion or newsletter, not a missed receipt.
+    if (!reader && err.message === NO_RECEIPT) return [{ email, seller: label, readBy, lines, source, skipped: 'No receipt wording in the message.' }];
     unreadable = err.message;
   }
   if (read && read.kind !== 'order') return [{ email, seller: label, readBy, lines, source, read }];
@@ -202,6 +205,16 @@ function group(outcomes: Outcome[]): EmailImportProposal[] {
   };
 
   for (const o of outcomes) {
+    if (o.skipped !== undefined) {
+      const key = `skipped|${o.email.id}`;
+      if (byKey.has(key)) continue;
+      const p = blank(key, o.seller);
+      p.status = 'skipped';
+      p.rawSubject = o.email.subject;
+      link(p, o);
+      byKey.set(key, p);
+      continue;
+    }
     if (o.unreadable !== undefined || !o.read) {
       const key = `unreadable|${o.email.id}`;
       if (byKey.has(key)) continue;

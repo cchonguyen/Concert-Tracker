@@ -15,6 +15,9 @@ const NOT_A_SHOW = /\b(boarding pass|airlines?|flights?|cinemas?|movies?|fandang
 const MARKETING = /\b(on sale|presale code|win tickets|last chance|newsletter|unsubscribe)\b/i;
 const TICKET_SUBJECT = /\b(tickets?|order confirmation|your order|e-?ticket|wristband|guestlist|rsvp|you're going|you got tickets)\b/i;
 
+// The message given to an unreadable row that has no order or confirmation words.
+export const NO_RECEIPT = 'No order or confirmation marker.';
+
 export const hasTicketSubject = (subject: string) => TICKET_SUBJECT.test(subject);
 
 // Returns null for mail that is not a show (ads, other kinds of tickets);
@@ -24,7 +27,7 @@ export function readVerbatim(email: RawEmailMessage, lines: string[]): ReadEmail
   if (NOT_A_SHOW.test(email.subject) || NOT_A_SHOW.test(email.from) || NOT_A_SHOW.test(lines.slice(0, 12).join(' '))) return null;
   const anchored = ANCHOR.test(body) || ANCHOR.test(email.subject);
   if (!anchored) {
-    if (hasTicketSubject(email.subject) && !MARKETING.test(email.subject)) throw new UnreadableEmail('No order or confirmation marker.');
+    if (hasTicketSubject(email.subject) && !MARKETING.test(email.subject)) throw new UnreadableEmail(NO_RECEIPT);
     return null;
   }
 
