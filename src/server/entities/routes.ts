@@ -13,6 +13,7 @@ import {
   removeAlias,
   removeLink,
   renameEntity,
+  updatePerson,
   undoEntry,
   venuePlaceConflicts,
 } from './manage';
@@ -71,6 +72,7 @@ export function entitiesRouter(deps: PipelineDeps): Router {
   router.post('/entities/history/:id/undo', manage((req) => undoEntry(store, req.params.id)));
   router.post('/entities', manage((req) => createEntity(store, req.body?.kind, req.body?.name)));
   router.patch('/entities/:id', manage(async (req) => ({ entry: await renameEntity(store, req.params.id, req.body?.name) })));
+  router.patch('/entities/:id/person', manage(async (req) => ({ entry: await updatePerson(store, req.params.id, req.body ?? {}) })));
   router.post('/entities/:id/merge', manage(async (req) => ({ entry: await mergeEntity(store, req.params.id, String(req.body?.into ?? '')) })));
   router.post('/entities/:id/aliases', manage(async (req) => ({ entry: await addAlias(store, req.params.id, req.body?.name) })));
   router.post('/entities/:id/aliases/remove', manage(async (req) => ({ entry: await removeAlias(store, req.params.id, req.body?.name) })));
