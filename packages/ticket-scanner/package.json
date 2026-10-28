@@ -1,0 +1,24 @@
+{
+  "name": "@livearchive/ticket-scanner",
+  "version": "0.1.0",
+  "description": "Deterministic, verbatim-checked reader for concert ticket emails. Runs in browsers, Cloudflare Workers and Node.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": ["src", "README.md"],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types tests/*.test.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "@types/node": "^22.14.0"
+  }
+}
