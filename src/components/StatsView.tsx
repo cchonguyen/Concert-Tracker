@@ -5,6 +5,8 @@ import { whenLabel } from '../services/format';
 import { attendanceOf } from '../server/events/attendance';
 import { facts, pastEvents, perYear, RankBy, Ranked, seriesStats, SeriesStat, top, yearInReview } from '../services/stats';
 import { EventTitle } from './EventTitle';
+import { Share2 } from 'lucide-react';
+import { SharePanel } from './SharePanel';
 
 interface StatsViewProps {
   events: LoggedEvent[];
@@ -219,6 +221,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
   );
   const filter = (param: string, value: string) => onOpenTable(`${param}=${encodeURIComponent(value)}`);
   const series = useMemo(() => seriesStats(past), [past]);
+  const [sharing, setSharing] = useState(false);
 
   // What is held back, so the counts below never look like they lost events.
   const held = useMemo(() => {
@@ -257,7 +260,16 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
 
   return (
     <div className="space-y-6">
-      {heldNote}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">{heldNote}</div>
+        <button
+          onClick={() => setSharing(true)}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-1.5 text-sm text-zinc-300 hover:text-zinc-100"
+        >
+          <Share2 className="h-4 w-4" /> Share
+        </button>
+      </div>
+      {sharing && <SharePanel onClose={() => setSharing(false)} />}
       {years.length > 0 && (
         <section className={`${card} space-y-2`}>
           <h2 className={title}>Events per year</h2>

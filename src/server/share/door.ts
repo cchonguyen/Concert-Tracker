@@ -2,7 +2,17 @@ import type { LineupStore } from '../lineup/store/types';
 import { type AccessConfig, verifyAccessToken } from './access';
 import { findShareLink } from './links';
 import { NOT_ACTIVE_HTML, renderSharePage, SHARE_HEADERS, UNAVAILABLE_HTML } from './page';
+import type { ShareSettings } from './types';
 import { buildShareView } from './view';
+
+// The page for these settings, read with the share columns only. Used by
+// /s/<code> and by the owner's preview.
+export async function sharePageHtml(store: LineupStore, settings: ShareSettings, now: Date): Promise<string> {
+  const events = await store.listShareEvents();
+  const editionIds = [...new Set(events.flatMap((e) => (e.editionId ? [e.editionId] : [])))];
+  const lineups = editionIds.length ? await store.editionLineupFacts(editionIds) : {};
+  return renderSharePage(buildShareView(events, settings, now, lineups));
+}
 
 // The first thing the Worker runs on every request it sees. Share page
 // paths are answered here and never reach Express or the static files; every
@@ -35,13 +45,10 @@ export async function frontDoor(request: Request, deps: DoorDeps): Promise<Respo
       const store = await deps.store();
       const link = await findShareLink(store, code);
       if (!link) return html(NOT_ACTIVE_HTML, 404, method);
-      const events = await store.listShareEvents();
-      const editionIds = [...new Set(events.flatMap((e) => (e.editionId ? [e.editionId] : [])))];
-      const lineups = editionIds.length ? await store.editionLineupFacts(editionIds) : {};
-      const view = buildShareView(events, link.settings, deps.now?.() ?? new Date(), lineups);
+      const page = await sharePageHtml(store, link.settings, deps.now?.() ?? new Date());
       // Only the link's id is logged, never its code.
       console.log(`Share page served for link ${link.id}`);
-      return html(renderSharePage(view), 200, method);
+      return html(page, 200, method);
     } catch (err) {
       console.error('Share page failed:', err instanceof Error ? err.message : String(err));
       return html(UNAVAILABLE_HTML, 503, method);
