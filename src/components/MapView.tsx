@@ -146,7 +146,7 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
   useEffect(() => {
     if (!box.current || map.current) return;
     map.current = L.map(box.current, { worldCopyJump: true, zoomControl: true }).setView([30, -40], 2);
-    // OpenStreetMap's own tiles need no key; the map-tiles class darkens them in CSS.
+    // OpenStreetMap's own tiles need no key; the map-tiles class darkens them in CSS in the dark theme.
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       className: 'map-tiles',
@@ -169,9 +169,9 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
       const n = p.events.length;
       L.circleMarker([p.point.lat, p.point.lon], {
         radius: 5 + 17 * Math.sqrt(n / max),
-        color: p.key === selected ? '#ffffff' : '#c4b5fd',
+        // Colors come from the map-place rules in index.css, so they follow the theme.
+        className: p.key === selected ? 'map-place is-selected' : 'map-place',
         weight: p.key === selected ? 2 : 1,
-        fillColor: '#8b5cf6',
         fillOpacity: 0.55,
       })
         .bindTooltip(`${p.city}: ${plural(n, 'event')}${p.point.match === 'name' ? ' (placed by name only)' : ''}`)
@@ -181,7 +181,7 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
     if (stops.length > 1) {
       L.polyline(
         stops.map((s) => [s.point.lat, s.point.lon] as L.LatLngTuple),
-        { color: '#22d3ee', weight: 2, opacity: 0.8, dashArray: '4 6' },
+        { className: 'map-route', weight: 2, opacity: 0.8, dashArray: '4 6' },
       ).addTo(group);
     }
   }, [data, selected, stops]);
