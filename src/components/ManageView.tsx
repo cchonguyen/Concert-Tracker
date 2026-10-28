@@ -314,6 +314,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
           entity={open}
           data={data}
           events={counts.get(open.id) ?? []}
+          allEvents={events}
           duplicates={(duplicateOf.get(open.id) ?? []).map((id) => byId.get(id)!).filter(Boolean)}
           onBack={() => setOpenId(null)}
           onOpen={setOpenId}

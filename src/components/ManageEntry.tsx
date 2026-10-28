@@ -8,6 +8,8 @@ import { EventTitle } from './EventTitle';
 import { personParts } from '../services/people';
 import { attrFields } from '../server/entities/attrs';
 import { categoryGaps, LABELLED, linkedSuggestions } from '../services/dataHealth';
+import { artistGaps, personInsights, seriesStreak, spanLabel } from '../services/insights';
+import { wentTo } from '../server/events/attendance';
 import { entityLabel, KINDS, ManageData } from './ManageView';
 
 // One record in the Manage tab: its events, Rename everywhere, Merge into
@@ -17,6 +19,7 @@ interface ManageEntryProps {
   entity: Entity;
   data: ManageData;
   events: LoggedEvent[]; // the events pointing at it
+  allEvents: LoggedEvent[]; // every event, for insights across them
   duplicates: Entity[]; // look-alike records, offered to merge
   onBack: () => void;
   onOpen: (id: string) => void; // another record
@@ -72,6 +75,7 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
   entity,
   data,
   events,
+  allEvents,
   duplicates,
   onBack,
   onOpen,
@@ -244,6 +248,10 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
           )}
           <Picker options={live('place')} placeholder={place ? 'Move to another place…' : 'Find the city…'} label="Pick a place" onPick={(p) => void link(p, 'in', true)} />
         </div>
+      )}
+
+      {(entity.kind === 'artist' || entity.kind === 'person' || entity.kind === 'series') && (
+        <Insights entity={entity} data={data} events={events} allEvents={allEvents} busy={busy} onOpen={onOpen} onOpenEvent={onOpenEvent} link={link} />
       )}
 
       {LABELLED.includes(entity.kind) && (
@@ -566,6 +574,132 @@ const Labels: React.FC<{
         <Picker options={all.filter((l) => !mine.includes(l))} placeholder="Add a label…" label="Add a label" onPick={(l) => void link(l, true)} />
       ) : (
         <p className="text-xs text-zinc-500">No labels yet. Add them in the Labels list (for example Indoor and Outdoor, group Indoor/Outdoor).</p>
+      )}
+    </div>
+  );
+};
+
+const dayLabel = (iso: string) =>
+  new Date(`${iso}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' });
+
+// Worked out from the events you went to (src/services/insights.ts): for an
+// artist the gap since you last saw them and your longest wait, and who
+// introduced you; for a person your shows together, the first, the acts you
+// saw only with them, and who they introduced you to; for a series the
+// editions you went to and your streaks.
+const Insights: React.FC<{
+  entity: Entity;
+  data: ManageData;
+  events: LoggedEvent[];
+  allEvents: LoggedEvent[];
+  busy: string | null;
+  onOpen: (id: string) => void;
+  onOpenEvent: (id: string) => void;
+  link: (to: Entity, role: LinkRole, add: boolean) => Promise<void>;
+}> = ({ entity, data, events, allEvents, busy, onOpen, onOpenEvent, link }) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const byId = new Map(data.entities.map((e) => [e.id, e]));
+  const went = wentTo(events, today);
+  const chipClass = 'inline-flex items-center gap-1 rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300';
+  const lines: React.ReactNode[] = [];
+
+  if (entity.kind === 'artist') {
+    const g = artistGaps(went, today);
+    if (g.sinceLast !== undefined) lines.push(<>Last seen {g.sinceLast === 0 ? 'today' : `${spanLabel(g.sinceLast)} ago`} ({dayLabel(g.lastDate!)}).</>);
+    if (g.longest) lines.push(<>Longest wait between shows: {spanLabel(g.longest.days)} ({dayLabel(g.longest.from)} to {dayLabel(g.longest.to)}).</>);
+    if (g.dated && g.dated < g.total) lines.push(<span className="text-zinc-500">Based on the {g.dated} of {g.total} events dated to the day.</span>);
+    const by = data.links.filter((l) => l.toId === entity.id && l.role === 'introduced_me_to').map((l) => byId.get(l.fromId)).filter((p): p is Entity => Boolean(p));
+    if (by.length)
+      lines.push(
+        <span className="flex flex-wrap items-center gap-1.5">
+          Introduced by
+          {by.map((p) => (
+            <button key={p.id} onClick={() => onOpen(p.id)} className={`${chipClass} hover:text-violet-300`}>
+              {p.name}
+            </button>
+          ))}
+        </span>,
+      );
+  }
+
+  if (entity.kind === 'series') {
+    const s = seriesStreak(went, entity.id);
+    if (s.years.length) lines.push(<>Editions you went to: {s.years.join(', ')}.</>);
+    if (s.longest && s.longest.length > 1) lines.push(<>Longest streak: {s.longest.length} years in a row ({s.longest.from} to {s.longest.to}).</>);
+    if (s.latest && s.longest && s.latest !== s.longest && s.latest.length > 1) lines.push(<>Latest run: {s.latest.length} years ({s.latest.from} to {s.latest.to}).</>);
+  }
+
+  let introduced: Entity[] = [];
+  if (entity.kind === 'person') {
+    const p = personInsights(wentTo(allEvents, today), entity.id);
+    if (p.together) lines.push(<>{p.together} show{p.together === 1 ? '' : 's'} together.</>);
+    if (p.first)
+      lines.push(
+        <>
+          First show together:{' '}
+          <button onClick={() => onOpenEvent(p.first!.id)} className="text-zinc-100 hover:text-violet-300">
+            <EventTitle event={p.first} />
+          </button>{' '}
+          <span className="text-zinc-500">{whenLabel(p.first)}</span>
+        </>,
+      );
+    if (p.onlyWith.length)
+      lines.push(
+        <span className="flex flex-wrap items-center gap-1.5">
+          Seen only with them:
+          {p.onlyWith.slice(0, 12).map((a) => (
+            <span key={a.key} className={chipClass}>
+              {a.name}
+              {a.times > 1 && <span className="text-zinc-500">×{a.times}</span>}
+            </span>
+          ))}
+          {p.onlyWith.length > 12 && <span className="text-xs text-zinc-500">+{p.onlyWith.length - 12}</span>}
+        </span>,
+      );
+    introduced = data.links
+      .filter((l) => l.fromId === entity.id && l.role === 'introduced_me_to')
+      .map((l) => byId.get(l.toId))
+      .filter((a): a is Entity => Boolean(a));
+  }
+
+  const artists = data.entities.filter((e) => e.kind === 'artist' && !e.mergedIntoId && !introduced.includes(e));
+  if (!lines.length && entity.kind !== 'person') return null;
+  return (
+    <div className="space-y-1.5">
+      <h3 className={sectionTitle}>Insights</h3>
+      {lines.length ? (
+        <ul className="space-y-1 text-sm text-zinc-300">
+          {lines.map((l, i) => (
+            <li key={i}>{l}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-zinc-500">Nothing yet: insights come from the events you went to.</p>
+      )}
+      {entity.kind === 'person' && (
+        <div className="space-y-1.5 pt-1">
+          <p className="text-xs text-zinc-400">Introduced you to</p>
+          {introduced.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5">
+              {introduced.map((a) => (
+                <li key={a.id} className={chipClass}>
+                  <button onClick={() => onOpen(a.id)} className="hover:text-violet-300">
+                    {a.name}
+                  </button>
+                  <button
+                    onClick={() => void link(a, 'introduced_me_to', false)}
+                    disabled={Boolean(busy)}
+                    className="text-zinc-500 hover:text-rose-300"
+                    aria-label={`Remove ${a.name}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Picker options={artists} placeholder="An artist they got you into…" label="Add an artist they introduced" onPick={(a) => void link(a, 'introduced_me_to', true)} />
+        </div>
       )}
     </div>
   );
