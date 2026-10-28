@@ -232,6 +232,50 @@ function planRename(world: World, id: string, newName: unknown, at: string): Pla
   };
 }
 
+// A person's first and last name and your note (Manage step 4). The record's
+// name becomes "First Last", renamed everywhere like any rename (the old name
+// kept as an AKA); a note alone changes only the record.
+export interface PersonDetails {
+  first?: unknown;
+  last?: unknown;
+  note?: unknown;
+}
+
+export const MAX_NOTE = 2000;
+
+function planPerson(world: World, id: string, details: PersonDetails, at: string): Plan {
+  const entity = live(world, id, 'person');
+  const part = (v: unknown) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : '');
+  const first = part(details.first);
+  const last = part(details.last);
+  if (!normalizeName(first)) throw new ManageError('A first name needs at least one letter or digit.', 400);
+  if (last && !normalizeName(last)) throw new ManageError('A last name needs at least one letter or digit.', 400);
+  const note = typeof details.note === 'string' ? details.note.trim() : '';
+  if (note.length > MAX_NOTE) throw new ManageError(`A note can be at most ${MAX_NOTE} characters.`, 400);
+  const attrs: Record<string, unknown> = { ...entity.attrs, first };
+  if (last) attrs.last = last;
+  else delete attrs.last;
+  if (note) attrs.note = note;
+  else delete attrs.note;
+  const name = last ? `${first} ${last}` : first;
+  if (name !== entity.name) {
+    const plan = planRename(world, id, name, at);
+    plan.entities.after = [{ ...plan.entities.after[0], attrs }];
+    return plan;
+  }
+  if (JSON.stringify(attrs) === JSON.stringify(entity.attrs)) throw new ManageError('Nothing changed.', 400);
+  return {
+    operation: 'details',
+    summary: `Updated ${entity.name}'s details`,
+    sourceEntityId: id,
+    entities: { before: [entity], after: [{ ...entity, attrs, updatedAt: at }] },
+    touched: [id],
+    aliases: aliasesOf(world, [id]),
+    links: linksOf(world, [id]),
+    events: [],
+  };
+}
+
 function planMerge(world: World, sourceId: string, intoId: string, at: string): Plan {
   if (sourceId === intoId) throw new ManageError('A record cannot be merged into itself.', 400);
   const source = live(world, sourceId);
@@ -422,6 +466,11 @@ const now = () => new Date().toISOString();
 export async function renameEntity(store: LineupStore, id: string, name: unknown, at = now()): Promise<HistoryEntry> {
   const world = await load(store);
   return apply(store, world, planRename(world, id, name, at), at);
+}
+
+export async function updatePerson(store: LineupStore, id: string, details: PersonDetails, at = now()): Promise<HistoryEntry> {
+  const world = await load(store);
+  return apply(store, world, planPerson(world, id, details ?? {}, at), at);
 }
 
 export async function mergeEntity(store: LineupStore, sourceId: string, intoId: string, at = now()): Promise<HistoryEntry> {

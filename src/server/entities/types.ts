@@ -45,7 +45,7 @@ export const ALLOWED_LINKS: Array<{ from: EntityKind; role: LinkRole; to: Entity
 // what the change touched; events hold only the fields it changed.
 export interface HistoryEntry {
   id: string;
-  operation: 'rename' | 'merge' | 'alias-add' | 'alias-remove' | 'link-add' | 'link-remove' | 'create';
+  operation: 'rename' | 'merge' | 'alias-add' | 'alias-remove' | 'link-add' | 'link-remove' | 'details' | 'create';
   summary: string;
   sourceEntityId: string;
   targetEntityId?: string;
