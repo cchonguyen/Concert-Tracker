@@ -48,3 +48,30 @@ test('Eventbrite: a shuttle sold for a show is not a proposal', () => {
   ]);
   assert.equal(out.length, 0);
 });
+
+// Synthetic 2013 card: the date is under "About this event", and the venue and
+// its address are one line split by <BR>.
+test('Eventbrite: a 2013 card with <BR>-packed venue and address is read', () => {
+  const [p] = readRawEmails([
+    {
+      id: 'eb-2013',
+      link: 'https://mail.google.com/mail/u/0/#all/eb-2013',
+      from: 'Eventbrite <orders@eventbrite.com>',
+      subject: 'Your Tickets for Example Party',
+      sentAt: '2013-11-10T04:30:21Z',
+      text: [
+        'Hi Charlie, this is your order confirmation for',
+        'Example Party',
+        'Order Summary',
+        'Order #: 111222333',
+        'About this event',
+        'Saturday, November 9, 2013 at 10:00 PM - Sunday, November 10, 2013 at 6:00 AM (PST)',
+        'The Example Hall<BR>401 Sample Street<BR>San Francisco, CA 94708',
+      ].join('\n'),
+    },
+  ]);
+  assert.equal(p.status, 'new');
+  assert.equal(p.date?.value, '2013-11-09');
+  assert.equal(p.venue?.value, 'The Example Hall');
+  assert.equal(p.city?.value, 'San Francisco, CA');
+});
