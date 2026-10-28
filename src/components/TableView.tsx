@@ -354,7 +354,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
     </button>
   );
   const sheetPanel = syncing && (
-    <SheetSync events={events} imports={imports} notice={sheetsNotice} onDone={onImported} onClose={() => setSyncing(false)} />
+    <SheetSync notice={sheetsNotice} onClose={() => setSyncing(false)} />
   );
   const seriesButton = (
     <button onClick={() => setLinking(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">

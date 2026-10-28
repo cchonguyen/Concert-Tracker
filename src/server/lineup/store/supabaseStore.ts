@@ -18,6 +18,8 @@ import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import { LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS } from './types';
+import { Entity, EntityAlias, EntityLink } from '../../entities/types';
+import { checkLinks } from '../../entities/integrity';
 
 // Postgres-backed store. Tables are defined in
 // supabase/migrations/0002_source_first_lineups.sql, 0003_event_log.sql and
@@ -569,6 +571,16 @@ export class SupabaseLineupStore implements LineupStore {
       rating: e.rating ?? null,
       ticket_price: e.ticketPrice ?? null,
       notes: e.notes ?? null,
+      // Only once linked (0014): an event saved without the entity tables
+      // leaves these columns out, so it saves before the migration too.
+      ...(e.refs
+        ? {
+            venue_id: e.refs.venueId,
+            place_id: e.refs.placeId,
+            series_id: e.refs.seriesId,
+            companion_ids: e.refs.companionIds,
+          }
+        : {}),
       created_at: e.createdAt,
       updated_at: e.updatedAt,
     };
@@ -604,6 +616,10 @@ export class SupabaseLineupStore implements LineupStore {
       rating: r.rating ?? undefined,
       ticketPrice: r.ticket_price ?? undefined,
       notes: r.notes ?? undefined,
+      refs:
+        r.companion_ids != null
+          ? { venueId: r.venue_id ?? null, placeId: r.place_id ?? null, seriesId: r.series_id ?? null, companionIds: r.companion_ids }
+          : undefined,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     });
@@ -693,6 +709,102 @@ export class SupabaseLineupStore implements LineupStore {
       'listUnresolvedArtists',
     );
     return (rows ?? []).map((r: any): ArtistIdentity => ({ key: r.key, name: r.name, mbid: r.mbid ?? undefined }));
+  }
+
+  // Entities (0014) -------------------------------------------------------
+
+  // Every row of a table, a page at a time (PostgREST returns 1000 at most).
+  private async all(table: string, what: string): Promise<any[]> {
+    const out: any[] = [];
+    for (let from = 0; ; from += 1000) {
+      const rows = this.check(await this.db.from(table).select('*').range(from, from + 999), what) ?? [];
+      out.push(...rows);
+      if (rows.length < 1000) return out;
+    }
+  }
+
+  async listEntities() {
+    return (await this.all('entities', 'listEntities')).map(
+      (r): Entity => ({
+        id: r.id,
+        kind: r.kind,
+        name: r.name,
+        nameNormalized: r.name_normalized,
+        attrs: r.attrs ?? {},
+        mergedIntoId: r.merged_into_id ?? undefined,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      }),
+    );
+  }
+
+  // The live-name, self-merge and missing-target rules are constraints in
+  // 0014; flattening is kept by the only code that merges.
+  async addEntities(list: Entity[]) {
+    const rows = [...new Map(list.map((e) => [e.id, e])).values()].map((e) => ({
+      id: e.id,
+      kind: e.kind,
+      name: e.name,
+      name_normalized: e.nameNormalized,
+      attrs: e.attrs,
+      merged_into_id: e.mergedIntoId ?? null,
+      created_at: e.createdAt,
+      updated_at: e.updatedAt,
+    }));
+    if (rows.length) this.check(await this.db.from('entities').upsert(rows, { onConflict: 'id', ignoreDuplicates: true }), 'addEntities');
+  }
+
+  async listEntityAliases() {
+    return (await this.all('entity_aliases', 'listEntityAliases')).map(
+      (r): EntityAlias => ({ entityId: r.entity_id, kind: r.kind, aliasNormalized: r.alias_normalized }),
+    );
+  }
+
+  // unique (kind, alias_normalized) rejects an alias another record holds.
+  async addEntityAliases(list: EntityAlias[]) {
+    const rows = [...new Map(list.map((a) => [`${a.kind}\u0000${a.aliasNormalized}`, a])).values()];
+    const existing = new Map((await this.listEntityAliases()).map((a) => [`${a.kind}\u0000${a.aliasNormalized}`, a.entityId]));
+    const fresh = rows.filter((a) => {
+      const held = existing.get(`${a.kind}\u0000${a.aliasNormalized}`);
+      if (held && held !== a.entityId) throw new Error(`Supabase addEntityAliases failed: the ${a.kind} alias "${a.aliasNormalized}" already belongs to another record.`);
+      return !held;
+    });
+    if (fresh.length) {
+      this.check(
+        await this.db.from('entity_aliases').insert(fresh.map((a) => ({ entity_id: a.entityId, kind: a.kind, alias_normalized: a.aliasNormalized }))),
+        'addEntityAliases',
+      );
+    }
+  }
+
+  async listEntityLinks() {
+    return (await this.all('entity_links', 'listEntityLinks')).map(
+      (r): EntityLink => ({ fromId: r.from_id, toId: r.to_id, role: r.role, createdAt: r.created_at }),
+    );
+  }
+
+  // Postgres checks the ends exist and differ; which kinds may link how is
+  // checked here, as in the file store.
+  async addEntityLinks(list: EntityLink[]) {
+    if (!list.length) return;
+    const ids = [...new Set(list.flatMap((l) => [l.fromId, l.toId]))];
+    const rows = this.check(await this.db.from('entities').select('*').in('id', ids), 'addEntityLinks') ?? [];
+    const byId = new Map(
+      rows.map((r: any): [string, Entity] => [
+        r.id,
+        { id: r.id, kind: r.kind, name: r.name, nameNormalized: r.name_normalized, attrs: r.attrs ?? {}, createdAt: r.created_at, updatedAt: r.updated_at },
+      ]),
+    );
+    checkLinks(byId, list);
+    this.check(
+      await this.db
+        .from('entity_links')
+        .upsert(
+          list.map((l) => ({ from_id: l.fromId, to_id: l.toId, role: l.role, created_at: l.createdAt })),
+          { onConflict: 'from_id,to_id,role', ignoreDuplicates: true },
+        ),
+      'addEntityLinks',
+    );
   }
 }
 
