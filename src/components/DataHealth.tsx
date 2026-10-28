@@ -1,16 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { GitMerge, Loader2, MapPin } from 'lucide-react';
+import { GitMerge, Loader2, MapPin, Sparkles, Tag } from 'lucide-react';
 import { entitiesApi, LoggedEvent } from '../services/lineupApi';
 import type { Entity, HistoryEntry } from '../server/entities/types';
 import { entityLabel, KINDS, ManageData } from './ManageView';
+import { categoryGaps, linkedSuggestions, placeOfferVenues, rareLabels, venuesWithoutPlace } from '../services/dataHealth';
 
 // Data health in the Manage tab: what needs your call to keep records from
-// drifting. Records that look like the same one (merge, or leave them), and
-// venues whose events disagree on the city (pick the venue's city). Nothing
+// drifting. Records that look like the same one (merge, or leave them),
+// venues whose events disagree on the city (pick the venue's city), label
+// groups some records lack, labels offered from linked records, labels used
+// once, venues with no place, and cities a save brought that the venue's
+// place replaced (src/services/dataHealth.ts). Nothing
 // here changes on its own; every change can be undone from History.
 
 interface DataHealthProps {
   data: ManageData;
+  events: LoggedEvent[];
   counts: Map<string, LoggedEvent[]>; // events per record
   onOpen: (id: string) => void;
   onChanged: (entry: HistoryEntry, eventsToo?: boolean) => Promise<void>;
@@ -22,7 +27,7 @@ const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-500';
 const chip =
   'inline-flex items-center gap-1 rounded-full border border-zinc-800 px-2.5 py-1 text-xs text-zinc-200 hover:border-violet-500/60 hover:text-violet-200 disabled:opacity-40';
 
-export const DataHealth: React.FC<DataHealthProps> = ({ data, counts, onOpen, onChanged }) => {
+export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, onOpen, onChanged }) => {
   const [venues, setVenues] = useState<VenuePlaces | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +63,15 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, counts, onOpen, on
     .map((g) => g.map((id) => byId.get(id)).filter((e): e is Entity => Boolean(e && !e.mergedIntoId)))
     .filter((g) => g.length > 1)
     .map((g) => [...g].sort((a, b) => n(b.id) - n(a.id) || entityLabel(a).localeCompare(entityLabel(b))));
+  const input = { entities: data.entities, links: data.links, events };
+  const gaps = categoryGaps(input);
+  const offers = linkedSuggestions(input);
+  const rare = rareLabels(input);
+  const unplaced = venuesWithoutPlace(input);
+  const offered = placeOfferVenues(data.entities);
+  const label = (kind: string, n: number) => `${n} ${KINDS.find((k) => k.kind === kind)?.[n === 1 ? 'one' : 'label'].toLowerCase() ?? kind}`;
+  const addLabel = (recordId: string, labelId: string) =>
+    void run(`label:${recordId}:${labelId}`, () => entitiesApi.link(recordId, labelId, 'has_label'));
   const disagree = (venues ?? []).filter((v) => byId.get(v.venueId) && !byId.get(v.venueId)!.mergedIntoId);
 
   return (
@@ -181,6 +195,117 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, counts, onOpen, on
               );
             })}
           </ul>
+        )}
+      </div>
+
+      {gaps.length > 0 && (
+        <div className="space-y-2">
+          <h3 className={sectionTitle}>Labels some records lack</h3>
+          {gaps.map((g) => (
+            <div key={`${g.kind}:${g.group}`} className="space-y-1.5 rounded-xl border border-zinc-900 p-3">
+              <p className="text-sm text-zinc-200">
+                {label(g.kind, g.missing.length)} with no {g.group.toLowerCase()}
+              </p>
+              <ul className="space-y-1">
+                {g.missing.slice(0, 12).map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center gap-1.5 text-sm">
+                    <button onClick={() => onOpen(r.id)} className="mr-1 text-zinc-100 hover:text-violet-300">
+                      {r.name}
+                    </button>
+                    {g.labels.map((l) => (
+                      <button key={l.id} onClick={() => addLabel(r.id, l.id)} disabled={Boolean(busy)} className={chip}>
+                        <Tag className="h-3 w-3" /> {l.name}
+                      </button>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+              {g.missing.length > 12 && <p className="text-xs text-zinc-500">and {g.missing.length - 12} more</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {offers.length > 0 && (
+        <div className="space-y-2">
+          <h3 className={sectionTitle}>Offered from linked records</h3>
+          <ul className="space-y-1.5">
+            {offers.map((o) => {
+              const r = byId.get(o.recordId);
+              const l = byId.get(o.labelId);
+              const because = byId.get(o.becauseId);
+              if (!r || !l || !because) return null;
+              return (
+                <li key={`${o.recordId}:${o.labelId}`} className="flex flex-wrap items-center gap-2 text-sm text-zinc-300">
+                  <Sparkles className="h-3.5 w-3.5 text-violet-300" />
+                  <button onClick={() => onOpen(r.id)} className="text-zinc-100 hover:text-violet-300">
+                    {r.name}
+                  </button>
+                  <span className="text-zinc-500">
+                    has no {String(l.attrs.group ?? 'such label').toLowerCase()}; {because.name} is {l.name}.
+                  </span>
+                  <button onClick={() => addLabel(r.id, l.id)} disabled={Boolean(busy)} className={chip}>
+                    Add {l.name}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {rare.length > 0 && (
+        <div className="space-y-2">
+          <h3 className={sectionTitle}>Labels used once or not at all</h3>
+          <p className="text-xs text-zinc-500">Often a typo of another label: open one to merge or rename it.</p>
+          <ul className="flex flex-wrap gap-1.5">
+            {rare.map(({ label: l, uses }) => (
+              <li key={l.id}>
+                <button onClick={() => onOpen(l.id)} className={chip}>
+                  {l.name} <span className="text-zinc-500">{uses ? 'once' : 'unused'}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {offered.length > 0 && (
+        <div className="space-y-2">
+          <h3 className={sectionTitle}>Other cities a save brought</h3>
+          <p className="text-xs text-zinc-500">
+            These events took their venue's city in place of the one shown. If the venue's city is the wrong one, open the venue and move it.
+          </p>
+          <ul className="space-y-1.5">
+            {offered.map(({ venue, offers: cities }) => (
+              <li key={venue.id} className="text-sm text-zinc-300">
+                <button onClick={() => onOpen(venue.id)} className="font-semibold text-zinc-100 hover:text-violet-300">
+                  {venue.name}
+                </button>{' '}
+                <span className="text-zinc-500">
+                  {cities.map((c) => `${[c.city, c.region, c.country].filter(Boolean).join(', ')} (from ${c.from === 'user' ? 'you' : c.from})`).join('; ')}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <h3 className={sectionTitle}>Venues with no place</h3>
+        {unplaced.filter((v) => !disagree.some((d) => d.venueId === v.id)).length ? (
+          <ul className="flex flex-wrap gap-1.5">
+            {unplaced.filter((v) => !disagree.some((d) => d.venueId === v.id)).map((v) => (
+              <li key={v.id}>
+                <button onClick={() => onOpen(v.id)} className={chip}>
+                  <MapPin className="h-3 w-3" /> {v.name}
+                  <span className="text-zinc-500">{n(v.id)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-zinc-500">None. Every venue on your events is in a place.</p>
         )}
       </div>
     </section>
