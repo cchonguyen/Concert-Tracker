@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, Map as MapIcon, Mic2, Radio, Table2, Ticket } from 'lucide-react';
+import { BarChart3, FolderCog, Map as MapIcon, Mic2, Radio, Table2, Ticket } from 'lucide-react';
 import {
   EmailImport,
   eventsApi,
@@ -21,9 +21,10 @@ import { TableView } from './components/TableView';
 import { StatsView } from './components/StatsView';
 import { MapView } from './components/MapView';
 import { ThemePicker } from './components/ThemePicker';
+import { ManageTarget, ManageView } from './components/ManageView';
 import { wentTo } from './server/events/attendance';
 
-type Tab = 'events' | 'table' | 'map' | 'stats' | 'artists';
+type Tab = 'events' | 'table' | 'map' | 'stats' | 'artists' | 'manage';
 
 // The Table and Map views keep their filters in the address (?view=table&...).
 const FILTERED: Tab[] = ['table', 'map'];
@@ -48,6 +49,8 @@ export default function App() {
   const [reviewing, setReviewing] = useState(Boolean(gmailNotice));
   const [emailCheck, setEmailCheck] = useState(false);
   const [justAdded, setJustAdded] = useState<string[]>([]);
+  // What another tab asked Manage to open.
+  const [manageTarget, setManageTarget] = useState<ManageTarget | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -121,6 +124,13 @@ export default function App() {
     setTab('table');
   };
 
+  // Open a record in Manage (from the Artists tab, the Table or an event).
+  const openManage = (target: ManageTarget) => {
+    setSelectedId(null);
+    setManageTarget({ ...target });
+    openTab('manage');
+  };
+
   const today = new Date().toISOString().slice(0, 10);
   // Artists and the Map count only events you went to; upcoming ones and
   // ones you haven't confirmed wait in the Table and on the Events home.
@@ -150,6 +160,7 @@ export default function App() {
                   ['map', MapIcon, `Map`, null],
                   ['stats', BarChart3, `Stats`, null],
                   ['artists', Mic2, `Artists`, seenCount],
+                  ['manage', FolderCog, `Manage`, null],
                 ] as const
               ).map(([id, Icon, label, count]) => (
                 <button
@@ -199,6 +210,7 @@ export default function App() {
             onOpen={setSelectedId}
             onChanged={upsert}
             onCaptured={handleCaptured}
+            onManage={openManage}
             onImported={() => {
               void refresh();
               importsApi.list().then(setImports).catch(() => undefined);
@@ -207,7 +219,19 @@ export default function App() {
         )}
         {tab === 'map' && <MapView events={went} lineups={lineups} editions={editions} onOpen={setSelectedId} onOpenTable={openTable} />}
         {tab === 'stats' && <StatsView events={events} onOpen={setSelectedId} onOpenTable={openTable} />}
-        {tab === 'artists' && <ArtistsView events={went} onOpenEvent={setSelectedId} onOpenTable={openTable} />}
+        {tab === 'artists' && (
+          <ArtistsView events={went} onOpenEvent={setSelectedId} onOpenTable={openTable} onManage={(key) => openManage({ kind: 'artist', name: key })} />
+        )}
+        {tab === 'manage' && (
+          <ManageView
+            events={events}
+            target={manageTarget}
+            onOpenEvent={setSelectedId}
+            onOpenTable={openTable}
+            onEventsChanged={() => void refresh()}
+            onEventChanged={upsert}
+          />
+        )}
       </main>
 
       <footer className="border-t border-zinc-900 py-5 text-xs text-zinc-500">
@@ -251,6 +275,7 @@ export default function App() {
             void refresh();
           }}
           onClose={() => setSelectedId(null)}
+          onManage={openManage}
         />
       )}
     </div>
