@@ -5,6 +5,7 @@ import { eventFromImport, findLogged, mergeImports, mergeIntoEvent, pricesFromIm
 import { GmailApi, GmailAuthError, GmailBusy } from './email/gmail';
 import { GMAIL_SETTING, GmailSetting, NotConnected, SCAN_SETTING, ScanSetting, scanStep } from './email/scan';
 import { EmailImport, RawEmail } from './email/types';
+import { BROWSER_SCAN_SETTING, BrowserScanSetting, mergeProposals } from './email/proposals';
 
 // /api/imports: ticket emails in, a review list out, and your ticks back.
 // Posting mail needs IMPORT_TOKEN; reviewing works like the rest of the app.
@@ -40,6 +41,9 @@ function rawEmails(body: any): RawEmail[] {
   });
 }
 
+const MAX_PROPOSALS = 5000;
+const isoOrUndefined = (v: unknown) => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : undefined);
+
 const ids = (body: any): Set<string> => new Set(Array.isArray(body?.ids) ? body.ids.filter((v: unknown) => typeof v === 'string') : []);
 
 export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null): Router {
@@ -63,6 +67,39 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
         ignored,
         changed: changed.length,
       });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // The browser scan's results ({ proposals, messages, updatedCursors? }).
+  // The mail itself never reaches the server: only what was read from it,
+  // each value with its quote. Cursors are saved only when sent, so a dry
+  // run or a full re-scan can post its shows without moving the watermark.
+  router.post('/imports/proposals', async (req, res) => {
+    try {
+      const proposals = req.body?.proposals;
+      const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+      if (!Array.isArray(proposals)) throw new InputError('Send { proposals: [...] }.');
+      if (proposals.length > MAX_PROPOSALS) throw new InputError(`Send at most ${MAX_PROPOSALS} proposals at a time.`);
+      for (const p of proposals)
+        if (typeof p?.seller !== 'string' || !['new', 'flag', 'unreadable'].includes(p?.status) || !Array.isArray(p?.messageLinks) || !Array.isArray(p?.flags))
+          throw new InputError('Each proposal needs seller, status, messageLinks and flags.');
+      const now = deps.now();
+      const [existing, events] = await Promise.all([deps.store.listImports(), deps.store.listEvents()]);
+      const before = new Set(existing.map((r) => r.id));
+      const changed = mergeProposals(existing, proposals, messages, events, now);
+      await deps.store.putImports(changed);
+      await deps.store.putEvents(pricesFromImports(changed, events, now));
+      const cursors = req.body?.updatedCursors;
+      if (cursors && typeof cursors === 'object') {
+        await deps.store.putSetting<BrowserScanSetting>(BROWSER_SCAN_SETTING, {
+          streamA: isoOrUndefined(cursors.streamA),
+          streamB: isoOrUndefined(cursors.streamB),
+          savedAt: now.toISOString(),
+        });
+      }
+      res.json({ changed: changed.length, added: changed.filter((r) => !before.has(r.id) && r.status === 'new').length, cursorsSaved: Boolean(cursors) });
     } catch (err) {
       fail(res, err);
     }
@@ -166,12 +203,16 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
   router.get('/imports/scan', async (_req, res) => {
     try {
       if (!gmail) return res.json({ configured: false, connected: false });
-      const [login, scan] = await Promise.all([
+      const [login, scan, browser] = await Promise.all([
         deps.store.getSetting<GmailSetting>(GMAIL_SETTING),
         deps.store.getSetting<ScanSetting>(SCAN_SETTING),
+        deps.store.getSetting<BrowserScanSetting>(BROWSER_SCAN_SETTING),
       ]);
       res.json({
         configured: true,
+        // Public by design: the browser scan's Google sign-in needs it.
+        clientId: process.env.GOOGLE_CLIENT_ID,
+        browserCursors: browser ? { streamA: browser.streamA, streamB: browser.streamB } : undefined,
         connected: Boolean(login),
         account: login?.account,
         scannedThrough: scan?.scannedThrough,
