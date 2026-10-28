@@ -16,6 +16,8 @@ const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"'
   copy: '©',
   reg: '®',
   trade: '™',
+  zwnj: '\u200C',
+  zwj: '\u200D',
 };
 
 const BLOCK = /<\/?(?:p|div|tr|table|tbody|thead|caption|header|footer|section|article|h[1-6]|li|ul|ol|center)\b[^>]*>|<br\s*\/?>/gi;
@@ -30,7 +32,9 @@ export function decodeEntities(value: string): string {
 }
 
 export function htmlToLines(html: string): string[] {
+  // A newline in the source is only whitespace; lines come from block tags.
   const text = html
+    .replace(/\r?\n/g, ' ')
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<(script|style|head|title)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
     .replace(BLOCK, '\n')

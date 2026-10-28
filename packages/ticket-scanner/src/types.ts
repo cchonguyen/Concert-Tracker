@@ -23,7 +23,7 @@ export interface FieldEvidence {
   quote: string; // verbatim substring of the email lines or pass fields
   messageId: string;
   messageLink: string;
-  readBy: 'layout' | 'schema_org' | 'pkpass' | 'verbatim_heuristic';
+  readBy: 'layout' | 'schema_org' | 'pkpass' | 'ics' | 'verbatim_heuristic';
 }
 
 export interface EmailImportProposal {
