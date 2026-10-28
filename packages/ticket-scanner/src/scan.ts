@@ -141,6 +141,11 @@ function outcomeOf(raw: RawEmailMessage, markup: MarkupRead[]): Outcome[] {
   }
   if (read && read.kind !== 'order') return [{ email, seller: label, readBy, lines, source, read }];
   const merged = withMarkup(read, markup);
+  // A show without a day is not a proposal: markup can give a name and venue
+  // with no local date (a UTC start), and the review list needs the date.
+  if (merged.read && merged.read.kind === 'order' && !merged.read.startDate && !merged.read.dateText) {
+    return [{ email, seller: label, readBy, lines, source, unreadable: 'No readable event date.' }];
+  }
   if (merged.read) return [{ email, seller: label, readBy: read ? readBy : merged.by!, lines, source, read: merged.read }];
   if (unreadable !== undefined) return [{ email, seller: label, readBy, lines, source, unreadable }];
   return [];

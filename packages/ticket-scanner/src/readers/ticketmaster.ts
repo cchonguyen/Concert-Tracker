@@ -13,7 +13,9 @@ export const ticketmaster: EmailReader = {
   matches: (from) => fromDomain(from, 'ticketmaster.com'),
   read(email, lines) {
     const name = subjectAfter(email.subject, /^You Got Tickets To (.+)$/i);
-    return name ? gotTickets(email, lines, name) : null;
+    // A parking pass or shuttle is a purchase at a show, not a show.
+    if (!name || /\b(parking|shuttle)\b/i.test(name)) return null;
+    return gotTickets(email, lines, name);
   },
 };
 
