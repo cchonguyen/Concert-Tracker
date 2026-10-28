@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowLeft, GitMerge, Loader2, Plus, Table2, X } from 'lucide-react';
+import { ArrowLeft, GitMerge, Loader2, Plus, Sparkles, Table2, X } from 'lucide-react';
 import { entitiesApi, LoggedEvent } from '../services/lineupApi';
 import type { Entity, HistoryEntry, LinkRole } from '../server/entities/types';
 import { whenLabel } from '../services/format';
 import { norm } from '../services/listImport';
 import { EventTitle } from './EventTitle';
 import { personParts } from '../services/people';
+import { attrFields } from '../server/entities/attrs';
+import { categoryGaps, LABELLED, linkedSuggestions } from '../services/dataHealth';
 import { entityLabel, KINDS, ManageData } from './ManageView';
 
 // One record in the Manage tab: its events, Rename everywhere, Merge into
@@ -116,6 +118,7 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
   const place = entity.kind === 'venue' ? data.links.find((l) => l.fromId === entity.id && l.role === 'in') : undefined;
   const hosts = data.links.filter((l) => l.fromId === entity.id && l.role === 'hosted_by').map((l) => byId.get(l.toId)!).filter(Boolean);
   const hosted = data.links.filter((l) => l.toId === entity.id && l.role === 'hosted_by').map((l) => byId.get(l.fromId)!).filter(Boolean);
+  const labelled = data.links.filter((l) => l.toId === entity.id && l.role === 'has_label').map((l) => byId.get(l.fromId)!).filter(Boolean);
   const venuesHere = data.links.filter((l) => l.toId === entity.id && l.role === 'in').map((l) => byId.get(l.fromId)!).filter(Boolean);
   const tableQuery =
     entity.kind === 'artist'
@@ -242,6 +245,31 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
           <Picker options={live('place')} placeholder={place ? 'Move to another place…' : 'Find the city…'} label="Pick a place" onPick={(p) => void link(p, 'in', true)} />
         </div>
       )}
+
+      {LABELLED.includes(entity.kind) && (
+        <Labels entity={entity} data={data} events={events} busy={busy} onOpen={onOpen} link={(l, add) => link(l, 'has_label', add)} />
+      )}
+
+      {entity.kind === 'label' && (
+        <div className="space-y-1.5">
+          <h3 className={sectionTitle}>On</h3>
+          {labelled.length ? (
+            <ul className="flex flex-wrap gap-1.5">
+              {labelled.map((r) => (
+                <li key={r.id}>
+                  <button onClick={() => onOpen(r.id)} className="rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300 hover:text-violet-300">
+                    {r.name} <span className="text-zinc-500">{r.kind}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-zinc-500">Not on any venue or series yet. Add it from a venue's or series' page.</p>
+          )}
+        </div>
+      )}
+
+      {attrFields(entity.kind).length > 0 && entity.kind !== 'person' && <Details key={entity.updatedAt} entity={entity} busy={busy} run={run} />}
 
       {entity.kind === 'place' && venuesHere.length > 0 && (
         <div className="space-y-1.5">
@@ -421,5 +449,124 @@ const PersonDetails: React.FC<{
         )}
       </div>
     </form>
+  );
+};
+
+// A record's details in your words (attrs.ts lists them per kind).
+const Details: React.FC<{
+  entity: Entity;
+  busy: string | null;
+  run: (what: string, fn: () => Promise<HistoryEntry>) => Promise<void>;
+}> = ({ entity, busy, run }) => {
+  const fields = attrFields(entity.kind);
+  const saved = (key: string) => (typeof entity.attrs[key] === 'string' ? (entity.attrs[key] as string) : '');
+  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((f) => [f.key, saved(f.key)])));
+  const changed = fields.some((f) => values[f.key].trim() !== saved(f.key));
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (changed) void run('details', () => entitiesApi.updateAttrs(entity.id, values));
+      }}
+    >
+      <h3 className={sectionTitle}>Details</h3>
+      {fields.map((f) => (
+        <label key={f.key} className="block space-y-1">
+          <span className="text-xs text-zinc-400">{f.label}</span>
+          {f.multiline ? (
+            <textarea
+              className={`${control} min-h-[4rem]`}
+              value={values[f.key]}
+              maxLength={f.max}
+              placeholder={f.placeholder}
+              onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
+            />
+          ) : (
+            <input
+              className={control}
+              value={values[f.key]}
+              maxLength={f.max}
+              placeholder={f.placeholder}
+              onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
+            />
+          )}
+        </label>
+      ))}
+      <button type="submit" disabled={!changed || Boolean(busy)} className={primary}>
+        {busy === 'details' && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Save details
+      </button>
+    </form>
+  );
+};
+
+// A venue's or series' labels, picked from your list: one per group, the
+// groups other records of this kind use offered as gaps, and labels the
+// linked series or venues have offered in one tap.
+const Labels: React.FC<{
+  entity: Entity;
+  data: ManageData;
+  events: LoggedEvent[];
+  busy: string | null;
+  onOpen: (id: string) => void;
+  link: (label: Entity, add: boolean) => Promise<void>;
+}> = ({ entity, data, events, busy, onOpen, link }) => {
+  const byId = new Map(data.entities.map((e) => [e.id, e]));
+  const mine = data.links
+    .filter((l) => l.fromId === entity.id && l.role === 'has_label')
+    .map((l) => byId.get(l.toId))
+    .filter((l): l is Entity => Boolean(l));
+  const all = data.entities.filter((e) => e.kind === 'label' && !e.mergedIntoId);
+  const input = { entities: data.entities, links: data.links, events };
+  const gaps = categoryGaps(input).filter((g) => g.kind === entity.kind && g.missing.some((m) => m.id === entity.id));
+  const offers = linkedSuggestions(input).filter((o) => o.recordId === entity.id);
+  const group = (l: Entity) => (typeof l.attrs.group === 'string' ? l.attrs.group : '');
+  return (
+    <div className="space-y-1.5">
+      <h3 className={sectionTitle}>Labels</h3>
+      {mine.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5">
+          {mine.map((l) => (
+            <li key={l.id} className="inline-flex items-center gap-1 rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300">
+              <button onClick={() => onOpen(l.id)} className="hover:text-violet-300" title={group(l) || undefined}>
+                {l.name}
+              </button>
+              <button onClick={() => void link(l, false)} disabled={Boolean(busy)} className="text-zinc-500 hover:text-rose-300" aria-label={`Remove label ${l.name}`}>
+                <X className="h-3 w-3" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {offers.map((o) => {
+        const label = byId.get(o.labelId);
+        const because = byId.get(o.becauseId);
+        if (!label || !because) return null;
+        return (
+          <p key={o.labelId} className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+            <Sparkles className="h-3.5 w-3.5 text-violet-300" />
+            {because.name} is {label.name}.
+            <button onClick={() => void link(label, true)} disabled={Boolean(busy)} className="rounded-full border border-violet-500/40 px-2 py-0.5 text-violet-200 hover:bg-violet-950/40">
+              Add {label.name}
+            </button>
+          </p>
+        );
+      })}
+      {gaps.map((g) => (
+        <p key={g.group} className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-400">
+          Set {g.group.toLowerCase()}:
+          {g.labels.map((l) => (
+            <button key={l.id} onClick={() => void link(l, true)} disabled={Boolean(busy)} className="rounded-full border border-zinc-800 px-2 py-0.5 text-zinc-200 hover:border-violet-500/60">
+              {l.name}
+            </button>
+          ))}
+        </p>
+      ))}
+      {all.length ? (
+        <Picker options={all.filter((l) => !mine.includes(l))} placeholder="Add a label…" label="Add a label" onPick={(l) => void link(l, true)} />
+      ) : (
+        <p className="text-xs text-zinc-500">No labels yet. Add them in the Labels list (for example Indoor and Outdoor, group Indoor/Outdoor).</p>
+      )}
+    </div>
   );
 };
