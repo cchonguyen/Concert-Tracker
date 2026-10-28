@@ -3,9 +3,14 @@ import { createApiApp } from '../src/server/app';
 import { PipelineDeps, runJob } from '../src/server/lineup/pipeline';
 import { createDeps, createStore } from '../src/server/lineup/service';
 import { backfillEntities } from '../src/server/entities/linkingStore';
+import { frontDoor } from '../src/server/share/door';
+import { accessConfigFromEnv } from '../src/server/share/access';
 
 // Cloudflare Worker entry. Static files are served from ./dist by Workers
-// static assets (wrangler.jsonc); only /api/* reaches this code.
+// static assets (wrangler.jsonc); only /api/* and the share page (/s/*)
+// reach this code. frontDoor runs first: it answers share page paths itself
+// and, once ACCESS_TEAM_DOMAIN and ACCESS_AUD are set, refuses any other
+// request without a valid Cloudflare Access token.
 //
 // There is no long-lived process, so the Node LookupWorker is replaced by:
 // - a Queue: "start" and "try now" send the job id, and the consumer runs it;
@@ -56,6 +61,11 @@ async function ensureServer(env: Env): Promise<void> {
 
 export default {
   async fetch(request, env, ctx) {
+    const answered = await frontDoor(request, {
+      store: () => getDeps().then((d) => d.store),
+      access: accessConfigFromEnv(process.env),
+    });
+    if (answered) return answered;
     try {
       await ensureServer(env);
     } catch (err) {
