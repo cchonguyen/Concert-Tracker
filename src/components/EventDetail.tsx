@@ -34,6 +34,8 @@ import { attendanceOf, lastDay } from '../server/events/attendance';
 import type { EditionPerformance } from '../server/lineup/types';
 import type { ManageTarget } from './ManageView';
 import { Dialog } from './ui/Dialog';
+import { Confirm } from './ui/Confirm';
+import { useToast } from './ui/Toast';
 
 interface EventDetailProps {
   event: LoggedEvent;
@@ -881,6 +883,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const scale = eventScale(event, edition ? lineupFacts(edition) : undefined);
   const worked = eventScale({ ...event, kind: undefined }, edition ? lineupFacts(edition) : undefined);
   const offered = suggestions.filter((s) => !seenKeys.has(s.key));
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const toast = useToast();
   const roleName = (role?: Seen['role']) => (role === 'support' ? 'Supporting' : 'Artist');
 
   // While the lineup review is open, Escape and an outside press do not close the panel behind it.
@@ -1308,13 +1312,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
 
         <div className="flex items-center justify-between border-t border-zinc-900 pt-4">
           <button
-            onClick={() =>
-              window.confirm(`Delete "${eventTitle(event)}" from your log?`) &&
-              run('delete', async () => {
-                await eventsApi.remove(event.id);
-                onDeleted();
-              })
-            }
+            onClick={() => setConfirmingDelete(true)}
             className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-rose-300"
           >
             <Trash2 className="h-3.5 w-3.5" /> Delete event
@@ -1322,6 +1320,22 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           {busy === 'save' && <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />}
         </div>
 
+      {confirmingDelete && (
+        <Confirm
+          title="Delete show"
+          message={`"${eventTitle(event)}" moves to Recently deleted in the Log, where you can restore it for 90 days.`}
+          confirmLabel="Delete show"
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={() => {
+            setConfirmingDelete(false);
+            void run('delete', async () => {
+              await eventsApi.remove(event.id);
+              toast({ message: `Deleted ${eventTitle(event)}` });
+              onDeleted();
+            });
+          }}
+        />
+      )}
       {reviewing && job && (
         <LineupReview
           job={job}

@@ -1,6 +1,7 @@
 import { Dialog } from './ui/Dialog';
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, ExternalLink, Loader2, RefreshCw, Sheet, X } from 'lucide-react';
+import { Confirm } from './ui/Confirm';
 import { eventsApi, SheetsStatus, sheetsApi } from '../services/lineupApi';
 import { readTable } from '../services/listImport';
 import { pickSpreadsheet } from '../services/googlePicker';
@@ -30,6 +31,7 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ notice, onClose }) => {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(notice && notice !== 'connected' ? notice : null);
   const [message, setMessage] = useState<string | null>(null);
+  const [unlinking, setUnlinking] = useState(false);
   // Edits made in the sheet that updating would replace, waiting for your OK.
   const [confirm, setConfirm] = useState<{ version: string; edits: number; dropped: string[]; tab: string } | null>(null);
 
@@ -221,9 +223,21 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ notice, onClose }) => {
                 </div>
               </div>
             )}
+            {unlinking && (
+              <Confirm
+                title="Unlink this sheet"
+                message="Your sheet stays in Drive. LiveArchive stops syncing it."
+                confirmLabel="Unlink sheet"
+                onCancel={() => setUnlinking(false)}
+                onConfirm={() => {
+                  setUnlinking(false);
+                  void run('unlink', async () => (await sheetsApi.unlink(), load()));
+                }}
+              />
+            )}
             <p className="text-xs text-zinc-500">Edits typed into the sheet are not read back. Change events in the app, then update the sheet.</p>
             <div className="flex gap-4 text-xs">
-              <button onClick={() => run('unlink', async () => (await sheetsApi.unlink(), load()))} className="text-zinc-500 hover:text-zinc-300">
+              <button onClick={() => setUnlinking(true)} className="text-zinc-500 hover:text-zinc-300">
                 Unlink this sheet
               </button>
               <button onClick={() => run('out', async () => (await sheetsApi.disconnect(), load()))} className="text-zinc-500 hover:text-zinc-300">
