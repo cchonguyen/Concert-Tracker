@@ -416,6 +416,17 @@ export class FileLineupStore implements LineupStore {
     return purged;
   }
 
+  // Erase Log rows older than the cutoff. Run by the nightly job, across every member.
+  async purgeActivity(olderThan: string) {
+    const state = await this.load();
+    const rows = state.activity ?? [];
+    const kept = rows.filter((r) => r.at >= olderThan);
+    if (kept.length === rows.length) return 0;
+    state.activity = kept;
+    await this.save();
+    return rows.length - kept.length;
+  }
+
   async listActivityFor(uid: string | undefined, limit: number) {
     const rows = ((await this.load()).activity ?? []).filter((r) => (uid === undefined ? true : r.userId === uid));
     return clone(rows.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit));
@@ -839,6 +850,9 @@ function scopedFileStore(base: FileLineupStore, scope: UserScope): LineupStore {
     },
     async listActivity(limit) {
       return base.listActivityFor(scope.userId, limit);
+    },
+    async purgeActivity() {
+      return 0;
     },
     async listImports() {
       return keep('import', await base.listImports());
