@@ -35,12 +35,14 @@ export function describeEntry(entry: ActivityEntry, eventName: string): string {
   return `You changed ${entry.field ?? 'a field'} of ${eventName}`;
 }
 
-export type UndoCheck = { ok: true } | { ok: false; reason: 'vault-locked' | 'value-changed' };
+export type UndoCheck = { ok: true } | { ok: false; reason: 'vault-locked' | 'value-changed' | 'not-undoable' };
 
-// Decide whether an undo may write back. A sensitive field needs the vault unlocked.
+// Decide whether an undo may write back. A sensitive field needs the vault unlocked, and a sensitive
+// row that stored no ciphertext (plaintext notes, or rows from before the vault) has nothing to write back.
 // Any field changed since the logged write is left alone.
 export function checkUndo(entry: ActivityEntry, current: unknown, vaultLocked: boolean): UndoCheck {
   if (entry.sensitive && vaultLocked) return { ok: false, reason: 'vault-locked' };
+  if (entry.sensitive && entry.before === null && entry.after === null) return { ok: false, reason: 'not-undoable' };
   if (!sameValue(current, entry.after)) return { ok: false, reason: 'value-changed' };
   return { ok: true };
 }
@@ -49,7 +51,8 @@ function sameValue(a: unknown, b: unknown): boolean {
   return stableJson(a) === stableJson(b);
 }
 
-// One row the store writes. Sensitive fields carry no values yet, since the vault is not on main.
+// One row the store writes. A sensitive field keeps its value only when it is ciphertext (the vault is on),
+// so undo can write the exact stored text back without the Log ever holding readable text.
 export interface ActivityDraft {
   eventId: string;
   action: ActivityAction;
@@ -64,7 +67,8 @@ const IGNORED_FIELDS = new Set(['id', 'createdAt', 'updatedAt', 'deletedAt']);
 
 // Work out what changed between the stored event and the one being saved.
 // A new event gives one 'create' row; an edit gives one 'update' row per changed field.
-export function diffEvent(before: LoggedEvent | null, after: LoggedEvent): ActivityDraft[] {
+// `isCipher` says whether a value is vault ciphertext (the server passes its check; the pure rules do not import it).
+export function diffEvent(before: LoggedEvent | null, after: LoggedEvent, isCipher: (v: unknown) => boolean = () => false): ActivityDraft[] {
   if (!before) return [{ eventId: after.id, action: 'create', field: null, before: null, after: null, sensitive: false }];
   const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
   const drafts: ActivityDraft[] = [];
@@ -74,7 +78,9 @@ export function diffEvent(before: LoggedEvent | null, after: LoggedEvent): Activ
     const a = (after as unknown as Record<string, unknown>)[key];
     if (stableJson(b) === stableJson(a)) continue;
     const sensitive = isSensitiveField(key);
-    drafts.push({ eventId: after.id, action: 'update', field: key, before: sensitive ? null : b ?? null, after: sensitive ? null : a ?? null, sensitive });
+    // Plaintext private text is never kept in the Log.
+    const kept = (v: unknown) => (sensitive && !isCipher(v) ? null : v ?? null);
+    drafts.push({ eventId: after.id, action: 'update', field: key, before: kept(b), after: kept(a), sensitive });
   }
   return drafts;
 }

@@ -20,6 +20,7 @@ import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
 import { diffEvent, type ActivityDraft, type ActivityEntry } from '../../events/activityLog';
+import { isCiphertext } from '../../auth/vault';
 import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../entities/integrity';
 import type { ShareLink } from '../../share/types';
@@ -351,7 +352,7 @@ export class FileLineupStore implements LineupStore {
       const prior = state.events[e.id];
       // A save never undeletes a show: deletedAt is only changed by delete and restore.
       state.events[e.id] = clone({ ...splitEventCity(e), deletedAt: prior?.deletedAt });
-      this.logActivity(state, uid, diffEvent(prior ? splitEventCity(prior) : null, splitEventCity(e)), now);
+      this.logActivity(state, uid, diffEvent(prior ? splitEventCity(prior) : null, splitEventCity(e), isCiphertext), now);
     }
     await this.save();
   }
