@@ -18,12 +18,27 @@ import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
 import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import type { ShareLink } from '../../share/types';
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+// One member's view of the store (multi-user mode). Personal rows (events,
+// email imports, lookup jobs, share links, settings) are that member's only.
+// db: a Supabase client carrying the member's short-lived token, so row level
+// security also applies; left out by the system paths (queue, share page),
+// which filter by userId with the service key.
+export interface UserScope {
+  userId: string;
+  role: 'owner' | 'member';
+  db?: SupabaseClient;
+}
 
 // Persistence boundary for the lineup pipeline. Two implementations:
 // fileStore (local dev, no setup) and supabaseStore (durable, used when
 // SUPABASE_URL is configured). Both must behave identically.
 export interface LineupStore {
   readonly kind: 'file' | 'supabase';
+
+  // The same store limited to one member's personal rows (see UserScope).
+  forUser?(scope: UserScope): LineupStore;
 
   createJob(job: LookupJob): Promise<void>;
   getJob(id: string): Promise<LookupJob | null>;

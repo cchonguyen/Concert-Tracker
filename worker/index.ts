@@ -5,6 +5,9 @@ import { createDeps, createStore } from '../src/server/lineup/service';
 import { backfillEntities, backfillVenuePlaces } from '../src/server/entities/linkingStore';
 import { frontDoor } from '../src/server/share/door';
 import { accessConfigFromEnv } from '../src/server/share/access';
+import { multiUserFromEnv } from '../src/server/auth/config';
+import { supabaseMemberDirectory } from '../src/server/auth/members';
+import { getSupabaseClient } from '../src/server/supabase';
 
 // Cloudflare Worker entry. Static files are served from ./dist by Workers
 // static assets (wrangler.jsonc); only /api/* and the share page (/s/*)
@@ -50,11 +53,18 @@ async function ensureServer(env: Env): Promise<void> {
   if (listening) return;
   const deps = await getDeps();
   if (listening) return;
-  const app = createApiApp(deps, {
-    kick: async (jobId, force) => {
-      await env.LOOKUP_QUEUE.send({ jobId, force });
+  // MULTI_USER=on turns on members (src/server/auth/); off by default.
+  const config = multiUserFromEnv(process.env);
+  const multiUser = config ? { config, directory: supabaseMemberDirectory(getSupabaseClient()!) } : undefined;
+  const app = createApiApp(
+    deps,
+    {
+      kick: async (jobId, force) => {
+        await env.LOOKUP_QUEUE.send({ jobId, force });
+      },
     },
-  });
+    multiUser,
+  );
   app.listen(PORT);
   listening = true;
 }

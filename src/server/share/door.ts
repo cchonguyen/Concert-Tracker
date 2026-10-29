@@ -45,7 +45,9 @@ export async function frontDoor(request: Request, deps: DoorDeps): Promise<Respo
       const store = await deps.store();
       const link = await findShareLink(store, code);
       if (!link) return html(NOT_ACTIVE_HTML, 404, method);
-      const page = await sharePageHtml(store, link.settings, deps.now?.() ?? new Date());
+      // A member's link shows that member's events only (multi-user mode).
+      const owner = link.userId && store.forUser ? store.forUser({ userId: link.userId, role: 'member' }) : store;
+      const page = await sharePageHtml(owner, link.settings, deps.now?.() ?? new Date());
       // Only the link's id is logged, never its code.
       console.log(`Share page served for link ${link.id}`);
       return html(page, 200, method);

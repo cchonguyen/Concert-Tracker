@@ -23,7 +23,7 @@ import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/ty
 import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../entities/integrity';
 import type { ShareLink } from '../../share/types';
 import { shareEventOnly } from '../../share/types';
-import { isStaleRun, LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS } from './types';
+import { isStaleRun, LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS, type UserScope } from './types';
 
 type DocumentMeta = Omit<SourceDocument, 'body'>;
 
@@ -49,6 +49,11 @@ interface FileState {
   entityLinks?: EntityLink[];
   entityHistory?: Record<string, HistoryEntry>;
   shareLinks?: Record<string, ShareLink>;
+  // Multi-user: who owns each personal row (`<table>:<id>` to user id); a row
+  // with no entry is the owner's, as in Supabase where user_id defaults to
+  // the owner. Settings per member.
+  owners?: Record<string, string>;
+  userSettings?: Record<string, Record<string, unknown>>;
 }
 
 function emptyState(): FileState {
@@ -80,6 +85,22 @@ export class FileLineupStore implements LineupStore {
   private writeChain: Promise<void> = Promise.resolve();
 
   constructor(private readonly dir: string) {}
+
+  forUser(scope: UserScope): LineupStore {
+    return scopedFileStore(this, scope);
+  }
+
+  // For scopedFileStore only.
+  async ownersState(): Promise<{ owners: Record<string, string>; userSettings: Record<string, Record<string, unknown>> }> {
+    const state = await this.load();
+    state.owners ??= {};
+    state.userSettings ??= {};
+    return { owners: state.owners, userSettings: state.userSettings };
+  }
+
+  async saveOwners(): Promise<void> {
+    await this.save();
+  }
 
   private get statePath(): string {
     return path.join(this.dir, 'lineup-store.json');
@@ -517,4 +538,111 @@ export class FileLineupStore implements LineupStore {
   async listShareEvents() {
     return (await this.listEvents()).map(shareEventOnly);
   }
+}
+
+type Table = 'job' | 'event' | 'import' | 'share';
+
+// One member's view of the file store, behaving like the Supabase store
+// with row level security: other members' rows are invisible, and writing
+// over one is refused (an upsert that hits another member's id fails).
+function scopedFileStore(base: FileLineupStore, scope: UserScope): LineupStore {
+  const mine = async (table: Table, id: string) => {
+    const owner = (await base.ownersState()).owners[`${table}:${id}`];
+    return owner ? owner === scope.userId : scope.role === 'owner';
+  };
+  const claim = async (table: Table, ids: string[]) => {
+    const { owners } = await base.ownersState();
+    for (const id of ids) {
+      const owner = owners[`${table}:${id}`];
+      if (owner ? owner !== scope.userId : scope.role !== 'owner' && (await exists(table, id))) {
+        throw new Error(`File ${table} write refused: row ${id} belongs to another member.`);
+      }
+    }
+    for (const id of ids) owners[`${table}:${id}`] = scope.userId;
+  };
+  const exists = async (table: Table, id: string) =>
+    table === 'job' ? Boolean(await base.getJob(id)) : table === 'event' ? Boolean(await base.getEvent(id)) : table === 'import' ? (await base.listImports()).some((r) => r.id === id) : (await base.listShareLinks()).some((l) => l.id === id);
+  const keep = async <T extends { id: string }>(table: Table, rows: T[]) => {
+    const out: T[] = [];
+    for (const r of rows) if (await mine(table, r.id)) out.push(r);
+    return out;
+  };
+  const overrides: Partial<LineupStore> = {
+    async createJob(job) {
+      await claim('job', [job.id]);
+      await base.createJob({ ...job, userId: scope.userId });
+    },
+    async updateJob(job) {
+      await claim('job', [job.id]);
+      await base.updateJob({ ...job, userId: scope.userId });
+    },
+    async getJob(id) {
+      return (await mine('job', id)) ? base.getJob(id) : null;
+    },
+    async listJobs(limit) {
+      return (await keep('job', await base.listJobs(Number.MAX_SAFE_INTEGER))).slice(0, limit);
+    },
+    async getJobs(ids) {
+      return keep('job', await base.getJobs(ids));
+    },
+    async putEvent(event) {
+      await claim('event', [event.id]);
+      await base.putEvent(event);
+    },
+    async putEvents(events) {
+      await claim('event', events.map((e) => e.id));
+      await base.putEvents(events);
+    },
+    async getEvent(id) {
+      return (await mine('event', id)) ? base.getEvent(id) : null;
+    },
+    async listEvents() {
+      return keep('event', await base.listEvents());
+    },
+    async deleteEvent(id) {
+      if (await mine('event', id)) await base.deleteEvent(id);
+    },
+    async listImports() {
+      return keep('import', await base.listImports());
+    },
+    async putImports(rows) {
+      await claim('import', rows.map((r) => r.id));
+      await base.putImports(rows);
+    },
+    async listShareLinks() {
+      return keep('share', await base.listShareLinks());
+    },
+    async getShareLinkByHash(codeHash) {
+      const link = await base.getShareLinkByHash(codeHash);
+      return link && (await mine('share', link.id)) ? link : null;
+    },
+    async putShareLink(link) {
+      await claim('share', [link.id]);
+      await base.putShareLink({ ...link, userId: scope.userId });
+    },
+    async listShareEvents() {
+      const ids = new Set((await keep('event', await base.listEvents())).map((e) => e.id));
+      return (await base.listShareEvents()).filter((e) => ids.has(e.id));
+    },
+    async getSetting<T>(key: string) {
+      const own = (await base.ownersState()).userSettings[scope.userId]?.[key];
+      if (own !== undefined) return clone(own as T);
+      return scope.role === 'owner' ? base.getSetting<T>(key) : null;
+    },
+    async putSetting<T>(key: string, data: T) {
+      const { userSettings } = await base.ownersState();
+      userSettings[scope.userId] = { ...userSettings[scope.userId], [key]: clone(data) };
+      await base.saveOwners();
+    },
+    forUser(next) {
+      return scopedFileStore(base, next);
+    },
+  };
+  return new Proxy(base, {
+    get(target, prop, receiver) {
+      if (prop in overrides) return (overrides as any)[prop];
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  }) as LineupStore;
 }

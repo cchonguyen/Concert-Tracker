@@ -200,6 +200,7 @@ export interface LookupJob {
   candidate?: CandidateLineup;
   editionId?: string;
   eventId?: string; // the logged event this lookup was started from
+  userId?: string; // the member who started it (multi-user mode)
   log: JobLogEntry[];
   createdAt: string;
   updatedAt: string;

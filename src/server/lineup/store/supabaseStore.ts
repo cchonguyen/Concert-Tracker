@@ -18,7 +18,7 @@ import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
-import { LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS } from './types';
+import { LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS, type UserScope } from './types';
 import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import { checkLinks } from '../../entities/integrity';
 import { SHARE_EVENT_COLUMNS, type ShareLink } from '../../share/types';
@@ -29,7 +29,34 @@ import { SHARE_EVENT_COLUMNS, type ShareLink } from '../../share/types';
 export class SupabaseLineupStore implements LineupStore {
   readonly kind = 'supabase' as const;
 
-  constructor(private readonly db: SupabaseClient) {}
+  // Without a scope this is the single-owner store, or the system store the
+  // queue, cron and share page use (service key). With one, every read of a
+  // personal table (lookup_jobs, logged_events, email_imports, share_links,
+  // user_settings) is filtered to scope.userId and every write carries it.
+  // scope.db, when set, is a client holding the member's 60-second token, so
+  // row level security is a second lock on those tables; shared tables still
+  // go through the service client.
+  constructor(
+    private readonly db: SupabaseClient,
+    private readonly scope?: UserScope,
+  ) {}
+
+  forUser(scope: UserScope): LineupStore {
+    return new SupabaseLineupStore(this.db, scope);
+  }
+
+  private own(table: string) {
+    return (this.scope?.db ?? this.db).from(table);
+  }
+
+  // Supabase's query builder types are too deep to constrain here.
+  private mine<Q>(q: Q): Q {
+    return this.scope ? (q as any).eq('user_id', this.scope.userId) : q;
+  }
+
+  private stamp<R extends object>(row: R): R {
+    return this.scope ? { ...row, user_id: this.scope.userId } : row;
+  }
 
   private check<T>(result: { data: T; error: { message: string } | null }, what: string): T {
     if (result.error) throw new Error(`Supabase ${what} failed: ${result.error.message}`);
@@ -59,6 +86,8 @@ export class SupabaseLineupStore implements LineupStore {
       log: job.log,
       created_at: job.createdAt,
       updated_at: job.updatedAt,
+      // Left out when unknown, so an update never clears the owner of a row.
+      ...(job.userId ? { user_id: job.userId } : {}),
     };
   }
 
@@ -83,25 +112,26 @@ export class SupabaseLineupStore implements LineupStore {
       log: row.log ?? [],
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      userId: row.user_id ?? undefined,
     };
   }
 
   async createJob(job: LookupJob) {
-    this.check(await this.db.from('lookup_jobs').insert(this.jobToRow(job)), 'createJob');
+    this.check(await this.own('lookup_jobs').insert(this.stamp(this.jobToRow(job))), 'createJob');
   }
 
   async getJob(id: string) {
-    const data = this.check(await this.db.from('lookup_jobs').select('*').eq('id', id).maybeSingle(), 'getJob');
+    const data = this.check(await this.mine(this.own('lookup_jobs').select('*').eq('id', id)).maybeSingle(), 'getJob');
     return data ? this.rowToJob(data) : null;
   }
 
   async updateJob(job: LookupJob) {
-    this.check(await this.db.from('lookup_jobs').upsert(this.jobToRow(job)), 'updateJob');
+    this.check(await this.own('lookup_jobs').upsert(this.stamp(this.jobToRow(job))), 'updateJob');
   }
 
   async listJobs(limit: number) {
     const data = this.check(
-      await this.db.from('lookup_jobs').select('*').order('created_at', { ascending: false }).limit(limit),
+      await this.mine(this.own('lookup_jobs').select('*')).order('created_at', { ascending: false }).limit(limit),
       'listJobs',
     );
     return (data ?? []).map((r) => this.rowToJob(r));
@@ -109,7 +139,7 @@ export class SupabaseLineupStore implements LineupStore {
 
   async getJobs(ids: string[]) {
     if (!ids.length) return [];
-    const data = this.check(await this.db.from('lookup_jobs').select('*').in('id', ids), 'getJobs');
+    const data = this.check(await this.mine(this.own('lookup_jobs').select('*').in('id', ids)), 'getJobs');
     return (data ?? []).map((r) => this.rowToJob(r));
   }
 
@@ -628,39 +658,39 @@ export class SupabaseLineupStore implements LineupStore {
   }
 
   async putEvent(e: LoggedEvent) {
-    this.check(await this.db.from('logged_events').upsert(this.eventToRow(e)), 'putEvent');
+    this.check(await this.own('logged_events').upsert(this.stamp(this.eventToRow(e))), 'putEvent');
   }
 
   async putEvents(list: LoggedEvent[]) {
-    if (list.length) this.check(await this.db.from('logged_events').upsert(list.map((e) => this.eventToRow(e))), 'putEvents');
+    if (list.length) this.check(await this.own('logged_events').upsert(list.map((e) => this.stamp(this.eventToRow(e)))), 'putEvents');
   }
 
   async getEvent(id: string) {
-    const r = this.check(await this.db.from('logged_events').select('*').eq('id', id).maybeSingle(), 'getEvent');
+    const r = this.check(await this.mine(this.own('logged_events').select('*').eq('id', id)).maybeSingle(), 'getEvent');
     return r ? this.rowToEvent(r) : null;
   }
 
   async listEvents() {
-    const rows = this.check(await this.db.from('logged_events').select('*'), 'listEvents');
+    const rows = this.check(await this.mine(this.own('logged_events').select('*')), 'listEvents');
     return (rows ?? []).map((r: any) => this.rowToEvent(r));
   }
 
   async deleteEvent(id: string) {
-    this.check(await this.db.from('logged_events').delete().eq('id', id), 'deleteEvent');
+    this.check(await this.mine(this.own('logged_events').delete().eq('id', id)), 'deleteEvent');
   }
 
   // email_imports (0004) is optional: the app starts without it and only
   // email import asks for the migration.
   async listImports() {
-    const rows = this.check(await this.db.from('email_imports').select('data'), 'listImports (apply 0004_email_imports.sql)');
+    const rows = this.check(await this.mine(this.own('email_imports').select('data')), 'listImports (apply 0004_email_imports.sql)');
     return (rows ?? []).map((r: any) => r.data as EmailImport);
   }
 
   async putImports(rows: EmailImport[]) {
     if (!rows.length) return;
     this.check(
-      await this.db.from('email_imports').upsert(
-        rows.map((r) => ({ id: r.id, key: r.key, status: r.status, start_date: r.startDate ?? null, data: r, updated_at: r.updatedAt })),
+      await this.own('email_imports').upsert(
+        rows.map((r) => this.stamp({ id: r.id, key: r.key, status: r.status, start_date: r.startDate ?? null, data: r, updated_at: r.updatedAt })),
       ),
       'putImports (apply 0004_email_imports.sql)',
     );
@@ -668,6 +698,15 @@ export class SupabaseLineupStore implements LineupStore {
 
   // app_settings (0006) is optional too: only "Check email" needs it.
   async getSetting<T>(key: string) {
+    if (this.scope) {
+      const own = this.check(
+        await this.own('user_settings').select('data').eq('user_id', this.scope.userId).eq('key', key).maybeSingle(),
+        'getSetting (apply 0017_members_and_user_id.sql)',
+      );
+      if (own) return (own as any).data as T;
+      // The owner's settings from before multi-user live in app_settings.
+      if (this.scope.role !== 'owner') return null;
+    }
     const row = this.check(
       await this.db.from('app_settings').select('data').eq('key', key).maybeSingle(),
       'getSetting (apply 0006_app_settings.sql)',
@@ -676,6 +715,13 @@ export class SupabaseLineupStore implements LineupStore {
   }
 
   async putSetting<T>(key: string, data: T) {
+    if (this.scope) {
+      this.check(
+        await this.own('user_settings').upsert({ user_id: this.scope.userId, key, data, updated_at: new Date().toISOString() }),
+        'putSetting (apply 0017_members_and_user_id.sql)',
+      );
+      return;
+    }
     this.check(
       await this.db.from('app_settings').upsert({ key, data, updated_at: new Date().toISOString() }),
       'putSetting (apply 0006_app_settings.sql)',
@@ -928,13 +974,13 @@ export class SupabaseLineupStore implements LineupStore {
 
   // share_links (0015) is optional: only the share page needs it.
   async listShareLinks() {
-    const rows = this.check(await this.db.from('share_links').select('*'), 'listShareLinks (apply 0015_share_links.sql)');
+    const rows = this.check(await this.mine(this.own('share_links').select('*')), 'listShareLinks (apply 0015_share_links.sql)');
     return (rows ?? []).map(rowToShareLink);
   }
 
   async getShareLinkByHash(codeHash: string) {
     const r = this.check(
-      await this.db.from('share_links').select('*').eq('code_hash', codeHash).maybeSingle(),
+      await this.mine(this.own('share_links').select('*').eq('code_hash', codeHash)).maybeSingle(),
       'getShareLinkByHash (apply 0015_share_links.sql)',
     );
     return r ? rowToShareLink(r) : null;
@@ -942,13 +988,16 @@ export class SupabaseLineupStore implements LineupStore {
 
   async putShareLink(l: ShareLink) {
     this.check(
-      await this.db.from('share_links').upsert({
-        id: l.id,
-        code_hash: l.codeHash,
-        settings: l.settings,
-        created_at: l.createdAt,
-        revoked_at: l.revokedAt ?? null,
-      }),
+      await this.own('share_links').upsert(
+        this.stamp({
+          id: l.id,
+          code_hash: l.codeHash,
+          settings: l.settings,
+          created_at: l.createdAt,
+          revoked_at: l.revokedAt ?? null,
+          ...(l.userId ? { user_id: l.userId } : {}),
+        }),
+      ),
       'putShareLink (apply 0015_share_links.sql)',
     );
   }
@@ -956,7 +1005,7 @@ export class SupabaseLineupStore implements LineupStore {
   // Only the named columns are read, so private fields never leave the
   // database for the share page.
   async listShareEvents() {
-    const rows = this.check(await this.db.from('logged_events').select(SHARE_EVENT_COLUMNS.join(',')), 'listShareEvents');
+    const rows = this.check(await this.mine(this.own('logged_events').select(SHARE_EVENT_COLUMNS.join(','))), 'listShareEvents');
     return (rows ?? []).map((r: any) => this.rowToEvent(r));
   }
 }
@@ -967,6 +1016,7 @@ const rowToShareLink = (r: any): ShareLink => ({
   settings: r.settings,
   createdAt: r.created_at,
   revokedAt: r.revoked_at ?? undefined,
+  userId: r.user_id ?? undefined,
 });
 
 // performer_claims row to PerformerClaim.

@@ -363,7 +363,8 @@ async function stageMerge(deps: PipelineDeps, job: LookupJob, now: Date): Promis
     blocklist: await deps.store.getBlocklist(domains),
     stats: await deps.store.getSourceStats(),
     priority: series?.sourcePriority,
-    spellings: yourSpellings((await deps.store.listEvents()).flatMap((e) => e.seen.map((a) => a.name))),
+    // Only the spellings of the member who started the lookup.
+    spellings: yourSpellings((await (job.userId && deps.store.forUser ? deps.store.forUser({ userId: job.userId, role: 'member' }) : deps.store).listEvents()).flatMap((e) => e.seen.map((a) => a.name))),
   });
   job.stage = 'done';
   if (job.candidate.performers.length > 0) {
