@@ -549,17 +549,20 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
   const editingAct = seen.find((s) => s.key === editing);
   return (
     <div className="space-y-2">
-      {artists.length > 0 ? (
-        <ul className="space-y-1.5" aria-label="Artists">{seenSlots(artists).map(slot)}</ul>
-      ) : (
-        <p className="text-xs text-zinc-400">None yet. Add who you saw below.</p>
-      )}
-      {support.length > 0 && (
-        <>
-          <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Supporting</p>
-          <ul className="space-y-1.5" aria-label="Supporting">{seenSlots(support).map(slot)}</ul>
-        </>
-      )}
+      {/* The list scrolls in its own box, with the bar always there, so a long bill does not push the rest of the card down. */}
+      <div className="max-h-80 space-y-2 overflow-y-scroll pr-1">
+        {artists.length > 0 ? (
+          <ul className="space-y-1.5" aria-label="Artists">{seenSlots(artists).map(slot)}</ul>
+        ) : (
+          <p className="text-xs text-zinc-400">None yet. Add who you saw below.</p>
+        )}
+        {support.length > 0 && (
+          <>
+            <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Supporting</p>
+            <ul className="space-y-1.5" aria-label="Supporting">{seenSlots(support).map(slot)}</ul>
+          </>
+        )}
+      </div>
       <input
         value={draft}
         onChange={(e) => {
@@ -1418,7 +1421,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
 
         {/* Stage 2: the lineup */}
         <section id="lineup" className={card}>
-          <h3 className={cardTitle}>Full lineup</h3>
+          <h3 className={`${cardTitle} flex items-baseline gap-1.5`}>
+            Full lineup
+            {edition && <span className="font-normal text-zinc-400">· {lineupActs.length}</span>}
+          </h3>
           {!job && !edition && (
             <div className="space-y-2">
               <p className="text-xs text-zinc-400">
@@ -1426,14 +1432,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               </p>
               <input className={input} value={lineupUrl} onChange={(e) => setLineupUrl(e.target.value)} placeholder="Lineup page, if you know one (optional)" />
             </div>
-          )}
-          {edition && (
-            <p className="text-sm text-zinc-300">
-              {lineupActs.length} acts confirmed, each with a source.
-              {job && (
-                <Button className="ml-2" onClick={() => setReviewing(true)}>Edit lineup</Button>
-              )}
-            </p>
           )}
           {job && !edition && (
             <LineupProgress
@@ -1448,23 +1446,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               onReview={() => setReviewing(true)}
             />
           )}
-          {(!job || edition || job.status === 'no_data' || job.status === 'failed') && !isActive(job?.status) && (
-            <div className="space-y-1.5">
-              <Button
-                onClick={() => run('lineup', async () => (await eventsApi.findLineup(event.id, lineupUrl || undefined)).event)}
-                disabled={busy === 'lineup' || !(event.year || event.startDate)}
-              >
-                {busy === 'lineup' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                {job ? 'Look up the lineup again' : 'Find the lineup'}
-              </Button>
-              {!(event.year || event.startDate) && <p className="text-xs text-amber-300/90">Add when it was first, then find the lineup.</p>}
-            </div>
-          )}
-
           {lineupActs.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-[11px] text-zinc-400">From the lineup, tap to mark who you saw:</p>
-              <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-auto">
+              <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-scroll pr-1">
                 {lineupActs.map((p) => {
                   const on = seenKeys.has(p.artistKey);
                   return (
@@ -1488,6 +1473,29 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               </div>
             </div>
           )}
+
+          {(!job || edition || job.status === 'no_data' || job.status === 'failed') && !isActive(job?.status) && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                {edition && job ? (
+                  <Button onClick={() => setReviewing(true)}>Edit lineup</Button>
+                ) : (
+                  <span />
+                )}
+                <Button
+                  className="ml-auto"
+                  onClick={() => run('lineup', async () => (await eventsApi.findLineup(event.id, lineupUrl || undefined)).event)}
+                  disabled={busy === 'lineup' || !(event.year || event.startDate)}
+                >
+                  {busy === 'lineup' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  {job ? 'Look up the lineup again' : 'Find the lineup'}
+                </Button>
+              </div>
+              {!(event.year || event.startDate) && <p className="text-xs text-amber-300/90">Add when it was first, then find the lineup.</p>}
+            </div>
+          )}
+
+          {edition && <p className="text-[11px] text-zinc-500">{lineupActs.length} acts confirmed, each with a source.</p>}
         </section>
 
           </div>
