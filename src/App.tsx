@@ -54,6 +54,8 @@ import { ARTIST_MILESTONES, artistMilestoneLine, claimMilestone, highestMileston
 import { showTipsAgain } from './services/tips';
 import { MilestoneCard } from './components/MilestoneCard';
 import { cityOf } from './services/table';
+import { pastEvents, yearInReview } from './services/stats';
+import { eventYear } from './services/format';
 import { homeSummary } from './services/home';
 
 // The Table, the four timeline views and the Map keep their filters in the address (?view=table&...).
@@ -290,6 +292,11 @@ export default function App({ initialMe }: { initialMe?: Me }) {
     return () => clearTimeout(t);
   }, [section, hintDue, phone]);
   const cityCount = new Set(went.map((e) => cityOf(e)).filter(Boolean)).size;
+  // "See your year" on Home: this year's shows, as Stats counts them.
+  const thisYear = Number(today.slice(0, 4));
+  const yearEvents = useMemo(() => pastEvents(events, today).filter((e) => eventYear(e) === thisYear), [events, today, thisYear]);
+  const yearReview = useMemo(() => (yearEvents.length ? yearInReview(yearEvents, thisYear) : null), [yearEvents, thisYear]);
+  const yearCities = new Set(yearEvents.map((e) => cityOf(e)).filter(Boolean)).size;
   // Needs you on Home: shows waiting for a yes or no, and lineups still being looked up.
   const confirmCount = homeSummary(events, lineups, today).toConfirm.length;
   const researchingCount = Object.values(lineups).filter((l) => isActive(l.status)).length;
@@ -415,6 +422,8 @@ export default function App({ initialMe }: { initialMe?: Me }) {
             eventCount={events.length}
             cityCount={cityCount}
             artistCount={seenCount}
+            yearReview={yearReview}
+            yearCities={yearCities}
             needs={{ confirm: confirmCount, email: toReview, researching: researchingCount }}
             emailCheck={emailCheck}
             onCaptured={handleCaptured}
