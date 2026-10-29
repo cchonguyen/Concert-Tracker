@@ -13,6 +13,7 @@ import type { LineupFacts } from '../server/events/scale';
 import type { CityPoint, PlaceGuess } from '../server/events/place';
 import type { ArtistGenres, KnownGenre } from '../server/events/genreTypes';
 import { dehydrateBody, hydrateEvent, type PeopleBook, type PeopleServer } from './vaultPeople';
+import { allowedInSample, reportBlockedWrite, sampleSource, SAMPLE_WRITE_MESSAGE, SampleRefused, type SampleSource } from './sampleMode';
 
 export type {
   LookupJob,
@@ -65,7 +66,21 @@ function incoming<T>(data: T): T {
   return walk(data);
 }
 
+// In sample mode a call is answered from the sample and never sent to the server,
+// except the two request-access calls a stranger may make. A write is refused and
+// opens the sample explainer (the top-level fallback; every save control checks first too).
+function answerFromSample<T>(sample: SampleSource, method: string, url: string): Promise<T> {
+  if (method !== 'GET') {
+    reportBlockedWrite();
+    return Promise.reject(new SampleRefused(SAMPLE_WRITE_MESSAGE));
+  }
+  return Promise.resolve().then(() => sample.answer(url) as T);
+}
+
 async function request<T>(url: string, rawInit?: RequestInit): Promise<T> {
+  const method = (rawInit?.method ?? 'GET').toUpperCase();
+  const sample = sampleSource();
+  if (sample && !allowedInSample(method, new URL(url, 'http://localhost').pathname)) return answerFromSample<T>(sample, method, url);
   const init = await outgoing(rawInit);
   const res = await fetch(url, {
     ...init,
@@ -74,7 +89,7 @@ async function request<T>(url: string, rawInit?: RequestInit): Promise<T> {
   const data = await res.json().catch(() => ({}));
   // `retry`: the server says to wait a moment and call again.
   // `conflict`: a record that already has the name (Manage), to merge into.
-  // `not_invited` (403): the signed-in email has no tracker here; the refusal screen shows it (NotInvited.tsx).
+  // `not_invited` (403): the signed-in email has no tracker here; sample mode shows it in the request banner (SampleBanner.tsx).
   if (!res.ok) {
     throw Object.assign(new Error(data.error || `Request failed with HTTP ${res.status}`), {
       retry: data.retry === true,

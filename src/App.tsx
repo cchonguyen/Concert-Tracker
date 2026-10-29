@@ -37,7 +37,9 @@ import { LogView } from './components/LogView';
 import { MeProvider, type Me } from './components/MeContext';
 import { NoticeModal } from './components/NoticeModal';
 import { MembersPanel } from './components/MembersPanel';
-import { NotInvited } from './components/NotInvited';
+import { SampleBanner } from './components/SampleBanner';
+import { useSampleGate } from './components/SampleGate';
+import { sampleSource } from './services/sampleMode';
 import { AccountPanel } from './components/AccountPanel';
 import { VaultProvider } from './components/VaultContext';
 import { PeopleProvider } from './components/PersonName';
@@ -72,7 +74,10 @@ const navStorage = (): NavStorage | null => {
 
 const initialPage = (): Page => pageFromView(new URLSearchParams(window.location.search).get('view'), { canManage: true });
 
-export default function App() {
+export default function App({ initialMe }: { initialMe?: Me }) {
+  // In sample mode (src/services/sampleMode.ts) the sample's "who am I" stands in for the server's.
+  const sampleMe = sampleSource()?.me;
+  const { readOnly, ask: askSample } = useSampleGate();
   const [tab, setTab] = useState<Page>(initialPage);
   const [events, setEvents] = useState<LoggedEvent[]>([]);
   // The show count last seen from the server or from a change, so a page load never counts as a milestone.
@@ -98,9 +103,7 @@ export default function App() {
   // The one-line icon-tabs hint shows on a phone's first visit to a section, then never again.
   const [hintDue, setHintDue] = useState(() => !hintSeen(navStorage()));
   // Single-owner installs answer owner; until /api/me answers, assume owner so nothing flickers away.
-  const [me, setMe] = useState<Me>({ multiUser: false, role: 'owner', email: null });
-  // Set when the server refuses this signed-in email as not invited: the request screen shows instead of the app.
-  const [refusedEmail, setRefusedEmail] = useState<string | null>(null);
+  const [me, setMe] = useState<Me>(() => initialMe ?? sampleMe ?? { multiUser: false, role: 'owner', email: null });
   const [members, setMembers] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [account, setAccount] = useState(false);
@@ -116,8 +119,9 @@ export default function App() {
   // Back from Google's sign-in (?sheets=...) opens Sheets straight away.
   const [sheetsNotice] = useState(() => new URLSearchParams(window.location.search).get('sheets'));
   const [dataPanel, setDataPanel] = useState<DataPanel | null>(() => (sheetsNotice ? 'sheets' : null));
-  const openImport = () => setDataPanel('import');
-  const openSheets = () => setDataPanel('sheets');
+  const openImport = () => (readOnly ? askSample('import') : setDataPanel('import'));
+  const openSheets = () => (readOnly ? askSample('sheets') : setDataPanel('sheets'));
+  const openReview = () => (readOnly ? askSample('email') : setReviewing(true));
   const closeDataPanel = useCallback(() => setDataPanel(null), []);
 
   // N opens Quick add, unless you are typing or another panel is open.
@@ -128,16 +132,15 @@ export default function App() {
       if (el instanceof HTMLElement && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return;
       if (reviewing || selectedId || members || account || quickAdd) return;
       e.preventDefault();
-      setQuickAdd(true);
+      if (readOnly) askSample('add');
+      else setQuickAdd(true);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [reviewing, selectedId, members, account, quickAdd]);
-  // Who is signed in. A 403 "not_invited" is the request screen, not an error.
+  }, [reviewing, selectedId, members, account, quickAdd, readOnly, askSample]);
+  // Who is signed in. Boot has already decided the mode (a not_invited answer is sample mode, not an error).
   const refreshMe = useCallback(() => {
-    meApi.get().then(setMe, (err: { code?: string; email?: string }) => {
-      if (err?.code === 'not_invited') setRefusedEmail(err.email ?? '');
-    });
+    meApi.get().then(setMe, () => undefined);
   }, []);
   useEffect(() => {
     refreshMe();
@@ -255,6 +258,7 @@ export default function App() {
   };
 
   const openManage = (target: ManageTarget) => {
+    if (readOnly) return askSample('manage');
     setSelectedId(null);
     setManageTarget({ ...target });
     openTab('manage');
@@ -290,9 +294,6 @@ export default function App() {
   const confirmCount = homeSummary(events, lineups, today).toConfirm.length;
   const researchingCount = Object.values(lineups).filter((l) => isActive(l.status)).length;
 
-  // A signed-in account with no tracker gets the app's shell and the request prompt, not the pages.
-  if (refusedEmail !== null) return <NotInvited email={refusedEmail} />;
-
   return (
     <MeProvider me={me}>
     {me.multiUser && me.noticeAccepted === false && (
@@ -300,6 +301,9 @@ export default function App() {
     )}
     <VaultProvider events={events} onChanged={refresh}>
     <div className="min-h-screen bg-zinc-950 font-sans text-zinc-100 selection:bg-violet-600 selection:text-white flex flex-col">
+      {sampleMe?.sample && (
+        <SampleBanner mode={sampleMe.sample} email={sampleMe.email} signedIn={document.documentElement.hasAttribute('data-signed-in')} />
+      )}
       <header
         ref={headerRef}
         className={`sticky top-0 z-30 border-b border-zinc-900 bg-zinc-950/90 sm:backdrop-blur-md transition-transform duration-200 motion-reduce:transition-none ${
@@ -337,7 +341,7 @@ export default function App() {
                 );
               })}
             </nav>
-            <QuickAddButton onClick={() => setQuickAdd(true)} />
+            <QuickAddButton onClick={() => (readOnly ? askSample('add') : setQuickAdd(true))} />
             <MenuButton
               theme={theme}
               canMembers={me.multiUser && me.role === 'owner'}
@@ -349,7 +353,7 @@ export default function App() {
               onImport={openImport}
               onExport={() => exportCsv(events, editions)}
               onSheets={openSheets}
-              onShare={() => setSharing(true)}
+              onShare={() => (readOnly ? askSample('share') : setSharing(true))}
               onShowTips={() => showTipsAgain(me.email)}
             />
           </div>
@@ -415,7 +419,7 @@ export default function App() {
             emailCheck={emailCheck}
             onCaptured={handleCaptured}
             onImport={openImport}
-            onReviewEmail={() => setReviewing(true)}
+            onReviewEmail={openReview}
             onOpenSummary={() => openTab('summary')}
             onOpen={openTab}
           />
@@ -431,7 +435,7 @@ export default function App() {
               emailCheck={emailCheck}
               loaded={loaded}
               onOpen={setSelectedId}
-              onReviewEmail={() => setReviewing(true)}
+              onReviewEmail={openReview}
               onOpenTable={openTable}
             />
           </>
@@ -500,7 +504,7 @@ export default function App() {
 
       {about && <AboutDialog onClose={() => setAbout(false)} onShowTips={() => showTipsAgain(me.email)} />}
       {BACK_TO_TOP.includes(shown) && <BackToTop />}
-      <QuickAddFab onClick={() => setQuickAdd(true)} />
+      <QuickAddFab onClick={() => (readOnly ? askSample('add') : setQuickAdd(true))} />
       <QuickAdd
         open={quickAdd}
         onClose={closeQuickAdd}
@@ -509,7 +513,7 @@ export default function App() {
           setQuickAdd(false);
           openImport();
         }}
-        onReviewEmail={() => setReviewing(true)}
+        onReviewEmail={openReview}
         onCaptured={(event) => {
           setQuickAdd(false);
           toast({ message: 'Saved', action: { label: 'Open', onClick: () => setSelectedId(event.id) } });

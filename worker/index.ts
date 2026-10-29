@@ -91,11 +91,13 @@ export default {
     });
     if (answered) return answered;
     const path = new URL(request.url).pathname;
-    if (path === '/demo' && (await isSignedIn(request, access))) {
-      // A signed-in visitor gets the demo with a mark on <html>; the demo's
-      // banner then offers "Go to your archive". The page differs by visitor,
-      // so it is never cached.
-      const page = await env.ASSETS.fetch(request);
+    if (path === '/demo') {
+      // /demo is the app's page in sample mode (no server call on the page itself).
+      // A signed-in visitor gets a mark on <html>; the banner then offers "Go to
+      // your archive". The page differs by visitor, so it is never cached.
+      const appPage = new Request(new URL('/app', request.url), request);
+      if (!(await isSignedIn(request, access))) return env.ASSETS.fetch(appPage);
+      const page = await env.ASSETS.fetch(appPage);
       const marked = new HTMLRewriter().on('html', {
         element: (el) => {
           el.setAttribute('data-signed-in', '');
