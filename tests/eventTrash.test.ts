@@ -36,6 +36,24 @@ test('diffEvent blanks sensitive values', () => {
   assert.equal(row.after, null);
 });
 
+test('delete permanently erases only a trashed show, and empty trash clears all of them', async () => {
+  const store = await freshStore();
+  const kept = newEvent('Blur at Roundhouse, Oct 5 2026', NOW);
+  const gone = newEvent('Brixton Academy, Oct 6 2026', NOW);
+  const other = newEvent('Fred again.. at Alexandra Palace, Oct 7 2026', NOW);
+  await store.putEvent(kept);
+  await store.putEvent(gone);
+  await store.putEvent(other);
+  assert.equal(await store.eraseDeletedEvent(gone.id), false, 'a show that is not in the trash is not erased');
+  await store.deleteEvent(gone.id);
+  await store.deleteEvent(other.id);
+  assert.equal(await store.eraseDeletedEvent(gone.id), true);
+  assert.equal((await store.listDeletedEvents()).map((e) => e.id).join(), other.id);
+  assert.equal(await store.emptyTrash(), 1);
+  assert.deepEqual((await store.listDeletedEvents()), []);
+  assert.equal((await store.listEvents())[0].id, kept.id, 'active shows are never touched');
+});
+
 test('delete hides a show, logs it, and restore brings it back', async () => {
   const store = await freshStore();
   const e = newEvent('Blur at Roundhouse, Oct 5 2026', NOW);

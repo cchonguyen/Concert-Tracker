@@ -94,6 +94,8 @@ export const eventsApi = {
   remove: (id: string) => request<unknown>(`/api/events/${id}`, { method: 'DELETE' }),
   deleted: () => request<{ events: LoggedEvent[] }>('/api/events/deleted').then((r) => r.events),
   restore: (id: string) => request<unknown>(`/api/events/${id}/restore`, post()),
+  erase: (id: string) => request<unknown>(`/api/events/${id}/erase`, post()),
+  emptyTrash: () => request<{ removed: number }>('/api/events/trash/empty', post()).then((r) => r.removed),
   activity: (limit = 200) => request<{ activity: ActivityEntry[] }>(`/api/activity?limit=${limit}`).then((r) => r.activity),
   research: (id: string, useGemini = false) =>
     request<{ event: LoggedEvent }>(`/api/events/${id}/details`, post({ useGemini })).then((r) => r.event),
