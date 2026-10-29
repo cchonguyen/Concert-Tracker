@@ -3,36 +3,44 @@
 // header can read it and the rules can be tested without the browser.
 
 export type Section = 'library' | 'explore';
-export type Page = 'home' | 'summary' | 'table' | 'manage' | 'timeline' | 'map' | 'stats' | 'artists';
+// The four Timeline views are pages of their own now, so the Explore strip
+// lists them next to Map, Stats and Ranking.
+export type Page = 'home' | 'summary' | 'table' | 'manage' | 'agenda' | 'month' | 'heatmap' | 'river' | 'map' | 'stats' | 'ranking';
 export type SubPage = Exclude<Page, 'home'>;
 
 // Subtabs in the order the strip shows them.
 export const SECTIONS: Record<Section, { label: string; pages: SubPage[]; first: SubPage }> = {
   library: { label: 'Library', pages: ['summary', 'table', 'manage'], first: 'summary' },
-  explore: { label: 'Explore', pages: ['timeline', 'map', 'stats', 'artists'], first: 'timeline' },
+  explore: { label: 'Explore', pages: ['agenda', 'month', 'heatmap', 'river', 'map', 'stats', 'ranking'], first: 'agenda' },
 };
 
 const PAGE_SECTION: Record<SubPage, Section> = {
   summary: 'library',
   table: 'library',
   manage: 'library',
-  timeline: 'explore',
+  agenda: 'explore',
+  month: 'explore',
+  heatmap: 'explore',
+  river: 'explore',
   map: 'explore',
   stats: 'explore',
-  artists: 'explore',
+  ranking: 'explore',
 };
 
-export const PAGES: Page[] = ['home', 'summary', 'table', 'manage', 'timeline', 'map', 'stats', 'artists'];
+export const PAGES: Page[] = ['home', 'summary', 'table', 'manage', 'agenda', 'month', 'heatmap', 'river', 'map', 'stats', 'ranking'];
 
 export const PAGE_LABELS: Record<Page, string> = {
   home: 'Home',
   summary: 'Summary',
   table: 'Table',
   manage: 'Manage',
-  timeline: 'Timeline',
+  agenda: 'Agenda',
+  month: 'Month',
+  heatmap: 'Heatmap',
+  river: 'River',
   map: 'Map',
   stats: 'Stats',
-  artists: 'Artists',
+  ranking: 'Ranking',
 };
 
 export interface Access {
@@ -46,7 +54,8 @@ export const sectionOf = (page: Page): Section | null => (page === 'home' ? null
 export const subPagesFor = (section: Section, access: Access): SubPage[] =>
   SECTIONS[section].pages.filter((p) => p !== 'manage' || access.canManage);
 
-// Reads ?view=. Home has no view, and the old ?view=events also lands there.
+// Reads ?view=. Home has no view. Old names (?view=events, ?view=timeline,
+// ?view=artists) are not redirected: they open Home.
 // A page the viewer cannot see falls back to its section's first page.
 export function pageFromView(view: string | null, access: Access): Page {
   if (!view || !PAGES.includes(view as Page)) return 'home';
@@ -89,5 +98,24 @@ export function rememberPage(page: SubPage, storage: NavStorage | null): void {
     storage?.setItem(REMEMBER_KEY, JSON.stringify({ ...readRemembered(storage), [section]: page }));
   } catch {
     // Storage full or blocked: the subtab is simply not remembered.
+  }
+}
+
+// The first visit to a phone's icon-only strip shows a one-line hint, once.
+export const HINT_KEY = 'liveArchive.tabHintSeen';
+
+export function hintSeen(storage: NavStorage | null): boolean {
+  try {
+    return storage?.getItem(HINT_KEY) === '1';
+  } catch {
+    return true; // Blocked storage: never show the hint rather than show it every visit.
+  }
+}
+
+export function markHintSeen(storage: NavStorage | null): void {
+  try {
+    storage?.setItem(HINT_KEY, '1');
+  } catch {
+    // Not stored: the hint may show again next visit.
   }
 }
