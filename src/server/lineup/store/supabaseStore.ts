@@ -22,6 +22,7 @@ import { LineupStore, MAX_EXAMPLES_PER_DOMAIN, roundRobin, STALE_RUN_MS, type Us
 import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import { checkLinks } from '../../entities/integrity';
 import { SHARE_EVENT_COLUMNS, type ShareLink } from '../../share/types';
+import type { CachedResponse } from '../responseCache';
 
 // Postgres-backed store. Tables are defined in
 // supabase/migrations/0002_source_first_lineups.sql, 0003_event_log.sql and
@@ -982,6 +983,22 @@ export class SupabaseLineupStore implements LineupStore {
       'listEntityHistory',
     );
     return (rows ?? []).map((r: any) => r.manifest as HistoryEntry);
+  }
+
+  // source_response_cache (0019) is optional: without it nothing is cached.
+  async getCachedResponse(key: string, now: Date) {
+    const { data, error } = await this.db.from('source_response_cache').select('*').eq('key', key).gt('expires_at', now.toISOString()).maybeSingle();
+    if (error || !data) return null;
+    const r = data as any;
+    return { key: r.key, sourceType: r.source_type, status: r.status, body: r.body, fetchedAt: r.fetched_at, expiresAt: r.expires_at };
+  }
+
+  async putCachedResponse(e: CachedResponse) {
+    // Expired rows are removed as new ones arrive, so the table stays small.
+    await this.db.from('source_response_cache').delete().lt('expires_at', e.fetchedAt);
+    await this.db.from('source_response_cache').upsert({
+      key: e.key, source_type: e.sourceType, status: e.status, body: e.body, fetched_at: e.fetchedAt, expires_at: e.expiresAt,
+    });
   }
 
   // share_links (0015) is optional: only the share page needs it.

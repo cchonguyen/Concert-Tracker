@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, FolderCog, GalleryHorizontalEnd, Map as MapIcon, Mic2, Radio, Table2, Ticket, Users } from 'lucide-react';
+import { BarChart3, FolderCog, GalleryHorizontalEnd, Map as MapIcon, Mic2, Radio, Table2, Ticket, UserCog, Users } from 'lucide-react';
 import {
   EmailImport,
   eventsApi,
@@ -26,6 +26,8 @@ import { ThemePicker } from './components/ThemePicker';
 import { ManageTarget, ManageView } from './components/ManageView';
 import { MeProvider, type Me } from './components/MeContext';
 import { MembersPanel } from './components/MembersPanel';
+import { AccountPanel } from './components/AccountPanel';
+import { VaultProvider } from './components/VaultContext';
 import { PeopleProvider } from './components/PersonName';
 import { wentTo } from './server/events/attendance';
 
@@ -59,6 +61,7 @@ export default function App() {
   // Single-owner installs answer owner; until /api/me answers, assume owner so nothing flickers away.
   const [me, setMe] = useState<Me>({ multiUser: false, role: 'owner', email: null });
   const [members, setMembers] = useState(false);
+  const [account, setAccount] = useState(false);
   useEffect(() => {
     meApi.get().then(setMe, () => undefined);
   }, []);
@@ -156,6 +159,7 @@ export default function App() {
 
   return (
     <MeProvider me={me}>
+    <VaultProvider events={events} onChanged={refresh}>
     <div className="min-h-screen bg-zinc-950 font-sans text-zinc-100 selection:bg-violet-600 selection:text-white flex flex-col">
       <header className="sticky top-0 z-30 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md">
         <div className={`mx-auto flex ${tab === 'table' ? 'max-w-7xl' : tab === 'map' ? 'max-w-6xl' : 'max-w-3xl'} items-center justify-between gap-3 px-4 py-3`}>
@@ -201,12 +205,18 @@ export default function App() {
                 <Users className="h-4 w-4" />
               </button>
             )}
+            {me.multiUser && (
+              <button onClick={() => setAccount(true)} title="Your account" aria-label="Your account" className="rounded-lg border border-zinc-800 p-2 text-zinc-400 hover:text-zinc-200">
+                <UserCog className="h-4 w-4" />
+              </button>
+            )}
             <ThemePicker />
           </div>
         </div>
       </header>
 
       {members && <MembersPanel onClose={() => setMembers(false)} />}
+      {account && <AccountPanel onClose={() => setAccount(false)} />}
 
       <PeopleProvider events={events} version={events}>
       <main className={`mx-auto w-full ${tab === 'table' ? 'max-w-7xl' : tab === 'map' ? 'max-w-6xl' : 'max-w-3xl'} flex-1 space-y-6 px-4 py-6`}>
@@ -308,6 +318,7 @@ export default function App() {
         />
       )}
     </div>
+    </VaultProvider>
     </MeProvider>
   );
 }

@@ -3,6 +3,7 @@ import { getSupabaseClient } from '../supabase';
 import { createRateLimitedFetcher } from './http';
 import { createGeminiClient } from './gemini';
 import { QuotaLedger } from './quota';
+import { cachingFetcher } from './responseCache';
 import { withEntityLinks } from '../entities/linkingStore';
 import { FileLineupStore } from './store/fileStore';
 import { SupabaseLineupStore } from './store/supabaseStore';
@@ -55,7 +56,8 @@ export function createDeps(store: LineupStore): PipelineDeps {
   const apiKey = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_EXTRACTION_MODEL || 'gemini-flash-lite-latest';
   const geminiReady = Boolean(apiKey && apiKey !== 'MY_GEMINI_API_KEY');
-  const fetcher = createRateLimitedFetcher();
+  // SOURCE_CACHE=on keeps Ticketmaster responses 24 hours (responseCache.ts).
+  const fetcher = process.env.SOURCE_CACHE === 'on' ? cachingFetcher(createRateLimitedFetcher(), store) : createRateLimitedFetcher();
   const gemini = geminiReady ? createGeminiClient(apiKey!, model) : null;
   // Brave when configured; otherwise Gemini grounded search, which needs a
   // billed Gemini project and can be turned off with GEMINI_SEARCH_DISCOVERY=off.
