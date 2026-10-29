@@ -1,3 +1,4 @@
+import { Dialog } from './ui/Dialog';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Check, Layers, Loader2, X } from 'lucide-react';
 import { EventPatch, eventsApi, LoggedEvent } from '../services/lineupApi';
@@ -323,10 +324,8 @@ export const SeriesPanel: React.FC<SeriesPanelProps> = ({ events, onChanged, onO
   );
   if (embedded) return <div className="space-y-5">{body}</div>;
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="h-full w-full max-w-2xl space-y-5 overflow-y-auto border-l border-zinc-900 bg-zinc-950 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        {body}
-      </div>
-    </div>
+    <Dialog title="Series" onClose={onClose} panelClassName="h-full w-full max-w-2xl space-y-5 overflow-y-auto border-l border-zinc-900 bg-zinc-950 p-5 shadow-2xl">
+      {body}
+    </Dialog>
   );
 };

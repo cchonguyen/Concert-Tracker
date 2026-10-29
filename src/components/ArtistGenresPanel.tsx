@@ -1,3 +1,4 @@
+import { Dialog } from './ui/Dialog';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FileUp, Loader2, Square, Tags, X } from 'lucide-react';
 import { genresApi, LoggedEvent } from '../services/lineupApi';
@@ -99,90 +100,85 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="flex h-full w-full max-w-xl flex-col border-l border-zinc-900 bg-zinc-950 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex-1 space-y-5 overflow-y-auto p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-bold">
-                <Tags className="h-4 w-4 text-violet-400" /> Artist genres
-              </h2>
-              <p className="text-xs text-zinc-500">
-                Genres for the acts you saw, from your music-story listening history first, then MusicBrainz for acts it does not
-                cover. Acts neither one knows stay without a genre.
-              </p>
-            </div>
-            <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
-          {message && <p className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-2 text-sm text-emerald-200">{message}</p>}
-
-          {!rows ? (
-            <p className="flex items-center gap-2 text-sm text-zinc-500">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading
+    <Dialog title="Genres" onClose={onClose}>
+      <div className="flex-1 space-y-5 overflow-y-auto p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-bold">
+              <Tags className="h-4 w-4 text-violet-400" /> Artist genres
+            </h2>
+            <p className="text-xs text-zinc-500">
+              Genres for the acts you saw, from your music-story listening history first, then MusicBrainz for acts it does not
+              cover. Acts neither one knows stay without a genre.
             </p>
-          ) : (
-            <>
-              <section className="rounded-xl border border-zinc-900 p-4 text-sm">
-                <p className="text-zinc-200">
-                  Genres known for <strong>{known.length}</strong> of the {seenKeys.size} acts you saw.
-                </p>
-                <p className="text-xs text-zinc-500">
-                  {fromFile} from music-story, {known.length - fromFile - fromYou} from MusicBrainz{fromYou ? `, ${fromYou} set by you` : ''}
-                  {checkedNone ? `, ${checkedNone} looked up with none found` : ''}.
-                </p>
-              </section>
-
-              <section className="space-y-2">
-                <h3 className="text-sm font-semibold text-zinc-200">1. Import from music-story</h3>
-                <p className="text-xs text-zinc-500">
-                  In music-story, after a build, run <code className="text-zinc-300">uv run python -m pipeline.artist_genre export</code>{' '}
-                  and pick the file it writes, <code className="text-zinc-300">build/artist_genres.json</code>. Importing again replaces
-                  the genres it gave before.
-                </p>
-                <input
-                  ref={fileInput}
-                  type="file"
-                  accept=".json,application/json"
-                  className="hidden"
-                  onChange={(e) => e.target.files?.[0] && void importFile(e.target.files[0])}
-                />
-                <button className={primary} disabled={Boolean(busy)} onClick={() => fileInput.current?.click()}>
-                  {busy === 'import' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />} Choose file
-                </button>
-              </section>
-
-              <section className="space-y-2">
-                <h3 className="text-sm font-semibold text-zinc-200">2. Look up the rest on MusicBrainz</h3>
-                <p className="text-xs text-zinc-500">
-                  {hasMap
-                    ? `${missing.length === 1 ? '1 act has' : `${missing.length} acts have`} no genre from music-story and ${missing.length === 1 ? 'has' : 'have'} not been looked up. Each takes a few seconds; only an exact, unambiguous name match is used, and its genres are read through music-story's genre map.`
-                    : 'Import the music-story file first: its genre map is how MusicBrainz genres are read.'}
-                </p>
-                {busy === 'musicbrainz' ? (
-                  <div className="flex items-center gap-3 text-sm text-zinc-300">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    {progress && `${progress.done} of ${progress.total}`}
-                    <button className={button} onClick={() => (stop.current = true)}>
-                      <Square className="h-3.5 w-3.5" /> Stop
-                    </button>
-                  </div>
-                ) : (
-                  <button className={button} disabled={!hasMap || !missing.length || Boolean(busy)} onClick={() => void lookUp()}>
-                    <Tags className="h-4 w-4" /> Look up {missing.length} on MusicBrainz
-                  </button>
-                )}
-              </section>
-            </>
-          )}
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
+            <X className="h-5 w-5" />
+          </button>
         </div>
+
+        {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
+        {message && <p className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-2 text-sm text-emerald-200">{message}</p>}
+
+        {!rows ? (
+          <p className="flex items-center gap-2 text-sm text-zinc-500">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading
+          </p>
+        ) : (
+          <>
+            <section className="rounded-xl border border-zinc-900 p-4 text-sm">
+              <p className="text-zinc-200">
+                Genres known for <strong>{known.length}</strong> of the {seenKeys.size} acts you saw.
+              </p>
+              <p className="text-xs text-zinc-500">
+                {fromFile} from music-story, {known.length - fromFile - fromYou} from MusicBrainz{fromYou ? `, ${fromYou} set by you` : ''}
+                {checkedNone ? `, ${checkedNone} looked up with none found` : ''}.
+              </p>
+            </section>
+
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold text-zinc-200">1. Import from music-story</h3>
+              <p className="text-xs text-zinc-500">
+                In music-story, after a build, run <code className="text-zinc-300">uv run python -m pipeline.artist_genre export</code>{' '}
+                and pick the file it writes, <code className="text-zinc-300">build/artist_genres.json</code>. Importing again replaces
+                the genres it gave before.
+              </p>
+              <input
+                ref={fileInput}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={(e) => e.target.files?.[0] && void importFile(e.target.files[0])}
+              />
+              <button className={primary} disabled={Boolean(busy)} onClick={() => fileInput.current?.click()}>
+                {busy === 'import' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />} Choose file
+              </button>
+            </section>
+
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold text-zinc-200">2. Look up the rest on MusicBrainz</h3>
+              <p className="text-xs text-zinc-500">
+                {hasMap
+                  ? `${missing.length === 1 ? '1 act has' : `${missing.length} acts have`} no genre from music-story and ${missing.length === 1 ? 'has' : 'have'} not been looked up. Each takes a few seconds; only an exact, unambiguous name match is used, and its genres are read through music-story's genre map.`
+                  : 'Import the music-story file first: its genre map is how MusicBrainz genres are read.'}
+              </p>
+              {busy === 'musicbrainz' ? (
+                <div className="flex items-center gap-3 text-sm text-zinc-300">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {progress && `${progress.done} of ${progress.total}`}
+                  <button className={button} onClick={() => (stop.current = true)}>
+                    <Square className="h-3.5 w-3.5" /> Stop
+                  </button>
+                </div>
+              ) : (
+                <button className={button} disabled={!hasMap || !missing.length || Boolean(busy)} onClick={() => void lookUp()}>
+                  <Tags className="h-4 w-4" /> Look up {missing.length} on MusicBrainz
+                </button>
+              )}
+            </section>
+          </>
+        )}
       </div>
-    </div>
+    </Dialog>
   );
 };
