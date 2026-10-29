@@ -15,6 +15,20 @@ export async function sharePageHtml(store: LineupStore, settings: ShareSettings,
   return renderSharePage(buildShareView(events, settings, now, lineups));
 }
 
+// Cloudflare Access keeps its sign-in token in this cookie as well as in the
+// header it adds to requests it lets through. On a public page the header is
+// missing, so the cookie is how the Worker knows who is signed in.
+export async function isSignedIn(request: Request, access: AccessConfig | null, verify: typeof verifyAccessToken = verifyAccessToken): Promise<boolean> {
+  if (!access) return false;
+  const cookies = request.headers.get('cookie') ?? '';
+  const token = cookies
+    .split(';')
+    .map((c) => c.trim())
+    .find((c) => c.startsWith('CF_Authorization='))
+    ?.slice('CF_Authorization='.length);
+  return verify(token ? decodeURIComponent(token) : null, access);
+}
+
 // The first thing the Worker runs on every request it sees. Share page
 // paths are answered here and never reach Express or the static files; old
 // app addresses are sent on to /app; every other request that is not a public
@@ -41,6 +55,11 @@ export async function frontDoor(request: Request, deps: DoorDeps): Promise<Respo
   const path = url.pathname;
   const moved = oldAppLink(url);
   if (moved) return new Response(null, { status: 302, headers: { Location: moved, 'Cache-Control': 'no-store' } });
+  // A signed-in visitor goes straight to the app from the marketing page, unless
+  // they asked for the public page with ?public=1.
+  if (path === '/' && url.searchParams.get('public') !== '1' && (await isSignedIn(request, deps.access, deps.verify))) {
+    return new Response(null, { status: 302, headers: { Location: '/app', 'Cache-Control': 'private, no-store', Vary: 'Cookie' } });
+  }
   if (path === '/robots.txt') return new Response(robotsTxt(SITE_ORIGIN), { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
   if (path === '/sitemap.xml') return new Response(sitemapXml(SITE_ORIGIN), { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
   if (UNDER_SHARE.test(path)) {

@@ -34,13 +34,15 @@ export function DemoApp() {
   const went = events.filter((e) => !e.attendance);
   const opened = events.find((e) => e.id === openId) ?? null;
   const ask = (action: string) => () => setPrompt(action);
+  // Set on <html> by the Worker when the visitor is signed in (worker/index.ts).
+  const signedIn = document.documentElement.hasAttribute('data-signed-in');
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div role="note" className="flex flex-wrap items-center justify-between gap-2 bg-violet-600/20 px-4 py-2 text-sm">
         <span>Sample data. Nothing here is real.</span>
         <a href="/app" className="font-medium text-violet-200 underline">
-          Log in (invite only)
+          {signedIn ? 'Go to your archive →' : 'Log in (invite only)'}
         </a>
       </div>
 
