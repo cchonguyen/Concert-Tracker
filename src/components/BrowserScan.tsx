@@ -134,31 +134,31 @@ export const BrowserScan: React.FC<{ status: EmailScanStatus; onFound: (imports:
             <Download className="h-3.5 w-3.5" /> Download report (CSV)
           </button>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-0.5 sm:grid-cols-3">
-            <dt className="text-zinc-500">Ticket emails examined</dt>
+            <dt className="text-zinc-400">Ticket emails examined</dt>
             <dd>
               {s.examined}
               {s.failed ? ` (+${s.failed} Gmail would not open${report.result.failureReason ? `: ${report.result.failureReason}` : ''})` : ''}
             </dd>
-            <dt className="text-zinc-500">Concert proposals</dt>
+            <dt className="text-zinc-400">Concert proposals</dt>
             <dd>{s.proposals}</dd>
-            <dt className="text-zinc-500">Net unique events</dt>
+            <dt className="text-zinc-400">Net unique events</dt>
             <dd>{s.netUniqueEvents}</dd>
-            <dt className="text-zinc-500">Flagged (refund, cancel, transfer)</dt>
+            <dt className="text-zinc-400">Flagged (refund, cancel, transfer)</dt>
             <dd>{s.flagged}</dd>
-            <dt className="text-zinc-500">Unreadable</dt>
+            <dt className="text-zinc-400">Unreadable</dt>
             <dd>{s.unreadable.length}</dd>
-            <dt className="text-zinc-500">Skipped (no receipt wording)</dt>
+            <dt className="text-zinc-400">Skipped (no receipt wording)</dt>
             <dd>{s.skipped}</dd>
           </dl>
           {Object.keys(s.bySeller).length > 0 && (
             <div>
-              <p className="text-zinc-500">By seller</p>
+              <p className="text-zinc-400">By seller</p>
               <ul className="flex flex-wrap gap-x-3">
                 {Object.entries(s.bySeller)
                   .sort((a, b) => b[1] - a[1])
                   .map(([seller, n]) => (
                     <li key={seller}>
-                      {seller} <span className="text-zinc-500">{n}</span>
+                      {seller} <span className="text-zinc-400">{n}</span>
                     </li>
                   ))}
               </ul>
@@ -166,7 +166,7 @@ export const BrowserScan: React.FC<{ status: EmailScanStatus; onFound: (imports:
           )}
           {s.unreadable.length > 0 && (
             <details>
-              <summary className="cursor-pointer text-zinc-500">Unreadable emails</summary>
+              <summary className="cursor-pointer text-zinc-400">Unreadable emails</summary>
               <ul className="mt-1 space-y-0.5">
                 {s.unreadable.map((u, i) => (
                   <li key={i}>

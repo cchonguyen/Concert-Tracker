@@ -39,11 +39,11 @@ export const MembersPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
     <Dialog title="Members" onClose={onClose} panelClassName="h-full w-full max-w-md space-y-4 overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-5">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">Members</h2>
-        <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-zinc-200">
+        <button onClick={onClose} aria-label="Close" className="text-zinc-400 hover:text-zinc-200">
           <X className="h-5 w-5" />
         </button>
       </div>
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-zinc-400">
         Each member keeps their own events, imports and share link. Nobody, you included, sees another member's events here. Add the same email in
         Cloudflare Access so they can sign in.
       </p>
@@ -70,21 +70,21 @@ export const MembersPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
       </form>
       {error && <p className="text-xs text-rose-300">{error}</p>}
       {members === null ? (
-        <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />
+        <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
       ) : (
         <ul className="space-y-2">
           {members.map((m) => (
             <li key={m.email} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3 text-sm">
               <div className="min-w-0">
                 <p className="truncate text-zinc-100">{m.email}</p>
-                <p className="text-[11px] text-zinc-500">{m.role === 'owner' ? 'Owner' : m.joined ? 'Member' : 'Invited, not signed in yet'}</p>
+                <p className="text-[11px] text-zinc-400">{m.role === 'owner' ? 'Owner' : m.joined ? 'Member' : 'Invited, not signed in yet'}</p>
               </div>
               {m.role !== 'owner' && (
                 <button
                   disabled={busy}
                   onClick={() => setRemoving(m.email)}
                   aria-label={`Remove ${m.email}`}
-                  className="text-zinc-500 hover:text-rose-300 disabled:opacity-40"
+                  className="text-zinc-400 hover:text-rose-300 disabled:opacity-40"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>

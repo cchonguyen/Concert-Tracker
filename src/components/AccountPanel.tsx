@@ -58,7 +58,7 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
     <Dialog title="Your account" onClose={onClose} panelClassName="h-full w-full max-w-md space-y-5 overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-5">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">Your account</h2>
-        <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-zinc-200">
+        <button onClick={onClose} aria-label="Close" className="text-zinc-400 hover:text-zinc-200">
           <X className="h-5 w-5" />
         </button>
       </div>
@@ -68,10 +68,10 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
       <section className="space-y-2">
         <h3 className="text-sm font-semibold">Private notes</h3>
         {vault.status === 'unavailable' || vault.status === 'loading' ? (
-          <p className="text-xs text-zinc-500">Not available.</p>
+          <p className="text-xs text-zinc-400">Not available.</p>
         ) : vault.status === 'off' && !recoveryKey ? (
           <>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-zinc-400">
               Encrypts your notes in this browser, so the server (and the owner) only ever stores unreadable text. Lose both the passphrase and the recovery key and the notes are gone.
             </p>
             <input type="password" className={field} placeholder="Passphrase (8+ characters)" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />
@@ -154,7 +154,7 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
           <Download className="h-3.5 w-3.5" /> Download my data
         </button>
         {vault.status === 'locked' && (
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-zinc-400">
             Your vault is locked, so notes and the people who went would be unreadable in the file. Unlock it above for a readable copy, or{' '}
             <a className="underline" href={accountApi.exportUrl} download>
               download the encrypted copy
@@ -164,7 +164,7 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
         )}
         {me.role === 'member' && (
           <>
-            <p className="text-xs text-zinc-500">Deleting removes your events, imports and share links. Type your email ({me.email}) to confirm. Backups keep deleted rows until they expire.</p>
+            <p className="text-xs text-zinc-400">Deleting removes your events, imports and share links. Type your email ({me.email}) to confirm. Backups keep deleted rows until they expire.</p>
             <input className={field} value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Your email" />
             <button
               className={`${button} border-rose-500/40 text-rose-300`}

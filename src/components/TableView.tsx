@@ -127,7 +127,7 @@ const dash = <span className="text-zinc-700">–</span>;
 // A missing part leaves its slot empty and the note says so.
 const DateCell: React.FC<{ e: LoggedEvent }> = ({ e }) => {
   const d = tableDate(e);
-  if (!d) return <span className="text-xs italic text-zinc-600">No date yet</span>;
+  if (!d) return <span className="text-xs italic text-zinc-400">No date yet</span>;
   return (
     <div title={whenLabel(e) ?? undefined}>
       <div className="flex items-baseline gap-1.5 font-medium tabular-nums text-zinc-200">
@@ -135,7 +135,7 @@ const DateCell: React.FC<{ e: LoggedEvent }> = ({ e }) => {
         <span className="w-8">{d.month ?? ''}</span>
         <span className="text-zinc-400">{d.year}</span>
       </div>
-      {d.note && <div className="mt-0.5 pl-[1.625rem] text-[11px] text-zinc-500">{d.note}</div>}
+      {d.note && <div className="mt-0.5 pl-[1.625rem] text-[11px] text-zinc-400">{d.note}</div>}
     </div>
   );
 };
@@ -182,7 +182,7 @@ const WentBadge: React.FC<{ state: AttendanceState }> = ({ state }) =>
           ? 'border-violet-500/40 bg-violet-600/15 text-violet-200'
           : state === 'upcoming'
             ? 'border-sky-500/30 bg-sky-500/10 text-sky-300'
-            : 'border-zinc-700 text-zinc-500'
+            : 'border-zinc-700 text-zinc-400'
       }`}
     >
       {ATTENDANCE_LABELS[state]}
@@ -268,7 +268,7 @@ const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, 
     </span>
   );
   return (
-    <span className={muted ? 'text-zinc-500' : 'text-zinc-200'}>
+    <span className={muted ? 'text-zinc-400' : 'text-zinc-200'}>
       {shown.map((slot, i) => {
         const set = new Set(slot.map((s) => s.set)).size === 1 ? slot[0].set : undefined;
         return (
@@ -293,7 +293,7 @@ const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, 
           </React.Fragment>
         );
       })}
-      {slots.length > 3 && <span className="text-zinc-500"> +{slots.length - 3}</span>}
+      {slots.length > 3 && <span className="text-zinc-400"> +{slots.length - 3}</span>}
     </span>
   );
 };
@@ -365,7 +365,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
 
   if (!events.length) {
     return (
-      <div className="space-y-2 rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">
+      <div className="space-y-2 rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-400">
         <p>Nothing to show yet. Events you add appear here as rows.</p>
         <p className="flex justify-center gap-4 text-xs text-zinc-400">
           {importButton}
@@ -520,7 +520,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
         <span>
           {summary.events} event{summary.events === 1 ? '' : 's'} you went to
-          {rows.length < events.length && <span className="text-zinc-600"> ({rows.length} of {events.length} shown)</span>}
+          {rows.length < events.length && <span className="text-zinc-400"> ({rows.length} of {events.length} shown)</span>}
           {' · '}
           {summary.acts} act{summary.acts === 1 ? '' : 's'} seen · {summary.venues} venue{summary.venues === 1 ? '' : 's'}
           {summary.firstYear !== undefined &&
@@ -560,12 +560,12 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
       </div>
 
       {rows.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">No events match these filters.</p>
+        <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-400">No events match these filters.</p>
       ) : (
         <>
           <div className="hidden max-h-[calc(100vh-11rem)] overflow-auto rounded-xl border border-zinc-900 md:block">
             <table className="w-full border-separate border-spacing-0 text-left text-sm">
-              <thead className="text-[11px] uppercase tracking-wide text-zinc-500">
+              <thead className="text-[11px] uppercase tracking-wide text-zinc-400">
                 <tr>
                   {COLUMNS.map((c) => (
                     <th
@@ -620,9 +620,9 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                       <td className={cell}>
                         {e.venue || e.city ? (
                           <>
-                            <div className="text-zinc-200">{e.venue ?? <span className="text-zinc-600">Venue not known</span>}</div>
+                            <div className="text-zinc-200">{e.venue ?? <span className="text-zinc-400">Venue not known</span>}</div>
                             {e.city && (
-                              <div className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500">
+                              <div className="mt-0.5 flex items-center gap-1 text-xs text-zinc-400">
                                 <MapPin className="h-3 w-3 shrink-0" /> {cityOf(e)}
                               </div>
                             )}
@@ -679,12 +679,12 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                         ))}
                         {(e.venue || e.city) && (
                           <span className="inline-flex min-w-0 items-center gap-1 truncate">
-                            <MapPin className="h-3 w-3 shrink-0 text-zinc-500" />
+                            <MapPin className="h-3 w-3 shrink-0 text-zinc-400" />
                             {[e.venue, cityOf(e)].filter(Boolean).join(' · ')}
                           </span>
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
                         {e.seen.length > 0 && <span>{e.seen.length} seen</span>}
                         {e.rating ? <Stars rating={e.rating} /> : null}
                         {needs && <NeedsBadge needs={needs} />}

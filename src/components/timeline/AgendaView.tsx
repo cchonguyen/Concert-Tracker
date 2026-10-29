@@ -79,7 +79,7 @@ const Row: React.FC<{ row: AgendaRow; selected: boolean; onOpen: (id: string) =>
           <span className="block truncate text-sm font-medium text-zinc-100">
             <EventTitle event={event} />
           </span>
-          {place && <span className="block truncate text-xs text-zinc-500">{place}</span>}
+          {place && <span className="block truncate text-xs text-zinc-400">{place}</span>}
         </span>
         {item.attendance === 'confirm' ? <ConfirmMark /> : item.attendance === 'upcoming' ? null : <Rating rating={event.rating} />}
       </button>
@@ -94,11 +94,11 @@ const Block: React.FC<{
   todayRef: React.Ref<HTMLLIElement>;
 }> = ({ block, selectedEventId, onOpen, todayRef }) => {
   if (block.kind === 'year') return <h2 className="pt-4 text-2xl font-extrabold tracking-tight text-zinc-200 first:pt-0">{block.year}</h2>;
-  if (block.kind === 'gap') return <p className="border-l-2 border-zinc-800 py-1 pl-3 text-xs text-zinc-600">No events, {gapLabel(block)}</p>;
+  if (block.kind === 'gap') return <p className="border-l-2 border-zinc-800 py-1 pl-3 text-xs text-zinc-400">No events, {gapLabel(block)}</p>;
   return (
     <section>
       {/* Sticky under the app header, so you always know which month you are in. */}
-      <h3 className="sticky top-[57px] z-10 -mx-1 bg-zinc-950/95 px-1 py-1.5 text-xs font-bold uppercase tracking-wide text-zinc-500 backdrop-blur">
+      <h3 className="sticky top-[57px] z-10 -mx-1 bg-zinc-950/95 px-1 py-1.5 text-xs font-bold uppercase tracking-wide text-zinc-400 backdrop-blur">
         {block.month ? `${MONTH_NAMES[block.month - 1]} ${block.year}` : `Sometime in ${block.year}`}
       </h3>
       <ul className="space-y-1.5">
@@ -139,10 +139,10 @@ export const AgendaView: React.FC<TimelineViewProps> = ({ model, range, selected
     if (selectedEventId) document.getElementById(rowId(selectedEventId))?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, [selectedEventId]);
 
-  if (!blocks.length) return <p className="py-10 text-center text-sm text-zinc-500">No dated events match these filters.</p>;
+  if (!blocks.length) return <p className="py-10 text-center text-sm text-zinc-400">No dated events match these filters.</p>;
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
         <span>
           {count} event{count === 1 ? '' : 's'}
         </span>

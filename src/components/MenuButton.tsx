@@ -76,7 +76,7 @@ export function MenuButton({ theme, canMembers, canAccount, canSheets, onMembers
             </div>
           )}
           <div className="space-y-2 border-t border-zinc-800 pt-3">
-            <p className="px-1 text-xs font-medium uppercase tracking-wide text-zinc-500">Your data</p>
+            <p className="px-1 text-xs font-medium uppercase tracking-wide text-zinc-400">Your data</p>
             <div className="flex items-center gap-1">
               <IconButton icon={FileUp} label="Import a list (CSV)" onClick={() => choose(onImport)} />
               <IconButton icon={Download} label="Export all as CSV" onClick={() => choose(onExport)} />
@@ -85,7 +85,7 @@ export function MenuButton({ theme, canMembers, canAccount, canSheets, onMembers
             </div>
           </div>
           <div className="space-y-2 border-t border-zinc-800 pt-3">
-            <p className="px-1 text-xs font-medium uppercase tracking-wide text-zinc-500">Theme</p>
+            <p className="px-1 text-xs font-medium uppercase tracking-wide text-zinc-400">Theme</p>
             <ThemeControls theme={theme} />
           </div>
           <div className="border-t border-zinc-800 pt-3">

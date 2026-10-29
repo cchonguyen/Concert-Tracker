@@ -107,12 +107,12 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
             <h2 className="flex items-center gap-2 text-lg font-bold">
               <Tags className="h-4 w-4 text-violet-400" /> Artist genres
             </h2>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-zinc-400">
               Genres for the acts you saw, from your music-story listening history first, then MusicBrainz for acts it does not
               cover. Acts neither one knows stay without a genre.
             </p>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -121,7 +121,7 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
         {message && <p className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-2 text-sm text-emerald-200">{message}</p>}
 
         {!rows ? (
-          <p className="flex items-center gap-2 text-sm text-zinc-500">
+          <p className="flex items-center gap-2 text-sm text-zinc-400">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading
           </p>
         ) : (
@@ -130,7 +130,7 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
               <p className="text-zinc-200">
                 Genres known for <strong>{known.length}</strong> of the {seenKeys.size} acts you saw.
               </p>
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-zinc-400">
                 {fromFile} from music-story, {known.length - fromFile - fromYou} from MusicBrainz{fromYou ? `, ${fromYou} set by you` : ''}
                 {checkedNone ? `, ${checkedNone} looked up with none found` : ''}.
               </p>
@@ -138,7 +138,7 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
 
             <section className="space-y-2">
               <h3 className="text-sm font-semibold text-zinc-200">1. Import from music-story</h3>
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-zinc-400">
                 In music-story, after a build, run <code className="text-zinc-300">uv run python -m pipeline.artist_genre export</code>{' '}
                 and pick the file it writes, <code className="text-zinc-300">build/artist_genres.json</code>. Importing again replaces
                 the genres it gave before.
@@ -157,7 +157,7 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
 
             <section className="space-y-2">
               <h3 className="text-sm font-semibold text-zinc-200">2. Look up the rest on MusicBrainz</h3>
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-zinc-400">
                 {hasMap
                   ? `${missing.length === 1 ? '1 act has' : `${missing.length} acts have`} no genre from music-story and ${missing.length === 1 ? 'has' : 'have'} not been looked up. Each takes a few seconds; only an exact, unambiguous name match is used, and its genres are read through music-story's genre map.`
                   : 'Import the music-story file first: its genre map is how MusicBrainz genres are read.'}

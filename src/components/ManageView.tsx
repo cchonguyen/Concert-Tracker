@@ -202,7 +202,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   if (error) {
     return <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-3 text-sm text-rose-200">{error}</p>;
   }
-  if (!data) return <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />;
+  if (!data) return <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />;
 
   const open = openId ? byId.get(openId) : undefined;
   const live = kind === 'history' || kind === 'health' ? [] : data.entities.filter((e) => e.kind === kind && !e.mergedIntoId);
@@ -220,7 +220,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
     <div className="space-y-4">
       <div>
         <h1 className="text-lg font-bold text-zinc-50">Manage</h1>
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-zinc-400">
           The names on your events, one record each. Rename one to change it on every event, merge two that are the same, and keep other
           spellings as AKAs. Every change can be undone from History.
         </p>
@@ -230,7 +230,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
       <div className="flex items-center gap-2">
         {showSearch && (
           <label className="relative block min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-zinc-600" />
+            <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-zinc-400" />
             <input
               className={`${control} pl-8`}
               value={query}
@@ -265,7 +265,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
               <Undo2 className="h-3.5 w-3.5" /> Undo
             </button>
           )}
-          <button onClick={() => setNotice(null)} className="text-xs text-zinc-500 hover:text-zinc-300">
+          <button onClick={() => setNotice(null)} className="text-xs text-zinc-400 hover:text-zinc-300">
             Dismiss
           </button>
         </div>
@@ -286,16 +286,16 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
       ) : kind === 'history' ? (
         <section className="space-y-2">
           {!history ? (
-            <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />
+            <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
           ) : !history.length ? (
-            <p className="text-sm text-zinc-500">No changes yet.</p>
+            <p className="text-sm text-zinc-400">No changes yet.</p>
           ) : (
             <ul className="divide-y divide-zinc-900 rounded-xl border border-zinc-900">
               {history.map((h) => (
                 <li key={h.id} className="flex items-baseline gap-3 px-3 py-2 text-sm">
                   <span className="min-w-0 flex-1">
-                    <span className={h.undoneAt ? 'text-zinc-500 line-through' : 'text-zinc-200'}>{h.summary}</span>
-                    <span className="block text-[11px] text-zinc-500">
+                    <span className={h.undoneAt ? 'text-zinc-400 line-through' : 'text-zinc-200'}>{h.summary}</span>
+                    <span className="block text-[11px] text-zinc-400">
                       {when(h.createdAt)}
                       {h.undoneAt && ` · undone ${when(h.undoneAt)}`}
                     </span>
@@ -313,7 +313,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
               ))}
             </ul>
           )}
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-zinc-400">
             Undo puts names back on every event you haven't changed since. A change can only be undone after the later changes to the same
             records.
           </p>
@@ -414,9 +414,9 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
                           Look-alike
                         </span>
                       )}
-                      {akas > 0 && <span className="shrink-0 text-[11px] text-zinc-500">{akas} AKA</span>}
-                      {hosts > 0 && <span className="shrink-0 text-[11px] text-zinc-500">hosted</span>}
-                      {e.kind === 'label' && typeof e.attrs.group === 'string' && <span className="shrink-0 text-[11px] text-zinc-500">{e.attrs.group}</span>}
+                      {akas > 0 && <span className="shrink-0 text-[11px] text-zinc-400">{akas} AKA</span>}
+                      {hosts > 0 && <span className="shrink-0 text-[11px] text-zinc-400">hosted</span>}
+                      {e.kind === 'label' && typeof e.attrs.group === 'string' && <span className="shrink-0 text-[11px] text-zinc-400">{e.attrs.group}</span>}
                       <span className="w-10 shrink-0 text-right text-xs tabular-nums text-zinc-400">{e.kind === 'organization' ? '' : n}</span>
                     </button>
                   </li>
@@ -424,7 +424,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
               })}
             </ul>
           ) : (
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-zinc-400">
               {live.length
                 ? 'Nothing matches.'
                 : kind === 'organization'

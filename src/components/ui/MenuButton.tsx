@@ -50,7 +50,7 @@ export function MenuButton<T extends string>({ label, value, options, onChange, 
       >
         {CurrentIcon && <CurrentIcon className="h-4 w-4" />}
         <span>{current?.label}</span>
-        <ChevronDown className="h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
+        <ChevronDown className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
       </button>
       {open && (
         <ul
