@@ -58,7 +58,7 @@ const FIELD_LABELS: Record<ListField, string> = {
   id: 'event ID',
 };
 
-const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-500';
+const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
 const control =
   'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 focus:border-violet-500 focus:outline-none';
 
@@ -211,13 +211,13 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
             {[when ? `${when}${row.yearFromName ? ' (year from the name)' : ''}` : 'No date', placeLabel(row)].filter(Boolean).join(' · ')}
           </p>
           {(row.seen.length > 0 || people.length > 0) && (
-            <p className="text-[11px] text-zinc-500">
+            <p className="text-[11px] text-zinc-400">
               {[row.seen.length ? `Saw ${row.seen.join(', ')}` : null, people.length ? `with ${people.join(', ')}` : null]
                 .filter(Boolean)
                 .join(' · ')}
             </p>
           )}
-          {row.lines.length > 1 && <p className="text-[11px] text-zinc-500">Combined from lines {row.lines.join(' and ')} of the file.</p>}
+          {row.lines.length > 1 && <p className="text-[11px] text-zinc-400">Combined from lines {row.lines.join(' and ')} of the file.</p>}
           {row.problems.map((p) => (
             <p key={p} className="flex items-start gap-1 text-[11px] text-amber-300/90">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> {p}
@@ -235,7 +235,7 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
           <option value="skip">Don't import</option>
         </select>
         {adds && (
-          <p className="text-[11px] text-zinc-500">
+          <p className="text-[11px] text-zinc-400">
             {adds.length ? `Adds ${adds.join(', ')}. Nothing already there changes.` : 'Nothing new to add.'}
           </p>
         )}
@@ -249,7 +249,7 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
         <h3 className={sectionTitle}>
           {title} ({rows.length})
         </h3>
-        <p className="text-xs text-zinc-600">{note}</p>
+        <p className="text-xs text-zinc-400">{note}</p>
         {rows.map(renderRow)}
       </section>
     ) : null;
@@ -262,13 +262,13 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
             <h2 className="flex items-center gap-2 text-lg font-bold">
               <FileUp className="h-4 w-4 text-violet-400" /> Import a list
             </h2>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-zinc-400">
               A CSV of events you went to, from Notion, a spreadsheet or this app's export. Nothing is saved until you press Import.
               The file only adds: new events, and empty fields, acts and people on events you already have. It never changes what your
               log already says.
             </p>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -315,7 +315,7 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
             {people.length > 0 && (
               <section className="space-y-2">
                 <h3 className={sectionTitle}>Are you one of these?</h3>
-                <p className="text-xs text-zinc-600">"Went with" lists other people. Tap your own name to leave it out.</p>
+                <p className="text-xs text-zinc-400">"Went with" lists other people. Tap your own name to leave it out.</p>
                 <div className="flex flex-wrap gap-1.5">
                   {people.map(([key, p]) => (
                     <button
@@ -328,10 +328,10 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
                         })
                       }
                       className={`rounded-full border px-2.5 py-1 text-xs ${
-                        leaveOut.has(key) ? 'border-zinc-800 text-zinc-600 line-through' : 'border-violet-500/50 text-violet-200'
+                        leaveOut.has(key) ? 'border-zinc-800 text-zinc-400 line-through' : 'border-violet-500/50 text-violet-200'
                       }`}
                     >
-                      {p.name} <span className="text-zinc-500">{p.count}</span>
+                      {p.name} <span className="text-zinc-400">{p.count}</span>
                     </button>
                   ))}
                 </div>
@@ -359,7 +359,7 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
 
       {list && !list.error && !result && rows.length > 0 && (
         <div className="flex items-center justify-between gap-3 border-t border-zinc-900 p-4">
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-zinc-400">
             {undecided ? `${undecided} still need your choice and won't be imported yet.` : ''}
           </span>
           <button

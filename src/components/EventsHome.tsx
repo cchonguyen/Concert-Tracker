@@ -51,13 +51,13 @@ const Row: React.FC<{ event: LoggedEvent; lineup?: LineupSummary; researching: b
   return (
     <li>
       <button onClick={onOpen} className="group flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-zinc-900/60">
-        <span className="w-24 shrink-0 text-xs text-zinc-500">
+        <span className="w-24 shrink-0 text-xs text-zinc-400">
           {whenLabel(event) ?? 'Date unknown'}
           {dateConfirmations(event).length > 0 && <Check className="ml-1 inline h-3 w-3 text-emerald-400" aria-label="Date confirmed" />}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-zinc-100"><EventTitle event={event} /></span>
-          <span className="block truncate text-xs text-zinc-500">
+          <span className="block truncate text-xs text-zinc-400">
             {[place, seen && `saw ${seen}`].filter(Boolean).join(' · ')}
             {h && (
               <span className={`${place || seen ? 'ml-1' : ''} inline-flex items-center gap-1 ${h.tone ?? ''}`}>
@@ -75,7 +75,7 @@ const Row: React.FC<{ event: LoggedEvent; lineup?: LineupSummary; researching: b
 
 const Section: React.FC<{ title: string; icon?: React.ReactNode; children: React.ReactNode }> = ({ title, icon, children }) => (
   <section className="space-y-2">
-    <h2 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-zinc-500">
+    <h2 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-zinc-400">
       {icon}
       {title}
     </h2>
@@ -110,7 +110,7 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
 
   if (loaded && events.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">
+      <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-400">
         Nothing here yet. Type the last show you went to above; a name is enough, and you can add the rest later.
       </p>
     );
@@ -160,7 +160,7 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
             className="rounded-xl border border-zinc-900 bg-zinc-900/40 px-4 py-3 text-left hover:border-zinc-800"
           >
             <div className="text-2xl font-extrabold tracking-tight text-zinc-100">{value}</div>
-            <div className="text-xs text-zinc-500">{label}</div>
+            <div className="text-xs text-zinc-400">{label}</div>
           </button>
         ))}
       </div>
@@ -168,7 +168,7 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
       {s.onThisDay.length > 0 && (
         <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-zinc-300">
           <CalendarHeart className="h-4 w-4 text-violet-300" />
-          <span className="text-zinc-500">On this day:</span>
+          <span className="text-zinc-400">On this day:</span>
           {s.onThisDay.map((e, i) => (
             <button key={e.id} onClick={() => onOpen(e.id)} className="hover:text-violet-300 hover:underline">
               <EventTitle event={e} />, {yearsAgo(e)}{i < s.onThisDay.length - 1 ? ';' : ''}

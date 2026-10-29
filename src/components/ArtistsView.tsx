@@ -110,7 +110,7 @@ const ArtistRow: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpe
         <li>
           <button
             onClick={() => setOpen(false)}
-            className="flex w-full items-center gap-1 px-4 pt-2 text-left text-[11px] text-zinc-500 hover:text-zinc-300 sm:px-5"
+            className="flex w-full items-center gap-1 px-4 pt-2 text-left text-[11px] text-zinc-400 hover:text-zinc-300 sm:px-5"
           >
             <ChevronDown className="h-3 w-3" /> Collapse
           </button>
@@ -129,17 +129,17 @@ const ArtistRow: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpe
           {a.headlined > 0 && <Crown className="h-3 w-3 shrink-0 text-amber-400" aria-label="Headliner" />}
         </span>
         {genre?.genres.length ? (
-          <span className="hidden max-w-[10rem] truncate text-xs text-zinc-500 lg:block" title={genreTitle(genre)}>
+          <span className="hidden max-w-[10rem] truncate text-xs text-zinc-400 lg:block" title={genreTitle(genre)}>
             {topStyles(genre, 1)[0]}
           </span>
         ) : null}
         {a.cities.length > 0 && (
-          <span className="hidden max-w-[14rem] truncate text-xs text-zinc-500 md:block" title={a.cities.join(', ')}>
+          <span className="hidden max-w-[14rem] truncate text-xs text-zinc-400 md:block" title={a.cities.join(', ')}>
             {a.cities[0]}
             {a.cities.length > 1 && ` +${a.cities.length - 1}`}
           </span>
         )}
-        <span className="shrink-0 whitespace-nowrap text-right text-[11px] tabular-nums text-zinc-500 sm:w-24 sm:text-xs">{span}</span>
+        <span className="shrink-0 whitespace-nowrap text-right text-[11px] tabular-nums text-zinc-400 sm:w-24 sm:text-xs">{span}</span>
         <span className="w-8 shrink-0 text-right text-sm font-bold tabular-nums text-zinc-100">{a.events.length}</span>
         <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-700 group-hover:text-zinc-400" />
       </button>
@@ -159,7 +159,7 @@ const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOp
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="truncate font-semibold text-zinc-100">{a.name}</div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 pt-0.5 text-xs text-zinc-500">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 pt-0.5 text-xs text-zinc-400">
               {span && (
                 <span className="inline-flex items-center gap-1">
                   <CalendarDays className="h-3 w-3" />
@@ -185,7 +185,7 @@ const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOp
           </div>
           <div className="shrink-0 text-right">
             <div className="text-xl font-extrabold leading-none tracking-tight text-zinc-100">{a.events.length}</div>
-            <div className="text-[10px] uppercase tracking-wide text-zinc-500">{a.events.length === 1 ? 'time' : 'times'}</div>
+            <div className="text-[10px] uppercase tracking-wide text-zinc-400">{a.events.length === 1 ? 'time' : 'times'}</div>
           </div>
         </div>
 
@@ -233,10 +233,10 @@ const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOp
                 onClick={() => onOpenEvent(e.id)}
                 className="group flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left text-sm hover:bg-zinc-900/70 sm:flex-row sm:items-baseline sm:gap-4"
               >
-                <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-zinc-500 sm:w-36">{shortWhen(e) ?? 'Date unknown'}</span>
+                <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-zinc-400 sm:w-36">{shortWhen(e) ?? 'Date unknown'}</span>
                 <span className="min-w-0 truncate text-zinc-200 group-hover:text-violet-300">
                   <EventTitle event={e} />
-                  {e.venue && <span className="text-zinc-600"> · {e.venue}</span>}
+                  {e.venue && <span className="text-zinc-400"> · {e.venue}</span>}
                 </span>
               </button>
             </li>
@@ -252,13 +252,13 @@ const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOp
           {a.events.length > 1 && (
             <button
               onClick={() => onOpenTable(`artist=${encodeURIComponent(a.key)}`)}
-              className="inline-flex items-center gap-1 text-zinc-500 hover:text-violet-300"
+              className="inline-flex items-center gap-1 text-zinc-400 hover:text-violet-300"
             >
               <Table2 className="h-3 w-3" /> In the Table
             </button>
           )}
           {onManage && (
-            <button onClick={() => onManage(a.key)} className="inline-flex items-center gap-1 text-zinc-500 hover:text-violet-300">
+            <button onClick={() => onManage(a.key)} className="inline-flex items-center gap-1 text-zinc-400 hover:text-violet-300">
               <FolderCog className="h-3 w-3" /> In Manage
             </button>
           )}
@@ -347,7 +347,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
 
   if (!artists.length) {
     return (
-      <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">
+      <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-400">
         Nobody yet. Open an event and add who you saw, or find its lineup and tick them.
       </p>
     );
@@ -362,7 +362,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
         ].map(([value, label]) => (
           <div key={label} className="rounded-xl border border-zinc-900 bg-zinc-900/40 px-4 py-3">
             <div className="text-2xl font-extrabold tracking-tight text-zinc-100">{value}</div>
-            <div className="text-xs text-zinc-500">{label}</div>
+            <div className="text-xs text-zinc-400">{label}</div>
           </div>
         ))}
       </div>
@@ -370,7 +370,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
       {/* On a phone the order switch takes its own row under search and the view switch. */}
       <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
         <label className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-600" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
@@ -458,7 +458,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
       )}
 
       {groups.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">
+        <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-400">
           No artist matches{filter ? ` “${filter}”` : ''}{genre ? ` in ${genre}` : ''}.
         </p>
       ) : (
@@ -466,7 +466,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
           <section key={g.label} id={groupId(g.label)} style={{ scrollMarginTop: headerHeight + barHeight }} className="space-y-2">
             <h2 style={{ top: headerHeight + barHeight }} className="sticky z-10 -mx-1 flex items-baseline gap-2 bg-zinc-950 px-1 py-1 text-xs font-bold uppercase tracking-wide text-zinc-400 backdrop-blur">
               {g.label}
-              <span className="font-medium normal-case tracking-normal text-zinc-600">{g.artists.length}</span>
+              <span className="font-medium normal-case tracking-normal text-zinc-400">{g.artists.length}</span>
             </h2>
             <ul className="divide-y divide-zinc-900 rounded-xl border border-zinc-900 bg-zinc-900/20">
               {g.artists.map((a) =>

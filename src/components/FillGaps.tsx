@@ -79,7 +79,7 @@ const TitleArtistsRow: React.FC<{
   onAdd: () => void;
 }> = ({ offered, ticked, onToggle, onAdd }) => (
   <div className="flex flex-wrap items-center gap-1.5">
-    <span className="text-[11px] text-zinc-500">From the title:</span>
+    <span className="text-[11px] text-zinc-400">From the title:</span>
     {offered.map((s) => {
       const on = ticked.has(s.key);
       return (
@@ -95,8 +95,8 @@ const TitleArtistsRow: React.FC<{
         >
           {on ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
           {s.name}
-          {s.role === 'support' && <span className="text-[10px] text-zinc-500">support</span>}
-          {s.sourceType === 'musicbrainz' && <span className="text-[10px] text-zinc-500">MusicBrainz</span>}
+          {s.role === 'support' && <span className="text-[10px] text-zinc-400">support</span>}
+          {s.sourceType === 'musicbrainz' && <span className="text-[10px] text-zinc-400">MusicBrainz</span>}
         </button>
       );
     })}
@@ -188,7 +188,7 @@ const GapEditor: React.FC<{
       <div className="flex items-center gap-0.5">
         {[1, 2, 3, 4, 5].map((n) => (
           <button key={n} onClick={() => submit({ rating: n })} aria-label={`${n} stars`}>
-            <Star className="h-5 w-5 text-zinc-600 hover:fill-amber-400 hover:text-amber-400" />
+            <Star className="h-5 w-5 text-zinc-400 hover:fill-amber-400 hover:text-amber-400" />
           </button>
         ))}
       </div>
@@ -263,7 +263,7 @@ const ReviewRow: React.FC<{ event: LoggedEvent; onDone: (e: LoggedEvent) => void
       setBusy(false);
     }
   };
-  if (!job) return <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />;
+  if (!job) return <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />;
   const head = kept.filter((p) => p.billing !== 'support');
   const support = kept.filter((p) => p.billing === 'support');
   return (
@@ -271,7 +271,7 @@ const ReviewRow: React.FC<{ event: LoggedEvent; onDone: (e: LoggedEvent) => void
       <p className="text-xs text-zinc-300">
         {head.slice(0, 8).map((p) => p.name).join(', ')}
         {head.length > 8 && ` +${head.length - 8} more`}
-        {support.length > 0 && <span className="text-zinc-500"> · supporting: {support.map((p) => p.name).join(', ')}</span>}
+        {support.length > 0 && <span className="text-zinc-400"> · supporting: {support.map((p) => p.name).join(', ')}</span>}
       </p>
       {acts.length > kept.length && (
         <p className="text-[11px] text-amber-300/80">{acts.length - kept.length} low-evidence act(s) left out; open it to look at them.</p>
@@ -533,7 +533,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
             Across the {events.length} event{events.length === 1 ? '' : 's'} the Table shows. Pick what's missing, type it in, press Enter.
           </p>
         </div>
-        <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
+        <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200" aria-label="Close">
           <X className="h-5 w-5" />
         </button>
       </div>
@@ -550,7 +550,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
               gap === g ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            {GAP_LABELS[g]} <span className="text-zinc-500">{counts[g]}</span>
+            {GAP_LABELS[g]} <span className="text-zinc-400">{counts[g]}</span>
           </button>
         ))}
       </div>
@@ -653,7 +653,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
       {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
 
       {rows.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">Nothing missing here.</p>
+        <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-400">Nothing missing here.</p>
       ) : (
         <ul className="divide-y divide-zinc-900 rounded-xl border border-zinc-900">
           {rows.map((e) => (
@@ -662,7 +662,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
                 <button onClick={() => onOpen(e.id)} className="truncate text-left text-sm font-medium text-zinc-100 hover:underline">
                   <EventTitle event={e} />
                 </button>
-                <span className="shrink-0 text-xs text-zinc-500">
+                <span className="shrink-0 text-xs text-zinc-400">
                   {[whenLabel(e) ?? 'Date unknown', e.venue, gap === 'place' ? [cityOf(e), e.country].filter(Boolean).join(', ') : undefined]
                     .filter(Boolean)
                     .join(' · ')}
@@ -695,7 +695,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
                   className="inline-flex items-center gap-1 rounded-full border border-violet-500/50 px-2.5 py-1 text-xs text-violet-200 hover:bg-violet-950/40"
                 >
                   <Check className="h-3 w-3" /> Use {guesses[e.id].label}
-                  {guesses[e.id].places > 1 && <span className="text-[10px] text-zinc-500">biggest of {guesses[e.id].places} by that name</span>}
+                  {guesses[e.id].places > 1 && <span className="text-[10px] text-zinc-400">biggest of {guesses[e.id].places} by that name</span>}
                 </button>
               )}
               {gap === 'place' && placeNotes[e.id] && <p className="text-[11px] text-amber-300/80">{placeNotes[e.id]}</p>}

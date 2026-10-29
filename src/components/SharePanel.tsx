@@ -129,7 +129,7 @@ export const SharePanel: React.FC<SharePanelProps> = ({ onClose }) => {
       <input type="checkbox" checked={settings[key]} onChange={(e) => change({ [key]: e.target.checked })} disabled={!!busy} className="mt-1" />
       <span>
         <span className="text-zinc-200">{label}</span>
-        <span className="block text-xs text-zinc-500">{hint}</span>
+        <span className="block text-xs text-zinc-400">{hint}</span>
       </span>
     </label>
   );
@@ -144,12 +144,12 @@ export const SharePanel: React.FC<SharePanelProps> = ({ onClose }) => {
             <h2 className="flex items-center gap-2 text-lg font-bold">
               <Share2 className="h-4 w-4 text-violet-400" /> Share
             </h2>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-zinc-400">
               A read-only page of the events you went to, for anyone with the link. It shows events only once they are over, and never who you
               went with, notes, ratings, prices or upcoming plans.
             </p>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -161,7 +161,7 @@ export const SharePanel: React.FC<SharePanelProps> = ({ onClose }) => {
         )}
 
         {link === undefined ? (
-          <p className="flex items-center gap-2 text-sm text-zinc-500">
+          <p className="flex items-center gap-2 text-sm text-zinc-400">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading…
           </p>
         ) : (
@@ -208,7 +208,7 @@ export const SharePanel: React.FC<SharePanelProps> = ({ onClose }) => {
                     </button>
                   </div>
                 ) : (
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-zinc-400">
                     For safety only a fingerprint of the link is kept, so it can't be shown again here. Make a new link to copy one (the old one stops
                     working).
                   </p>
@@ -224,7 +224,7 @@ export const SharePanel: React.FC<SharePanelProps> = ({ onClose }) => {
                     {busy === 'off' && <Loader2 className="h-4 w-4 animate-spin" />} Turn off
                   </button>
                 </div>
-                <p className="text-xs text-zinc-500">New link and Turn off stop the current link at once. Anyone you sent it to sees "This link isn't active".</p>
+                <p className="text-xs text-zinc-400">New link and Turn off stop the current link at once. Anyone you sent it to sees "This link isn't active".</p>
               </section>
             ) : (
               <button className={primary} disabled={!!busy || !settings.displayName.trim()} onClick={create}>

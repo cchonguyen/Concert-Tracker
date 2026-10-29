@@ -63,7 +63,7 @@ export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured, compact, lab
       {parsed && (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="rounded-full bg-zinc-800 px-2.5 py-1 font-semibold text-zinc-100">{parsed.name || '…'}</span>
-          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 ${when ? 'bg-zinc-800 text-zinc-200' : 'text-zinc-500'}`}>
+          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 ${when ? 'bg-zinc-800 text-zinc-200' : 'text-zinc-400'}`}>
             <CalendarDays className="h-3 w-3" /> {when ?? 'no date yet (that’s fine)'}
           </span>
           {ahead && (

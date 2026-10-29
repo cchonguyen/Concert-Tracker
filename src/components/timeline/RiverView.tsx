@@ -53,13 +53,13 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
     setZoom(Math.max(0, Math.min(RIVER_ZOOMS.length - 1, next)));
   };
 
-  if (!layout) return <p className="py-10 text-center text-sm text-zinc-500">No dated events match these filters.</p>;
+  if (!layout) return <p className="py-10 text-center text-sm text-zinc-400">No dated events match these filters.</p>;
   const height = AXIS + Math.max(1, layout.lanes) * LANE + 8;
   const y = (lane: number) => AXIS + lane * LANE + LANE / 2;
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between text-xs text-zinc-500">
+      <div className="flex items-center justify-between text-xs text-zinc-400">
         <span>Drag or scroll sideways. Tap a mark to open it.</span>
         <span className="flex items-center gap-1">
           <button onClick={() => zoomTo(zoom - 1)} disabled={zoom === 0} aria-label="Zoom out" className="rounded-lg border border-zinc-800 p-1 hover:border-zinc-600 disabled:opacity-40">
@@ -167,7 +167,7 @@ const Stretch: React.FC<{ shown: TimelineSpan[]; more: number; onOpen: (id: stri
           <li key={s.id}>
             <button type="button" onClick={() => onOpen(s.id)} className="w-full rounded-md px-1.5 py-1 text-left hover:bg-zinc-800">
               <span className="block truncate font-medium text-zinc-100">{s.title}</span>
-              <span className="block truncate text-xs text-zinc-500">
+              <span className="block truncate text-xs text-zinc-400">
                 {dateChip(s)}
                 {place ? ` · ${place}` : ''}
               </span>

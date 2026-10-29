@@ -98,7 +98,7 @@ const DayPanel: React.FC<{
     <div className="mt-2 space-y-1.5 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2">
       <div className="flex items-center justify-between px-1 text-xs font-semibold text-zinc-400">
         {longDate(date)}
-        <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-zinc-200">
+        <button onClick={onClose} aria-label="Close" className="text-zinc-400 hover:text-zinc-200">
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -113,7 +113,7 @@ const DayPanel: React.FC<{
                 <span className="block truncate text-sm font-medium text-zinc-100">
                   <EventTitle event={s.event} />
                 </span>
-                {placeLabel(s.event) && <span className="block truncate text-xs text-zinc-500">{placeLabel(s.event)}</span>}
+                {placeLabel(s.event) && <span className="block truncate text-xs text-zinc-400">{placeLabel(s.event)}</span>}
               </span>
               {s.attendance === 'confirm' ? <ConfirmMark /> : s.attendance === 'went' ? <Rating rating={s.event.rating} /> : null}
             </button>
@@ -145,10 +145,10 @@ const Scroller: React.FC<{ today?: string; children: React.ReactNode }> = ({ tod
 
 export const HeatmapView: React.FC<TimelineViewProps> = ({ model, range, selectedDate, onSelectDate, onOpen }) => {
   const rows = useMemo(() => heatmapRows(model, range), [model, range]);
-  if (!rows.length) return <p className="py-10 text-center text-sm text-zinc-500">No dated events match these filters.</p>;
+  if (!rows.length) return <p className="py-10 text-center text-sm text-zinc-400">No dated events match these filters.</p>;
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-500">
+      <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-400">
         {(['festival', 'show', 'upcoming', 'confirm'] as DayState[]).map((s) => (
           <span key={s} className="inline-flex items-center gap-1">
             <svg width={CELL} height={CELL} aria-hidden>
@@ -169,18 +169,18 @@ export const HeatmapView: React.FC<TimelineViewProps> = ({ model, range, selecte
       </div>
       {rows.map((row) =>
         row.kind === 'gap' ? (
-          <p key={`gap-${row.to}`} className="border-l-2 border-zinc-800 py-1 pl-3 text-xs text-zinc-600">
+          <p key={`gap-${row.to}`} className="border-l-2 border-zinc-800 py-1 pl-3 text-xs text-zinc-400">
             No events, {row.from === row.to ? row.from : `${row.from} – ${row.to}`}
           </p>
         ) : (
           <section key={row.year}>
             <div className="mb-1 flex items-baseline gap-2">
               <h2 className="text-lg font-extrabold tracking-tight text-zinc-200">{row.year}</h2>
-              <span className="text-xs text-zinc-500">
+              <span className="text-xs text-zinc-400">
                 {row.events} event{row.events === 1 ? '' : 's'}
               </span>
               {row.undayed.length > 0 && (
-                <span className="text-xs text-zinc-500" title={row.undayed.map((p) => p.title).join(', ')}>
+                <span className="text-xs text-zinc-400" title={row.undayed.map((p) => p.title).join(', ')}>
                   +{row.undayed.length} without a day
                 </span>
               )}
