@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
 import { createDeps, createStore, LookupWorker } from './src/server/lineup/service';
-import { accessGateFromEnv } from './src/server/auth/config';
+import { accessGateFromEnv, localOwnerFromEnv } from './src/server/auth/config';
 import { supabaseMemberDirectory } from './src/server/auth/members';
 import { getSupabaseClient } from './src/server/supabase';
 import { createApiApp } from './src/server/app';
@@ -25,7 +25,10 @@ async function main() {
   const lineupDeps = createDeps(lineupStore);
   const worker = new LookupWorker(lineupDeps);
   // Who may use /api (src/server/auth/config.ts). Nothing is open by default.
-  const app = createApiApp(lineupDeps, worker, accessGateFromEnv(process.env, () => supabaseMemberDirectory(getSupabaseClient()!)));
+  // LOCAL_DEV_OWNER=on (development only) lets this machine use /api without Access.
+  const localOwner = localOwnerFromEnv(process.env);
+  const gate = localOwner ? { kind: 'local' as const } : accessGateFromEnv(process.env, () => supabaseMemberDirectory(getSupabaseClient()!));
+  const app = createApiApp(lineupDeps, worker, gate);
   worker.start();
   console.log(`Lineup store: ${lineupStore.kind}; Gemini: ${lineupDeps.gemini ? lineupDeps.gemini.model : 'not configured'}`);
 
@@ -52,7 +55,8 @@ async function main() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  // Local owner mode listens on this machine only.
+  app.listen(PORT, localOwner ? '127.0.0.1' : '0.0.0.0', () => {
     console.log(`LiveArchive server is running at http://0.0.0.0:${PORT}`);
   });
 }

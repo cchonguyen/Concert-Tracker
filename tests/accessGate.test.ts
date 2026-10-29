@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
+import { request } from 'node:http';
 import express from 'express';
 import { accessConfigFromEnv, clearAccessKeys } from '../src/server/share/access.ts';
-import { accessGateFromEnv, workerSettings } from '../src/server/auth/config.ts';
+import { accessGateFromEnv, localOwnerFromEnv, workerSettings } from '../src/server/auth/config.ts';
 import { ownerMiddleware } from '../src/server/auth/gate.ts';
 import { createApiApp } from '../src/server/app.ts';
 import type { MemberDirectory } from '../src/server/auth/members.ts';
@@ -143,4 +144,34 @@ test('owner gate: a friend gets 403 from /api, the owner gets past the check', a
   assert.equal(friend.status, 403);
   const owner = await fetch(`${base}/api/events`, { headers: { 'Cf-Access-Jwt-Assertion': await tokenFor(OWNER) } });
   assert.ok(![401, 403, 503].includes(owner.status), `owner was refused with ${owner.status}`);
+});
+
+test('local owner: only LOCAL_DEV_OWNER=on outside production turns it on', (t) => {
+  t.mock.method(console, 'warn', () => {});
+  assert.equal(localOwnerFromEnv({ LOCAL_DEV_OWNER: 'on' }), true);
+  assert.equal(localOwnerFromEnv({ LOCAL_DEV_OWNER: ' ON ', NODE_ENV: 'development' }), true);
+  assert.equal(localOwnerFromEnv({}), false);
+  assert.equal(localOwnerFromEnv({ LOCAL_DEV_OWNER: 'yes' }), false);
+  assert.equal(localOwnerFromEnv({ LOCAL_DEV_OWNER: 'on', NODE_ENV: 'production' }), false);
+});
+
+test('the Worker gate never returns the local mode, whatever is set', () => {
+  const kinds = [{ LOCAL_DEV_OWNER: 'on' }, { LOCAL_DEV_OWNER: 'on', ...OWNER_ENV }, { LOCAL_DEV_OWNER: 'on', MULTI_USER: 'off' }].map((e) => gateFor(e).kind);
+  assert.ok(kinds.every((k) => k !== 'local'), kinds.join(','));
+});
+
+test('local owner: loopback is let through; a forwarded or non-loopback request is refused', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const base = await serve(createApiApp(DEPS, RUNNER, { kind: 'local' }), t);
+  assert.equal((await fetch(`${base}/api/me`)).status, 200);
+  assert.equal((await fetch(`${base}/api/me`, { headers: { 'X-Forwarded-For': '203.0.113.9' } })).status, 403);
+  assert.equal((await fetch(`${base}/api/me`, { headers: { 'Cf-Connecting-IP': '203.0.113.9' } })).status, 403);
+  // fetch does not let a script set Host, so this one goes over http.
+  const hostStatus = await new Promise<number>((resolve, reject) => {
+    const req = request(`${base}/api/me`, { headers: { Host: 'concert.example.com' } }, (res) => resolve(res.statusCode ?? 0));
+    req.on('error', reject);
+    req.end();
+  });
+  assert.equal(hostStatus, 403);
+  assert.equal((await fetch(`${base}/api/health`)).status, 200);
 });
