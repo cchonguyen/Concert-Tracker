@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { highestMilestoneCrossed, milestoneLine } from '../src/services/milestones';
+import { ARTIST_MILESTONES, artistMilestoneLine, highestMilestoneCrossed, milestoneLine } from '../src/services/milestones';
 
 test('a single show crossing 1 earns the first milestone', () => {
   assert.equal(highestMilestoneCrossed(0, 1), 1);
@@ -21,4 +21,10 @@ test('a count that shrinks crosses nothing', () => {
 
 test('large milestones read with separators', () => {
   assert.equal(milestoneLine(1000), "1,000 shows! You're a legend of the floor.");
+});
+
+test('the artists milestone fires at 100 seen artists', () => {
+  assert.equal(highestMilestoneCrossed(99, 100, ARTIST_MILESTONES), 100);
+  assert.equal(highestMilestoneCrossed(100, 101, ARTIST_MILESTONES), null);
+  assert.equal(artistMilestoneLine(100), '100 artists seen live!');
 });

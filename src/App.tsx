@@ -50,7 +50,7 @@ import { HomePage } from './components/HomePage';
 import { BackToTop } from './components/ui/BackToTop';
 import { Callout } from './components/ui/Callout';
 import { copy } from './services/copy';
-import { highestMilestoneCrossed } from './services/milestones';
+import { ARTIST_MILESTONES, artistMilestoneLine, highestMilestoneCrossed, milestoneLine, seenArtistCount } from './services/milestones';
 import { showTipsAgain } from './services/tips';
 import { MilestoneCard } from './components/MilestoneCard';
 import { cityOf } from './services/table';
@@ -82,7 +82,9 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   const [events, setEvents] = useState<LoggedEvent[]>([]);
   // The show count last seen from the server or from a change, so a page load never counts as a milestone.
   const showCount = useRef<number | null>(null);
-  const [milestone, setMilestone] = useState<number | null>(null);
+  const [milestone, setMilestone] = useState<string | null>(null);
+  // The artists-seen count last seen, with the same rule: a page load is the baseline, not a milestone.
+  const seenArtists = useRef<number | null>(null);
   const [lineups, setLineups] = useState<Record<string, LineupSummary>>({});
   const [editions, setEditions] = useState<Record<string, LineupFacts>>({});
   const [researching, setResearching] = useState<Set<string>>(new Set());
@@ -150,6 +152,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
     try {
       const data = await eventsApi.list();
       showCount.current = data.events.length;
+      seenArtists.current = seenArtistCount(data.events, new Date().toISOString().slice(0, 10));
       setEvents(data.events);
       setLineups(data.lineups);
       setEditions(data.editions ?? {});
@@ -218,7 +221,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
     } catch {
       // Without storage the card can repeat on reload; the card itself still works.
     }
-    setMilestone(hit);
+    setMilestone(milestoneLine(hit));
   }, [events.length]);
 
   const openTab = (next: Page) => {
@@ -269,6 +272,21 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   // ones you haven't confirmed wait in the Table and on the Events home.
   const went = useMemo(() => wentTo(events, today), [events, today]);
   const seenCount = new Set(went.flatMap((e) => e.seen.map((s) => s.key))).size;
+  useEffect(() => {
+    const before = seenArtists.current;
+    seenArtists.current = seenCount;
+    if (before === null || seenCount <= before) return;
+    const hit = highestMilestoneCrossed(before, seenCount, ARTIST_MILESTONES);
+    if (hit === null) return;
+    const key = `liveArchive.artistMilestone.${me.email ?? 'owner'}`;
+    try {
+      if (Number(window.localStorage.getItem(key) ?? 0) >= hit) return;
+      window.localStorage.setItem(key, String(hit));
+    } catch {
+      // Without storage the card can repeat on reload; the card itself still works.
+    }
+    setMilestone(artistMilestoneLine(hit));
+  }, [seenCount]);
   const selected = events.find((e) => e.id === selectedId) ?? null;
   const toReview = imports.filter((r) => r.status === 'new' && !r.eventId && !(r.startDate && r.startDate > today)).length;
   const canManage = me.role === 'owner';
@@ -571,7 +589,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
     </VaultProvider>
       {milestone !== null && (
         <MilestoneCard
-          milestone={milestone}
+          line={milestone}
           onSeeYear={() => {
             setMilestone(null);
             openTab('agenda');
