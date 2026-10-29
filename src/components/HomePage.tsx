@@ -96,7 +96,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       {(Object.keys(SECTIONS) as Section[]).map((section) => (
         <section key={section} className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{SECTIONS[section].label}</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">{SECTIONS[section].label}</h2>
           <div className={`grid gap-3 sm:grid-cols-2 ${empty ? 'opacity-60' : ''}`}>
             {subPagesFor(section, { canManage }).map((p) => {
               const Icon = PAGE_ICON[p];
@@ -117,7 +117,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                   {count && (
                     <span className="shrink-0 text-right">
                       <span className="block text-3xl font-extrabold tabular-nums text-zinc-100">{count.n}</span>
-                      <span className="block text-xs text-zinc-500">{count.unit}</span>
+                      <span className="block text-xs text-zinc-400">{count.unit}</span>
                     </span>
                   )}
                 </button>

@@ -238,7 +238,7 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
           {counts.countries} {counts.countries === 1 ? 'country' : 'countries'}
           {' · '}
           {plural(data.places.reduce((a, p) => a + p.events.length, 0), 'event')} on the map
-          {data.pending > 0 && <span className="text-zinc-500"> · placing {data.pending} more</span>}
+          {data.pending > 0 && <span className="text-zinc-400"> · placing {data.pending} more</span>}
         </span>
         <span className="flex items-center gap-3">
           {years.length > 1 && (
@@ -280,7 +280,7 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
 
       {stops.length > 0 && (
         <section className="space-y-1 text-sm">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-zinc-500">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-zinc-400">
             Trail: {options.artists.find((a) => a.key === filters.artist)?.name}
           </h2>
           <ol className="flex flex-wrap gap-x-2 gap-y-1 text-zinc-300">
@@ -288,16 +288,16 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
               <li key={s.event.id}>
                 <button onClick={() => onOpen(s.event.id)} className="hover:text-violet-300 hover:underline">
                   {i + 1}. {s.event.city}
-                  <span className="text-zinc-500">{whenLabel(s.event) ? `, ${whenLabel(s.event)}` : ''}</span>
+                  <span className="text-zinc-400">{whenLabel(s.event) ? `, ${whenLabel(s.event)}` : ''}</span>
                 </button>
-                {i < stops.length - 1 && <span className="ml-2 text-zinc-600">→</span>}
+                {i < stops.length - 1 && <span className="ml-2 text-zinc-400">→</span>}
               </li>
             ))}
           </ol>
         </section>
       )}
 
-      <div className="space-y-1 text-xs text-zinc-500">
+      <div className="space-y-1 text-xs text-zinc-400">
         {data.noCity > 0 && (
           <p>{plural(data.noCity, 'event')} without a city not shown. Fill gaps in the Table can add them.</p>
         )}
@@ -326,13 +326,13 @@ const PlacePanel: React.FC<{ place: MapPlace; onOpen: (id: string) => void; onCl
   <section className="space-y-2 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">
     <div className="flex items-center justify-between gap-2">
       <h2 className="font-semibold text-zinc-100">
-        {place.city} <span className="text-xs font-normal text-zinc-500">{plural(place.events.length, 'event')}</span>
+        {place.city} <span className="text-xs font-normal text-zinc-400">{plural(place.events.length, 'event')}</span>
       </h2>
       <span className="flex items-center gap-3 text-xs">
         <button onClick={() => onOpenTable(`city=${encodeURIComponent(place.city)}`)} className="text-zinc-400 hover:text-zinc-200">
           Open in Table
         </button>
-        <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-zinc-200">
+        <button onClick={onClose} aria-label="Close" className="text-zinc-400 hover:text-zinc-200">
           <X className="h-4 w-4" />
         </button>
       </span>
@@ -343,9 +343,9 @@ const PlacePanel: React.FC<{ place: MapPlace; onOpen: (id: string) => void; onCl
           <button onClick={() => onOpen(e.id)} className="flex w-full items-baseline justify-between gap-3 py-1.5 text-left text-sm hover:text-violet-300">
             <span className="truncate text-zinc-200">
               <EventTitle event={e} />
-              {e.venue && <span className="text-zinc-500"> · {e.venue}</span>}
+              {e.venue && <span className="text-zinc-400"> · {e.venue}</span>}
             </span>
-            <span className="shrink-0 text-xs text-zinc-500">{whenLabel(e) ?? 'Date unknown'}</span>
+            <span className="shrink-0 text-xs text-zinc-400">{whenLabel(e) ?? 'Date unknown'}</span>
           </button>
         </li>
       ))}

@@ -102,7 +102,7 @@ const NotesField: React.FC<{ stored?: string | null; onSave: (v: string | null) 
 
 const input =
   'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
-const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-500';
+const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
 
 // A text field that saves when you leave it.
 const Field: React.FC<{
@@ -131,7 +131,7 @@ const Field: React.FC<{
             target="_blank"
             rel="noreferrer"
             title={source.quote ? `“${source.quote}”` : undefined}
-            className="inline-flex items-center gap-0.5 font-normal text-zinc-500 hover:text-violet-300"
+            className="inline-flex items-center gap-0.5 font-normal text-zinc-400 hover:text-violet-300"
           >
             {source.sourceType === 'venue' ? 'from' : 'via'} {FIELD_SOURCE_LABELS[source.sourceType]} <ExternalLink className="h-2.5 w-2.5" />
           </a>
@@ -203,7 +203,7 @@ const ChipInput: React.FC<{
         {items.map((item, i) => (
           <span key={`${item}-${i}`} className="inline-flex items-center gap-1 rounded-full bg-zinc-800 py-1 pl-2.5 pr-1.5 text-sm text-zinc-100">
             {item}
-            <button onClick={() => onChange(items.filter((_, j) => j !== i))} aria-label={`Remove ${item}`} className="text-zinc-500 hover:text-zinc-200">
+            <button onClick={() => onChange(items.filter((_, j) => j !== i))} aria-label={`Remove ${item}`} className="text-zinc-400 hover:text-zinc-200">
               <X className="h-3 w-3" />
             </button>
           </span>
@@ -237,7 +237,7 @@ const ChipInput: React.FC<{
       </div>
       {matches.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 px-1.5 pb-1 pt-1.5" role="listbox" aria-label="Names you've entered before">
-          <span className="text-[11px] text-zinc-500">Before:</span>
+          <span className="text-[11px] text-zinc-400">Before:</span>
           {matches.map((name, i) => (
             <button
               key={name}
@@ -284,7 +284,7 @@ const DaysWent: React.FC<{ days: string[]; attended: string[]; onChange: (days: 
             disabled={last}
             title={last ? 'You went at least one day' : on ? 'Tap if you missed this day' : 'Tap if you went this day'}
             aria-pressed={on}
-            className={`rounded-full border px-2.5 py-1 ${on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-500 line-through'}`}
+            className={`rounded-full border px-2.5 py-1 ${on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-400 line-through'}`}
           >
             {new Date(`${d}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' })}
           </button>
@@ -364,7 +364,7 @@ const WentCard: React.FC<{
           <button onClick={() => setOffered(null)} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900">
             Done
           </button>
-          <span className="text-xs text-zinc-500">Add anyone else under Who you saw.</span>
+          <span className="text-xs text-zinc-400">Add anyone else under Who you saw.</span>
         </div>
       </div>
     );
@@ -487,7 +487,7 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
         onClick={() => favourite(s.key)}
         aria-label={s.favourite ? `${s.name} is your favourite set` : `Mark ${s.name} as your favourite set`}
         title={s.favourite ? 'Favourite set of the night' : 'Mark as favourite set'}
-        className={s.favourite ? 'text-rose-400' : 'text-zinc-600 hover:text-rose-300'}
+        className={s.favourite ? 'text-rose-400' : 'text-zinc-400 hover:text-rose-300'}
       >
         <Heart className={`h-3 w-3 ${s.favourite ? 'fill-rose-400' : ''}`} />
       </button>
@@ -502,12 +502,12 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
       </button>
       {s.role === 'headliner' && <span className="text-[10px] uppercase text-amber-300/80">headliner</span>}
       {s.asSolo && <span className="text-[10px] uppercase text-violet-300/80">solo</span>}
-      {sets.get(s.key) && <span className="text-[10px] text-zinc-500">{sets.get(s.key)}</span>}
+      {sets.get(s.key) && <span className="text-[10px] text-zinc-400">{sets.get(s.key)}</span>}
       <button
         onClick={() => cycleSet(s.key, s.asSolo)}
         aria-label={s.set ? `${s.name}: ${SET_LABELS[s.set]}. Change` : `Mark ${s.name} as DJ set or live set`}
         title={s.set ? `${SET_LABELS[s.set]} (tap to change)` : 'DJ set or live set?'}
-        className={`rounded px-1 text-[10px] uppercase ${s.set ? 'bg-sky-500/15 text-sky-300' : 'text-zinc-600 hover:text-zinc-300'}`}
+        className={`rounded px-1 text-[10px] uppercase ${s.set ? 'bg-sky-500/15 text-sky-300' : 'text-zinc-400 hover:text-zinc-300'}`}
       >
         {s.set === 'dj' ? 'DJ' : s.set === 'live' ? 'Live' : 'set'}
       </button>
@@ -516,7 +516,7 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
           onClick={() => onChange(toPatch(setSolo(seen, s.key, true)))}
           aria-label={`${s.name} also played a solo set`}
           title="Also saw a solo set"
-          className="text-[10px] text-zinc-600 hover:text-zinc-300"
+          className="text-[10px] text-zinc-400 hover:text-zinc-300"
         >
           +solo
         </button>
@@ -532,7 +532,7 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
                 : `Pair ${s.name} B2B with another act`
           }
           title={pairing && pairing !== s.key ? `B2B with ${pairingName}` : s.b2b?.length ? 'Take out of the B2B' : 'B2B with another act'}
-          className={s.b2b?.length || pairing === s.key ? 'text-violet-300' : 'text-zinc-600 hover:text-zinc-300'}
+          className={s.b2b?.length || pairing === s.key ? 'text-violet-300' : 'text-zinc-400 hover:text-zinc-300'}
         >
           <Link2 className="h-3 w-3" />
         </button>
@@ -542,7 +542,7 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
           onClick={() => setRole(s.key, s.role === 'support' ? null : 'support')}
           aria-label={s.role === 'support' ? `Move ${s.name} to Artist` : `Move ${s.name} to Supporting`}
           title={s.role === 'support' ? 'Move to Artist' : 'Move to Supporting'}
-          className="text-zinc-500 hover:text-zinc-200"
+          className="text-zinc-400 hover:text-zinc-200"
         >
           {s.role === 'support' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
         </button>
@@ -550,7 +550,7 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
       <button
         onClick={() => (s.asSolo ? onChange(toPatch(setSolo(seen, s.key, false))) : remove(s.key))}
         aria-label={s.asSolo ? `Remove ${s.name}'s solo set` : `Remove ${s.name}`}
-        className="text-zinc-500 hover:text-zinc-200"
+        className="text-zinc-400 hover:text-zinc-200"
       >
         <X className="h-3 w-3" />
       </button>
@@ -575,13 +575,13 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
   return (
     <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900 p-2">
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="w-20 shrink-0 text-[11px] font-semibold text-zinc-500">Artist</span>
+        <span className="w-20 shrink-0 text-[11px] font-semibold text-zinc-400">Artist</span>
         {seenSlots(artists).map(slot)}
-        {!artists.length && <span className="text-xs text-zinc-600">None yet</span>}
+        {!artists.length && <span className="text-xs text-zinc-400">None yet</span>}
       </div>
       {support.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="w-20 shrink-0 text-[11px] font-semibold text-zinc-500">Supporting</span>
+          <span className="w-20 shrink-0 text-[11px] font-semibold text-zinc-400">Supporting</span>
           {seenSlots(support).map(slot)}
         </div>
       )}
@@ -621,7 +621,7 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
       />
       {matches.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 px-1.5 pb-1" role="listbox" aria-label="Acts you've entered before">
-          <span className="text-[11px] text-zinc-500">Seen before:</span>
+          <span className="text-[11px] text-zinc-400">Seen before:</span>
           {matches.map((name, i) => (
             <button
               key={name}
@@ -653,17 +653,17 @@ const Weather: React.FC<{ event: LoggedEvent; busy: boolean; note: string | null
     return (
       <div className="space-y-0.5 text-xs">
         <p className="inline-flex items-center gap-1 text-zinc-300">
-          <CloudSun className="h-3.5 w-3.5 text-zinc-500" /> Weather
+          <CloudSun className="h-3.5 w-3.5 text-zinc-400" /> Weather
         </p>
         <ul className="space-y-0.5 text-zinc-400">
           {w.days.map((d) => (
             <li key={d.date}>
-              {w.days.length > 1 && <span className="text-zinc-500">{whenLabel({ startDate: d.date })}: </span>}
+              {w.days.length > 1 && <span className="text-zinc-400">{whenLabel({ startDate: d.date })}: </span>}
               {weatherLine(d) || 'No reading'}
             </li>
           ))}
         </ul>
-        <a href={w.sourceUrl} target="_blank" rel="noreferrer" className="text-zinc-600 hover:text-violet-300">
+        <a href={w.sourceUrl} target="_blank" rel="noreferrer" className="text-zinc-400 hover:text-violet-300">
           Open-Meteo archive, {w.place} <ExternalLink className="inline h-2.5 w-2.5" />
         </a>
       </div>
@@ -675,7 +675,7 @@ const Weather: React.FC<{ event: LoggedEvent; busy: boolean; note: string | null
       <button onClick={onLookUp} disabled={busy} className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-50">
         {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CloudSun className="h-3 w-3" />} Look up the weather
       </button>
-      {note && <p className="text-xs text-zinc-500">{note}</p>}
+      {note && <p className="text-xs text-zinc-400">{note}</p>}
     </div>
   );
 };
@@ -896,11 +896,11 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     >
         <div className="flex items-start gap-3">
           <Field label="Event" value={event.name} onSave={(v) => save({ name: v })} className="flex-1" />
-          <button onClick={onClose} className="mt-6 text-zinc-500 hover:text-zinc-200" aria-label="Close">
+          <button onClick={onClose} className="mt-6 text-zinc-400 hover:text-zinc-200" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
-        {event.input && event.input !== event.name && <p className="-mt-4 text-xs text-zinc-600">You typed: “{event.input}”</p>}
+        {event.input && event.input !== event.name && <p className="-mt-4 text-xs text-zinc-400">You typed: “{event.input}”</p>}
         <div className="-mt-2 space-y-1">
           <div className="flex items-end gap-2">
             <Field
@@ -930,7 +930,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             )}
           </div>
           {(event.series || eventTitle(event) !== event.name) && (
-            <p className="text-[11px] text-zinc-500">
+            <p className="text-[11px] text-zinc-400">
               Shows as “<EventTitle event={event} />”
               {(() => {
                 const n = seriesList(events).find((g) => g.name === event.series)?.events.length ?? 1;
@@ -973,7 +973,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                 >
                   {busy === 'research-gemini' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />} Look again with Gemini
                   {lineupStatus.quota && (
-                    <span className="text-zinc-500">({Math.max(0, lineupStatus.quota.limit - lineupStatus.quota.used)} left)</span>
+                    <span className="text-zinc-400">({Math.max(0, lineupStatus.quota.limit - lineupStatus.quota.used)} left)</span>
                   )}
                 </button>
               )}
@@ -1037,7 +1037,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             <label className="space-y-1">
               <span className="flex items-center justify-between gap-2 text-[11px] font-semibold text-zinc-400">
                 Type
-                <span className="font-normal text-zinc-500">{scale.by === 'rule' && scale.kind ? scale.reason : ''}</span>
+                <span className="font-normal text-zinc-400">{scale.by === 'rule' && scale.kind ? scale.reason : ''}</span>
               </span>
               <select
                 className={input}
@@ -1055,7 +1055,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
 
           {/* What Gemini did on the last "Look again with Gemini". */}
           {details.notes.some((n) => n.startsWith('gemini:')) && (
-            <ul className="space-y-0.5 text-[11px] text-zinc-500">
+            <ul className="space-y-0.5 text-[11px] text-zinc-400">
               {details.notes
                 .filter((n) => n.startsWith('gemini:'))
                 .map((n, i) => (
@@ -1078,7 +1078,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm text-zinc-100">{candidateLine(c) || c.name}</span>
-                    <span className="block truncate text-[11px] text-zinc-500">
+                    <span className="block truncate text-[11px] text-zinc-400">
                       {c.name && `${c.name} · `}
                       {c.sources.length > 1 ? `${c.sources.length} sources: ` : ''}
                       {[...new Set(c.sources.map((s) => SOURCE_LABELS[s.sourceType] + (s.readBy === 'gemini' ? ' (read by Gemini)' : '')))].join(', ')}
@@ -1097,7 +1097,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               <p className="inline-flex items-center gap-1 text-emerald-300/90">
                 <Check className="h-3.5 w-3.5" /> Date confirmed by {confirmations.length} source{confirmations.length === 1 ? '' : 's'}
               </p>
-              <ul className="space-y-0.5 text-zinc-500">
+              <ul className="space-y-0.5 text-zinc-400">
                 {confirmations.map((s, i) => (
                   <li key={i} className="truncate">
                     <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="hover:text-violet-300">
@@ -1109,9 +1109,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               </ul>
             </div>
           )}
-          {details.status === 'none' && <p className="text-xs text-zinc-500">No listing found. It's saved as you typed it.</p>}
+          {details.status === 'none' && <p className="text-xs text-zinc-400">No listing found. It's saved as you typed it.</p>}
           {details.status === 'needs_date' && <p className="text-xs text-amber-300/90">Add when it was (a year is enough), then look again.</p>}
-          {details.status === 'off' && <p className="text-xs text-zinc-500">No event source is set up, so details are as you typed them.</p>}
+          {details.status === 'off' && <p className="text-xs text-zinc-400">No event source is set up, so details are as you typed them.</p>}
           <Weather event={event} busy={busy === 'weather'} note={weatherNote} onLookUp={lookUpWeather} />
         </section>
 
@@ -1122,7 +1122,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           <SeenGenres event={event} />
           {offered.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="text-zinc-500">From the event name:</span>
+              <span className="text-zinc-400">From the event name:</span>
               {offered.map((s) => (
                 <button
                   key={s.key}
@@ -1145,7 +1145,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           )}
           {lineupActs.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-[11px] text-zinc-500">From the lineup, tap to mark who you saw:</p>
+              <p className="text-[11px] text-zinc-400">From the lineup, tap to mark who you saw:</p>
               <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-auto">
                 {lineupActs.map((p) => {
                   const on = seenKeys.has(p.artistKey);
@@ -1163,7 +1163,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                       className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
                     >
                       {p.name}
-                      {p.billing === 'support' && <span className="ml-1 text-[10px] text-zinc-500">support</span>}
+                      {p.billing === 'support' && <span className="ml-1 text-[10px] text-zinc-400">support</span>}
                     </button>
                   );
                 })}
@@ -1177,7 +1177,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           <h3 className={sectionTitle}>Full lineup</h3>
           {!job && !edition && (
             <div className="space-y-2">
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-zinc-400">
                 Optional. The app looks for who played in Clashfinder, the promoter's page and ticketing listings, cites every act, and never guesses.
               </p>
               <input className={input} value={lineupUrl} onChange={(e) => setLineupUrl(e.target.value)} placeholder="Lineup page, if you know one (optional)" />
@@ -1226,12 +1226,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                     <RefreshCw className="h-3 w-3" /> Try now
                   </button>
                 )}
-                <button onClick={() => setShowLog((s) => !s)} className="text-xs text-zinc-500 hover:text-zinc-300">
+                <button onClick={() => setShowLog((s) => !s)} className="text-xs text-zinc-400 hover:text-zinc-300">
                   {showLog ? 'Hide' : 'Show'} what it did
                 </button>
               </div>
               {showLog && (
-                <ol className="max-h-60 space-y-1 overflow-y-auto font-mono text-[11px] text-zinc-500">
+                <ol className="max-h-60 space-y-1 overflow-y-auto font-mono text-[11px] text-zinc-400">
                   {job.log.map((entry, i) => (
                     <li key={i}>{entry.message}</li>
                   ))}
@@ -1274,7 +1274,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             )}
           </label>
           {onManage && manageLinks(event).length > 0 && (
-            <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500">
+            <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-400">
               <FolderCog className="h-3 w-3" /> Edit on every event in Manage:
               {manageLinks(event).map((m) => (
                 <button
@@ -1313,11 +1313,11 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         <div className="flex items-center justify-between border-t border-zinc-900 pt-4">
           <button
             onClick={() => setConfirmingDelete(true)}
-            className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-rose-300"
+            className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-rose-300"
           >
             <Trash2 className="h-3.5 w-3.5" /> Delete event
           </button>
-          {busy === 'save' && <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />}
+          {busy === 'save' && <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />}
         </div>
 
       {confirmingDelete && (

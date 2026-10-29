@@ -27,7 +27,7 @@ const FLAG_LABELS: Record<EmailImport['flags'][number], string> = {
   transferred_away: 'Tickets sent to someone else',
 };
 
-const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-500';
+const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
 
 const EmailLink: React.FC<{ row: EmailImport }> = ({ row }) => {
   const link = row.sources.name?.link ?? row.messages.find((m) => m.link)?.link;
@@ -133,7 +133,7 @@ const CheckEmail: React.FC<{ onFound: (imports: EmailImport[]) => void }> = ({ o
           </a>
         )}
       </div>
-      {status.connected && status.account && <p className="text-[11px] text-zinc-600">{status.account}</p>}
+      {status.connected && status.account && <p className="text-[11px] text-zinc-400">{status.account}</p>}
       {error && <p className="text-xs text-rose-300">{error}</p>}
         </>
       )}
@@ -172,7 +172,7 @@ const Row: React.FC<{ row: EmailImport; ticked?: boolean; onTick?: () => void; a
         <p className="text-xs text-zinc-400">
           {[when ?? 'No date in the email', place].filter(Boolean).join(' · ')}
         </p>
-        <p className="flex flex-wrap items-center gap-x-2 text-[11px] text-zinc-500">
+        <p className="flex flex-wrap items-center gap-x-2 text-[11px] text-zinc-400">
           <EmailLink row={row} />
           {facts && <span>{facts}</span>}
           {row.flags.map((f) => (
@@ -227,13 +227,13 @@ const MergePicker: React.FC<{ row: EmailImport; events: LoggedEvent[]; busy: boo
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Which of your events is this?"
-          className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-violet-500 focus:outline-none"
+          className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-400 focus:border-violet-500 focus:outline-none"
         />
         <button onClick={onCancel} className="text-xs text-zinc-400 hover:text-zinc-200">
           Cancel
         </button>
       </div>
-      {!options.length && <p className="text-xs text-zinc-500">No event of yours matches.</p>}
+      {!options.length && <p className="text-xs text-zinc-400">No event of yours matches.</p>}
       {options.map((e) => (
         <button
           key={e.id}
@@ -242,10 +242,10 @@ const MergePicker: React.FC<{ row: EmailImport; events: LoggedEvent[]; busy: boo
           className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-zinc-900 disabled:opacity-40"
         >
           <span className="block text-sm text-zinc-100">{e.name}</span>
-          <span className="block text-xs text-zinc-500">{[whenLabel(e) ?? 'No date', placeLabel(e)].filter(Boolean).join(' · ')}</span>
+          <span className="block text-xs text-zinc-400">{[whenLabel(e) ?? 'No date', placeLabel(e)].filter(Boolean).join(' · ')}</span>
         </button>
       ))}
-      <p className="text-[11px] text-zinc-600">Only empty fields are filled from the email; what you entered stays as it is.</p>
+      <p className="text-[11px] text-zinc-400">Only empty fields are filled from the email; what you entered stays as it is.</p>
     </div>
   );
 };
@@ -345,7 +345,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
         action={
           <button
             onClick={() => setMerging(merging === r.id ? null : r.id)}
-            className="text-zinc-500 hover:text-violet-300"
+            className="text-zinc-400 hover:text-violet-300"
             aria-label="Same as one of my events"
             title="Same as one of my events"
           >
@@ -365,11 +365,11 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
             <h2 className="flex items-center gap-2 text-lg font-bold">
               <Mail className="h-4 w-4 text-violet-400" /> From your ticket emails
             </h2>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-zinc-400">
               A ticket doesn't prove you went, so tick the ones you did. Each one is saved with a link to its email.
             </p>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -386,12 +386,12 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
         {merged && <p className="rounded-lg border border-violet-500/30 bg-violet-950/30 p-2 text-sm text-violet-200">{merged}</p>}
 
-        {!toReview.length && <p className="text-sm text-zinc-500">Nothing left to review.</p>}
+        {!toReview.length && <p className="text-sm text-zinc-400">Nothing left to review.</p>}
         {years.map((g) => (
           <section key={g.label} className="space-y-2">
             <div className="flex items-baseline justify-between">
               <h3 className="text-sm font-bold text-zinc-300">
-                {g.label} <span className="text-xs font-normal text-zinc-600">{g.rows.length}</span>
+                {g.label} <span className="text-xs font-normal text-zinc-400">{g.rows.length}</span>
               </h3>
               <button onClick={() => toggle(g.rows.map((r) => r.id))} className="text-xs text-zinc-400 hover:text-zinc-200">
                 {g.rows.every((r) => ticked.has(r.id)) ? 'Untick all' : `Tick all in ${g.label}`}
@@ -404,7 +404,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
         {upcoming.length > 0 && (
           <section className="space-y-2">
             <h3 className={sectionTitle}>Still ahead ({upcoming.length})</h3>
-            <p className="text-xs text-zinc-600">
+            <p className="text-xs text-zinc-400">
               Tick one to add it as upcoming: it isn't counted until you say you went, and once it's over the app asks. Unticked ones stay here.
             </p>
             {upcoming.map(reviewRow)}
@@ -421,7 +421,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
                 note={nameOf(r.eventId) && `${r.mergedFields ? 'Merged into' : r.status === 'added' ? 'Added as' : 'Matched to'} “${nameOf(r.eventId)}”`}
                 action={
                   r.mergedFields ? (
-                    <button onClick={() => unmerge(r)} className="text-zinc-500 hover:text-zinc-200" aria-label="Undo merge" title="Undo merge">
+                    <button onClick={() => unmerge(r)} className="text-zinc-400 hover:text-zinc-200" aria-label="Undo merge" title="Undo merge">
                       <Undo2 className="h-4 w-4" />
                     </button>
                   ) : r.status === 'new' && events.some((e) => e.id === r.eventId) ? (
@@ -429,7 +429,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
                     <button
                       disabled={busy}
                       onClick={() => mergeInto(r, events.find((e) => e.id === r.eventId)!)}
-                      className="text-zinc-500 hover:text-violet-300 disabled:opacity-40"
+                      className="text-zinc-400 hover:text-violet-300 disabled:opacity-40"
                       aria-label="Merge into this event"
                       title="Merge into this event"
                     >
@@ -450,7 +450,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
                 key={r.id}
                 row={r}
                 action={
-                  <button onClick={() => skip([r.id], true)} className="text-zinc-500 hover:text-zinc-200" aria-label="Put back">
+                  <button onClick={() => skip([r.id], true)} className="text-zinc-400 hover:text-zinc-200" aria-label="Put back">
                     <Undo2 className="h-4 w-4" />
                   </button>
                 }
@@ -462,7 +462,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
         {unreadable.length > 0 && (
           <details className="space-y-2">
             <summary className={`${sectionTitle} cursor-pointer`}>Couldn't read ({unreadable.length})</summary>
-            <p className="text-xs text-zinc-600">Ticket emails in a layout the app doesn't know yet. Open one and add it by typing a line.</p>
+            <p className="text-xs text-zinc-400">Ticket emails in a layout the app doesn't know yet. Open one and add it by typing a line.</p>
             {unreadable.map((r) => (
               <Row key={r.id} row={{ ...r, dateText: undefined }} />
             ))}
