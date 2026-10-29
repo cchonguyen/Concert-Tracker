@@ -113,7 +113,7 @@ export const BrowserScan: React.FC<{ status: EmailScanStatus; onFound: (imports:
       </div>
       {running && (
         <div className="space-y-1">
-          <p className="text-xs text-zinc-400">
+          <p role="status" aria-live="polite" className="text-xs text-zinc-400">
             {progress?.phase === 'reading'
               ? `Examining message ${progress.examined} of ${progress.total}… Found ${progress.found} concert${progress.found === 1 ? '' : 's'}`
               : 'Searching Gmail…'}

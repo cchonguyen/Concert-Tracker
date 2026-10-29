@@ -75,7 +75,7 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
             <p className="text-xs text-zinc-400">
               Encrypts your notes in this browser, so the server (and the owner) only ever stores unreadable text. Lose both the passphrase and the recovery key and the notes are gone.
             </p>
-            <input type="password" className={field} placeholder="Passphrase (8+ characters)" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />
+            <input aria-label="Passphrase (8+ characters)" type="password" className={field} placeholder="Passphrase (8+ characters)" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />
             <button
               className={button}
               disabled={busy || passphrase.length < 8}
@@ -130,8 +130,8 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
             <button className={button} onClick={() => vault.lock()}>
               <Lock className="h-3.5 w-3.5" /> Lock now
             </button>
-            <input type="password" className={field} placeholder="Current passphrase" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />
-            <input type="password" className={field} placeholder="New passphrase" value={next} onChange={(e) => setNext(e.target.value)} />
+            <input aria-label="Current passphrase" type="password" className={field} placeholder="Current passphrase" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />
+            <input aria-label="New passphrase" type="password" className={field} placeholder="New passphrase" value={next} onChange={(e) => setNext(e.target.value)} />
             <button
               className={button}
               disabled={busy || !passphrase || next.length < 8}

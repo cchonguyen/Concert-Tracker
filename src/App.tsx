@@ -48,6 +48,7 @@ import { BackToTop } from './components/ui/BackToTop';
 import { Callout } from './components/ui/Callout';
 import { copy } from './services/copy';
 import { highestMilestoneCrossed } from './services/milestones';
+import { showTipsAgain } from './services/tips';
 import { MilestoneCard } from './components/MilestoneCard';
 import { cityOf } from './services/table';
 import { homeSummary } from './services/home';
@@ -336,6 +337,7 @@ export default function App() {
               onExport={() => exportCsv(events, editions)}
               onSheets={openSheets}
               onShare={() => setSharing(true)}
+              onShowTips={() => showTipsAgain(me.email)}
             />
           </div>
         </div>
@@ -483,7 +485,7 @@ export default function App() {
         </div>
       </footer>
 
-      {about && <AboutDialog onClose={() => setAbout(false)} />}
+      {about && <AboutDialog onClose={() => setAbout(false)} onShowTips={() => showTipsAgain(me.email)} />}
       {BACK_TO_TOP.includes(shown) && <BackToTop />}
       <QuickAddFab onClick={() => setQuickAdd(true)} />
       <QuickAdd
