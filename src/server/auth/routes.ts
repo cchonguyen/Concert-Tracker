@@ -14,14 +14,34 @@ export function singleOwnerMeRouter(): Router {
   return router;
 }
 
-export function membersRouter(directory: MemberDirectory): Router {
+// Bump when the notice's wording changes, so members accept the new text.
+export const NOTICE_VERSION = 1;
+export const NOTICE_SETTING = 'notice_accepted';
+
+export function membersRouter(directory: MemberDirectory, store: LineupStore): Router {
   const router = Router();
   const fail = (res: any, err: unknown, status = 400) => res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
   const ownerOnly = (_req: any, res: any, next: any) => (currentMember()?.role === 'owner' ? next() : fail(res, new Error('Only the owner can do this.'), 403));
 
-  router.get('/me', (_req, res) => {
+  // Members accept the notice once (per version); the owner wrote it.
+  router.get('/me', async (_req, res) => {
     const me = currentMember();
-    res.json({ multiUser: true, role: me?.role ?? 'member', email: me?.email ?? null });
+    try {
+      const role = me?.role ?? 'member';
+      const accepted = role === 'owner' || (await store.getSetting<{ version: number }>(NOTICE_SETTING))?.version === NOTICE_VERSION;
+      res.json({ multiUser: true, role, email: me?.email ?? null, noticeAccepted: accepted });
+    } catch (err) {
+      fail(res, err, 500);
+    }
+  });
+
+  router.post('/me/notice', async (_req, res) => {
+    try {
+      await store.putSetting(NOTICE_SETTING, { version: NOTICE_VERSION, acceptedAt: new Date().toISOString() });
+      res.json({ ok: true });
+    } catch (err) {
+      fail(res, err, 500);
+    }
   });
 
   router.get('/members', ownerOnly, async (_req, res) => {

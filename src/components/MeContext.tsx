@@ -7,6 +7,7 @@ export interface Me {
   multiUser: boolean;
   role: 'owner' | 'member';
   email: string | null;
+  noticeAccepted?: boolean;
 }
 
 const MeContext = createContext<Me>({ multiUser: false, role: 'owner', email: null });

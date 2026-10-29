@@ -131,7 +131,7 @@ async function apiFixture() {
   app.use(express.json());
   app.use('/api', memberMiddleware({ config, directory, base: store, getJson: async () => ({ keys: [jwk] }) }));
   const scoped = requestScopedStore(store);
-  app.use('/api', membersRouter(directory));
+  app.use('/api', membersRouter(directory, scoped));
   app.use('/api', vaultGuard(scoped));
   app.use('/api', vaultRouter(scoped));
   app.use('/api', accountRouter(directory, scoped));
@@ -168,6 +168,11 @@ test('API: no token is 401, a stranger 403, a member sees only their rows, membe
   const { call, close } = await apiFixture();
   try {
     assert.equal((await call(null, '/api/events')).status, 401);
+    // The first-sign-in notice: pending until this member accepts, and only theirs.
+    assert.equal((await call('ann@example.com', '/api/me')).body.noticeAccepted, false);
+    assert.equal((await call('ann@example.com', '/api/me/notice', { method: 'POST', body: '{}' })).status, 200);
+    assert.equal((await call('ann@example.com', '/api/me')).body.noticeAccepted, true);
+    assert.equal((await call('bob@example.com', '/api/me')).body.noticeAccepted, false);
     assert.equal((await call('stranger@example.com', '/api/events')).status, 403);
     assert.equal((await call('ann@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'a1' }) })).status, 200);
     assert.equal((await call('bob@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'b1' }) })).status, 200);
@@ -198,7 +203,7 @@ test('API: concurrent requests from two members never see each other\'s rows', a
 test('API: /me says who you are; only the owner lists, invites and removes members', async () => {
   const { call, close } = await apiFixture();
   try {
-    assert.deepEqual((await call('ann@example.com', '/api/me')).body, { multiUser: true, role: 'member', email: 'ann@example.com' });
+    assert.deepEqual((await call('ann@example.com', '/api/me')).body, { multiUser: true, role: 'member', email: 'ann@example.com', noticeAccepted: false });
     assert.equal((await call('owner@example.com', '/api/me')).body.role, 'owner');
     assert.equal((await call('ann@example.com', '/api/members')).status, 403);
     assert.equal((await call('ann@example.com', '/api/members', { method: 'POST', body: JSON.stringify({ email: 'cy@example.com' }) })).status, 403);

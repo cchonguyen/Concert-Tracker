@@ -25,6 +25,7 @@ import { TimelineTab } from './components/timeline/TimelineTab';
 import { ThemePicker } from './components/ThemePicker';
 import { ManageTarget, ManageView } from './components/ManageView';
 import { MeProvider, type Me } from './components/MeContext';
+import { NoticeModal } from './components/NoticeModal';
 import { MembersPanel } from './components/MembersPanel';
 import { AccountPanel } from './components/AccountPanel';
 import { VaultProvider } from './components/VaultContext';
@@ -159,6 +160,9 @@ export default function App() {
 
   return (
     <MeProvider me={me}>
+    {me.multiUser && me.noticeAccepted === false && (
+      <NoticeModal onAccepted={() => setMe((m) => ({ ...m, noticeAccepted: true }))} />
+    )}
     <VaultProvider events={events} onChanged={refresh}>
     <div className="min-h-screen bg-zinc-950 font-sans text-zinc-100 selection:bg-violet-600 selection:text-white flex flex-col">
       <header className="sticky top-0 z-30 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md">
