@@ -51,7 +51,7 @@ import { BackToTop } from './components/ui/BackToTop';
 import { Callout } from './components/ui/Callout';
 import { copy } from './services/copy';
 import { highestMilestoneCrossed } from './services/milestones';
-import { showTipsAgain } from './services/tips';
+import { loadPrefs, recordMilestone, showTipsAgain } from './services/prefs';
 import { MilestoneCard } from './components/MilestoneCard';
 import { cityOf } from './services/table';
 import { homeSummary } from './services/home';
@@ -82,6 +82,8 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   const [events, setEvents] = useState<LoggedEvent[]>([]);
   // The show count last seen from the server or from a change, so a page load never counts as a milestone.
   const showCount = useRef<number | null>(null);
+  // The highest milestone the account has shown; null until it is read.
+  const milestoneShown = useRef<number | null>(null);
   const [milestone, setMilestone] = useState<number | null>(null);
   const [lineups, setLineups] = useState<Record<string, LineupSummary>>({});
   const [editions, setEditions] = useState<Record<string, LineupFacts>>({});
@@ -203,21 +205,28 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   };
 
   // Moving between the Table, the timeline views and the Map keeps the same filters.
-  // A show added this session may cross a milestone. Each milestone fires once per account on this browser.
+  // A show added this session may cross a milestone. Each milestone fires once per account: the highest one shown
+  // is kept on the account (services/prefs.ts). Until that is read, no card shows.
+  useEffect(() => {
+    let live = true;
+    void loadPrefs(me.email)
+      .then((p) => live && (milestoneShown.current = p.milestone))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [me.email]);
+
   useEffect(() => {
     const count = events.length;
     const before = showCount.current;
     showCount.current = count;
     if (before === null || count <= before) return;
     const hit = highestMilestoneCrossed(before, count);
-    if (hit === null) return;
-    const key = `liveArchive.milestone.${me.email ?? 'owner'}`;
-    try {
-      if (Number(window.localStorage.getItem(key) ?? 0) >= hit) return;
-      window.localStorage.setItem(key, String(hit));
-    } catch {
-      // Without storage the card can repeat on reload; the card itself still works.
-    }
+    const shown = milestoneShown.current;
+    if (hit === null || shown === null || shown >= hit) return;
+    milestoneShown.current = hit;
+    recordMilestone(hit);
     setMilestone(hit);
   }, [events.length]);
 
@@ -354,7 +363,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
               onExport={() => exportCsv(events, editions)}
               onSheets={openSheets}
               onShare={() => (readOnly ? askSample('share') : setSharing(true))}
-              onShowTips={() => showTipsAgain(me.email)}
+              onShowTips={() => void showTipsAgain()}
             />
           </div>
         </div>
@@ -502,7 +511,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
         </div>
       </footer>
 
-      {about && <AboutDialog onClose={() => setAbout(false)} onShowTips={() => showTipsAgain(me.email)} />}
+      {about && <AboutDialog onClose={() => setAbout(false)} onShowTips={() => void showTipsAgain()} />}
       {BACK_TO_TOP.includes(shown) && <BackToTop />}
       <QuickAddFab onClick={() => (readOnly ? askSample('add') : setQuickAdd(true))} />
       <QuickAdd

@@ -14,6 +14,7 @@ import type { AccessGate } from './auth/config';
 import { closedMiddleware, localOwnerMiddleware, ownerMiddleware } from './auth/gate';
 import { memberMiddleware, requestScopedStore } from './auth/requestScope';
 import { accountRouter, membersRouter, singleOwnerMeRouter } from './auth/routes';
+import { prefsRouter } from './auth/prefs';
 import { accessRequestOwnerRouter, accessRequestRouter } from './auth/requestRoutes';
 import { vaultGuard, vaultRouter } from './auth/vault';
 import { peopleRouter } from './entities/people';
@@ -61,6 +62,9 @@ export function createApiApp(baseDeps: PipelineDeps, runner: JobRunner, gate: Ac
   } else {
     app.use('/api', closedMiddleware(gate.reason));
   }
+
+  // Home tips and the milestone mark, per account (src/server/auth/prefs.ts).
+  app.use('/api', prefsRouter(lineupDeps.store));
 
   // Your event log: capture and details (stage 1), then lineup lookups (stage 2).
   app.use('/api', eventsRouter(lineupDeps, runner));
