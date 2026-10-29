@@ -51,6 +51,35 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
     }
   });
 
+  // Recently deleted shows, kept 90 days. Listed before /events/:id so "deleted" is not read as an id.
+  router.get('/events/deleted', async (_req, res) => {
+    try {
+      res.json({ events: await deps.store.listDeletedEvents() });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // The Log: every save, delete and restore, newest first. Kept one year.
+  router.get('/activity', async (req, res) => {
+    try {
+      const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
+      res.json({ activity: await deps.store.listActivity(limit) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post('/events/:id/restore', async (req, res) => {
+    try {
+      const restored = await deps.store.restoreEvent(req.params.id);
+      if (!restored) return res.status(404).json({ error: 'Not in Recently deleted.' });
+      res.status(204).end();
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
   router.get('/events/:id', async (req, res) => {
     try {
       const event = await load(req.params.id, res);
