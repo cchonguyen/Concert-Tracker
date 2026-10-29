@@ -62,9 +62,10 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
   });
 
   // Undo one Log row. 409 says why it was left alone, so the Log can tell you.
+  // The body says whether the vault is unlocked; anything but `vaultLocked: false` counts as locked.
   router.post('/activity/:id/undo', async (req, res) => {
     try {
-      const out = await undoActivity(deps.store, req.params.id);
+      const out = await undoActivity(deps.store, req.params.id, req.body?.vaultLocked !== false);
       if (out.ok) return res.status(204).end();
       res.status(out.reason === 'not-found' ? 404 : 409).json({ error: out.reason });
     } catch (err) {
