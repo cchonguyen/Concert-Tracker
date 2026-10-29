@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarRange, Table2 } from 'lucide-react';
+import { FilterButton, FilterPanel, FilterSelect } from '../ui/FilterControls';
 import type { LineupFacts, LineupSummary, LoggedEvent } from '../../services/lineupApi';
 import { activeFilterCount, EMPTY_FILTERS, filterEvents, filterOptions, filtersFromQuery, filtersToQuery, TableFilters } from '../../services/table';
 import { buildTimelineModel, firstToConfirm, monthFromQuery, monthToQuery, TimelineMode, TimelineRange } from '../../services/timeline';
@@ -27,12 +28,12 @@ interface TimelineTabProps {
 
 const control =
   'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
-const label = 'space-y-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500';
 const ALL: TimelineRange = { kind: 'all' };
 
 export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, focusEventId = null, events, lineups, editions, onOpen, onOpenTable, onShowInAgenda }) => {
   const [filters, setFilters] = useState<TableFilters>(() => filtersFromQuery(window.location.search));
   const [selectedEventId, setSelectedEventId] = useState<string | null>(focusEventId);
+  const [showFilters, setShowFilters] = useState(() => activeFilterCount(filters) > 0);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const today = new Date().toISOString().slice(0, 10);
   const [monthRange, setMonthRange] = useState<TimelineRange>(() => monthFromQuery(window.location.search, today));
@@ -76,32 +77,32 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, focusEventId = n
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <label className={`${label} col-span-2`}>
-          <span>Search</span>
-          <input value={filters.q} onChange={(e) => set({ q: e.target.value })} placeholder="Events, venues, acts, people" className={control} />
-        </label>
-        <label className={label}>
-          <span>From year</span>
-          <select value={filters.yearFrom ?? ''} onChange={(e) => set({ yearFrom: year(e.target.value) })} className={control}>
-            <option value="">Any</option>
-            {options.years.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={label}>
-          <span>Type</span>
-          <select value={filters.kind === 'any' ? '' : filters.kind} onChange={(e) => set({ kind: (e.target.value || 'any') as TableFilters['kind'] })} className={control}>
-            <option value="">Any</option>
-            <option value="concert">Concert</option>
-            <option value="festival">Festival</option>
-            <option value="unknown">Not known yet</option>
-          </select>
-        </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={filters.q} onChange={(e) => set({ q: e.target.value })} placeholder="Events, venues, acts, people" className={`${control} min-w-0 flex-1 py-2`} />
+        <FilterButton open={showFilters} count={activeFilterCount(filters)} onClick={() => setShowFilters((s) => !s)} />
       </div>
+      {showFilters && (
+        <FilterPanel>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <FilterSelect
+              name="From year"
+              value={filters.yearFrom ? String(filters.yearFrom) : ''}
+              onChange={(v) => set({ yearFrom: year(v) })}
+              options={options.years.map((y) => ({ value: String(y), label: `From ${y}` }))}
+            />
+            <FilterSelect
+              name="Type"
+              value={filters.kind === 'any' ? '' : filters.kind}
+              onChange={(v) => set({ kind: (v || 'any') as TableFilters['kind'] })}
+              options={[
+                { value: 'concert', label: 'Concerts' },
+                { value: 'festival', label: 'Festivals' },
+                { value: 'unknown', label: 'Type not known' },
+              ]}
+            />
+          </div>
+        </FilterPanel>
+      )}
       {hidden > 0 && (
         <p className="flex items-center gap-2 text-xs text-zinc-500">
           <CalendarRange className="h-3.5 w-3.5" />

@@ -4,7 +4,8 @@ import 'leaflet/dist/leaflet.css';
 import { Pause, Play, Table2, X } from 'lucide-react';
 import { eventsApi, LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
 import { eventYear, whenLabel } from '../services/format';
-import { EMPTY_FILTERS, filterEvents, filterOptions, filtersFromQuery, filtersToQuery, TableFilters } from '../services/table';
+import { activeFilterCount, EMPTY_FILTERS, filterEvents, filterOptions, filtersFromQuery, filtersToQuery, TableFilters } from '../services/table';
+import { FilterButton, FilterPanel, FilterSelect } from './ui/FilterControls';
 import { mapData, MapPlace, placeKey, placeQuery, playbackYears, Points, trail, travel } from '../services/map';
 import { EventTitle } from './EventTitle';
 
@@ -18,7 +19,6 @@ interface MapViewProps {
 
 const control =
   'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
-const label = 'space-y-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500';
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // City points are kept in this browser so the geocoder is asked once per city.
@@ -74,30 +74,12 @@ function useCityPoints(events: LoggedEvent[]): Points {
   return points;
 }
 
-const Select: React.FC<{
-  name: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: Array<{ value: string; label: string }>;
-}> = ({ name, value, onChange, options }) => (
-  <label className={label}>
-    <span>{name}</span>
-    <select value={value} onChange={(e) => onChange(e.target.value)} className={control}>
-      <option value="">Any</option>
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
-  </label>
-);
-
 const readQuery = () => filtersFromQuery(window.location.search);
 
 export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onOpen, onOpenTable }) => {
   const [filters, setFilters] = useState<TableFilters>(readQuery);
   const [selected, setSelected] = useState<string | null>(null);
+  const [showFilters, setShowFilters] = useState(() => activeFilterCount(readQuery()) > 0);
   const [playYear, setPlayYear] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const points = useCityPoints(events);
@@ -197,54 +179,58 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <label className={`${label} col-span-2 sm:col-span-3 lg:col-span-2`}>
-          <span>Search</span>
-          <input value={filters.q} onChange={(e) => set({ q: e.target.value })} placeholder="Events, venues, acts, people" className={control} />
-        </label>
-        <Select
-          name="From year"
-          value={filters.yearFrom ? String(filters.yearFrom) : ''}
-          onChange={(v) => set({ yearFrom: year(v) })}
-          options={options.years.map((y) => ({ value: String(y), label: String(y) }))}
-        />
-        <Select
-          name="To year"
-          value={filters.yearTo ? String(filters.yearTo) : ''}
-          onChange={(v) => set({ yearTo: year(v) })}
-          options={options.years.map((y) => ({ value: String(y), label: String(y) }))}
-        />
-        <Select
-          name="Saw"
-          value={filters.artist}
-          onChange={(v) => set({ artist: v })}
-          options={options.artists.map((a) => ({ value: a.key, label: a.name }))}
-        />
-        <Select
-          name="Type"
-          value={filters.kind === 'any' ? '' : filters.kind}
-          onChange={(v) => set({ kind: (v || 'any') as TableFilters['kind'] })}
-          options={[
-            { value: 'concert', label: 'Concert' },
-            { value: 'festival', label: 'Festival' },
-            { value: 'unknown', label: 'Not known yet' },
-          ]}
-        />
-        {options.formats.length > 0 && (
-          <Select name="Format" value={filters.format} onChange={(v) => set({ format: v })} options={options.formats.map((v) => ({ value: v, label: v }))} />
-        )}
-        {options.series.length > 0 && (
-          <Select name="Series" value={filters.series} onChange={(v) => set({ series: v })} options={options.series.map((v) => ({ value: v, label: v }))} />
-        )}
-        {options.companions.length > 0 && (
-          <Select
-            name="Went with"
-            value={filters.companion}
-            onChange={(v) => set({ companion: v })}
-            options={options.companions.map((v) => ({ value: v, label: v }))}
-          />
-        )}
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={filters.q} onChange={(e) => set({ q: e.target.value })} placeholder="Events, venues, acts, people" className={`${control} min-w-0 flex-1 py-2`} />
+        <FilterButton open={showFilters} count={activeFilterCount(filters)} onClick={() => setShowFilters((s) => !s)} />
       </div>
+      {showFilters && (
+        <FilterPanel>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <FilterSelect
+              name="From year"
+              value={filters.yearFrom ? String(filters.yearFrom) : ''}
+              onChange={(v) => set({ yearFrom: year(v) })}
+              options={options.years.map((y) => ({ value: String(y), label: String(y) }))}
+            />
+            <FilterSelect
+              name="To year"
+              value={filters.yearTo ? String(filters.yearTo) : ''}
+              onChange={(v) => set({ yearTo: year(v) })}
+              options={options.years.map((y) => ({ value: String(y), label: String(y) }))}
+            />
+            <FilterSelect
+              name="Saw"
+              value={filters.artist}
+              onChange={(v) => set({ artist: v })}
+              options={options.artists.map((a) => ({ value: a.key, label: a.name }))}
+            />
+            <FilterSelect
+              name="Type"
+              value={filters.kind === 'any' ? '' : filters.kind}
+              onChange={(v) => set({ kind: (v || 'any') as TableFilters['kind'] })}
+              options={[
+                { value: 'concert', label: 'Concert' },
+                { value: 'festival', label: 'Festival' },
+                { value: 'unknown', label: 'Not known yet' },
+              ]}
+            />
+            {options.formats.length > 0 && (
+              <FilterSelect name="Format" value={filters.format} onChange={(v) => set({ format: v })} options={options.formats.map((v) => ({ value: v, label: v }))} />
+            )}
+            {options.series.length > 0 && (
+              <FilterSelect name="Series" value={filters.series} onChange={(v) => set({ series: v })} options={options.series.map((v) => ({ value: v, label: v }))} />
+            )}
+            {options.companions.length > 0 && (
+              <FilterSelect
+                name="Went with"
+                value={filters.companion}
+                onChange={(v) => set({ companion: v })}
+                options={options.companions.map((v) => ({ value: v, label: v }))}
+              />
+            )}
+          </div>
+        </FilterPanel>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
         <span>

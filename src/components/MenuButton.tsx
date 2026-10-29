@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Download, FileUp, Menu, Sheet, UserCog, Users } from 'lucide-react';
+import { Download, FileUp, Menu, Share2, Sheet, UserCog, Users } from 'lucide-react';
 import { Theme, ThemeControls } from './ThemePicker';
 import { LogOutLink } from './LogOutLink';
+import { IconButton } from './ui/IconButton';
 
 interface Props {
   theme: Theme;
@@ -13,11 +14,13 @@ interface Props {
   onImport: () => void;
   onExport: () => void; // every event, as CSV
   onSheets: () => void;
+  onShare: () => void;
 }
 
 // One menu for everything about you and the app. A dropdown on desktop and a
-// bottom sheet on phone; Theme sits inline in it.
-export function MenuButton({ theme, canMembers, canAccount, canSheets, onMembers, onAccount, onImport, onExport, onSheets }: Props) {
+// bottom sheet on phone. Import, Export, Google Sheets and Share sit in one row
+// of icons, and the theme modes in another; each icon names itself on hover or tap.
+export function MenuButton({ theme, canMembers, canAccount, canSheets, onMembers, onAccount, onImport, onExport, onSheets, onShare }: Props) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
 
@@ -72,22 +75,14 @@ export function MenuButton({ theme, canMembers, canAccount, canSheets, onMembers
               )}
             </div>
           )}
-          <div className="space-y-1 border-t border-zinc-800 pt-3">
-            <p className="px-1 pb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">Your data</p>
-            <button onClick={() => choose(onImport)} className={item}>
-              <FileUp className="h-3.5 w-3.5" />
-              Import a list (CSV)
-            </button>
-            <button onClick={() => choose(onExport)} className={item}>
-              <Download className="h-3.5 w-3.5" />
-              Export all as CSV
-            </button>
-            {canSheets && (
-              <button onClick={() => choose(onSheets)} className={item}>
-                <Sheet className="h-3.5 w-3.5" />
-                Google Sheets
-              </button>
-            )}
+          <div className="space-y-2 border-t border-zinc-800 pt-3">
+            <p className="px-1 text-xs font-medium uppercase tracking-wide text-zinc-500">Your data</p>
+            <div className="flex items-center gap-1">
+              <IconButton icon={FileUp} label="Import a list (CSV)" onClick={() => choose(onImport)} />
+              <IconButton icon={Download} label="Export all as CSV" onClick={() => choose(onExport)} />
+              {canSheets && <IconButton icon={Sheet} label="Google Sheets" onClick={() => choose(onSheets)} />}
+              <IconButton icon={Share2} label="Share" onClick={() => choose(onShare)} />
+            </div>
           </div>
           <div className="space-y-2 border-t border-zinc-800 pt-3">
             <p className="px-1 text-xs font-medium uppercase tracking-wide text-zinc-500">Theme</p>

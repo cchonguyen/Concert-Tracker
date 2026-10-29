@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Check, Monitor, Moon, Sun } from 'lucide-react';
+import { IconButton } from './ui/IconButton';
 import {
   ACCENT_KEY,
   ACCENTS,
@@ -30,7 +31,7 @@ const write = (key: string, value: string) => {
 const MODES: [ThemeMode, typeof Sun, string][] = [
   ['dark', Moon, 'Dark'],
   ['light', Sun, 'Light'],
-  ['system', Monitor, 'Match system'],
+  ['system', Monitor, 'System'],
 ];
 
 export interface Theme {
@@ -80,18 +81,16 @@ export function ThemeControls({ theme }: { theme: Theme }) {
   const { mode, accent, pickMode, pickAccent } = theme;
   return (
     <div className="space-y-3">
-      <div className="space-y-1">
+      <div className="flex items-center gap-1">
         {MODES.map(([m, Icon, label]) => (
-          <button
+          <IconButton
             key={m}
+            icon={Icon}
+            label={label}
+            aria-pressed={mode === m}
             onClick={() => pickMode(m)}
-            className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm ${
-              mode === m ? 'bg-violet-600 text-white' : 'text-zinc-300 hover:bg-zinc-800'
-            }`}
-          >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
-          </button>
+            className={mode === m ? 'bg-violet-600 text-white hover:text-white' : ''}
+          />
         ))}
       </div>
       <div className="flex justify-between border-t border-zinc-800 pt-3">

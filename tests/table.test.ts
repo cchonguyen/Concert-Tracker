@@ -9,6 +9,7 @@ import {
   filtersFromQuery,
   filtersToQuery,
   needsOf,
+  nextSort,
   summarize,
   tableDate,
   TableFilters,
@@ -140,6 +141,28 @@ test('table filters round-trip through the page address and ignore junk', () => 
   assert.deepEqual(filtersFromQuery(filtersToQuery(filters)), { ...unset, ...filters });
   assert.equal(filtersToQuery(EMPTY_FILTERS), '');
   assert.deepEqual(filtersFromQuery('rating=9&needs=everything&sort=bogus&from=abc'), { ...EMPTY_FILTERS, ...unset });
+});
+
+test('a sort key cycles usual direction, then the other, then off', () => {
+  let s: Pick<TableFilters, 'sort' | 'desc'> = { sort: 'date', desc: true };
+  s = { ...s, ...nextSort(s, 'date') };
+  assert.deepEqual(s, { sort: 'date', desc: false });
+  s = { ...s, ...nextSort(s, 'date') };
+  assert.deepEqual(s, { sort: 'none', desc: true });
+  s = { ...s, ...nextSort(s, 'name') };
+  assert.deepEqual(s, { sort: 'name', desc: false });
+  s = { ...s, ...nextSort(s, 'rating') };
+  assert.deepEqual(s, { sort: 'rating', desc: true });
+});
+
+test('unsorted rows keep their order and the address says none', () => {
+  const list = [
+    { id: 'b', name: 'Beta', startDate: '2020-01-01', seen: [] },
+    { id: 'a', name: 'Alpha', startDate: '2024-01-01', seen: [] },
+  ] as unknown as LoggedEvent[];
+  assert.deepEqual(ids(filterEvents(list, f({ sort: 'none' }))), ['b', 'a']);
+  assert.equal(filtersToQuery(f({ sort: 'none' })), 'sort=none');
+  assert.equal(filtersFromQuery('sort=none').sort, 'none');
 });
 
 test('table dates split into aligned parts and never fill what is missing', () => {
