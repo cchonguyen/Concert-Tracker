@@ -224,7 +224,13 @@ export function DetailShell({ title, rows, openId, closeDisabled = false, onGo, 
   // The split view is the Table's width, centred over a dimmed page, so the detail reads as part of the same page.
   if (mode === 'split') {
     return (
-      <div className="fixed inset-0 z-40 flex justify-center bg-black/60 p-4">
+      <div
+        className="fixed inset-0 z-40 flex justify-center bg-black/60 p-4"
+        onMouseDown={(e) => {
+          // A press on the dimmed page, outside the column, closes the detail, as a press on the slide-over's backdrop does.
+          if (e.target === e.currentTarget) close();
+        }}
+      >
         <div className="flex h-full w-full max-w-6xl overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl">{body}</div>
       </div>
     );
