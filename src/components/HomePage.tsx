@@ -2,7 +2,7 @@ import React from 'react';
 import { Mail, Search, Ticket } from 'lucide-react';
 import { CaptureBar } from './CaptureBar';
 import { PAGE_ICON } from './pageIcons';
-import { Page, PAGE_LABELS, Section, SECTIONS, subPagesFor, SubPage } from '../services/nav';
+import { Page, PAGE_BLURB, PAGE_LABELS, Section, SECTIONS, subPagesFor, SubPage } from '../services/nav';
 import { LoggedEvent } from '../services/lineupApi';
 
 interface HomePageProps {
@@ -20,18 +20,6 @@ interface HomePageProps {
 }
 
 // What each page is for, in one friendly line.
-const BLURB: Record<SubPage, string> = {
-  summary: 'Every show, newest first.',
-  table: 'Sort, filter and edit your shows in bulk.',
-  manage: 'Rename and merge artists, venues and series.',
-  agenda: 'Your shows in order, newest first.',
-  month: 'One calendar month at a time.',
-  heatmap: 'How often you went out, day by day.',
-  river: 'Your shows as a flowing timeline.',
-  map: 'Every city you have been to.',
-  stats: 'Numbers from all your years of going out.',
-  ranking: 'Everyone you have seen live.',
-};
 
 const TINT: Record<Section, string> = {
   library: 'border-violet-500/30 bg-violet-500/5',
@@ -124,7 +112,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-base font-bold text-zinc-100">{PAGE_LABELS[p]}</span>
-                    <span className="block text-sm text-zinc-400">{BLURB[p]}</span>
+                    <span className="block text-sm text-zinc-400">{PAGE_BLURB[p]}</span>
                   </span>
                   {count && (
                     <span className="shrink-0 text-right">
