@@ -1,4 +1,5 @@
 import { useVault } from './VaultContext';
+import { noteView } from '../services/vaultSession';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Check, CloudSun, ExternalLink, FolderCog, Heart, Link2, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import {
@@ -71,10 +72,13 @@ const NotesField: React.FC<{ stored?: string | null; onSave: (v: string | null) 
       live = false;
     };
   }, [stored, vault.status]);
-  const locked = shown === null;
+  const view = noteView(shown);
+  const locked = !view.editable;
   return (
     <label className="block space-y-1">
-      <span className="text-[11px] font-semibold text-zinc-400">Notes</span>
+      <span className="text-[11px] font-semibold text-zinc-400">
+        Notes {locked && <span className="ml-1 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-amber-300">{view.badge}</span>}
+      </span>
       <textarea
         key={`${stored ?? ''}|${locked}`}
         className={input}
