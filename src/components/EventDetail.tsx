@@ -28,7 +28,9 @@ import { eventTitle, seriesList, seriesOffers, weekendFromName } from '../servic
 import { SuggestInput } from './SuggestInput';
 import { SeenGenres } from './SeenGenres';
 import { EventTitle } from './EventTitle';
-import { placePatch } from '../services/table';
+import { hasGap, placePatch } from '../services/table';
+import { dateText, thingsLeft } from '../services/poster';
+import { PosterHeader, ThingsLeft } from './PosterHeader';
 import { cityWithRegion } from '../server/events/regions';
 import { attendanceOf, lastDay } from '../server/events/attendance';
 import type { EditionPerformance } from '../server/lineup/types';
@@ -1009,6 +1011,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const toast = useToast();
   const roleName = (role?: Seen['role']) => (role === 'support' ? 'Supporting' : 'Artist');
 
+  const state = attendanceOf(event, new Date().toISOString().slice(0, 10));
   // While the lineup review is open, Escape and an outside press do not close the panel behind it.
   return (
     <DetailShell
@@ -1021,6 +1024,15 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     >
       <FlashContext.Provider value={flashing}>
         <SaveStatus track={track} onRetry={retrySaves} hint={hint} />
+        <PosterHeader
+          title={eventTitle(event)}
+          dateText={dateText(event)}
+          event={event}
+          state={state}
+          seen={event.seen}
+          cited={edition ? edition.performances.filter((p) => p.status !== 'cancelled').map((p) => p.artistKey) : []}
+        />
+        <ThingsLeft gaps={thingsLeft(event, (e, g) => hasGap(e, g, undefined, edition ? lineupFacts(edition) : undefined))} />
         <div className="flex items-start gap-3">
           <Field label="Event" field="name" value={event.name} onSave={(v) => save({ name: v })} className="flex-1" />
         </div>
