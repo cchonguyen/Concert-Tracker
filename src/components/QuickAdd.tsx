@@ -1,4 +1,6 @@
+import { Dialog } from './ui/Dialog';
 import React, { useEffect, useRef } from 'react';
+
 import { Check, FileUp, Mail, Plus, X } from 'lucide-react';
 import { CaptureBar } from './CaptureBar';
 import { LoggedEvent } from '../services/lineupApi';
@@ -16,48 +18,34 @@ interface QuickAddProps {
 }
 
 export const QuickAdd: React.FC<QuickAddProps> = ({ open, onClose, onCaptured, onReviewEmail, onImport, emailCheck }) => {
-  useEffect(() => {
-    if (!open) return;
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    document.addEventListener('keydown', esc);
-    return () => document.removeEventListener('keydown', esc);
-  }, [open, onClose]);
-
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-start sm:pt-24" onMouseDown={onClose}>
-      <div
-        role="dialog"
-        aria-label="Quick add"
-        onMouseDown={(e) => e.stopPropagation()}
-        className="w-full max-w-lg space-y-4 rounded-t-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-2xl sm:rounded-2xl"
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-bold text-zinc-100">Quick add</h2>
-          <button onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-zinc-400 hover:text-zinc-200">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <CaptureBar onCaptured={onCaptured} />
-        <div className="flex flex-wrap gap-2 border-t border-zinc-800 pt-4">
-          {emailCheck && (
-            <button
-              onClick={() => {
-                onClose();
-                onReviewEmail();
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
-            >
-              <Mail className="h-3.5 w-3.5" /> Check ticket email
-            </button>
-          )}
-          <button onClick={onImport} className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
-            <FileUp className="h-3.5 w-3.5" /> Import a list (CSV)
-          </button>
-        </div>
+    <Dialog title="Quick add" onClose={onClose} placement="center">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-bold text-zinc-100">Quick add</h2>
+        <button onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-zinc-400 hover:text-zinc-200">
+          <X className="h-4 w-4" />
+        </button>
       </div>
-    </div>
+      <CaptureBar onCaptured={onCaptured} />
+      <div className="flex flex-wrap gap-2 border-t border-zinc-800 pt-4">
+        {emailCheck && (
+          <button
+            onClick={() => {
+              onClose();
+              onReviewEmail();
+            }}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
+          >
+            <Mail className="h-3.5 w-3.5" /> Check ticket email
+          </button>
+        )}
+        <button onClick={onImport} className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
+          <FileUp className="h-3.5 w-3.5" /> Import a list (CSV)
+        </button>
+      </div>
+    </Dialog>
   );
 };
 
