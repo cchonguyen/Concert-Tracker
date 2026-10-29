@@ -1,8 +1,9 @@
 import { Dialog } from './ui/Dialog';
 import { copy } from '../services/copy';
+import { LineupStatus, SOURCE_LABELS } from '../services/lineupApi';
 
 // What the app is, where your data lives, and what leaves your browser. Every claim here must match the code.
-export function AboutDialog({ onClose, onShowTips }: { onClose: () => void; onShowTips: () => void }) {
+export function AboutDialog({ status, onClose, onShowTips }: { status: LineupStatus | null; onClose: () => void; onShowTips: () => void }) {
   return (
     <Dialog title={`About ${copy.appName}`} onClose={onClose} panelClassName="h-full w-full max-w-xl space-y-6 overflow-y-auto border-l border-zinc-900 bg-zinc-950 p-5 shadow-2xl">
       <div className="flex items-start justify-between gap-3">
@@ -34,7 +35,7 @@ export function AboutDialog({ onClose, onShowTips }: { onClose: () => void; onSh
       <section className="space-y-2 text-sm text-zinc-300">
         <h3 className="font-semibold text-zinc-100">What leaves your browser</h3>
         <ul className="list-disc space-y-1 pl-5">
-          <li>Searches for a show go to the public sources the app lists in the footer.</li>
+          <li>Searches for a show go to the public sources listed under Where lineups come from.</li>
           <li>
             The ticket email check reads your Gmail with read-only access. The browser check runs in your browser and sends only the
             shows it finds, plus a link to each email, with the subject, sender and date of every email it examined. Ticket emails
@@ -42,6 +43,16 @@ export function AboutDialog({ onClose, onShowTips }: { onClose: () => void; onSh
           </li>
         </ul>
       </section>
+
+      {status && (
+        <section className="space-y-2 text-sm text-zinc-300">
+          <h3 className="font-semibold text-zinc-100">Where lineups come from</h3>
+          <p>
+            Sources: {status.sources.map((s) => `${SOURCE_LABELS[s.id]}${s.enabled ? '' : ' (off)'}`).join(' · ')}
+          </p>
+          <p>Gemini {status.gemini ? `${status.quota?.used ?? 0}/${status.quota?.limit ?? '?'} today` : '(off)'}</p>
+        </section>
+      )}
 
       <section className="space-y-2 text-sm text-zinc-300">
         <h3 className="font-semibold text-zinc-100">Tips</h3>
