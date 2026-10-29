@@ -6,6 +6,7 @@ import { norm } from '../services/listImport';
 import { DataHealth } from './DataHealth';
 import { ManageEntry } from './ManageEntry';
 import { SeriesPanel } from './SeriesPanel';
+import { MenuButton, type MenuOption } from './ui/MenuButton';
 
 // The Manage tab: the records behind your events' names (artists, people,
 // venues, places, series, organizations, labels), one list per kind. Open one to
@@ -47,6 +48,13 @@ export const KINDS: Array<{ kind: ManageKind; label: string; one: string; icon: 
   { kind: 'label', label: 'Labels', one: 'label', icon: Tag },
 ];
 
+// Every section, in the Manage menu: the record kinds, then Data health and History.
+const SECTION_OPTIONS: MenuOption<ManageKind | 'history' | 'health'>[] = [
+  ...KINDS.map(({ kind, label, icon }) => ({ value: kind, label, icon })),
+  { value: 'health' as const, label: 'Data health', icon: HeartPulse },
+  { value: 'history' as const, label: 'History', icon: History },
+];
+
 // "Los Angeles, CA, United States" for a place; the name for the rest.
 export const entityLabel = (e: Entity): string =>
   e.kind === 'place' ? [e.attrs.city ?? e.name, e.attrs.region, e.attrs.country].filter(Boolean).join(', ') : e.name;
@@ -70,10 +78,6 @@ export function eventsByEntity(events: LoggedEvent[]): Map<string, LoggedEvent[]
   return out;
 }
 
-const pill = (on: boolean) =>
-  `inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors ${
-    on ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
-  }`;
 const control =
   'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
 
@@ -209,6 +213,8 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
     .filter(matches)
     .sort((a, b) => (counts.get(b.id)?.length ?? 0) - (counts.get(a.id)?.length ?? 0) || entityLabel(a).localeCompare(entityLabel(b)));
   const meta = KINDS.find((k) => k.kind === kind);
+  // The search box belongs to a record list: not on Data health, History or an open record.
+  const showSearch = kind !== 'history' && kind !== 'health' && !(open && open.kind === kind);
 
   return (
     <div className="space-y-4">
@@ -220,28 +226,32 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
         </p>
       </div>
 
-      <nav className="-mx-1 flex gap-1 overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900 p-1">
-        {KINDS.map(({ kind: k, label, icon: Icon }) => (
-          <button
-            key={k}
-            onClick={() => {
-              setKind(k);
-              setOpenId(null);
-              setQuery('');
-            }}
-            className={pill(kind === k)}
-          >
-            <Icon className="h-3.5 w-3.5" /> {label}
-            <span className="text-[11px] opacity-70">{data.entities.filter((e) => e.kind === k && !e.mergedIntoId).length}</span>
-          </button>
-        ))}
-        <button onClick={() => (setKind('health'), setOpenId(null))} className={pill(kind === 'health')}>
-          <HeartPulse className="h-3.5 w-3.5" /> Data health
-        </button>
-        <button onClick={() => (setKind('history'), setOpenId(null))} className={pill(kind === 'history')}>
-          <History className="h-3.5 w-3.5" /> History
-        </button>
-      </nav>
+      {/* One menu for the section, on the row with the search box (on the right). */}
+      <div className="flex items-center gap-2">
+        {showSearch && (
+          <label className="relative block min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-zinc-600" />
+            <input
+              className={`${control} pl-8`}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Find ${meta?.label.toLowerCase()} by name or AKA`}
+              aria-label="Find"
+            />
+          </label>
+        )}
+        <MenuButton
+          label="Manage section"
+          value={kind}
+          options={SECTION_OPTIONS}
+          onChange={(k) => {
+            setKind(k);
+            setOpenId(null);
+            setQuery('');
+          }}
+          className={showSearch ? '' : 'ml-auto'}
+        />
+      </div>
 
       {notice && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5 text-sm text-zinc-200">
@@ -389,16 +399,6 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
               </button>
             </form>
           )}
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-zinc-600" />
-            <input
-              className={`${control} pl-8`}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Find ${meta?.label.toLowerCase()} by name or AKA`}
-              aria-label="Find"
-            />
-          </label>
           {list.length ? (
             <ul className="divide-y divide-zinc-900 rounded-xl border border-zinc-900">
               {list.map((e) => {
