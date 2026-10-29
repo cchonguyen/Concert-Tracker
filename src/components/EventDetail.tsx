@@ -1051,7 +1051,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               onSave={(v) => save({ region: text(v) })}
             />
             <Field label="Country" value={event.country} source={event.sources.country} offer={offer('country')} onSave={(v) => save({ country: text(v) })} />
-            <div className="space-y-1">
+            <div className="col-span-2 space-y-1">
               <span className="flex items-center justify-between gap-2 text-[11px] font-semibold text-zinc-400">
                 Type
                 <span className="font-normal text-zinc-400">{scale.by === 'rule' && scale.kind ? scale.reason : ''}</span>
