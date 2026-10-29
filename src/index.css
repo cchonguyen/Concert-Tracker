@@ -208,3 +208,9 @@
 .person-name-ruler > span {
   display: inline-block;
 }
+
+/* Shape scale: buttons, inputs and icon buttons use rounded-control; cards, panels and notices use rounded-card. */
+@theme {
+  --radius-control: 0.5rem;
+  --radius-card: 0.75rem;
+}
