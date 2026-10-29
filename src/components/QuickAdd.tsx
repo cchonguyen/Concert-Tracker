@@ -1,7 +1,7 @@
 import { Dialog } from './ui/Dialog';
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 
-import { Check, FileUp, Mail, Plus, X } from 'lucide-react';
+import { FileUp, Mail, Plus, X } from 'lucide-react';
 import { CaptureBar } from './CaptureBar';
 import { LoggedEvent } from '../services/lineupApi';
 
@@ -69,36 +69,3 @@ export const QuickAddFab: React.FC<{ onClick: () => void }> = ({ onClick }) => (
     <Plus className="h-6 w-6" />
   </button>
 );
-
-interface SavedToastProps {
-  event: LoggedEvent;
-  onOpen: (id: string) => void;
-  onDismiss: () => void;
-}
-
-// Confirms a Quick Add save and lets you open it. Goes away on its own.
-export const SavedToast: React.FC<SavedToastProps> = ({ event, onOpen, onDismiss }) => {
-  // Keep the latest callback without restarting the timer on every parent render.
-  const dismiss = useRef(onDismiss);
-  dismiss.current = onDismiss;
-  useEffect(() => {
-    const t = setTimeout(() => dismiss.current(), 6000);
-    return () => clearTimeout(t);
-  }, [event.id]);
-
-  return (
-    <div role="status" className="fixed bottom-24 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-200 shadow-xl sm:bottom-5">
-      <Check className="h-4 w-4 text-emerald-400" />
-      <span>Saved</span>
-      <button
-        onClick={() => {
-          onOpen(event.id);
-          onDismiss();
-        }}
-        className="font-semibold text-violet-300 hover:text-violet-200"
-      >
-        Open
-      </button>
-    </div>
-  );
-};
