@@ -707,7 +707,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                         )}
                       </td>
                       <td className={cell}>
-                        <People names={e.companions} />
+                        {e.peopleLocked ? <span className="text-[11px] text-amber-300">🔒 Vault Locked</span> : <People names={e.companions} />}
                       </td>
                       <td className={cell}>
                         <Stars rating={e.rating} />
