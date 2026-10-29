@@ -1,15 +1,29 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
-import { RIVER_ZOOMS, riverLayout, RiverItem, TimelineViewProps } from '../../services/timeline';
+import { placeLabel } from '../../services/format';
+import { dateChip, RIVER_ZOOMS, riverLayout, RiverItem, riverStretch, TimelineSpan, TimelineViewProps } from '../../services/timeline';
+import { Popover } from '../ui/Popover';
 
 // River: events along a left-to-right time axis you drag or scroll, zoomed
 // from about a decade down to a month. Concerts are dots, runs of days are
 // bars, sized in steps by acts you logged (none logged draws like one act),
-// with a line for today. Names show beside the marks once zoomed in; until
-// then the browser's tooltip names them. Only the large size is built so far.
+// with a line for today. Names show beside the marks once zoomed in. A mark
+// opens a short list of the events on its days (hover with a mouse, tap on a
+// touch screen, Enter on a keyboard); the marks also carry the browser's
+// title as the screen-reader name. Only the large size is built so far.
 
 const LANE = 26;
 const AXIS = 24;
+
+const ATTENDANCE_LABEL: Record<TimelineSpan['attendance'], string> = {
+  went: 'Went',
+  confirm: 'Did you go?',
+  upcoming: 'Upcoming',
+};
+
+interface RiverProps extends TimelineViewProps {
+  onShowInAgenda?: (eventId: string) => void; // "and N more": Agenda opens at this event
+}
 
 const MARK_CLASS = (item: RiverItem) => {
   if (item.span.attendance === 'confirm') return 'fill-transparent stroke-amber-400';
@@ -17,7 +31,7 @@ const MARK_CLASS = (item: RiverItem) => {
   return item.span.kind === 'festival' ? 'fill-violet-400' : 'fill-violet-600';
 };
 
-export const RiverView: React.FC<TimelineViewProps> = ({ model, onOpen }) => {
+export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda }) => {
   const [zoom, setZoom] = useState(1);
   const layout = useMemo(() => riverLayout(model, RIVER_ZOOMS[zoom]), [model, zoom]);
   const box = useRef<HTMLDivElement>(null);
@@ -77,6 +91,7 @@ export const RiverView: React.FC<TimelineViewProps> = ({ model, onOpen }) => {
         onPointerUp={() => (drag.current = null)}
         onPointerLeave={() => (drag.current = null)}
       >
+        <div className="relative" style={{ width: layout.width, height }}>
         <svg width={layout.width} height={height} className="block select-none" role="img" aria-label="Events along a time axis">
           {layout.ticks.map((t) => (
             <g key={`${t.label}-${t.x}`}>
@@ -99,7 +114,7 @@ export const RiverView: React.FC<TimelineViewProps> = ({ model, onOpen }) => {
               strokeDasharray: outlined ? '3 2' : undefined,
             };
             return (
-              <g key={item.span.id} data-mark onClick={() => onOpen(item.span.id)}>
+              <g key={item.span.id}>
                 <title>
                   {item.span.title}
                   {item.span.attendance === 'confirm' ? ' (did you go?)' : item.span.attendance === 'upcoming' ? ' (upcoming)' : ''}
@@ -119,7 +134,53 @@ export const RiverView: React.FC<TimelineViewProps> = ({ model, onOpen }) => {
             );
           })}
         </svg>
+          {layout.items.map((item) => {
+            const cy = y(item.lane);
+            const pad = 4;
+            const { shown, more } = riverStretch(model, item.span);
+            return (
+              <div
+                key={item.span.id}
+                data-mark
+                className="absolute"
+                style={{ left: item.x - pad, top: cy - item.r - pad, width: Math.max(item.w, item.r * 2) + pad * 2, height: item.r * 2 + pad * 2 }}
+              >
+                <Popover label={`${item.span.title}, ${dateChip(item.span)}`} className="h-full w-full" content={<Stretch shown={shown} more={more} onOpen={onOpen} onMore={() => onShowInAgenda?.(item.span.id)} />}>
+                  <span className="block h-full w-full" />
+                </Popover>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 };
+
+// The list under a mark: the events on its days, each one tap to open.
+const Stretch: React.FC<{ shown: TimelineSpan[]; more: number; onOpen: (id: string) => void; onMore: () => void }> = ({ shown, more, onOpen, onMore }) => (
+  <div className="space-y-1.5">
+    <ul className="space-y-0.5">
+      {shown.map((s) => {
+        const place = placeLabel(s.event);
+        return (
+          <li key={s.id}>
+            <button type="button" onClick={() => onOpen(s.id)} className="w-full rounded-md px-1.5 py-1 text-left hover:bg-zinc-800">
+              <span className="block truncate font-medium text-zinc-100">{s.title}</span>
+              <span className="block truncate text-xs text-zinc-500">
+                {dateChip(s)}
+                {place ? ` · ${place}` : ''}
+              </span>
+              <span className="block text-xs text-zinc-400">{ATTENDANCE_LABEL[s.attendance]}</span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+    {more > 0 && (
+      <button type="button" onClick={onMore} className="px-1.5 text-xs font-medium text-violet-300 hover:text-violet-200">
+        and {more} more
+      </button>
+    )}
+  </div>
+);

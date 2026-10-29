@@ -389,7 +389,7 @@ export default function App() {
             editions={editions}
             onOpen={setSelectedId}
             onOpenTable={openTable}
-            onShowToConfirm={(id) => {
+            onShowInAgenda={(id) => {
               openTab('agenda');
               setAgendaFocus(id);
             }}

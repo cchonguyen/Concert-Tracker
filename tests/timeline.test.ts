@@ -16,6 +16,7 @@ import {
   heatmapRows,
   heatmapYear,
   riverLayout,
+  riverStretch,
   monthFromQuery,
   monthPage,
   monthToQuery,
@@ -327,4 +328,23 @@ test('the river places marks by date, sizes them by acts, and stacks overlapping
   assert.deepEqual(r.ticks.map((t) => t.label), ['2025', '2026']);
   assert.ok(riverLayout(m, 4)!.ticks.some((t) => t.label === 'Jun 2025'));
   assert.equal(riverLayout(buildTimelineModel([], TODAY), 1), null);
+});
+
+test('a river mark lists the events on its days, earliest first, up to three, and counts the rest', () => {
+  const m = buildTimelineModel(
+    [
+      ev('long', { startDate: '2026-05-01', endDate: '2026-05-04' }),
+      ev('a', { startDate: '2026-05-02', title: 'Alpha' } as Partial<LoggedEvent>),
+      ev('b', { startDate: '2026-05-03' }),
+      ev('c', { startDate: '2026-05-04' }),
+      ev('far', { startDate: '2026-06-10' }),
+    ],
+    TODAY,
+  );
+  const long = m.spans.find((s) => s.id === 'long')!;
+  const stretch = riverStretch(m, long);
+  assert.deepEqual(stretch.shown.map((s) => s.id), ['long', 'a', 'b']);
+  assert.equal(stretch.more, 1);
+  const far = m.spans.find((s) => s.id === 'far')!;
+  assert.deepEqual(riverStretch(m, far), { shown: [far], more: 0 });
 });
