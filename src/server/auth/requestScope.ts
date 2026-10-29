@@ -53,6 +53,11 @@ const OWNER_ONLY: Array<[method: string | null, pattern: RegExp]> = [
   [null, /^\/api\/gmail(\/|$)/],
   ['POST', /^\/api\/imports\/(email|scan)$/],
   [null, /^\/api\/lookups\/[^/]+\/confirm$/],
+  // Starting a lineup lookup is the owner's until a member can confirm one:
+  // confirming writes the shared lineup, and a member's own review path
+  // (acts into their own seen only) is not built.
+  ['POST', /^\/api\/lookups(\/[^/]+\/run)?$/],
+  ['POST', /^\/api\/events\/(lineups|[^/]+\/lineup)$/],
   ['PUT', /^\/api\/artist-genres\//],
   ['POST', /^\/api\/artist-genres\//],
 ];

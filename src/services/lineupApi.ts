@@ -170,6 +170,22 @@ export const shareApi = {
   previewUrl: '/api/share/preview',
 };
 
+export interface MemberRow {
+  email: string;
+  role: 'owner' | 'member';
+  joined: boolean;
+  invitedAt: string;
+}
+// Who is signed in, and (owner only, multi-user) the invite list.
+export const meApi = {
+  get: () => request<{ multiUser: boolean; role: 'owner' | 'member'; email: string | null }>('/api/me'),
+};
+export const membersApi = {
+  list: () => request<{ members: MemberRow[] }>('/api/members').then((r) => r.members),
+  invite: (email: string) => request<unknown>('/api/members', post({ email })),
+  remove: (email: string) => request<unknown>(`/api/members/${encodeURIComponent(email)}`, { method: 'DELETE' }),
+};
+
 // Genres of the acts you saw: the music-story file, then MusicBrainz on request.
 export const genresApi = {
   list: () => request<{ genres: ArtistGenres[]; hasMap: boolean; known: KnownGenre[] }>('/api/artist-genres'),

@@ -69,6 +69,9 @@ function directory(rows: Record<string, { userId: string | null; role: 'owner' |
       calls.push(`link ${email} ${userId}`);
       rows[email].userId = userId;
     },
+    listMembers: async () => [],
+    inviteMember: async () => {},
+    removeMember: async () => {},
   };
   return { dir, calls };
 }

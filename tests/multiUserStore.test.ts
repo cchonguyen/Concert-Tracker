@@ -14,6 +14,7 @@ import { memberMiddleware, ownerOnly, requestScopedStore, currentMember } from '
 import { clearMemberCache, type MemberDirectory } from '../src/server/auth/members.ts';
 import type { MultiUserConfig } from '../src/server/auth/config.ts';
 import type { LookupJob } from '../src/server/lineup/types.ts';
+import { membersRouter } from '../src/server/auth/routes.ts';
 
 const ev = (id: string, patch: Partial<LoggedEvent> = {}): LoggedEvent => ({
   id, input: id, name: id, sources: {}, details: { status: 'resolved', candidates: [], notes: [] },
@@ -85,10 +86,10 @@ test('share page: a member\'s link shows only that member\'s events', async () =
 });
 
 test('owner-only routes: Manage, Sheets, Gmail, server scans and lineup confirm', () => {
-  for (const [m, p] of [['GET', '/api/entities'], ['PATCH', '/api/entities/x'], ['GET', '/api/sheets'], ['GET', '/api/gmail/connect'], ['POST', '/api/imports/email'], ['POST', '/api/lookups/j1/confirm'], ['PUT', '/api/artist-genres/k']]) {
+  for (const [m, p] of [['GET', '/api/entities'], ['PATCH', '/api/entities/x'], ['GET', '/api/sheets'], ['GET', '/api/gmail/connect'], ['POST', '/api/imports/email'], ['POST', '/api/lookups/j1/confirm'], ['POST', '/api/lookups'], ['POST', '/api/lookups/j1/run'], ['POST', '/api/events/lineups'], ['POST', '/api/events/e1/lineup'], ['PUT', '/api/artist-genres/k']]) {
     assert.equal(ownerOnly(m, p), true, `${m} ${p}`);
   }
-  for (const [m, p] of [['GET', '/api/events'], ['POST', '/api/events'], ['GET', '/api/imports'], ['POST', '/api/imports/proposals'], ['GET', '/api/share'], ['GET', '/api/artist-genres']]) {
+  for (const [m, p] of [['GET', '/api/events'], ['POST', '/api/events'], ['GET', '/api/imports'], ['POST', '/api/imports/proposals'], ['GET', '/api/share'], ['GET', '/api/artist-genres'], ['GET', '/api/lookups'], ['GET', '/api/me']]) {
     assert.equal(ownerOnly(m, p), false, `${m} ${p}`);
   }
 });
@@ -114,12 +115,16 @@ async function apiFixture() {
     findMember: async (email) => (rows[email] ? { email, ...rows[email] } : null),
     createAuthUser: async () => { throw new Error('unused'); },
     linkMember: async () => {},
+    listMembers: async () => Object.entries(rows).map(([email, r]) => ({ email, ...r, invitedAt: '2026-01-01T00:00:00Z' })),
+    inviteMember: async (email) => { if (rows[email]) throw new Error('That email is already invited.'); rows[email] = { userId: null, role: 'member' }; },
+    removeMember: async (email) => { if (rows[email]?.role === 'owner') throw new Error('The owner cannot be removed.'); delete rows[email]; },
   };
   const config: MultiUserConfig = { access: accessConfigFromEnv({ ACCESS_TEAM_DOMAIN: 't.cloudflareaccess.com', ACCESS_AUD: 'aud' })!, supabaseUrl: 'https://x.supabase.co', anonKey: 'anon', jwtSecret: 'secret' };
   const store = await base();
   const app = express();
   app.use(express.json());
   app.use('/api', memberMiddleware({ config, directory, base: store, getJson: async () => ({ keys: [jwk] }) }));
+  app.use('/api', membersRouter(directory));
   const scoped = requestScopedStore(store);
   app.get('/api/events', async (_req, res) => res.json({ me: currentMember()?.email, events: (await scoped.listEvents()).map((e) => e.id) }));
   app.post('/api/events', async (req, res) => { await scoped.putEvent(ev(req.body.id)); res.json({ ok: true }); });
@@ -160,6 +165,27 @@ test('API: concurrent requests from two members never see each other\'s rows', a
     await call('bob@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'b1' }) });
     const results = await Promise.all(Array.from({ length: 20 }, (_, i) => call(i % 2 ? 'ann@example.com' : 'bob@example.com', '/api/events')));
     results.forEach((r, i) => assert.deepEqual(r.body.events, [i % 2 ? 'a1' : 'b1']));
+  } finally {
+    close();
+  }
+});
+
+test('API: /me says who you are; only the owner lists, invites and removes members', async () => {
+  const { call, close } = await apiFixture();
+  try {
+    assert.deepEqual((await call('ann@example.com', '/api/me')).body, { multiUser: true, role: 'member', email: 'ann@example.com' });
+    assert.equal((await call('owner@example.com', '/api/me')).body.role, 'owner');
+    assert.equal((await call('ann@example.com', '/api/members')).status, 403);
+    assert.equal((await call('ann@example.com', '/api/members', { method: 'POST', body: JSON.stringify({ email: 'cy@example.com' }) })).status, 403);
+    const invite = (email: unknown) => call('owner@example.com', '/api/members', { method: 'POST', body: JSON.stringify({ email }) });
+    assert.equal((await invite('not an email')).status, 400);
+    assert.equal((await invite('Cy@Example.com')).status, 201);
+    assert.equal((await invite('cy@example.com')).status, 400);
+    const list = (await call('owner@example.com', '/api/members')).body.members;
+    assert.deepEqual(list.find((m: any) => m.email === 'cy@example.com'), { email: 'cy@example.com', role: 'member', joined: false, invitedAt: list.find((m: any) => m.email === 'cy@example.com').invitedAt });
+    assert.equal((await call('owner@example.com', '/api/members/owner%40example.com', { method: 'DELETE' })).status, 400);
+    assert.equal((await call('owner@example.com', '/api/members/cy%40example.com', { method: 'DELETE' })).status, 200);
+    assert.equal((await call('cy@example.com', '/api/events')).status, 403);
   } finally {
     close();
   }
