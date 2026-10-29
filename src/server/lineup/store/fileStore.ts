@@ -23,6 +23,7 @@ import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/ty
 import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../entities/integrity';
 import type { ShareLink } from '../../share/types';
 import { shareEventOnly } from '../../share/types';
+import type { CachedResponse } from '../responseCache';
 import { isStaleRun, LineupStore, MAX_EXAMPLES_PER_DOMAIN, roundRobin, STALE_RUN_MS, type UserScope } from './types';
 
 type DocumentMeta = Omit<SourceDocument, 'body'>;
@@ -52,6 +53,7 @@ interface FileState {
   // Multi-user: who owns each personal row (`<table>:<id>` to user id); a row
   // with no entry is the owner's, as in Supabase where user_id defaults to
   // the owner. Settings per member.
+  responseCache?: Record<string, CachedResponse>;
   owners?: Record<string, string>;
   userSettings?: Record<string, Record<string, unknown>>;
 }
@@ -518,6 +520,18 @@ export class FileLineupStore implements LineupStore {
   async listEntityHistory(limit: number) {
     const all = Object.values((await this.load()).entityHistory ?? {});
     return clone(all.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit));
+  }
+
+  async getCachedResponse(key: string, now: Date) {
+    const hit = (await this.load()).responseCache?.[key];
+    return hit && hit.expiresAt > now.toISOString() ? clone(hit) : null;
+  }
+
+  async putCachedResponse(entry: CachedResponse) {
+    const state = await this.load();
+    const kept = Object.fromEntries(Object.entries(state.responseCache ?? {}).filter(([, v]) => v.expiresAt > entry.fetchedAt));
+    state.responseCache = { ...kept, [entry.key]: clone(entry) };
+    await this.save();
   }
 
   async listShareLinks() {

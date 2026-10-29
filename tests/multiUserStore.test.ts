@@ -14,7 +14,8 @@ import { memberMiddleware, ownerOnly, requestScopedStore, currentMember } from '
 import { clearMemberCache, type MemberDirectory } from '../src/server/auth/members.ts';
 import type { MultiUserConfig } from '../src/server/auth/config.ts';
 import type { LookupJob } from '../src/server/lineup/types.ts';
-import { membersRouter } from '../src/server/auth/routes.ts';
+import { accountRouter, membersRouter } from '../src/server/auth/routes.ts';
+import { vaultGuard, vaultRouter } from '../src/server/auth/vault.ts';
 
 const ev = (id: string, patch: Partial<LoggedEvent> = {}): LoggedEvent => ({
   id, input: id, name: id, sources: {}, details: { status: 'resolved', candidates: [], notes: [] },
@@ -124,10 +125,13 @@ async function apiFixture() {
   const app = express();
   app.use(express.json());
   app.use('/api', memberMiddleware({ config, directory, base: store, getJson: async () => ({ keys: [jwk] }) }));
-  app.use('/api', membersRouter(directory));
   const scoped = requestScopedStore(store);
+  app.use('/api', membersRouter(directory));
+  app.use('/api', vaultGuard(scoped));
+  app.use('/api', vaultRouter(scoped));
+  app.use('/api', accountRouter(directory, scoped));
   app.get('/api/events', async (_req, res) => res.json({ me: currentMember()?.email, events: (await scoped.listEvents()).map((e) => e.id) }));
-  app.post('/api/events', async (req, res) => { await scoped.putEvent(ev(req.body.id)); res.json({ ok: true }); });
+  app.post('/api/events', async (req, res) => { await scoped.putEvent(ev(req.body.id, { notes: req.body.notes })); res.json({ ok: true }); });
   app.get('/api/entities', (_req, res) => res.json({ entities: [] }));
   const server = app.listen(0);
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -232,4 +236,68 @@ test('member lineup review: ticks go to the member\'s own event only; nothing sh
   // A lookup not tied to one of their events is refused.
   await mine.createJob({ ...job('j2'), status: 'needs_review' });
   await assert.rejects(confirmLookupForMember(mine, (await mine.getJob('j2'))!, { performers: [] }), /not attached to one of your events/);
+});
+
+const MATERIAL = {
+  vaultSalt: 'c2FsdHNhbHRzYWx0c2FsdA==',
+  kdfAlg: 'PBKDF2-SHA256',
+  pbkdf2Iterations: 600000,
+  passphraseSalt: 'cGFzc3NhbHRwYXNzc2FsdA==',
+  wrappedByPassphrase: 'w1:aXZpdml2aXZpdml2:Y2lwaGVydGV4dGNpcGhlcnRleHQ=',
+  wrappedByRecovery: 'w1:aXZpdml2aXZpdml2:cmVjb3ZlcnljaXBoZXJ0ZXh0',
+};
+const CIPHERTEXT = 'v1:aXZpdml2aXZpdml2:c2VjcmV0bm90ZQ==';
+
+test('vault: key material is per member; once on, plaintext notes are refused and ciphertext is kept', async () => {
+  const { call, close } = await apiFixture();
+  try {
+    const save = (email: string, id: string, notes?: string) => call(email, '/api/events', { method: 'POST', body: JSON.stringify({ id, notes }) });
+    assert.deepEqual((await call('ann@example.com', '/api/vault')).body, { state: 'plaintext', material: null });
+    assert.equal((await save('ann@example.com', 'a0', 'plain note before the vault')).status, 200);
+    assert.equal((await call('ann@example.com', '/api/vault', { method: 'PUT', body: JSON.stringify({ material: { ...MATERIAL, pbkdf2Iterations: 5 } }) })).status, 400);
+    assert.equal((await call('ann@example.com', '/api/vault', { method: 'PUT', body: JSON.stringify({ material: { ...MATERIAL, wrappedByPassphrase: 'not wrapped' } }) })).status, 400);
+    assert.equal((await call('ann@example.com', '/api/vault', { method: 'PUT', body: JSON.stringify({ material: MATERIAL }) })).status, 200);
+    assert.equal((await call('ann@example.com', '/api/vault', { method: 'PUT', body: JSON.stringify({ material: MATERIAL }) })).status, 409);
+    assert.deepEqual((await call('ann@example.com', '/api/vault')).body, { state: 'encrypted', material: MATERIAL });
+    // Ann's plaintext is refused; ciphertext, no note, and an empty note are fine.
+    const refused = await save('ann@example.com', 'a1', 'a plaintext note');
+    assert.equal(refused.status, 400);
+    assert.match(refused.body.error, /encrypted in the browser/);
+    assert.equal((await save('ann@example.com', 'a2', CIPHERTEXT)).status, 200);
+    assert.equal((await save('ann@example.com', 'a3')).status, 200);
+    assert.equal((await save('ann@example.com', 'a4', 'v1:forged plaintext')).status, 400);
+    // Nothing was stored for the refused saves.
+    assert.deepEqual((await call('ann@example.com', '/api/events')).body.events.sort(), ['a0', 'a2', 'a3']);
+    // Bob has no vault, and cannot see Ann's.
+    assert.deepEqual((await call('bob@example.com', '/api/vault')).body, { state: 'plaintext', material: null });
+    assert.equal((await save('bob@example.com', 'b1', 'bob plaintext is fine')).status, 200);
+    // A passphrase change may only replace the passphrase wrapping.
+    const rewrap = (m: object) => call('ann@example.com', '/api/vault/rewrap', { method: 'POST', body: JSON.stringify({ material: m }) });
+    assert.equal((await rewrap({ ...MATERIAL, wrappedByPassphrase: 'w1:bmV3aXZuZXdpdg==:bmV3d3JhcHBlZA==', passphraseSalt: 'bmV3c2FsdG5ld3NhbHQ=' })).status, 200);
+    assert.equal((await rewrap({ ...MATERIAL, wrappedByRecovery: 'w1:eHh4eHh4eHg=:eXl5eXl5' })).status, 400);
+    assert.equal((await call('bob@example.com', '/api/vault/rewrap', { method: 'POST', body: JSON.stringify({ material: MATERIAL }) })).status, 404);
+  } finally {
+    close();
+  }
+});
+
+test('account: export is your rows only; deletion needs your email, removes you, and is refused for the owner', async () => {
+  const { call, close } = await apiFixture();
+  try {
+    await call('ann@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'a1' }) });
+    await call('bob@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'b1' }) });
+    const exp = (await call('ann@example.com', '/api/account/export')).body;
+    assert.deepEqual(exp.events.map((e: any) => e.id), ['a1']);
+    assert.deepEqual(exp.account, { email: 'ann@example.com', role: 'member' });
+    assert.ok(!JSON.stringify(exp).includes('b1'));
+    const del = (email: string, confirm?: string) => call(email, '/api/account', { method: 'DELETE', body: JSON.stringify({ confirm }) });
+    assert.equal((await del('ann@example.com')).status, 400);
+    assert.equal((await del('ann@example.com', 'bob@example.com')).status, 400);
+    assert.equal((await del('owner@example.com', 'owner@example.com')).status, 403);
+    assert.equal((await del('ann@example.com', 'Ann@Example.com')).status, 200);
+    assert.equal((await call('ann@example.com', '/api/events')).status, 403);
+    assert.deepEqual((await call('bob@example.com', '/api/events')).body.events, ['b1']);
+  } finally {
+    close();
+  }
 });

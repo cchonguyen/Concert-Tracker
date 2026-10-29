@@ -1,4 +1,5 @@
 import type { LineupSummary, LoggedEvent, SeenAct } from '../server/events/types';
+import { isCiphertext } from './vault';
 import { eventScale, LineupFacts } from '../server/events/scale';
 import { eventYear, formatsOf } from './format';
 import { eventTitle } from './series';
@@ -137,7 +138,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 export function matches(e: LoggedEvent, f: TableFilters, lineup?: LineupSummary, facts?: LineupFacts, day = today()): boolean {
   const q = fold(f.q);
   if (q) {
-    const text = [e.name, e.series, e.venue, e.city, e.region, e.country, e.notes, ...e.seen.map((s) => s.name), ...e.companions]
+    const text = [e.name, e.series, e.venue, e.city, e.region, e.country, isCiphertext(e.notes) ? undefined : e.notes, ...e.seen.map((s) => s.name), ...e.companions]
       .filter(Boolean)
       .map((s) => fold(String(s)))
       .join('\n');

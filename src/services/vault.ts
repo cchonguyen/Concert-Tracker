@@ -112,11 +112,10 @@ async function unwrap(wrapped: string, key: CryptoKey): Promise<Bytes> {
 
 async function deriveKeys(master: Bytes, vaultSalt: Bytes): Promise<VaultKeys> {
   const root = await crypto.subtle.importKey('raw', master, 'HKDF', false, ['deriveKey']);
-  const derive = <T extends AesKeyGenParams | HmacKeyGenParams>(info: string, algorithm: T, usages: KeyUsage[]) =>
-    crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: vaultSalt, info: te.encode(info) }, root, algorithm, false, usages);
+  const hkdf = (info: string) => ({ name: 'HKDF', hash: 'SHA-256', salt: vaultSalt, info: te.encode(info) });
   return {
-    field: await derive(FIELD_INFO, { name: 'AES-GCM', length: 256 }, ['encrypt', 'decrypt']),
-    token: await derive(TOKEN_INFO, { name: 'HMAC', hash: 'SHA-256', length: 256 }, ['sign']),
+    field: await crypto.subtle.deriveKey(hkdf(FIELD_INFO), root, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']),
+    token: await crypto.subtle.deriveKey(hkdf(TOKEN_INFO), root, { name: 'HMAC', hash: 'SHA-256', length: 256 }, false, ['sign']),
   };
 }
 
@@ -204,3 +203,7 @@ export async function nameToken(keys: VaultKeys, name: string): Promise<string> 
   const mac = new Uint8Array(await crypto.subtle.sign('HMAC', keys.token, te.encode(normalizeName(name))));
   return Array.from(mac, (b) => b.toString(16).padStart(2, '0')).join('');
 }
+
+// True for a stored encrypted field (v1:<iv>:<ciphertext>), as the server
+// accepts it in place of a plaintext note.
+export const isCiphertext = (v: unknown): v is string => typeof v === 'string' && /^v1:[A-Za-z0-9+/]+={0,2}:[A-Za-z0-9+/]+={0,2}$/.test(v);

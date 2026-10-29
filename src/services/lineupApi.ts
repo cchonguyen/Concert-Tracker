@@ -186,6 +186,18 @@ export const membersApi = {
   remove: (email: string) => request<unknown>(`/api/members/${encodeURIComponent(email)}`, { method: 'DELETE' }),
 };
 
+import type { VaultMaterial } from './vault';
+// The vault's wrapped key material (multi-user). The server never sees a key.
+export const vaultApi = {
+  get: () => request<{ state: 'plaintext' | 'encrypted'; material: VaultMaterial | null }>('/api/vault'),
+  turnOn: (material: VaultMaterial) => request<unknown>('/api/vault', { method: 'PUT', body: JSON.stringify({ material }) }),
+  rewrap: (material: VaultMaterial) => request<unknown>('/api/vault/rewrap', post({ material })),
+};
+export const accountApi = {
+  exportUrl: '/api/account/export',
+  remove: (confirm: string) => request<unknown>('/api/account', { method: 'DELETE', body: JSON.stringify({ confirm }) }),
+};
+
 // Genres of the acts you saw: the music-story file, then MusicBrainz on request.
 export const genresApi = {
   list: () => request<{ genres: ArtistGenres[]; hasMap: boolean; known: KnownGenre[] }>('/api/artist-genres'),

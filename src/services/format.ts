@@ -1,4 +1,5 @@
 import type { LoggedEvent, SeenAct, WeatherDay } from '../server/events/types';
+import { isCiphertext } from './vault';
 import { eventScale, KIND_LABELS, LineupFacts } from '../server/events/scale';
 import { norm } from './listImport';
 import { seenSlots, slotLabel } from '../server/events/seen';
@@ -221,7 +222,8 @@ export function eventRows(
     e.rating,
     e.ticketPrice,
     weatherText(e),
-    e.notes,
+    // An encrypted note is not exported: only your browser can read it.
+    isCiphertext(e.notes) ? '' : e.notes,
     e.id,
   ]);
   return { header, rows };

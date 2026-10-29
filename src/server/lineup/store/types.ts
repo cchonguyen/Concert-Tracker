@@ -19,6 +19,7 @@ import type { ArtistGenres } from '../../events/genres';
 import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import type { ShareLink } from '../../share/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { CachedResponse } from '../responseCache';
 
 // One member's view of the store (multi-user mode). Personal rows (events,
 // email imports, lookup jobs, share links, settings) are that member's only.
@@ -36,6 +37,10 @@ export interface UserScope {
 // SUPABASE_URL is configured). Both must behave identically.
 export interface LineupStore {
   readonly kind: 'file' | 'supabase';
+
+  // Raw upstream responses kept 24 hours (responseCache.ts); only for hosts whose terms allow it.
+  getCachedResponse?(key: string, now: Date): Promise<CachedResponse | null>;
+  putCachedResponse?(entry: CachedResponse): Promise<void>;
 
   // The owner's user id (multi-user mode), for the owner's quota reserve.
   ownerUserId?(): Promise<string | null>;

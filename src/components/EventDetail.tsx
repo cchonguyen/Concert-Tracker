@@ -1,3 +1,4 @@
+import { useVault } from './VaultContext';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Check, CloudSun, ExternalLink, FolderCog, Heart, Link2, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import {
@@ -57,6 +58,40 @@ function manageLinks(event: LoggedEvent): Array<{ label: string; target: ManageT
   });
   return out;
 }
+
+// Notes: plain text on a single-owner install; encrypted in the browser when
+// the member's vault is on, and read-only while it is locked.
+const NotesField: React.FC<{ stored?: string | null; onSave: (v: string | null) => void }> = ({ stored, onSave }) => {
+  const vault = useVault();
+  const [shown, setShown] = useState<string | null>(stored ? null : '');
+  useEffect(() => {
+    let live = true;
+    vault.readNote(stored ?? undefined).then((v) => live && setShown(v), () => live && setShown(null));
+    return () => {
+      live = false;
+    };
+  }, [stored, vault.status]);
+  const locked = shown === null;
+  return (
+    <label className="block space-y-1">
+      <span className="text-[11px] font-semibold text-zinc-400">Notes</span>
+      <textarea
+        key={`${stored ?? ''}|${locked}`}
+        className={input}
+        rows={3}
+        readOnly={locked}
+        placeholder={locked ? 'Vault locked: unlock it in Your account to read or edit.' : undefined}
+        defaultValue={shown ?? ''}
+        onBlur={async (e) => {
+          const v = e.target.value.trim();
+          if (locked || v === (shown ?? '')) return;
+          if (!v) return onSave(null);
+          onSave(vault.status === 'unlocked' ? await vault.encryptNote(v) : v);
+        }}
+      />
+    </label>
+  );
+};
 
 const input =
   'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
@@ -1258,15 +1293,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               className="w-32"
             />
           </div>
-          <label className="block space-y-1">
-            <span className="text-[11px] font-semibold text-zinc-400">Notes</span>
-            <textarea
-              className={input}
-              rows={3}
-              defaultValue={event.notes ?? ''}
-              onBlur={(e) => e.target.value !== (event.notes ?? '') && save({ notes: text(e.target.value) })}
-            />
-          </label>
+          <NotesField stored={event.notes} onSave={(v) => save({ notes: v })} />
         </section>
 
         <div className="flex items-center justify-between border-t border-zinc-900 pt-4">
