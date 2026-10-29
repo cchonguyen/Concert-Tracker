@@ -152,7 +152,9 @@ export function DetailShell({ title, rows, openId, closeDisabled = false, onGo, 
         ? 'absolute inset-y-0 right-0 flex w-[92%] flex-col border-l border-zinc-900 bg-zinc-950 shadow-2xl'
         : 'absolute inset-x-0 bottom-0 flex h-[92vh] flex-col rounded-t-2xl border-t border-zinc-800 bg-zinc-950 pb-[env(safe-area-inset-bottom)] shadow-2xl';
 
-  const navButton = 'inline-flex h-11 items-center gap-1 rounded-control px-2 text-xs text-zinc-300 hover:text-violet-300 disabled:opacity-40 sm:h-9';
+  // The split view's content is the Table's width (max-w-6xl in App), so the detail reads as part of the same page.
+  const width = mode === 'split' ? 'max-w-6xl' : 'max-w-2xl';
+  const navButton ='inline-flex h-11 items-center gap-1 rounded-control px-2 text-xs text-zinc-300 hover:text-violet-300 disabled:opacity-40 sm:h-9';
 
   return (
     <div className="fixed inset-0 z-40 flex">
@@ -202,16 +204,18 @@ export function DetailShell({ title, rows, openId, closeDisabled = false, onGo, 
             <span className="h-1 w-10 rounded-full bg-zinc-700" />
           </div>
         )}
-        <header className="flex items-center justify-end gap-1 border-b border-zinc-900 px-3 py-1">
-          <IconButton icon={ChevronUp} label="Previous event" disabled={!prev} onClick={() => prev && onGo(prev)} />
-          <IconButton icon={ChevronDown} label="Next event" disabled={!next} onClick={() => next && onGo(next)} />
-          <button type="button" disabled={!nextGap} onClick={() => nextGap && onGo(nextGap)} className={navButton}>
-            Next with gaps
-          </button>
-          <IconButton icon={X} label="Close" onClick={close} disabled={closeDisabled} />
+        <header className="border-b border-zinc-900 px-3 py-1">
+          <div className={`mx-auto flex w-full items-center justify-end gap-1 ${width}`}>
+            <IconButton icon={ChevronUp} label="Previous event" disabled={!prev} onClick={() => prev && onGo(prev)} />
+            <IconButton icon={ChevronDown} label="Next event" disabled={!next} onClick={() => next && onGo(next)} />
+            <button type="button" disabled={!nextGap} onClick={() => nextGap && onGo(nextGap)} className={navButton}>
+              Next with gaps
+            </button>
+            <IconButton icon={X} label="Close" onClick={close} disabled={closeDisabled} />
+          </div>
         </header>
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className={`mx-auto w-full space-y-6 p-5 ${mode === 'split' ? 'max-w-[1080px]' : 'max-w-2xl'}`}>{children}</div>
+          <div className={`mx-auto w-full space-y-6 p-5 ${width}`}>{children}</div>
         </div>
       </section>
     </div>

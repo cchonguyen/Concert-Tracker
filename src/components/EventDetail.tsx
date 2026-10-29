@@ -1,7 +1,7 @@
 import { useVault } from './VaultContext';
 import { noteView } from '../services/vaultSession';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Check, CloudSun, ExternalLink, FolderCog, Heart, History, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, CircleHelp, CloudSun, ExternalLink, FolderCog, Heart, History, Loader2, Plus, RefreshCw, Search, Sparkles, Star, Trash2, X } from 'lucide-react';
 import {
   ArtistSuggestion,
   DetailCandidate,
@@ -28,8 +28,11 @@ import { eventTitle, seriesList, seriesOffers, weekendFromName } from '../servic
 import { SuggestInput } from './SuggestInput';
 import { SeenGenres } from './SeenGenres';
 import { EventTitle } from './EventTitle';
-import { hasGap, placePatch } from '../services/table';
-import { dateText, thingsLeft } from '../services/poster';
+import { hasGap, placePatch, type Gap } from '../services/table';
+import { dateText, GAP_SECTION, thingsLeft } from '../services/poster';
+import { rememberSection, sectionOpen } from '../services/sectionMemory';
+import { Popover } from './ui/Popover';
+import { Burst } from './ui/Burst';
 import { PosterHeader, ThingsLeft } from './PosterHeader';
 import { cityWithRegion } from '../server/events/regions';
 import { attendanceOf, lastDay } from '../server/events/attendance';
@@ -119,6 +122,15 @@ const NotesField: React.FC<{ stored?: string | null; onSave: (v: string | null) 
 const input =
   'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
 const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
+
+// A "?" beside a section title, with two or three sentences on how the section works.
+const SectionHelp: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <Popover label={`About ${label}`} content={<p className="max-w-xs text-xs leading-relaxed text-zinc-200">{children}</p>}>
+    <button type="button" aria-label={`About ${label}`} className="flex h-9 w-9 items-center justify-center rounded-control text-zinc-400 hover:text-zinc-100 sm:h-7 sm:w-7">
+      <CircleHelp className="h-4 w-4" aria-hidden="true" />
+    </button>
+  </Popover>
+);
 
 // Typing saves 500 ms after the last key, so a sheet closed at once (iOS Safari) still gets its last value through the blur flush.
 const SAVE_DELAY_MS = 500;
@@ -434,7 +446,9 @@ const WentCard: React.FC<{
   }
 
   if (state !== 'confirm') return null;
+  const [celebrate, setCelebrate] = useState(0);
   const went = () => {
+    setCelebrate((n) => n + 1);
     onSave({ attendance: null });
     const acts: Offered[] = [
       ...event.seen.map((s) => ({ key: s.key, name: s.name, from: s.from, role: s.role })),
@@ -447,7 +461,10 @@ const WentCard: React.FC<{
       <p className="font-semibold text-violet-100">Did you go?</p>
       <p className="text-xs text-zinc-400">It's over, and it stays out of Stats, Artists and the Map until you say.</p>
       <div className="flex flex-wrap gap-2">
-        <Button variant="primary" onClick={went}>Yes, I went</Button>
+        <div className="relative inline-flex">
+          <Button variant="primary" onClick={went}>Yes, I went</Button>
+          <Burst icon={Sparkles} trigger={celebrate} />
+        </div>
         <Button onClick={() => onSave({ attendance: 'missed' })}>No, I didn't go</Button>
       </div>
     </div>
@@ -605,6 +622,7 @@ const ActEditor: React.FC<{
   const partners = seen.filter((s) => act.b2b?.includes(s.key));
   const free = seen.filter((s) => s.key !== key && !act.b2b?.includes(s.key));
   const favouriteElsewhere = seen.find((s) => s.favourite && s.key !== key);
+  const [bursts, setBursts] = useState(0);
   const billingHelp = !act.role
     ? 'No role stated, so it counts as Artist.'
     : act.roleFrom === 'you'
@@ -685,12 +703,18 @@ const ActEditor: React.FC<{
       {partners.length > 0 && (
         <Switch checked={Boolean(act.solo)} onChange={(v) => onChange(toPatch(setSolo(seen, key, v)))} label="Also played a solo set" />
       )}
-      <Switch
-        checked={Boolean(act.favourite)}
-        onChange={(v) => onChange(toPatch(seen).map((s, i) => ({ ...s, favourite: seen[i].key === key ? v : v ? false : s.favourite })))}
-        label="Favourite set of the night"
-        helper={favouriteElsewhere && !act.favourite ? `Only one per event. Turning this on moves it from ${favouriteElsewhere.name}.` : 'Only one per event.'}
-      />
+      <div className="relative">
+        <Switch
+          checked={Boolean(act.favourite)}
+          onChange={(v) => {
+            if (v) setBursts((n) => n + 1);
+            onChange(toPatch(seen).map((s, i) => ({ ...s, favourite: seen[i].key === key ? v : v ? false : s.favourite })));
+          }}
+          label="Favourite set of the night"
+          helper={favouriteElsewhere && !act.favourite ? `Only one per event. Turning this on moves it from ${favouriteElsewhere.name}.` : 'Only one per event.'}
+        />
+        <Burst icon={Heart} trigger={bursts} />
+      </div>
       <Button
         variant="danger"
         className="w-full"
@@ -1012,6 +1036,17 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const roleName = (role?: Seen['role']) => (role === 'support' ? 'Supporting' : 'Artist');
 
   const state = attendanceOf(event, new Date().toISOString().slice(0, 10));
+  const gapsLeft = thingsLeft(event, (e, g) => hasGap(e, g, undefined, edition ? lineupFacts(edition) : undefined));
+  // Scrolls to the section a gap is filled in and highlights it for a moment.
+  const showGap = (gap: Gap) => {
+    const el = document.getElementById(GAP_SECTION[gap]);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.add('ring-2', 'ring-violet-400/70', 'rounded-xl');
+    window.setTimeout(() => el.classList.remove('ring-2', 'ring-violet-400/70', 'rounded-xl'), 1600);
+  };
+  const [lineupOpen] = useState(() => sectionOpen('lineup', true));
+  const [notesOpen] = useState(() => sectionOpen('notes', true));
   // While the lineup review is open, Escape and an outside press do not close the panel behind it.
   return (
     <DetailShell
@@ -1032,7 +1067,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           seen={event.seen}
           cited={edition ? edition.performances.filter((p) => p.status !== 'cancelled').map((p) => p.artistKey) : []}
         />
-        <ThingsLeft gaps={thingsLeft(event, (e, g) => hasGap(e, g, undefined, edition ? lineupFacts(edition) : undefined))} />
+        <ThingsLeft gaps={gapsLeft} onNext={showGap} />
         <div className="flex items-start gap-3">
           <Field label="Event" field="name" value={event.name} onSave={(v) => save({ name: v })} className="flex-1" />
         </div>
@@ -1084,8 +1119,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         />
 
         {/* Stage 1: when and where */}
-        <section className="space-y-3">
-          <h3 className={sectionTitle}>When and where</h3>
+        <section id="when-where" className="scroll-mt-16 space-y-3">
+          <div className="flex items-center gap-1">
+            <h3 className={sectionTitle}>When and where</h3>
+            <SectionHelp label="When and where">
+              Check details searches for this date and place and lists what it finds below. Nothing you typed changes until you tap Use on a suggestion.
+            </SectionHelp>
+          </div>
           <CheckDetails
             busy={busy === 'research'}
             geminiBusy={busy === 'research-gemini'}
@@ -1198,8 +1238,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         </section>
 
         {/* Who you saw */}
-        <section className="space-y-3">
-          <h3 className={sectionTitle}>Who you saw</h3>
+        <section id="who-you-saw" className="scroll-mt-16 space-y-3">
+          <div className="flex items-center gap-1">
+            <h3 className={sectionTitle}>Who you saw</h3>
+            <SectionHelp label="Who you saw">
+              Each act is a chip. Tap one to set its billing, set type, B2B partners and favourite set. Acts you add here count as seen.
+            </SectionHelp>
+          </div>
           <SeenActs seen={event.seen} sets={sets} past={pastArtists} onChange={(seen) => save({ seen })} />
           <SeenGenres event={event} />
           {offered.length > 0 && (
@@ -1255,8 +1300,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         </section>
 
         {/* Stage 2: the lineup */}
-        <section className="space-y-3">
-          <h3 className={sectionTitle}>Full lineup</h3>
+        <details
+          id="lineup"
+          open={lineupOpen}
+          onToggle={(e) => rememberSection('lineup', e.currentTarget.open)}
+          className="scroll-mt-16 space-y-3"
+        >
+          <summary className={`${sectionTitle} cursor-pointer list-none`}>Full lineup</summary>
           {!job && !edition && (
             <div className="space-y-2">
               <p className="text-xs text-zinc-400">
@@ -1298,11 +1348,16 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               {!(event.year || event.startDate) && <p className="text-xs text-amber-300/90">Add when it was first, then find the lineup.</p>}
             </div>
           )}
-        </section>
+        </details>
 
         {/* Your details */}
-        <section className="space-y-3">
-          <h3 className={sectionTitle}>Your notes</h3>
+        <details
+          id="your-notes"
+          open={notesOpen}
+          onToggle={(e) => rememberSection('notes', e.currentTarget.open)}
+          className="scroll-mt-16 space-y-3"
+        >
+          <summary className={`${sectionTitle} cursor-pointer list-none`}>Your notes</summary>
           <label className="block space-y-1">
             <span className="text-[11px] font-semibold text-zinc-400">Format</span>
             <ChipInput
@@ -1357,7 +1412,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             />
           </div>
           <NotesField stored={event.notes} onSave={(v) => save({ notes: v })} />
-        </section>
+        </details>
 
         <div className="flex items-center justify-between border-t border-zinc-900 pt-4">
           <div className="flex items-center gap-4">
