@@ -7,6 +7,7 @@ import { IconButton } from './ui/IconButton';
 interface Props {
   theme: Theme;
   canMembers: boolean; // owner of a multi-user install
+  pendingRequests?: number; // requests waiting for the owner's answer, shown on Members
   canAccount: boolean; // any multi-user install
   canSheets: boolean; // Google Sheets stays the owner's
   onMembers: () => void;
@@ -21,7 +22,7 @@ interface Props {
 // One menu for everything about you and the app. A dropdown on desktop and a
 // bottom sheet on phone. Import, Export, Google Sheets and Share sit in one row
 // of icons, and the theme modes in another; each icon names itself on hover or tap.
-export function MenuButton({ theme, canMembers, canAccount, canSheets, onMembers, onAccount, onImport, onExport, onSheets, onShare, onShowTips }: Props) {
+export function MenuButton({ theme, canMembers, canAccount, canSheets, pendingRequests = 0, onMembers, onAccount, onImport, onExport, onSheets, onShare, onShowTips }: Props) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
 
@@ -77,6 +78,7 @@ export function MenuButton({ theme, canMembers, canAccount, canSheets, onMembers
                 <button onClick={() => choose(onMembers)} className={item}>
                   <Users className="h-3.5 w-3.5" />
                   Members
+                  {pendingRequests > 0 && <span className="ml-auto rounded-full bg-violet-500 px-1.5 text-[10px] text-white">{pendingRequests}</span>}
                 </button>
               )}
             </div>

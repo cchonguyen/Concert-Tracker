@@ -93,7 +93,8 @@ export function memberMiddleware(deps: MemberMiddlewareDeps) {
       const store = deps.base.forUser({ userId: member.userId, role: member.role, db: deps.base.kind === 'supabase' ? db : undefined });
       context.run({ member, store }, next);
     } catch (err) {
-      if (err instanceof NotInvitedError) return refuse(403, err.message);
+      // The refusal screen (src/components/NotInvited.tsx) keys on code; owner-only refusals carry none.
+      if (err instanceof NotInvitedError) return res.status(403).set('Cache-Control', 'no-store').json({ error: err.message, code: 'not_invited', email: err.email });
       console.error('Member check failed:', err instanceof Error ? err.message : String(err));
       return refuse(503, 'Could not check who you are. Try again.');
     }

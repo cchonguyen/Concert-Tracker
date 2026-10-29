@@ -124,6 +124,7 @@ async function apiFixture() {
     listMembers: async () => Object.entries(rows).map(([email, r]) => ({ email, ...r, invitedAt: '2026-01-01T00:00:00Z' })),
     inviteMember: async (email) => { if (rows[email]) throw new Error('That email is already invited.'); rows[email] = { userId: null, role: 'member' }; },
     removeMember: async (email) => { if (rows[email]?.role === 'owner') throw new Error('The owner cannot be removed.'); delete rows[email]; },
+    hasActiveUser: async () => true,
   };
   const config: MultiUserConfig = { access: accessConfigFromEnv({ ACCESS_TEAM_DOMAIN: 't.cloudflareaccess.com', ACCESS_AUD: 'aud' })!, supabaseUrl: 'https://x.supabase.co', anonKey: 'anon', jwtSecret: 'secret' };
   const store = await base();
@@ -131,7 +132,7 @@ async function apiFixture() {
   app.use(express.json());
   app.use('/api', memberMiddleware({ config, directory, base: store, getJson: async () => ({ keys: [jwk] }) }));
   const scoped = requestScopedStore(store);
-  app.use('/api', membersRouter(directory, scoped));
+  app.use('/api', membersRouter(directory, scoped, { pendingCount: async () => 0 }));
   app.use('/api', vaultGuard(scoped));
   app.use('/api', vaultRouter(scoped));
   app.use('/api', accountRouter(directory, scoped));
@@ -203,7 +204,7 @@ test('API: concurrent requests from two members never see each other\'s rows', a
 test('API: /me says who you are; only the owner lists, invites and removes members', async () => {
   const { call, close } = await apiFixture();
   try {
-    assert.deepEqual((await call('ann@example.com', '/api/me')).body, { multiUser: true, role: 'member', email: 'ann@example.com', noticeAccepted: false });
+    assert.deepEqual((await call('ann@example.com', '/api/me')).body, { multiUser: true, role: 'member', email: 'ann@example.com', noticeAccepted: false, pendingRequests: 0 });
     assert.equal((await call('owner@example.com', '/api/me')).body.role, 'owner');
     assert.equal((await call('ann@example.com', '/api/members')).status, 403);
     assert.equal((await call('ann@example.com', '/api/members', { method: 'POST', body: JSON.stringify({ email: 'cy@example.com' }) })).status, 403);
@@ -213,8 +214,9 @@ test('API: /me says who you are; only the owner lists, invites and removes membe
     assert.equal((await invite('cy@example.com')).status, 400);
     const list = (await call('owner@example.com', '/api/members')).body.members;
     assert.deepEqual(list.find((m: any) => m.email === 'cy@example.com'), { email: 'cy@example.com', role: 'member', joined: false, invitedAt: list.find((m: any) => m.email === 'cy@example.com').invitedAt });
-    assert.equal((await call('owner@example.com', '/api/members/owner%40example.com', { method: 'DELETE' })).status, 400);
-    assert.equal((await call('owner@example.com', '/api/members/cy%40example.com', { method: 'DELETE' })).status, 200);
+    assert.equal((await call('owner@example.com', '/api/members/owner%40example.com', { method: 'DELETE', body: JSON.stringify({ confirm: 'owner@example.com' }) })).status, 400);
+    assert.equal((await call('owner@example.com', '/api/members/cy%40example.com', { method: 'DELETE' })).status, 400);
+    assert.equal((await call('owner@example.com', '/api/members/cy%40example.com', { method: 'DELETE', body: JSON.stringify({ confirm: 'cy@example.com' }) })).status, 200);
     assert.equal((await call('cy@example.com', '/api/events')).status, 403);
   } finally {
     close();

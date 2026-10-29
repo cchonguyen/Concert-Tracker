@@ -7,7 +7,7 @@ import { frontDoor } from '../src/server/share/door';
 import { accessConfigFromEnv } from '../src/server/share/access';
 import { isRetentionTime, runRetention } from '../src/server/events/retention';
 import { accessGateFromEnv, multiUserFromEnv, workerSettings } from '../src/server/auth/config';
-import { supabaseMemberDirectory } from '../src/server/auth/members';
+import { supabaseMemberStores } from '../src/server/auth/members';
 import { getSupabaseClient } from '../src/server/supabase';
 
 // Cloudflare Worker entry. Static files are served from ./dist by Workers
@@ -42,10 +42,17 @@ let depsPromise: Promise<PipelineDeps> | null = null;
 let listening = false;
 
 // Built once per isolate. process.env is populated from vars and secrets by
-// nodejs_compat. A failed start is retried on the next request.
-function getDeps(): Promise<PipelineDeps> {
+// nodejs_compat. A failed start is retried on the next request. With
+// multi-user on, a job whose member is blocked or removed is parked (runJob).
+function getDeps(env: Env): Promise<PipelineDeps> {
   depsPromise ??= createStore({ requireSupabase: true })
     .then(createDeps)
+    .then((deps) => {
+      const settings = workerSettings(env as unknown as Record<string, unknown>, process.env);
+      if (settings.MULTI_USER?.trim().toLowerCase() !== 'on') return deps;
+      const members = supabaseMemberStores(getSupabaseClient()!);
+      return { ...deps, hasActiveUser: (userId: string) => members.hasActiveUser(userId) };
+    })
     .catch((err) => {
       depsPromise = null;
       throw err;
@@ -55,13 +62,13 @@ function getDeps(): Promise<PipelineDeps> {
 
 async function ensureServer(env: Env): Promise<void> {
   if (listening) return;
-  const deps = await getDeps();
+  const deps = await getDeps(env);
   if (listening) return;
   // Who may use /api (src/server/auth/config.ts). Read from the bindings as
   // well as the process environment, so MULTI_USER cannot be on in one and
   // missing from the other. Anything that cannot be read is closed, not open.
   const settings = workerSettings(env as unknown as Record<string, unknown>, process.env);
-  const gate = accessGateFromEnv(settings, () => supabaseMemberDirectory(getSupabaseClient()!));
+  const gate = accessGateFromEnv(settings, () => supabaseMemberStores(getSupabaseClient()!));
   const app = createApiApp(
     deps,
     {
@@ -78,7 +85,7 @@ async function ensureServer(env: Env): Promise<void> {
 export default {
   async fetch(request, env, ctx) {
     const answered = await frontDoor(request, {
-      store: () => getDeps().then((d) => d.store),
+      store: () => getDeps(env).then((d) => d.store),
       access: accessConfigFromEnv(workerSettings(env as unknown as Record<string, unknown>, process.env)),
     });
     if (answered) return answered;
@@ -97,7 +104,7 @@ export default {
   },
 
   async scheduled(_controller, env) {
-    const deps = await getDeps();
+    const deps = await getDeps(env);
     // Once, after 0014: point events saved before it at their records. Not with
     // multi-user on: each member's saves link into their own records, and this
     // global pass would link everyone's events into the old shared tables.
@@ -131,7 +138,7 @@ export default {
   // max_concurrency 1 and max_batch_size 1 keep jobs one at a time, which the
   // per-host rate limiter in http.ts relies on.
   async queue(batch, env) {
-    const deps = await getDeps();
+    const deps = await getDeps(env);
     for (const message of batch.messages) {
       const { jobId, force } = message.body;
       // One stage (or one page) per message: a whole lookup in one
