@@ -1,8 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Check, FileUp, Mail, Plus, X } from 'lucide-react';
 import { CaptureBar } from './CaptureBar';
-import { ListImport } from './ListImport';
-import { EmailImport, LoggedEvent } from '../services/lineupApi';
+import { LoggedEvent } from '../services/lineupApi';
 
 // Quick add: the same one-line capture, ticket email and list import, opened
 // from any page as a popup. Saving closes the popup and shows a short "Saved".
@@ -12,15 +11,11 @@ interface QuickAddProps {
   onClose: () => void;
   onCaptured: (event: LoggedEvent) => void;
   onReviewEmail: () => void;
+  onImport: () => void; // App opens the same Import as the Menu and the Table
   emailCheck: boolean;
-  events: LoggedEvent[];
-  imports: EmailImport[];
-  onImported: () => void;
 }
 
-export const QuickAdd: React.FC<QuickAddProps> = ({ open, onClose, onCaptured, onReviewEmail, emailCheck, events, imports, onImported }) => {
-  const [importing, setImporting] = useState(false);
-
+export const QuickAdd: React.FC<QuickAddProps> = ({ open, onClose, onCaptured, onReviewEmail, onImport, emailCheck }) => {
   useEffect(() => {
     if (!open) return;
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -28,20 +23,6 @@ export const QuickAdd: React.FC<QuickAddProps> = ({ open, onClose, onCaptured, o
     return () => document.removeEventListener('keydown', esc);
   }, [open, onClose]);
 
-  if (importing) {
-    return (
-      <ListImport
-        events={events}
-        imports={imports}
-        onDone={() => {
-          onImported();
-          setImporting(false);
-          onClose();
-        }}
-        onClose={() => setImporting(false)}
-      />
-    );
-  }
   if (!open) return null;
 
   return (
@@ -71,7 +52,7 @@ export const QuickAdd: React.FC<QuickAddProps> = ({ open, onClose, onCaptured, o
               <Mail className="h-3.5 w-3.5" /> Check ticket email
             </button>
           )}
-          <button onClick={() => setImporting(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
+          <button onClick={onImport} className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
             <FileUp className="h-3.5 w-3.5" /> Import a list (CSV)
           </button>
         </div>

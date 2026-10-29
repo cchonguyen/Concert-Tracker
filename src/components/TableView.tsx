@@ -25,8 +25,8 @@ import {
   X,
 } from 'lucide-react';
 import type { EmailImport, LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
-import { artistsOf, eventsToCsv, formatsOf, kindLabel, supportOf, whenLabel } from '../services/format';
-import { downloadText } from '../services/download';
+import { artistsOf, formatsOf, kindLabel, supportOf, whenLabel } from '../services/format';
+import { exportCsv } from './DataActions';
 import {
   activeFilterCount,
   actsInOrder,
@@ -46,8 +46,6 @@ import {
   tableDate,
   TableFilters,
 } from '../services/table';
-import { ListImport } from './ListImport';
-import { SheetSync } from './SheetSync';
 import { useIsOwner } from './MeContext';
 import { FillGaps } from './FillGaps';
 import { ArtistGenresPanel } from './ArtistGenresPanel';
@@ -64,13 +62,14 @@ interface TableViewProps {
   events: LoggedEvent[];
   lineups: Record<string, LineupSummary>;
   editions: Record<string, LineupFacts>;
-  imports: EmailImport[];
   onOpen: (id: string) => void;
-  onImported: () => void;
   onChanged: (event: LoggedEvent) => void;
   onCaptured: (event: LoggedEvent) => void; // a line typed in the Table's Add box
   // Series live in the Manage tab; without it, the Series panel opens here.
   onManage?: (target: ManageTarget) => void;
+  onImport: () => void; // the same Import as the Menu and Quick add
+  onSheets: () => void; // the same Google Sheets as the Menu
+  onRefresh: () => void; // reload events after a fill-in
 }
 
 const control =
@@ -313,16 +312,12 @@ const People: React.FC<{ names: string[] }> = ({ names }) =>
 
 // Every event as a row you can filter, sort and export. A row opens the usual
 // event panel for editing; "Import a list" adds events from a CSV you kept.
-export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, imports, onOpen, onImported, onChanged, onCaptured, onManage }) => {
+export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, onOpen, onChanged, onCaptured, onManage, onImport, onSheets, onRefresh }) => {
   const [filling, setFilling] = useState(false);
   const [adding, setAdding] = useState(false);
   const [linking, setLinking] = useState(false);
   const [filters, setFilters] = useState<TableFilters>(readQuery);
-  const [importing, setImporting] = useState(false);
   const [genres, setGenres] = useState(false);
-  // Back from Google's sign-in (?sheets=connected, or what went wrong).
-  const [sheetsNotice] = useState(() => new URLSearchParams(window.location.search).get('sheets'));
-  const [syncing, setSyncing] = useState(Boolean(sheetsNotice));
   const [showFilters, setShowFilters] = useState(() => activeFilterCount(readQuery()) > 0);
 
   useEffect(() => {
@@ -344,22 +339,16 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const list = (values: string[]) => values.map((v) => ({ value: v, label: v }));
 
   const importButton = (
-    <button onClick={() => setImporting(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+    <button onClick={onImport} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
       <FileUp className="h-3.5 w-3.5" /> Import a list
     </button>
-  );
-  const importPanel = importing && (
-    <ListImport events={events} imports={imports} onDone={onImported} onClose={() => setImporting(false)} />
   );
   // Sheets and the music-story/MusicBrainz genre tools stay the owner's; members edit their own genres in SeenGenres.
   const owner = useIsOwner();
   const sheetButton = !owner ? null : (
-    <button onClick={() => setSyncing(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+    <button onClick={onSheets} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
       <Sheet className="h-3.5 w-3.5" /> Google Sheets
     </button>
-  );
-  const sheetPanel = syncing && (
-    <SheetSync notice={sheetsNotice} onClose={() => setSyncing(false)} />
   );
   const genresButton = !owner ? null : (
     <button onClick={() => setGenres(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
@@ -389,16 +378,12 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
           {importButton}
           {sheetButton}
         </p>
-        {importPanel}
-        {sheetPanel}
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      {importPanel}
-      {sheetPanel}
       {genres && <ArtistGenresPanel events={events} onClose={() => setGenres(false)} />}
       {linking && (
         <SeriesPanel
@@ -422,7 +407,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
           lineups={lineups}
           editions={editions}
           onChanged={onChanged}
-          onRefresh={onImported}
+          onRefresh={onRefresh}
           onOpen={(id) => {
             setFilling(false);
             onOpen(id);
@@ -588,7 +573,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
           {importButton}
           {sheetButton}
           <button
-          onClick={() => downloadText(`livearchive-${new Date().toISOString().slice(0, 10)}.csv`, eventsToCsv(rows, editions))}
+          onClick={() => exportCsv(rows, editions)}
           disabled={!rows.length}
           className="inline-flex items-center gap-1.5 hover:text-zinc-200 disabled:opacity-40"
         >
