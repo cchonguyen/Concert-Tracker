@@ -1309,118 +1309,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           <Weather event={event} busy={busy === 'weather'} note={weatherNote} onLookUp={lookUpWeather} />
         </section>
 
-          </div>
-          <div className="min-w-0 space-y-5">
-        {/* Who you saw */}
-        <section id="who-you-saw" className={card}>
-          <div className="flex items-center justify-between gap-2">
-            <h3 className={cardTitle}>
-              Who you saw{event.seen.length > 0 && <span className="font-normal text-zinc-400"> · {event.seen.length}</span>}
-            </h3>
-            <SectionHelp label="Who you saw">
-              Each act is a row. Tap the row to set its billing, set type and B2B partners. Tap the heart to make it the favourite set. Acts you add here count as seen.
-            </SectionHelp>
-          </div>
-          <SeenActs seen={event.seen} sets={sets} past={pastArtists} onChange={(seen) => save({ seen })} />
-          <SeenGenres event={event} />
-          {offered.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="text-zinc-400">From the event name:</span>
-              {offered.map((s) => (
-                <button
-                  key={s.key}
-                  onClick={() =>
-                    save({ seen: [...toPatch(event.seen), { name: s.name, from: 'you', role: s.role, roleFrom: s.role ? 'you' : undefined }] })
-                  }
-                  title={
-                    s.sourceType === 'user'
-                      ? 'You saw them at another event'
-                      : s.sourceType === 'musicbrainz'
-                        ? 'An artist of this name on MusicBrainz'
-                        : `Listed by ${SOURCE_LABELS[s.sourceType]}`
-                  }
-                  className="inline-flex items-center gap-1 rounded-full border border-violet-500/50 px-2.5 py-1 text-violet-200 hover:bg-violet-950/40"
-                >
-                  <Plus className="h-3 w-3" /> {s.name} as {roleName(s.role)}?
-                </button>
-              ))}
-            </div>
-          )}
-          {lineupActs.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-[11px] text-zinc-400">From the lineup, tap to mark who you saw:</p>
-              <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-auto">
-                {lineupActs.map((p) => {
-                  const on = seenKeys.has(p.artistKey);
-                  return (
-                    <button
-                      key={p.artistKey}
-                      onClick={() =>
-                        save({
-                          seen: on
-                            ? toPatch(event.seen.filter((s) => s.key !== p.artistKey))
-                            : [...toPatch(event.seen), { name: p.name, from: 'lineup', role: p.billing, roleFrom: p.billing ? 'lineup' : undefined }],
-                        })
-                      }
-                      title={[p.billing && `Billed as ${p.billing}`, sets.get(p.artistKey)].filter(Boolean).join(' · ') || undefined}
-                      className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
-                    >
-                      {p.name}
-                      {p.billing === 'support' && <span className="ml-1 text-[10px] text-zinc-400">support</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* Stage 2: the lineup */}
-        <section id="lineup" className={card}>
-          <h3 className={cardTitle}>Full lineup</h3>
-          {!job && !edition && (
-            <div className="space-y-2">
-              <p className="text-xs text-zinc-400">
-                Find the lineup looks for who played in Clashfinder, the promoter's page and ticketing listings. It cites every act and never guesses. The link is optional.
-              </p>
-              <input className={input} value={lineupUrl} onChange={(e) => setLineupUrl(e.target.value)} placeholder="Lineup page, if you know one (optional)" />
-            </div>
-          )}
-          {edition && (
-            <p className="text-sm text-zinc-300">
-              {lineupActs.length} acts confirmed, each with a source.
-              {job && (
-                <Button className="ml-2" onClick={() => setReviewing(true)}>Edit lineup</Button>
-              )}
-            </p>
-          )}
-          {job && !edition && (
-            <LineupProgress
-              job={job}
-              busy={busy === 'retry'}
-              onRetry={() =>
-                void run('retry', async () => {
-                  await lineupApi.retry(job.id);
-                  setTimeout(() => void load(), 500);
-                })
-              }
-              onReview={() => setReviewing(true)}
-            />
-          )}
-          {(!job || edition || job.status === 'no_data' || job.status === 'failed') && !isActive(job?.status) && (
-            <div className="space-y-1.5">
-              <Button
-                onClick={() => run('lineup', async () => (await eventsApi.findLineup(event.id, lineupUrl || undefined)).event)}
-                disabled={busy === 'lineup' || !(event.year || event.startDate)}
-              >
-                {busy === 'lineup' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                {job ? 'Look up the lineup again' : 'Find the lineup'}
-              </Button>
-              {!(event.year || event.startDate) && <p className="text-xs text-amber-300/90">Add when it was first, then find the lineup.</p>}
-            </div>
-          )}
-        </section>
-
         {/* Your details */}
         <details
           id="your-notes"
@@ -1488,6 +1376,119 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </p>
           )}
         </details>
+
+          </div>
+          <div className="min-w-0 space-y-5">
+        {/* Who you saw */}
+        <section id="who-you-saw" className={card}>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className={cardTitle}>
+              Who you saw{event.seen.length > 0 && <span className="font-normal text-zinc-400"> · {event.seen.length}</span>}
+            </h3>
+            <SectionHelp label="Who you saw">
+              Each act is a row. Tap the row to set its billing, set type and B2B partners. Tap the heart to make it the favourite set. Acts you add here count as seen.
+            </SectionHelp>
+          </div>
+          <SeenActs seen={event.seen} sets={sets} past={pastArtists} onChange={(seen) => save({ seen })} />
+          <SeenGenres event={event} />
+          {offered.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="text-zinc-400">From the event name:</span>
+              {offered.map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() =>
+                    save({ seen: [...toPatch(event.seen), { name: s.name, from: 'you', role: s.role, roleFrom: s.role ? 'you' : undefined }] })
+                  }
+                  title={
+                    s.sourceType === 'user'
+                      ? 'You saw them at another event'
+                      : s.sourceType === 'musicbrainz'
+                        ? 'An artist of this name on MusicBrainz'
+                        : `Listed by ${SOURCE_LABELS[s.sourceType]}`
+                  }
+                  className="inline-flex items-center gap-1 rounded-full border border-violet-500/50 px-2.5 py-1 text-violet-200 hover:bg-violet-950/40"
+                >
+                  <Plus className="h-3 w-3" /> {s.name} as {roleName(s.role)}?
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Stage 2: the lineup */}
+        <section id="lineup" className={card}>
+          <h3 className={cardTitle}>Full lineup</h3>
+          {!job && !edition && (
+            <div className="space-y-2">
+              <p className="text-xs text-zinc-400">
+                Find the lineup looks for who played in Clashfinder, the promoter's page and ticketing listings. It cites every act and never guesses. The link is optional.
+              </p>
+              <input className={input} value={lineupUrl} onChange={(e) => setLineupUrl(e.target.value)} placeholder="Lineup page, if you know one (optional)" />
+            </div>
+          )}
+          {edition && (
+            <p className="text-sm text-zinc-300">
+              {lineupActs.length} acts confirmed, each with a source.
+              {job && (
+                <Button className="ml-2" onClick={() => setReviewing(true)}>Edit lineup</Button>
+              )}
+            </p>
+          )}
+          {job && !edition && (
+            <LineupProgress
+              job={job}
+              busy={busy === 'retry'}
+              onRetry={() =>
+                void run('retry', async () => {
+                  await lineupApi.retry(job.id);
+                  setTimeout(() => void load(), 500);
+                })
+              }
+              onReview={() => setReviewing(true)}
+            />
+          )}
+          {(!job || edition || job.status === 'no_data' || job.status === 'failed') && !isActive(job?.status) && (
+            <div className="space-y-1.5">
+              <Button
+                onClick={() => run('lineup', async () => (await eventsApi.findLineup(event.id, lineupUrl || undefined)).event)}
+                disabled={busy === 'lineup' || !(event.year || event.startDate)}
+              >
+                {busy === 'lineup' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                {job ? 'Look up the lineup again' : 'Find the lineup'}
+              </Button>
+              {!(event.year || event.startDate) && <p className="text-xs text-amber-300/90">Add when it was first, then find the lineup.</p>}
+            </div>
+          )}
+
+          {lineupActs.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[11px] text-zinc-400">From the lineup, tap to mark who you saw:</p>
+              <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-auto">
+                {lineupActs.map((p) => {
+                  const on = seenKeys.has(p.artistKey);
+                  return (
+                    <button
+                      key={p.artistKey}
+                      onClick={() =>
+                        save({
+                          seen: on
+                            ? toPatch(event.seen.filter((s) => s.key !== p.artistKey))
+                            : [...toPatch(event.seen), { name: p.name, from: 'lineup', role: p.billing, roleFrom: p.billing ? 'lineup' : undefined }],
+                        })
+                      }
+                      title={[p.billing && `Billed as ${p.billing}`, sets.get(p.artistKey)].filter(Boolean).join(' · ') || undefined}
+                      className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
+                    >
+                      {p.name}
+                      {p.billing === 'support' && <span className="ml-1 text-[10px] text-zinc-400">support</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
 
           </div>
         </div>
