@@ -320,7 +320,14 @@ The site's one address is `site.config.json`. A test checks that it matches `APP
 
 ## Multi-user
 
-Built on the branch `claude/multi-user`, **off by default and not applied to the live database**. The single-owner app is unchanged unless `MULTI_USER=on` (spec: `multi-user/multi-user-spec-v2-ON-HOLD.md` in the project files; counsel's sign-off and the owner's go-ahead are still needed before turning it on). Code in `src/server/auth/`.
+Built on the branch `claude/multi-user`, **off by default and not applied to the live database**. Multi-user is the only mode that admits anyone but the owner (spec: `multi-user/multi-user-spec-v2-ON-HOLD.md` in the project files; counsel's sign-off and the owner's go-ahead are still needed before turning it on). Code in `src/server/auth/`.
+
+**Access gate (fail closed).** Every `/api` request except `GET /api/health` passes one check, in both modes (`accessGateFromEnv` in `src/server/auth/config.ts`):
+- `MULTI_USER=on` (exactly, after trimming): members, as above.
+- Unset, blank, `off`, or any other value: single-owner. Only the Access sign-in whose email is `OWNER_EMAIL` gets through; everyone else gets 403, and no sign-in gets 401.
+- Missing settings for the mode above, or a `MULTI_USER=on` that is half set: closed. Every `/api` request gets 503 and nothing runs. `GET /api/health` still answers, with its status only.
+
+A broken or missing setting therefore locks the app rather than opening it. Tests: `tests/accessGate.test.ts`.
 
 - **One login** (`requestScope.ts`, `members.ts`): Cloudflare Access is the only login. In `/api`, `memberMiddleware` reads the Access token again (`readAccessClaims`, keys cached, no request), looks the email up in the `members` table (migration 0017; an email not listed gets 403 "not invited", nobody signs up), and on a first sign-in makes a Supabase Auth user and links it. Members are cached 5 minutes per isolate. `/s/*` still bypasses Access.
 - **A store per request**: the middleware builds `store.forUser({ userId, role })` and keeps it in `AsyncLocalStorage`; the routes keep calling `deps.store`, a stand-in (`requestScopedStore`) that hands each call to the current request's store. Outside a request (queue, cron) it is the system store. `LineupStore.forUser` limits events, email imports, lookup jobs, share links and settings to one member: the Supabase store filters by `user_id`, stamps it on writes and, with a member client holding a 60-second HS256 token minted locally (`supabaseJwt.ts`, `SUPABASE_JWT_SECRET`, `SUPABASE_ANON_KEY`), runs under row level security too (`own_rows` policies); the file store behaves the same for tests. Writing over another member's id is refused. Settings come from `user_settings`; the owner falls back to `app_settings` for settings made before multi-user.
@@ -356,7 +363,7 @@ Built on the branch `claude/multi-user`, **off by default and not applied to the
 
 ## Configuration
 
-See [`.env.example`](.env.example). Each source is optional; the app reports which ones are off and works with whatever is configured. `IMPORT_TOKEN` turns on posting ticket emails; it is a secret (`wrangler secret put IMPORT_TOKEN` on Cloudflare). `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` turn on Check email and Google Sheets sync (secrets too; Sheets also needs the Google Sheets API turned on in that Google Cloud project); `APP_URL` is the site's address, used for Google's redirect. `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` turn on the Worker's own Access token check (see Share page). `MULTI_USER=on` (with those two, `SUPABASE_ANON_KEY` and `SUPABASE_JWT_SECRET`) turns on members (see Multi-user); half set is an error. `GEMINI_USER_DAILY` and `GEMINI_OWNER_RESERVE` set per-member limits.
+See [`.env.example`](.env.example). Each source is optional; the app reports which ones are off and works with whatever is configured. `IMPORT_TOKEN` turns on posting ticket emails; it is a secret (`wrangler secret put IMPORT_TOKEN` on Cloudflare). `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` turn on Check email and Google Sheets sync (secrets too; Sheets also needs the Google Sheets API turned on in that Google Cloud project); `APP_URL` is the site's address, used for Google's redirect. `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` turn on the Worker's own Access token check (see Share page), and `/api` needs them (see Access gate, under Multi-user). `OWNER_EMAIL` is the one Access identity allowed in single-owner mode; it is needed only while `MULTI_USER` is not `on`. `MULTI_USER=on` (with those two, `SUPABASE_ANON_KEY` and `SUPABASE_JWT_SECRET`) turns on members (see Multi-user); half set is closed (503). `GEMINI_USER_DAILY` and `GEMINI_OWNER_RESERVE` set per-member limits.
 
 ## Testing
 

@@ -28,8 +28,9 @@
   },
   // ACCESS_TEAM_DOMAIN (https://<team>.cloudflareaccess.com) and ACCESS_AUD
   // (the Access application's audience tag) turn on the Worker's own check of
-  // the Access sign-in token on every request except the share page. Leave
-  // them unset to rely on Cloudflare Access alone.
+  // the Access sign-in token on every request except the share page. /api needs
+  // them: without them, every /api request gets 503. OWNER_EMAIL (secret or
+  // var) is the one sign-in allowed in single-owner mode (MULTI_USER not "on").
   "vars": {
     "NODE_ENV": "production",
     "GEMINI_EXTRACTION_MODEL": "gemini-flash-lite-latest",
