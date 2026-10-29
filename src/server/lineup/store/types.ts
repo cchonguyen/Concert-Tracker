@@ -13,6 +13,7 @@ import {
   SourceType,
 } from '../types';
 import { LoggedEvent } from '../../events/types';
+import type { ActivityEntry } from '../../events/activityLog';
 import type { LineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
@@ -104,7 +105,12 @@ export interface LineupStore {
   putEvents(events: LoggedEvent[]): Promise<void>;
   getEvent(id: string): Promise<LoggedEvent | null>;
   listEvents(): Promise<LoggedEvent[]>;
+  // Delete moves a show to Recently deleted; restore brings it back; the nightly job purges old trash.
   deleteEvent(id: string): Promise<void>;
+  restoreEvent(id: string): Promise<boolean>;
+  listDeletedEvents(): Promise<LoggedEvent[]>;
+  purgeDeletedEvents(olderThan: string): Promise<number>;
+  listActivity(limit: number): Promise<ActivityEntry[]>;
 
   // Ticket emails waiting for your review (stage 1 from email).
   listImports(): Promise<EmailImport[]>;
