@@ -5,10 +5,13 @@ import type { LoggedEvent } from '../server/events/types';
 import { Button } from './ui/Button';
 import { Notice } from './ui/Notice';
 import { Confirm } from './ui/Confirm';
+import { useVault } from './VaultContext';
 
 // The Log: shows in Recently deleted (Restore brings one back) and every change you have made.
-// Undo is not on this page yet; it needs the field-level write from the store wrapper.
+// Undo writes a field back; a notes or companions change is undone only with the vault unlocked.
 export function LogView({ eventId, onShowAll }: { eventId?: string | null; onShowAll?: () => void }) {
+  const vault = useVault();
+  const locked = vault.status !== 'unlocked';
   const [trash, setTrash] = useState<LoggedEvent[] | null>(null);
   const [activity, setActivity] = useState<ActivityEntry[] | null>(null);
   const [names, setNames] = useState<Record<string, string>>({});
@@ -64,6 +67,7 @@ export function LogView({ eventId, onShowAll }: { eventId?: string | null; onSho
     const text = err instanceof Error ? err.message : '';
     if (text.includes('value-changed')) return 'Not undone: that field was changed again after this.';
     if (text.includes('vault-locked')) return 'Unlock vault to undo.';
+    if (text.includes('not-undoable')) return 'This change cannot be undone: its text was not stored.';
     if (text.includes('gone')) return 'Not undone: that show is no longer there.';
     return 'Could not undo that change.';
   };
@@ -71,7 +75,7 @@ export function LogView({ eventId, onShowAll }: { eventId?: string | null; onSho
   const undo = async (a: ActivityEntry) => {
     setBusy(a.id);
     try {
-      await eventsApi.undo(a.id);
+      await eventsApi.undo(a.id, locked);
       await load();
     } catch (err) {
       setError(undoReason(err));
@@ -169,9 +173,9 @@ export function LogView({ eventId, onShowAll }: { eventId?: string | null; onSho
                   <Button
                     variant="ghost"
                     onClick={() => void undo(a)}
-                    disabled={busy !== null || a.sensitive}
+                    disabled={busy !== null || (a.sensitive && locked)}
                   >
-                    {a.sensitive ? 'Unlock vault to undo' : 'Undo'}
+                    {a.sensitive && locked ? 'Unlock vault to undo' : 'Undo'}
                   </Button>
                 )}
               </li>
