@@ -788,7 +788,18 @@ export class SupabaseLineupStore implements LineupStore {
   }
 
   // artist_genres (0013) is optional: only genres need it.
+  // A member (not the owner) keeps only genres they set themselves, in
+  // user_artist_genres (0020); the shared artist_genres come from the owner's
+  // music-story export.
+  private get memberGenres(): boolean {
+    return Boolean(this.scope && this.scope.role !== 'owner');
+  }
+
   async listArtistGenres() {
+    if (this.memberGenres) {
+      const own = this.check(await this.mine(this.own('user_artist_genres').select('*')), 'listArtistGenres (apply 0020_per_member_entities.sql)');
+      return ((own ?? []) as any[]).map((r): ArtistGenres => ({ key: r.artist_key, name: r.name, source: 'you', genres: r.genres ?? [], checkedAt: r.updated_at }));
+    }
     const rows = this.check(await this.db.from('artist_genres').select('*'), 'listArtistGenres (apply 0013_artist_genres.sql)');
     return ((rows ?? []) as any[]).map(
       (r): ArtistGenres => ({
@@ -870,6 +881,12 @@ export class SupabaseLineupStore implements LineupStore {
   }
 
   async putArtistGenres(rows: ArtistGenres[]) {
+    if (this.memberGenres) {
+      if (rows.some((r) => r.source !== 'you')) throw new Error('A member can only keep genres they set themselves.');
+      const chunk = rows.map((r) => this.stamp({ artist_key: r.key, name: r.name, genres: r.genres, updated_at: r.checkedAt }));
+      if (chunk.length) this.check(await this.own('user_artist_genres').upsert(chunk, { onConflict: 'user_id,artist_key' }), 'putArtistGenres (apply 0020_per_member_entities.sql)');
+      return;
+    }
     for (let i = 0; i < rows.length; i += 500) {
       const chunk = rows.slice(i, i + 500).map((r) => ({
         artist_key: r.key,
@@ -886,6 +903,10 @@ export class SupabaseLineupStore implements LineupStore {
   }
 
   async deleteArtistGenres(key: string, source: ArtistGenres['source']) {
+    if (this.memberGenres) {
+      if (source === 'you') this.check(await this.mine(this.own('user_artist_genres').delete().eq('artist_key', key)), 'deleteArtistGenres');
+      return;
+    }
     this.check(
       await this.db.from('artist_genres').delete().eq('artist_key', key).eq('source', source),
       'deleteArtistGenres (apply 0013_artist_genres.sql)',

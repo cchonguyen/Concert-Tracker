@@ -53,7 +53,8 @@ const OWNER_ONLY: Array<[method: string | null, pattern: RegExp]> = [
   [null, /^\/api\/sheets(\/|$)/],
   [null, /^\/api\/gmail(\/|$)/],
   ['POST', /^\/api\/imports\/(email|scan)$/],
-  ['PUT', /^\/api\/artist-genres\//],
+  // The music-story export is the owner's listening data, and MusicBrainz tags
+  // are read through its genre map; members set their own genres (PUT).
   ['POST', /^\/api\/artist-genres\//],
 ];
 

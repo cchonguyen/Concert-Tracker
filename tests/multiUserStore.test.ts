@@ -88,10 +88,10 @@ test('share page: a member\'s link shows only that member\'s events', async () =
 });
 
 test('owner-only routes: Sheets, Gmail, server scans and lineup confirm', () => {
-  for (const [m, p] of [['GET', '/api/sheets'], ['GET', '/api/gmail/connect'], ['POST', '/api/imports/email'], ['PUT', '/api/artist-genres/k']]) {
+  for (const [m, p] of [['GET', '/api/sheets'], ['GET', '/api/gmail/connect'], ['POST', '/api/imports/email'], ['POST', '/api/artist-genres/music-story'], ['POST', '/api/artist-genres/musicbrainz']]) {
     assert.equal(ownerOnly(m, p), true, `${m} ${p}`);
   }
-  for (const [m, p] of [['GET', '/api/events'], ['POST', '/api/events'], ['GET', '/api/imports'], ['POST', '/api/imports/proposals'], ['GET', '/api/share'], ['GET', '/api/artist-genres'], ['GET', '/api/lookups'], ['POST', '/api/lookups'], ['POST', '/api/lookups/j1/run'], ['POST', '/api/lookups/j1/confirm'], ['POST', '/api/events/lineups'], ['POST', '/api/events/e1/lineup'], ['GET', '/api/me'], ['GET', '/api/entities'], ['PATCH', '/api/entities/x'], ['GET', '/api/people']]) {
+  for (const [m, p] of [['GET', '/api/events'], ['POST', '/api/events'], ['GET', '/api/imports'], ['POST', '/api/imports/proposals'], ['GET', '/api/share'], ['GET', '/api/artist-genres'], ['PUT', '/api/artist-genres/k'], ['GET', '/api/lookups'], ['POST', '/api/lookups'], ['POST', '/api/lookups/j1/run'], ['POST', '/api/lookups/j1/confirm'], ['POST', '/api/events/lineups'], ['POST', '/api/events/e1/lineup'], ['GET', '/api/me'], ['GET', '/api/entities'], ['PATCH', '/api/entities/x'], ['GET', '/api/people']]) {
     assert.equal(ownerOnly(m, p), false, `${m} ${p}`);
   }
 });
@@ -423,4 +423,17 @@ test('people: turning the vault on converts plain people, moves their events and
   } finally {
     server.close();
   }
+});
+
+test('genres: a member keeps only the genres they set; the owner\'s shared ones stay the owner\'s', async () => {
+  const s = await base();
+  const row = (key: string, source: 'you' | 'music-story') => ({ key, name: key, source, genres: [{ parent: 'electronic', style: 'house', weight: 1 }], checkedAt: '2026-01-01T00:00:00Z' });
+  await s.forUser(OWNER).putArtistGenres([row('zedd', 'music-story'), row('zedd', 'you')]);
+  await s.forUser(ANN).putArtistGenres([row('moon garden', 'you')]);
+  assert.deepEqual((await s.forUser(ANN).listArtistGenres()).map((g) => g.key), ['moon garden']);
+  assert.deepEqual((await s.forUser(BOB).listArtistGenres()).map((g) => g.key), []);
+  assert.deepEqual((await s.forUser(OWNER).listArtistGenres()).map((g) => `${g.key}:${g.source}`).sort(), ['zedd:music-story', 'zedd:you']);
+  await assert.rejects(s.forUser(ANN).putArtistGenres([row('x', 'music-story')]), /only keep genres they set/);
+  await s.forUser(ANN).deleteArtistGenres('moon garden', 'you');
+  assert.deepEqual(await s.forUser(ANN).listArtistGenres(), []);
 });

@@ -351,7 +351,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const importPanel = importing && (
     <ListImport events={events} imports={imports} onDone={onImported} onClose={() => setImporting(false)} />
   );
-  // Sheets and genre edits are the owner's until they are split per member.
+  // Sheets and the music-story/MusicBrainz genre tools stay the owner's; members edit their own genres in SeenGenres.
   const owner = useIsOwner();
   const sheetButton = !owner ? null : (
     <button onClick={() => setSyncing(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
