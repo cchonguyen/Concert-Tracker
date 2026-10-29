@@ -25,6 +25,7 @@ import {
 import type { EmailImport, LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
 import { artistsOf, formatsOf, kindLabel, whenLabel } from '../services/format';
 import { exportCsv } from './DataActions';
+import { useToast } from './ui/Toast';
 import { BackToTop } from './ui/BackToTop';
 import { IconButton } from './ui/IconButton';
 import { MenuButton } from './ui/MenuButton';
@@ -302,6 +303,7 @@ const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, 
 export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, onOpen, onChanged, onManage, onImport, onSheets, onRefresh }) => {
   const [filling, setFilling] = useState(false);
   const [linking, setLinking] = useState(false);
+  const toast = useToast();
   const [filters, setFilters] = useState<TableFilters>(readQuery);
   const [genres, setGenres] = useState(false);
   const [showFilters, setShowFilters] = useState(() => activeFilterCount(readQuery()) > 0);
@@ -545,7 +547,10 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
           {importButton}
           {sheetButton}
           <button
-          onClick={() => exportCsv(rows, editions)}
+          onClick={() => {
+            exportCsv(rows, editions);
+            toast({ message: `Exported ${rows.length} ${rows.length === 1 ? 'show' : 'shows'} as CSV` });
+          }}
           disabled={!rows.length}
           className="inline-flex items-center gap-1.5 hover:text-zinc-200 disabled:opacity-40"
         >
