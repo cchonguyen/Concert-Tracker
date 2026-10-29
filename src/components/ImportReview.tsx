@@ -5,6 +5,7 @@ import { EmailImport, EmailScanStatus, importsApi, LoggedEvent } from '../servic
 import type { MergeField } from '../server/events/email/types';
 import { placeLabel, whenLabel } from '../services/format';
 import { BrowserScan } from './BrowserScan';
+import { Notice } from './ui/Notice';
 import { useIsOwner } from './MeContext';
 
 // Stage 1 from email: shows found in your ticket emails. A ticket is not
@@ -137,6 +138,10 @@ const CheckEmail: React.FC<{ onFound: (imports: EmailImport[]) => void }> = ({ o
       {error && <p className="text-xs text-rose-300">{error}</p>}
         </>
       )}
+      <Notice tone="info">
+        Google may show an &ldquo;unverified app&rdquo; screen when you connect. This is a personal app, so choose Advanced, then continue. Prefer not to connect Gmail?
+        You can also import a CSV spreadsheet or add shows by hand.
+      </Notice>
       <BrowserScan status={status} onFound={onFound} />
     </div>
   );
