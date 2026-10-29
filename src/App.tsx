@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, Compass, FolderCog, GalleryHorizontalEnd, House, Library, Map as MapIcon, Mic2, Radio, Table2, Ticket } from 'lucide-react';
+import { House, Radio } from 'lucide-react';
 import {
   EmailImport,
   eventsApi,
@@ -36,21 +36,13 @@ import { AccountPanel } from './components/AccountPanel';
 import { VaultProvider } from './components/VaultContext';
 import { PeopleProvider } from './components/PersonName';
 import { wentTo } from './server/events/attendance';
-import { NavStorage, Page, PAGE_LABELS, pageFromView, rememberedPage, rememberPage, sectionOf, SECTIONS, Section, subPagesFor, viewFor } from './services/nav';
+import { NavStorage, Page, PAGE_LABELS, pageFromView, rememberedPage, rememberPage, sectionOf, SECTIONS, subPagesFor, viewFor } from './services/nav';
+import { PAGE_ICON, SECTION_ICON } from './components/pageIcons';
+import { HomePage } from './components/HomePage';
+import { cityOf } from './services/table';
 
 // The Table, Timeline and Map views keep their filters in the address (?view=table&...).
 const FILTERED: Page[] = ['table', 'timeline', 'map'];
-const PAGE_ICON: Record<Page, typeof Ticket> = {
-  home: House,
-  summary: Ticket,
-  table: Table2,
-  manage: FolderCog,
-  timeline: GalleryHorizontalEnd,
-  map: MapIcon,
-  stats: BarChart3,
-  artists: Mic2,
-};
-const SECTION_ICON: Record<Section, typeof Ticket> = { library: Library, explore: Compass };
 
 // Remembered subtabs live on this device; a browser that blocks storage just forgets them.
 const navStorage = (): NavStorage | null => {
@@ -210,12 +202,11 @@ export default function App() {
   const selected = events.find((e) => e.id === selectedId) ?? null;
   const toReview = imports.filter((r) => r.status === 'new' && !r.eventId && !(r.startDate && r.startDate > today)).length;
   const canManage = me.role === 'owner';
-  // Home has no page of its own until the Home page lands, so it shows Summary.
-  // A member who cannot see Manage gets Summary there too.
-  const shown: Page = tab === 'home' || (tab === 'manage' && !canManage) ? 'summary' : tab;
+  // A member who cannot see Manage gets Summary instead.
+  const shown: Page = tab === 'manage' && !canManage ? 'summary' : tab;
   const section = sectionOf(tab);
   const width = shown === 'table' ? 'max-w-7xl' : shown === 'map' ? 'max-w-6xl' : 'max-w-3xl';
-  const counts: Partial<Record<Page, number>> = { summary: events.length, artists: seenCount };
+  const cityCount = new Set(went.map((e) => cityOf(e)).filter(Boolean)).size;
 
   return (
     <MeProvider me={me}>
@@ -304,6 +295,15 @@ export default function App() {
       <main className={`mx-auto w-full ${width} flex-1 space-y-6 px-4 py-6`}>
         {section && <p className="text-xs text-zinc-500 sm:hidden">{`${SECTIONS[section].label} › ${PAGE_LABELS[shown]}`}</p>}
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-3 text-sm text-rose-200">{error}</p>}
+        {shown === 'home' && (
+          <HomePage
+            canManage={canManage}
+            eventCount={events.length}
+            cityCount={cityCount}
+            artistCount={seenCount}
+            onOpen={openTab}
+          />
+        )}
         {shown === 'summary' && (
           <>
             <CaptureBar onCaptured={handleCaptured} />
