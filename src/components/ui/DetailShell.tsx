@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode, type TouchEvent } from 'react';
-import { Check, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, ChevronUp, Maximize2, X } from 'lucide-react';
 import { neighbours, nextWithGap } from '../../services/detailNav';
 import { IconButton } from './IconButton';
 
@@ -16,6 +16,8 @@ interface Props {
   rows: DetailRow[]; // The list the open event came from, in the order it shows.
   openId: string;
   closeDisabled?: boolean; // True while a step on top (the lineup review) must answer Escape and taps instead.
+  status?: ReactNode; // Left of the header: whether edits are saved.
+  hero?: ReactNode; // Edge to edge above the padded content: the poster.
   onGo: (id: string) => void;
   onClose: () => void;
   children: ReactNode;
@@ -54,11 +56,11 @@ const topModal = (): Element | null => {
 
 // The event detail as one surface over the page: a split view with the list (desktop), a slide-over (small
 // laptops and tablets) or a bottom sheet (phones). Moves between events in place, with keys and header buttons.
-export function DetailShell({ title, rows, openId, closeDisabled = false, onGo, onClose, children }: Props) {
+export function DetailShell({ title, rows, openId, closeDisabled = false, status, hero, onGo, onClose, children }: Props) {
   const mode = useMode();
   const panel = useRef<HTMLElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
-  const listEl = useRef<HTMLElement>(null);
+  const listEl = useRef<HTMLDivElement>(null);
   const latest = useRef({ onGo, onClose, closeDisabled, rows, openId });
   latest.current = { onGo, onClose, closeDisabled, rows, openId };
 
@@ -154,36 +156,53 @@ export function DetailShell({ title, rows, openId, closeDisabled = false, onGo, 
 
   // The split view's content is the Table's width (max-w-6xl in App), so the detail reads as part of the same page.
   const width = mode === 'split' ? 'max-w-6xl' : 'max-w-2xl';
-  const navButton ='inline-flex h-11 items-center gap-1 rounded-control px-2 text-xs text-zinc-300 hover:text-violet-300 disabled:opacity-40 sm:h-9';
+  const bordered = 'border border-zinc-800 hover:border-zinc-600 disabled:opacity-40';
+  const navButton = `inline-flex h-11 items-center gap-0.5 rounded-control px-2.5 text-xs text-zinc-200 hover:text-violet-200 sm:h-9 ${bordered}`;
+  const place = ids.indexOf(openId);
 
   const body = (
     <>
       {mode === 'split' ? (
-        <nav ref={listEl} aria-label="Events" className="flex w-[240px] shrink-0 flex-col overflow-y-auto border-r border-zinc-900 bg-zinc-950 min-[1440px]:w-[280px]">
-          {rows.map((r) => {
-            const open = r.id === openId;
-            return (
-              <button
-                key={r.id}
-                type="button"
-                aria-current={open ? 'true' : undefined}
-                onClick={() => onGo(r.id)}
-                className={`flex items-center gap-2 border-b border-zinc-900 px-3 py-2 text-left ${open ? 'bg-zinc-900' : 'hover:bg-zinc-900/60'}`}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm text-zinc-100">{r.title}</span>
-                  <span className="block truncate text-xs text-zinc-400">{r.date || 'No date yet'}</span>
-                </span>
-                {r.gaps > 0 ? (
-                  <span className="shrink-0 rounded-full border border-amber-500/40 px-1.5 text-xs text-amber-300" aria-label={`${r.gaps} missing`}>
-                    {r.gaps}
+        <nav aria-label="Events" className="flex w-[240px] shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/40 min-[1440px]:w-[280px]">
+          <div className="flex items-center justify-between gap-2 border-b border-zinc-800 py-1.5 pl-4 pr-2">
+            <p className="text-sm font-semibold text-zinc-200">
+              {rows.length} {rows.length === 1 ? 'event' : 'events'}
+            </p>
+            <IconButton icon={Maximize2} label="Back to the full list" onClick={close} disabled={closeDisabled} className={bordered} />
+          </div>
+          <div ref={listEl} className="min-h-0 flex-1 overflow-y-auto">
+            {rows.map((r) => {
+              const open = r.id === openId;
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  aria-current={open ? 'true' : undefined}
+                  onClick={() => onGo(r.id)}
+                  className={`flex w-full items-center gap-2 border-b border-l-2 border-b-zinc-800/60 py-2.5 pl-3.5 pr-3 text-left ${
+                    open ? 'border-l-violet-500 bg-violet-500/15' : 'border-l-transparent hover:bg-zinc-800/40'
+                  }`}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className={`block truncate text-sm ${open ? 'font-semibold text-zinc-50' : 'text-zinc-200'}`}>{r.title}</span>
+                    <span className="block truncate text-xs text-zinc-500">{r.date || 'No date yet'}</span>
                   </span>
-                ) : (
-                  <Check className="h-3.5 w-3.5 shrink-0 text-emerald-300" aria-label="Nothing missing" />
-                )}
-              </button>
-            );
-          })}
+                  {r.gaps > 0 ? (
+                    <span
+                      className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full border border-amber-400/50 bg-amber-400/10 px-1 text-[11px] font-semibold text-amber-300"
+                      aria-label={`${r.gaps} missing`}
+                    >
+                      {r.gaps}
+                    </span>
+                  ) : (
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-emerald-400/50 bg-emerald-400/10" aria-label="Nothing missing">
+                      <Check className="h-3 w-3 text-emerald-300" aria-hidden="true" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </nav>
       ) : (
         <button type="button" tabIndex={-1} aria-label="Close" onClick={close} className="absolute inset-0 cursor-default bg-black/60" />
@@ -204,18 +223,25 @@ export function DetailShell({ title, rows, openId, closeDisabled = false, onGo, 
             <span className="h-1 w-10 rounded-full bg-zinc-700" />
           </div>
         )}
-        <header className="border-b border-zinc-900 px-3 py-1">
-          <div className={`mx-auto flex w-full items-center justify-end gap-1 ${width}`}>
-            <IconButton icon={ChevronUp} label="Previous event" disabled={!prev} onClick={() => prev && onGo(prev)} />
-            <IconButton icon={ChevronDown} label="Next event" disabled={!next} onClick={() => next && onGo(next)} />
+        <header className="border-b border-zinc-800 px-3 py-1.5 sm:px-4">
+          <div className="flex w-full items-center gap-1.5">
+            <div className="min-w-0 flex-1">{status}</div>
+            {place >= 0 && rows.length > 1 && (
+              <p className="mr-1 hidden text-xs text-zinc-500 sm:block">
+                {place + 1} of {rows.length} in your sort
+              </p>
+            )}
+            <IconButton icon={ChevronUp} label="Previous event" disabled={!prev} onClick={() => prev && onGo(prev)} className={bordered} />
+            <IconButton icon={ChevronDown} label="Next event" disabled={!next} onClick={() => next && onGo(next)} className={bordered} />
             <button type="button" disabled={!nextGap} onClick={() => nextGap && onGo(nextGap)} className={navButton}>
-              Next with gaps
+              Next with gaps <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
-            <IconButton icon={X} label="Close" onClick={close} disabled={closeDisabled} />
+            <IconButton icon={X} label="Close" onClick={close} disabled={closeDisabled} className={bordered} />
           </div>
         </header>
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className={`@container mx-auto w-full space-y-6 p-5 ${width}`}>{children}</div>
+          {hero}
+          <div className={`@container mx-auto w-full space-y-5 p-5 ${width}`}>{children}</div>
         </div>
       </section>
     </>
