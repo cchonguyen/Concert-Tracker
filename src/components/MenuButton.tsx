@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Download, FileUp, Menu, Share2, Sheet, UserCog, Users } from 'lucide-react';
+import { Download, FileUp, Lightbulb, Menu, Share2, Sheet, UserCog, Users } from 'lucide-react';
 import { Theme, ThemeControls } from './ThemePicker';
 import { LogOutLink } from './LogOutLink';
 import { IconButton } from './ui/IconButton';
@@ -15,12 +15,13 @@ interface Props {
   onExport: () => void; // every event, as CSV
   onSheets: () => void;
   onShare: () => void;
+  onShowTips: () => void;
 }
 
 // One menu for everything about you and the app. A dropdown on desktop and a
 // bottom sheet on phone. Import, Export, Google Sheets and Share sit in one row
 // of icons, and the theme modes in another; each icon names itself on hover or tap.
-export function MenuButton({ theme, canMembers, canAccount, canSheets, onMembers, onAccount, onImport, onExport, onSheets, onShare }: Props) {
+export function MenuButton({ theme, canMembers, canAccount, canSheets, onMembers, onAccount, onImport, onExport, onSheets, onShare, onShowTips }: Props) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
 
@@ -107,6 +108,10 @@ export function MenuButton({ theme, canMembers, canAccount, canSheets, onMembers
             <ThemeControls theme={theme} />
           </div>
           <div className="border-t border-zinc-800 pt-3">
+            <button onClick={() => choose(onShowTips)} className={item}>
+              <Lightbulb className="h-3.5 w-3.5" />
+              Show tips again
+            </button>
             <LogOutLink className={item} />
           </div>
         </div>

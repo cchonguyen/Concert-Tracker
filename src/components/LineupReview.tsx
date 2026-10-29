@@ -146,7 +146,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
 
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <input className={`${input} max-w-xs`} placeholder="Filter acts" value={filter} onChange={(e) => setFilter(e.target.value)} />
+            <input aria-label="Filter acts" className={`${input} max-w-xs`} placeholder="Filter acts" value={filter} onChange={(e) => setFilter(e.target.value)} />
             <label className="inline-flex items-center gap-1 text-zinc-400">
               <input type="checkbox" checked={onlyFlagged} onChange={(e) => setOnlyFlagged(e.target.checked)} /> Low evidence only
             </label>
@@ -290,7 +290,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
           </div>
 
           <div className="flex gap-2">
-            <input
+            <input aria-label="Add an act the sources missed"
               className={`${input} max-w-sm`}
               placeholder="Add an act the sources missed"
               value={newAct}

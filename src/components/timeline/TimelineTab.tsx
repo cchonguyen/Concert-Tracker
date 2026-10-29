@@ -78,7 +78,7 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, focusEventId = n
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <input value={filters.q} onChange={(e) => set({ q: e.target.value })} placeholder="Events, venues, acts, people" className={`${control} min-w-0 flex-1 py-2`} />
+        <input aria-label="Search events" value={filters.q} onChange={(e) => set({ q: e.target.value })} placeholder="Events, venues, acts, people" className={`${control} min-w-0 flex-1 py-2`} />
         <FilterButton open={showFilters} count={activeFilterCount(filters)} onClick={() => setShowFilters((s) => !s)} />
       </div>
       {showFilters && (
