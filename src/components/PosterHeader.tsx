@@ -24,10 +24,6 @@ interface Props {
   onRate: (rating: number | null) => void;
 }
 
-// The poster's background: a violet glow top-left and a rose glow bottom-right over the panel, as in the design.
-const POSTER_BACKGROUND =
-  'radial-gradient(90% 140% at 12% 0%, rgba(139,92,246,.42), transparent 60%), radial-gradient(60% 120% at 100% 100%, rgba(244,114,182,.16), transparent 60%), #111114';
-
 // Your rating as five stars in the poster's corner. The empty ones stay faint, so an unrated show still shows the row;
 // tapping a star rates, and tapping the current rating again clears it. Hovering or focusing a star lights stars up to it,
 // so you see the rating you are about to give.
@@ -71,7 +67,7 @@ export function PosterHeader({ title, label, event, state, seen, cited, confirme
   const small = [...bill.medium.map((a) => a.name), ...(bill.more > 0 ? [`+ ${bill.more} more`] : [])];
   const status = STATUS[state];
   return (
-    <header className="space-y-2 border-b border-zinc-800 px-5 pb-5 pt-6" style={{ background: POSTER_BACKGROUND }}>
+    <header className="poster-bg space-y-2 border-b border-zinc-800 px-5 pb-5 pt-6">
       <div className="flex items-start justify-between gap-4">
         <p className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-300">{label}</p>
         <Stars rating={event.rating} onRate={onRate} />
