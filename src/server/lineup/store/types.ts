@@ -128,7 +128,7 @@ export interface LineupStore {
   deleteArtistGenres(key: string, source: ArtistGenres['source']): Promise<void>;
   // Records with permanent IDs (0014, src/server/entities/). Optional until
   // the Manage tab: createStore only links events when the tables exist.
-  // Records are never deleted. Both stores enforce entities/integrity.ts.
+  // Both stores enforce entities/integrity.ts.
   listEntities(): Promise<Entity[]>;
   // Adds records; an ID already stored is left as it is.
   addEntities(entities: Entity[]): Promise<void>;
@@ -144,7 +144,11 @@ export interface LineupStore {
   replaceEntityAliases(entityIds: string[], aliases: EntityAlias[]): Promise<void>;
   // Replaces every link from or to these records with `links`.
   replaceEntityLinks(entityIds: string[], links: EntityLink[]): Promise<void>;
+  // Removes records with their aliases and links. Only a member's own
+  // records (a person turned into an encrypted one); the shared tables never delete.
+  deleteEntities(ids: string[]): Promise<void>;
   putEntityHistory(entry: HistoryEntry): Promise<void>;
+  deleteEntityHistory(ids: string[]): Promise<void>;
   getEntityHistory(id: string): Promise<HistoryEntry | null>;
   // Newest first.
   listEntityHistory(limit: number): Promise<HistoryEntry[]>;

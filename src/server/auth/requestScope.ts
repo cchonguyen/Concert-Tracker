@@ -50,7 +50,6 @@ export function runAsMember<T>(member: SignedInMember, store: LineupStore, fn: (
 // Lineup lookups are open to members: their review (confirmLookupForMember)
 // writes only their own event.
 const OWNER_ONLY: Array<[method: string | null, pattern: RegExp]> = [
-  [null, /^\/api\/entities(\/|$)/],
   [null, /^\/api\/sheets(\/|$)/],
   [null, /^\/api\/gmail(\/|$)/],
   ['POST', /^\/api\/imports\/(email|scan)$/],

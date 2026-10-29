@@ -66,11 +66,9 @@ export function withEntityLinks(store: LineupStore): LineupStore {
   return new Proxy(store, {
     get(target, prop, receiver) {
       if (prop === LINKED) return true;
-      // Multi-user: the owner's saves keep linking records. A member's do
-      // not, until people move to per-member records (the entity split), so
-      // a member's companions never become shared records.
-      if (prop === 'forUser' && target.forUser)
-        return (scope: UserScope) => (scope.role === 'owner' ? withEntityLinks(target.forUser!(scope)) : target.forUser!(scope));
+      // Multi-user: each member's saves link into their own records
+      // (user_entities), as the single-owner app does into the shared ones.
+      if (prop === 'forUser' && target.forUser) return (scope: UserScope) => withEntityLinks(target.forUser!(scope));
       if (prop === BACKFILL_PUT) return async (events: LoggedEvent[]) => target.putEvents(await link(events, false));
       if (prop === 'putEvent') return async (event: LoggedEvent) => target.putEvents(await link([event]));
       if (prop === 'putEvents') return async (events: LoggedEvent[]) => target.putEvents(await link(events));
