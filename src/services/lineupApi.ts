@@ -12,6 +12,7 @@ import type { ArtistSuggestion } from '../server/events/artists';
 import type { LineupFacts } from '../server/events/scale';
 import type { CityPoint, PlaceGuess } from '../server/events/place';
 import type { ArtistGenres, KnownGenre } from '../server/events/genreTypes';
+import type { Prefs, TipsSaved } from '../server/auth/prefs';
 import { dehydrateBody, hydrateEvent, type PeopleBook, type PeopleServer } from './vaultPeople';
 import { allowedInSample, reportBlockedWrite, sampleSource, SAMPLE_WRITE_MESSAGE, SampleRefused, type SampleSource } from './sampleMode';
 
@@ -249,6 +250,13 @@ export const meApi = {
   get: () =>
     request<{ multiUser: boolean; role: 'owner' | 'member'; email: string | null; noticeAccepted?: boolean; pendingRequests?: number }>('/api/me'),
   acceptNotice: () => request<unknown>('/api/me/notice', post()),
+};
+
+// Home tips and the milestone mark, kept on the account (src/server/auth/prefs.ts).
+export const prefsApi = {
+  get: () => request<Prefs>('/api/me/prefs'),
+  saveTips: (tips: TipsSaved) => request<Prefs>('/api/me/prefs', { method: 'PUT', body: JSON.stringify({ tips }) }),
+  saveMilestone: (milestone: number) => request<Prefs>('/api/me/prefs', { method: 'PUT', body: JSON.stringify({ milestone }) }),
 };
 export const membersApi = {
   list: () => request<{ members: MemberRow[] }>('/api/members').then((r) => r.members),

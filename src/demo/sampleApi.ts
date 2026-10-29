@@ -25,6 +25,8 @@ export function createSampleSource(start: SampleStart): SampleSource {
     '/api/imports': () => ({ imports: [] }),
     '/api/imports/scan': () => ({ configured: false, connected: false }),
     '/api/vault': () => ({ state: 'plaintext', material: null }),
+    // Nothing saved in the sample: the tips show in full and the milestone never fires.
+    '/api/me/prefs': () => ({ tips: null, milestone: 0 }),
     '/api/artist-genres': () => ({ genres: [], hasMap: false, known: [] }),
   };
 

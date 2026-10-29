@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Archive, ArrowDownUp, FileSpreadsheet, GitMerge, Search, X } from 'lucide-react';
 import type { Page } from '../services/nav';
-import { readTips, tipsKey, TIPS_EVENT, writeTips, type TipsSaved } from '../services/tips';
+import type { TipsSaved } from '../server/auth/prefs';
+import { DEFAULT_TIPS, loadPrefs, TIPS_EVENT, writeTips } from '../services/prefs';
 import { useMe } from './MeContext';
 import { Button } from './ui/Button';
 
 // Six feature tiles that each open the page where the feature lives. Shown open for up to 4 events,
-// folded at 5 or more. Dismissing is remembered per account on this browser (services/tips.ts); see ARCHITECTURE.md.
+// folded at 5 or more. Dismissing is remembered on the account (services/prefs.ts); see ARCHITECTURE.md.
 interface Tile {
   key: string;
   icon: typeof Search;
@@ -28,20 +29,30 @@ export const TILES: Tile[] = [
 
 export const FeatureTiles: React.FC<{ eventCount: number; onOpen: (page: Page) => void; onImport: () => void }> = ({ eventCount, onOpen, onImport }) => {
   const me = useMe();
-  const key = tipsKey(me.email);
-  const [saved, setSaved] = useState<TipsSaved>(() => readTips(key));
+  // null until the account's choice arrives; nothing shows meanwhile, so a dismissed tip never flashes back.
+  const [saved, setSaved] = useState<TipsSaved | null>(null);
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
 
-  // "Show tips again" in the Menu or About changes the same store, so re-read it.
+  // "Show tips again" in the Menu or About saves a new choice, so read it again.
   useEffect(() => {
-    const reread = () => setSaved(readTips(key));
-    window.addEventListener(TIPS_EVENT, reread);
-    return () => window.removeEventListener(TIPS_EVENT, reread);
-  }, [key]);
+    let live = true;
+    const read = () =>
+      loadPrefs(me.email)
+        .then((p) => live && setSaved(p.tips ?? DEFAULT_TIPS))
+        .catch(() => live && setSaved(DEFAULT_TIPS));
+    read();
+    window.addEventListener(TIPS_EVENT, read);
+    return () => {
+      live = false;
+      window.removeEventListener(TIPS_EVENT, read);
+    };
+  }, [me.email]);
+
+  if (saved === null) return null;
 
   const update = (next: TipsSaved) => {
     setSaved(next);
-    writeTips(key, next);
+    void writeTips(next);
   };
 
   const folded = expandedOverride === null ? eventCount >= 5 : !expandedOverride;
