@@ -49,6 +49,7 @@ interface FileState {
   entityAliases?: EntityAlias[];
   entityLinks?: EntityLink[];
   entityHistory?: Record<string, HistoryEntry>;
+  userGenres?: Record<string, Record<string, ArtistGenres>>; // a member's own genres, by act key
   userEntities?: Record<string, Pick<FileState, 'entities' | 'entityAliases' | 'entityLinks' | 'entityHistory'>>;
   shareLinks?: Record<string, ShareLink>;
   // Multi-user: who owns each personal row (`<table>:<id>` to user id); a row
@@ -411,6 +412,17 @@ export class FileLineupStore implements LineupStore {
     );
   }
 
+  // A member's own genres (user_artist_genres): only ones they set themselves.
+  async memberGenres(uid: string): Promise<Record<string, ArtistGenres>> {
+    const state = await this.load();
+    state.userGenres ??= {};
+    return (state.userGenres[uid] ??= {});
+  }
+
+  async saveMemberGenres(): Promise<void> {
+    await this.save();
+  }
+
   async listArtistGenres() {
     return clone(Object.values((await this.load()).artistGenres ?? {}));
   }
@@ -706,6 +718,25 @@ function scopedFileStore(base: FileLineupStore, scope: UserScope): LineupStore {
       await claim('event', events.map((e) => e.id));
       await base.putEventsFor(scope.userId, events);
     },
+    // A member's genres are their own; the owner's shared ones come from the music-story export.
+    ...(scope.role === 'owner'
+      ? {}
+      : {
+          async listArtistGenres() {
+            return clone(Object.values(await base.memberGenres(scope.userId)));
+          },
+          async putArtistGenres(rows: ArtistGenres[]) {
+            if (rows.some((r) => r.source !== 'you')) throw new Error('A member can only keep genres they set themselves.');
+            const own = await base.memberGenres(scope.userId);
+            for (const r of rows) own[r.key] = clone(r);
+            await base.saveMemberGenres();
+          },
+          async deleteArtistGenres(key: string, source: ArtistGenres['source']) {
+            if (source !== 'you') return;
+            delete (await base.memberGenres(scope.userId))[key];
+            await base.saveMemberGenres();
+          },
+        }),
     // Each member has their own records (user_entities and friends in Supabase).
     listEntities: () => base.listEntitiesFor(scope.userId),
     addEntities: (list) => base.addEntitiesFor(scope.userId, list),
