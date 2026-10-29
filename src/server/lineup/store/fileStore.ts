@@ -19,6 +19,7 @@ import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
+import { diffEvent, type ActivityDraft, type ActivityEntry } from '../../events/activityLog';
 import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../entities/integrity';
 import type { ShareLink } from '../../share/types';
@@ -49,6 +50,7 @@ interface FileState {
   entityAliases?: EntityAlias[];
   entityLinks?: EntityLink[];
   entityHistory?: Record<string, HistoryEntry>;
+  activity?: Array<ActivityEntry & { userId: string | null }>; // the Log; kept one year
   userGenres?: Record<string, Record<string, ArtistGenres>>; // a member's own genres, by act key
   userEntities?: Record<string, Pick<FileState, 'entities' | 'entityAliases' | 'entityLinks' | 'entityHistory'>>;
   shareLinks?: Record<string, ShareLink>;
@@ -344,22 +346,97 @@ export class FileLineupStore implements LineupStore {
     // plus the IDs inside companions and seen that it cannot check.
     const entities = new Map(Object.entries(this.holder(state, uid).entities ?? {}));
     for (const e of events) checkEventRefs(entities, e);
-    for (const e of events) state.events[e.id] = clone(splitEventCity(e));
+    const now = new Date().toISOString();
+    for (const e of events) {
+      const prior = state.events[e.id];
+      // A save never undeletes a show: deletedAt is only changed by delete and restore.
+      state.events[e.id] = clone({ ...splitEventCity(e), deletedAt: prior?.deletedAt });
+      this.logActivity(state, uid, diffEvent(prior ? splitEventCity(prior) : null, splitEventCity(e)), now);
+    }
     await this.save();
   }
 
   async getEvent(id: string) {
     const ev = (await this.load()).events[id];
-    return ev ? clone(splitEventCity(ev)) : null;
+    return ev && !ev.deletedAt ? clone(splitEventCity(ev)) : null;
   }
 
   async listEvents() {
-    return clone(Object.values((await this.load()).events).map((e) => splitEventCity(e)));
+    return clone(Object.values((await this.load()).events).filter((e) => !e.deletedAt).map((e) => splitEventCity(e)));
   }
 
+  // Delete moves the show to Recently deleted. Nothing is erased until the nightly purge.
   async deleteEvent(id: string) {
-    delete (await this.load()).events[id];
+    return this.deleteEventFor(undefined, id);
+  }
+
+  async restoreEvent(id: string) {
+    return this.restoreEventFor(undefined, id);
+  }
+
+  async listActivity(limit: number) {
+    return this.listActivityFor(undefined, limit);
+  }
+
+  async deleteEventFor(uid: string | undefined, id: string) {
+    const state = await this.load();
+    const ev = state.events[id];
+    if (!ev || ev.deletedAt) return;
+    const now = new Date().toISOString();
+    ev.deletedAt = now;
+    this.logActivity(state, uid, [{ eventId: id, action: 'delete', field: null, before: null, after: null, sensitive: false }], now);
     await this.save();
+  }
+
+  async restoreEventFor(uid: string | undefined, id: string) {
+    const state = await this.load();
+    const ev = state.events[id];
+    if (!ev?.deletedAt) return false;
+    delete ev.deletedAt;
+    this.logActivity(state, uid, [{ eventId: id, action: 'restore', field: null, before: null, after: null, sensitive: false }], new Date().toISOString());
+    await this.save();
+    return true;
+  }
+
+  async listDeletedEvents() {
+    return clone(Object.values((await this.load()).events).filter((e) => e.deletedAt).map((e) => splitEventCity(e)));
+  }
+
+  // Erase Recently deleted shows older than the cutoff. Their Log rows stay until their own purge.
+  async purgeDeletedEvents(olderThan: string) {
+    const state = await this.load();
+    let purged = 0;
+    for (const [id, ev] of Object.entries(state.events)) {
+      if (ev.deletedAt && ev.deletedAt < olderThan) {
+        delete state.events[id];
+        purged++;
+      }
+    }
+    if (purged) await this.save();
+    return purged;
+  }
+
+  // Erase Log rows older than the cutoff. Run by the nightly job, across every member.
+  async purgeActivity(olderThan: string) {
+    const state = await this.load();
+    const rows = state.activity ?? [];
+    const kept = rows.filter((r) => r.at >= olderThan);
+    if (kept.length === rows.length) return 0;
+    state.activity = kept;
+    await this.save();
+    return rows.length - kept.length;
+  }
+
+  async listActivityFor(uid: string | undefined, limit: number) {
+    const rows = ((await this.load()).activity ?? []).filter((r) => (uid === undefined ? true : r.userId === uid));
+    return clone(rows.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit));
+  }
+
+  private logActivity(state: FileState, uid: string | undefined, drafts: ActivityDraft[], at: string) {
+    state.activity ??= [];
+    drafts.forEach((d, i) => {
+      state.activity!.push({ ...d, id: `${at}-${state.activity!.length}-${i}`, at, userId: uid ?? null });
+    });
   }
 
   async listImports() {
@@ -759,7 +836,23 @@ function scopedFileStore(base: FileLineupStore, scope: UserScope): LineupStore {
       return keep('event', await base.listEvents());
     },
     async deleteEvent(id) {
-      if (await mine('event', id)) await base.deleteEvent(id);
+      if (await mine('event', id)) await base.deleteEventFor(scope.userId, id);
+    },
+    async restoreEvent(id) {
+      return (await mine('event', id)) ? base.restoreEventFor(scope.userId, id) : false;
+    },
+    async listDeletedEvents() {
+      return keep('event', await base.listDeletedEvents());
+    },
+    // Only the nightly job purges, across every member. A member's own scope never erases anyone's trash.
+    async purgeDeletedEvents() {
+      return 0;
+    },
+    async listActivity(limit) {
+      return base.listActivityFor(scope.userId, limit);
+    },
+    async purgeActivity() {
+      return 0;
     },
     async listImports() {
       return keep('import', await base.listImports());
