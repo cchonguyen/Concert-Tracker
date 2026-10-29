@@ -6,6 +6,8 @@ export class QuotaExhaustedError extends Error {
   constructor(
     public readonly retryAt: Date,
     public readonly reason: string,
+    // 'user': one member's own cap, which must not pause everyone else.
+    public readonly scope: 'global' | 'user' = 'global',
   ) {
     super(reason);
   }
@@ -62,6 +64,16 @@ export interface QuotaConfig {
   model: string;
   dailyLimit: number;
   perMinute: number;
+  // Multi-user: calls kept back for the owner (members share dailyLimit minus
+  // this) and the most any one member may use a day. 0 means no limit.
+  ownerReserve?: number;
+  userDaily?: number;
+}
+
+export interface AcquireOptions {
+  ignorePause?: boolean;
+  // The member the call is for; left out in single-owner mode.
+  userId?: string;
 }
 
 // Self-tracked budget so the app stops before Google says no, and so a parked
@@ -86,9 +98,10 @@ export class QuotaLedger {
   // Throws QuotaExhaustedError when the call must not be made now.
   // ignorePause: a person asked to retry now, so try past a pause that came
   // from an earlier 429 (the self-imposed daily budget still applies).
-  async acquire(now = new Date(), opts: { ignorePause?: boolean } = {}): Promise<void> {
+  async acquire(now = new Date(), opts: AcquireOptions = {}): Promise<void> {
     const key = this.key(now);
     const usage = (await this.store.getQuota(key)) ?? { key, used: 0 };
+    const mine = opts.userId ? await this.checkMember(opts.userId, key, usage.used, now) : null;
     if (!opts.ignorePause && usage.exhaustedUntil && new Date(usage.exhaustedUntil) > now) {
       throw new QuotaExhaustedError(new Date(usage.exhaustedUntil), 'Gemini quota exhausted; waiting for capacity.');
     }
@@ -104,6 +117,25 @@ export class QuotaLedger {
     }
     this.recent.push(now.getTime());
     await this.store.setQuota({ ...usage, used: usage.used + 1, exhaustedUntil: undefined });
+    if (mine) await this.store.setQuota({ ...mine, used: mine.used + 1 });
+  }
+
+  // A member's own count for today, refused when they are over their daily
+  // cap or the shared pool is down to the owner's reserve. These pauses are
+  // scoped to the member (QuotaExhaustedError.scope) so others keep going.
+  private async checkMember(userId: string, key: string, globalUsed: number, now: Date): Promise<{ key: string; used: number }> {
+    const userKey = `${key}:user:${userId}`;
+    const usage = (await this.store.getQuota(userKey)) ?? { key: userKey, used: 0 };
+    const until = nextPacificMidnight(now);
+    const { userDaily = 0, ownerReserve = 0 } = this.config;
+    if (userDaily > 0 && usage.used >= userDaily) {
+      throw new QuotaExhaustedError(until, `Your daily limit of ${userDaily} Gemini calls is used; retrying after the midnight Pacific reset.`, 'user');
+    }
+    const owner = (await this.store.ownerUserId?.()) ?? null;
+    if (ownerReserve > 0 && userId !== owner && globalUsed >= this.config.dailyLimit - ownerReserve) {
+      throw new QuotaExhaustedError(until, `The shared Gemini budget is down to the owner's reserve; retrying after the midnight Pacific reset.`, 'user');
+    }
+    return usage;
   }
 
   async markExhausted(until: Date, now = new Date()): Promise<void> {

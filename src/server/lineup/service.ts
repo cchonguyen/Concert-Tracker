@@ -74,6 +74,8 @@ export function createDeps(store: LineupStore): PipelineDeps {
           model,
           dailyLimit: Number(process.env.GEMINI_DAILY_LIMIT || 50),
           perMinute: Number(process.env.GEMINI_PER_MINUTE || 10),
+          ownerReserve: Number(process.env.GEMINI_OWNER_RESERVE || 0),
+          userDaily: Number(process.env.GEMINI_USER_DAILY || 0),
         })
       : null,
     search,

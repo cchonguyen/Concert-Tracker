@@ -23,7 +23,7 @@ import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/ty
 import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../entities/integrity';
 import type { ShareLink } from '../../share/types';
 import { shareEventOnly } from '../../share/types';
-import { isStaleRun, LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS, type UserScope } from './types';
+import { isStaleRun, LineupStore, MAX_EXAMPLES_PER_DOMAIN, roundRobin, STALE_RUN_MS, type UserScope } from './types';
 
 type DocumentMeta = Omit<SourceDocument, 'body'>;
 
@@ -164,7 +164,7 @@ export class FileLineupStore implements LineupStore {
         ((j.status === 'queued' || j.status === 'waiting_quota') && (!j.nextAttemptAt || j.nextAttemptAt <= iso)) ||
         isStaleRun(j, now),
     );
-    return clone(jobs.sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(0, limit));
+    return clone(roundRobin(jobs, limit));
   }
 
   async putDocument(doc: SourceDocument) {

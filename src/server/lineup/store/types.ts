@@ -37,6 +37,9 @@ export interface UserScope {
 export interface LineupStore {
   readonly kind: 'file' | 'supabase';
 
+  // The owner's user id (multi-user mode), for the owner's quota reserve.
+  ownerUserId?(): Promise<string | null>;
+
   // The same store limited to one member's personal rows (see UserScope).
   forUser?(scope: UserScope): LineupStore;
 
@@ -158,4 +161,23 @@ export const MAX_EXAMPLES_PER_DOMAIN = 3;
 export const STALE_RUN_MS = 10 * 60_000;
 export function isStaleRun(job: LookupJob, now: Date): boolean {
   return job.status === 'running' && Date.parse(job.updatedAt) <= now.getTime() - STALE_RUN_MS;
+}
+
+// Due jobs in turn by member, so one member's pile of lookups cannot keep
+// everyone else waiting: the oldest job of each member, then the next oldest,
+// and so on. Members with the oldest waiting job go first. Jobs with no
+// member (single-owner) are one group, so their order is unchanged.
+export function roundRobin(jobs: LookupJob[], limit: number): LookupJob[] {
+  const groups = new Map<string, LookupJob[]>();
+  for (const j of [...jobs].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+    const g = groups.get(j.userId ?? '') ?? [];
+    g.push(j);
+    groups.set(j.userId ?? '', g);
+  }
+  const lists = [...groups.values()];
+  const out: LookupJob[] = [];
+  for (let round = 0; out.length < limit && lists.some((l) => l.length > round); round++) {
+    for (const l of lists) if (l[round] && out.length < limit) out.push(l[round]);
+  }
+  return out;
 }

@@ -18,7 +18,7 @@ import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
-import { LineupStore, MAX_EXAMPLES_PER_DOMAIN, STALE_RUN_MS, type UserScope } from './types';
+import { LineupStore, MAX_EXAMPLES_PER_DOMAIN, roundRobin, STALE_RUN_MS, type UserScope } from './types';
 import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import { checkLinks } from '../../entities/integrity';
 import { SHARE_EVENT_COLUMNS, type ShareLink } from '../../share/types';
@@ -40,6 +40,17 @@ export class SupabaseLineupStore implements LineupStore {
     private readonly db: SupabaseClient,
     private readonly scope?: UserScope,
   ) {}
+
+  private ownerId: Promise<string | null> | null = null;
+
+  // The owner's user id from the members table (0017), read once.
+  ownerUserId() {
+    this.ownerId ??= (async () => {
+      const { data, error } = await this.db.from('members').select('user_id').eq('role', 'owner').maybeSingle();
+      return error ? null : ((data as any)?.user_id ?? null);
+    })();
+    return this.ownerId;
+  }
 
   forUser(scope: UserScope): LineupStore {
     return new SupabaseLineupStore(this.db, scope);
@@ -156,10 +167,11 @@ export class SupabaseLineupStore implements LineupStore {
             `and(status.eq.running,updated_at.lte.${staleIso})`,
         )
         .order('created_at', { ascending: true })
-        .limit(limit),
+        // More than asked for, so the turn-taking below has every member's oldest.
+        .limit(limit * 20),
       'dueJobs',
     );
-    return (data ?? []).map((r) => this.rowToJob(r));
+    return roundRobin((data ?? []).map((r) => this.rowToJob(r)), limit);
   }
 
   // Evidence --------------------------------------------------------------
