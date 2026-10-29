@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Download, Lock, LogOut, Unlock, X } from 'lucide-react';
+import { Download, Lock, Unlock, X } from 'lucide-react';
 import { accountApi } from '../services/lineupApi';
 import { hasCiphertext, type ExportBundle } from '../services/exportBundle';
 import { useMe } from './MeContext';
 import { useVault } from './VaultContext';
+import { LogOutLink } from './LogOutLink';
 
 // Multi-user only: the private-notes vault and "Download / delete my data".
 // The recovery key is shown once and the server never sees it.
@@ -178,10 +179,7 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
 
         <section className="space-y-2 border-t border-zinc-900 pt-4">
           <h3 className="text-sm font-semibold">Session</h3>
-          {/* Cloudflare Access clears its sign-in cookie for this site here. */}
-          <a className={button} href="/cdn-cgi/access/logout">
-            <LogOut className="h-3.5 w-3.5" /> Log out
-          </a>
+          <LogOutLink className={button} />
         </section>
       </aside>
     </div>
