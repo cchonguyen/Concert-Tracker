@@ -24,10 +24,13 @@ const BLURB: Record<SubPage, string> = {
   summary: 'Every show, newest first.',
   table: 'Sort, filter and edit your shows in bulk.',
   manage: 'Rename and merge artists, venues and series.',
-  timeline: 'Your shows laid out over time.',
+  agenda: 'Your shows in order, newest first.',
+  month: 'One calendar month at a time.',
+  heatmap: 'How often you went out, day by day.',
+  river: 'Your shows as a flowing timeline.',
   map: 'Every city you have been to.',
   stats: 'Numbers from all your years of going out.',
-  artists: 'Everyone you have seen live.',
+  ranking: 'Everyone you have seen live.',
 };
 
 const TINT: Record<Section, string> = {
@@ -55,7 +58,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   const live = (p: SubPage): { n: number; unit: string } | null => {
     if (p === 'summary') return { n: eventCount, unit: eventCount === 1 ? 'event' : 'events' };
     if (p === 'map') return { n: cityCount, unit: cityCount === 1 ? 'city' : 'cities' };
-    if (p === 'artists') return { n: artistCount, unit: artistCount === 1 ? 'artist' : 'artists' };
+    if (p === 'ranking') return { n: artistCount, unit: artistCount === 1 ? 'artist' : 'artists' };
     return null;
   };
   const alerts = [

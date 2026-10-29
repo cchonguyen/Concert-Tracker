@@ -13,7 +13,6 @@ import {
   gapLabel,
   heatmapRows,
   heatmapYear,
-  modeFromQuery,
   riverLayout,
   monthFromQuery,
   monthPage,
@@ -203,15 +202,6 @@ test('date chips read like a calendar', () => {
   assert.equal(dateChip({ first: '2026-03-14', last: '2026-03-14' }), 'Sat 14');
   assert.equal(dateChip({ first: '2026-08-14', last: '2026-08-16' }), 'Fri 14 – Sun 16');
   assert.equal(dateChip({ first: '2026-07-31', last: '2026-08-02' }), 'Fri 31 – Sun 2 Aug');
-});
-
-test('the view mode comes from the address, and anything else opens Agenda', () => {
-  assert.equal(modeFromQuery('?view=timeline'), 'agenda');
-  assert.equal(modeFromQuery('?view=timeline&mode=agenda'), 'agenda');
-  assert.equal(modeFromQuery('?view=timeline&mode=heatmap'), 'heatmap');
-  assert.equal(modeFromQuery('?view=timeline&mode=month'), 'month');
-  assert.equal(modeFromQuery('?view=timeline&mode=river'), 'river');
-  assert.equal(modeFromQuery('?view=timeline&mode=nonsense'), 'agenda');
 });
 
 test('a heatmap year has a square for every day, Sunday first, with 53 or 54 week columns', () => {

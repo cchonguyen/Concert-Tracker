@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { NavStorage, pageFromView, rememberedPage, rememberPage, REMEMBER_KEY, sectionOf, subPagesFor, viewFor } from '../src/services/nav.ts';
+import { hintSeen, markHintSeen, NavStorage, pageFromView, rememberedPage, rememberPage, REMEMBER_KEY, sectionOf, subPagesFor, viewFor } from '../src/services/nav.ts';
 
 const OWNER = { canManage: true };
 const MEMBER = { canManage: false };
@@ -21,20 +21,19 @@ test('every page belongs to one section, and Home to none', () => {
   assert.equal(sectionOf('summary'), 'library');
   assert.equal(sectionOf('table'), 'library');
   assert.equal(sectionOf('manage'), 'library');
-  assert.equal(sectionOf('timeline'), 'explore');
-  assert.equal(sectionOf('map'), 'explore');
-  assert.equal(sectionOf('stats'), 'explore');
-  assert.equal(sectionOf('artists'), 'explore');
+  for (const p of ['agenda', 'month', 'heatmap', 'river', 'map', 'stats', 'ranking'] as const) assert.equal(sectionOf(p), 'explore');
 });
 
-test('owners see all three Library subtabs and all four Explore subtabs', () => {
+const EXPLORE = ['agenda', 'month', 'heatmap', 'river', 'map', 'stats', 'ranking'];
+
+test('owners see all three Library subtabs and all seven Explore subtabs', () => {
   assert.deepEqual(subPagesFor('library', OWNER), ['summary', 'table', 'manage']);
-  assert.deepEqual(subPagesFor('explore', OWNER), ['timeline', 'map', 'stats', 'artists']);
+  assert.deepEqual(subPagesFor('explore', OWNER), EXPLORE);
 });
 
 test('members who cannot see Manage keep Summary and Table only', () => {
   assert.deepEqual(subPagesFor('library', MEMBER), ['summary', 'table']);
-  assert.deepEqual(subPagesFor('explore', MEMBER), ['timeline', 'map', 'stats', 'artists']);
+  assert.deepEqual(subPagesFor('explore', MEMBER), EXPLORE);
 });
 
 test('no view, and the old ?view=events, open Home', () => {
@@ -45,17 +44,24 @@ test('no view, and the old ?view=events, open Home', () => {
   assert.equal(pageFromView('home', OWNER), 'home');
 });
 
-test('each page is named in the address the way the old views were', () => {
+test('each page is named in the address by its page name', () => {
   assert.equal(pageFromView('table', OWNER), 'table');
   assert.equal(pageFromView('map', OWNER), 'map');
-  assert.equal(pageFromView('timeline', OWNER), 'timeline');
+  assert.equal(pageFromView('agenda', OWNER), 'agenda');
+  assert.equal(pageFromView('river', OWNER), 'river');
   assert.equal(pageFromView('summary', OWNER), 'summary');
   assert.equal(pageFromView('stats', OWNER), 'stats');
-  assert.equal(pageFromView('artists', OWNER), 'artists');
+  assert.equal(pageFromView('ranking', OWNER), 'ranking');
   assert.equal(pageFromView('manage', OWNER), 'manage');
   assert.equal(viewFor('map'), 'view=map');
   assert.equal(viewFor('summary'), 'view=summary');
   assert.equal(viewFor('home'), '');
+});
+
+test('the retired names timeline and artists open Home, with no redirect', () => {
+  assert.equal(pageFromView('timeline', OWNER), 'home');
+  assert.equal(pageFromView('artists', OWNER), 'home');
+  assert.equal(pageFromView('timeline', MEMBER), 'home');
 });
 
 test('a member opening ?view=manage lands on Summary', () => {
@@ -71,7 +77,7 @@ test('the address round-trips for every page the viewer can see', () => {
 
 test('the first visit to a section opens its first page', () => {
   assert.equal(rememberedPage('library', OWNER, memoryStorage()), 'summary');
-  assert.equal(rememberedPage('explore', OWNER, memoryStorage()), 'timeline');
+  assert.equal(rememberedPage('explore', OWNER, memoryStorage()), 'agenda');
   assert.equal(rememberedPage('library', OWNER, null), 'summary');
 });
 
@@ -90,9 +96,16 @@ test('a remembered Manage falls back to Summary for a member', () => {
   assert.equal(rememberedPage('library', MEMBER, storage), 'summary');
 });
 
+test('a remembered subtab from before the rename falls back to the first page', () => {
+  assert.equal(rememberedPage('explore', OWNER, memoryStorage({ [REMEMBER_KEY]: JSON.stringify({ explore: 'timeline' }) })), 'agenda');
+  assert.equal(rememberedPage('explore', OWNER, memoryStorage({ [REMEMBER_KEY]: JSON.stringify({ explore: 'artists' }) })), 'agenda');
+  assert.equal(rememberedPage('library', OWNER, memoryStorage({ [REMEMBER_KEY]: JSON.stringify({ library: 'timeline' }) })), 'summary');
+  assert.equal(rememberedPage('explore', OWNER, memoryStorage({ [REMEMBER_KEY]: JSON.stringify({ explore: 'ranking' }) })), 'ranking');
+});
+
 test('a corrupt or blocked store is ignored instead of breaking the header', () => {
-  assert.equal(rememberedPage('explore', OWNER, memoryStorage({ [REMEMBER_KEY]: '{not json' })), 'timeline');
-  assert.equal(rememberedPage('explore', OWNER, memoryStorage({ [REMEMBER_KEY]: '"text"' })), 'timeline');
+  assert.equal(rememberedPage('explore', OWNER, memoryStorage({ [REMEMBER_KEY]: '{not json' })), 'agenda');
+  assert.equal(rememberedPage('explore', OWNER, memoryStorage({ [REMEMBER_KEY]: '"text"' })), 'agenda');
   const blocked: NavStorage = {
     getItem: () => {
       throw new Error('denied');
@@ -101,7 +114,7 @@ test('a corrupt or blocked store is ignored instead of breaking the header', () 
       throw new Error('denied');
     },
   };
-  assert.equal(rememberedPage('explore', OWNER, blocked), 'timeline');
+  assert.equal(rememberedPage('explore', OWNER, blocked), 'agenda');
   assert.doesNotThrow(() => rememberPage('map', blocked));
 });
 
@@ -111,4 +124,13 @@ test("remembering one section keeps the other section's choice", () => {
   rememberPage('summary', storage);
   assert.equal(rememberedPage('explore', OWNER, storage), 'stats');
   assert.equal(rememberedPage('library', OWNER, storage), 'summary');
+});
+
+test('the icon-tab hint shows once: unseen until marked, and blocked storage never shows it again', () => {
+  const storage = memoryStorage();
+  assert.equal(hintSeen(storage), false);
+  markHintSeen(storage);
+  assert.equal(hintSeen(storage), true);
+  assert.equal(hintSeen(null), false);
+  assert.equal(hintSeen({ getItem: () => { throw new Error('denied'); }, setItem: () => undefined }), true);
 });

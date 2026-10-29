@@ -37,14 +37,15 @@ import { AccountPanel } from './components/AccountPanel';
 import { VaultProvider } from './components/VaultContext';
 import { PeopleProvider } from './components/PersonName';
 import { wentTo } from './server/events/attendance';
-import { NavStorage, Page, PAGE_LABELS, pageFromView, rememberedPage, rememberPage, sectionOf, SECTIONS, subPagesFor, viewFor } from './services/nav';
+import { hintSeen, markHintSeen, NavStorage, Page, PAGE_LABELS, pageFromView, rememberedPage, rememberPage, sectionOf, SECTIONS, subPagesFor, viewFor } from './services/nav';
 import { PAGE_ICON, SECTION_ICON } from './components/pageIcons';
 import { HomePage } from './components/HomePage';
 import { cityOf } from './services/table';
 import { homeSummary } from './services/home';
 
-// The Table, Timeline and Map views keep their filters in the address (?view=table&...).
-const FILTERED: Page[] = ['table', 'timeline', 'map'];
+// The Table, the four timeline views and the Map keep their filters in the address (?view=table&...).
+const FILTERED: Page[] = ['table', 'agenda', 'month', 'heatmap', 'river', 'map'];
+const TIMELINE_PAGES: Page[] = ['agenda', 'month', 'heatmap', 'river'];
 
 // Remembered subtabs live on this device; a browser that blocks storage just forgets them.
 const navStorage = (): NavStorage | null => {
@@ -75,6 +76,10 @@ export default function App() {
   const [justAdded, setJustAdded] = useState<string[]>([]);
   // What another tab asked Manage to open.
   const [manageTarget, setManageTarget] = useState<ManageTarget | null>(null);
+  // An event the "to confirm" chip sent Agenda to, opened as Agenda mounts.
+  const [agendaFocus, setAgendaFocus] = useState<string | null>(null);
+  // The one-line icon-tabs hint shows on a phone's first visit to a section, then never again.
+  const [hintDue, setHintDue] = useState(() => !hintSeen(navStorage()));
   // Single-owner installs answer owner; until /api/me answers, assume owner so nothing flickers away.
   const [me, setMe] = useState<Me>({ multiUser: false, role: 'owner', email: null });
   const [members, setMembers] = useState(false);
@@ -166,8 +171,14 @@ export default function App() {
     void refresh();
   };
 
-  // Moving between the Table, Timeline and Map keeps the same filters.
+  // Moving between the Table, the timeline views and the Map keeps the same filters.
   const openTab = (next: Page) => {
+    setAgendaFocus(null);
+    // Picking a page from a section's strip is the hint's cue, so it is done. Entering a section from Home is not.
+    if (sectionOf(tab)) {
+      setHintDue(false);
+      markHintSeen(navStorage());
+    }
     const params = new URLSearchParams(window.location.search);
     if (next === 'home') {
       if (window.location.search) window.history.replaceState(null, '', window.location.pathname);
@@ -175,10 +186,7 @@ export default function App() {
       rememberPage(next, navStorage());
       if (FILTERED.includes(next) && FILTERED.includes(tab)) {
         params.set('view', next);
-        if (next !== 'timeline') {
-          params.delete('mode');
-          params.delete('month');
-        }
+        if (next !== 'month') params.delete('month');
         window.history.replaceState(null, '', `${window.location.pathname}?${params}`);
       } else window.history.replaceState(null, '', `${window.location.pathname}?${viewFor(next)}`);
     }
@@ -191,7 +199,7 @@ export default function App() {
     setTab('table');
   };
 
-  // Open a record in Manage (from the Artists tab, the Table or an event).
+  // Open a record in Manage (from the Ranking tab, the Table or an event).
   const openManage = (target: ManageTarget) => {
     setSelectedId(null);
     setManageTarget({ ...target });
@@ -210,6 +218,16 @@ export default function App() {
   const shown: Page = tab === 'manage' && !canManage ? 'summary' : tab;
   const section = sectionOf(tab);
   const width = shown === 'table' ? 'max-w-7xl' : shown === 'map' ? 'max-w-6xl' : 'max-w-3xl';
+  // The hint is for phones, where the subtabs are icons only.
+  const phone = typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches;
+  useEffect(() => {
+    if (!section || !hintDue || !phone) return;
+    const t = setTimeout(() => {
+      setHintDue(false);
+      markHintSeen(navStorage());
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [section, hintDue, phone]);
   const cityCount = new Set(went.map((e) => cityOf(e)).filter(Boolean)).size;
   // Needs you on Home: shows waiting for a yes or no, and lineups still being looked up.
   const confirmCount = homeSummary(events, lineups, today).toConfirm.length;
@@ -279,23 +297,33 @@ export default function App() {
               {subPagesFor(section, { canManage }).map((p) => {
                 const Icon = PAGE_ICON[p];
                 const active = shown === p;
-                const count = p === 'summary' ? events.length : p === 'artists' ? seenCount : null;
+                const count = p === 'summary' ? events.length : p === 'ranking' ? seenCount : null;
                 return (
                   <button
                     key={p}
                     onClick={() => openTab(p)}
+                    title={PAGE_LABELS[p]}
+                    aria-label={PAGE_LABELS[p]}
                     aria-current={active ? 'page' : undefined}
                     className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
                       active ? 'border-violet-500 text-violet-300' : 'border-transparent text-zinc-400 hover:text-zinc-200'
                     }`}
                   >
-                    <Icon className="h-3.5 w-3.5" />
-                    {PAGE_LABELS[p]}
-                    {count !== null && <span className="text-[11px] opacity-70">{count}</span>}
+                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                    {/* Phones show the icon alone, except on the open page. */}
+                    <span className={active ? '' : 'hidden sm:inline'}>
+                      {PAGE_LABELS[p]}
+                      {count !== null && <span className="ml-1.5 text-[11px] opacity-70">{count}</span>}
+                    </span>
                   </button>
                 );
               })}
             </div>
+            {hintDue && (
+              <p className={`mx-auto ${width} px-4 pb-2 text-xs text-violet-300 sm:hidden`}>
+                Tap an icon to switch pages.
+              </p>
+            )}
           </div>
         )}
       </header>
@@ -352,10 +380,24 @@ export default function App() {
             onRefresh={() => void refresh()}
           />
         )}
-        {shown === 'timeline' && <TimelineTab events={events} lineups={lineups} editions={editions} onOpen={setSelectedId} onOpenTable={openTable} />}
+        {TIMELINE_PAGES.includes(shown) && (
+          <TimelineTab
+            mode={shown as 'agenda' | 'month' | 'heatmap' | 'river'}
+            focusEventId={agendaFocus}
+            events={events}
+            lineups={lineups}
+            editions={editions}
+            onOpen={setSelectedId}
+            onOpenTable={openTable}
+            onShowToConfirm={(id) => {
+              openTab('agenda');
+              setAgendaFocus(id);
+            }}
+          />
+        )}
         {shown === 'map' && <MapView events={went} lineups={lineups} editions={editions} onOpen={setSelectedId} onOpenTable={openTable} />}
         {shown === 'stats' && <StatsView events={events} onOpen={setSelectedId} onOpenTable={openTable} />}
-        {shown === 'artists' && (
+        {shown === 'ranking' && (
           <ArtistsView events={went} onOpenEvent={setSelectedId} onOpenTable={openTable} onManage={(key) => openManage({ kind: 'artist', name: key })} />
         )}
         {shown === 'manage' && (

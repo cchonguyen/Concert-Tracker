@@ -1,42 +1,38 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, CalendarRange, Grid3x3, ListOrdered, Table2, Waves } from 'lucide-react';
+import { CalendarRange, Table2 } from 'lucide-react';
 import type { LineupFacts, LineupSummary, LoggedEvent } from '../../services/lineupApi';
 import { activeFilterCount, EMPTY_FILTERS, filterEvents, filterOptions, filtersFromQuery, filtersToQuery, TableFilters } from '../../services/table';
-import { buildTimelineModel, DEFAULT_MODE, firstToConfirm, modeFromQuery, monthFromQuery, monthToQuery, TIMELINE_VIEWS, TimelineMode, TimelineRange } from '../../services/timeline';
+import { buildTimelineModel, firstToConfirm, monthFromQuery, monthToQuery, TimelineMode, TimelineRange } from '../../services/timeline';
 import { AgendaView } from './AgendaView';
 import { HeatmapView } from './HeatmapView';
 import { MonthView } from './MonthView';
 import { RiverView } from './RiverView';
 import { NoDateTray } from './parts';
 
-// The Timeline tab: the view switcher, filters shared with the Table and
-// Map, the "to confirm" chip, "Open in Table" and the No date yet tray. These
-// live here, not in a view, so they stay put whichever view is showing.
+// One Explore page for a timeline view (Agenda, Month, Heatmap or River). The
+// filters shared with the Table and Map, the "to confirm" chip, "Open in
+// Table" and the No date yet tray live here, not in a view, so they stay put
+// whichever view is showing. Choosing a view is the header's job (nav.ts).
 
 interface TimelineTabProps {
+  mode: TimelineMode;
+  focusEventId?: string | null; // Opened from the "to confirm" chip on another view
   events: LoggedEvent[];
   lineups: Record<string, LineupSummary>;
   editions: Record<string, LineupFacts>;
   onOpen: (id: string) => void;
   onOpenTable: (query: string) => void;
+  onShowToConfirm: (id: string) => void;
 }
-
-const ICONS: Record<TimelineMode, React.ComponentType<{ className?: string }>> = {
-  agenda: ListOrdered,
-  month: CalendarDays,
-  heatmap: Grid3x3,
-  river: Waves,
-};
 
 const control =
   'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
 const label = 'space-y-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500';
 const ALL: TimelineRange = { kind: 'all' };
 
-export const TimelineTab: React.FC<TimelineTabProps> = ({ events, lineups, editions, onOpen, onOpenTable }) => {
+export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, focusEventId = null, events, lineups, editions, onOpen, onOpenTable, onShowToConfirm }) => {
   const [filters, setFilters] = useState<TableFilters>(() => filtersFromQuery(window.location.search));
-  const [mode, setMode] = useState<TimelineMode>(() => modeFromQuery(window.location.search));
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(focusEventId);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const today = new Date().toISOString().slice(0, 10);
   const [monthRange, setMonthRange] = useState<TimelineRange>(() => monthFromQuery(window.location.search, today));
@@ -51,9 +47,8 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({ events, lineups, editi
 
   useEffect(() => {
     const q = filtersToQuery(filters);
-    const m = mode === DEFAULT_MODE ? '' : `&mode=${mode}`;
     const at = mode === 'month' && monthRange.kind === 'month' ? `&month=${monthToQuery(monthRange)}` : '';
-    window.history.replaceState(null, '', `${window.location.pathname}?view=timeline${m}${at}${q ? `&${q}` : ''}`);
+    window.history.replaceState(null, '', `${window.location.pathname}?view=${mode}${at}${q ? `&${q}` : ''}`);
   }, [filters, mode, monthRange]);
 
   const confirmId = firstToConfirm(model);
@@ -61,33 +56,14 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({ events, lineups, editi
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <nav className="flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1 text-sm" aria-label="Timeline view">
-          {TIMELINE_VIEWS.map((v) => {
-            const Icon = ICONS[v.id];
-            return (
-              <button
-                key={v.id}
-                disabled={!v.ready}
-                onClick={() => setMode(v.id)}
-                title={v.ready ? v.label : `${v.label}: coming soon`}
-                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium transition-colors ${
-                  mode === v.id ? 'bg-violet-600 text-white' : v.ready ? 'text-zinc-400 hover:text-zinc-200' : 'cursor-not-allowed text-zinc-700'
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                <span className={mode === v.id ? '' : 'hidden sm:inline'}>{v.label}</span>
-              </button>
-            );
-          })}
-        </nav>
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <div className="flex items-center gap-3 text-xs">
           {model.toConfirm > 0 && confirmId && (
             <button
               onClick={() => {
                 // Agenda is where you answer, so the chip opens it at the first one.
-                setMode('agenda');
-                setSelectedEventId(confirmId);
+                if (mode === 'agenda') setSelectedEventId(confirmId);
+                else onShowToConfirm(confirmId);
               }}
               className="rounded-full border border-dashed border-amber-400/60 px-2.5 py-1 font-semibold text-amber-300 hover:bg-amber-400/10"
             >
