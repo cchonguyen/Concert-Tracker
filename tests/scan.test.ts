@@ -232,14 +232,14 @@ test('scan routes: connect checks the sign-in state, then checking reads new mai
 
   // A callback that did not start here is refused.
   const forged = await call('/gmail/callback?code=good-code&state=made-up');
-  assert.match(forged.headers.get('location')!, /^\/\?gmail=That%20sign-in%20expired/);
+  assert.match(forged.headers.get('location')!, /^\/app\?gmail=That%20sign-in%20expired/);
   assert.equal(await store.getSetting(GMAIL_SETTING), null);
 
   const start = await call('/gmail/connect');
   assert.equal(start.status, 302);
   const state = new URL(start.headers.get('location')!).searchParams.get('state')!;
   const done = await call(`/gmail/callback?code=good-code&state=${state}`);
-  assert.equal(done.headers.get('location'), '/?gmail=connected');
+  assert.equal(done.headers.get('location'), '/app?gmail=connected');
   // The state works once.
   const replay = await call(`/gmail/callback?code=good-code&state=${state}`);
   assert.match(replay.headers.get('location')!, /expired/);

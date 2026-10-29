@@ -280,7 +280,7 @@ The `/api` routes live in `src/server/app.ts` and take a `JobRunner` that starts
 
 | | Node (`server.ts`, `npm run dev`) | Cloudflare Worker (`worker/index.ts`, `wrangler.jsonc`) |
 | --- | --- | --- |
-| Frontend | Vite middleware in dev, `dist/` in production | Workers static assets from `dist/`, SPA fallback; only `/api/*` and the share page (`/s`, `/s/*`, `/S`, `/S/*`) run the Worker |
+| Frontend | Vite middleware in dev, `dist/` in production (two pages: the marketing page and the app, see Public pages) | Workers static assets from `dist/`, unknown addresses get `404.html`; the Worker runs for `/`, the app page, `/api/*` and the share page (`/s`, `/s/*`, `/S`, `/S/*`), and hands the pages it lets through to the static assets (`ASSETS`)
 | API | Express | The same Express app, through `handleAsNodeRequest` from `cloudflare:node` (`nodejs_compat`) |
 | Starting a job | `LookupWorker.kick` runs it in-process | A message on the `concert-tracker-lookups` Queue |
 | Due and parked jobs | `setInterval` every 20 s | Cron Trigger every minute sends due jobs to the Queue |
@@ -300,8 +300,22 @@ A read-only page of your history at `/s/<code>` that anyone with the link can op
 - **Links** (`links.ts`, table `share_links`, migration 0015): a code is 16 random bytes as 22 URL-safe characters; only its SHA-256 hash is stored. One link is active at a time; a new one turns the old one off. Settings: display name (yours to set, never in the code), time zone (from your browser), and switches for dates and venues (on) and format (off).
 - **What it shows** (`view.ts`, `buildShareView`): the allow-list. The page is rendered from the returned `ShareView` alone: titles, years, city/state/country, Concert or Festival, act names, totals, most seen, series you went back to, cities; dates, venues and format only when switched on. Only events you went to whose last possible day is before today in the link's time zone (nothing today, underway, ahead, undated, planned or missed). No "last updated" date; with dates hidden, events in a year are listed A to Z. The store reads only `SHARE_EVENT_COLUMNS` (`listShareEvents`), so companions, notes, rating, price, weather, sources and the typed line never leave the database.
 - **The front door** (`door.ts`, first thing in `worker/index.ts`): any path under `/s` in either case is answered here and never reaches Express or the SPA fallback. Only GET or HEAD of exactly `/s/` plus a 22-character code can open a page; everything else, and unknown or turned-off codes, get the same 404 "not active" page. The page is plain HTML with inline styles and no scripts (`page.ts`), every value escaped, with `Cache-Control: no-store` (turning a link off works at once), a CSP that allows no scripts, `nosniff`, `DENY` framing, `no-referrer` and `noindex`. The route makes no writes and logs only the link id.
-- **Second lock** (`access.ts`): with `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` set, every other request the Worker sees needs a valid Cloudflare Access token (`Cf-Access-Jwt-Assertion`: RS256, signed by the team's keys, this application's audience, the team as issuer, not expired), so a path trick past the `/s/*` Access bypass (dot segments are normalized to `/api/...` before the Worker sees them) is still refused. Set both before turning on the bypass.
+- **Second lock** (`access.ts`): with `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` set, every request the Worker sees that is not a public page (see Public pages) needs a valid Cloudflare Access token (`Cf-Access-Jwt-Assertion`: RS256, signed by the team's keys, this application's audience, the team as issuer, not expired), so a path trick past the `/s/*` Access bypass (dot segments are normalized to `/api/...` before the Worker sees them) is still refused. Set both before turning on the bypass.
 - **Your controls** (`routes.ts`, `/api/share`, behind Access like the rest of `/api`; Share in the Menu, `SharePanel.tsx`): `GET /share` reads the active link (id, date, settings, never the hash); `POST /share` makes a new link, turning the old one off, and returns its code once; `PUT /share/settings` changes the active link's settings; `DELETE /share` turns sharing off; `GET /share/preview` renders the active link's page through the same code and headers as `/s/<code>`. Because only the hash is kept, the full link can be shown again only in the browser that made it (it remembers it locally); elsewhere you make a new link.
+
+## Public pages
+
+Anyone can open the public pages without signing in. The app itself is at the address `/app` and still needs Cloudflare Access, as before. Lists and code: `src/server/site/publicPaths.ts` (the list), `src/server/share/door.ts` (the Worker's check) and `worker/index.ts` (which files the Worker hands out). Local development uses the same addresses in `server.ts`.
+
+- The marketing page is `/` (static `index.html`, not part of the React app). Signed-in visitors get `/app` instead, unless the address has `?public=1`.
+- Old app addresses (`/?view=...`, `/?gmail=...`, `/?sheets=...`) redirect with 302 to `/app` with the same query. Google's return addresses after Connect Gmail and Connect Sheets point at `/app`.
+- Unknown addresses get `404.html`.
+
+Public allowlist. The Access bypass policy must list the same paths; the Worker's front door uses the same list. A test checks that this list and `publicPaths.ts` agree:
+
+- `/`, `/index.html`, `/demo`, `/demo/*`, `/privacy`, `/privacy.html`, `/terms`, `/terms.html`, `/robots.txt`, `/sitemap.xml`, `/og.png`, `/favicon.ico`, `/favicon.svg`, `/favicon-32.png`, `/apple-touch-icon.png`, `/manifest.webmanifest`, `/assets/*`, `/s/*`, `/S/*`.
+
+The site's one address is `site.config.json`. A test checks that it matches `APP_URL` in `wrangler.jsonc`; `APP_URL` is still the bare origin, since Google's redirect is built from it.
 
 ## Multi-user
 
