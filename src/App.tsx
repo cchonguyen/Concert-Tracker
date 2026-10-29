@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useHideOnScroll } from './components/headerScroll';
 import { House, Radio } from 'lucide-react';
 import {
   EmailImport,
@@ -80,6 +81,8 @@ export default function App() {
   const [account, setAccount] = useState(false);
   const theme = useTheme();
   const [quickAdd, setQuickAdd] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+  const headerShown = useHideOnScroll(headerRef);
   const [saved, setSaved] = useState<LoggedEvent | null>(null);
   const dismissSaved = useCallback(() => setSaved(null), []);
   const closeQuickAdd = useCallback(() => setQuickAdd(false), []);
@@ -219,7 +222,12 @@ export default function App() {
     )}
     <VaultProvider events={events} onChanged={refresh}>
     <div className="min-h-screen bg-zinc-950 font-sans text-zinc-100 selection:bg-violet-600 selection:text-white flex flex-col">
-      <header className="sticky top-0 z-30 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md">
+      <header
+        ref={headerRef}
+        className={`sticky top-0 z-30 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md transition-transform duration-200 motion-reduce:transition-none ${
+          headerShown ? '' : '-translate-y-full'
+        }`}
+      >
         <div className={`mx-auto flex ${width} items-center justify-between gap-3 px-4 py-3`}>
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-violet-600 to-cyan-400">
