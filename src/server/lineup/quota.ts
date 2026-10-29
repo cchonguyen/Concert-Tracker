@@ -68,12 +68,16 @@ export interface QuotaConfig {
   // this) and the most any one member may use a day. 0 means no limit.
   ownerReserve?: number;
   userDaily?: number;
+  // The most background (backfill) calls one member may use a day; 0 means no limit.
+  userBackfillDaily?: number;
 }
 
 export interface AcquireOptions {
   ignorePause?: boolean;
   // The member the call is for; left out in single-owner mode.
   userId?: string;
+  // 'backfill' counts against the member's separate background cap.
+  lane?: 'interactive' | 'backfill';
 }
 
 // Self-tracked budget so the app stops before Google says no, and so a parked
@@ -101,7 +105,7 @@ export class QuotaLedger {
   async acquire(now = new Date(), opts: AcquireOptions = {}): Promise<void> {
     const key = this.key(now);
     const usage = (await this.store.getQuota(key)) ?? { key, used: 0 };
-    const mine = opts.userId ? await this.checkMember(opts.userId, key, usage.used, now) : null;
+    const mine = opts.userId ? await this.checkMember(opts.userId, key, usage.used, now, opts.lane ?? 'interactive') : null;
     if (!opts.ignorePause && usage.exhaustedUntil && new Date(usage.exhaustedUntil) > now) {
       throw new QuotaExhaustedError(new Date(usage.exhaustedUntil), 'Gemini quota exhausted; waiting for capacity.');
     }
@@ -123,13 +127,14 @@ export class QuotaLedger {
   // A member's own count for today, refused when they are over their daily
   // cap or the shared pool is down to the owner's reserve. These pauses are
   // scoped to the member (QuotaExhaustedError.scope) so others keep going.
-  private async checkMember(userId: string, key: string, globalUsed: number, now: Date): Promise<{ key: string; used: number }> {
-    const userKey = `${key}:user:${userId}`;
+  private async checkMember(userId: string, key: string, globalUsed: number, now: Date, lane: 'interactive' | 'backfill'): Promise<{ key: string; used: number }> {
+    const userKey = lane === 'backfill' ? `${key}:user:${userId}:backfill` : `${key}:user:${userId}`;
     const usage = (await this.store.getQuota(userKey)) ?? { key: userKey, used: 0 };
     const until = nextPacificMidnight(now);
-    const { userDaily = 0, ownerReserve = 0 } = this.config;
+    const { ownerReserve = 0, userBackfillDaily = 0 } = this.config;
+    const userDaily = lane === 'backfill' ? userBackfillDaily : (this.config.userDaily ?? 0);
     if (userDaily > 0 && usage.used >= userDaily) {
-      throw new QuotaExhaustedError(until, `Your daily limit of ${userDaily} Gemini calls is used; retrying after the midnight Pacific reset.`, 'user');
+      throw new QuotaExhaustedError(until, `Your daily limit of ${userDaily} ${lane === 'backfill' ? 'background ' : ''}Gemini calls is used; retrying after the midnight Pacific reset.`, 'user');
     }
     const owner = (await this.store.ownerUserId?.()) ?? null;
     if (ownerReserve > 0 && userId !== owner && globalUsed >= this.config.dailyLimit - ownerReserve) {

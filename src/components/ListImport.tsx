@@ -165,19 +165,21 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
   };
 
   const go = async () => {
-    setBusy(true);
     setError(null);
+    // A locked vault cannot encrypt, and notes and companions are never dropped quietly.
+    if (vault.status === 'locked' && chosen.some((row) => row.notes || row.companions.some((c) => !leaveOut.has(norm(c))))) {
+      setError('Unlock your vault to import notes and companions. Open "Your account", unlock it, then import again.');
+      return;
+    }
+    setBusy(true);
     try {
       const res = await runImport(
         chosen.map((row) => ({ row, choice: choices[row.id]! })),
         {
           create: eventsApi.create,
-          // With a vault on, notes are encrypted here; while it is locked they are left out.
-          update: async (id, patch) => {
-            if (typeof patch.notes !== 'string' || vault.status === 'off' || vault.status === 'unavailable') return eventsApi.update(id, patch);
-            const { notes, ...rest } = patch;
-            return eventsApi.update(id, vault.status === 'unlocked' ? { ...rest, notes: await vault.encryptNote(notes) } : rest);
-          },
+          // With an unlocked vault, notes are encrypted here before they are sent.
+          update: async (id, patch) =>
+            eventsApi.update(id, typeof patch.notes === 'string' && vault.status === 'unlocked' ? { ...patch, notes: await vault.encryptNote(patch.notes) } : patch),
           addEmail: importsApi.add,
           restoreEmail: (ids) => importsApi.skip(ids, true),
         },

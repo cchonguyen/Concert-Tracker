@@ -74,3 +74,14 @@ test('quota: counts reset the next Pacific day', async () => {
   assert.ok(await refused(quota.acquire(NOW, { userId: 'ann' })));
   await quota.acquire(new Date('2026-10-30T18:00:00Z'), { userId: 'ann' });
 });
+
+test('quota: the background lane has its own per-member cap and does not use up the interactive one', async () => {
+  const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'mu-lane-')));
+  const quota = new QuotaLedger(store, { provider: 'gemini', model: 'm', dailyLimit: 20, perMinute: 1000, userDaily: 5, userBackfillDaily: 3 });
+  for (let i = 0; i < 3; i++) await quota.acquire(NOW, { userId: 'ann', lane: 'backfill' });
+  const err = await refused(quota.acquire(NOW, { userId: 'ann', lane: 'backfill' }));
+  assert.equal(err?.scope, 'user');
+  assert.ok(err?.reason.includes('background'));
+  for (let i = 0; i < 5; i++) await quota.acquire(NOW, { userId: 'ann' });
+  assert.ok(await refused(quota.acquire(NOW, { userId: 'ann' })));
+});

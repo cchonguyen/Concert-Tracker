@@ -230,6 +230,8 @@ test('member lineup review: ticks go to the member\'s own event only; nothing sh
   assert.equal(await s.getSeries('fest'), null);
   assert.deepEqual(await s.getSourceStats(), []);
   assert.deepEqual(await s.getAliases(), {});
+  assert.deepEqual(await s.getBlocklist(['fest.example', '*']), []);
+  assert.deepEqual(await s.getExamples('fest.example'), []);
   assert.equal((await mine.getJob('j1'))!.status, 'confirmed');
   // Another member cannot review or see it.
   assert.equal(await s.forUser(BOB).getJob('j1'), null);
