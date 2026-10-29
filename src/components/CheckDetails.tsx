@@ -28,6 +28,9 @@ interface Props {
   onGemini: () => void;
   onPick: (id: string) => void;
   onNone: () => void;
+  // Inside a card whose header holds the Check details button: no frame, title or button of its own, and the
+  // Gemini step only once a check has run.
+  inline?: boolean;
 }
 
 const ROW_TEXT: Record<CheckRow['state'], string> = {
@@ -39,7 +42,7 @@ const ROW_TEXT: Record<CheckRow['state'], string> = {
 
 // Check details: searches the sources for this date and place. Nothing you typed changes. Suggestions are offered, never applied,
 // and Gemini is a separate, opt-in second step.
-export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, notes, lineupStatus, suggestions, onCheck, onGemini, onPick, onNone }: Props) {
+export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, notes, lineupStatus, suggestions, onCheck, onGemini, onPick, onNone, inline = false }: Props) {
   const [used, setUsed] = useState<string[]>([]);
   const left = lineupStatus?.quota ? Math.max(0, lineupStatus.quota.limit - lineupStatus.quota.used) : null;
   const rows = checkRows({
@@ -52,10 +55,17 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
   const shown = suggestions.filter((s) => !used.includes(s.key));
   const geminiNotes = notes.filter((n) => n.startsWith('gemini:'));
   const last = checkedLabel(checkedAt, Date.now());
+  const gemini = Boolean(lineupStatus?.gemini) && (!inline || Boolean(checkedAt));
+  const live = (
+    <p role="status" aria-live="polite" className="sr-only">
+      {busy ? 'Checking details' : rows.length ? 'Check finished' : ''}
+    </p>
+  );
+  if (inline && !rows.length && !last && status !== 'choose' && !shown.length && !gemini) return live;
 
   return (
-    <div className="space-y-3 rounded-xl border border-zinc-800 p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
+    <div className={inline ? 'space-y-3' : 'space-y-3 rounded-xl border border-zinc-800 p-3'}>
+      {!inline && <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="space-y-0.5">
           <p className="text-sm font-semibold text-zinc-100">Check details</p>
           <p className="text-xs text-zinc-400">Searches Ticketmaster, setlist.fm, Clashfinder (when set up) and the web for this date and place. Nothing you typed is changed.</p>
@@ -63,11 +73,9 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
         <Button onClick={onCheck} disabled={busy || geminiBusy}>
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Check details
         </Button>
-      </div>
+      </div>}
       {last && !busy && <p className="text-xs text-zinc-400">{last}</p>}
-      <p role="status" aria-live="polite" className="sr-only">
-        {busy ? 'Checking details' : rows.length ? 'Check finished' : ''}
-      </p>
+      {live}
 
       {rows.length > 0 && (
         <ul className="space-y-1 text-xs">
@@ -128,7 +136,7 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
         </div>
       ))}
 
-      {lineupStatus?.gemini && (
+      {gemini && lineupStatus && (
         <div className="space-y-2 border-t border-zinc-800 pt-3">
           <p className="text-xs text-zinc-300">
             Still missing something? Read the found pages with Gemini.
