@@ -6,6 +6,7 @@ import type { Entity, EntityAlias, EntityLink, HistoryEntry, LinkRole } from '..
 import type { ConfirmRequest } from '../server/lineup/learning';
 import type { DetailCandidate, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
 import type { EventPatch } from '../server/events/service';
+import type { ActivityEntry } from '../server/events/activityLog';
 import type { EmailImport, MergeField } from '../server/events/email/types';
 import type { ArtistSuggestion } from '../server/events/artists';
 import type { LineupFacts } from '../server/events/scale';
@@ -91,6 +92,9 @@ export const eventsApi = {
   update: (id: string, patch: EventPatch) =>
     request<{ event: LoggedEvent }>(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }).then((r) => r.event),
   remove: (id: string) => request<unknown>(`/api/events/${id}`, { method: 'DELETE' }),
+  deleted: () => request<{ events: LoggedEvent[] }>('/api/events/deleted').then((r) => r.events),
+  restore: (id: string) => request<unknown>(`/api/events/${id}/restore`, post()),
+  activity: (limit = 200) => request<{ activity: ActivityEntry[] }>(`/api/activity?limit=${limit}`).then((r) => r.activity),
   research: (id: string, useGemini = false) =>
     request<{ event: LoggedEvent }>(`/api/events/${id}/details`, post({ useGemini })).then((r) => r.event),
   weather: (id: string) => request<{ event: LoggedEvent; note?: string }>(`/api/events/${id}/weather`, post()),
