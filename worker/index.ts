@@ -1,12 +1,12 @@
 import { handleAsNodeRequest } from 'cloudflare:node';
-import { createApiApp } from '../src/server/app';
+import { createApiApp, healthStatus } from '../src/server/app';
 import { PipelineDeps, runJob } from '../src/server/lineup/pipeline';
 import { createDeps, createStore } from '../src/server/lineup/service';
 import { backfillEntities, backfillVenuePlaces } from '../src/server/entities/linkingStore';
 import { frontDoor } from '../src/server/share/door';
 import { accessConfigFromEnv } from '../src/server/share/access';
 import { isRetentionTime, runRetention } from '../src/server/events/retention';
-import { multiUserFromEnv, workerSettings } from '../src/server/auth/config';
+import { accessGateFromEnv, multiUserFromEnv, workerSettings } from '../src/server/auth/config';
 import { supabaseMemberDirectory } from '../src/server/auth/members';
 import { getSupabaseClient } from '../src/server/supabase';
 
@@ -57,13 +57,11 @@ async function ensureServer(env: Env): Promise<void> {
   if (listening) return;
   const deps = await getDeps();
   if (listening) return;
-  // MULTI_USER=on turns on members (src/server/auth/); off by default. Read from
-  // the bindings as well as the process environment, so it cannot be on in one
-  // and missing from the other (that would serve the owner's data to anyone
-  // Access lets in).
+  // Who may use /api (src/server/auth/config.ts). Read from the bindings as
+  // well as the process environment, so MULTI_USER cannot be on in one and
+  // missing from the other. Anything that cannot be read is closed, not open.
   const settings = workerSettings(env as unknown as Record<string, unknown>, process.env);
-  const config = multiUserFromEnv(settings);
-  const multiUser = config ? { config, directory: supabaseMemberDirectory(getSupabaseClient()!) } : undefined;
+  const gate = accessGateFromEnv(settings, () => supabaseMemberDirectory(getSupabaseClient()!));
   const app = createApiApp(
     deps,
     {
@@ -71,7 +69,7 @@ async function ensureServer(env: Env): Promise<void> {
         await env.LOOKUP_QUEUE.send({ jobId, force });
       },
     },
-    multiUser,
+    gate,
   );
   app.listen(PORT);
   listening = true;
@@ -86,6 +84,8 @@ export default {
     if (answered) return answered;
     const path = new URL(request.url).pathname;
     if (path !== '/api' && !path.startsWith('/api/')) return env.ASSETS.fetch(request);
+    // Health answers even when startup fails: it says only that the server is up.
+    if (path === '/api/health' && request.method === 'GET') return Response.json(healthStatus());
     try {
       await ensureServer(env);
     } catch (err) {

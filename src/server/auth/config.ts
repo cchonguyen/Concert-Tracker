@@ -1,9 +1,15 @@
 import { type AccessConfig, accessConfigFromEnv } from '../share/access';
+import type { MemberDirectory } from './members';
 
-// Multi-user mode is off unless MULTI_USER=on and everything it needs is
-// set. Off, the app is the single-owner app it has always been. On, every
-// /api request needs a signed-in member, and the request's rows are that
-// member's alone (see ARCHITECTURE.md, "Multi-user").
+// Who may use /api. Every request is checked; nothing is open by default.
+//  - MULTI_USER=on (exactly, after trimming): members. Every /api request
+//    needs an invited member, and the request's rows are that member's alone
+//    (see ARCHITECTURE.md, "Multi-user"). Needs the Access settings, the
+//    Supabase settings, and a directory of members.
+//  - Anything else (unset, "off", or a value that cannot be read as "on"):
+//    the single-owner app. Only the Access identity in OWNER_EMAIL gets through.
+//  - Anything missing for the mode above: closed. Every /api request gets 503,
+//    except /api/health, which says only that the server is up.
 
 export interface MultiUserConfig {
   access: AccessConfig;
@@ -11,6 +17,17 @@ export interface MultiUserConfig {
   anonKey: string;
   jwtSecret: string;
 }
+
+export interface OwnerGate {
+  access: AccessConfig;
+  ownerEmail: string;
+  getJson?: (url: string) => Promise<unknown>;
+}
+
+export type AccessGate =
+  | ({ kind: 'multi'; directory: MemberDirectory } & MultiUserConfig)
+  | ({ kind: 'owner' } & OwnerGate)
+  | { kind: 'closed'; reason: string };
 
 export function multiUserFromEnv(env: Record<string, string | undefined>): MultiUserConfig | null {
   if (env.MULTI_USER?.trim().toLowerCase() !== 'on') return null;
@@ -24,6 +41,30 @@ export function multiUserFromEnv(env: Record<string, string | undefined>): Multi
   // Half-configured is refused loudly rather than quietly running single-owner.
   if (missing.length) throw new Error(`MULTI_USER=on needs ${missing.join(', ')}.`);
   return { access: access!, supabaseUrl: env.SUPABASE_URL!, anonKey: env.SUPABASE_ANON_KEY!, jwtSecret: env.SUPABASE_JWT_SECRET! };
+}
+
+// The gate for this process. `directory` is called only in multi-user mode, so
+// the members table is not touched in single-owner mode. Never throws: a
+// config that cannot be read becomes a closed gate.
+export function accessGateFromEnv(env: Record<string, string | undefined>, directory: () => MemberDirectory): AccessGate {
+  const raw = env.MULTI_USER?.trim().toLowerCase();
+  if (raw === 'on') {
+    try {
+      const config = multiUserFromEnv(env)!;
+      return { kind: 'multi', ...config, directory: directory() };
+    } catch (err) {
+      return { kind: 'closed', reason: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  if (raw !== undefined && raw !== '' && raw !== 'off') {
+    console.warn(`MULTI_USER is "${raw}", which is not "on" or "off". Running single-owner.`);
+  }
+  const access = accessConfigFromEnv(env);
+  const ownerEmail = env.OWNER_EMAIL?.trim().toLowerCase() ?? '';
+  const missing = [!access && 'ACCESS_TEAM_DOMAIN and ACCESS_AUD', !ownerEmail && 'OWNER_EMAIL'].filter(Boolean);
+  if (missing.length) return { kind: 'closed', reason: `Single-owner access needs ${missing.join(' and ')}.` };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) return { kind: 'closed', reason: 'OWNER_EMAIL is not an email address.' };
+  return { kind: 'owner', access: access!, ownerEmail };
 }
 
 // The Worker's settings: the process environment (vars and secrets, as

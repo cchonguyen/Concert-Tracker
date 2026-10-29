@@ -10,24 +10,24 @@ import { sheetsFromEnv } from './events/sheets';
 import { genresRouter } from './events/genreRoutes';
 import { entitiesRouter } from './entities/routes';
 import { shareRouter } from './share/routes';
-import type { MultiUserConfig } from './auth/config';
-import type { MemberDirectory } from './auth/members';
+import type { AccessGate } from './auth/config';
+import { closedMiddleware, ownerMiddleware } from './auth/gate';
 import { memberMiddleware, requestScopedStore } from './auth/requestScope';
 import { accountRouter, membersRouter, singleOwnerMeRouter } from './auth/routes';
 import { vaultGuard, vaultRouter } from './auth/vault';
 import { peopleRouter } from './entities/people';
 
+// The body of GET /api/health. It says only that the server is up, and it
+// answers even when access is closed (config.ts).
+export const healthStatus = () => ({ status: 'ok', timestamp: new Date().toISOString() });
+
 // The /api routes, shared by the Node server (server.ts) and the Cloudflare
 // Worker (worker/index.ts). Static files and the job runner are wired by each host.
-// multiUser: when set (MULTI_USER=on), every /api request after /api/health
-// needs an invited member, and the routes see only that member's rows.
-export function createApiApp(
-  baseDeps: PipelineDeps,
-  runner: JobRunner,
-  multiUser?: { config: MultiUserConfig; directory: MemberDirectory },
-): express.Express {
+// gate: who may use /api (config.ts). Every /api request after /api/health passes
+// it: members (MULTI_USER=on), the owner (OWNER_EMAIL), or nobody (closed, 503).
+export function createApiApp(baseDeps: PipelineDeps, runner: JobRunner, gate: AccessGate): express.Express {
   const app = express();
-  const lineupDeps: PipelineDeps = multiUser ? { ...baseDeps, store: requestScopedStore(baseDeps.store) } : baseDeps;
+  const lineupDeps: PipelineDeps = gate.kind === 'multi' ? { ...baseDeps, store: requestScopedStore(baseDeps.store) } : baseDeps;
   // Ticket emails arrive in batches with their HTML, larger than other requests.
   app.use('/api/imports/email', express.json({ limit: '25mb' }));
   // A full re-scan's proposals (quotes only, no mail bodies).
@@ -37,19 +37,22 @@ export function createApiApp(
   app.use(express.json());
 
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    res.json(healthStatus());
   });
 
-  if (multiUser) {
-    app.use('/api', memberMiddleware({ ...multiUser, base: baseDeps.store }));
-    app.use('/api', membersRouter(multiUser.directory, lineupDeps.store));
+  if (gate.kind === 'multi') {
+    app.use('/api', memberMiddleware({ config: gate, directory: gate.directory, base: baseDeps.store }));
+    app.use('/api', membersRouter(gate.directory, lineupDeps.store));
     // Your data: the vault's key material, a plaintext-note guard, export and deletion.
     app.use('/api', vaultGuard(lineupDeps.store));
     app.use('/api', vaultRouter(lineupDeps.store));
     app.use('/api', peopleRouter(lineupDeps.store));
-    app.use('/api', accountRouter(multiUser.directory, lineupDeps.store));
-  } else {
+    app.use('/api', accountRouter(gate.directory, lineupDeps.store));
+  } else if (gate.kind === 'owner') {
+    app.use('/api', ownerMiddleware(gate));
     app.use('/api', singleOwnerMeRouter());
+  } else {
+    app.use('/api', closedMiddleware(gate.reason));
   }
 
   // Your event log: capture and details (stage 1), then lineup lookups (stage 2).
