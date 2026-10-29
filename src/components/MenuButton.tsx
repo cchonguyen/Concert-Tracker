@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Download, FileUp, Menu, Sheet, UserCog, Users } from 'lucide-react';
 import { Theme, ThemeControls } from './ThemePicker';
+import { LogOutLink } from './LogOutLink';
 
 interface Props {
   theme: Theme;
@@ -91,6 +92,9 @@ export function MenuButton({ theme, canMembers, canAccount, canSheets, onMembers
           <div className="space-y-2 border-t border-zinc-800 pt-3">
             <p className="px-1 text-xs font-medium uppercase tracking-wide text-zinc-500">Theme</p>
             <ThemeControls theme={theme} />
+          </div>
+          <div className="border-t border-zinc-800 pt-3">
+            <LogOutLink className={item} />
           </div>
         </div>
       )}
