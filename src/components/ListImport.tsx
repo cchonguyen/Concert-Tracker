@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, FileUp, Loader2, X } from 'lucide-react';
+import { useVault } from './VaultContext';
 import { EmailImport, entitiesApi, eventsApi, importsApi, LoggedEvent } from '../services/lineupApi';
 import type { NameIndex } from '../server/entities/link';
 import { placeLabel, whenLabel } from '../services/format';
@@ -84,6 +85,7 @@ function initialChoices(read: ReadList, events: LoggedEvent[], imports: EmailImp
 }
 
 export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone, onClose }) => {
+  const vault = useVault();
   const [file, setFile] = useState<string | null>(null);
   const [list, setList] = useState<ReadList | null>(null);
   const [choices, setChoices] = useState<Record<string, Choice | undefined>>({});
@@ -170,7 +172,12 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
         chosen.map((row) => ({ row, choice: choices[row.id]! })),
         {
           create: eventsApi.create,
-          update: eventsApi.update,
+          // With a vault on, notes are encrypted here; while it is locked they are left out.
+          update: async (id, patch) => {
+            if (typeof patch.notes !== 'string' || vault.status === 'off' || vault.status === 'unavailable') return eventsApi.update(id, patch);
+            const { notes, ...rest } = patch;
+            return eventsApi.update(id, vault.status === 'unlocked' ? { ...rest, notes: await vault.encryptNote(notes) } : rest);
+          },
           addEmail: importsApi.add,
           restoreEmail: (ids) => importsApi.skip(ids, true),
         },
