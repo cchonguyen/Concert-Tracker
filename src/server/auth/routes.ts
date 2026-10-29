@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { clearMemberCache, type MemberDirectory } from './members';
 import { currentMember } from './requestScope';
+import type { AccessRequestStore } from './requests';
 import type { LineupStore } from '../lineup/store/types';
 
 // GET /api/me tells the page who is signed in, so it can hide what a member
@@ -18,7 +19,7 @@ export function singleOwnerMeRouter(): Router {
 export const NOTICE_VERSION = 1;
 export const NOTICE_SETTING = 'notice_accepted';
 
-export function membersRouter(directory: MemberDirectory, store: LineupStore): Router {
+export function membersRouter(directory: MemberDirectory, store: LineupStore, requests: Pick<AccessRequestStore, 'pendingCount'>): Router {
   const router = Router();
   const fail = (res: any, err: unknown, status = 400) => res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
   const ownerOnly = (_req: any, res: any, next: any) => (currentMember()?.role === 'owner' ? next() : fail(res, new Error('Only the owner can do this.'), 403));
@@ -29,7 +30,9 @@ export function membersRouter(directory: MemberDirectory, store: LineupStore): R
     try {
       const role = me?.role ?? 'member';
       const accepted = role === 'owner' || (await store.getSetting<{ version: number }>(NOTICE_SETTING))?.version === NOTICE_VERSION;
-      res.json({ multiUser: true, role, email: me?.email ?? null, noticeAccepted: accepted });
+      // The owner's badge on the Members menu entry: requests waiting for an answer.
+      const pendingRequests = role === 'owner' ? await requests.pendingCount() : 0;
+      res.json({ multiUser: true, role, email: me?.email ?? null, noticeAccepted: accepted, pendingRequests });
     } catch (err) {
       fail(res, err, 500);
     }
@@ -46,7 +49,7 @@ export function membersRouter(directory: MemberDirectory, store: LineupStore): R
 
   router.get('/members', ownerOnly, async (_req, res) => {
     try {
-      res.json({ members: (await directory.listMembers()).map((m) => ({ email: m.email, role: m.role, joined: Boolean(m.userId), invitedAt: m.invitedAt })) });
+      res.json({ members: (await directory.listMembers()).map((m) => ({ email: m.email, role: m.role, joined: Boolean(m.userId), blocked: m.blocked, invitedAt: m.invitedAt })) });
     } catch (err) {
       fail(res, err, 500);
     }
@@ -63,10 +66,14 @@ export function membersRouter(directory: MemberDirectory, store: LineupStore): R
     }
   });
 
+  // Deletes the member's account and every row they saved. The owner must type the email to confirm.
   router.delete('/members/:email', ownerOnly, async (req, res) => {
     const email = decodeURIComponent(req.params.email).trim().toLowerCase();
+    if (typeof req.body?.confirm !== 'string' || req.body.confirm.trim().toLowerCase() !== email) {
+      return fail(res, new Error('Type the email address to confirm.'));
+    }
     try {
-      await directory.removeMember(email);
+      await directory.removeMember(email, 'owner');
       clearMemberCache(email);
       res.json({ ok: true });
     } catch (err) {
@@ -130,7 +137,7 @@ export function accountRouter(directory: MemberDirectory, store: LineupStore): R
       return fail(res, 400, 'Type your email address to confirm.');
     }
     try {
-      await directory.removeMember(me.email);
+      await directory.removeMember(me.email, 'self');
       clearMemberCache(me.email);
       res.json({ ok: true });
     } catch (err) {

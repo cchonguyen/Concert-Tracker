@@ -14,6 +14,7 @@ import type { AccessGate } from './auth/config';
 import { closedMiddleware, localOwnerMiddleware, ownerMiddleware } from './auth/gate';
 import { memberMiddleware, requestScopedStore } from './auth/requestScope';
 import { accountRouter, membersRouter, singleOwnerMeRouter } from './auth/routes';
+import { accessRequestOwnerRouter, accessRequestRouter } from './auth/requestRoutes';
 import { vaultGuard, vaultRouter } from './auth/vault';
 import { peopleRouter } from './entities/people';
 
@@ -41,8 +42,11 @@ export function createApiApp(baseDeps: PipelineDeps, runner: JobRunner, gate: Ac
   });
 
   if (gate.kind === 'multi') {
+    // Asking for access comes before the member check: a stranger may ask (requestRoutes.ts).
+    app.use('/api', accessRequestRouter({ config: gate, directory: gate.directory, requests: gate.directory }));
     app.use('/api', memberMiddleware({ config: gate, directory: gate.directory, base: baseDeps.store }));
-    app.use('/api', membersRouter(gate.directory, lineupDeps.store));
+    app.use('/api', membersRouter(gate.directory, lineupDeps.store, gate.directory));
+    app.use('/api', accessRequestOwnerRouter(gate.directory));
     // Your data: the vault's key material, a plaintext-note guard, export and deletion.
     app.use('/api', vaultGuard(lineupDeps.store));
     app.use('/api', vaultRouter(lineupDeps.store));

@@ -1,5 +1,9 @@
 import { type AccessConfig, accessConfigFromEnv } from '../share/access';
 import type { MemberDirectory } from './members';
+import type { AccessRequestStore } from './requests';
+
+// The member directory and the request store are one object in production (supabaseMemberStores).
+export type MemberStores = MemberDirectory & AccessRequestStore;
 
 // Who may use /api. Every request is checked; nothing is open by default.
 //  - MULTI_USER=on (exactly, after trimming): members. Every /api request
@@ -25,7 +29,7 @@ export interface OwnerGate {
 }
 
 export type AccessGate =
-  | ({ kind: 'multi'; directory: MemberDirectory } & MultiUserConfig)
+  | ({ kind: 'multi'; directory: MemberStores } & MultiUserConfig)
   | ({ kind: 'owner' } & OwnerGate)
   | { kind: 'local' } // the Node dev server on loopback only (localOwnerFromEnv)
   | { kind: 'closed'; reason: string };
@@ -47,7 +51,7 @@ export function multiUserFromEnv(env: Record<string, string | undefined>): Multi
 // The gate for this process. `directory` is called only in multi-user mode, so
 // the members table is not touched in single-owner mode. Never throws: a
 // config that cannot be read becomes a closed gate.
-export function accessGateFromEnv(env: Record<string, string | undefined>, directory: () => MemberDirectory): AccessGate {
+export function accessGateFromEnv(env: Record<string, string | undefined>, directory: () => MemberStores): AccessGate {
   const raw = env.MULTI_USER?.trim().toLowerCase();
   if (raw === 'on') {
     try {
