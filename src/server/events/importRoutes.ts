@@ -252,7 +252,7 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
   });
 
   router.get('/gmail/callback', async (req, res) => {
-    const back = (result: string) => res.redirect(`/?gmail=${encodeURIComponent(result)}`);
+    const back = (result: string) => res.redirect(`/app?gmail=${encodeURIComponent(result)}`);
     if (!gmail) return back('Check email is off.');
     try {
       const pending = await deps.store.getSetting<{ state: string; until: number }>(OAUTH_SETTING);
