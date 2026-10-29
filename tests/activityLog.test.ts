@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkUndo, describeEntry, isSensitiveField, type ActivityEntry } from '../src/server/events/activityLog.ts';
+import { checkUndo, describeEntry, diffEvent, isSensitiveField, type ActivityEntry } from '../src/server/events/activityLog.ts';
+import type { LoggedEvent } from '../src/server/events/types.ts';
 
 const base: ActivityEntry = {
   id: 'a1',
@@ -61,4 +62,25 @@ test('only notes and companions count as sensitive fields', () => {
   assert.equal(isSensitiveField('notes'), true);
   assert.equal(isSensitiveField('companions'), true);
   assert.equal(isSensitiveField('venue'), false);
+});
+
+test('a sensitive row with no stored text cannot be undone once the vault is open', () => {
+  const notes: ActivityEntry = { ...base, field: 'notes', sensitive: true, before: null, after: null };
+  assert.deepEqual(checkUndo(notes, null, false), { ok: false, reason: 'not-undoable' });
+  assert.deepEqual(checkUndo(notes, null, true), { ok: false, reason: 'vault-locked' });
+});
+
+test('diffEvent keeps notes ciphertext for undo and blanks plaintext notes and companions', () => {
+  const isCipher = (v: unknown) => typeof v === 'string' && v.startsWith('v1:');
+  const before = { id: 'e1', name: 'Blur', notes: 'v1:old:old', companions: ['Sam'] } as unknown as LoggedEvent;
+  const after = { id: 'e1', name: 'Blur', notes: 'v1:new:new', companions: ['Sam', 'Ana'] } as unknown as LoggedEvent;
+  const rows = diffEvent(before, after, isCipher);
+  const notesRow = rows.find((r) => r.field === 'notes');
+  assert.deepEqual([notesRow?.before, notesRow?.after], ['v1:old:old', 'v1:new:new']);
+  const companionRow = rows.find((r) => r.field === 'companions');
+  assert.deepEqual([companionRow?.before, companionRow?.after], [null, null]);
+
+  const plain = { id: 'e1', name: 'Blur', notes: 'my plain note' } as unknown as LoggedEvent;
+  const plainRows = diffEvent({ id: 'e1', name: 'Blur' } as unknown as LoggedEvent, plain, isCipher);
+  assert.deepEqual([plainRows[0].before, plainRows[0].after], [null, null]);
 });

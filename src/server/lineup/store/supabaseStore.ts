@@ -15,6 +15,7 @@ import {
 } from '../types';
 import { LoggedEvent } from '../../events/types';
 import { diffEvent, type ActivityDraft, type ActivityEntry } from '../../events/activityLog';
+import { isCiphertext } from '../../auth/vault';
 import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
@@ -684,7 +685,7 @@ export class SupabaseLineupStore implements LineupStore {
     const before = await this.priorEvents(list.map((e) => e.id));
     this.check(await this.own('logged_events').upsert(list.map((e) => this.stamp(this.eventToRow(e)))), 'putEvents');
     const now = new Date().toISOString();
-    await this.writeActivity(list.flatMap((e) => diffEvent(before.get(e.id) ?? null, splitEventCity(e))), now);
+    await this.writeActivity(list.flatMap((e) => diffEvent(before.get(e.id) ?? null, splitEventCity(e), isCiphertext)), now);
   }
 
   async getEvent(id: string) {
