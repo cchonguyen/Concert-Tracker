@@ -104,7 +104,7 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, focusEventId = n
         </FilterPanel>
       )}
       {hidden > 0 && (
-        <p className="flex items-center gap-2 text-xs text-zinc-500">
+        <p className="flex items-center gap-2 text-xs text-zinc-400">
           <CalendarRange className="h-3.5 w-3.5" />
           {hidden} more filter{hidden === 1 ? '' : 's'} from the Table or Map {hidden === 1 ? 'applies' : 'apply'} here.
           <button onClick={() => setFilters({ ...EMPTY_FILTERS, q: filters.q, yearFrom: filters.yearFrom, kind: filters.kind })} className="text-violet-300 hover:text-violet-200">

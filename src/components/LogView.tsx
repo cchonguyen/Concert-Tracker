@@ -52,17 +52,17 @@ export function LogView() {
       <section className="space-y-3">
         <div>
           <h2 className="text-base font-bold text-zinc-100">Recently deleted</h2>
-          <p className="text-xs text-zinc-500">Deleted shows stay here for 90 days. Restore brings one back with everything it had.</p>
+          <p className="text-xs text-zinc-400">Deleted shows stay here for 90 days. Restore brings one back with everything it had.</p>
         </div>
         {trash === null ? null : trash.length === 0 ? (
-          <p className="text-sm text-zinc-500">Nothing here. Shows you delete appear here for 90 days.</p>
+          <p className="text-sm text-zinc-400">Nothing here. Shows you delete appear here for 90 days.</p>
         ) : (
           <ul className="divide-y divide-zinc-800 rounded-card border border-zinc-800">
             {trash.map((e) => (
               <li key={e.id} className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm text-zinc-100">{e.name}</p>
-                  {e.deletedAt && <p className="text-xs text-zinc-500">Deleted {when(e.deletedAt)}</p>}
+                  {e.deletedAt && <p className="text-xs text-zinc-400">Deleted {when(e.deletedAt)}</p>}
                 </div>
                 <Button onClick={() => void restore(e.id)} disabled={busy === e.id}>
                   Restore
@@ -76,16 +76,16 @@ export function LogView() {
       <section className="space-y-3">
         <div>
           <h2 className="text-base font-bold text-zinc-100">Changes</h2>
-          <p className="text-xs text-zinc-500">Every save, delete and restore, newest first. Kept for a year. Notes and companions show that they changed, not what they say.</p>
+          <p className="text-xs text-zinc-400">Every save, delete and restore, newest first. Kept for a year. Notes and companions show that they changed, not what they say.</p>
         </div>
         {activity === null ? null : activity.length === 0 ? (
-          <p className="text-sm text-zinc-500">No changes yet.</p>
+          <p className="text-sm text-zinc-400">No changes yet.</p>
         ) : (
           <ul className="divide-y divide-zinc-800 rounded-card border border-zinc-800">
             {activity.map((a) => (
               <li key={a.id} className="px-4 py-2.5">
                 <p className="text-sm text-zinc-200">{describeEntry(a, nameOf(a.eventId))}</p>
-                <p className="text-xs text-zinc-500">{when(a.at)}</p>
+                <p className="text-xs text-zinc-400">{when(a.at)}</p>
               </li>
             ))}
           </ul>

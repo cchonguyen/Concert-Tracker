@@ -345,11 +345,11 @@ export default function App() {
 
       <PeopleProvider events={events} version={events}>
       <main className={`mx-auto w-full ${width} flex-1 space-y-6 px-4 py-6`}>
-        {section && <p className="text-xs text-zinc-500 sm:hidden">{`${SECTIONS[section].label} › ${PAGE_LABELS[shown]}`}</p>}
+        {section && <p className="text-xs text-zinc-400 sm:hidden">{`${SECTIONS[section].label} › ${PAGE_LABELS[shown]}`}</p>}
         {HEADED.includes(shown) && (
           <div>
             <h1 className="text-lg font-bold text-zinc-50">{PAGE_LABELS[shown]}</h1>
-            <p className="text-xs text-zinc-500">{PAGE_BLURB[shown as SubPage]}</p>
+            <p className="text-xs text-zinc-400">{PAGE_BLURB[shown as SubPage]}</p>
           </div>
         )}
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-3 text-sm text-rose-200">{error}</p>}
@@ -431,7 +431,7 @@ export default function App() {
       </main>
       </PeopleProvider>
 
-      <footer className="border-t border-zinc-900 py-5 text-xs text-zinc-500">
+      <footer className="border-t border-zinc-900 py-5 text-xs text-zinc-400">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-end gap-3 px-4">
           {status && (
             <span title="Where event details and lineups come from">

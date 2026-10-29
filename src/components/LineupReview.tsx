@@ -139,7 +139,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
               {candidate?.droppedCount ? ` ${candidate.droppedCount} entries were filtered out by your earlier corrections.` : ''}
             </p>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -170,14 +170,14 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
             <button className="text-zinc-300 hover:underline" onClick={() => setAll({ accepted: true })}>Accept shown</button>
             <button className="text-zinc-300 hover:underline" onClick={() => setAll({ seen: true })}>Saw all shown</button>
             <button className="text-zinc-300 hover:underline" onClick={() => setAll({ seen: false })}>Saw none shown</button>
-            <span className="ml-auto text-zinc-500">
+            <span className="ml-auto text-zinc-400">
               {rows.filter((r) => r.accepted).length} accepted · {seenCount} seen
             </span>
           </div>
 
           <div className="max-h-[50vh] overflow-y-auto rounded-xl border border-zinc-800">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-zinc-900 text-left text-[11px] uppercase text-zinc-500">
+              <thead className="sticky top-0 bg-zinc-900 text-left text-[11px] uppercase text-zinc-400">
                 <tr>
                   <th className="p-2">Keep</th>
                   <th className="p-2">Act</th>
@@ -205,7 +205,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
                         {row.b2b && <span className="text-sky-300">b2b {row.b2b}</span>}
                         {row.sources.some((src) => src.sourceType !== 'user') && (
                           <span
-                            className="text-zinc-500"
+                            className="text-zinc-400"
                             title="Sources that list the act, weighted by how often each has been right in your reviews; a full lineup that leaves it out lowers it."
                           >
                             {Math.round(row.confidence * 100)}% confidence
@@ -232,7 +232,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
                     </td>
                     <td className="p-2 align-top">
                       <div className="flex flex-wrap gap-1">
-                        {row.sources.length === 0 && <span className="text-[11px] text-zinc-500">Added by you</span>}
+                        {row.sources.length === 0 && <span className="text-[11px] text-zinc-400">Added by you</span>}
                         {row.sources.map((s, i) =>
                           s.sourceUrl ? (
                             <a
@@ -286,7 +286,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
                 ))}
               </tbody>
             </table>
-            {rows.length === 0 && <p className="p-4 text-sm text-zinc-500">No source listed a lineup. Add the acts you saw below.</p>}
+            {rows.length === 0 && <p className="p-4 text-sm text-zinc-400">No source listed a lineup. Add the acts you saw below.</p>}
           </div>
 
           <div className="flex gap-2">

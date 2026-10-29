@@ -57,13 +57,13 @@ const ActGenres: React.FC<{
             <button
               onClick={() => save(styles.filter((x) => x !== s))}
               aria-label={`Remove ${s} from ${act.name}`}
-              className="text-zinc-500 hover:text-zinc-200"
+              className="text-zinc-400 hover:text-zinc-200"
             >
               <X className="h-3 w-3" />
             </button>
           </span>
         ))}
-        {!styles.length && <span className="text-xs text-zinc-600">{own ? 'None, as you set' : 'No genre yet'}</span>}
+        {!styles.length && <span className="text-xs text-zinc-400">{own ? 'None, as you set' : 'No genre yet'}</span>}
         <div className="w-36">
           <SuggestInput
             value={draft}
@@ -85,7 +85,7 @@ const ActGenres: React.FC<{
           <button
             onClick={() => save(null)}
             title={`Show the genres from ${SOURCE_NAMES[found.source]} again: ${found.genres.map((g) => g.style).join(', ')}`}
-            className="text-[11px] text-zinc-500 hover:text-zinc-300"
+            className="text-[11px] text-zinc-400 hover:text-zinc-300"
           >
             Use {SOURCE_NAMES[found.source]}'s
           </button>
@@ -136,7 +136,7 @@ export const SeenGenres: React.FC<{ event: LoggedEvent }> = ({ event }) => {
       <button onClick={() => setOpen(!open)} className="flex w-full items-center gap-1.5 text-left text-xs text-zinc-400 hover:text-zinc-200">
         {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         <Tags className="h-3.5 w-3.5" /> Genres
-        <span className="text-zinc-600">
+        <span className="text-zinc-400">
           {withGenre} of {acts.length} {acts.length === 1 ? 'act' : 'acts'}
         </span>
       </button>

@@ -23,7 +23,7 @@ interface DataHealthProps {
 
 type VenuePlaces = Awaited<ReturnType<typeof entitiesApi.health>>['venuePlaces'];
 
-const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-500';
+const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
 const chip =
   'inline-flex items-center gap-1 rounded-full border border-zinc-800 px-2.5 py-1 text-xs text-zinc-200 hover:border-violet-500/60 hover:text-violet-200 disabled:opacity-40';
 
@@ -76,7 +76,7 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
 
   return (
     <section className="space-y-6">
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-zinc-400">
         Things that need your call to keep names consistent. Nothing here changes on its own, and every change can be undone from
         History.
       </p>
@@ -85,9 +85,9 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
       <div className="space-y-2">
         <h3 className={sectionTitle}>Venues whose events disagree on the city</h3>
         {!venues ? (
-          <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />
+          <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
         ) : !disagree.length ? (
-          <p className="text-sm text-zinc-500">None. Every venue with a city on its events is in one place.</p>
+          <p className="text-sm text-zinc-400">None. Every venue with a city on its events is in one place.</p>
         ) : (
           <ul className="space-y-2">
             {disagree.map((v) => {
@@ -98,7 +98,7 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
                     <button onClick={() => onOpen(venue.id)} className="font-semibold hover:text-violet-300">
                       {venue.name}
                     </button>{' '}
-                    <span className="text-zinc-500">is in which city? Its events will all take the one you pick.</span>
+                    <span className="text-zinc-400">is in which city? Its events will all take the one you pick.</span>
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {v.places.map((p) => {
@@ -113,7 +113,7 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
                         >
                           {busy === `venue:${v.venueId}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <MapPin className="h-3 w-3" />}
                           {entityLabel(place)}
-                          <span className="text-zinc-500">
+                          <span className="text-zinc-400">
                             {p.events} event{p.events === 1 ? '' : 's'}
                           </span>
                         </button>
@@ -141,21 +141,21 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
       <div className="space-y-2">
         <h3 className={sectionTitle}>Look-alikes</h3>
         {!groups.length ? (
-          <p className="text-sm text-zinc-500">None. No two records differ only by spacing, a leading “the”, or “and”.</p>
+          <p className="text-sm text-zinc-400">None. No two records differ only by spacing, a leading “the”, or “and”.</p>
         ) : (
           <ul className="space-y-2">
             {groups.map((g) => {
               const kind = KINDS.find((k) => k.kind === g[0].kind)!;
               return (
                 <li key={g.map((e) => e.id).join()} className="space-y-2 rounded-xl border border-zinc-900 p-3">
-                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">{kind.one}</p>
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-400">{kind.one}</p>
                   <ul className="space-y-1">
                     {g.map((e) => (
                       <li key={e.id} className="flex flex-wrap items-baseline gap-2 text-sm">
                         <button onClick={() => onOpen(e.id)} className="text-zinc-100 hover:text-violet-300">
                           {entityLabel(e)}
                         </button>
-                        <span className="text-xs text-zinc-500">
+                        <span className="text-xs text-zinc-400">
                           {n(e.id)} event{n(e.id) === 1 ? '' : 's'}
                         </span>
                         {g
@@ -220,7 +220,7 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
                   </li>
                 ))}
               </ul>
-              {g.missing.length > 12 && <p className="text-xs text-zinc-500">and {g.missing.length - 12} more</p>}
+              {g.missing.length > 12 && <p className="text-xs text-zinc-400">and {g.missing.length - 12} more</p>}
             </div>
           ))}
         </div>
@@ -241,7 +241,7 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
                   <button onClick={() => onOpen(r.id)} className="text-zinc-100 hover:text-violet-300">
                     {r.name}
                   </button>
-                  <span className="text-zinc-500">
+                  <span className="text-zinc-400">
                     has no {String(l.attrs.group ?? 'such label').toLowerCase()}; {because.name} is {l.name}.
                   </span>
                   <button onClick={() => addLabel(r.id, l.id)} disabled={Boolean(busy)} className={chip}>
@@ -257,12 +257,12 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
       {rare.length > 0 && (
         <div className="space-y-2">
           <h3 className={sectionTitle}>Labels used once or not at all</h3>
-          <p className="text-xs text-zinc-500">Often a typo of another label: open one to merge or rename it.</p>
+          <p className="text-xs text-zinc-400">Often a typo of another label: open one to merge or rename it.</p>
           <ul className="flex flex-wrap gap-1.5">
             {rare.map(({ label: l, uses }) => (
               <li key={l.id}>
                 <button onClick={() => onOpen(l.id)} className={chip}>
-                  {l.name} <span className="text-zinc-500">{uses ? 'once' : 'unused'}</span>
+                  {l.name} <span className="text-zinc-400">{uses ? 'once' : 'unused'}</span>
                 </button>
               </li>
             ))}
@@ -273,7 +273,7 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
       {offered.length > 0 && (
         <div className="space-y-2">
           <h3 className={sectionTitle}>Other cities a save brought</h3>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-zinc-400">
             These events took their venue's city in place of the one shown. If the venue's city is the wrong one, open the venue and move it.
           </p>
           <ul className="space-y-1.5">
@@ -282,7 +282,7 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
                 <button onClick={() => onOpen(venue.id)} className="font-semibold text-zinc-100 hover:text-violet-300">
                   {venue.name}
                 </button>{' '}
-                <span className="text-zinc-500">
+                <span className="text-zinc-400">
                   {cities.map((c) => `${[c.city, c.region, c.country].filter(Boolean).join(', ')} (from ${c.from === 'user' ? 'you' : c.from})`).join('; ')}
                 </span>
               </li>
@@ -299,13 +299,13 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
               <li key={v.id}>
                 <button onClick={() => onOpen(v.id)} className={chip}>
                   <MapPin className="h-3 w-3" /> {v.name}
-                  <span className="text-zinc-500">{n(v.id)}</span>
+                  <span className="text-zinc-400">{n(v.id)}</span>
                 </button>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-zinc-500">None. Every venue on your events is in a place.</p>
+          <p className="text-sm text-zinc-400">None. Every venue on your events is in a place.</p>
         )}
       </div>
     </section>

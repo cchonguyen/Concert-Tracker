@@ -21,7 +21,7 @@ interface SeriesPanelProps {
 
 const control =
   'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
-const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-500';
+const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
 
 type Change = { event: LoggedEvent; patch: EventPatch };
 
@@ -88,7 +88,7 @@ const Suggestion: React.FC<{
                 />
                 <span className="min-w-0 flex-1">
                   <span className="text-zinc-200">{e.name}</span>
-                  <span className="text-xs text-zinc-500"> · {line(e)}</span>
+                  <span className="text-xs text-zinc-400"> · {line(e)}</span>
                   {on && name.trim() && (
                     <span className="block text-[11px] text-violet-300/80">
                       {e.series === name.trim() && e.weekend === weekends[e.id]
@@ -162,14 +162,14 @@ const Series: React.FC<{
           <li key={e.id} className="flex items-baseline justify-between gap-2 py-1.5 text-sm">
             <button onClick={() => onOpen(e.id)} className="min-w-0 flex-1 text-left hover:text-violet-300">
               <span className="font-medium text-zinc-100"><EventTitle event={e} /></span>
-              <span className="text-xs text-zinc-500"> · {line(e)}</span>
-              {e.name !== eventTitle(e) && <span className="block truncate text-[11px] text-zinc-600">typed as “{e.name}”</span>}
+              <span className="text-xs text-zinc-400"> · {line(e)}</span>
+              {e.name !== eventTitle(e) && <span className="block truncate text-[11px] text-zinc-400">typed as “{e.name}”</span>}
             </button>
             <WeekendSelect value={e.weekend} disabled={busy} label={`Weekend of ${e.name}`} onChange={(w) => onWeekend(e, w)} />
             <button
               onClick={() => onSet(null, [e])}
               disabled={busy}
-              className="shrink-0 text-xs text-zinc-500 hover:text-rose-300 disabled:opacity-40"
+              className="shrink-0 text-xs text-zinc-400 hover:text-rose-300 disabled:opacity-40"
               aria-label={`Take ${e.name} out of ${name}`}
             >
               Take out
@@ -265,7 +265,7 @@ export const SeriesPanel: React.FC<SeriesPanelProps> = ({ events, onChanged, onO
               each event.
             </p>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -291,7 +291,7 @@ export const SeriesPanel: React.FC<SeriesPanelProps> = ({ events, onChanged, onO
             ))}
           </ul>
         ) : (
-          <p className="text-xs text-zinc-500">No events left whose names match once the year is taken out.</p>
+          <p className="text-xs text-zinc-400">No events left whose names match once the year is taken out.</p>
         )}
       </section>
 
@@ -317,7 +317,7 @@ export const SeriesPanel: React.FC<SeriesPanelProps> = ({ events, onChanged, onO
             ))}
           </ul>
         ) : (
-          <p className="text-xs text-zinc-500">None yet. Link a suggestion above, or type a series on an event.</p>
+          <p className="text-xs text-zinc-400">None yet. Link a suggestion above, or type a series on an event.</p>
         )}
       </section>
     </>

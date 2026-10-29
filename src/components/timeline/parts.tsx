@@ -42,16 +42,16 @@ export const NoDateTray: React.FC<{ events: LoggedEvent[]; onOpen: (id: string) 
   events.length ? (
     <details className="rounded-xl border border-zinc-800 bg-zinc-900/40">
       <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-zinc-300">
-        <CalendarX className="h-4 w-4 text-zinc-500" />
+        <CalendarX className="h-4 w-4 text-zinc-400" />
         No date yet
-        <span className="text-xs text-zinc-500">{events.length}</span>
+        <span className="text-xs text-zinc-400">{events.length}</span>
       </summary>
       <ul className="divide-y divide-zinc-800/70 border-t border-zinc-800">
         {events.map((e) => (
           <li key={e.id}>
             <button onClick={() => onOpen(e.id)} className="group flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-900/60">
               <span className="min-w-0 flex-1 truncate">{eventTitle(e)}</span>
-              <span className="text-xs text-zinc-500 group-hover:text-zinc-300">Add a date</span>
+              <span className="text-xs text-zinc-400 group-hover:text-zinc-300">Add a date</span>
               <ChevronRight className="h-4 w-4 text-zinc-700 group-hover:text-zinc-400" />
             </button>
           </li>
