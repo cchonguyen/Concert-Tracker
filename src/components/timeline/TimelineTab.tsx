@@ -22,7 +22,7 @@ interface TimelineTabProps {
   editions: Record<string, LineupFacts>;
   onOpen: (id: string) => void;
   onOpenTable: (query: string) => void;
-  onShowToConfirm: (id: string) => void;
+  onShowInAgenda: (id: string) => void;
 }
 
 const control =
@@ -30,7 +30,7 @@ const control =
 const label = 'space-y-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500';
 const ALL: TimelineRange = { kind: 'all' };
 
-export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, focusEventId = null, events, lineups, editions, onOpen, onOpenTable, onShowToConfirm }) => {
+export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, focusEventId = null, events, lineups, editions, onOpen, onOpenTable, onShowInAgenda }) => {
   const [filters, setFilters] = useState<TableFilters>(() => filtersFromQuery(window.location.search));
   const [selectedEventId, setSelectedEventId] = useState<string | null>(focusEventId);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -63,7 +63,7 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, focusEventId = n
               onClick={() => {
                 // Agenda is where you answer, so the chip opens it at the first one.
                 if (mode === 'agenda') setSelectedEventId(confirmId);
-                else onShowToConfirm(confirmId);
+                else onShowInAgenda(confirmId);
               }}
               className="rounded-full border border-dashed border-amber-400/60 px-2.5 py-1 font-semibold text-amber-300 hover:bg-amber-400/10"
             >
@@ -118,7 +118,7 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, focusEventId = n
         <AgendaView model={model} size="large" range={ALL} selectedEventId={selectedEventId} onSelectEvent={setSelectedEventId} onOpen={onOpen} />
       )}
       {mode === 'month' && <MonthView model={model} size="large" range={monthRange} onRangeChange={setMonthRange} onOpen={onOpen} />}
-      {mode === 'river' && <RiverView model={model} size="large" range={ALL} onOpen={onOpen} />}
+      {mode === 'river' && <RiverView model={model} size="large" range={ALL} onOpen={onOpen} onShowInAgenda={onShowInAgenda} />}
       {mode === 'heatmap' && (
         <HeatmapView model={model} size="large" range={ALL} selectedDate={selectedDate} onSelectDate={setSelectedDate} onOpen={onOpen} />
       )}

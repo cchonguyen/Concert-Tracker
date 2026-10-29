@@ -56,7 +56,7 @@ export function Popover({ content, label, children, className = '' }: Props) {
             setPinned(true);
           }
         }}
-        className="inline-flex cursor-pointer rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400"
+        className="inline-flex h-full w-full cursor-pointer rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400"
       >
         {children}
       </span>
