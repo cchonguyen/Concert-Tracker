@@ -13,12 +13,9 @@ import {
   ListChecks,
   Mail,
   MapPin,
-  Minus,
   Pencil,
   Mic2,
-  Plus,
   Sheet,
-  SlidersHorizontal,
   Sparkles,
   Star,
   Tags,
@@ -32,6 +29,7 @@ import { BackToTop } from './ui/BackToTop';
 import { IconButton } from './ui/IconButton';
 import { MenuButton } from './ui/MenuButton';
 import { Pill } from './ui/Pill';
+import { FilterButton, FilterPanel, FilterSelect, FilterToggle } from './ui/FilterControls';
 import {
   activeFilterCount,
   actsInOrder,
@@ -46,6 +44,8 @@ import {
   HasField,
   HAS_FIELDS,
   needsOf,
+  nextSort,
+  SortChoice,
   SortKey,
   summarize,
   tableDate,
@@ -59,7 +59,6 @@ import type { ManageTarget } from './ManageView';
 import { EventTitle } from './EventTitle';
 import { SET_LABELS, seenSlots, slotId } from '../server/events/seen';
 import { ATTENDANCE_LABELS, attendanceOf, AttendanceState } from '../server/events/attendance';
-import { CaptureBar } from './CaptureBar';
 import { PersonName } from './PersonName';
 import { nameForms } from '../services/people';
 
@@ -69,7 +68,6 @@ interface TableViewProps {
   editions: Record<string, LineupFacts>;
   onOpen: (id: string) => void;
   onChanged: (event: LoggedEvent) => void;
-  onCaptured: (event: LoggedEvent) => void; // a line typed in the Table's Add box
   // Series live in the Manage tab; without it, the Series panel opens here.
   onManage?: (target: ManageTarget) => void;
   onImport: () => void; // the same Import as the Menu and Quick add
@@ -112,59 +110,15 @@ const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
   { value: 'rating', label: 'Rating' },
   { value: 'price', label: 'Price' },
 ];
+// The arrow on the sorted key says which way it runs; picking it again flips it, then turns sorting off.
+const sortLabel = (label: string, f: { sort: SortChoice; desc: boolean }, key: SortKey) =>
+  f.sort === key ? `${label} ${f.desc ? '↓' : '↑'}` : label;
 
 const NEEDS_ICONS = { date: CalendarX2, pick: ListChecks, review: Pencil } as const;
 // What the icon for a missing thing says on hover and to screen readers.
 const NEEDS_TITLES = { date: 'No date yet', pick: 'Pick needed', review: 'Lineup not reviewed' } as const;
 
 const readQuery = () => filtersFromQuery(typeof window === 'undefined' ? '' : window.location.search);
-
-// A filter as one small pill: it reads its own name until you pick a value,
-// then shows the value, highlighted.
-const Pick: React.FC<{
-  name: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: Array<{ value: string; label: string }>;
-}> = ({ name, value, onChange, options }) => (
-  <select
-    aria-label={name}
-    value={value}
-    onChange={(e) => onChange(e.target.value)}
-    className={`field-sizing-content max-w-[14rem] cursor-pointer truncate rounded-full border py-1 pl-3 pr-2 text-xs focus:border-violet-500 focus:outline-none ${
-      value ? 'border-violet-500/70 bg-violet-600/20 text-violet-100' : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200'
-    }`}
-  >
-    <option value="">{name}</option>
-    {options.map((o) => (
-      <option key={o.value} value={o.value}>
-        {o.label}
-      </option>
-    ))}
-  </select>
-);
-
-// A "has" filter as a chip that cycles: any, has it, doesn't have it.
-const NEXT_HAS: Record<Has, Has> = { any: 'yes', yes: 'no', no: 'any' };
-const HasChip: React.FC<{ field: HasField; value: Has; onChange: (v: Has) => void }> = ({ field, value, onChange }) => {
-  const [name, yes, no] = HAS_LABELS[field];
-  return (
-    <button
-      onClick={() => onChange(NEXT_HAS[value])}
-      title="Tap to cycle: any, has it, doesn't"
-      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${
-        value === 'yes'
-          ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-200'
-          : value === 'no'
-            ? 'border-amber-500/50 bg-amber-500/10 text-amber-200'
-            : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'
-      }`}
-    >
-      {value === 'yes' ? <Check className="h-3 w-3" /> : value === 'no' ? <Minus className="h-3 w-3" /> : null}
-      {value === 'yes' ? yes : value === 'no' ? no : name}
-    </button>
-  );
-};
 
 const dash = <span className="text-zinc-700">–</span>;
 
@@ -345,9 +299,8 @@ const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, 
 
 // Every event as a row you can filter, sort and export. A row opens the usual
 // event panel for editing; "Import a list" adds events from a CSV you kept.
-export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, onOpen, onChanged, onCaptured, onManage, onImport, onSheets, onRefresh }) => {
+export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, onOpen, onChanged, onManage, onImport, onSheets, onRefresh }) => {
   const [filling, setFilling] = useState(false);
-  const [adding, setAdding] = useState(false);
   const [linking, setLinking] = useState(false);
   const [filters, setFilters] = useState<TableFilters>(readQuery);
   const [genres, setGenres] = useState(false);
@@ -366,10 +319,13 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const active = activeFilterCount(filters);
   const set = (patch: Partial<TableFilters>) => setFilters((f) => ({ ...f, ...patch }));
   const setHas = (field: HasField, v: Has) => setFilters((f) => ({ ...f, has: { ...f.has, [field]: v } }));
-  const sortBy = (key: SortKey) =>
-    setFilters((f) => ({ ...f, sort: key, desc: f.sort === key ? !f.desc : key === 'date' || key === 'seen' || key === 'rating' || key === 'price' }));
-  // The sort menu picks a key in its usual direction; a column header toggles.
-  const pickSort = (key: SortKey) => setFilters((f) => ({ ...f, sort: key, desc: key === 'date' || key === 'seen' || key === 'rating' || key === 'price' }));
+  // A column header and the sort menu both cycle: the usual direction, the other, then off.
+  const sortBy = (key: SortKey) => setFilters((f) => ({ ...f, ...nextSort(f, key) }));
+  const pickSort = (choice: SortChoice) => (choice === 'none' ? setFilters((f) => ({ ...f, sort: 'none' })) : sortBy(choice));
+  const sortOptions: Array<{ value: SortChoice; label: string }> = [
+    ...SORT_OPTIONS.map((o) => ({ value: o.value, label: sortLabel(o.label, filters, o.value) })),
+    { value: 'none', label: 'Unsorted' },
+  ];
   const year = (s: string) => (s ? Number(s) : undefined);
   const list = (values: string[]) => values.map((v) => ({ value: v, label: v }));
 
@@ -457,23 +413,8 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
           placeholder="Search events, venues, acts, people, notes"
           className={`${control} min-w-0 flex-1 py-2`}
         />
-        <button
-          onClick={() => setAdding((a) => !a)}
-          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm ${
-            adding ? 'border-violet-500 text-violet-200' : 'border-zinc-800 text-zinc-300 hover:text-zinc-100'
-          }`}
-        >
-          <Plus className="h-3.5 w-3.5" /> Add
-        </button>
-        <MenuButton label="Sort rows" value={filters.sort} options={SORT_OPTIONS} onChange={pickSort} />
-        <button
-          onClick={() => setShowFilters((s) => !s)}
-          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm ${
-            showFilters ? 'border-violet-500 text-violet-200' : 'border-zinc-800 text-zinc-300 hover:text-zinc-100'
-          }`}
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" /> Filters{active ? ` (${active})` : ''}
-        </button>
+        <MenuButton label="Sort rows" value={filters.sort} options={sortOptions} onChange={pickSort} />
+        <FilterButton open={showFilters} count={active} onClick={() => setShowFilters((s) => !s)} />
         {filters.series && (
           <button
             onClick={() => set({ series: '' })}
@@ -493,28 +434,22 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
         )}
       </div>
 
-      {adding && (
-        <div className="rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">
-          <CaptureBar compact onCaptured={onCaptured} />
-        </div>
-      )}
-
       {showFilters && (
-        <div className="space-y-2.5 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">
+        <FilterPanel>
           <div className="flex flex-wrap items-center gap-1.5">
-            <Pick
+            <FilterSelect
               name="From year"
               value={filters.yearFrom ? String(filters.yearFrom) : ''}
               onChange={(v) => set({ yearFrom: year(v) })}
               options={options.years.map((y) => ({ value: String(y), label: `From ${y}` }))}
             />
-            <Pick
+            <FilterSelect
               name="To year"
               value={filters.yearTo ? String(filters.yearTo) : ''}
               onChange={(v) => set({ yearTo: year(v) })}
               options={options.years.map((y) => ({ value: String(y), label: `To ${y}` }))}
             />
-            <Pick
+            <FilterSelect
               name="Type"
               value={filters.kind === 'any' ? '' : filters.kind}
               onChange={(v) => set({ kind: (v || 'any') as TableFilters['kind'] })}
@@ -524,21 +459,21 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                 { value: 'unknown', label: 'Type not known' },
               ]}
             />
-            {options.formats.length > 0 && <Pick name="Format" value={filters.format} onChange={(v) => set({ format: v })} options={list(options.formats)} />}
-            {options.series.length > 0 && <Pick name="Series" value={filters.series} onChange={(v) => set({ series: v })} options={list(options.series)} />}
+            {options.formats.length > 0 && <FilterSelect name="Format" value={filters.format} onChange={(v) => set({ format: v })} options={list(options.formats)} />}
+            {options.series.length > 0 && <FilterSelect name="Series" value={filters.series} onChange={(v) => set({ series: v })} options={list(options.series)} />}
             {options.artists.length > 0 && (
-              <Pick name="Saw" value={filters.artist} onChange={(v) => set({ artist: v })} options={options.artists.map((a) => ({ value: a.key, label: a.name }))} />
+              <FilterSelect name="Saw" value={filters.artist} onChange={(v) => set({ artist: v })} options={options.artists.map((a) => ({ value: a.key, label: a.name }))} />
             )}
             {options.companions.length > 0 && (
-              <Pick name="Went with" value={filters.companion} onChange={(v) => set({ companion: v })} options={list(options.companions)} />
+              <FilterSelect name="Went with" value={filters.companion} onChange={(v) => set({ companion: v })} options={list(options.companions)} />
             )}
-            <Pick name="Venue" value={filters.venue} onChange={(v) => set({ venue: v })} options={list(options.venues)} />
-            <Pick name="City" value={filters.city} onChange={(v) => set({ city: v })} options={list(options.cities)} />
-            {options.regions.length > 1 && <Pick name="State" value={filters.region} onChange={(v) => set({ region: v })} options={list(options.regions)} />}
+            <FilterSelect name="Venue" value={filters.venue} onChange={(v) => set({ venue: v })} options={list(options.venues)} />
+            <FilterSelect name="City" value={filters.city} onChange={(v) => set({ city: v })} options={list(options.cities)} />
+            {options.regions.length > 1 && <FilterSelect name="State" value={filters.region} onChange={(v) => set({ region: v })} options={list(options.regions)} />}
             {options.countries.length > 1 && (
-              <Pick name="Country" value={filters.country} onChange={(v) => set({ country: v })} options={list(options.countries)} />
+              <FilterSelect name="Country" value={filters.country} onChange={(v) => set({ country: v })} options={list(options.countries)} />
             )}
-            <Pick
+            <FilterSelect
               name="Rating"
               value={filters.minRating ? String(filters.minRating) : ''}
               onChange={(v) => set({ minRating: v ? Number(v) : undefined })}
@@ -546,16 +481,17 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
             />
           </div>
           <div className="flex flex-wrap items-center gap-1.5 border-t border-zinc-900 pt-2.5">
-            {HAS_FIELDS.map((field) => (
-              <HasChip key={field} field={field} value={filters.has[field] ?? 'any'} onChange={(v) => setHas(field, v)} />
-            ))}
-            <Pick
+            {HAS_FIELDS.map((field) => {
+              const [name, yes, no] = HAS_LABELS[field];
+              return <FilterToggle key={field} name={name} yes={yes} no={no} value={filters.has[field] ?? 'any'} onChange={(v) => setHas(field, v)} />;
+            })}
+            <FilterSelect
               name="Needs"
               value={filters.needs === 'any' ? '' : filters.needs}
               onChange={(v) => set({ needs: (v || 'any') as TableFilters['needs'] })}
               options={Object.entries(NEEDS_LABELS).map(([value, l]) => ({ value, label: `Needs ${l.toLowerCase()}` }))}
             />
-            <Pick
+            <FilterSelect
               name="Went"
               value={filters.went === 'any' ? '' : filters.went}
               onChange={(v) => set({ went: (v || 'any') as TableFilters['went'] })}
@@ -566,7 +502,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                 { value: 'missed', label: "Didn't go" },
               ]}
             />
-            <Pick
+            <FilterSelect
               name="Added from"
               value={filters.origin === 'any' ? '' : filters.origin}
               onChange={(v) => set({ origin: (v || 'any') as TableFilters['origin'] })}
@@ -576,7 +512,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
               ]}
             />
           </div>
-        </div>
+        </FilterPanel>
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
@@ -638,6 +574,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                               {i > 0 && <span className="text-zinc-700">/</span>}
                               <button
                                 onClick={() => sortBy(s.key)}
+                                title="Click to sort up, then down, then turn sorting off"
                                 className={`inline-flex items-center gap-1 uppercase hover:text-zinc-200 ${filters.sort === s.key ? 'text-zinc-200' : ''}`}
                               >
                                 {s.label}
