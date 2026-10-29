@@ -68,6 +68,7 @@ export function LogView({ eventId, onShowAll }: { eventId?: string | null; onSho
     if (text.includes('value-changed')) return 'Not undone: that field was changed again after this.';
     if (text.includes('vault-locked')) return 'Unlock vault to undo.';
     if (text.includes('not-undoable')) return 'This change cannot be undone: its text was not stored.';
+    if (text.includes('person-gone')) return 'Not undone: someone you went with is no longer in your people.';
     if (text.includes('gone')) return 'Not undone: that show is no longer there.';
     return 'Could not undo that change.';
   };
