@@ -150,7 +150,7 @@ const KindBadge: React.FC<{ kind: string }> = ({ kind }) => {
   if (!style) return null;
   const Icon = style.icon;
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${style.className}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs leading-4 ${style.className}`}>
       <Icon className="h-3 w-3" /> {kind}
     </span>
   );
@@ -177,7 +177,7 @@ const WentBadge: React.FC<{ state: AttendanceState }> = ({ state }) =>
   state === 'went' ? null : (
     <span
       title={state === 'confirm' ? "Over: open it to say whether you went. Not counted until then." : 'Not counted in Stats, Artists or the Map'}
-      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs leading-4 ${
         state === 'confirm'
           ? 'border-violet-500/40 bg-violet-600/15 text-violet-200'
           : state === 'upcoming'
@@ -203,45 +203,38 @@ const DetailsCell: React.FC<{
   const pills = Boolean(e.series || kind || formats.length || state !== 'went');
   const icons = fromEmail(e) || needs || confirmed;
   if (!pills && !icons && !e.rating) return dash;
+  // One wrapping row: pills, icons and rating share a height and sit side by side.
   return (
-    <div className="space-y-1.5">
-      {pills && (
-        <div className="flex flex-wrap items-center gap-1">
-          {e.series && (
-            <button
-              type="button"
-              onClick={(ev) => {
-                ev.stopPropagation();
-                onSeries();
-              }}
-              title={`Show only ${e.series}`}
-              className="rounded-full hover:opacity-80"
-            >
-              <Pill tone="accent">
-                <Layers className="h-3 w-3" /> {e.series}
-              </Pill>
-            </button>
-          )}
-          {kind && <KindBadge kind={kind} />}
-          {formats.map((f) => (
-            <Pill key={f}>{f}</Pill>
-          ))}
-          <WentBadge state={state} />
-        </div>
+    <div className="flex flex-wrap items-center gap-1">
+      {e.series && (
+        <button
+          type="button"
+          onClick={(ev) => {
+            ev.stopPropagation();
+            onSeries();
+          }}
+          title={`Show only ${e.series}`}
+          className="inline-flex rounded-full hover:opacity-80"
+        >
+          <Pill tone="accent">
+            <Layers className="h-3 w-3" /> {e.series}
+          </Pill>
+        </button>
       )}
-      {(icons || e.rating) && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {fromEmail(e) && <IconButton icon={Mail} label="Added from a ticket email" />}
-          {needs && <IconButton icon={NEEDS_ICONS[needs]} label={NEEDS_TITLES[needs]} />}
-          {confirmed && <IconButton icon={CircleCheck} label="Lineup confirmed" />}
-          {e.rating ? (
-            <span className="inline-flex items-center gap-1 text-xs text-amber-300" title={`${e.rating} of 5`} aria-label={`Rated ${e.rating} of 5`}>
-              <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" aria-hidden="true" />
-              {e.rating}
-            </span>
-          ) : null}
-        </div>
-      )}
+      {kind && <KindBadge kind={kind} />}
+      {formats.map((f) => (
+        <Pill key={f}>{f}</Pill>
+      ))}
+      <WentBadge state={state} />
+      {fromEmail(e) && <IconButton size="chip" icon={Mail} label="Added from a ticket email" />}
+      {needs && <IconButton size="chip" icon={NEEDS_ICONS[needs]} label={NEEDS_TITLES[needs]} />}
+      {confirmed && <IconButton size="chip" icon={CircleCheck} label="Lineup confirmed" />}
+      {e.rating ? (
+        <span className="inline-flex items-center gap-1 text-xs leading-4 text-amber-300" title={`${e.rating} of 5`} aria-label={`Rated ${e.rating} of 5`}>
+          <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" aria-hidden="true" />
+          {e.rating}
+        </span>
+      ) : null}
     </div>
   );
 };
