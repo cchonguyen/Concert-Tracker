@@ -39,6 +39,7 @@ import { useToast } from './ui/Toast';
 import { Switch } from './ui/Switch';
 import { Sheet } from './ui/Sheet';
 import { LineupProgress } from './LineupProgress';
+import { CheckDetails, type Suggestion } from './CheckDetails';
 import { Pill } from './ui/Pill';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
@@ -977,6 +978,19 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
       onUse: () => void run('pick', () => eventsApi.pick(event.id, confirmed.id, [field])),
     };
   };
+  // The found values that differ from yours, one card each on Check details; Use saves it through the same pick.
+  const checkOffers: Suggestion[] = [
+    { field: 'endDate' as const, label: 'Last day' },
+    { field: 'venue' as const, label: 'Venue' },
+    { field: 'city' as const, label: 'City' },
+    { field: 'region' as const, label: 'State' },
+    { field: 'country' as const, label: 'Country' },
+  ].flatMap(({ field, label }) => {
+    const o = offer(field);
+    if (!o) return [];
+    const yours = field === 'city' ? cityWithRegion(event.city, event.region) : field === 'endDate' ? (event.endDate ?? event.startDate) : event[field];
+    return [{ key: field, label, yours: yours ? String(yours) : 'Not set', value: o.value, from: o.from, onUse: o.onUse }];
+  });
   const confirmations = dateConfirmations(event);
   const scale = eventScale(event, edition ? lineupFacts(edition) : undefined);
   const worked = eventScale({ ...event, kind: undefined }, edition ? lineupFacts(edition) : undefined);
@@ -1047,34 +1061,21 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
 
         {/* Stage 1: when and where */}
         <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className={sectionTitle}>When and where</h3>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => run('research', () => eventsApi.research(event.id))}
-                disabled={busy === 'research' || busy === 'research-gemini'}
-                className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-50"
-              >
-                {busy === 'research' ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Look again
-              </button>
-              {/* Spends Gemini calls only when you press it. */}
-              {lineupStatus?.gemini && (
-                <button
-                  onClick={() => run('research-gemini', () => eventsApi.research(event.id, true))}
-                  disabled={busy === 'research' || busy === 'research-gemini'}
-                  title={`Gemini reads up to 3 of the pages found, one call each${
-                    lineupStatus.quota ? `; ${Math.max(0, lineupStatus.quota.limit - lineupStatus.quota.used)} of ${lineupStatus.quota.limit} left today` : ''
-                  }.`}
-                  className="inline-flex items-center gap-1 text-xs text-violet-300 hover:text-violet-200 disabled:opacity-50"
-                >
-                  {busy === 'research-gemini' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />} Look again with Gemini
-                  {lineupStatus.quota && (
-                    <span className="text-zinc-400">({Math.max(0, lineupStatus.quota.limit - lineupStatus.quota.used)} left)</span>
-                  )}
-                </button>
-              )}
-            </div>
-          </div>
+          <h3 className={sectionTitle}>When and where</h3>
+          <CheckDetails
+            busy={busy === 'research'}
+            geminiBusy={busy === 'research-gemini'}
+            checkedAt={details.checkedAt}
+            status={details.status}
+            candidates={details.candidates}
+            notes={details.notes}
+            lineupStatus={lineupStatus}
+            suggestions={checkOffers}
+            onCheck={() => void run('research', () => eventsApi.research(event.id))}
+            onGemini={() => void run('research-gemini', () => eventsApi.research(event.id, true))}
+            onPick={(id: string) => void run('pick', () => eventsApi.pick(event.id, id))}
+            onNone={() => void run('pick', () => eventsApi.pick(event.id))}
+          />
           <div className="grid grid-cols-2 gap-3">
             <Field label="Date" field="startDate" type="date" value={event.startDate} source={event.sources.startDate} onSave={(v) => save({ startDate: text(v) })} />
             {/* Shows the start date until you change it, so the picker opens on the
@@ -1086,7 +1087,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               value={event.endDate ?? event.startDate}
               min={event.startDate}
               source={event.endDate ? event.sources.endDate : undefined}
-              offer={offer('endDate')}
+              
               onSave={(v) => save({ endDate: v && v !== event.startDate ? v : null })}
             />
             {days.length > 1 && (
@@ -1101,7 +1102,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               value={event.venue}
               source={event.sources.venue}
               suggestions={pastVenues}
-              offer={offer('venue')}
               onSave={(v) => {
                 const venue = text(v);
                 const city = venue && !event.city ? cityForVenue(others, venue) : undefined;
@@ -1115,7 +1115,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               placeholder="City"
               source={event.sources.city}
               suggestions={citySuggestions}
-              offer={offer('city')}
               onType={setCityQuery}
               onSave={(v) => void saveCity(v)}
             />
@@ -1126,14 +1125,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               placeholder="NV, or the region"
               source={event.sources.region}
               offer={
-                offer('region') ??
                 (guessed && placeGuess
                   ? { value: placeGuess.label, from: placeGuess.places > 1 ? 'the map (the biggest by that name)' : 'the map', onUse: () => void save(guessed) }
                   : undefined)
               }
               onSave={(v) => save({ region: text(v) })}
             />
-            <Field label="Country" field="country" value={event.country} source={event.sources.country} offer={offer('country')} onSave={(v) => save({ country: text(v) })} />
+            <Field label="Country" field="country" value={event.country} source={event.sources.country} onSave={(v) => save({ country: text(v) })} />
             <div className="col-span-2 space-y-1">
               <span className="flex items-center justify-between gap-2 text-[11px] font-semibold text-zinc-400">
                 Type
@@ -1152,45 +1150,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </div>
           </div>
 
-          {/* What Gemini did on the last "Look again with Gemini". */}
-          {details.notes.some((n) => n.startsWith('gemini:')) && (
-            <ul className="space-y-0.5 text-[11px] text-zinc-400">
-              {details.notes
-                .filter((n) => n.startsWith('gemini:'))
-                .map((n, i) => (
-                  <li key={i} className="break-all">
-                    {n.replace(/^gemini: /, 'Gemini: ')}
-                  </li>
-                ))}
-            </ul>
-          )}
-                    {details.status === 'choose' && (
-            <div className="space-y-2 rounded-xl border border-violet-500/30 bg-violet-950/20 p-3">
-              <p className="text-sm text-violet-200">
-                {event.startDate ? 'Sources give a different date. Is it one of these?' : 'Is it one of these?'}
-              </p>
-              {details.candidates.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => run('pick', () => eventsApi.pick(event.id, c.id))}
-                  className="flex w-full items-start justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-2.5 text-left hover:border-violet-500"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm text-zinc-100">{candidateLine(c) || c.name}</span>
-                    <span className="block truncate text-[11px] text-zinc-400">
-                      {c.name && `${c.name} · `}
-                      {c.sources.length > 1 ? `${c.sources.length} sources: ` : ''}
-                      {[...new Set(c.sources.map((s) => SOURCE_LABELS[s.sourceType] + (s.readBy === 'gemini' ? ' (read by Gemini)' : '')))].join(', ')}
-                    </span>
-                  </span>
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-violet-300" />
-                </button>
-              ))}
-              <button onClick={() => run('pick', () => eventsApi.pick(event.id))} className="text-xs text-zinc-400 hover:underline">
-                None of these
-              </button>
-            </div>
-          )}
           {confirmations.length > 0 && (
             <div className="space-y-1 text-xs">
               <p className="inline-flex items-center gap-1 text-emerald-300/90">
