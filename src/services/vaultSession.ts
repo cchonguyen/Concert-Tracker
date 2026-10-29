@@ -113,5 +113,7 @@ export class VaultSession {
 }
 
 // What a notes box shows. Locked is never presented as empty.
-export type NoteView = { kind: 'text'; text: string; editable: true } | { kind: 'locked'; badge: 'Vault locked'; editable: false };
-export const noteView = (read: string | null): NoteView => (read === null ? { kind: 'locked', badge: 'Vault locked', editable: false } : { kind: 'text', text: read, editable: true });
+export const VAULT_LOCKED_BADGE = '🔒 Vault Locked';
+export type NoteView = { kind: 'text'; text: string; editable: true } | { kind: 'locked'; badge: typeof VAULT_LOCKED_BADGE; editable: false };
+export const noteView = (read: string | null): NoteView =>
+  read === null ? { kind: 'locked', badge: VAULT_LOCKED_BADGE, editable: false } : { kind: 'text', text: read, editable: true };
