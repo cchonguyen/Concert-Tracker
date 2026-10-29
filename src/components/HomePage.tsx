@@ -20,6 +20,7 @@ interface HomePageProps {
   emailCheck: boolean;
   onCaptured: (event: LoggedEvent) => void;
   onImport: () => void;
+  onShare: () => void;
   onReviewEmail: () => void;
   onOpenSummary: () => void;
   onOpen: (page: Page) => void;
@@ -46,6 +47,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   emailCheck,
   onCaptured,
   onImport,
+  onShare,
   onReviewEmail,
   onOpenSummary,
   onOpen,
@@ -89,7 +91,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       {yearReview && <YearTile review={yearReview} cities={yearCities} onOpen={() => onOpen('stats')} />}
 
-      <FeatureTiles eventCount={eventCount} onOpen={onOpen} onImport={onImport} />
+      <FeatureTiles eventCount={eventCount} onOpen={onOpen} onImport={onImport} onShare={onShare} />
 
       {alerts.length > 0 && (
         <section className="space-y-2 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
