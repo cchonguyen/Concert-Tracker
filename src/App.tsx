@@ -223,6 +223,8 @@ export default function App() {
   const section = sectionOf(tab);
   // The Table is wide; every other page shares one reading width.
   const width = shown === 'table' ? 'max-w-6xl' : 'max-w-3xl';
+  // The top bar and sub-tabs use one width on every page, so they never jump when the page changes.
+  const headerWidth = 'max-w-6xl';
   // The hint is for phones, where the subtabs are icons only.
   const phone = typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches;
   useEffect(() => {
@@ -251,7 +253,7 @@ export default function App() {
           headerShown ? '' : '-translate-y-full'
         }`}
       >
-        <div className={`mx-auto flex ${width} items-center justify-between gap-3 px-4 py-3`}>
+        <div className={`mx-auto flex ${headerWidth} items-center justify-between gap-3 px-4 py-3`}>
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-violet-600 to-cyan-400">
               <Radio className="h-4 w-4 text-white" />
@@ -298,7 +300,7 @@ export default function App() {
         </div>
         {section && (
           <div className="border-t border-zinc-900">
-            <div className={`mx-auto flex ${width} gap-1 overflow-x-auto px-4`}>
+            <div className={`mx-auto flex ${headerWidth} gap-1 overflow-x-auto px-4`}>
               {subPagesFor(section, { canManage }).map((p) => {
                 const Icon = PAGE_ICON[p];
                 const active = shown === p;
@@ -325,7 +327,7 @@ export default function App() {
               })}
             </div>
             {hintDue && (
-              <p className={`mx-auto ${width} px-4 pb-2 text-xs text-violet-300 sm:hidden`}>
+              <p className={`mx-auto ${headerWidth} px-4 pb-2 text-xs text-violet-300 sm:hidden`}>
                 Tap an icon to switch pages.
               </p>
             )}
