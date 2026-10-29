@@ -24,7 +24,7 @@
     // worker/index.ts). The share page (/s/<code>) and the old app addresses
     // are answered by the Worker before any static file, in either case of "s".
     "binding": "ASSETS",
-    "run_worker_first": ["/", "/index.html", "/app", "/app.html", "/api/*", "/s", "/s/*", "/S", "/S/*"]
+    "run_worker_first": ["/", "/index.html", "/app", "/app.html", "/robots.txt", "/sitemap.xml", "/api/*", "/s", "/s/*", "/S", "/S/*"]
   },
   // ACCESS_TEAM_DOMAIN (https://<team>.cloudflareaccess.com) and ACCESS_AUD
   // (the Access application's audience tag) turn on the Worker's own check of

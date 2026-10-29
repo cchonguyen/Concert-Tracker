@@ -39,3 +39,34 @@ export function oldAppLink(url: URL): string | null {
   if (!OLD_APP_PARAMS.some((key) => url.searchParams.has(key))) return null;
   return `/app${url.search}`;
 }
+
+// The site's address, for canonical links, the sitemap and robots.txt. The
+// same value is in site.config.json (Vite fills the HTML from that file) and
+// must equal APP_URL in wrangler.jsonc; tests/publicPages.test.ts checks both.
+export const SITE_ORIGIN = 'https://concert.charliechonguyen.com';
+
+// The public pages a search engine may index. The share page is not listed.
+export const SITEMAP_PATHS = ['/', '/demo', '/privacy', '/terms'];
+
+export const robotsTxt = (origin: string): string =>
+  [
+    'User-agent: *',
+    'Allow: /',
+    'Allow: /demo',
+    'Allow: /privacy',
+    'Allow: /terms',
+    'Disallow: /app',
+    'Disallow: /api/',
+    'Disallow: /s/',
+    `Sitemap: ${origin}/sitemap.xml`,
+    '',
+  ].join('\n');
+
+export const sitemapXml = (origin: string): string =>
+  [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ...SITEMAP_PATHS.map((path) => `  <url><loc>${origin}${path}</loc></url>`),
+    '</urlset>',
+    '',
+  ].join('\n');

@@ -280,7 +280,7 @@ The `/api` routes live in `src/server/app.ts` and take a `JobRunner` that starts
 
 | | Node (`server.ts`, `npm run dev`) | Cloudflare Worker (`worker/index.ts`, `wrangler.jsonc`) |
 | --- | --- | --- |
-| Frontend | Vite middleware in dev, `dist/` in production (two pages: the marketing page and the app, see Public pages) | Workers static assets from `dist/`, unknown addresses get `404.html`; the Worker runs for `/`, the app page, `/api/*` and the share page (`/s`, `/s/*`, `/S`, `/S/*`), and hands the pages it lets through to the static assets (`ASSETS`)
+| Frontend | Vite middleware in dev, `dist/` in production (two pages: the marketing page and the app, see Public pages) | Workers static assets from `dist/`, unknown addresses get `404.html`; the Worker runs for `/`, the app page, `/robots.txt`, `/sitemap.xml`, `/api/*` and the share page (`/s`, `/s/*`, `/S`, `/S/*`), and hands the pages it lets through to the static assets (`ASSETS`)
 | API | Express | The same Express app, through `handleAsNodeRequest` from `cloudflare:node` (`nodejs_compat`) |
 | Starting a job | `LookupWorker.kick` runs it in-process | A message on the `concert-tracker-lookups` Queue |
 | Due and parked jobs | `setInterval` every 20 s | Cron Trigger every minute sends due jobs to the Queue |
@@ -310,6 +310,7 @@ Anyone can open the public pages without signing in. The app itself is at the ad
 - The marketing page is `/` (static `index.html`, not part of the React app). Signed-in visitors get `/app` instead, unless the address has `?public=1`.
 - Old app addresses (`/?view=...`, `/?gmail=...`, `/?sheets=...`) redirect with 302 to `/app` with the same query. Google's return addresses after Connect Gmail and Connect Sheets point at `/app`.
 - Unknown addresses get `404.html`.
+- The marketing page is plain HTML (no React, no script) with its canonical and Open Graph URLs filled from `site.config.json` at build time. `robots.txt` and `sitemap.xml` are written by the Worker from the same origin (`SITE_ORIGIN` in `publicPaths.ts`). `robots.txt` disallows the app, the API and the share pages; the sitemap lists `/`, `/demo`, `/privacy` and `/terms`. `og.png` is the share image.
 
 Public allowlist. The Access bypass policy must list the same paths; the Worker's front door uses the same list. A test checks that this list and `publicPaths.ts` agree:
 

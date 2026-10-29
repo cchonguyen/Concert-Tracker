@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { frontDoor } from '../src/server/share/door.ts';
-import { PUBLIC_EXACT_PATHS, PUBLIC_PREFIXES, isPublicPath, oldAppLink } from '../src/server/site/publicPaths.ts';
+import { PUBLIC_EXACT_PATHS, PUBLIC_PREFIXES, SITE_ORIGIN, isPublicPath, oldAppLink, robotsTxt, sitemapXml } from '../src/server/site/publicPaths.ts';
 import { accessConfigFromEnv, type AccessConfig } from '../src/server/share/access.ts';
 
 const ORIGIN = 'https://concert.example';
@@ -18,10 +18,27 @@ test('the public allowlist is exactly the paths the document lists', () => {
   assert.deepEqual([...new Set(listed)].sort(), [...new Set(expected)].sort());
 });
 
-test('site.config.json origin matches APP_URL in wrangler.jsonc', () => {
+test('site.config.json, SITE_ORIGIN and APP_URL in wrangler.jsonc are one address', () => {
   const origin = JSON.parse(readFileSync(new URL('../site.config.json', import.meta.url), 'utf8')).origin;
   const wrangler = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+  assert.equal(origin, SITE_ORIGIN);
   assert.equal(wrangler.match(/"APP_URL":\s*"([^"]+)"/)?.[1], origin);
+});
+
+test('robots.txt and sitemap.xml name only the public pages, from the one origin', () => {
+  const robots = robotsTxt(SITE_ORIGIN);
+  assert.match(robots, /^Disallow: \/app$/m);
+  assert.match(robots, /^Disallow: \/api\/$/m);
+  assert.ok(robots.includes(`Sitemap: ${SITE_ORIGIN}/sitemap.xml`));
+  const sitemap = sitemapXml(SITE_ORIGIN);
+  assert.ok(sitemap.includes(`<loc>${SITE_ORIGIN}/privacy</loc>`));
+  assert.ok(!sitemap.includes('/app') && !sitemap.includes('/s/'));
+});
+
+test('the marketing page has no placeholder left for the origin once built', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.ok(html.includes('__SITE_ORIGIN__/'), 'canonical placeholder present for the build to fill');
+  assert.ok(!html.includes('<script type="module"'), 'the marketing page is static HTML, not the app');
 });
 
 test('public pages are open without a token; the app and the API are not', async () => {

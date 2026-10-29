@@ -7,19 +7,104 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#022c22" />
-    <meta name="description" content="Remember every show you went to and everyone you saw there." />
-    <title>LiveArchive</title>
+    <title>LiveArchive · Remember every show you went to</title>
+    <meta name="description" content="Remember every show you went to and everyone you saw there. A personal concert log that reads lineups from their sources and never guesses." />
+    <link rel="canonical" href="__SITE_ORIGIN__/" />
+    <meta property="og:title" content="LiveArchive" />
+    <meta property="og:description" content="Remember every show you went to and everyone you saw there." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="__SITE_ORIGIN__/" />
+    <meta property="og:image" content="__SITE_ORIGIN__/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script type="application/ld+json">
+      {"@context":"https://schema.org","@type":"WebApplication","name":"LiveArchive","url":"__SITE_ORIGIN__/","applicationCategory":"LifestyleApplication","description":"A personal log of the concerts and festivals you attended and the acts you saw."}
+    </script>
     <style>
-      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #022c22; color: #ecfdf5; font-family: system-ui, sans-serif; }
-      main { padding: 16px; text-align: center; max-width: 36rem; }
-      a { color: #6ee7b7; }
+      :root { --bg: #022c22; --panel: #064e3b; --ink: #ecfdf5; --muted: #a7f3d0; --accent: #6ee7b7; --line: rgba(110, 231, 183, 0.25); }
+      @media (prefers-color-scheme: light) {
+        :root:not([data-theme="dark"]) { --bg: #fafafa; --panel: #ffffff; --ink: #064e3b; --muted: #047857; --accent: #047857; --line: rgba(4, 120, 87, 0.2); }
+      }
+      body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, sans-serif; }
+      main { max-width: 56rem; margin: 0 auto; padding: 0 16px 64px; }
+      a { color: var(--accent); }
+      header, section { padding: 48px 0; border-bottom: 1px solid var(--line); }
+      header { padding-top: 64px; }
+      h1 { font-size: clamp(2rem, 6vw, 3.25rem); line-height: 1.1; margin: 0 0 16px; }
+      h2 { font-size: 1.5rem; margin: 0 0 16px; }
+      h3 { font-size: 1.05rem; margin: 0 0 8px; }
+      p { margin: 0 0 12px; }
+      .lede { font-size: 1.2rem; color: var(--muted); max-width: 40rem; }
+      .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+      .button { display: inline-block; padding: 10px 18px; border-radius: 10px; border: 1px solid var(--accent); text-decoration: none; }
+      .button.primary { background: var(--accent); color: var(--bg); font-weight: 600; }
+      .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+      .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+      .card p { color: var(--muted); font-size: 0.95rem; margin: 0; }
+      footer { padding: 32px 0; color: var(--muted); font-size: 0.9rem; }
+      footer nav { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 12px; }
     </style>
   </head>
   <body>
     <main>
-      <h1>LiveArchive</h1>
-      <p>Remember every show you went to and everyone you saw there.</p>
-      <p><a href="/app">Log in (invite only)</a></p>
+      <header>
+        <h1>LiveArchive</h1>
+        <p class="lede">Remember every show you went to and everyone you saw there.</p>
+        <p>Type one line about a concert or festival. LiveArchive finds the date, venue and lineup from the sources it reads, shows where each name came from, and keeps your record of who you saw.</p>
+        <div class="actions">
+          <a class="button primary" href="/demo">See the demo</a>
+          <a class="button" href="/app">Log in (invite only)</a>
+        </div>
+      </header>
+
+      <section>
+        <h2>How it works</h2>
+        <div class="grid">
+          <div class="card"><h3>1. Type one line</h3><p>"Portola 2025" or "Coachella, April". Text the app cannot place stays in the name, so nothing is guessed.</p></div>
+          <div class="card"><h3>2. Read the lineup</h3><p>Lineups come from the sources that publish them, such as festival timetables, promoter pages and Ticketmaster. Each act links back to where it was read.</p></div>
+          <div class="card"><h3>3. Tick who you saw</h3><p>Nothing joins your record until you tick it. Set times, stages and back-to-back sets are kept only where a source gives them.</p></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>What you get</h2>
+        <div class="grid">
+          <div class="card"><h3>Summary and Table</h3><p>Every event as a row, with filters, sorting and CSV export.</p></div>
+          <div class="card"><h3>Timeline</h3><p>Your shows laid out by month, year and season.</p></div>
+          <div class="card"><h3>Map</h3><p>A dot for each city you went to, with year playback.</p></div>
+          <div class="card"><h3>Stats and Ranking</h3><p>Events per year, streaks, your most-seen acts and series you went back to.</p></div>
+          <div class="card"><h3>Share</h3><p>A read-only page of your history that you can send to a friend.</p></div>
+          <div class="card"><h3>Google Sheets</h3><p>An optional one-way copy of your log into a sheet you choose.</p></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Honest by design</h2>
+        <div class="grid">
+          <div class="card"><h3>It never guesses a lineup</h3><p>A date, venue, act or set time is stored only when a source gives it. Missing data stays missing, and the app says so.</p></div>
+          <div class="card"><h3>Every act has a source</h3><p>Each name links to the page it came from, with the exact words that named it.</p></div>
+          <div class="card"><h3>Ticket emails stay out of AI</h3><p>Ticket emails are read by code written for each seller. An AI model never reads them.</p></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Your privacy</h2>
+        <p>Your log is yours. Companions and notes can be encrypted in your browser, so the server never holds the key. The <a href="/privacy">privacy page</a> says exactly what is stored, what Google data is read, and what other services receive.</p>
+      </section>
+
+      <section>
+        <h2>Invite only for now</h2>
+        <p>LiveArchive is invite only. Sign-in goes through Google, and an account that is not on the invite list is shown "not invited" and gets no access. There is no sign-up form. Read the <a href="/terms">terms</a> before you use it.</p>
+        <div class="actions"><a class="button" href="/app">Log in (invite only)</a></div>
+      </section>
+
+      <footer>
+        <nav>
+          <a href="/demo">Demo</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
+        </nav>
+        <p>Lineup sources are credited on each event. LiveArchive does not sell tickets.</p>
+      </footer>
     </main>
   </body>
 </html>
