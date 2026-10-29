@@ -256,6 +256,16 @@ The browser keeps nothing of yours: every view reads the server (the Map view ke
 | `POST /api/lookups/:id/confirm` | Save the reviewed lineup and learning data, and the event's seen acts |
 | `GET /api/editions` | Confirmed and draft editions |
 
+## Navigation and Home
+
+The header has three places: **Home**, **Library** and **Explore**. Library holds Summary (the list of your events, Library's first page), Table and Manage. Explore holds Timeline (its first page), Map, Stats and Artists. Manage is hidden for members who cannot see it (`canManage`), and Summary is shown instead when a member opens its address. `src/services/nav.ts` holds the model: which page belongs to which section, the `?view=` names (`?view=table`, `?view=summary`; no view, or the old `?view=events`, opens Home), the subtab each section reopens on this device (`liveArchive.subtabs` in localStorage, with storage errors ignored), and the members' fallback. Each page's icon is shared through `src/components/pageIcons.ts`, so cards, subtabs and the Menu match.
+
+Home (`src/components/HomePage.tsx`) is the landing page. Its top is the one-line add box (`CaptureBar`, the same capture as stage 1 and unchanged), with Check ticket email and Import a list under it. Below that, Needs you lists shows waiting for a yes or no (`homeSummary().toConfirm`), ticket emails to review, and lineups still researching; it hides when there is nothing to do. Then one card per page, grouped under Library and Explore, with a line about the page and a live number where there is a cheap one (events, cities, artists seen). With no events, the cards dim and the add box asks for one show you remember. Summary keeps its "Just added" and researching lists.
+
+Quick add (`src/components/QuickAdd.tsx`) opens the same capture, email check and import from any page, as a popup. Desktop has a header button; phone has a floating + in the bottom corner; N opens it unless you are typing or a panel is open. Saving closes it and shows "Saved · Open" for six seconds.
+
+The Menu (`src/components/MenuButton.tsx`) holds Your account and Members (multi-user only), Your data (Import a list, Export all as CSV, and Google Sheets for the owner), and Theme inline. Import and Google Sheets panels are opened by `App`, so Menu, Table and Quick add show one copy at a time. The CSV download is shared in `src/components/DataActions.ts`. The Table keeps its own Import, Sheets and Export buttons.
+
 ## Hosting
 
 The `/api` routes live in `src/server/app.ts` and take a `JobRunner` that starts a job without waiting for it. Two hosts wire them up:
