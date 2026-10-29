@@ -25,6 +25,7 @@ import { MapView } from './components/MapView';
 import { TimelineTab } from './components/timeline/TimelineTab';
 import { useTheme } from './components/ThemePicker';
 import { MenuButton } from './components/MenuButton';
+import { SharePanel } from './components/SharePanel';
 import { QuickAdd, QuickAddButton, QuickAddFab, SavedToast } from './components/QuickAdd';
 import { DataPanel, exportCsv } from './components/DataActions';
 import { ListImport } from './components/ListImport';
@@ -87,6 +88,7 @@ export default function App() {
   // Single-owner installs answer owner; until /api/me answers, assume owner so nothing flickers away.
   const [me, setMe] = useState<Me>({ multiUser: false, role: 'owner', email: null });
   const [members, setMembers] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [account, setAccount] = useState(false);
   const theme = useTheme();
   const [quickAdd, setQuickAdd] = useState(false);
@@ -295,6 +297,7 @@ export default function App() {
               onImport={openImport}
               onExport={() => exportCsv(events, editions)}
               onSheets={openSheets}
+              onShare={() => setSharing(true)}
             />
           </div>
         </div>
@@ -304,7 +307,7 @@ export default function App() {
               {subPagesFor(section, { canManage }).map((p) => {
                 const Icon = PAGE_ICON[p];
                 const active = shown === p;
-                const count = p === 'summary' ? events.length : p === 'ranking' ? seenCount : null;
+                const count = p === 'summary' ? events.length : null;
                 return (
                   <button
                     key={p}
@@ -336,6 +339,7 @@ export default function App() {
       </header>
 
       {members && <MembersPanel onClose={() => setMembers(false)} />}
+      {sharing && <SharePanel onClose={() => setSharing(false)} />}
       {account && <AccountPanel onClose={() => setAccount(false)} />}
 
       <PeopleProvider events={events} version={events}>
@@ -386,7 +390,6 @@ export default function App() {
             editions={editions}
             onOpen={setSelectedId}
             onChanged={upsert}
-            onCaptured={handleCaptured}
             onManage={openManage}
             onImport={openImport}
             onSheets={openSheets}
