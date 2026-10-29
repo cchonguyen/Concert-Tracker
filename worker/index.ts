@@ -88,14 +88,18 @@ export default {
 
   async scheduled(_controller, env) {
     const deps = await getDeps();
-    // Once, after 0014: point events saved before it at their records.
+    // Once, after 0014: point events saved before it at their records. Not with
+    // multi-user on: each member's saves link into their own records, and this
+    // global pass would link everyone's events into the old shared tables.
     try {
-      const done = await backfillEntities(deps.store);
-      if (done) console.log(`Entity backfill: ${done.events} events, ${done.entities} records, ${done.aliases} aliases.`);
-      // The next minute: venues whose events share one city are put in it.
-      else {
-        const venues = await backfillVenuePlaces(deps.store);
-        if (venues) console.log(`Venue places: ${venues.venues} venues, ${venues.events} events.`);
+      if (!multiUserFromEnv(process.env)) {
+        const done = await backfillEntities(deps.store);
+        if (done) console.log(`Entity backfill: ${done.events} events, ${done.entities} records, ${done.aliases} aliases.`);
+        // The next minute: venues whose events share one city are put in it.
+        else {
+          const venues = await backfillVenuePlaces(deps.store);
+          if (venues) console.log(`Venue places: ${venues.venues} venues, ${venues.events} events.`);
+        }
       }
     } catch (err) {
       console.error('Entity backfill failed:', err instanceof Error ? err.message : String(err));

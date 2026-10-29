@@ -18,7 +18,10 @@ export function checkEntities(all: Map<string, Entity>, incoming: Entity[]): voi
   const live = new Map<string, string>();
   for (const e of next.values()) {
     if (!ENTITY_KINDS.includes(e.kind)) fail(`Unknown entity kind "${e.kind}".`);
-    if (!e.nameNormalized) fail(`Entity ${e.id} has no name.`);
+    if (e.nameEncrypted) {
+      if (e.kind !== 'person') fail(`Only a person can have an encrypted name (${e.id}).`);
+      if (e.name || e.nameNormalized) fail(`Person ${e.id} has an encrypted name and a plain one.`);
+    } else if (!e.nameNormalized) fail(`Entity ${e.id} has no name.`);
     if (e.mergedIntoId) {
       if (e.mergedIntoId === e.id) fail(`Entity ${e.id} cannot be merged into itself.`);
       const target = next.get(e.mergedIntoId);
@@ -26,6 +29,7 @@ export function checkEntities(all: Map<string, Entity>, incoming: Entity[]): voi
       else if (target.mergedIntoId) fail(`Entity ${e.id} is merged into ${target.id}, which is itself merged; merges must be flattened.`);
       continue;
     }
+    if (e.nameEncrypted) continue;
     const key = `${e.kind}\u0000${e.nameNormalized}`;
     const other = live.get(key);
     if (other && other !== e.id) fail(`Two live ${e.kind} records are named "${e.nameNormalized}".`);
@@ -75,5 +79,6 @@ export function checkEventRefs(all: Map<string, Entity>, event: LoggedEvent): vo
     want(refs.seriesId, 'series');
     refs.companionIds.forEach((id) => want(id, 'person'));
   }
+  event.personIds?.forEach((id) => want(id, 'person'));
   for (const act of event.seen) want(act.artistId, 'artist');
 }
