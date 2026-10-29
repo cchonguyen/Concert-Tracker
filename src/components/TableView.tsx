@@ -14,6 +14,7 @@ import {
   Mail,
   MapPin,
   Minus,
+  Pencil,
   Mic2,
   Plus,
   Sheet,
@@ -25,8 +26,12 @@ import {
   X,
 } from 'lucide-react';
 import type { EmailImport, LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
-import { artistsOf, formatsOf, kindLabel, supportOf, whenLabel } from '../services/format';
+import { artistsOf, formatsOf, kindLabel, whenLabel } from '../services/format';
 import { exportCsv } from './DataActions';
+import { BackToTop } from './ui/BackToTop';
+import { IconButton } from './ui/IconButton';
+import { MenuButton } from './ui/MenuButton';
+import { Pill } from './ui/Pill';
 import {
   activeFilterCount,
   actsInOrder,
@@ -87,19 +92,30 @@ const HAS_LABELS: Record<HasField, [string, string, string]> = {
 const NEEDS_LABELS = { date: 'A date', pick: 'A pick', review: 'Lineup review' } as const;
 
 // One header per column; a column can sort by more than one key (Where sorts
-// by venue or city).
+// by venue or city). Details does not sort: its parts are in the sort menu
+// instead, with Rating and Price.
 const COLUMNS: Array<{ label: string; sorts?: Array<{ key: SortKey; label: string }>; className?: string }> = [
   { label: 'Date', sorts: [{ key: 'date', label: 'Date' }], className: 'w-36' },
   { label: 'Event', sorts: [{ key: 'name', label: 'Event' }], className: 'min-w-48' },
-  { label: 'Format', className: 'min-w-32' },
   { label: 'Where', sorts: [{ key: 'venue', label: 'Venue' }, { key: 'city', label: 'City' }], className: 'min-w-44' },
   { label: 'Seen', sorts: [{ key: 'seen', label: 'Seen' }], className: 'min-w-56' },
-  { label: 'With', className: 'min-w-32' },
-  { label: 'Rating', sorts: [{ key: 'rating', label: 'Rating' }], className: 'w-28' },
-  { label: 'Status', className: 'w-32' },
+  { label: 'Details', className: 'min-w-52' },
 ];
 
-const NEEDS_ICONS = { date: CalendarX2, pick: ListChecks, review: Eye } as const;
+// The sort menu lists every key, so Rating and Price stay reachable with no column.
+const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
+  { value: 'date', label: 'Date' },
+  { value: 'name', label: 'Event' },
+  { value: 'venue', label: 'Venue' },
+  { value: 'city', label: 'City' },
+  { value: 'seen', label: 'Seen' },
+  { value: 'rating', label: 'Rating' },
+  { value: 'price', label: 'Price' },
+];
+
+const NEEDS_ICONS = { date: CalendarX2, pick: ListChecks, review: Pencil } as const;
+// What the icon for a missing thing says on hover and to screen readers.
+const NEEDS_TITLES = { date: 'No date yet', pick: 'Pick needed', review: 'Lineup not reviewed' } as const;
 
 const readQuery = () => filtersFromQuery(typeof window === 'undefined' ? '' : window.location.search);
 
@@ -189,24 +205,6 @@ const FormatChip: React.FC<{ value: string }> = ({ value }) => (
   <span className="rounded-full bg-zinc-800/80 px-1.5 py-px text-[11px] text-zinc-300">{value}</span>
 );
 
-// Concert or Festival on top, then the formats you gave, one chip each.
-const FormatCell: React.FC<{ kind: string; format?: string }> = ({ kind, format }) => {
-  const formats = formatsOf(format);
-  if (!kind && !formats.length) return dash;
-  return (
-    <div className="space-y-1">
-      {kind && <KindBadge kind={kind} />}
-      {formats.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {formats.map((f) => (
-            <FormatChip key={f} value={f} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
 const Stars: React.FC<{ rating?: number | null }> = ({ rating }) =>
   rating ? (
     <span className="inline-flex gap-px" title={`${rating} of 5`} aria-label={`${rating} of 5`}>
@@ -235,6 +233,63 @@ const WentBadge: React.FC<{ state: AttendanceState }> = ({ state }) =>
       {ATTENDANCE_LABELS[state]}
     </span>
   );
+
+// The Details cell: pills for what the event is, icons for what it still needs
+// (each one opens the event), and the rating when there is one.
+const DetailsCell: React.FC<{
+  e: LoggedEvent;
+  kind: string;
+  state: AttendanceState;
+  needs: keyof typeof NEEDS_LABELS | null;
+  confirmed: boolean;
+  onSeries: () => void;
+}> = ({ e, kind, state, needs, confirmed, onSeries }) => {
+  const formats = formatsOf(e.format);
+  const pills = Boolean(e.series || kind || formats.length || state !== 'went');
+  const icons = fromEmail(e) || needs || confirmed;
+  if (!pills && !icons && !e.rating) return dash;
+  return (
+    <div className="space-y-1.5">
+      {pills && (
+        <div className="flex flex-wrap items-center gap-1">
+          {e.series && (
+            <button
+              type="button"
+              onClick={(ev) => {
+                ev.stopPropagation();
+                onSeries();
+              }}
+              title={`Show only ${e.series}`}
+              className="rounded-full hover:opacity-80"
+            >
+              <Pill tone="accent">
+                <Layers className="h-3 w-3" /> {e.series}
+              </Pill>
+            </button>
+          )}
+          {kind && <KindBadge kind={kind} />}
+          {formats.map((f) => (
+            <Pill key={f}>{f}</Pill>
+          ))}
+          <WentBadge state={state} />
+        </div>
+      )}
+      {(icons || e.rating) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {fromEmail(e) && <IconButton icon={Mail} label="Added from a ticket email" />}
+          {needs && <IconButton icon={NEEDS_ICONS[needs]} label={NEEDS_TITLES[needs]} />}
+          {confirmed && <IconButton icon={CircleCheck} label="Lineup confirmed" />}
+          {e.rating ? (
+            <span className="inline-flex items-center gap-1 text-xs text-amber-300" title={`${e.rating} of 5`} aria-label={`Rated ${e.rating} of 5`}>
+              <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" aria-hidden="true" />
+              {e.rating}
+            </span>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const NeedsBadge: React.FC<{ needs: keyof typeof NEEDS_LABELS }> = ({ needs }) => {
   const Icon = NEEDS_ICONS[needs];
@@ -288,28 +343,6 @@ const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, 
   );
 };
 
-const People: React.FC<{ names: string[] }> = ({ names }) =>
-  names.length ? (
-    <span className="flex min-w-0 items-center gap-2" title={names.join(', ')}>
-      <span className="flex shrink-0 -space-x-1.5">
-        {names.slice(0, 3).map((n) => (
-          <span
-            key={n}
-            className="grid h-6 w-6 place-items-center rounded-full border border-zinc-950 bg-zinc-800 text-[10px] font-semibold text-zinc-300"
-          >
-            {nameForms(n).initials.slice(0, 2)}
-          </span>
-        ))}
-      </span>
-      <span className="flex min-w-0 text-xs text-zinc-400">
-        <PersonName name={names[0]} />
-        {names.length > 1 && <span className="shrink-0">&nbsp;+{names.length - 1}</span>}
-      </span>
-    </span>
-  ) : (
-    dash
-  );
-
 // Every event as a row you can filter, sort and export. A row opens the usual
 // event panel for editing; "Import a list" adds events from a CSV you kept.
 export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, onOpen, onChanged, onCaptured, onManage, onImport, onSheets, onRefresh }) => {
@@ -335,6 +368,8 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const setHas = (field: HasField, v: Has) => setFilters((f) => ({ ...f, has: { ...f.has, [field]: v } }));
   const sortBy = (key: SortKey) =>
     setFilters((f) => ({ ...f, sort: key, desc: f.sort === key ? !f.desc : key === 'date' || key === 'seen' || key === 'rating' || key === 'price' }));
+  // The sort menu picks a key in its usual direction; a column header toggles.
+  const pickSort = (key: SortKey) => setFilters((f) => ({ ...f, sort: key, desc: key === 'date' || key === 'seen' || key === 'rating' || key === 'price' }));
   const year = (s: string) => (s ? Number(s) : undefined);
   const list = (values: string[]) => values.map((v) => ({ value: v, label: v }));
 
@@ -430,6 +465,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
         >
           <Plus className="h-3.5 w-3.5" /> Add
         </button>
+        <MenuButton label="Sort rows" value={filters.sort} options={SORT_OPTIONS} onChange={pickSort} />
         <button
           onClick={() => setShowFilters((s) => !s)}
           className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm ${
@@ -622,7 +658,6 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                 {rows.map((e) => {
                   const needs = needsOf(e, lineups[e.id]);
                   const artists = artistsOf(e.seen);
-                  const support = supportOf(e.seen);
                   const cell = 'border-b border-zinc-900 px-4 py-3 align-top';
                   return (
                     <tr key={e.id} onClick={() => onOpen(e.id)} className="cursor-pointer transition-colors hover:bg-zinc-900/60">
@@ -639,23 +674,6 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                             </span>
                           )}
                         </div>
-                        {e.series && (
-                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            <button
-                              onClick={(ev) => {
-                                ev.stopPropagation();
-                                set({ series: e.series! });
-                              }}
-                              title={`Show only ${e.series}`}
-                              className="inline-flex items-center gap-1 rounded-full border border-violet-500/30 px-1.5 text-[11px] text-violet-300/90 hover:bg-violet-950/40"
-                            >
-                              <Layers className="h-3 w-3" /> {e.series}
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                      <td className={cell}>
-                        <FormatCell kind={kindLabel(e, editions[e.id])} format={e.format} />
                       </td>
                       <td className={cell}>
                         {e.venue || e.city ? (
@@ -677,34 +695,21 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                             <span className="mt-px shrink-0 rounded-md bg-zinc-800 px-1.5 text-[11px] font-semibold tabular-nums text-zinc-300">
                               {e.seen.length}
                             </span>
-                            <div className="space-y-0.5">
-                              {artists.length > 0 && <Acts seen={artists} />}
-                              {support.length > 0 && (
-                                <div className="text-xs">
-                                  <span className="text-zinc-600">with </span>
-                                  <Acts seen={support} muted />
-                                </div>
-                              )}
-                            </div>
+                            <div className="space-y-0.5">{artists.length > 0 && <Acts seen={artists} />}</div>
                           </div>
                         ) : (
                           dash
                         )}
                       </td>
                       <td className={cell}>
-                        {e.peopleLocked ? <span className="text-[11px] text-amber-300">🔒 Vault Locked</span> : <People names={e.companions} />}
-                      </td>
-                      <td className={cell}>
-                        <Stars rating={e.rating} />
-                      </td>
-                      <td className={cell}>
-                        {needs ? (
-                          <NeedsBadge needs={needs} />
-                        ) : e.editionId ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400/80">
-                            <CircleCheck className="h-3.5 w-3.5" /> Lineup confirmed
-                          </span>
-                        ) : null}
+                        <DetailsCell
+                          e={e}
+                          kind={kindLabel(e, editions[e.id])}
+                          state={attendanceOf(e, today)}
+                          needs={needs}
+                          confirmed={Boolean(e.editionId)}
+                          onSeries={() => set({ series: e.series! })}
+                        />
                       </td>
                     </tr>
                   );
@@ -750,6 +755,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
           </ul>
         </>
       )}
+      <BackToTop />
     </div>
   );
 };
