@@ -49,7 +49,7 @@ const FILTERED: Page[] = ['table', 'agenda', 'month', 'heatmap', 'river', 'map']
 const TIMELINE_PAGES: Page[] = ['agenda', 'month', 'heatmap', 'river'];
 // Pages with a title line, and long pages that get Back to top (Agenda and Table have their own).
 const HEADED: Page[] = ['stats', 'map', 'ranking'];
-const BACK_TO_TOP: Page[] = ['summary', 'month', 'stats', 'map', 'ranking'];
+const BACK_TO_TOP: Page[] = ['summary', 'month', 'heatmap', 'stats', 'map', 'ranking', 'manage'];
 
 // Remembered subtabs live on this device; a browser that blocks storage just forgets them.
 const navStorage = (): NavStorage | null => {
