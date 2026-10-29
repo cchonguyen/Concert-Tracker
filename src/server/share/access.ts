@@ -44,27 +44,44 @@ const defaultGetJson: GetJson = async (url) => {
   return res.json();
 };
 
+// The verified token's identity: Access puts the signed-in person's email in
+// `email` and a stable id for them in `sub`.
+export interface AccessClaims {
+  email: string;
+  sub: string;
+}
+
 // True only for a well-formed RS256 token signed by one of the team's keys,
 // for this application, from this team, and not expired.
 export async function verifyAccessToken(token: string | null | undefined, config: AccessConfig, now = Date.now(), getJson = defaultGetJson): Promise<boolean> {
-  if (!token) return false;
+  return (await readAccessClaims(token, config, now, getJson)) !== null;
+}
+
+// The same checks as verifyAccessToken, returning who signed in. A token with
+// no email is refused: the email is how a member is found.
+export async function readAccessClaims(token: string | null | undefined, config: AccessConfig, now = Date.now(), getJson = defaultGetJson): Promise<AccessClaims | null> {
+  if (!token) return null;
   const parts = token.split('.');
-  if (parts.length !== 3) return false;
+  if (parts.length !== 3) return null;
   try {
     const header = json(parts[0]);
     const payload = json(parts[1]);
-    if (header.alg !== 'RS256' || typeof header.kid !== 'string') return false;
+    if (header.alg !== 'RS256' || typeof header.kid !== 'string') return null;
     const auds = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
-    if (!auds.includes(config.aud)) return false;
-    if (payload.iss !== config.teamDomain) return false;
-    if (typeof payload.exp !== 'number' || payload.exp * 1000 <= now) return false;
-    if (typeof payload.nbf === 'number' && payload.nbf * 1000 > now + 60_000) return false;
+    if (!auds.includes(config.aud)) return null;
+    if (payload.iss !== config.teamDomain) return null;
+    if (typeof payload.exp !== 'number' || payload.exp * 1000 <= now) return null;
+    if (typeof payload.nbf === 'number' && payload.nbf * 1000 > now + 60_000) return null;
     let jwk = (await keysFor(config, getJson, now, false)).find((k) => k.kid === header.kid);
     jwk ??= (await keysFor(config, getJson, now, true)).find((k) => k.kid === header.kid);
-    if (!jwk) return false;
+    if (!jwk) return null;
     const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
-    return await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64url(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
+    const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64url(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
+    if (!ok) return null;
+    // A service token (machine login) has no email; only people are members.
+    const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
+    return { email, sub: typeof payload.sub === 'string' ? payload.sub : '' };
   } catch {
-    return false;
+    return null;
   }
 }
