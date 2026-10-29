@@ -374,6 +374,14 @@ export class FileLineupStore implements LineupStore {
     return this.restoreEventFor(undefined, id);
   }
 
+  async eraseDeletedEvent(id: string) {
+    return this.eraseDeletedEventFor(undefined, id);
+  }
+
+  async emptyTrash() {
+    return this.emptyTrashFor(undefined);
+  }
+
   async listActivity(limit: number) {
     return this.listActivityFor(undefined, limit);
   }
@@ -400,6 +408,27 @@ export class FileLineupStore implements LineupStore {
 
   async listDeletedEvents() {
     return clone(Object.values((await this.load()).events).filter((e) => e.deletedAt).map((e) => splitEventCity(e)));
+  }
+
+  async eraseDeletedEventFor(_uid: string | undefined, id: string) {
+    const state = await this.load();
+    if (!state.events[id]?.deletedAt) return false;
+    delete state.events[id];
+    await this.save();
+    return true;
+  }
+
+  async emptyTrashFor(_uid: string | undefined) {
+    const state = await this.load();
+    let removed = 0;
+    for (const [id, ev] of Object.entries(state.events)) {
+      if (ev.deletedAt) {
+        delete state.events[id];
+        removed++;
+      }
+    }
+    if (removed) await this.save();
+    return removed;
   }
 
   // Erase Recently deleted shows older than the cutoff. Their Log rows stay until their own purge.
@@ -840,6 +869,15 @@ function scopedFileStore(base: FileLineupStore, scope: UserScope): LineupStore {
     },
     async restoreEvent(id) {
       return (await mine('event', id)) ? base.restoreEventFor(scope.userId, id) : false;
+    },
+    async eraseDeletedEvent(id) {
+      return (await mine('event', id)) ? base.eraseDeletedEventFor(scope.userId, id) : false;
+    },
+    async emptyTrash() {
+      const ids = (await base.listDeletedEvents()).map((e) => e.id);
+      let removed = 0;
+      for (const id of ids) if ((await mine('event', id)) && (await base.eraseDeletedEventFor(scope.userId, id))) removed++;
+      return removed;
     },
     async listDeletedEvents() {
       return keep('event', await base.listDeletedEvents());

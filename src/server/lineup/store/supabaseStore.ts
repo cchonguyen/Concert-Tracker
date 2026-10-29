@@ -715,6 +715,16 @@ export class SupabaseLineupStore implements LineupStore {
     return true;
   }
 
+  async eraseDeletedEvent(id: string) {
+    const rows = this.check(await this.mine(this.own('logged_events').delete().eq('id', id).not('deleted_at', 'is', null).select('id')), 'eraseDeletedEvent');
+    return (rows ?? []).length > 0;
+  }
+
+  async emptyTrash() {
+    const rows = this.check(await this.mine(this.own('logged_events').delete().not('deleted_at', 'is', null).select('id')), 'emptyTrash');
+    return (rows ?? []).length;
+  }
+
   async listDeletedEvents() {
     const rows = this.check(await this.mine(this.own('logged_events').select('*').not('deleted_at', 'is', null)), 'listDeletedEvents');
     return (rows ?? []).map((r: any) => this.rowToEvent(r));

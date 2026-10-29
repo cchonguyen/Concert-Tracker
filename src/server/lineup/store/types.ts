@@ -110,6 +110,9 @@ export interface LineupStore {
   restoreEvent(id: string): Promise<boolean>;
   listDeletedEvents(): Promise<LoggedEvent[]>;
   purgeDeletedEvents(olderThan: string): Promise<number>;
+  // Delete permanently: one show in Recently deleted, or all of it. Only trashed rows are touched.
+  eraseDeletedEvent(id: string): Promise<boolean>;
+  emptyTrash(): Promise<number>;
   purgeActivity(olderThan: string): Promise<number>;
   listActivity(limit: number): Promise<ActivityEntry[]>;
 

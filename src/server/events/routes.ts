@@ -70,6 +70,25 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
     }
   });
 
+  // Delete permanently: only a show already in Recently deleted can be erased.
+  router.post('/events/:id/erase', async (req, res) => {
+    try {
+      const erased = await deps.store.eraseDeletedEvent(req.params.id);
+      if (!erased) return res.status(404).json({ error: 'Not in Recently deleted.' });
+      res.status(204).end();
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post('/events/trash/empty', async (_req, res) => {
+    try {
+      res.json({ removed: await deps.store.emptyTrash() });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
   router.post('/events/:id/restore', async (req, res) => {
     try {
       const restored = await deps.store.restoreEvent(req.params.id);
