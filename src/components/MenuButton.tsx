@@ -48,7 +48,6 @@ export function MenuButton({ theme, canMembers, canAccount, canSheets, onMembers
     <div ref={box} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        title="Menu"
         aria-label="Menu"
         aria-expanded={open}
         className={`flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 transition-colors ${
