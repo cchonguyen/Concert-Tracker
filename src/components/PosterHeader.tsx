@@ -21,23 +21,28 @@ interface Props {
   cited: string[]; // Keys of the lineup's acts that are not cancelled.
 }
 
+// The poster's background: a violet glow top-left and a rose glow bottom-right over the panel, as in the design.
+const POSTER_BACKGROUND =
+  'radial-gradient(90% 140% at 12% 0%, rgba(139,92,246,.42), transparent 60%), radial-gradient(60% 120% at 100% 100%, rgba(244,114,182,.16), transparent 60%), #111114';
+
 // The top of the event detail: the name, the bill (headliners large, others smaller), and status pills.
 // Sizes come from billing, never from list order.
 export function PosterHeader({ title, dateText, event, state, seen, cited }: Props) {
   const bill = billLines(seen, cited);
   const where = [event.venue, event.city].filter(Boolean).join(', ');
   return (
-    <header className="space-y-3 rounded-2xl border border-zinc-800 bg-gradient-to-br from-violet-500/20 via-zinc-900 to-zinc-950 p-5">
-      <div className="space-y-1">
-        <h2 className="text-xl font-semibold text-zinc-100">{title}</h2>
-        {(dateText || where) && <p className="text-sm text-zinc-300">{[dateText, where].filter(Boolean).join(' · ')}</p>}
+    <header className="relative space-y-2 overflow-hidden rounded-2xl border border-zinc-800 p-5" style={{ background: POSTER_BACKGROUND }}>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm text-zinc-300">{[dateText, where].filter(Boolean).join(' · ')}</p>
+        {event.rating ? <p className="shrink-0 text-sm text-amber-300" aria-label={`Rated ${event.rating} of 5`}>{'★'.repeat(event.rating)}<span className="text-zinc-600">{'★'.repeat(5 - event.rating)}</span></p> : null}
       </div>
-      {bill.large.length > 0 && <p className="text-2xl font-semibold leading-tight text-zinc-50">{bill.large.map((a) => a.name).join(', ')}</p>}
-      {bill.medium.length > 0 && <p className="text-base text-zinc-200">{bill.medium.map((a) => a.name).join(', ')}</p>}
-      {bill.more > 0 && <p className="text-xs text-zinc-400">+ {bill.more} more</p>}
-      <div className="flex flex-wrap gap-2">
+      <h2 className="text-2xl font-bold leading-tight text-zinc-50">{title}</h2>
+      {bill.large.length > 0 && <p className="text-3xl font-bold uppercase leading-none tracking-tight text-zinc-50">{bill.large.map((a) => a.name).join(', ')}</p>}
+      {bill.medium.length > 0 && <p className="text-base font-medium text-zinc-200">{bill.medium.map((a) => a.name).join(', ')}</p>}
+      {bill.more > 0 && <p className="text-xs font-medium text-zinc-400">+ {bill.more} more</p>}
+      <div className="flex flex-wrap gap-2 pt-2">
         <Pill tone="accent">{STATUS[state]}</Pill>
-        {cited.length > 0 && <Pill>Lineup: {cited.length} acts</Pill>}
+        {cited.length > 0 && <Pill>Lineup · {cited.length} acts</Pill>}
       </div>
     </header>
   );
@@ -59,7 +64,7 @@ export function ThingsLeft({ gaps, onNext }: { gaps: Gap[]; onNext: (gap: Gap) =
         <button
           type="button"
           onClick={() => onNext(gaps[0])}
-          className="inline-flex h-11 items-center gap-1 rounded-control px-2 text-sm text-violet-200 hover:text-violet-100 sm:h-9"
+          className="inline-flex h-11 items-center gap-1 rounded-control bg-violet-500 px-3 text-sm font-semibold text-white hover:bg-violet-400 sm:h-9"
         >
           Next: {GAP_QUESTION[gaps[0]]} <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </button>
