@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useIsOwner } from './MeContext';
 import { Check, CloudSun, ExternalLink, Heart, Loader2, MapPin, Plus, RefreshCw, Search, Star, Type, X } from 'lucide-react';
 import {
   ArtistSuggestion,
@@ -297,7 +296,6 @@ const ReviewRow: React.FC<{ event: LoggedEvent; onDone: (e: LoggedEvent) => void
 // starts details research or lineup lookups for many events at once. Nothing
 // is filled without you; lookups only propose.
 export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editions, onChanged, onRefresh, onOpen, onClose }) => {
-  const isOwner = useIsOwner();
   const counts = useMemo(() => gapCounts(events, lineups, editions), [events, lineups, editions]);
   const [gap, setGap] = useState<Gap>(() => GAPS.find((g) => counts[g] > 0) ?? 'date');
   const [busy, setBusy] = useState<string | null>(null);
@@ -567,7 +565,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
             Look up details for these {researchable.length}
           </button>
         )}
-        {isOwner && (gap === 'seen' || gap === 'type') && lineupRows.length > 0 && (
+        {(gap === 'seen' || gap === 'type') && lineupRows.length > 0 && (
           <button
             onClick={findLineups}
             disabled={busy !== null}

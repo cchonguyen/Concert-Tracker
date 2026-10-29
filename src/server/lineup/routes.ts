@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { createLookup, enqueueArtistResolution, InputError, PipelineDeps } from './pipeline';
-import { confirmLookup, ConfirmRequest } from './learning';
+import { confirmLookup, confirmLookupForMember, ConfirmRequest } from './learning';
+import { currentMember } from '../auth/requestScope';
 import { configuredSources, JobRunner } from './service';
 import { redactSecrets } from './http';
 import { LookupJob } from './types';
@@ -71,6 +72,8 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
     try {
       const job = await deps.store.getJob(req.params.id);
       if (!job) return res.status(404).json({ error: 'Lookup not found.' });
+      // A member's review changes only their own event; the owner's writes the shared lineup.
+      if (currentMember()?.role === 'member') return res.json(await confirmLookupForMember(deps.store, job, req.body as ConfirmRequest));
       const result = await confirmLookup(deps.store, job, req.body as ConfirmRequest);
       if ((await deps.store.listUnresolvedArtists(1)).length) await enqueueArtistResolution(deps);
       res.json(result);
