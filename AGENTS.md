@@ -23,6 +23,7 @@ Read [REQUIREMENTS.md](REQUIREMENTS.md) first: it says what the app is for (reme
 - Parse the capture line in code (`src/server/events/parse.ts`); text it cannot place stays in the name. Never add a model call to parsing.
 - Keep capture to one line of text. New personal fields go on the event detail, not on capture.
 - No demo or seeded data in the app. An empty app is empty. The one exception is sample mode: the app's own views over fictional sample data (`src/demo/sampleData.ts`), used at `/demo` and by a signed-in account that is not invited. Sample mode turns on only at start-up (`src/services/sampleMode.ts`), never on a network error; the sample is loaded by a dynamic import only in that mode, is never mixed with real data, is never sent to the server or written to the database, and every sample page says it is sample data.
+- Public pages at the base address (`/`, `/privacy`, `/terms`, and any new page there) are listed in `PUBLIC_EXACT_PATHS` in `src/server/site/publicPaths.ts` in the same change that adds them. The Worker refuses every page not on that list once Access is on, and `tests/publicPagesList.test.ts` fails when one is missing. Anything under `/app` or `/api` stays off the list.
 - Run `npm run lint` and `npm test` before committing, and add tests for new adapters or rules.
 - Update ARCHITECTURE.md (and REQUIREMENTS.md, if a requirement changes) in the same change when behavior described there changes.
 
