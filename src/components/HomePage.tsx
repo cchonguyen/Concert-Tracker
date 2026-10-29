@@ -114,9 +114,9 @@ export const HomePage: React.FC<HomePageProps> = ({
                 <button
                   key={p}
                   onClick={() => onOpen(p)}
-                  className={`group flex items-center gap-4 rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:border-violet-500/60 active:scale-[0.98] ${TINT[section]}`}
+                  className={`group flex items-center gap-4 rounded-2xl border p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-violet-500/60 hover:shadow-lg hover:shadow-black/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 active:scale-[0.98] motion-reduce:transform-none motion-reduce:transition-none ${TINT[section]}`}
                 >
-                  <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-violet-600/20 text-violet-300">
+                  <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-violet-600/20 text-violet-300 transition duration-200 group-hover:scale-110 group-hover:bg-violet-600/30 motion-reduce:transform-none">
                     <Icon className="h-7 w-7" />
                   </span>
                   <span className="min-w-0 flex-1">
