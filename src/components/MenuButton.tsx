@@ -43,6 +43,12 @@ export function MenuButton({ theme, canMembers, canAccount, canSheets, onMembers
   };
 
   const item = 'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-800';
+  const actions = [
+    { icon: FileUp, name: 'Import', label: 'Import a list (CSV)', run: onImport },
+    { icon: Download, name: 'Export', label: 'Export all as CSV', run: onExport },
+    ...(canSheets ? [{ icon: Sheet, name: 'Sheets', label: 'Google Sheets', run: onSheets }] : []),
+    { icon: Share2, name: 'Share', label: 'Share', run: onShare },
+  ];
 
   return (
     <div ref={box} className="relative">
@@ -76,11 +82,24 @@ export function MenuButton({ theme, canMembers, canAccount, canSheets, onMembers
           )}
           <div className="space-y-2 border-t border-zinc-800 pt-3">
             <p className="px-1 text-xs font-medium uppercase tracking-wide text-zinc-400">Your data</p>
-            <div className="flex items-center gap-1">
-              <IconButton icon={FileUp} label="Import a list (CSV)" onClick={() => choose(onImport)} />
-              <IconButton icon={Download} label="Export all as CSV" onClick={() => choose(onExport)} />
-              {canSheets && <IconButton icon={Sheet} label="Google Sheets" onClick={() => choose(onSheets)} />}
-              <IconButton icon={Share2} label="Share" onClick={() => choose(onShare)} />
+            <div className="grid grid-cols-4 gap-1 sm:flex sm:items-center">
+              {actions.map(({ icon: Icon, name, label, run }) => (
+                <div key={name}>
+                  {/* Phone: the icon and its name. Desktop: the icon alone, named on hover and focus. */}
+                  <button
+                    type="button"
+                    onClick={() => choose(run)}
+                    aria-label={label}
+                    className="flex w-full flex-col items-center gap-1 rounded-lg px-1 py-2 text-xs text-zinc-300 hover:bg-zinc-800 sm:hidden"
+                  >
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                    {name}
+                  </button>
+                  <div className="hidden sm:block">
+                    <IconButton icon={Icon} label={label} onClick={() => choose(run)} />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
           <div className="space-y-2 border-t border-zinc-800 pt-3">
