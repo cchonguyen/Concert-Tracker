@@ -46,11 +46,13 @@ export function runAsMember<T>(member: SignedInMember, store: LineupStore, fn: (
 // Routes a member (not the owner) may not use until their data is split per
 // member: Manage and its records (people are shared records today), genre
 // edits (yours win for everyone),
-// Sheets and the server's Gmail check (one stored Google sign-in each).
+// the server's Gmail check (one stored Google sign-in). Sheets is per member
+// (drive.file, token sealed per user); its sign-in comes back through the
+// Gmail callback address, so that one callback is let through when its state
+// is a Sheets one.
 // Lineup lookups are open to members: their review (confirmLookupForMember)
 // writes only their own event.
 const OWNER_ONLY: Array<[method: string | null, pattern: RegExp]> = [
-  [null, /^\/api\/sheets(\/|$)/],
   [null, /^\/api\/gmail(\/|$)/],
   ['POST', /^\/api\/imports\/(email|scan)$/],
   // The music-story export is the owner's listening data, and MusicBrainz tags
@@ -58,7 +60,8 @@ const OWNER_ONLY: Array<[method: string | null, pattern: RegExp]> = [
   ['POST', /^\/api\/artist-genres\//],
 ];
 
-export function ownerOnly(method: string, path: string): boolean {
+export function ownerOnly(method: string, path: string, query: { state?: unknown } = {}): boolean {
+  if (path === '/api/gmail/callback' && typeof query.state === 'string' && query.state.startsWith('sheets-')) return false;
   return OWNER_ONLY.some(([m, re]) => (!m || m === method) && re.test(path));
 }
 
@@ -78,7 +81,7 @@ export function memberMiddleware(deps: MemberMiddlewareDeps) {
       const claims = await readAccessClaims(req.get('cf-access-jwt-assertion'), deps.config.access, now, deps.getJson as any);
       if (!claims) return refuse(401, 'Sign in required.');
       const member = await resolveMember(claims.email, deps.directory, now);
-      if (member.role !== 'owner' && ownerOnly(req.method, req.originalUrl.split('?')[0])) {
+      if (member.role !== 'owner' && ownerOnly(req.method, req.originalUrl.split('?')[0], req.query)) {
         return refuse(403, 'Only the owner can use this for now.');
       }
       if (!deps.base.forUser) throw new Error('This store cannot be limited to one member.');

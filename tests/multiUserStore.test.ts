@@ -87,13 +87,17 @@ test('share page: a member\'s link shows only that member\'s events', async () =
   assert.deepEqual(await s.forUser(BOB).listShareLinks(), []);
 });
 
-test('owner-only routes: Sheets, Gmail, server scans and lineup confirm', () => {
-  for (const [m, p] of [['GET', '/api/sheets'], ['GET', '/api/gmail/connect'], ['POST', '/api/imports/email'], ['POST', '/api/artist-genres/music-story'], ['POST', '/api/artist-genres/musicbrainz']]) {
+test('owner-only routes: Gmail, server scans and music-story/MusicBrainz genres', () => {
+  for (const [m, p] of [['GET', '/api/gmail/connect'], ['POST', '/api/imports/email'], ['POST', '/api/artist-genres/music-story'], ['POST', '/api/artist-genres/musicbrainz']]) {
     assert.equal(ownerOnly(m, p), true, `${m} ${p}`);
   }
-  for (const [m, p] of [['GET', '/api/events'], ['POST', '/api/events'], ['GET', '/api/imports'], ['POST', '/api/imports/proposals'], ['GET', '/api/share'], ['GET', '/api/artist-genres'], ['PUT', '/api/artist-genres/k'], ['GET', '/api/lookups'], ['POST', '/api/lookups'], ['POST', '/api/lookups/j1/run'], ['POST', '/api/lookups/j1/confirm'], ['POST', '/api/events/lineups'], ['POST', '/api/events/e1/lineup'], ['GET', '/api/me'], ['GET', '/api/entities'], ['PATCH', '/api/entities/x'], ['GET', '/api/people']]) {
+  for (const [m, p] of [['GET', '/api/events'], ['POST', '/api/events'], ['GET', '/api/imports'], ['POST', '/api/imports/proposals'], ['GET', '/api/share'], ['GET', '/api/artist-genres'], ['PUT', '/api/artist-genres/k'], ['GET', '/api/lookups'], ['POST', '/api/lookups'], ['POST', '/api/lookups/j1/run'], ['POST', '/api/lookups/j1/confirm'], ['POST', '/api/events/lineups'], ['POST', '/api/events/e1/lineup'], ['GET', '/api/me'], ['GET', '/api/entities'], ['PATCH', '/api/entities/x'], ['GET', '/api/people'], ['GET', '/api/sheets'], ['PUT', '/api/sheets/values'], ['POST', '/api/sheets/link']]) {
     assert.equal(ownerOnly(m, p), false, `${m} ${p}`);
   }
+  // The Gmail callback address also brings Sheets sign-ins back; only those pass.
+  assert.equal(ownerOnly('GET', '/api/gmail/callback', { state: 'sheets-abc' }), false);
+  assert.equal(ownerOnly('GET', '/api/gmail/callback', { state: 'gmail-abc' }), true);
+  assert.equal(ownerOnly('GET', '/api/gmail/callback'), true);
 });
 
 // The middleware over a real Express app, with Access tokens like Cloudflare's.
@@ -133,6 +137,7 @@ async function apiFixture() {
   app.use('/api', accountRouter(directory, scoped));
   app.use('/api', peopleRouter(scoped));
   app.get('/api/sheets', (_req, res) => res.json({}));
+  app.get('/api/gmail/connect', (_req, res) => res.json({}));
   app.get('/api/events', async (_req, res) => res.json({ me: currentMember()?.email, events: (await scoped.listEvents()).map((e) => e.id) }));
   app.post('/api/events', async (req, res) => { await scoped.putEvent(ev(req.body.id, { notes: req.body.notes })); res.json({ ok: true }); });
   app.get('/api/entities', (_req, res) => res.json({ entities: [] }));
@@ -170,7 +175,7 @@ test('API: no token is 401, a stranger 403, a member sees only their rows, membe
     assert.deepEqual(ann.body, { me: 'ann@example.com', events: ['a1'] });
     assert.deepEqual((await call('bob@example.com', '/api/events')).body.events, ['b1']);
     assert.deepEqual((await call('owner@example.com', '/api/events')).body.events, []);
-    assert.equal((await call('ann@example.com', '/api/sheets')).status, 403);
+    assert.equal((await call('ann@example.com', '/api/gmail/connect')).status, 403);
     assert.equal((await call('ann@example.com', '/api/entities')).status, 200);
     assert.equal((await call('owner@example.com', '/api/entities')).status, 200);
   } finally {

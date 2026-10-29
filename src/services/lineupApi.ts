@@ -167,6 +167,10 @@ export interface LinkedSheetView {
 
 export interface SheetsStatus {
   configured: boolean;
+  // A member's sheets use the narrow drive.file scope: make a new sheet or
+  // choose one in Google's picker (picker is true when the server has its keys).
+  member?: boolean;
+  picker?: boolean;
   connected: boolean;
   account?: string;
   sheet?: LinkedSheetView;
@@ -178,6 +182,8 @@ export const sheetsApi = {
   status: () => request<SheetsStatus>('/api/sheets'),
   link: (url: string) => request<{ sheet: LinkedSheetView }>('/api/sheets/link', post({ url })).then((r) => r.sheet),
   create: () => request<{ sheet: LinkedSheetView }>('/api/sheets/link', post({ create: true })).then((r) => r.sheet),
+  linkPicked: (pickedId: string) => request<{ sheet: LinkedSheetView }>('/api/sheets/link', post({ pickedId })).then((r) => r.sheet),
+  pickerInfo: () => request<{ accessToken: string; apiKey: string; appId: string }>('/api/sheets/picker'),
   unlink: () => request<unknown>('/api/sheets/unlink', post()),
   disconnect: () => request<unknown>('/api/sheets/disconnect', post()),
   read: () =>

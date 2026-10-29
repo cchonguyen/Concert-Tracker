@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertTriangle, ExternalLink, Loader2, RefreshCw, Sheet, X } from 'lucide-react';
 import { eventsApi, SheetsStatus, sheetsApi } from '../services/lineupApi';
 import { readTable } from '../services/listImport';
+import { pickSpreadsheet } from '../services/googlePicker';
 import { droppedColumns, outsideEdits, sheetRows, sheetTable } from '../services/sheetSync';
 
 // "Google Sheets" in the Table view: sign in, link a sheet, and update it.
@@ -57,7 +58,7 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ notice, onClose }) => {
   // The tab rewritten from your log as it is now, if it still is what was read.
   const write = async (version: string) => {
     const fresh = await eventsApi.list();
-    const sheet = await sheetsApi.write(sheetRows(fresh.events, fresh.editions ?? {}), version);
+    const sheet = await sheetsApi.write(sheetRows(fresh.events, fresh.editions ?? {}, { omitPrivate: Boolean(status?.member) }), version);
     setStatus((s) => (s ? { ...s, sheet } : s));
     setMessage(`The sheet now lists your ${fresh.events.length} event${fresh.events.length === 1 ? '' : 's'}.`);
   };
@@ -116,12 +117,38 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ notice, onClose }) => {
                 Sign in with Google
               </a>
               <p className="text-xs text-zinc-600">
-                Google asks to let the app see and edit your spreadsheets. It only ever opens the one sheet you link.
+                {status.member
+                  ? 'Google asks to let the app use only the sheets it makes for you or that you choose in Google\'s picker. It cannot see the rest of your Drive. Your notes and who you went with are never written to the sheet.'
+                  : 'Google asks to let the app see and edit your spreadsheets. It only ever opens the one sheet you link.'}
               </p>
             </div>
           ) : !sheet ? (
             <div className="space-y-4">
               <p className="text-xs text-zinc-500">Signed in{status.account ? ` as ${status.account}` : ''}.</p>
+              {status.member ? (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wide text-zinc-500">Link a sheet</label>
+                  {status.picker ? (
+                    <button
+                      onClick={() =>
+                        run('pick', async () => {
+                          const id = await pickSpreadsheet(await sheetsApi.pickerInfo());
+                          if (id) setStatus({ ...status, sheet: await sheetsApi.linkPicked(id) });
+                        })
+                      }
+                      disabled={Boolean(busy)}
+                      className={primary}
+                    >
+                      {busy === 'pick' && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Choose an existing sheet
+                    </button>
+                  ) : (
+                    <p className="text-xs text-zinc-600">Choosing an existing sheet is not set up on the server yet. You can make a new one.</p>
+                  )}
+                  <p className="text-xs text-zinc-600">
+                    The first tab of the sheet you choose is written; anything already in it is replaced (you're asked first).
+                  </p>
+                </div>
+              ) : (
               <div className="space-y-2">
                 <label className="text-xs font-bold uppercase tracking-wide text-zinc-500">Link a sheet</label>
                 <div className="flex gap-2">
@@ -144,6 +171,7 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ notice, onClose }) => {
                   To bring events from a sheet into the app, download it as CSV and use Import a list.
                 </p>
               </div>
+              )}
               <button
                 onClick={() => run('create', async () => setStatus({ ...status, sheet: await sheetsApi.create() }))}
                 disabled={Boolean(busy)}

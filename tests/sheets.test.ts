@@ -169,6 +169,7 @@ function fakeSheets(initial: SheetValue[][] = []) {
   const state = { values: initial, writes: [] as Array<Array<SheetValue | null>>[] };
   const api: SheetsApi = {
     authUrl: (redirect, st) => `https://accounts.google.com/auth?redirect_uri=${encodeURIComponent(redirect)}&state=${st}`,
+    accessToken: async () => 'at',
     connect: async (code) => {
       if (code !== 'good-code') throw new SheetsAuthError('bad code');
       return { refreshToken: 'rt', account: 'me@example.com' };
@@ -275,6 +276,6 @@ test('sheets routes: sign in through the shared callback, link a tab, and refuse
   assert.deepEqual((await store.getSetting<{ tab: string }>(SHEETS_BASE_SETTING))?.tab, '2025');
 
   await call('/sheets/disconnect', 'POST');
-  assert.deepEqual(await (await call('/sheets')).json(), { configured: true, connected: false });
+  assert.deepEqual(await (await call('/sheets')).json(), { configured: true, member: false, picker: false, connected: false });
   assert.deepEqual(await store.getSetting(SHEETS_SETTING), {});
 });
