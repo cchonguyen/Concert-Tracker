@@ -1,9 +1,13 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { placeLabel } from '../../services/format';
 import {
+  AGENDA_ORDER_KEY,
   AgendaBlock,
+  AgendaOrder,
   AgendaRow,
   agendaBlocks,
+  agendaCount,
+  agendaOrderFrom,
   dateChip,
   daysBetween,
   gapLabel,
@@ -11,10 +15,28 @@ import {
   TimelineViewProps,
 } from '../../services/timeline';
 import { EventTitle } from '../EventTitle';
+import { BackToTop } from '../ui/BackToTop';
 import { ATTENDANCE_STYLE, ConfirmMark, DayDots, Rating } from './parts';
 
-// Agenda: one line per event, oldest first, under year and month headers,
-// opening at the Today line. Only the large size is built so far.
+// Agenda: one line per event under year and month headers, newest first unless
+// you picked oldest first (remembered on this device), opening at the Today
+// line. Only the large size is built so far.
+
+const readOrder = (): AgendaOrder => {
+  try {
+    return agendaOrderFrom(window.localStorage.getItem(AGENDA_ORDER_KEY));
+  } catch {
+    return 'newest'; // Blocked storage: the default order.
+  }
+};
+
+const writeOrder = (order: AgendaOrder) => {
+  try {
+    window.localStorage.setItem(AGENDA_ORDER_KEY, order);
+  } catch {
+    // Not remembered; the choice still applies to this view.
+  }
+};
 
 const rowId = (id: string) => `timeline-${id}`;
 
@@ -95,9 +117,15 @@ const Block: React.FC<{
 };
 
 export const AgendaView: React.FC<TimelineViewProps> = ({ model, range, selectedEventId, onOpen }) => {
-  const blocks = useMemo(() => agendaBlocks(model, range), [model, range]);
+  const [order, setOrder] = useState<AgendaOrder>(readOrder);
+  const blocks = useMemo(() => agendaBlocks(model, range, true, order), [model, range, order]);
+  const count = useMemo(() => agendaCount(blocks), [blocks]);
   const todayRef = useRef<HTMLLIElement>(null);
   const opened = useRef(false);
+  const choose = (next: AgendaOrder) => {
+    setOrder(next);
+    writeOrder(next);
+  };
 
   // Open at the Today line, once.
   useEffect(() => {
@@ -114,9 +142,28 @@ export const AgendaView: React.FC<TimelineViewProps> = ({ model, range, selected
   if (!blocks.length) return <p className="py-10 text-center text-sm text-zinc-500">No dated events match these filters.</p>;
   return (
     <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
+        <span>
+          {count} event{count === 1 ? '' : 's'}
+        </span>
+        <div role="group" aria-label="Order" className="flex items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-900 p-0.5">
+          {(['newest', 'oldest'] as const).map((o) => (
+            <button
+              key={o}
+              type="button"
+              aria-pressed={order === o}
+              onClick={() => choose(o)}
+              className={`rounded-md px-2.5 py-1 font-medium transition-colors ${order === o ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+            >
+              {o === 'newest' ? 'Newest first' : 'Oldest first'}
+            </button>
+          ))}
+        </div>
+      </div>
       {blocks.map((block, i) => (
         <Block key={i} block={block} selectedEventId={selectedEventId} onOpen={onOpen} todayRef={todayRef} />
       ))}
+      <BackToTop />
     </div>
   );
 };

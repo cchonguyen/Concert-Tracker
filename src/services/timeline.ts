@@ -216,7 +216,21 @@ export type AgendaBlock =
 const monthIndex = (year: number, month: number) => year * 12 + (month - 1);
 const fromIndex = (i: number) => ({ year: Math.floor(i / 12), month: (i % 12) + 1 });
 
-export function agendaBlocks(model: TimelineModel, range: TimelineRange = { kind: 'all' }, showToday = true): AgendaBlock[] {
+// Agenda's order: newest first is the default; the choice is remembered on this device.
+export type AgendaOrder = 'newest' | 'oldest';
+export const AGENDA_ORDER_KEY = 'liveArchive.agendaOrder';
+export const agendaOrderFrom = (stored: string | null): AgendaOrder => (stored === 'oldest' ? 'oldest' : 'newest');
+
+// Events in the blocks, not counting the Today line.
+export const agendaCount = (blocks: AgendaBlock[]): number =>
+  blocks.reduce((n, b) => (b.kind === 'month' ? n + b.rows.filter((r) => r.kind !== 'today').length : n), 0);
+
+export function agendaBlocks(
+  model: TimelineModel,
+  range: TimelineRange = { kind: 'all' },
+  showToday = true,
+  order: AgendaOrder = 'oldest',
+): AgendaBlock[] {
   // Sort keys: a year-only event is "YYYY-00-00", a month-only one "YYYY-MM-00",
   // and the Today line comes right after events on today.
   const entries: Array<{ key: string; row: AgendaRow }> = [];
@@ -229,6 +243,10 @@ export function agendaBlocks(model: TimelineModel, range: TimelineRange = { kind
   const todayInRange = spanInRange({ first: model.today, last: model.today }, range);
   if (showToday && todayInRange && entries.length) entries.push({ key: `${model.today}~`, row: { kind: 'today' } });
   entries.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  // Newest first is the same list read backwards: the Today line still falls
+  // between the future and the past, and a year's year-only events close it.
+  if (order === 'newest') entries.reverse();
+  const step = order === 'newest' ? -1 : 1;
 
   const blocks: AgendaBlock[] = [];
   let year: number | undefined;
@@ -241,8 +259,10 @@ export function agendaBlocks(model: TimelineModel, range: TimelineRange = { kind
       current.rows.push(row);
       continue;
     }
-    if (m && lastMonth !== undefined && monthIndex(y, m) - lastMonth > 1) {
-      blocks.push({ kind: 'gap', from: fromIndex(lastMonth + 1), to: fromIndex(monthIndex(y, m) - 1) });
+    if (m && lastMonth !== undefined && (monthIndex(y, m) - lastMonth) * step > 1) {
+      const a = Math.min(lastMonth, monthIndex(y, m));
+      const b = Math.max(lastMonth, monthIndex(y, m));
+      blocks.push({ kind: 'gap', from: fromIndex(a + 1), to: fromIndex(b - 1) });
     }
     if (y !== year) {
       blocks.push({ kind: 'year', year: y });
