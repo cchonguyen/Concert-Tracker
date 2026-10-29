@@ -479,6 +479,15 @@ export interface RiverLayout {
   ticks: Array<{ x: number; label: string; major: boolean }>;
 }
 
+// The events a river mark stands for: every event whose days touch the mark's
+// days, earliest first. Up to `limit` are listed; the rest are counted.
+export function riverStretch(model: TimelineModel, span: TimelineSpan, limit = 3): { shown: TimelineSpan[]; more: number } {
+  const touching = model.spans
+    .filter((s) => s.first <= span.last && s.last >= span.first)
+    .sort((a, b) => (a.first < b.first ? -1 : a.first > b.first ? 1 : a.title.localeCompare(b.title)));
+  return { shown: touching.slice(0, limit), more: Math.max(0, touching.length - limit) };
+}
+
 export function riverLayout(model: TimelineModel, pxPerDay: number): RiverLayout | null {
   if (!model.spans.length) return null;
   const firstYear = Number(model.spans[0].first.slice(0, 4));
