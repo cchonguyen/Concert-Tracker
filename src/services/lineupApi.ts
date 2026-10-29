@@ -89,7 +89,7 @@ async function request<T>(url: string, rawInit?: RequestInit): Promise<T> {
   const data = await res.json().catch(() => ({}));
   // `retry`: the server says to wait a moment and call again.
   // `conflict`: a record that already has the name (Manage), to merge into.
-  // `not_invited` (403): the signed-in email has no tracker here; the refusal screen shows it (NotInvited.tsx).
+  // `not_invited` (403): the signed-in email has no tracker here; sample mode shows it in the request banner (SampleBanner.tsx).
   if (!res.ok) {
     throw Object.assign(new Error(data.error || `Request failed with HTTP ${res.status}`), {
       retry: data.retry === true,
