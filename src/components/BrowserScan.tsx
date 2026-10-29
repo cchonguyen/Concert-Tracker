@@ -101,14 +101,14 @@ export const BrowserScan: React.FC<{ status: EmailScanStatus; onFound: (imports:
   return (
     <div className="space-y-2 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="mr-auto text-xs text-zinc-400">New scanner, run in this tab</p>
+        <p className="mr-auto text-xs text-zinc-400">Runs in this tab</p>
         <button className={button} disabled={Boolean(running)} onClick={() => run('incremental')}>
           {running === 'incremental' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScanSearch className="h-3.5 w-3.5" />}
           Check for new tickets
         </button>
         <button className={button} disabled={Boolean(running)} onClick={() => run('full')}>
           {running === 'full' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScanSearch className="h-3.5 w-3.5" />}
-          Full re-scan (ignore watermark)
+          Scan everything again
         </button>
       </div>
       {running && (
@@ -127,7 +127,7 @@ export const BrowserScan: React.FC<{ status: EmailScanStatus; onFound: (imports:
       {report && s && (
         <div className="space-y-2 text-xs text-zinc-300">
           <p className="font-semibold text-zinc-200">
-            {report.mode === 'full' ? 'Full re-scan' : 'Check'}
+            {report.mode === 'full' ? 'Scan everything again' : 'Check'}
             {report.saved ? `: ${report.saved.added} new on the review list, ${report.saved.changed} rows updated` : ''}
           </p>
           <button className={button} onClick={download}>
@@ -139,9 +139,9 @@ export const BrowserScan: React.FC<{ status: EmailScanStatus; onFound: (imports:
               {s.examined}
               {s.failed ? ` (+${s.failed} Gmail would not open${report.result.failureReason ? `: ${report.result.failureReason}` : ''})` : ''}
             </dd>
-            <dt className="text-zinc-400">Concert proposals</dt>
+            <dt className="text-zinc-400">Concerts found</dt>
             <dd>{s.proposals}</dd>
-            <dt className="text-zinc-400">Net unique events</dt>
+            <dt className="text-zinc-400">Different shows</dt>
             <dd>{s.netUniqueEvents}</dd>
             <dt className="text-zinc-400">Flagged (refund, cancel, transfer)</dt>
             <dd>{s.flagged}</dd>

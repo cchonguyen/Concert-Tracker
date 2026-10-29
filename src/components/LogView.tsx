@@ -8,7 +8,7 @@ import { Confirm } from './ui/Confirm';
 
 // The Log: shows in Recently deleted (Restore brings one back) and every change you have made.
 // Undo is not on this page yet; it needs the field-level write from the store wrapper.
-export function LogView() {
+export function LogView({ eventId, onShowAll }: { eventId?: string | null; onShowAll?: () => void }) {
   const [trash, setTrash] = useState<LoggedEvent[] | null>(null);
   const [activity, setActivity] = useState<ActivityEntry[] | null>(null);
   const [names, setNames] = useState<Record<string, string>>({});
@@ -87,6 +87,19 @@ export function LogView() {
     <div className="space-y-8">
       {error && <Notice tone="warning">{error}</Notice>}
 
+      {eventId && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-zinc-800 px-4 py-2.5 text-sm text-zinc-300">
+          <span>
+            Showing the history of <span className="font-semibold text-zinc-100">{nameOf(eventId)}</span>
+          </span>
+          {onShowAll && (
+            <Button variant="ghost" onClick={onShowAll}>
+              Show all
+            </Button>
+          )}
+        </div>
+      )}
+
       <section className="space-y-3">
         <div>
           <h2 className="text-base font-bold text-zinc-100">Recently deleted</h2>
@@ -103,7 +116,7 @@ export function LogView() {
           <p className="text-sm text-zinc-400">Nothing here. Shows you delete appear here for 90 days.</p>
         ) : (
           <ul className="divide-y divide-zinc-800 rounded-card border border-zinc-800">
-            {trash.map((e) => (
+            {trash.filter((e) => !eventId || e.id === eventId).map((e) => (
               <li key={e.id} className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm text-zinc-100">{e.name}</p>
@@ -146,7 +159,7 @@ export function LogView() {
           <p className="text-sm text-zinc-400">No changes yet.</p>
         ) : (
           <ul className="divide-y divide-zinc-800 rounded-card border border-zinc-800">
-            {activity.map((a) => (
+            {activity.filter((a) => !eventId || a.eventId === eventId).map((a) => (
               <li key={a.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                 <div className="min-w-0">
                   <p className="text-sm text-zinc-200">{describeEntry(a, nameOf(a.eventId))}</p>
