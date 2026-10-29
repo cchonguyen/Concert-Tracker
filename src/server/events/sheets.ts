@@ -9,6 +9,9 @@ import { createHash } from 'node:crypto';
 // See ARCHITECTURE.md ("Google Sheets sync").
 
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets email';
+// Members ask for the narrow scope: only sheets this app made or the member
+// picked in Google's file picker, never the rest of their Drive.
+const SCOPE_FILE = 'https://www.googleapis.com/auth/drive.file email';
 const AUTH = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN = 'https://oauth2.googleapis.com/token';
 const USERINFO = 'https://openidconnect.googleapis.com/v1/userinfo';
@@ -38,7 +41,10 @@ export interface LinkedSheet {
 }
 
 export interface SheetsSetting {
+  // The owner's token is stored as is; a member's is sealed (tokenBox.ts) in
+  // refreshTokenSealed and refreshToken is left out.
   refreshToken: string;
+  refreshTokenSealed?: string;
   account?: string;
   connectedAt: string;
   sheet?: LinkedSheet;
@@ -50,7 +56,8 @@ export interface SheetInfo {
 }
 
 export interface SheetsApi {
-  authUrl(redirectUri: string, state: string): string;
+  authUrl(redirectUri: string, state: string, narrow?: boolean): string;
+  accessToken(refreshToken: string): Promise<string>;
   connect(code: string, redirectUri: string): Promise<{ refreshToken: string; account?: string }>;
   info(refreshToken: string, id: string): Promise<SheetInfo>;
   create(refreshToken: string, title: string, tab: string): Promise<{ id: string; info: SheetInfo }>;
@@ -132,12 +139,13 @@ export function createSheets(clientId: string, clientSecret: string): SheetsApi 
   });
 
   return {
-    authUrl(redirectUri, state) {
+    accessToken: access,
+    authUrl(redirectUri, state, narrow) {
       const q = new URLSearchParams({
         client_id: clientId,
         redirect_uri: redirectUri,
         response_type: 'code',
-        scope: SCOPE,
+        scope: narrow ? SCOPE_FILE : SCOPE,
         access_type: 'offline',
         prompt: 'consent',
         state,

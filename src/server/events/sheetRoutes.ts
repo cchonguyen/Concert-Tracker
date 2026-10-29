@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
+import { currentMember } from '../auth/requestScope';
+import { openToken, sealToken } from '../auth/tokenBox';
 import {
   LinkedSheet,
   parseSheetLink,
@@ -25,6 +27,17 @@ const MAX_ROWS = 5000;
 const MAX_COLS = 40;
 const NEW_TAB = 'Events';
 
+// A member's sheet never holds what the vault protects. These columns are cut
+// from every row before it is written to Google or kept as the sync base, so
+// even a client that sends them cannot put plaintext notes or companions there.
+const PRIVATE_COLUMNS = new Set(['notes', 'went with']);
+
+export function withoutPrivateColumns<T>(rows: T[][]): T[][] {
+  const header = rows[0] ?? [];
+  const drop = new Set(header.map((h, i) => (PRIVATE_COLUMNS.has(String(h ?? '').trim().toLowerCase()) ? i : -1)).filter((i) => i >= 0));
+  return drop.size ? rows.map((r) => r.filter((_, i) => !drop.has(i))) : rows;
+}
+
 const linkView = (s: LinkedSheet) => ({ ...s, url: sheetUrl(s) });
 
 function rowsOf(body: any): Array<Array<SheetValue | null>> {
@@ -44,7 +57,30 @@ export function sheetsRouter(deps: PipelineDeps, sheets: SheetsApi | null): Rout
     if (err instanceof SheetsAuthError) return res.status(409).json({ error: message, connect: true });
     res.status(err instanceof InputError || err instanceof SheetsError ? 400 : 500).json({ error: message });
   };
-  const setting = () => deps.store.getSetting<SheetsSetting>(SHEETS_SETTING);
+  // A member's refresh token is sealed at rest under SHEETS_TOKEN_ENC_KEY with
+  // their user id as associated data; the owner's stays as it has always been.
+  const member = () => {
+    const m = currentMember();
+    return m && m.role !== 'owner' ? m : null;
+  };
+  const sealKey = () => process.env.SHEETS_TOKEN_ENC_KEY || '';
+  const needKey = () => {
+    if (member() && !sealKey()) throw new InputError('Google Sheets sync for members is off: SHEETS_TOKEN_ENC_KEY is not set.');
+  };
+  const setting = async () => {
+    const s = await deps.store.getSetting<SheetsSetting>(SHEETS_SETTING);
+    const m = member();
+    if (!m || !s?.refreshTokenSealed) return s;
+    needKey();
+    return { ...s, refreshToken: await openToken(sealKey(), m.userId, s.refreshTokenSealed) };
+  };
+  const save = async (s: SheetsSetting) => {
+    const m = member();
+    if (!m) return deps.store.putSetting<SheetsSetting>(SHEETS_SETTING, s);
+    needKey();
+    const { refreshToken, ...rest } = s;
+    await deps.store.putSetting<Partial<SheetsSetting>>(SHEETS_SETTING, { ...rest, refreshTokenSealed: await sealToken(sealKey(), m.userId, refreshToken) });
+  };
   const signedIn = async () => {
     const s = await setting();
     if (!s?.refreshToken) throw new SheetsAuthError('Sign in to Google Sheets first.');
@@ -62,6 +98,8 @@ export function sheetsRouter(deps: PipelineDeps, sheets: SheetsApi | null): Rout
       const s = await setting();
       res.json({
         configured: true,
+        member: Boolean(member()),
+        picker: Boolean(member() && process.env.GOOGLE_PICKER_API_KEY && process.env.GOOGLE_APP_ID),
         connected: Boolean(s?.refreshToken),
         account: s?.account,
         sheet: s?.refreshToken && s.sheet ? linkView(s.sheet) : undefined,
@@ -76,9 +114,10 @@ export function sheetsRouter(deps: PipelineDeps, sheets: SheetsApi | null): Rout
   router.get('/sheets/connect', async (req, res) => {
     if (!sheets) return res.status(503).send(off);
     try {
+      needKey();
       const state = `sheets-${randomUUID()}`;
       await deps.store.putSetting(SHEETS_OAUTH_SETTING, { state, until: deps.now().getTime() + 10 * 60_000 });
-      res.redirect(sheets.authUrl(callbackUrl(req), state));
+      res.redirect(sheets.authUrl(callbackUrl(req), state, Boolean(member())));
     } catch (err) {
       fail(res, err);
     }
@@ -100,7 +139,7 @@ export function sheetsRouter(deps: PipelineDeps, sheets: SheetsApi | null): Rout
       const before = await setting();
       // A new sign-in keeps the linked sheet, unless it is another account.
       const keep = before?.sheet && (!before.account || before.account === login.account) ? before.sheet : undefined;
-      await deps.store.putSetting<SheetsSetting>(SHEETS_SETTING, { ...login, connectedAt: deps.now().toISOString(), sheet: keep });
+      await save({ ...login, connectedAt: deps.now().toISOString(), sheet: keep });
       back('connected');
     } catch (err) {
       back(err instanceof Error ? err.message : String(err));
@@ -111,6 +150,8 @@ export function sheetsRouter(deps: PipelineDeps, sheets: SheetsApi | null): Rout
     try {
       // app_settings.data cannot be null: an empty setting is signed out.
       await deps.store.putSetting<Partial<SheetsSetting>>(SHEETS_SETTING, {});
+      // The base holds a copy of what was written; sign-out drops it too.
+      await deps.store.putSetting<Partial<SheetsBase>>(SHEETS_BASE_SETTING, {});
       res.json({ ok: true });
     } catch (err) {
       fail(res, err);
@@ -128,15 +169,32 @@ export function sheetsRouter(deps: PipelineDeps, sheets: SheetsApi | null): Rout
         const tab = made.info.tabs[0] ?? { title: NEW_TAB, id: 0 };
         sheet = { id: made.id, title: made.info.title, tab: tab.title, tabId: tab.id, linkedAt: deps.now().toISOString() };
       } else {
-        const link = parseSheetLink(String(req.body?.url ?? ''));
+        // drive.file reaches only sheets this app made or the member picked, so
+        // a member names one by the id the picker returned, not by a pasted link.
+        if (member() && typeof req.body?.pickedId !== 'string') throw new InputError('Choose a sheet with the Google picker, or make a new one.');
+        const link = parseSheetLink(String(req.body?.pickedId ?? req.body?.url ?? ''));
         if (!link) throw new InputError('Paste the link to a Google Sheet (it contains /spreadsheets/d/...).');
         const info = await sheets.info(s.refreshToken, link.id);
         const tab = info.tabs.find((t) => t.id === link.tabId) ?? info.tabs[0];
         if (!tab) throw new InputError('That sheet has no tabs.');
         sheet = { id: link.id, title: info.title, tab: tab.title, tabId: tab.id, linkedAt: deps.now().toISOString() };
       }
-      await deps.store.putSetting<SheetsSetting>(SHEETS_SETTING, { ...s, sheet });
+      await save({ ...s, sheet });
       res.json({ sheet: linkView(sheet) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // What the browser needs to open Google's file picker: a short-lived access
+  // token (drive.file) and the public picker key and app id. Members only.
+  router.get('/sheets/picker', async (_req, res) => {
+    try {
+      const key = process.env.GOOGLE_PICKER_API_KEY;
+      const appId = process.env.GOOGLE_APP_ID;
+      if (!sheets || !member() || !key || !appId) throw new InputError('The Google picker is not set up (GOOGLE_PICKER_API_KEY and GOOGLE_APP_ID).');
+      const s = await signedIn();
+      res.set('Cache-Control', 'no-store').json({ accessToken: await sheets.accessToken(s.refreshToken), apiKey: key, appId });
     } catch (err) {
       fail(res, err);
     }
@@ -145,7 +203,7 @@ export function sheetsRouter(deps: PipelineDeps, sheets: SheetsApi | null): Rout
   router.post('/sheets/unlink', async (_req, res) => {
     try {
       const s = await signedIn();
-      await deps.store.putSetting<SheetsSetting>(SHEETS_SETTING, { ...s, sheet: undefined });
+      await save({ ...s, sheet: undefined });
       res.json({ ok: true });
     } catch (err) {
       fail(res, err);
@@ -176,7 +234,7 @@ export function sheetsRouter(deps: PipelineDeps, sheets: SheetsApi | null): Rout
     if (!sheets) return res.status(503).json({ error: off });
     try {
       const s = await linked();
-      const rows = rowsOf(req.body);
+      const rows = member() ? withoutPrivateColumns(rowsOf(req.body)) : rowsOf(req.body);
       const version = typeof req.body?.version === 'string' ? req.body.version : '';
       const now = await sheets.read(s.refreshToken, s.sheet.id, s.sheet.tab);
       if (sheetVersion(now) !== version) {
@@ -185,7 +243,7 @@ export function sheetsRouter(deps: PipelineDeps, sheets: SheetsApi | null): Rout
       await sheets.write(s.refreshToken, s.sheet.id, s.sheet.tab, rows);
       await deps.store.putSetting<SheetsBase>(SHEETS_BASE_SETTING, { id: s.sheet.id, tab: s.sheet.tab, rows });
       const sheet = { ...s.sheet, syncedAt: deps.now().toISOString() };
-      await deps.store.putSetting<SheetsSetting>(SHEETS_SETTING, { ...s, sheet });
+      await save({ ...s, sheet });
       res.json({ sheet: linkView(sheet) });
     } catch (err) {
       fail(res, err);

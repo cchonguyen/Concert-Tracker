@@ -39,10 +39,20 @@ export function sheetTable(values: Array<Array<SheetValue | null>>): string[][] 
   );
 }
 
-// Your whole log as the tab's cells, header first.
-export function sheetRows(events: LoggedEvent[], editions: Record<string, LineupFacts> = {}): Array<Array<string | number | null>> {
+// Your whole log as the tab's cells, header first. A member's sheet leaves out
+// Notes and Went with: their vault keeps those encrypted, and the server cuts
+// the same columns again before anything reaches Google.
+export const PRIVATE_COLUMNS = ['Notes', 'Went with'];
+
+export function sheetRows(
+  events: LoggedEvent[],
+  editions: Record<string, LineupFacts> = {},
+  options: { omitPrivate?: boolean } = {},
+): Array<Array<string | number | null>> {
   const { header, rows } = eventRows(events, editions);
-  return [header, ...rows.map((r) => r.map((v) => (v === undefined || v === '' ? null : v)))];
+  const keep = header.map((h) => !(options.omitPrivate && PRIVATE_COLUMNS.includes(h)));
+  const pick = <T,>(r: T[]) => r.filter((_, i) => keep[i]);
+  return [pick(header), ...rows.map((r) => pick(r.map((v) => (v === undefined || v === '' ? null : v))))];
 }
 
 // Rows of the tab that differ from what the app last wrote there (edited,
