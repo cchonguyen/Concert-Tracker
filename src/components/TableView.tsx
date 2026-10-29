@@ -95,11 +95,11 @@ const NEEDS_LABELS = { date: 'A date', pick: 'A pick', review: 'Lineup review' }
 // by venue or city). Details does not sort: its parts are in the sort menu
 // instead, with Rating and Price.
 const COLUMNS: Array<{ label: string; sorts?: Array<{ key: SortKey; label: string }>; className?: string }> = [
-  { label: 'Date', sorts: [{ key: 'date', label: 'Date' }], className: 'w-36' },
-  { label: 'Event', sorts: [{ key: 'name', label: 'Event' }], className: 'min-w-48' },
-  { label: 'Where', sorts: [{ key: 'venue', label: 'Venue' }, { key: 'city', label: 'City' }], className: 'min-w-44' },
-  { label: 'Seen', sorts: [{ key: 'seen', label: 'Seen' }], className: 'min-w-56' },
-  { label: 'Details', className: 'min-w-52' },
+  { label: 'Date', sorts: [{ key: 'date', label: 'Date' }], className: 'w-32' },
+  { label: 'Event', sorts: [{ key: 'name', label: 'Event' }], className: 'w-[22%]' },
+  { label: 'Where', sorts: [{ key: 'venue', label: 'Venue' }, { key: 'city', label: 'City' }], className: 'w-[18%]' },
+  { label: 'Seen', sorts: [{ key: 'seen', label: 'Seen' }], className: 'w-[30%]' },
+  { label: 'Details', className: 'w-[22%]' },
 ];
 
 // The sort menu lists every key, so Rating and Price stay reachable with no column.
@@ -664,16 +664,8 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                       <td className={`${cell} whitespace-nowrap`}>
                         <DateCell e={e} />
                       </td>
-                      <td className={cell}>
-                        <div className="flex items-start gap-1.5 font-medium text-zinc-100">
-                          <span><EventTitle event={e} /></span>
-                          <WentBadge state={attendanceOf(e, today)} />
-                          {fromEmail(e) && (
-                            <span title="Added from a ticket email">
-                              <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" />
-                            </span>
-                          )}
-                        </div>
+                      <td className={`${cell} font-medium text-zinc-100`}>
+                        <EventTitle event={e} />
                       </td>
                       <td className={cell}>
                         {e.venue || e.city ? (

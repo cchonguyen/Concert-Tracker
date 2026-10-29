@@ -222,7 +222,7 @@ export default function App() {
   const shown: Page = tab === 'manage' && !canManage ? 'summary' : tab;
   const section = sectionOf(tab);
   // The Table is wide; every other page shares one reading width.
-  const width = shown === 'table' ? 'max-w-7xl' : 'max-w-3xl';
+  const width = shown === 'table' ? 'max-w-6xl' : 'max-w-3xl';
   // The hint is for phones, where the subtabs are icons only.
   const phone = typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches;
   useEffect(() => {
