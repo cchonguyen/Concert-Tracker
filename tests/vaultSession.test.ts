@@ -77,8 +77,8 @@ test('vault state machine: uninitialized, setup, unlocked, locked, wrong secret,
   assert.deepEqual(seen.slice(0, 3), ['off', 'unlocked', 'locked']);
 });
 
-test('locked notes show "Vault locked", never an empty box, and cannot be edited', async () => {
-  assert.deepEqual(noteView(null), { kind: 'locked', badge: 'Vault locked', editable: false });
+test('locked notes show "🔒 Vault Locked", never an empty box, and cannot be edited', async () => {
+  assert.deepEqual(noteView(null), { kind: 'locked', badge: '🔒 Vault Locked', editable: false });
   assert.deepEqual(noteView(''), { kind: 'text', text: '', editable: true });
   assert.deepEqual(noteView('hello'), { kind: 'text', text: 'hello', editable: true });
 });

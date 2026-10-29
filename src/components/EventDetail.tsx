@@ -1261,7 +1261,11 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           </label>
           <label className="block space-y-1">
             <span className="text-[11px] font-semibold text-zinc-400">Went with</span>
-            <ChipInput items={event.companions} placeholder="Add a name" past={pastCompanions} label="Add who you went with" onChange={(companions) => save({ companions })} />
+            {event.peopleLocked ? (
+              <span className="block rounded-md border border-zinc-800 px-2.5 py-1.5 text-xs text-amber-300">🔒 Vault Locked</span>
+            ) : (
+              <ChipInput items={event.companions} placeholder="Add a name" past={pastCompanions} label="Add who you went with" onChange={(companions) => save({ companions })} />
+            )}
           </label>
           {onManage && manageLinks(event).length > 0 && (
             <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500">

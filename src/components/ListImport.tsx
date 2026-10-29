@@ -168,7 +168,7 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
     setError(null);
     // A locked vault cannot encrypt, and notes and companions are never dropped quietly.
     if (vault.status === 'locked' && chosen.some((row) => row.notes || row.companions.some((c) => !leaveOut.has(norm(c))))) {
-      setError('Your Private Vault is locked. Please unlock your vault to encrypt and import your personal notes and companions. Open "Your account", unlock it, then import again.');
+      setError('Your Private Vault is locked. Please unlock your vault to encrypt and import your personal notes and companions.');
       return;
     }
     setBusy(true);
