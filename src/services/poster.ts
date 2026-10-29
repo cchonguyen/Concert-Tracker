@@ -50,3 +50,38 @@ export const GAP_LABEL: Record<Gap, string> = {
   weather: 'Weather',
   review: 'Review',
 };
+
+// The section of the detail each gap is filled in, by its id on the page.
+export type SectionId = 'when-where' | 'who-you-saw' | 'your-notes';
+export const GAP_SECTION: Record<Gap, SectionId> = {
+  date: 'when-where',
+  venue: 'when-where',
+  city: 'when-where',
+  place: 'when-where',
+  type: 'when-where',
+  weather: 'when-where',
+  seen: 'who-you-saw',
+  favourite: 'who-you-saw',
+  companions: 'your-notes',
+  rating: 'your-notes',
+  price: 'your-notes',
+  format: 'your-notes',
+  review: 'your-notes',
+};
+
+// The guided question a gap asks, shown on the strip's Next button.
+export const GAP_QUESTION: Record<Gap, string> = {
+  date: 'When was it?',
+  venue: 'Where was it?',
+  city: 'Which city?',
+  place: 'Which state and country?',
+  type: 'Concert or festival?',
+  format: 'What format was it?',
+  seen: 'Who did you see?',
+  favourite: 'Which set was your favourite?',
+  companions: 'Who did you go with?',
+  rating: 'How would you rate it?',
+  price: 'What did you pay?',
+  weather: 'Want the weather for the day?',
+  review: 'Anything to remember about it?',
+};

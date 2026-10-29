@@ -1,7 +1,7 @@
-import { Check } from 'lucide-react';
+import { ArrowRight, Check } from 'lucide-react';
 import type { LoggedEvent, SeenAct } from '../server/events/types';
 import type { AttendanceState } from '../server/events/attendance';
-import { billLines, GAP_LABEL } from '../services/poster';
+import { billLines, GAP_LABEL, GAP_QUESTION } from '../services/poster';
 import type { Gap } from '../services/table';
 import { Pill } from './ui/Pill';
 
@@ -43,8 +43,8 @@ export function PosterHeader({ title, dateText, event, state, seen, cited }: Pro
   );
 }
 
-// What the event still needs, as chips. Nothing left reads "All filled in".
-export function ThingsLeft({ gaps }: { gaps: Gap[] }) {
+// What the event still needs, as chips, with a guided Next that goes to the first gap. Nothing left reads "All filled in".
+export function ThingsLeft({ gaps, onNext }: { gaps: Gap[]; onNext: (gap: Gap) => void }) {
   if (gaps.length === 0) {
     return (
       <p className="flex items-center gap-1 text-sm text-emerald-300">
@@ -54,7 +54,16 @@ export function ThingsLeft({ gaps }: { gaps: Gap[] }) {
   }
   return (
     <section aria-label="Still to fill in" className="space-y-2">
-      <p className="text-xs uppercase tracking-wide text-zinc-400">Still to fill in</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs uppercase tracking-wide text-zinc-400">Still to fill in</p>
+        <button
+          type="button"
+          onClick={() => onNext(gaps[0])}
+          className="inline-flex h-11 items-center gap-1 rounded-control px-2 text-sm text-violet-200 hover:text-violet-100 sm:h-9"
+        >
+          Next: {GAP_QUESTION[gaps[0]]} <ArrowRight className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </div>
       <ul className="flex flex-wrap gap-2">
         {gaps.map((g) => (
           <li key={g}>
