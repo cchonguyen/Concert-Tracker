@@ -37,6 +37,9 @@ import { Dialog } from './ui/Dialog';
 import { Confirm } from './ui/Confirm';
 import { useToast } from './ui/Toast';
 import { Tooltip } from './ui/Tooltip';
+import { Button } from './ui/Button';
+import { IconButton } from './ui/IconButton';
+import { Segmented } from './ui/Segmented';
 
 interface EventDetailProps {
   event: LoggedEvent;
@@ -380,14 +383,8 @@ const WentCard: React.FC<{
         )}
         {days.length > 1 && <DaysWent days={days} attended={event.daysAttended} onChange={(daysAttended) => onSave({ daysAttended })} />}
         <div className="flex flex-wrap items-center gap-3">
-          {canReview && (
-            <button onClick={onReview} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500">
-              Review the lineup
-            </button>
-          )}
-          <button onClick={() => setOffered(null)} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900">
-            Done
-          </button>
+          {canReview && <Button variant="primary" onClick={onReview}>Review the lineup</Button>}
+          <Button onClick={() => setOffered(null)}>Done</Button>
           <span className="text-xs text-zinc-400">Add anyone else under Who you saw.</span>
         </div>
       </div>
@@ -429,12 +426,8 @@ const WentCard: React.FC<{
       <p className="font-semibold text-violet-100">Did you go?</p>
       <p className="text-xs text-zinc-400">It's over, and it stays out of Stats, Artists and the Map until you say.</p>
       <div className="flex flex-wrap gap-2">
-        <button onClick={went} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500">
-          Yes, I went
-        </button>
-        <button onClick={() => onSave({ attendance: 'missed' })} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900">
-          No, I didn't go
-        </button>
+        <Button variant="primary" onClick={went}>Yes, I went</Button>
+        <Button onClick={() => onSave({ attendance: 'missed' })}>No, I didn't go</Button>
       </div>
     </div>
   );
@@ -925,9 +918,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     >
         <div className="flex items-start gap-3">
           <Field label="Event" value={event.name} onSave={(v) => save({ name: v })} className="flex-1" />
-          <button onClick={onClose} className="mt-6 text-zinc-400 hover:text-zinc-200" aria-label="Close">
-            <X className="h-5 w-5" />
-          </button>
+          <IconButton icon={X} label="Close" onClick={onClose} className="mt-6" />
         </div>
         {event.input && event.input !== event.name && <p className="-mt-4 text-xs text-zinc-400">You typed: “{event.input}”</p>}
         <div className="-mt-2 space-y-1">
@@ -941,21 +932,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               className="flex-1"
             />
             {event.series && (
-              <label className="space-y-1">
-                <span className="text-[11px] font-semibold text-zinc-400">Weekend</span>
-                <select
-                  className={input}
-                  value={event.weekend ?? ''}
-                  onChange={(e) => save({ weekend: e.target.value ? Number(e.target.value) : null })}
-                >
-                  <option value="">{weekendFromName(event.name) ? `Not set (name says ${weekendFromName(event.name)})` : 'Only one'}</option>
-                  {[1, 2, 3, 4].map((w) => (
-                    <option key={w} value={w}>
-                      Weekend {w}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="space-y-1">
+                <span className="block text-[11px] font-semibold text-zinc-400">Weekend</span>
+                <Segmented<string>
+                  label="Weekend"
+                  value={event.weekend ? String(event.weekend) : ''}
+                  onChange={(v) => save({ weekend: v ? Number(v) : null })}
+                  options={[
+                    { value: '', label: weekendFromName(event.name) ? `Not set (name says ${weekendFromName(event.name)})` : 'Only one' },
+                    ...[1, 2, 3, 4].map((w) => ({ value: String(w), label: `Weekend ${w}` })),
+                  ]}
+                />
+              </div>
             )}
           </div>
           {(event.series || eventTitle(event) !== event.name) && (
@@ -1063,23 +1051,22 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               onSave={(v) => save({ region: text(v) })}
             />
             <Field label="Country" value={event.country} source={event.sources.country} offer={offer('country')} onSave={(v) => save({ country: text(v) })} />
-            <label className="space-y-1">
+            <div className="space-y-1">
               <span className="flex items-center justify-between gap-2 text-[11px] font-semibold text-zinc-400">
                 Type
                 <span className="font-normal text-zinc-400">{scale.by === 'rule' && scale.kind ? scale.reason : ''}</span>
               </span>
-              <select
-                className={input}
+              <Segmented<string>
+                label="Type"
                 value={event.kind ?? ''}
-                onChange={(e) => save({ kind: (e.target.value || null) as EventPatch['kind'] })}
-              >
-                <option value="">
-                  {worked.kind ? `${KIND_LABELS[worked.kind]} (worked out)` : 'Not known yet'}
-                </option>
-                <option value="concert">Concert</option>
-                <option value="festival">Festival</option>
-              </select>
-            </label>
+                onChange={(v) => save({ kind: (v || null) as EventPatch['kind'] })}
+                options={[
+                  { value: '', label: worked.kind ? `${KIND_LABELS[worked.kind]} (worked out)` : 'Not known yet' },
+                  { value: 'concert', label: 'Concert' },
+                  { value: 'festival', label: 'Festival' },
+                ]}
+              />
+            </div>
           </div>
 
           {/* What Gemini did on the last "Look again with Gemini". */}
@@ -1216,9 +1203,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             <p className="text-sm text-zinc-300">
               {lineupActs.length} acts confirmed, each with a source.
               {job && (
-                <button onClick={() => setReviewing(true)} className="ml-2 rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-200 hover:bg-zinc-900">
-                  Edit lineup
-                </button>
+                <Button className="ml-2" onClick={() => setReviewing(true)}>Edit lineup</Button>
               )}
             </p>
           )}
@@ -1238,22 +1223,21 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               )}
               <div className="flex flex-wrap gap-2">
                 {(job.status === 'needs_review' || job.status === 'no_data') && (
-                  <button onClick={() => setReviewing(true)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500">
+                  <Button variant="primary" onClick={() => setReviewing(true)}>
                     {job.status === 'no_data' ? 'Enter acts by hand' : 'Review lineup'}
-                  </button>
+                  </Button>
                 )}
                 {(job.status === 'waiting_quota' || job.status === 'failed') && (
-                  <button
+                  <Button
                     onClick={() =>
                       run('retry', async () => {
                         await lineupApi.retry(job.id);
                         setTimeout(() => void load(), 500);
                       })
                     }
-                    className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900"
                   >
                     <RefreshCw className="h-3 w-3" /> Try now
-                  </button>
+                  </Button>
                 )}
                 <button onClick={() => setShowLog((s) => !s)} className="text-xs text-zinc-400 hover:text-zinc-300">
                   {showLog ? 'Hide' : 'Show'} what it did
