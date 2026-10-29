@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Download, FileUp, Lightbulb, Menu, Share2, Sheet, UserCog, Users } from 'lucide-react';
 import { Theme, ThemeControls } from './ThemePicker';
 import { LogOutLink } from './LogOutLink';
-import { IconButton } from './ui/IconButton';
 
 interface Props {
   theme: Theme;
@@ -21,7 +20,7 @@ interface Props {
 
 // One menu for everything about you and the app. A dropdown on desktop and a
 // bottom sheet on phone. Import, Export, Google Sheets and Share sit in one row
-// of icons, and the theme modes in another, each icon with its name below.
+// of icons, and the theme modes in another. Both rows show each icon with its name below.
 export function MenuButton({ theme, canMembers, canAccount, canSheets, pendingRequests = 0, onMembers, onAccount, onImport, onExport, onSheets, onShare, onShowTips }: Props) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -85,23 +84,18 @@ export function MenuButton({ theme, canMembers, canAccount, canSheets, pendingRe
           )}
           <div className="space-y-2 border-t border-zinc-800 pt-3">
             <p className="px-1 text-xs font-medium uppercase tracking-wide text-zinc-400">Your data</p>
-            <div className="grid grid-cols-4 gap-1 sm:flex sm:items-center">
+            <div className="grid grid-cols-4 gap-1">
               {actions.map(({ icon: Icon, name, label, run }) => (
-                <div key={name}>
-                  {/* Phone: the icon and its name. Desktop: the icon alone, named on hover and focus. */}
-                  <button
-                    type="button"
-                    onClick={() => choose(run)}
-                    aria-label={label}
-                    className="flex w-full flex-col items-center gap-1 rounded-lg px-1 py-2 text-xs text-zinc-300 hover:bg-zinc-800 sm:hidden"
-                  >
-                    <Icon className="h-4 w-4" aria-hidden="true" />
-                    {name}
-                  </button>
-                  <div className="hidden sm:block">
-                    <IconButton icon={Icon} label={label} onClick={() => choose(run)} />
-                  </div>
-                </div>
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => choose(run)}
+                  aria-label={label}
+                  className="flex w-full flex-col items-center gap-1 rounded-lg px-1 py-2 text-xs text-zinc-300 hover:bg-zinc-800"
+                >
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                  {name}
+                </button>
               ))}
             </div>
           </div>
