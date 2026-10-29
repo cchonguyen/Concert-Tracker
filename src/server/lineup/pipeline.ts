@@ -264,7 +264,7 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
         job.pendingExtraction = job.pendingExtraction.slice(1);
         return;
       }
-      await deps.quota!.acquire(now, { ignorePause: force });
+      await deps.quota!.acquire(now, { ignorePause: force, userId: job.userId });
       const examples = await deps.store.getExamples(domainOf(doc.url));
       const extracted = await deps.gemini!.extractPerformers({ text: doc.body, input: job.input, examples });
       const normalizedDoc = normalizeName(doc.body);
@@ -316,7 +316,7 @@ async function stageDiscover(deps: PipelineDeps, job: LookupJob, now: Date, forc
     log(job, 'Web search is off; skipped.', now);
     return;
   }
-  if (deps.search.usesGeminiQuota) await deps.quota.acquire(now, { ignorePause: force });
+  if (deps.search.usesGeminiQuota) await deps.quota.acquire(now, { ignorePause: force, userId: job.userId });
   const urls = await deps.search.findLineupUrls(job.input);
   job.discoveryDone = true;
   log(job, urls.length ? `Web search (${deps.search.id}) returned ${urls.length} result(s).` : `Web search (${deps.search.id}) found nothing.`, now);
@@ -424,7 +424,7 @@ export async function runJob(
     }
   } catch (err) {
     if (err instanceof QuotaExhaustedError) {
-      await deps.quota?.markExhausted(err.retryAt, now);
+      if (err.scope === 'global') await deps.quota?.markExhausted(err.retryAt, now);
       job.status = 'waiting_quota';
       job.nextAttemptAt = err.retryAt.toISOString();
       job.waitingReason = err.reason;
