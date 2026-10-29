@@ -741,6 +741,13 @@ export class SupabaseLineupStore implements LineupStore {
     }));
   }
 
+  // Erases Log rows older than the cutoff. Run by the nightly job; a member's scope never erases the Log.
+  async purgeActivity(olderThan: string) {
+    if (this.scope) return 0;
+    const rows = this.check(await this.own('activity_log').delete().lt('created_at', olderThan).select('id'), 'purgeActivity');
+    return (rows ?? []).length;
+  }
+
   private async priorEvents(ids: string[]) {
     const rows = this.check(await this.mine(this.own('logged_events').select('*').in('id', ids)), 'priorEvents');
     return new Map((rows ?? []).map((r: any) => [r.id as string, this.rowToEvent(r)]));

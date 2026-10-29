@@ -5,6 +5,7 @@ import { createDeps, createStore } from '../src/server/lineup/service';
 import { backfillEntities, backfillVenuePlaces } from '../src/server/entities/linkingStore';
 import { frontDoor } from '../src/server/share/door';
 import { accessConfigFromEnv } from '../src/server/share/access';
+import { isRetentionTime, runRetention } from '../src/server/events/retention';
 import { multiUserFromEnv, workerSettings } from '../src/server/auth/config';
 import { supabaseMemberDirectory } from '../src/server/auth/members';
 import { getSupabaseClient } from '../src/server/supabase';
@@ -107,6 +108,16 @@ export default {
       }
     } catch (err) {
       console.error('Entity backfill failed:', err instanceof Error ? err.message : String(err));
+    }
+    // Once a day, at 03:00 UTC: erase trash past 90 days and Log rows past a year.
+    const now = deps.now();
+    if (isRetentionTime(now)) {
+      try {
+        const purged = await runRetention(deps.store, now);
+        console.log(`Retention: ${purged.events} deleted shows, ${purged.activity} log rows erased.`);
+      } catch (err) {
+        console.error('Retention failed:', err instanceof Error ? err.message : String(err));
+      }
     }
     const due = await deps.store.dueJobs(deps.now(), 5);
     if (due.length) await env.LOOKUP_QUEUE.sendBatch(due.map((job) => ({ body: { jobId: job.id } })));

@@ -110,6 +110,7 @@ export interface LineupStore {
   restoreEvent(id: string): Promise<boolean>;
   listDeletedEvents(): Promise<LoggedEvent[]>;
   purgeDeletedEvents(olderThan: string): Promise<number>;
+  purgeActivity(olderThan: string): Promise<number>;
   listActivity(limit: number): Promise<ActivityEntry[]>;
 
   // Ticket emails waiting for your review (stage 1 from email).
