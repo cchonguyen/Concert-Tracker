@@ -38,15 +38,3 @@ export function artistMilestoneLine(m: number): string {
   if (m === 100) return "100 artists seen! That's a lineup you built yourself.";
   return `${m.toLocaleString()} artists seen! Quite a lineup.`;
 }
-
-// Records that a milestone was shown for this account, so it fires once. Returns false when it was shown before.
-// Without storage the card can repeat on reload; the card itself still works, so it returns true.
-export function claimMilestone(key: string, hit: number): boolean {
-  try {
-    if (Number(window.localStorage.getItem(key) ?? 0) >= hit) return false;
-    window.localStorage.setItem(key, String(hit));
-  } catch {
-    // Storage is unavailable or full; see above.
-  }
-  return true;
-}
