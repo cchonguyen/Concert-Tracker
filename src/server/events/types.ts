@@ -142,6 +142,9 @@ export interface LoggedEvent extends EventFacts {
   // names are encrypted, so `companions` stays empty and the browser fills the
   // names in (src/services/vaultPeople.ts).
   personIds?: string[];
+  // Added in the browser, never stored: the vault is locked, so the people who
+  // went could not be read (the page says "Vault locked", not "no one").
+  peopleLocked?: boolean;
   rating?: number;
   ticketPrice?: number;
   notes?: string;

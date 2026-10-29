@@ -59,10 +59,10 @@ async function load(store: LineupStore): Promise<World> {
   };
 }
 
-function live(world: World, id: string, kind?: EntityKind): Entity {
+function live(world: World, id: string, kind?: EntityKind, opts: { encrypted?: boolean } = {}): Entity {
   const e = world.byId.get(id);
   if (!e) throw new ManageError('No such record.', 404);
-  if (e.nameEncrypted) throw new ManageError('This person\'s name is encrypted. Unlock your vault and change them from the People list.', 400);
+  if (e.nameEncrypted && !opts.encrypted) throw new ManageError('This person\'s name is encrypted. Unlock your vault and change them from the People list.', 400);
   if (e.mergedIntoId) throw new ManageError(`"${e.name}" was merged into another record.`, 409);
   if (kind && e.kind !== kind) throw new ManageError(`"${e.name}" is not a ${kind}.`, 400);
   return e;
@@ -385,8 +385,10 @@ function planAlias(world: World, id: string, alias: unknown, add: boolean, at: s
 const labelGroup = (label?: Entity): string => normalizeName(String(label?.attrs.group ?? ''));
 
 function planLink(world: World, fromId: string, toId: string, role: unknown, add: boolean, at: string): Plan {
-  const from = live(world, fromId);
-  const to = live(world, toId);
+  // A link needs only ids, so a person whose name is encrypted can take part.
+  const from = live(world, fromId, undefined, { encrypted: true });
+  const to = live(world, toId, undefined, { encrypted: true });
+  const label = (e: Entity) => (e.nameEncrypted ? 'a person' : `"${e.name}"`);
   const rule = ALLOWED_LINKS.find((a) => a.from === from.kind && a.role === role && a.to === to.kind);
   if (!rule) throw new ManageError(`A ${from.kind} cannot be "${String(role)}" a ${to.kind}.`, 400);
   const current = linksOf(world, [fromId]);
@@ -412,7 +414,7 @@ function planLink(world: World, fromId: string, toId: string, role: unknown, add
   const events = add && role === 'in' ? venueRewrite(world, new Map([[fromId, toId]]), at) : [];
   return {
     operation: add ? 'link-add' : 'link-remove',
-    summary: `${add ? 'Set' : 'Removed'} "${from.name}" ${verb} "${to.name}"${events.length ? ` (${plural(events.length, 'event')})` : ''}`,
+    summary: `${add ? 'Set' : 'Removed'} ${label(from)} ${verb} ${label(to)}${events.length ? ` (${plural(events.length, 'event')})` : ''}`,
     sourceEntityId: fromId,
     targetEntityId: toId,
     entities: { before: [from], after: [{ ...from, updatedAt: at }] },

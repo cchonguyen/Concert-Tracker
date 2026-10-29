@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Download, Lock, Unlock, X } from 'lucide-react';
 import { accountApi } from '../services/lineupApi';
+import { hasCiphertext, type ExportBundle } from '../services/exportBundle';
 import { useMe } from './MeContext';
 import { useVault } from './VaultContext';
 
@@ -34,6 +35,20 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
     } finally {
       setBusy(false);
     }
+  };
+  // The export is opened in this browser: the server only has notes and people encrypted.
+  const downloadReadable = async () => {
+    if (vault.status === 'locked') throw new Error('Unlock your vault first, or download the encrypted copy.');
+    const res = await fetch(accountApi.exportUrl);
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Download failed (HTTP ${res.status}).`);
+    let bundle = (await res.json()) as ExportBundle;
+    if (vault.status === 'unlocked' && hasCiphertext(bundle)) bundle = await vault.openExport(bundle);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'liveArchive-export.json';
+    a.click();
+    URL.revokeObjectURL(url);
   };
   const secret = () => (useRecovery ? { recoveryKey: passphrase } : { passphrase });
 
@@ -134,9 +149,18 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
 
         <section className="space-y-2 border-t border-zinc-900 pt-4">
           <h3 className="text-sm font-semibold">Your data</h3>
-          <a className={button} href={accountApi.exportUrl} download>
+          <button className={button} disabled={busy} onClick={() => act(downloadReadable)}>
             <Download className="h-3.5 w-3.5" /> Download my data
-          </a>
+          </button>
+          {vault.status === 'locked' && (
+            <p className="text-xs text-zinc-500">
+              Your vault is locked, so notes and the people who went would be unreadable in the file. Unlock it above for a readable copy, or{' '}
+              <a className="underline" href={accountApi.exportUrl} download>
+                download the encrypted copy
+              </a>
+              .
+            </p>
+          )}
           {me.role === 'member' && (
             <>
               <p className="text-xs text-zinc-500">Deleting removes your events, imports and share links. Type your email ({me.email}) to confirm. Backups keep deleted rows until they expire.</p>

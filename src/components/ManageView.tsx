@@ -135,8 +135,8 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   }, [data]);
 
   // After a change: fresh records, history and (when names moved) events.
-  const changed = async (entry: HistoryEntry, eventsToo = entry.events.length > 0) => {
-    setNotice({ text: `${entry.summary}.`, undo: entry.operation === 'create' ? undefined : entry.id });
+  const changed = async (entry: HistoryEntry, eventsToo = entry.events.length > 0 || Boolean(entry.eventsChanged)) => {
+    setNotice({ text: `${entry.summary}.`, undo: entry.operation === 'create' || !entry.id ? undefined : entry.id });
     await load();
     void loadHistory();
     if (eventsToo) onEventsChanged();
