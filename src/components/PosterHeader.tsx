@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Check, ChevronRight } from 'lucide-react';
 import type { LoggedEvent, SeenAct } from '../server/events/types';
 import type { AttendanceState } from '../server/events/attendance';
@@ -28,11 +29,19 @@ const POSTER_BACKGROUND =
   'radial-gradient(90% 140% at 12% 0%, rgba(139,92,246,.42), transparent 60%), radial-gradient(60% 120% at 100% 100%, rgba(244,114,182,.16), transparent 60%), #111114';
 
 // Your rating as five stars in the poster's corner. The empty ones stay faint, so an unrated show still shows the row;
-// tapping a star rates, and tapping the current rating again clears it.
+// tapping a star rates, and tapping the current rating again clears it. Hovering or focusing a star lights stars up to it,
+// so you see the rating you are about to give.
 function Stars({ rating, onRate }: { rating?: number; onRate: (rating: number | null) => void }) {
   const filled = Math.max(0, Math.min(5, Math.round(rating ?? 0)));
+  const [preview, setPreview] = useState<number | null>(null);
+  const lit = preview ?? filled;
   return (
-    <div role="group" aria-label={filled ? `Your rating: ${filled} of 5` : 'Your rating: not rated yet'} className="-mr-1.5 -mt-1.5 flex shrink-0">
+    <div
+      role="group"
+      aria-label={filled ? `Your rating: ${filled} of 5` : 'Your rating: not rated yet'}
+      className="-mr-1.5 -mt-1.5 flex shrink-0"
+      onMouseLeave={() => setPreview(null)}
+    >
       {[1, 2, 3, 4, 5].map((n) => (
         <button
           key={n}
@@ -40,8 +49,11 @@ function Stars({ rating, onRate }: { rating?: number; onRate: (rating: number | 
           aria-label={`${n} ${n === 1 ? 'star' : 'stars'}`}
           aria-pressed={n === filled}
           onClick={() => onRate(n === filled ? null : n)}
+          onMouseEnter={() => setPreview(n)}
+          onFocus={() => setPreview(n)}
+          onBlur={() => setPreview(null)}
           className={`flex h-11 w-8 items-center justify-center text-xl leading-none transition-colors sm:h-8 sm:w-7 ${
-            n <= filled ? 'text-amber-300 hover:text-amber-200' : 'text-zinc-600 hover:text-amber-300/70'
+            n <= lit ? 'text-amber-300' : 'text-zinc-600 hover:text-amber-300/70'
           }`}
         >
           ★
