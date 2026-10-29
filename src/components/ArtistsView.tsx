@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowUp, CalendarDays, ChevronDown, ChevronRight, Crown, FolderCog, Heart, LayoutList, List, MapPin, Search, Table2, Tags } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronRight, Crown, FolderCog, Heart, LayoutList, List, MapPin, Search, Table2, Tags } from 'lucide-react';
 import { genresApi, LoggedEvent } from '../services/lineupApi';
 import { ArtistGenres, genresByArtist, topStyles } from '../services/genres';
 import { artistGaps, spanLabel } from '../services/insights';
@@ -339,14 +339,6 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, [groups, jumps.length, headerHeight, barHeight]);
-  // Back to top shows once the list has scrolled about a screen down.
-  const [scrolled, setScrolled] = useState(false);
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > window.innerHeight * 0.8);
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
   const jumpTo = (group: string) =>
     document.getElementById(groupId(group))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -489,15 +481,6 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
         ))
       )}
 
-      {scrolled && (
-        <button
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          aria-label="Back to top"
-          className="fixed bottom-5 right-5 z-30 inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/95 px-3.5 py-2 text-xs font-medium text-zinc-200 shadow-lg shadow-black/40 backdrop-blur hover:border-violet-500 hover:text-zinc-50"
-        >
-          <ArrowUp className="h-3.5 w-3.5" /> Back to top
-        </button>
-      )}
     </div>
   );
 };
