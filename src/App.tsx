@@ -27,6 +27,7 @@ import { useTheme } from './components/ThemePicker';
 import { MenuButton } from './components/MenuButton';
 import { SharePanel } from './components/SharePanel';
 import { QuickAdd, QuickAddButton, QuickAddFab, SavedToast } from './components/QuickAdd';
+import { AboutDialog } from './components/AboutDialog';
 import { DataPanel, exportCsv } from './components/DataActions';
 import { ListImport } from './components/ListImport';
 import { SheetSync } from './components/SheetSync';
@@ -93,6 +94,7 @@ export default function App() {
   const [account, setAccount] = useState(false);
   const theme = useTheme();
   const [quickAdd, setQuickAdd] = useState(false);
+  const [about, setAbout] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
   const headerShown = useHideOnScroll(headerRef);
   const [saved, setSaved] = useState<LoggedEvent | null>(null);
@@ -275,7 +277,7 @@ export default function App() {
                   <button
                     key={id}
                     onClick={() => openTab(id === 'home' ? 'home' : rememberedPage(id, { canManage }, navStorage()))}
-                    title={label}
+                    aria-label={label}
                     aria-current={active ? 'page' : undefined}
                     className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 font-medium transition-colors sm:px-3 ${
                       active ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
@@ -313,7 +315,6 @@ export default function App() {
                   <button
                     key={p}
                     onClick={() => openTab(p)}
-                    title={PAGE_LABELS[p]}
                     aria-label={PAGE_LABELS[p]}
                     aria-current={active ? 'page' : undefined}
                     className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
@@ -433,6 +434,9 @@ export default function App() {
 
       <footer className="border-t border-zinc-900 py-5 text-xs text-zinc-400">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-end gap-3 px-4">
+          <button onClick={() => setAbout(true)} className="font-medium text-zinc-300 hover:text-zinc-100">
+            About
+          </button>
           {status && (
             <span title="Where event details and lineups come from">
               Sources:{' '}
@@ -443,6 +447,7 @@ export default function App() {
         </div>
       </footer>
 
+      {about && <AboutDialog onClose={() => setAbout(false)} />}
       {BACK_TO_TOP.includes(shown) && <BackToTop />}
       <QuickAddFab onClick={() => setQuickAdd(true)} />
       <QuickAdd
