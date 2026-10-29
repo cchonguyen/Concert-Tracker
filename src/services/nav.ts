@@ -24,6 +24,17 @@ const PAGE_SECTION: Record<SubPage, Section> = {
 
 export const PAGES: Page[] = ['home', 'summary', 'table', 'manage', 'timeline', 'map', 'stats', 'artists'];
 
+export const PAGE_LABELS: Record<Page, string> = {
+  home: 'Home',
+  summary: 'Summary',
+  table: 'Table',
+  manage: 'Manage',
+  timeline: 'Timeline',
+  map: 'Map',
+  stats: 'Stats',
+  artists: 'Artists',
+};
+
 export interface Access {
   canManage: boolean; // members who cannot see Manage get Summary and Table only
 }
