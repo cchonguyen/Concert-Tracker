@@ -1118,6 +1118,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           )}
         </div>
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
+        <div className="grid min-w-0 gap-6 @[760px]:grid-cols-[1.15fr_1fr] @[760px]:items-start">
+          <div className="min-w-0 space-y-6">
         <WentCard
           event={event}
           lineupActs={lineupActs}
@@ -1127,8 +1129,72 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           onReview={() => setReviewing(true)}
         />
 
+        {/* Who you saw */}
+        <section id="who-you-saw" className="scroll-mt-16 space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+          <div className="flex items-center gap-1">
+            <h3 className={sectionTitle}>Who you saw</h3>
+            <SectionHelp label="Who you saw">
+              Each act is a chip. Tap one to set its billing, set type, B2B partners and favourite set. Acts you add here count as seen.
+            </SectionHelp>
+          </div>
+          <SeenActs seen={event.seen} sets={sets} past={pastArtists} onChange={(seen) => save({ seen })} />
+          <SeenGenres event={event} />
+          {offered.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="text-zinc-400">From the event name:</span>
+              {offered.map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() =>
+                    save({ seen: [...toPatch(event.seen), { name: s.name, from: 'you', role: s.role, roleFrom: s.role ? 'you' : undefined }] })
+                  }
+                  title={
+                    s.sourceType === 'user'
+                      ? 'You saw them at another event'
+                      : s.sourceType === 'musicbrainz'
+                        ? 'An artist of this name on MusicBrainz'
+                        : `Listed by ${SOURCE_LABELS[s.sourceType]}`
+                  }
+                  className="inline-flex items-center gap-1 rounded-full border border-violet-500/50 px-2.5 py-1 text-violet-200 hover:bg-violet-950/40"
+                >
+                  <Plus className="h-3 w-3" /> {s.name} as {roleName(s.role)}?
+                </button>
+              ))}
+            </div>
+          )}
+          {lineupActs.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[11px] text-zinc-400">From the lineup, tap to mark who you saw:</p>
+              <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-auto">
+                {lineupActs.map((p) => {
+                  const on = seenKeys.has(p.artistKey);
+                  return (
+                    <button
+                      key={p.artistKey}
+                      onClick={() =>
+                        save({
+                          seen: on
+                            ? toPatch(event.seen.filter((s) => s.key !== p.artistKey))
+                            : [...toPatch(event.seen), { name: p.name, from: 'lineup', role: p.billing, roleFrom: p.billing ? 'lineup' : undefined }],
+                        })
+                      }
+                      title={[p.billing && `Billed as ${p.billing}`, sets.get(p.artistKey)].filter(Boolean).join(' · ') || undefined}
+                      className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
+                    >
+                      {p.name}
+                      {p.billing === 'support' && <span className="ml-1 text-[10px] text-zinc-400">support</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
+
+          </div>
+          <div className="min-w-0 space-y-6">
         {/* Stage 1: when and where */}
-        <section id="when-where" className="scroll-mt-16 space-y-3">
+        <section id="when-where" className="scroll-mt-16 space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
           <div className="flex items-center gap-1">
             <h3 className={sectionTitle}>When and where</h3>
             <SectionHelp label="When and where">
@@ -1246,74 +1312,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           <Weather event={event} busy={busy === 'weather'} note={weatherNote} onLookUp={lookUpWeather} />
         </section>
 
-        {/* Who you saw */}
-        <section id="who-you-saw" className="scroll-mt-16 space-y-3">
-          <div className="flex items-center gap-1">
-            <h3 className={sectionTitle}>Who you saw</h3>
-            <SectionHelp label="Who you saw">
-              Each act is a chip. Tap one to set its billing, set type, B2B partners and favourite set. Acts you add here count as seen.
-            </SectionHelp>
-          </div>
-          <SeenActs seen={event.seen} sets={sets} past={pastArtists} onChange={(seen) => save({ seen })} />
-          <SeenGenres event={event} />
-          {offered.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="text-zinc-400">From the event name:</span>
-              {offered.map((s) => (
-                <button
-                  key={s.key}
-                  onClick={() =>
-                    save({ seen: [...toPatch(event.seen), { name: s.name, from: 'you', role: s.role, roleFrom: s.role ? 'you' : undefined }] })
-                  }
-                  title={
-                    s.sourceType === 'user'
-                      ? 'You saw them at another event'
-                      : s.sourceType === 'musicbrainz'
-                        ? 'An artist of this name on MusicBrainz'
-                        : `Listed by ${SOURCE_LABELS[s.sourceType]}`
-                  }
-                  className="inline-flex items-center gap-1 rounded-full border border-violet-500/50 px-2.5 py-1 text-violet-200 hover:bg-violet-950/40"
-                >
-                  <Plus className="h-3 w-3" /> {s.name} as {roleName(s.role)}?
-                </button>
-              ))}
-            </div>
-          )}
-          {lineupActs.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-[11px] text-zinc-400">From the lineup, tap to mark who you saw:</p>
-              <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-auto">
-                {lineupActs.map((p) => {
-                  const on = seenKeys.has(p.artistKey);
-                  return (
-                    <button
-                      key={p.artistKey}
-                      onClick={() =>
-                        save({
-                          seen: on
-                            ? toPatch(event.seen.filter((s) => s.key !== p.artistKey))
-                            : [...toPatch(event.seen), { name: p.name, from: 'lineup', role: p.billing, roleFrom: p.billing ? 'lineup' : undefined }],
-                        })
-                      }
-                      title={[p.billing && `Billed as ${p.billing}`, sets.get(p.artistKey)].filter(Boolean).join(' · ') || undefined}
-                      className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
-                    >
-                      {p.name}
-                      {p.billing === 'support' && <span className="ml-1 text-[10px] text-zinc-400">support</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </section>
-
         {/* Stage 2: the lineup */}
         <details
           id="lineup"
           open={lineupOpen}
           onToggle={(e) => rememberSection('lineup', e.currentTarget.open)}
-          className="scroll-mt-16 space-y-3"
+          className="scroll-mt-16 space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
         >
           <summary className={`${sectionTitle} cursor-pointer list-none`}>Full lineup</summary>
           {!job && !edition && (
@@ -1364,7 +1368,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           id="your-notes"
           open={notesOpen}
           onToggle={(e) => rememberSection('notes', e.currentTarget.open)}
-          className="scroll-mt-16 space-y-3"
+          className="scroll-mt-16 space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
         >
           <summary className={`${sectionTitle} cursor-pointer list-none`}>Your notes</summary>
           <label className="block space-y-1">
@@ -1422,6 +1426,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           </div>
           <NotesField stored={event.notes} onSave={(v) => save({ notes: v })} />
         </details>
+
+          </div>
+        </div>
 
         <div className="flex items-center justify-between border-t border-zinc-900 pt-4">
           <div className="flex items-center gap-4">
