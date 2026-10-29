@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ComponentType } from 'react';
+import { useEffect, useId, useRef, useState, type ComponentType, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Tooltip } from './Tooltip';
 
@@ -22,6 +22,7 @@ interface Props<T extends string> {
 export function MenuButton<T extends string>({ label, value, options, onChange, className = '' }: Props<T>) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLUListElement>(null);
   const listId = useId();
   const current = options.find((o) => o.value === value) ?? options[0];
   const CurrentIcon = current?.icon;
@@ -39,6 +40,28 @@ export function MenuButton<T extends string>({ label, value, options, onChange, 
     };
   }, [open]);
 
+  // Arrow keys, Home and End move between the choices. Opening from the keyboard puts focus on the current one.
+  const optionButtons = () => Array.from(list.current?.querySelectorAll<HTMLButtonElement>('[role="option"]') ?? []);
+  const focusOption = (i: number) => {
+    const all = optionButtons();
+    if (all.length) all[(i + all.length) % all.length].focus();
+  };
+  const onListKey = (e: ReactKeyboardEvent<HTMLUListElement>) => {
+    const all = optionButtons();
+    const at = all.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === 'ArrowDown') focusOption(at + 1);
+    else if (e.key === 'ArrowUp') focusOption(at - 1);
+    else if (e.key === 'Home') focusOption(0);
+    else if (e.key === 'End') focusOption(all.length - 1);
+    else return;
+    e.preventDefault();
+  };
+  useEffect(() => {
+    if (!open) return;
+    const selected = list.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]');
+    (selected ?? list.current?.querySelector<HTMLButtonElement>('[role="option"]'))?.focus();
+  }, [open]);
+
   return (
     <div ref={box} className={`relative ${className}`}>
       <button
@@ -48,6 +71,12 @@ export function MenuButton<T extends string>({ label, value, options, onChange, 
         aria-expanded={open}
         aria-controls={listId}
         onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !open) {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
         className="flex h-9 items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200 hover:border-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400"
       >
         {CurrentIcon && <CurrentIcon className="h-4 w-4" />}
@@ -56,9 +85,11 @@ export function MenuButton<T extends string>({ label, value, options, onChange, 
       </button>
       {open && (
         <ul
+          ref={list}
           id={listId}
           role="listbox"
           aria-label={label}
+          onKeyDown={onListKey}
           className="absolute right-0 top-11 z-30 w-56 space-y-0.5 rounded-xl border border-zinc-800 bg-zinc-900 p-1.5 shadow-xl shadow-black/30"
         >
           {options.map((o) => {

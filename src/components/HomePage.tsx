@@ -60,9 +60,17 @@ export const HomePage: React.FC<HomePageProps> = ({
   return (
     <div className="space-y-6">
       <section className="space-y-3">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold text-zinc-50">
+            {empty ? 'Start with the last show you remember' : 'Every show you\u2019ve ever been to, in one place.'}
+          </h1>
+          <p className="text-sm text-zinc-400">
+            Type one line about a show. LiveArchive finds the date, the venue and who played, and shows you where every detail came from.
+          </p>
+        </div>
         <CaptureBar
           onCaptured={onCaptured}
-          label={empty ? 'Start with one show you remember' : undefined}
+          label={empty ? 'A name is enough. You can add the rest later.' : undefined}
         />
         <div className="flex flex-wrap gap-4 text-sm">
           <button onClick={onImport} className="text-violet-300 hover:text-violet-200">

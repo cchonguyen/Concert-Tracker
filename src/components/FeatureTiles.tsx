@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Archive, ArrowDownUp, FileSpreadsheet, GitMerge, Search, X } from 'lucide-react';
 import type { Page } from '../services/nav';
+import { readTips, tipsKey, TIPS_EVENT, writeTips, type TipsSaved } from '../services/tips';
 import { useMe } from './MeContext';
 import { Button } from './ui/Button';
 
 // Six feature tiles that each open the page where the feature lives. Shown open for up to 4 events,
-// folded at 5 or more. Dismissing is remembered per account on this browser; see ARCHITECTURE.md.
+// folded at 5 or more. Dismissing is remembered per account on this browser (services/tips.ts); see ARCHITECTURE.md.
 interface Tile {
   key: string;
   icon: typeof Search;
@@ -25,41 +26,22 @@ export const TILES: Tile[] = [
   { key: 'years', icon: Archive, title: 'See your years', line: 'A timeline, a calendar heatmap, a map of every city and the artists you’ve seen most.', page: 'agenda', linkLabel: 'Open Timeline' },
 ];
 
-interface Saved {
-  dismissed: string[];
-  allHidden: boolean;
-}
-
-const KEY_PREFIX = 'liveArchive.tips.';
-
-// Browser storage holds only this convenience. A failed read or write just means the tiles show again.
-function readSaved(key: string): Saved {
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (raw) return JSON.parse(raw) as Saved;
-  } catch {
-    // Storage can be blocked; fall through to the defaults.
-  }
-  return { dismissed: [], allHidden: false };
-}
-
-function writeSaved(key: string, saved: Saved) {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(saved));
-  } catch {
-    // Nothing to do: the choice lasts for this visit only.
-  }
-}
-
 export const FeatureTiles: React.FC<{ eventCount: number; onOpen: (page: Page) => void; onImport: () => void }> = ({ eventCount, onOpen, onImport }) => {
   const me = useMe();
-  const key = `${KEY_PREFIX}${me.email ?? 'owner'}`;
-  const [saved, setSaved] = useState<Saved>(() => readSaved(key));
+  const key = tipsKey(me.email);
+  const [saved, setSaved] = useState<TipsSaved>(() => readTips(key));
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
 
-  const update = (next: Saved) => {
+  // "Show tips again" in the Menu or About changes the same store, so re-read it.
+  useEffect(() => {
+    const reread = () => setSaved(readTips(key));
+    window.addEventListener(TIPS_EVENT, reread);
+    return () => window.removeEventListener(TIPS_EVENT, reread);
+  }, [key]);
+
+  const update = (next: TipsSaved) => {
     setSaved(next);
-    writeSaved(key, next);
+    writeTips(key, next);
   };
 
   const folded = expandedOverride === null ? eventCount >= 5 : !expandedOverride;
