@@ -72,7 +72,7 @@ export const MilestoneCard: React.FC<{ milestone: number; onSeeYear: () => void;
           See your year
         </Button>
       </div>
-      <button onClick={onClose} aria-label="Close" className="rounded-md p-1 text-zinc-400 hover:text-zinc-100">
+      <button onClick={onClose} aria-label="Close" className="rounded-md p-2.5 text-zinc-400 hover:text-zinc-100">
         <X className="h-4 w-4" aria-hidden="true" />
       </button>
     </div>
