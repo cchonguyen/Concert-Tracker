@@ -26,7 +26,8 @@ import { TimelineTab } from './components/timeline/TimelineTab';
 import { useTheme } from './components/ThemePicker';
 import { MenuButton } from './components/MenuButton';
 import { SharePanel } from './components/SharePanel';
-import { QuickAdd, QuickAddButton, QuickAddFab, SavedToast } from './components/QuickAdd';
+import { QuickAdd, QuickAddButton, QuickAddFab } from './components/QuickAdd';
+import { useToast } from './components/ui/Toast';
 import { AboutDialog } from './components/AboutDialog';
 import { DataPanel, exportCsv } from './components/DataActions';
 import { ListImport } from './components/ListImport';
@@ -97,8 +98,7 @@ export default function App() {
   const [about, setAbout] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
   const headerShown = useHideOnScroll(headerRef);
-  const [saved, setSaved] = useState<LoggedEvent | null>(null);
-  const dismissSaved = useCallback(() => setSaved(null), []);
+  const toast = useToast();
   const closeQuickAdd = useCallback(() => setQuickAdd(false), []);
   // Import and Google Sheets open from the Menu, the Table and Quick add alike.
   // Back from Google's sign-in (?sheets=...) opens Sheets straight away.
@@ -461,11 +461,10 @@ export default function App() {
         onReviewEmail={() => setReviewing(true)}
         onCaptured={(event) => {
           setQuickAdd(false);
-          setSaved(event);
+          toast({ message: 'Saved', action: { label: 'Open', onClick: () => setSelectedId(event.id) } });
           void handleCaptured(event);
         }}
       />
-      {saved && <SavedToast event={saved} onOpen={setSelectedId} onDismiss={dismissSaved} />}
 
       {dataPanel === 'import' && (
         <ListImport

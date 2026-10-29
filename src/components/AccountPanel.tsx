@@ -6,6 +6,7 @@ import { hasCiphertext, type ExportBundle } from '../services/exportBundle';
 import { useMe } from './MeContext';
 import { useVault } from './VaultContext';
 import { LogOutLink } from './LogOutLink';
+import { Confirm } from './ui/Confirm';
 
 // Multi-user only: the private-notes vault and "Download / delete my data".
 // The recovery key is shown once and the server never sees it.
@@ -20,7 +21,7 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
   const [next, setNext] = useState('');
   const [useRecovery, setUseRecovery] = useState(false);
   const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -164,15 +165,26 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
         )}
         {me.role === 'member' && (
           <>
-            <p className="text-xs text-zinc-400">Deleting removes your events, imports and share links. Type your email ({me.email}) to confirm. Backups keep deleted rows until they expire.</p>
-            <input className={field} value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Your email" />
-            <button
-              className={`${button} border-rose-500/40 text-rose-300`}
-              disabled={busy || confirm.trim().toLowerCase() !== (me.email ?? '').toLowerCase()}
-              onClick={() => act(async () => { await accountApi.remove(confirm.trim()); window.location.reload(); })}
-            >
+            <p className="text-xs text-zinc-400">Deleting removes your events, imports and share links. Backups keep deleted rows until they expire.</p>
+            <button className={`${button} border-rose-500/40 text-rose-300`} disabled={busy} onClick={() => setDeleting(true)}>
               Delete my account
             </button>
+            {deleting && (
+              <Confirm
+                title="Delete my account"
+                message="Your events, imports and share links are deleted. Backups keep deleted rows until they expire. This cannot be undone."
+                confirmLabel="Delete my account"
+                typedMatch={me.email ?? ''}
+                onCancel={() => setDeleting(false)}
+                onConfirm={() => {
+                  setDeleting(false);
+                  void act(async () => {
+                    await accountApi.remove(me.email ?? '');
+                    window.location.reload();
+                  });
+                }}
+              />
+            )}
           </>
         )}
       </section>
