@@ -1,6 +1,7 @@
 import { Dialog } from './ui/Dialog';
 import React, { useEffect, useState } from 'react';
 import { Loader2, Trash2, UserPlus, X } from 'lucide-react';
+import { Confirm } from './ui/Confirm';
 import { membersApi, type MemberRow } from '../services/lineupApi';
 
 // The owner's invite list (multi-user only). An invited person signs in with
@@ -14,6 +15,7 @@ export const MembersPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
 
   const load = () => membersApi.list().then(setMembers, (e) => setError(e instanceof Error ? e.message : String(e)));
   useEffect(() => {
@@ -80,9 +82,7 @@ export const MembersPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
               {m.role !== 'owner' && (
                 <button
                   disabled={busy}
-                  onClick={() => {
-                    if (window.confirm(`Remove ${m.email}? Their account and every event they saved are deleted.`)) act(() => membersApi.remove(m.email));
-                  }}
+                  onClick={() => setRemoving(m.email)}
                   aria-label={`Remove ${m.email}`}
                   className="text-zinc-500 hover:text-rose-300 disabled:opacity-40"
                 >
@@ -92,6 +92,20 @@ export const MembersPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
             </li>
           ))}
         </ul>
+      )}
+      {removing && (
+        <Confirm
+          title="Remove member"
+          message="Their account and every event they saved are deleted. This cannot be undone."
+          confirmLabel="Remove member"
+          typedMatch={removing}
+          onCancel={() => setRemoving(null)}
+          onConfirm={() => {
+            const who = removing;
+            setRemoving(null);
+            void act(() => membersApi.remove(who));
+          }}
+        />
       )}
     </Dialog>
   );
