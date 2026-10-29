@@ -40,6 +40,8 @@ import { Tooltip } from './ui/Tooltip';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
 import { Segmented } from './ui/Segmented';
+import { SaveStatus } from './ui/SaveStatus';
+import { beginSave, emptyTrack, failSave, hintVisit, succeedSave, takeFailed, type SaveTrack } from '../services/saveStatus';
 
 interface EventDetailProps {
   event: LoggedEvent;
@@ -111,6 +113,10 @@ const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
 
 // Typing saves 500 ms after the last key, so a sheet closed at once (iOS Safari) still gets its last value through the blur flush.
 const SAVE_DELAY_MS = 500;
+// Counts how many times an event has been opened on this device, for the "Changes save as you go" hint.
+const HINT_KEY = 'liveArchive.saveHint';
+// The fields a save has just written; each one flashes for a moment.
+const FlashContext = React.createContext<string[]>([]);
 
 // A text field that saves when you leave it, and 500 ms after you stop typing.
 const Field: React.FC<{
@@ -126,7 +132,11 @@ const Field: React.FC<{
   offer?: { value: string; from: string; onUse: () => void };
   min?: string;
   className?: string;
-}> = ({ label, value, type = 'text', placeholder, source, onSave, onType, suggestions, offer, min, className }) => {
+  // The event field this saves, so a save of it flashes.
+  field?: keyof EventPatch;
+}> = ({ label, value, type = 'text', placeholder, source, onSave, onType, suggestions, offer, min, className, field }) => {
+  const flashing = React.useContext(FlashContext);
+  const flash = field !== undefined && flashing.includes(field);
   const [draft, setDraft] = useState(value === undefined ? '' : String(value));
   useEffect(() => setDraft(value === undefined ? '' : String(value)), [value]);
   const pending = useRef<number | null>(null);
@@ -146,9 +156,12 @@ const Field: React.FC<{
   // Leaving the field with a save still waiting saves it.
   useEffect(() => () => flush(), []);
   return (
-    <label className={`space-y-1 ${className ?? ''}`}>
+    <label className={`-m-0.5 space-y-1 rounded-lg p-0.5 transition-shadow motion-reduce:transition-none ${flash ? 'ring-1 ring-emerald-500/60' : ''} ${className ?? ''}`}>
       <span className="flex items-center justify-between gap-2 text-[11px] font-semibold text-zinc-400">
-        {label}
+        <span className="inline-flex items-center gap-1">
+          {label}
+          {flash && <Check className="h-3 w-3 text-emerald-300" aria-label="Saved" />}
+        </span>
         {source && source.sourceType !== 'user' && (
           <a
             href={source.sourceUrl}
@@ -858,7 +871,59 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
       setBusy(null);
     }
   };
-  const save = (patch: EventPatch) => run('save', () => eventsApi.update(event.id, patch));
+  // Saves are tracked for the status line. A failed patch is kept so Try again can resend it.
+  const [track, setTrack] = useState<SaveTrack<EventPatch>>(() => emptyTrack<EventPatch>());
+  const trackRef = useRef(track);
+  const pendingSaves = useRef(new Set<Promise<void>>());
+  const [flashing, setFlashing] = useState<string[]>([]);
+  const flashTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+  }, []);
+  const [hint] = useState(() => {
+    try {
+      const visit = hintVisit(window.localStorage.getItem(HINT_KEY));
+      window.localStorage.setItem(HINT_KEY, String(visit.next));
+      return visit.show;
+    } catch {
+      return false;
+    }
+  });
+  const update = (fn: (t: SaveTrack<EventPatch>) => SaveTrack<EventPatch>) => {
+    trackRef.current = fn(trackRef.current);
+    setTrack(trackRef.current);
+  };
+  const flash = (keys: string[]) => {
+    setFlashing(keys);
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlashing([]), 1000);
+  };
+  const sendPatch = (patch: EventPatch) => {
+    update(beginSave);
+    const sent = eventsApi.update(event.id, patch).then(
+      (updated) => {
+        onChange(updated);
+        update((t) => succeedSave(t, Date.now()));
+        flash(Object.keys(patch));
+      },
+      () => update((t) => failSave(t, patch)),
+    );
+    pendingSaves.current.add(sent);
+    void sent.finally(() => pendingSaves.current.delete(sent));
+  };
+  const save = (patch: EventPatch) => sendPatch(patch);
+  const retrySaves = () => {
+    const { track: rest, patches } = takeFailed(trackRef.current);
+    update(() => rest);
+    patches.forEach((patch) => sendPatch(patch));
+  };
+  // Closing first blurs the field being typed in, so its save starts and is waited for. A failed save keeps the detail open.
+  const requestClose = async () => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    await Promise.all([...pendingSaves.current]);
+    if (trackRef.current.failed.length > 0) return;
+    onClose();
+  };
   const [weatherNote, setWeatherNote] = useState<string | null>(null);
   const lookUpWeather = () =>
     run('weather', async () => {
@@ -898,7 +963,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     return {
       value: field === 'endDate' ? whenLabel({ startDate: v }) ?? v : v,
       from: src ? FIELD_SOURCE_LABELS[src.sourceType] : 'a source',
-      onUse: () => void run('save', () => eventsApi.pick(event.id, confirmed.id, [field])),
+      onUse: () => void run('pick', () => eventsApi.pick(event.id, confirmed.id, [field])),
     };
   };
   const confirmations = dateConfirmations(event);
@@ -913,18 +978,21 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   return (
     <Dialog
       title={eventTitle(event)}
-      onClose={reviewing ? () => {} : onClose}
+      onClose={reviewing ? () => {} : () => void requestClose()}
       panelClassName="h-full w-full max-w-xl space-y-6 overflow-y-auto border-l border-zinc-900 bg-zinc-950 p-5 shadow-2xl"
     >
+      <FlashContext.Provider value={flashing}>
+        <SaveStatus track={track} onRetry={retrySaves} hint={hint} />
         <div className="flex items-start gap-3">
-          <Field label="Event" value={event.name} onSave={(v) => save({ name: v })} className="flex-1" />
-          <IconButton icon={X} label="Close" onClick={onClose} className="mt-6" />
+          <Field label="Event" field="name" value={event.name} onSave={(v) => save({ name: v })} className="flex-1" />
+          <IconButton icon={X} label="Close" onClick={() => void requestClose()} className="mt-6" />
         </div>
         {event.input && event.input !== event.name && <p className="-mt-4 text-xs text-zinc-400">You typed: “{event.input}”</p>}
         <div className="-mt-2 space-y-1">
           <div className="flex items-end gap-2">
             <Field
               label="Series"
+              field="series"
               value={event.series}
               placeholder="Festival or tour it's one year of, e.g. EDC Las Vegas"
               suggestions={seriesOffers(event, others)}
@@ -997,11 +1065,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Date" type="date" value={event.startDate} source={event.sources.startDate} onSave={(v) => save({ startDate: text(v) })} />
+            <Field label="Date" field="startDate" type="date" value={event.startDate} source={event.sources.startDate} onSave={(v) => save({ startDate: text(v) })} />
             {/* Shows the start date until you change it, so the picker opens on the
                 right month; stored only when it differs (a single-day event has no last day). */}
             <Field
               label="Last day"
+              field="endDate"
               type="date"
               value={event.endDate ?? event.startDate}
               min={event.startDate}
@@ -1013,10 +1082,11 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               <DaysWent days={days} attended={event.daysAttended} onChange={(daysAttended) => save({ daysAttended })} />
             )}
             {!event.startDate && (
-              <Field label="Year, if that's all you know" type="number" value={event.year} placeholder="2024" onSave={(v) => save({ year: v ? Number(v) : null })} />
+              <Field label="Year, if that's all you know" field="year" type="number" value={event.year} placeholder="2024" onSave={(v) => save({ year: v ? Number(v) : null })} />
             )}
             <Field
               label="Venue"
+              field="venue"
               value={event.venue}
               source={event.sources.venue}
               suggestions={pastVenues}
@@ -1029,6 +1099,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             />
             <Field
               label="City"
+              field="city"
               value={event.city}
               placeholder="City"
               source={event.sources.city}
@@ -1039,6 +1110,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             />
             <Field
               label="State"
+              field="region"
               value={event.region}
               placeholder="NV, or the region"
               source={event.sources.region}
@@ -1050,7 +1122,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               }
               onSave={(v) => save({ region: text(v) })}
             />
-            <Field label="Country" value={event.country} source={event.sources.country} offer={offer('country')} onSave={(v) => save({ country: text(v) })} />
+            <Field label="Country" field="country" value={event.country} source={event.sources.country} offer={offer('country')} onSave={(v) => save({ country: text(v) })} />
             <div className="col-span-2 space-y-1">
               <span className="flex items-center justify-between gap-2 text-[11px] font-semibold text-zinc-400">
                 Type
@@ -1313,6 +1385,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </div>
             <Field
               label="Ticket price"
+              field="ticketPrice"
               type="number"
               value={event.ticketPrice}
               source={event.sources.ticketPrice}
@@ -1337,8 +1410,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               <Trash2 className="h-3.5 w-3.5" /> Delete event
             </button>
           </div>
-          {busy === 'save' && <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />}
         </div>
+      </FlashContext.Provider>
 
       {confirmingDelete && (
         <Confirm
