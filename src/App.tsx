@@ -11,7 +11,6 @@ import {
   LineupSummary,
   lineupApi,
   LoggedEvent,
-  SOURCE_LABELS,
   meApi,
 } from './services/lineupApi';
 import { CaptureBar } from './components/CaptureBar';
@@ -518,21 +517,27 @@ export default function App({ initialMe }: { initialMe?: Me }) {
       </PeopleProvider>
 
       <footer className="border-t border-zinc-900 py-5 text-xs text-zinc-400">
-        <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-end gap-3 px-4">
+        <nav className="mx-auto flex max-w-3xl flex-wrap items-center gap-x-4 gap-y-2 px-4">
+          <a href="/?public=1" className="font-medium text-zinc-300 hover:text-zinc-100">
+            Home
+          </a>
           <button onClick={() => setAbout(true)} className="font-medium text-zinc-300 hover:text-zinc-100">
             About
           </button>
-          {status && (
-            <span title="Where event details and lineups come from">
-              Sources:{' '}
-              {status.sources.map((s) => `${SOURCE_LABELS[s.id]}${s.enabled ? '' : ' (off)'}`).join(' · ')}
-              {' · '}Gemini {status.gemini ? `${status.quota?.used ?? 0}/${status.quota?.limit ?? '?'} today` : '(off)'}
-            </span>
-          )}
-        </div>
+          <a href="/demo" className="font-medium text-zinc-300 hover:text-zinc-100">
+            Demo
+          </a>
+          <a href="/privacy" className="font-medium text-zinc-300 hover:text-zinc-100">
+            Privacy
+          </a>
+          <a href="/terms" className="font-medium text-zinc-300 hover:text-zinc-100">
+            Terms
+          </a>
+        </nav>
+        <p className="mx-auto mt-2 max-w-3xl px-4">© 2026 Charlie Cho Nguyen</p>
       </footer>
 
-      {about && <AboutDialog onClose={() => setAbout(false)} onShowTips={() => void showTipsAgain()} />}
+      {about && <AboutDialog status={status} onClose={() => setAbout(false)} onShowTips={() => void showTipsAgain()} />}
       {BACK_TO_TOP.includes(shown) && <BackToTop />}
       <QuickAddFab onClick={() => (readOnly ? askSample('add') : setQuickAdd(true))} />
       <QuickAdd
