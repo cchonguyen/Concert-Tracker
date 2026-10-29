@@ -21,11 +21,13 @@ test('a tips choice with a bad shape is refused', () => {
   assert.throws(() => cleanTips({ dismissed: [], allHidden: 'yes' }), PrefsError);
 });
 
-test('a milestone is one of the milestone counts or 0', () => {
-  assert.equal(cleanMilestone(0), 0);
-  assert.equal(cleanMilestone(250), 250);
-  assert.throws(() => cleanMilestone(7), PrefsError);
-  assert.throws(() => cleanMilestone('100'), PrefsError);
+test('a milestone patch names a show count and an act count, or 0', () => {
+  assert.deepEqual(cleanMilestone({ shows: 250 }), { shows: 250 });
+  assert.deepEqual(cleanMilestone({ artists: 100 }), { artists: 100 });
+  assert.deepEqual(cleanMilestone({ shows: 0, artists: 0 }), { shows: 0, artists: 0 });
+  assert.throws(() => cleanMilestone({ shows: 7 }), PrefsError);
+  assert.throws(() => cleanMilestone({ artists: 50 }), PrefsError);
+  assert.throws(() => cleanMilestone(100), PrefsError);
 });
 
 async function setup(t: { after: (fn: () => void) => void }) {
@@ -50,7 +52,7 @@ async function setup(t: { after: (fn: () => void) => void }) {
 
 test('an account with nothing saved reads no tips and no milestone', async (t) => {
   const call = await setup(t);
-  assert.deepEqual(await call('GET'), { status: 200, body: { tips: null, milestone: 0 } });
+  assert.deepEqual(await call('GET'), { status: 200, body: { tips: null, milestone: { shows: 0, artists: 0 } } });
 });
 
 test('tips saved on the account come back on the next read', async (t) => {
@@ -68,15 +70,15 @@ test('a bad tips choice is refused and changes nothing', async (t) => {
   assert.deepEqual((await call('GET')).body.tips, { dismissed: ['fill'], allHidden: false });
 });
 
-test('the milestone only moves up, so an older browser cannot bring the card back', async (t) => {
+test('each milestone kind only moves up, so an older browser cannot bring the card back', async (t) => {
   const call = await setup(t);
-  await call('PUT', { milestone: 100 });
-  assert.equal((await call('PUT', { milestone: 50 })).body.milestone, 100);
-  assert.equal((await call('PUT', { milestone: 250 })).body.milestone, 250);
+  await call('PUT', { milestone: { shows: 100, artists: 100 } });
+  assert.deepEqual((await call('PUT', { milestone: { shows: 50 } })).body.milestone, { shows: 100, artists: 100 });
+  assert.deepEqual((await call('PUT', { milestone: { shows: 250 } })).body.milestone, { shows: 250, artists: 100 });
 });
 
 test('a milestone that is not a milestone count is refused', async (t) => {
   const call = await setup(t);
-  assert.equal((await call('PUT', { milestone: 42 })).status, 400);
-  assert.equal((await call('GET')).body.milestone, 0);
+  assert.equal((await call('PUT', { milestone: { shows: 42 } })).status, 400);
+  assert.deepEqual((await call('GET')).body.milestone, { shows: 0, artists: 0 });
 });

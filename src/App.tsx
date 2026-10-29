@@ -50,10 +50,13 @@ import { HomePage } from './components/HomePage';
 import { BackToTop } from './components/ui/BackToTop';
 import { Callout } from './components/ui/Callout';
 import { copy } from './services/copy';
-import { highestMilestoneCrossed } from './services/milestones';
+import { ARTIST_MILESTONES, artistMilestoneLine, highestMilestoneCrossed, milestoneCounts, milestoneLine, type MilestoneCounts } from './services/milestones';
 import { loadPrefs, recordMilestone, showTipsAgain } from './services/prefs';
+import type { MilestoneSaved } from './server/auth/prefs';
 import { MilestoneCard } from './components/MilestoneCard';
 import { cityOf } from './services/table';
+import { pastEvents, yearInReview } from './services/stats';
+import { eventYear } from './services/format';
 import { homeSummary } from './services/home';
 
 // The Table, the four timeline views and the Map keep their filters in the address (?view=table&...).
@@ -80,11 +83,11 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   const { readOnly, ask: askSample } = useSampleGate();
   const [tab, setTab] = useState<Page>(initialPage);
   const [events, setEvents] = useState<LoggedEvent[]>([]);
-  // The show count last seen from the server or from a change, so a page load never counts as a milestone.
-  const showCount = useRef<number | null>(null);
-  // The highest milestone the account has shown; null until it is read.
-  const milestoneShown = useRef<number | null>(null);
-  const [milestone, setMilestone] = useState<number | null>(null);
+  // The counts last seen from the server or from a change, so a page load never counts as a milestone.
+  const counts = useRef<MilestoneCounts | null>(null);
+  // The highest milestone each card kind has shown, as the account has it; null until it is read.
+  const milestoneShown = useRef<MilestoneSaved | null>(null);
+  const [milestone, setMilestone] = useState<{ kind: 'shows' | 'artists'; value: number } | null>(null);
   const [lineups, setLineups] = useState<Record<string, LineupSummary>>({});
   const [editions, setEditions] = useState<Record<string, LineupFacts>>({});
   const [researching, setResearching] = useState<Set<string>>(new Set());
@@ -151,7 +154,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   const refresh = useCallback(async () => {
     try {
       const data = await eventsApi.list();
-      showCount.current = data.events.length;
+      counts.current = milestoneCounts(data.events, new Date().toISOString().slice(0, 10));
       setEvents(data.events);
       setLineups(data.lineups);
       setEditions(data.editions ?? {});
@@ -205,12 +208,15 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   };
 
   // Moving between the Table, the timeline views and the Map keeps the same filters.
-  // A show added this session may cross a milestone. Each milestone fires once per account: the highest one shown
-  // is kept on the account (services/prefs.ts). Until that is read, no card shows.
+  // A show or an act added this session may cross a milestone. Each milestone fires once per account: the highest
+  // one shown is kept on the account (services/prefs.ts). A show card wins when a change crosses both kinds at once.
+  // Until the account's marks are read, no card shows.
   useEffect(() => {
     let live = true;
     void loadPrefs(me.email)
-      .then((p) => live && (milestoneShown.current = p.milestone))
+      .then((p) => {
+        if (live) milestoneShown.current = p.milestone;
+      })
       .catch(() => {});
     return () => {
       live = false;
@@ -218,17 +224,25 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   }, [me.email]);
 
   useEffect(() => {
-    const count = events.length;
-    const before = showCount.current;
-    showCount.current = count;
-    if (before === null || count <= before) return;
-    const hit = highestMilestoneCrossed(before, count);
+    const now = milestoneCounts(events, new Date().toISOString().slice(0, 10));
+    const before = counts.current;
+    counts.current = now;
     const shown = milestoneShown.current;
-    if (hit === null || shown === null || shown >= hit) return;
-    milestoneShown.current = hit;
-    recordMilestone(hit);
-    setMilestone(hit);
-  }, [events.length]);
+    if (before === null || shown === null) return;
+    const showHit = highestMilestoneCrossed(before.shows, now.shows);
+    if (showHit !== null && showHit > shown.shows) {
+      milestoneShown.current = { ...shown, shows: showHit };
+      recordMilestone({ shows: showHit });
+      setMilestone({ kind: 'shows', value: showHit });
+      return;
+    }
+    const artistHit = highestMilestoneCrossed(before.artists, now.artists, ARTIST_MILESTONES);
+    if (artistHit !== null && artistHit > shown.artists) {
+      milestoneShown.current = { ...shown, artists: artistHit };
+      recordMilestone({ artists: artistHit });
+      setMilestone({ kind: 'artists', value: artistHit });
+    }
+  }, [events]);
 
   const openTab = (next: Page) => {
     setAgendaFocus(null);
@@ -299,6 +313,11 @@ export default function App({ initialMe }: { initialMe?: Me }) {
     return () => clearTimeout(t);
   }, [section, hintDue, phone]);
   const cityCount = new Set(went.map((e) => cityOf(e)).filter(Boolean)).size;
+  // "See your year" on Home: this year's shows, as Stats counts them.
+  const thisYear = Number(today.slice(0, 4));
+  const yearEvents = useMemo(() => pastEvents(events, today).filter((e) => eventYear(e) === thisYear), [events, today, thisYear]);
+  const yearReview = useMemo(() => (yearEvents.length ? yearInReview(yearEvents, thisYear) : null), [yearEvents, thisYear]);
+  const yearCities = new Set(yearEvents.map((e) => cityOf(e)).filter(Boolean)).size;
   // Needs you on Home: shows waiting for a yes or no, and lineups still being looked up.
   const confirmCount = homeSummary(events, lineups, today).toConfirm.length;
   const researchingCount = Object.values(lineups).filter((l) => isActive(l.status)).length;
@@ -424,6 +443,8 @@ export default function App({ initialMe }: { initialMe?: Me }) {
             eventCount={events.length}
             cityCount={cityCount}
             artistCount={seenCount}
+            yearReview={yearReview}
+            yearCities={yearCities}
             needs={{ confirm: confirmCount, email: toReview, researching: researchingCount }}
             emailCheck={emailCheck}
             onCaptured={handleCaptured}
@@ -580,10 +601,11 @@ export default function App({ initialMe }: { initialMe?: Me }) {
     </VaultProvider>
       {milestone !== null && (
         <MilestoneCard
-          milestone={milestone}
-          onSeeYear={() => {
+          line={milestone.kind === 'shows' ? milestoneLine(milestone.value) : artistMilestoneLine(milestone.value)}
+          actionLabel={milestone.kind === 'shows' ? 'See your year' : 'See your artists'}
+          onAction={() => {
             setMilestone(null);
-            openTab('agenda');
+            openTab(milestone.kind === 'shows' ? 'agenda' : 'ranking');
           }}
           onClose={() => setMilestone(null)}
         />

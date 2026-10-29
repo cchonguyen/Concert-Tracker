@@ -20,6 +20,11 @@ export interface HomeSummary {
   onThisDay: LoggedEvent[]; // same month and day in an earlier year
 }
 
+// Distinct acts seen across these events (the Home "artists" tile and the artist milestone).
+export function distinctActs(went: LoggedEvent[]): number {
+  return new Set(went.flatMap((e) => e.seen.map((s) => s.key))).size;
+}
+
 const fold = (s: string) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
 export function homeSummary(
@@ -40,7 +45,7 @@ export function homeSummary(
   const when = (e: LoggedEvent) => e.startDate ?? (e.year ? `${e.year}-${String(e.month ?? 12).padStart(2, '0')}` : '');
   return {
     events: went.length,
-    artists: new Set(went.flatMap((e) => e.seen.map((s) => s.key))).size,
+    artists: distinctActs(went),
     venues: new Set(went.flatMap((e) => (e.venue ? [fold(e.venue)] : []))).size,
     thisYear: went.filter((e) => eventYear(e) === year).length,
     needs,

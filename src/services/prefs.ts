@@ -1,7 +1,7 @@
 import { prefsApi } from './lineupApi';
-import type { Prefs, TipsSaved } from '../server/auth/prefs';
+import type { MilestoneSaved, Prefs, TipsSaved } from '../server/auth/prefs';
 
-// The Home tips and the milestone mark live on the account (src/server/auth/prefs.ts). This module keeps one
+// The Home tips and the milestone marks live on the account (src/server/auth/prefs.ts). This module keeps one
 // read of them per page, so Home, the Menu and About share it. Storage errors and a dropped connection leave
 // the page with the last copy it read; the next load asks the account again.
 export const TIPS_EVENT = 'liveArchive:tips';
@@ -9,11 +9,12 @@ export const DEFAULT_TIPS: TipsSaved = { dismissed: [], allHidden: false };
 
 let cache: Promise<Prefs> | null = null;
 
-// Tips and the milestone mark used to be kept in each browser's localStorage. The first read after this change
-// sends what this browser has to the account. Tips go only when the account has none yet, and the milestone
+// Tips and the milestone marks used to be kept in each browser's localStorage. The first read after this change
+// sends what this browser has to the account. Tips go only when the account has none yet, and each milestone
 // only ever moves up on the server, so a newer copy on the account is never overwritten.
 const tipsLocalKey = (email: string | null) => `liveArchive.tips.${email ?? 'owner'}`;
-const milestoneLocalKey = (email: string | null) => `liveArchive.milestone.${email ?? 'owner'}`;
+const showsLocalKey = (email: string | null) => `liveArchive.milestone.${email ?? 'owner'}`;
+const artistsLocalKey = (email: string | null) => `liveArchive.milestone.artists.${email ?? 'owner'}`;
 
 function readLocal(key: string): string | null {
   try {
@@ -39,10 +40,12 @@ async function fetchAndMove(email: string | null): Promise<Prefs> {
       prefs = await prefsApi.saveTips(JSON.parse(localTips) as TipsSaved);
     }
     if (prefs.tips !== null) forgetLocal(tipsLocalKey(email));
-    const localMilestone = Number(readLocal(milestoneLocalKey(email)) ?? 0);
-    if (localMilestone > 0) {
-      prefs = await prefsApi.saveMilestone(localMilestone);
-      forgetLocal(milestoneLocalKey(email));
+    const shows = Number(readLocal(showsLocalKey(email)) ?? 0);
+    const artists = Number(readLocal(artistsLocalKey(email)) ?? 0);
+    if (shows > 0 || artists > 0) {
+      prefs = await prefsApi.saveMilestone({ shows, artists });
+      forgetLocal(showsLocalKey(email));
+      forgetLocal(artistsLocalKey(email));
     }
   } catch {
     // Keep this browser's copy and try again on the next read.
@@ -71,9 +74,9 @@ export async function writeTips(saved: TipsSaved) {
 // "Show tips again" in the Menu and About.
 export const showTipsAgain = () => writeTips(DEFAULT_TIPS);
 
-// Records a milestone shown on this page. A failed save means the card may show again after a reload.
-export function recordMilestone(milestone: number) {
-  prefsApi.saveMilestone(milestone).then(
+// Records a milestone card shown on this page. A failed save means the card may show again after a reload.
+export function recordMilestone(part: Partial<MilestoneSaved>) {
+  prefsApi.saveMilestone(part).then(
     (prefs) => {
       cache = Promise.resolve(prefs);
     },
