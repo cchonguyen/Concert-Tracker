@@ -22,7 +22,7 @@ Read [REQUIREMENTS.md](REQUIREMENTS.md) first: it says what the app is for (reme
 - Stage 1 research uses structured APIs and web search results read in code. Gemini runs in stage 1 only when you press "Look again with Gemini" on an event, reads only pages the app fetched, and its dates are read in code from the quote it gives (`src/server/events/detailsGemini.ts`). Never call it from saving, plain "Look again" or Fill gaps. Its results are candidates: they never overwrite a field you typed, and fill empty fields on their own only when they match the full date you gave.
 - Parse the capture line in code (`src/server/events/parse.ts`); text it cannot place stays in the name. Never add a model call to parsing.
 - Keep capture to one line of text. New personal fields go on the event detail, not on capture.
-- No demo or seeded data in the app.
+- No demo or seeded data in the app. An empty app is empty. The one exception is the public demo at `/demo`: its fictional sample data lives in `src/demo/` only, is never imported outside it, is never sent to the server or written to the database, is never part of the `/app` build, and every demo page says it is sample data.
 - Run `npm run lint` and `npm test` before committing, and add tests for new adapters or rules.
 - Update ARCHITECTURE.md (and REQUIREMENTS.md, if a requirement changes) in the same change when behavior described there changes.
 

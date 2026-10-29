@@ -18,10 +18,13 @@
   "build": { "command": "npm run build" },
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application",
-    // The share page (/s/<code>) is answered by the Worker before any static
-    // file or the single-page fallback, in either case of "s".
-    "run_worker_first": ["/api/*", "/s", "/s/*", "/S", "/S/*"]
+    // Unknown addresses get public/404.html (dist/404.html), not the app.
+    "not_found_handling": "404-page",
+    // The Worker's ASSETS binding serves the pages it lets through (see
+    // worker/index.ts). The share page (/s/<code>) and the old app addresses
+    // are answered by the Worker before any static file, in either case of "s".
+    "binding": "ASSETS",
+    "run_worker_first": ["/", "/index.html", "/app", "/app.html", "/robots.txt", "/sitemap.xml", "/api/*", "/s", "/s/*", "/S", "/S/*"]
   },
   // ACCESS_TEAM_DOMAIN (https://<team>.cloudflareaccess.com) and ACCESS_AUD
   // (the Access application's audience tag) turn on the Worker's own check of

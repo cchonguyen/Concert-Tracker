@@ -11,10 +11,12 @@ import { supabaseMemberDirectory } from '../src/server/auth/members';
 import { getSupabaseClient } from '../src/server/supabase';
 
 // Cloudflare Worker entry. Static files are served from ./dist by Workers
-// static assets (wrangler.jsonc); only /api/* and the share page (/s/*)
-// reach this code. frontDoor runs first: it answers share page paths itself
-// and, once ACCESS_TEAM_DOMAIN and ACCESS_AUD are set, refuses any other
-// request without a valid Cloudflare Access token.
+// static assets (wrangler.jsonc); only /api/*, the share page (/s/*) and the
+// pages listed in run_worker_first reach this code. frontDoor runs first: it
+// answers share page paths and old app addresses itself and, once
+// ACCESS_TEAM_DOMAIN and ACCESS_AUD are set, refuses any request that is not a
+// public page without a valid Cloudflare Access token. Pages the Worker lets
+// through are served from the static assets (ASSETS), and /api goes to Express.
 //
 // There is no long-lived process, so the Node LookupWorker is replaced by:
 // - a Queue: "start" and "try now" send the job id, and the consumer runs it;
@@ -32,6 +34,7 @@ interface LookupMessage {
 
 interface Env {
   LOOKUP_QUEUE: Queue<LookupMessage>;
+  ASSETS: Fetcher;
 }
 
 const PORT = 8080;
@@ -81,6 +84,8 @@ export default {
       access: accessConfigFromEnv(workerSettings(env as unknown as Record<string, unknown>, process.env)),
     });
     if (answered) return answered;
+    const path = new URL(request.url).pathname;
+    if (path !== '/api' && !path.startsWith('/api/')) return env.ASSETS.fetch(request);
     try {
       await ensureServer(env);
     } catch (err) {
