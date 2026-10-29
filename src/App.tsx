@@ -533,8 +533,8 @@ export default function App({ initialMe }: { initialMe?: Me }) {
           <a href="/terms" className="font-medium text-zinc-300 hover:text-zinc-100">
             Terms
           </a>
+          <span>© 2026 Charlie Cho Nguyen</span>
         </nav>
-        <p className="mx-auto mt-2 max-w-3xl px-4">© 2026 Charlie Cho Nguyen</p>
       </footer>
 
       {about && <AboutDialog status={status} onClose={() => setAbout(false)} onShowTips={() => void showTipsAgain()} />}
