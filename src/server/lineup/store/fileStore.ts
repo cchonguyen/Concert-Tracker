@@ -458,7 +458,9 @@ export class FileLineupStore implements LineupStore {
 
   async listActivityFor(uid: string | undefined, limit: number) {
     const rows = ((await this.load()).activity ?? []).filter((r) => (uid === undefined ? true : r.userId === uid));
-    return clone(rows.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit));
+    // Rows written in the same millisecond keep their write order, newest first.
+    const newestFirst = rows.map((r, i) => ({ r, i })).sort((a, b) => b.r.at.localeCompare(a.r.at) || b.i - a.i);
+    return clone(newestFirst.map((x) => x.r).slice(0, limit));
   }
 
   private logActivity(state: FileState, uid: string | undefined, drafts: ActivityDraft[], at: string) {
