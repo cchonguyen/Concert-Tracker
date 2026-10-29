@@ -192,26 +192,8 @@ export function actsStep(acts: number): 1 | 2 | 3 | 4 {
 
 // The views the Timeline tab switches between. Only the ones marked ready
 // can be picked yet; the rest are built one at a time.
+// The four timeline views. Each is an Explore page (see nav.ts).
 export type TimelineMode = 'agenda' | 'month' | 'heatmap' | 'river';
-export interface TimelineViewInfo {
-  id: TimelineMode;
-  label: string;
-  sizes: TimelineSize[]; // sizes built so far
-  ready: boolean;
-}
-export const TIMELINE_VIEWS: TimelineViewInfo[] = [
-  { id: 'agenda', label: 'Agenda', sizes: ['large'], ready: true },
-  { id: 'month', label: 'Month', sizes: ['large'], ready: true },
-  { id: 'heatmap', label: 'Heatmap', sizes: ['large'], ready: true },
-  { id: 'river', label: 'River', sizes: ['large'], ready: true },
-];
-export const DEFAULT_MODE: TimelineMode = 'agenda';
-
-// ?mode=... in the address; a view that is not ready opens Agenda.
-export function modeFromQuery(query: string): TimelineMode {
-  const mode = new URLSearchParams(query).get('mode');
-  return TIMELINE_VIEWS.find((v) => v.id === mode && v.ready)?.id ?? DEFAULT_MODE;
-}
 
 export const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 export const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];

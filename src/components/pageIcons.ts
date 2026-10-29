@@ -1,15 +1,18 @@
 import {
   BarChart3,
+  CalendarDays,
   Compass,
   FolderCog,
-  GalleryHorizontalEnd,
+  Grid3x3,
   House,
   Library,
+  ListOrdered,
   LucideIcon,
   Map as MapIcon,
   Mic2,
   Table2,
   Ticket,
+  Waves,
 } from 'lucide-react';
 import type { Page, Section } from '../services/nav';
 
@@ -20,10 +23,13 @@ export const PAGE_ICON: Record<Page, LucideIcon> = {
   summary: Ticket,
   table: Table2,
   manage: FolderCog,
-  timeline: GalleryHorizontalEnd,
+  agenda: ListOrdered,
+  month: CalendarDays,
+  heatmap: Grid3x3,
+  river: Waves,
   map: MapIcon,
   stats: BarChart3,
-  artists: Mic2,
+  ranking: Mic2,
 };
 
 export const SECTION_ICON: Record<Section, LucideIcon> = { library: Library, explore: Compass };
