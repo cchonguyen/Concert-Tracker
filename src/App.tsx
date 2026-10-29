@@ -53,9 +53,10 @@ import { ARTIST_MILESTONES, artistMilestoneLine, highestMilestoneCrossed, milest
 import { loadPrefs, recordMilestone, showTipsAgain } from './services/prefs';
 import type { MilestoneSaved } from './server/auth/prefs';
 import { MilestoneCard } from './components/MilestoneCard';
-import { cityOf, filterEvents, filtersFromQuery, GAPS, hasGap, sortRows, tableDate } from './services/table';
+import { cityOf, filterEvents, filtersFromQuery, GAPS, hasGap, sortRows } from './services/table';
 import { eventParam, withEventParam } from './services/detailNav';
 import { eventTitle } from './services/series';
+import { dateText } from './services/poster';
 import type { DetailRow } from './components/ui/DetailShell';
 import { pastEvents, yearInReview } from './services/stats';
 import { eventYear } from './services/format';
@@ -75,12 +76,6 @@ const navStorage = (): NavStorage | null => {
   } catch {
     return null;
   }
-};
-
-// The date as the list shows it, e.g. "12 Jun 2026" (or "Jun 2026" when the day is not known).
-const dateText = (e: Parameters<typeof tableDate>[0]): string => {
-  const d = tableDate(e);
-  return d ? [d.day, d.month, d.year].filter(Boolean).join(' ') : '';
 };
 
 const initialPage = (): Page => pageFromView(new URLSearchParams(window.location.search).get('view'), { canManage: true });
