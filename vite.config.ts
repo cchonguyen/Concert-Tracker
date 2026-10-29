@@ -20,13 +20,12 @@ export default defineConfig(() => {
       },
     },
     // Two pages: "/" is the public marketing page (index.html) and "/app" is
-    // the app (app.html). See ARCHITECTURE.md, Public pages.
+    // the app (app.html). "/demo" is the same app page in sample mode. See ARCHITECTURE.md, Public pages.
     build: {
       rollupOptions: {
         input: {
           index: path.resolve(__dirname, 'index.html'),
           app: path.resolve(__dirname, 'app.html'),
-          demo: path.resolve(__dirname, 'demo.html'),
         },
       },
     },

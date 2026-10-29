@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
-import { guardServerCalls, DEMO_GUARD_MESSAGE } from '../src/demo/guard.ts';
 import { sampleEvents, sampleLineups, samplePoints } from '../src/demo/sampleData.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -21,22 +20,9 @@ function sourceFiles(dirs: string[]): string[] {
   return out;
 }
 
-test('the demo guard refuses every /api request and lets the rest through', async () => {
-  const calls: string[] = [];
-  const guarded = guardServerCalls(async (input) => {
-    calls.push(String(input));
-    return new Response('ok');
-  });
-  for (const url of ['/api/events', 'https://example.com/api/events', '/api']) {
-    await assert.rejects(guarded(url), new RegExp(DEMO_GUARD_MESSAGE.replace('.', '\\.')));
-  }
-  assert.equal((await guarded('/assets/app.js')).status, 200);
-  assert.deepEqual(calls, ['/assets/app.js']);
-});
-
-test('nothing outside src/demo imports from src/demo (sample data stays in the demo)', () => {
+test('only sample mode and the tests import the sample data (sample data stays out of the start-up code)', () => {
   const offenders = sourceFiles(['src', 'worker', 'tests', 'scripts'])
-    .filter((file) => !file.includes(`${path.sep}src${path.sep}demo${path.sep}`) && !file.endsWith('demo.test.ts'))
+    .filter((file) => !file.includes(`${path.sep}src${path.sep}demo${path.sep}`) && !/demo\.test\.ts|sampleMode\.test\.ts|src[\\/]services[\\/]sampleMode\.ts$/.test(file))
     .filter((file) => /from\s+['"][^'"]*\bdemo\/[^'"]*['"]|import\(\s*['"][^'"]*\bdemo\//.test(readFileSync(file, 'utf8')));
   assert.deepEqual(offenders.map((f) => path.relative(root, f)), []);
 });
@@ -60,7 +46,7 @@ test('every sample event has a lineup summary, and every city has a point for th
   }
 });
 
-test('the sample names no real artist by design: the demo shows the sample marker in its own files only', () => {
+test('the sample marker appears only in the sample files', () => {
   const marker = 'Harbor Sound Festival';
   const appFiles = sourceFiles(['src']).filter((f) => !f.includes(`${path.sep}src${path.sep}demo${path.sep}`));
   for (const file of appFiles) assert.ok(!readFileSync(file, 'utf8').includes(marker), path.relative(root, file));

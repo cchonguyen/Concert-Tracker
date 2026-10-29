@@ -1,9 +1,9 @@
-// Fails the build if the demo's sample data is in the app's files. It follows
-// the app's entry page (dist/app.html) through every JavaScript file it loads,
-// directly or by import, and checks none of them contains the sample marker.
-// It also checks the demo's own files do contain it, so a renamed marker cannot
-// pass by accident. See ARCHITECTURE.md, Public pages.
-import { readFileSync } from 'node:fs';
+// Fails the build if the sample data is loaded with the app's start-up code.
+// It follows the app's entry page (dist/app.html) through the JavaScript it
+// loads at start-up, by static import only, and checks none of those files
+// contain the sample marker. The sample loads only through a dynamic import in
+// sample mode, so it must exist in some other chunk. See ARCHITECTURE.md, Public pages.
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const MARKER = 'Harbor Sound Festival';
@@ -18,7 +18,8 @@ function closure(htmlFile) {
     if (seen.has(file)) continue;
     seen.add(file);
     const body = readFileSync(path.join(dist, file), 'utf8');
-    for (const m of body.matchAll(/(?:from|import)\s*\(?\s*"\.\/([^"]+)"/g)) queue.push(`assets/${m[1]}`);
+    // Static imports only: "import(" (dynamic, sample mode) is not followed.
+      for (const m of body.matchAll(/(?:\bfrom|\bimport)\s*"\.\/([^"]+)"/g)) queue.push(`assets/${m[1]}`);
   }
   return [...seen];
 }
@@ -30,12 +31,13 @@ for (const file of closure('app.html')) {
 for (const file of closure('index.html')) {
   if (readFileSync(path.join(dist, file), 'utf8').includes(MARKER)) failures.push(`marketing file ${file} contains sample data`);
 }
-if (!closure('demo.html').some((file) => readFileSync(path.join(dist, file), 'utf8').includes(MARKER))) {
-  failures.push('the demo does not contain its sample data; the check cannot be trusted');
+const dynamicChunks = readdirSync(path.join(dist, 'assets')).filter((f) => f.endsWith('.js'));
+if (!dynamicChunks.some((file) => readFileSync(path.join(dist, 'assets', file), 'utf8').includes(MARKER))) {
+  failures.push('no chunk contains the sample data; the check cannot be trusted');
 }
 
 if (failures.length) {
   console.error(`Demo isolation check failed:\n- ${failures.join('\n- ')}`);
   process.exit(1);
 }
-console.log('Demo isolation check passed: sample data is only in the demo.');
+console.log('Demo isolation check passed: the sample data is not loaded at start-up.');

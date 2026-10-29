@@ -9,6 +9,8 @@ export interface Me {
   email: string | null;
   noticeAccepted?: boolean;
   pendingRequests?: number; // owner: requests waiting for an answer
+  readOnly?: boolean; // sample mode: every save control explains instead of saving
+  sample?: 'demo' | 'not-invited'; // set only in sample mode (src/services/sampleMode.ts)
 }
 
 const MeContext = createContext<Me>({ multiUser: false, role: 'owner', email: null });
