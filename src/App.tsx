@@ -290,6 +290,7 @@ export default function App() {
   const confirmCount = homeSummary(events, lineups, today).toConfirm.length;
   const researchingCount = Object.values(lineups).filter((l) => isActive(l.status)).length;
 
+  // A signed-in account with no tracker gets the app's shell and the request prompt, not the pages.
   if (refusedEmail !== null) return <NotInvited email={refusedEmail} />;
 
   return (
