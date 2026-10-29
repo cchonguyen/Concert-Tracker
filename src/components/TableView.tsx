@@ -48,6 +48,7 @@ import {
 } from '../services/table';
 import { ListImport } from './ListImport';
 import { SheetSync } from './SheetSync';
+import { useIsOwner } from './MeContext';
 import { FillGaps } from './FillGaps';
 import { ArtistGenresPanel } from './ArtistGenresPanel';
 import { SeriesPanel } from './SeriesPanel';
@@ -350,7 +351,9 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const importPanel = importing && (
     <ListImport events={events} imports={imports} onDone={onImported} onClose={() => setImporting(false)} />
   );
-  const sheetButton = (
+  // Sheets and genre edits are the owner's until they are split per member.
+  const owner = useIsOwner();
+  const sheetButton = !owner ? null : (
     <button onClick={() => setSyncing(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
       <Sheet className="h-3.5 w-3.5" /> Google Sheets
     </button>
@@ -358,7 +361,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const sheetPanel = syncing && (
     <SheetSync notice={sheetsNotice} onClose={() => setSyncing(false)} />
   );
-  const genresButton = (
+  const genresButton = !owner ? null : (
     <button onClick={() => setGenres(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
       <Tags className="h-3.5 w-3.5" /> Genres
     </button>

@@ -13,6 +13,7 @@ import { shareRouter } from './share/routes';
 import type { MultiUserConfig } from './auth/config';
 import type { MemberDirectory } from './auth/members';
 import { memberMiddleware, requestScopedStore } from './auth/requestScope';
+import { membersRouter, singleOwnerMeRouter } from './auth/routes';
 
 // The /api routes, shared by the Node server (server.ts) and the Cloudflare
 // Worker (worker/index.ts). Static files and the job runner are wired by each host.
@@ -37,7 +38,12 @@ export function createApiApp(
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  if (multiUser) app.use('/api', memberMiddleware({ ...multiUser, base: baseDeps.store }));
+  if (multiUser) {
+    app.use('/api', memberMiddleware({ ...multiUser, base: baseDeps.store }));
+    app.use('/api', membersRouter(multiUser.directory));
+  } else {
+    app.use('/api', singleOwnerMeRouter());
+  }
 
   // Your event log: capture and details (stage 1), then lineup lookups (stage 2).
   app.use('/api', eventsRouter(lineupDeps, runner));

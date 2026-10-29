@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, FolderCog, GalleryHorizontalEnd, Map as MapIcon, Mic2, Radio, Table2, Ticket } from 'lucide-react';
+import { BarChart3, FolderCog, GalleryHorizontalEnd, Map as MapIcon, Mic2, Radio, Table2, Ticket, Users } from 'lucide-react';
 import {
   EmailImport,
   eventsApi,
@@ -11,6 +11,7 @@ import {
   lineupApi,
   LoggedEvent,
   SOURCE_LABELS,
+  meApi,
 } from './services/lineupApi';
 import { CaptureBar } from './components/CaptureBar';
 import { EventsHome } from './components/EventsHome';
@@ -23,6 +24,8 @@ import { MapView } from './components/MapView';
 import { TimelineTab } from './components/timeline/TimelineTab';
 import { ThemePicker } from './components/ThemePicker';
 import { ManageTarget, ManageView } from './components/ManageView';
+import { MeProvider, type Me } from './components/MeContext';
+import { MembersPanel } from './components/MembersPanel';
 import { PeopleProvider } from './components/PersonName';
 import { wentTo } from './server/events/attendance';
 
@@ -53,6 +56,12 @@ export default function App() {
   const [justAdded, setJustAdded] = useState<string[]>([]);
   // What another tab asked Manage to open.
   const [manageTarget, setManageTarget] = useState<ManageTarget | null>(null);
+  // Single-owner installs answer owner; until /api/me answers, assume owner so nothing flickers away.
+  const [me, setMe] = useState<Me>({ multiUser: false, role: 'owner', email: null });
+  const [members, setMembers] = useState(false);
+  useEffect(() => {
+    meApi.get().then(setMe, () => undefined);
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -146,6 +155,7 @@ export default function App() {
   const toReview = imports.filter((r) => r.status === 'new' && !r.eventId && !(r.startDate && r.startDate > today)).length;
 
   return (
+    <MeProvider me={me}>
     <div className="min-h-screen bg-zinc-950 font-sans text-zinc-100 selection:bg-violet-600 selection:text-white flex flex-col">
       <header className="sticky top-0 z-30 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md">
         <div className={`mx-auto flex ${tab === 'table' ? 'max-w-7xl' : tab === 'map' ? 'max-w-6xl' : 'max-w-3xl'} items-center justify-between gap-3 px-4 py-3`}>
@@ -169,7 +179,9 @@ export default function App() {
                   ['artists', Mic2, `Artists`, seenCount],
                   ['manage', FolderCog, `Manage`, null],
                 ] as const
-              ).map(([id, Icon, label, count]) => (
+              )
+                .filter(([id]) => id !== 'manage' || me.role === 'owner')
+                .map(([id, Icon, label, count]) => (
                 <button
                   key={id}
                   onClick={() => openTab(id)}
@@ -184,10 +196,17 @@ export default function App() {
                 </button>
               ))}
             </nav>
+            {me.multiUser && me.role === 'owner' && (
+              <button onClick={() => setMembers(true)} title="Members" aria-label="Members" className="rounded-lg border border-zinc-800 p-2 text-zinc-400 hover:text-zinc-200">
+                <Users className="h-4 w-4" />
+              </button>
+            )}
             <ThemePicker />
           </div>
         </div>
       </header>
+
+      {members && <MembersPanel onClose={() => setMembers(false)} />}
 
       <PeopleProvider events={events} version={events}>
       <main className={`mx-auto w-full ${tab === 'table' ? 'max-w-7xl' : tab === 'map' ? 'max-w-6xl' : 'max-w-3xl'} flex-1 space-y-6 px-4 py-6`}>
@@ -289,5 +308,6 @@ export default function App() {
         />
       )}
     </div>
+    </MeProvider>
   );
 }

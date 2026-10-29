@@ -4,6 +4,7 @@ import { EmailImport, EmailScanStatus, importsApi, LoggedEvent } from '../servic
 import type { MergeField } from '../server/events/email/types';
 import { placeLabel, whenLabel } from '../services/format';
 import { BrowserScan } from './BrowserScan';
+import { useIsOwner } from './MeContext';
 
 // Stage 1 from email: shows found in your ticket emails. A ticket is not
 // proof you went, so nothing starts ticked and nothing is saved until you
@@ -45,6 +46,7 @@ const dayLabel = (iso: string) => new Date(iso).toLocaleDateString(undefined, { 
 const CheckEmail: React.FC<{ onFound: (imports: EmailImport[]) => void }> = ({ onFound }) => {
   const [status, setStatus] = useState<EmailScanStatus | null>(null);
   const [progress, setProgress] = useState<{ read: number; added: number; skipped: number; remaining?: number; waiting?: boolean } | null>(null);
+  const owner = useIsOwner();
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,6 +109,9 @@ const CheckEmail: React.FC<{ onFound: (imports: EmailImport[]) => void }> = ({ o
 
   return (
     <div className="space-y-1 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">
+      {/* The server's Gmail connection is one stored sign-in: the owner's. Members scan in the browser below. */}
+      {owner && (
+        <>
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-zinc-400">{status.connected ? summary() : 'Connect Gmail to check for new ticket emails.'}</p>
         {status.connected ? (
@@ -129,6 +134,8 @@ const CheckEmail: React.FC<{ onFound: (imports: EmailImport[]) => void }> = ({ o
       </div>
       {status.connected && status.account && <p className="text-[11px] text-zinc-600">{status.account}</p>}
       {error && <p className="text-xs text-rose-300">{error}</p>}
+        </>
+      )}
       <BrowserScan status={status} onFound={onFound} />
     </div>
   );
