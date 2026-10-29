@@ -161,6 +161,20 @@
   --color-cyan-950: oklch(98.4% 0.019 200.873);
 }
 
+/* The event poster's backdrop (PosterHeader.tsx): dark ink in dark mode, the light surface in light mode. */
+:root {
+  --poster-base: #111114;
+}
+:root[data-theme='light'] {
+  --poster-base: var(--color-zinc-950);
+}
+.poster-bg {
+  background:
+    radial-gradient(90% 140% at 12% 0%, color-mix(in oklab, var(--accent-500) 42%, transparent), transparent 60%),
+    radial-gradient(60% 120% at 100% 100%, rgb(244 114 182 / 0.16), transparent 60%),
+    var(--poster-base);
+}
+
 /* Map view: dark until the tiles load. */
 .leaflet-container {
   background: var(--color-zinc-950);
