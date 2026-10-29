@@ -19,6 +19,8 @@ export type Origin = 'any' | 'typed' | 'email';
 export type KindFilter = 'any' | 'concert' | 'festival' | 'unknown';
 export type WentFilter = 'any' | AttendanceState;
 export type SortKey = 'date' | 'name' | 'venue' | 'city' | 'seen' | 'rating' | 'price';
+// 'none' is the untoggled state: rows stay in the order they came in.
+export type SortChoice = SortKey | 'none';
 
 export interface TableFilters {
   q: string;
@@ -38,7 +40,7 @@ export interface TableFilters {
   format: string;
   series: string;
   went: WentFilter; // went, upcoming, waiting for you to confirm, or didn't go
-  sort: SortKey;
+  sort: SortChoice;
   desc: boolean;
 }
 
@@ -200,17 +202,28 @@ export function sortRows(events: LoggedEvent[], key: SortKey, desc: boolean): Lo
   });
 }
 
+// Dates, seen counts, ratings and prices start with the biggest first; names,
+// venues and cities start A to Z.
+export function defaultDesc(key: SortKey): boolean {
+  return key === 'date' || key === 'seen' || key === 'rating' || key === 'price';
+}
+
+// Picking a key cycles it: its usual direction, then the other one, then off.
+// Picking a different key starts that key in its usual direction.
+export function nextSort(f: Pick<TableFilters, 'sort' | 'desc'>, key: SortKey): Pick<TableFilters, 'sort' | 'desc'> {
+  if (f.sort !== key) return { sort: key, desc: defaultDesc(key) };
+  if (f.desc === defaultDesc(key)) return { sort: key, desc: !f.desc };
+  return { sort: 'none', desc: defaultDesc(key) };
+}
+
 export function filterEvents(
   events: LoggedEvent[],
   f: TableFilters,
   lineups: Record<string, LineupSummary> = {},
   editions: Record<string, LineupFacts> = {},
 ): LoggedEvent[] {
-  return sortRows(
-    events.filter((e) => matches(e, f, lineups[e.id], editions[e.id])),
-    f.sort,
-    f.desc,
-  );
+  const kept = events.filter((e) => matches(e, f, lineups[e.id], editions[e.id]));
+  return f.sort === 'none' ? kept : sortRows(kept, f.sort, f.desc);
 }
 
 // The pick lists, built only from values in your own log, most used first.
@@ -311,7 +324,7 @@ export function filtersToQuery(f: TableFilters): string {
   if (f.format) p.set('format', f.format);
   if (f.series) p.set('series', f.series);
   if (f.went !== 'any') p.set('went', f.went);
-  if (f.sort !== 'date' || !f.desc) p.set('sort', `${f.sort}${f.desc ? '' : ':asc'}`);
+  if (f.sort !== 'date' || !f.desc) p.set('sort', f.sort === 'none' ? 'none' : `${f.sort}${f.desc ? '' : ':asc'}`);
   return p.toString();
 }
 
@@ -348,7 +361,7 @@ export function filtersFromQuery(query: string): TableFilters {
     format: p.get('format') ?? '',
     series: p.get('series') ?? '',
     went: oneOf(p.get('went'), ['any', 'went', 'upcoming', 'confirm', 'missed'] as const, 'any'),
-    sort: oneOf(sort, ['date', 'name', 'venue', 'city', 'seen', 'rating', 'price'] as const, 'date'),
+    sort: oneOf(sort, ['date', 'name', 'venue', 'city', 'seen', 'rating', 'price', 'none'] as const, 'date'),
     desc: dir !== 'asc',
   };
 }
