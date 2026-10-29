@@ -31,6 +31,7 @@ import { DataPanel, exportCsv } from './components/DataActions';
 import { ListImport } from './components/ListImport';
 import { SheetSync } from './components/SheetSync';
 import { ManageTarget, ManageView } from './components/ManageView';
+import { LogView } from './components/LogView';
 import { MeProvider, type Me } from './components/MeContext';
 import { NoticeModal } from './components/NoticeModal';
 import { MembersPanel } from './components/MembersPanel';
@@ -416,6 +417,7 @@ export default function App() {
         {shown === 'ranking' && (
           <ArtistsView events={went} onOpenEvent={setSelectedId} onOpenTable={openTable} onManage={(key) => openManage({ kind: 'artist', name: key })} />
         )}
+        {shown === 'log' && <LogView />}
         {shown === 'manage' && (
           <ManageView
             events={events}

@@ -26,13 +26,13 @@ test('every page belongs to one section, and Home to none', () => {
 
 const EXPLORE = ['agenda', 'month', 'heatmap', 'river', 'map', 'stats', 'ranking'];
 
-test('owners see all three Library subtabs and all seven Explore subtabs', () => {
-  assert.deepEqual(subPagesFor('library', OWNER), ['summary', 'table', 'manage']);
+test('owners see all four Library subtabs and all seven Explore subtabs', () => {
+  assert.deepEqual(subPagesFor('library', OWNER), ['summary', 'table', 'manage', 'log']);
   assert.deepEqual(subPagesFor('explore', OWNER), EXPLORE);
 });
 
-test('members who cannot see Manage keep Summary and Table only', () => {
-  assert.deepEqual(subPagesFor('library', MEMBER), ['summary', 'table']);
+test('members who cannot see Manage keep Summary, Table and Log', () => {
+  assert.deepEqual(subPagesFor('library', MEMBER), ['summary', 'table', 'log']);
   assert.deepEqual(subPagesFor('explore', MEMBER), EXPLORE);
 });
 

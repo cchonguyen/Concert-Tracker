@@ -5,12 +5,12 @@
 export type Section = 'library' | 'explore';
 // The four Timeline views are pages of their own now, so the Explore strip
 // lists them next to Map, Stats and Ranking.
-export type Page = 'home' | 'summary' | 'table' | 'manage' | 'agenda' | 'month' | 'heatmap' | 'river' | 'map' | 'stats' | 'ranking';
+export type Page = 'home' | 'summary' | 'table' | 'manage' | 'log' | 'agenda' | 'month' | 'heatmap' | 'river' | 'map' | 'stats' | 'ranking';
 export type SubPage = Exclude<Page, 'home'>;
 
 // Subtabs in the order the strip shows them.
 export const SECTIONS: Record<Section, { label: string; pages: SubPage[]; first: SubPage }> = {
-  library: { label: 'Library', pages: ['summary', 'table', 'manage'], first: 'summary' },
+  library: { label: 'Library', pages: ['summary', 'table', 'manage', 'log'], first: 'summary' },
   explore: { label: 'Explore', pages: ['agenda', 'month', 'heatmap', 'river', 'map', 'stats', 'ranking'], first: 'agenda' },
 };
 
@@ -18,6 +18,7 @@ const PAGE_SECTION: Record<SubPage, Section> = {
   summary: 'library',
   table: 'library',
   manage: 'library',
+  log: 'library',
   agenda: 'explore',
   month: 'explore',
   heatmap: 'explore',
@@ -27,13 +28,14 @@ const PAGE_SECTION: Record<SubPage, Section> = {
   ranking: 'explore',
 };
 
-export const PAGES: Page[] = ['home', 'summary', 'table', 'manage', 'agenda', 'month', 'heatmap', 'river', 'map', 'stats', 'ranking'];
+export const PAGES: Page[] = ['home', 'summary', 'table', 'manage', 'log', 'agenda', 'month', 'heatmap', 'river', 'map', 'stats', 'ranking'];
 
 export const PAGE_LABELS: Record<Page, string> = {
   home: 'Home',
   summary: 'Summary',
   table: 'Table',
   manage: 'Manage',
+  log: 'Log',
   agenda: 'Agenda',
   month: 'Month',
   heatmap: 'Heatmap',
@@ -48,6 +50,7 @@ export const PAGE_BLURB: Record<SubPage, string> = {
   summary: 'Every show, newest first.',
   table: 'Sort, filter and edit your shows in bulk.',
   manage: 'Rename and merge artists, venues and series.',
+  log: 'Every change you have made, and what you deleted.',
   agenda: 'Your shows in order, newest first.',
   month: 'One calendar month at a time.',
   heatmap: 'How often you went out, day by day.',
