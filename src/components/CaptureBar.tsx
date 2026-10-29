@@ -8,11 +8,12 @@ import { isAhead } from '../server/events/attendance';
 interface CaptureBarProps {
   onCaptured: (event: LoggedEvent) => void;
   compact?: boolean; // in the Table: no focus grab, shorter label
+  label?: string; // replaces the heading (Home's empty state)
 }
 
 // Stage 1: one line in, saved at once. The preview shows how the line will be
 // split, so nothing surprising is stored.
-export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured, compact }) => {
+export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured, compact, label }) => {
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +39,7 @@ export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured, compact }) =
   return (
     <form onSubmit={submit} className="space-y-2">
       <label className="block text-sm font-semibold text-zinc-300" htmlFor="capture">
-        {compact ? 'Add an event, past or upcoming' : 'What did you go to?'}
+        {label ?? (compact ? 'Add an event, past or upcoming' : 'What did you go to?')}
       </label>
       <div className="flex gap-2">
         <input
