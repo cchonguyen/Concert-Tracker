@@ -6,6 +6,7 @@ import { eventsApi, LineupFacts, LineupSummary, LoggedEvent } from '../services/
 import { eventYear, whenLabel } from '../services/format';
 import { activeFilterCount, EMPTY_FILTERS, filterEvents, filterOptions, filtersFromQuery, filtersToQuery, TableFilters } from '../services/table';
 import { FilterButton, FilterPanel, FilterSelect } from './ui/FilterControls';
+import type { CityPoint } from '../server/events/place';
 import { mapData, MapPlace, placeKey, placeQuery, playbackYears, Points, trail, travel } from '../services/map';
 import { EventTitle } from './EventTitle';
 
@@ -15,6 +16,8 @@ interface MapViewProps {
   editions: Record<string, LineupFacts>;
   onOpen: (id: string) => void;
   onOpenTable: (query: string) => void;
+  // The demo passes its own city coordinates, so it never asks the server.
+  pointFor?: (city: string, country?: string) => CityPoint | null;
 }
 
 const control =
@@ -39,7 +42,7 @@ const savePoints = (p: Points) => {
 };
 
 // Looks up each city you stored once, a few at a time.
-function useCityPoints(events: LoggedEvent[]): Points {
+function useCityPoints(events: LoggedEvent[], pointFor?: MapViewProps['pointFor']): Points {
   const [points, setPoints] = useState<Points>(loadPoints);
   const asked = useRef(new Set<string>());
   useEffect(() => {
@@ -48,6 +51,18 @@ function useCityPoints(events: LoggedEvent[]): Points {
     );
     if (!keys.length) return;
     keys.forEach((k) => asked.current.add(k));
+    if (pointFor) {
+      setPoints((p) => {
+        const next = { ...p };
+        for (const k of keys) {
+          const { city, country } = placeQuery(k);
+          const point = pointFor(city, country);
+          if (point) next[k] = point;
+        }
+        return next;
+      });
+      return;
+    }
     let cancelled = false;
     const queue = [...keys];
     const work = async () => {
@@ -76,13 +91,13 @@ function useCityPoints(events: LoggedEvent[]): Points {
 
 const readQuery = () => filtersFromQuery(window.location.search);
 
-export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onOpen, onOpenTable }) => {
+export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onOpen, onOpenTable, pointFor }) => {
   const [filters, setFilters] = useState<TableFilters>(readQuery);
   const [selected, setSelected] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(() => activeFilterCount(readQuery()) > 0);
   const [playYear, setPlayYear] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
-  const points = useCityPoints(events);
+  const points = useCityPoints(events, pointFor);
   const options = useMemo(() => filterOptions(events), [events]);
   const filtered = useMemo(() => filterEvents(events, filters, lineups, editions), [events, filters, lineups, editions]);
   const years = useMemo(() => playbackYears(filtered), [filtered]);

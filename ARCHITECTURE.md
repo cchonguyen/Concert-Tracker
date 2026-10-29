@@ -312,6 +312,10 @@ Anyone can open the public pages without signing in. The app itself is at the ad
 - Unknown addresses get `404.html`.
 - The marketing page is plain HTML (no React, no script) with its canonical and Open Graph URLs filled from `site.config.json` at build time. `robots.txt` and `sitemap.xml` are written by the Worker from the same origin (`SITE_ORIGIN` in `publicPaths.ts`). `robots.txt` disallows the app, the API and the share pages; the sitemap lists `/`, `/demo`, `/privacy` and `/terms`. `og.png` is the share image.
 
+- The demo at `/demo` (`demo.html`, `src/demo/`) shows the app's own Summary, Table, Timeline, Map, Stats and Ranking views over fictional sample data (`sampleData.ts`: made-up artists, festivals and venues; real cities). Its event screen (`DemoEventDetail.tsx`) is a separate read-only view of the same facts, not the app's `EventDetail`, which loads lineups and places from the server when it opens. Write buttons open a one-sentence explainer with "Log in (invite only)" and "Back to demo".
+- Nothing in the demo calls the server. `src/demo/guard.ts` replaces `fetch` so any `/api` request is refused, and `main.tsx` installs it first. Nothing outside `src/demo/` imports from it (tests/demo.test.ts). `scripts/check-demo-isolation.mjs` runs after every build and fails if the sample data is in any file the app loads.
+- `MapView` takes an optional `pointFor` so the demo supplies its city coordinates without a server call.
+
 Public allowlist. The Access bypass policy must list the same paths; the Worker's front door uses the same list. A test checks that this list and `publicPaths.ts` agree:
 
 - `/`, `/index.html`, `/demo`, `/demo/*`, `/privacy`, `/privacy.html`, `/terms`, `/terms.html`, `/robots.txt`, `/sitemap.xml`, `/og.png`, `/favicon.ico`, `/favicon.svg`, `/favicon-32.png`, `/apple-touch-icon.png`, `/manifest.webmanifest`, `/assets/*`, `/s/*`, `/S/*`.
