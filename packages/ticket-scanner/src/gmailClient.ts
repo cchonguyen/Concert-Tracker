@@ -185,6 +185,7 @@ export interface ScanSummary {
   proposals: number; // shows found (status new)
   bySeller: Record<string, number>;
   unreadable: Array<{ subject: string; links: string[] }>;
+  skipped: number; // promotions and newsletters with no receipt wording
   flagged: number; // refunded, cancelled or transferred
   netUniqueEvents: number; // distinct name + date among shows found
 }
@@ -203,6 +204,7 @@ export function summarizeScan(proposals: EmailImportProposal[], messages: Array<
     proposals: shows.length,
     bySeller,
     unreadable: proposals.filter((p) => p.status === 'unreadable').map((p) => ({ subject: p.rawSubject ?? '(no subject)', links: p.messageLinks })),
+    skipped: proposals.filter((p) => p.status === 'skipped').length,
     flagged: proposals.filter((p) => p.status === 'flag' || p.flags.length > 0).length,
     netUniqueEvents: unique.size,
   };
