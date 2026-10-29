@@ -5,6 +5,8 @@ import {
   actsStep,
   addDays,
   agendaBlocks,
+  agendaCount,
+  agendaOrderFrom,
   AgendaBlock,
   buildTimelineModel,
   dateChip,
@@ -174,6 +176,41 @@ test('agenda runs oldest first by month under each year, with one gap line per r
     '2026',
     '2026-10: TODAY',
   ]);
+});
+
+test('newest first reads the same list backwards, with gaps and the Today line in place', () => {
+  const m = buildTimelineModel(
+    [
+      ev('mar', { startDate: '2019-03-09' }),
+      ev('mar2', { startDate: '2019-03-02' }),
+      ev('jan21', { startDate: '2021-01-15' }),
+      ev('feb21', { startDate: '2021-02-01' }),
+      ev('apr21', { startDate: '2021-04-30', endDate: '2021-05-02' }),
+    ],
+    TODAY,
+  );
+  assert.deepEqual(outline(agendaBlocks(m, { kind: 'all' }, true, 'newest')), [
+    '2026',
+    '2026-10: TODAY',
+    'gap May 2021 – Sep 2026',
+    '2021',
+    '2021-04: apr21',
+    'gap Mar 2021',
+    '2021-02: feb21',
+    '2021-01: jan21',
+    'gap Apr 2019 – Dec 2020',
+    '2019',
+    '2019-03: mar, mar2',
+  ]);
+  assert.equal(agendaCount(agendaBlocks(m, { kind: 'all' }, true, 'newest')), 5);
+});
+
+test('agenda order is newest unless oldest was picked, and the count leaves out the Today line', () => {
+  assert.equal(agendaOrderFrom(null), 'newest');
+  assert.equal(agendaOrderFrom('oldest'), 'oldest');
+  assert.equal(agendaOrderFrom('sideways'), 'newest');
+  const m = buildTimelineModel([ev('a', { startDate: TODAY })], TODAY);
+  assert.equal(agendaCount(agendaBlocks(m)), 1);
 });
 
 test('agenda puts year-only events first in their year and month-only ones first in their month', () => {
