@@ -18,7 +18,7 @@ Ranked goals:
 
 ## 2. Who uses it
 
-- One person (the owner). No accounts for others, no social features. The one exception is a read-only share page of your past events, at a link you create and can turn off at any time (see ARCHITECTURE.md, Share page).
+- One person (the owner), by default. No social features. Two exceptions: a read-only share page of your past events, at a link you create and can turn off at any time (see ARCHITECTURE.md, Share page); and, only when the owner turns on `MULTI_USER` and invites them by email, a few friends who each keep their own private tracker (see ARCHITECTURE.md, Multi-user). Each member's events, imports, lookups, share link and settings are theirs alone; nobody sees another member's rows, and the owner has no extra view of them.
 - Tens to a few hundred events over a lifetime; a festival can have 200+ acts.
 - Used on a phone right after a show and on a laptop when catching up on old ones.
 - The owner is not a developer and should never need to read logs, pick a data source or understand quotas to use the app.
@@ -129,7 +129,7 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 - **Cost**: free tiers only (Gemini free tier, Ticketmaster, setlist.fm non-commercial, Clashfinder, Brave Search free plan, Workers Free, Supabase free).
 - **Respect sources**: all fetching through the shared rate-limited fetcher (MusicBrainz 1 request/second); AXS is never scraped; credentials are redacted from anything stored or shown.
 - **Responsiveness**: capture returns as soon as the row is stored. Stage 1 research completes within a single request. Stage 2 runs in the background and the UI polls.
-- **Privacy**: the site holds one person's history; put it behind Cloudflare Access.
+- **Privacy**: the site holds one person's history, or each invited member's own; put it behind Cloudflare Access. With multi-user on, members only reach their own rows, and notes, companions and people's names are meant to be encrypted in the browser (the vault, built but not yet used).
 - **Quality gate**: `npm run lint` and `npm test` pass before every commit; new parsing rules, adapters and stage rules come with tests.
 
 ## 10. Capabilities and limitations of the sources
@@ -151,7 +151,7 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 
 ## 11. Out of scope
 
-- Multiple users (other people's own accounts), social feeds, recommendations. Sharing is limited to the read-only share page.
+- Open sign-up, social feeds, recommendations. Other people use the app only by the owner's invitation (multi-user, off by default); sharing otherwise is the read-only share page.
 - Ticket purchasing, calendars of upcoming shows beyond your own, notifications (the "Did you go?" prompt waits in the app).
 - Inferring what you saw from lineups (you tick it, or it isn't recorded).
 - Importing from email without review, or signing in to ticket accounts (connecting your own Gmail read-only for Check email is in scope).
