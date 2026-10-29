@@ -127,7 +127,7 @@ export function sheetsRouter(deps: PipelineDeps, sheets: SheetsApi | null): Rout
   router.get('/gmail/callback', async (req, res, next) => {
     const state = typeof req.query.state === 'string' ? req.query.state : '';
     if (!state.startsWith('sheets-')) return next();
-    const back = (result: string) => res.redirect(`/?view=table&sheets=${encodeURIComponent(result)}`);
+    const back = (result: string) => res.redirect(`/app?view=table&sheets=${encodeURIComponent(result)}`);
     if (!sheets) return back('Google Sheets sync is off.');
     try {
       const pending = await deps.store.getSetting<{ state: string; until: number }>(SHEETS_OAUTH_SETTING);

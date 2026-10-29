@@ -241,9 +241,9 @@ test('sheets routes: sign in through the shared callback, link a tab, and refuse
   assert.match(state, /^sheets-/);
   // A Gmail callback is passed on to the Gmail router.
   const gmail = await call('/gmail/callback?code=x&state=gmail-state');
-  assert.match(gmail.headers.get('location')!, /^\/\?gmail=/);
+  assert.match(gmail.headers.get('location')!, /^\/app\?gmail=/);
   const done = await call(`/gmail/callback?code=good-code&state=${state}`);
-  assert.equal(done.headers.get('location'), '/?view=table&sheets=connected');
+  assert.equal(done.headers.get('location'), '/app?view=table&sheets=connected');
   assert.match((await call(`/gmail/callback?code=good-code&state=${state}`)).headers.get('location')!, /sheets=That%20sign-in%20expired/);
 
   assert.equal((await (await call('/sheets/link', 'POST', { url: 'nope' })).json()).error.includes('Paste the link'), true);

@@ -4,6 +4,7 @@ import { findShareLink } from './links';
 import { NOT_ACTIVE_HTML, renderSharePage, SHARE_HEADERS, UNAVAILABLE_HTML } from './page';
 import type { ShareSettings } from './types';
 import { buildShareView } from './view';
+import { isPublicPath, oldAppLink, robotsTxt, SITE_ORIGIN, sitemapXml } from '../site/publicPaths';
 
 // The page for these settings, read with the share columns only. Used by
 // /s/<code> and by the owner's preview.
@@ -15,9 +16,10 @@ export async function sharePageHtml(store: LineupStore, settings: ShareSettings,
 }
 
 // The first thing the Worker runs on every request it sees. Share page
-// paths are answered here and never reach Express or the static files; every
-// other request needs a valid Cloudflare Access token when that check is
-// configured. Returns the response to send, or null to carry on.
+// paths are answered here and never reach Express or the static files; old
+// app addresses are sent on to /app; every other request that is not a public
+// page (publicPaths.ts) needs a valid Cloudflare Access token when that check
+// is configured. Returns the response to send, or null to carry on.
 
 // Exactly /s/ and a 22-character code. Anything else under /s (any case, a
 // trailing slash, more path, percent-encoding) is the "not active" page.
@@ -37,6 +39,10 @@ const html = (body: string, status: number, method: string) =>
 export async function frontDoor(request: Request, deps: DoorDeps): Promise<Response | null> {
   const url = new URL(request.url);
   const path = url.pathname;
+  const moved = oldAppLink(url);
+  if (moved) return new Response(null, { status: 302, headers: { Location: moved, 'Cache-Control': 'no-store' } });
+  if (path === '/robots.txt') return new Response(robotsTxt(SITE_ORIGIN), { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
+  if (path === '/sitemap.xml') return new Response(sitemapXml(SITE_ORIGIN), { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
   if (UNDER_SHARE.test(path)) {
     const method = request.method === 'HEAD' ? 'HEAD' : 'GET';
     const code = request.method === 'GET' || request.method === 'HEAD' ? SHARE_PATH.exec(path)?.[1] : undefined;
@@ -56,7 +62,7 @@ export async function frontDoor(request: Request, deps: DoorDeps): Promise<Respo
       return html(UNAVAILABLE_HTML, 503, method);
     }
   }
-  if (deps.access) {
+  if (deps.access && !isPublicPath(path)) {
     const ok = await (deps.verify ?? verifyAccessToken)(request.headers.get('cf-access-jwt-assertion'), deps.access);
     if (!ok) return new Response('Sign in required.', { status: 403, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } });
   }

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="How LiveArchive stores your concert log, what Google data it reads, and what it sends to other services." />
+    <link rel="canonical" href="/privacy" />
+    <meta name="theme-color" content="#022c22" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Privacy · LiveArchive</title>
+    <style>
+      body { margin: 0; background: #022c22; color: #ecfdf5; font: 16px/1.6 system-ui, sans-serif; }
+      main { max-width: 42rem; margin: 0 auto; padding: 32px 16px 64px; }
+      h1 { font-size: 1.75rem; }
+      h2 { font-size: 1.2rem; margin-top: 2rem; }
+      a { color: #6ee7b7; }
+      .muted { color: #a7f3d0; font-size: 0.9rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p><a href="/">LiveArchive</a> · <a href="/terms">Terms</a></p>
+      <h1>Privacy</h1>
+      <p class="muted">Last updated 2026-10-29. This describes what the code does today. It is not legal advice.</p>
+
+      <h2>What LiveArchive stores</h2>
+      <p>For each event you add: its name, dates, venue, city, the acts you saw, ratings, prices, and any notes. Companions (the people you went with) and notes can be encrypted in your browser with a passphrase you choose. When that vault is on, the server holds only the encrypted text and the salts. It never holds your passphrase or the key.</p>
+      <p>Events in Recently deleted are erased after 90 days. Activity log rows are erased after a year.</p>
+
+      <h2>Signing in</h2>
+      <p>Access to the app is by invitation only. Sign-in goes through Cloudflare Access, which checks that your Google account is on the invite list. The app also checks Cloudflare's sign-in token on each request.</p>
+
+      <h2>Google data</h2>
+      <p><strong>Check email</strong> reads your Gmail, read-only, and only messages from the ticket senders the app knows how to read. It reads the message contents on the server to find shows, and it keeps the refresh token that lets it check again. What it finds is put on a review list, and nothing is saved until you tick it.</p>
+      <p><strong>The browser email scan</strong> signs you in with Google in your browser for that one scan. The app does not keep that sign-in.</p>
+      <p><strong>Google Sheets sync</strong> writes your log to a sheet you choose. The sign-in token is stored sealed with an encryption key that is held only as a secret of the server. The people who run the server can still use that token, so treat the sheet and the server as trusted.</p>
+      <p>The app's use of Google data follows Google's API Services User Data Policy, including its Limited Use requirements.</p>
+
+      <h2>What other services receive</h2>
+      <ul>
+        <li><strong>Lookup sources</strong> (Clashfinder, promoter pages, Ticketmaster, MusicBrainz, setlist.fm, Brave Search) receive the names, dates and places of the events you look up.</li>
+        <li><strong>Gemini</strong> reads only web pages the app fetched, and only when you press "Look again with Gemini" on an event. It never receives your email text or your personal notes.</li>
+        <li><strong>Hosting and database</strong>: the app runs on Cloudflare Workers and stores its data in Supabase.</li>
+      </ul>
+
+      <h2>Sharing</h2>
+      <p>A share link you create shows the events and figures you choose to include, to anyone with the link. Turn it off to stop the page from being served. Share pages are not indexed by search engines.</p>
+
+      <h2>Your data</h2>
+      <p>You can download your events as a CSV file from the Table view. Deleting an event moves it to Recently deleted; it is erased after 90 days. To ask for anything else, contact the person who invited you.</p>
+
+      <h2>Changes</h2>
+      <p>When this page changes, its date at the top changes too.</p>
+    </main>
+  </body>
+</html>

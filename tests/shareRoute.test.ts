@@ -159,7 +159,7 @@ test('with Access configured, everything but the share page needs a valid token'
   const door = (url: string, headers: Record<string, string> = {}) =>
     frontDoor(new Request(`${ORIGIN}${url}`, { headers }), { store: async () => store, access: config, now: () => NOW, verify });
   assert.equal((await door('/api/events'))!.status, 403);
-  assert.equal((await door('/'))!.status, 403);
+  assert.equal((await door('/app'))!.status, 403);
   // A dot-segment trick is normalized to /api/events before the Worker sees it, and still needs a token.
   assert.equal((await door('/s/%2e%2e/api/events'))!.status, 403);
   assert.equal(await door('/api/events', { 'cf-access-jwt-assertion': await sign(good) }), null);
