@@ -1,7 +1,7 @@
 import { useVault } from './VaultContext';
 import { noteView } from '../services/vaultSession';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Check, CircleHelp, CloudSun, ExternalLink, FolderCog, Heart, History, Loader2, Plus, RefreshCw, Search, Sparkles, Star, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, CircleHelp, CloudSun, ExternalLink, FolderCog, Heart, History, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import {
   ArtistSuggestion,
   DetailCandidate,
@@ -29,10 +29,11 @@ import { SuggestInput } from './SuggestInput';
 import { SeenGenres } from './SeenGenres';
 import { EventTitle } from './EventTitle';
 import { hasGap, placePatch, type Gap } from '../services/table';
-import { dateText, GAP_SECTION, thingsLeft } from '../services/poster';
+import { dateText, GAP_QUESTION, GAP_SECTION, thingsLeft } from '../services/poster';
 import { rememberSection, sectionOpen } from '../services/sectionMemory';
 import { Popover } from './ui/Popover';
 import { Burst } from './ui/Burst';
+import { burstConfetti } from './ui/confetti';
 import { PosterHeader, ThingsLeft } from './PosterHeader';
 import { cityWithRegion } from '../server/events/regions';
 import { attendanceOf, lastDay } from '../server/events/attendance';
@@ -446,9 +447,8 @@ const WentCard: React.FC<{
   }
 
   if (state !== 'confirm') return null;
-  const [celebrate, setCelebrate] = useState(0);
   const went = () => {
-    setCelebrate((n) => n + 1);
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) burstConfetti();
     onSave({ attendance: null });
     const acts: Offered[] = [
       ...event.seen.map((s) => ({ key: s.key, name: s.name, from: s.from, role: s.role })),
@@ -461,10 +461,7 @@ const WentCard: React.FC<{
       <p className="font-semibold text-violet-100">Did you go?</p>
       <p className="text-xs text-zinc-400">It's over, and it stays out of Stats, Artists and the Map until you say.</p>
       <div className="flex flex-wrap gap-2">
-        <div className="relative inline-flex">
-          <Button variant="primary" onClick={went}>Yes, I went</Button>
-          <Burst icon={Sparkles} trigger={celebrate} />
-        </div>
+        <Button variant="primary" onClick={went}>Yes, I went</Button>
         <Button onClick={() => onSave({ attendance: 'missed' })}>No, I didn't go</Button>
       </div>
     </div>
@@ -1040,11 +1037,15 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   // Scrolls to the section a gap is filled in and highlights it for a moment.
   const showGap = (gap: Gap) => {
     const el = document.getElementById(GAP_SECTION[gap]);
+    setGuide(gap);
     if (!el) return;
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     el.classList.add('ring-2', 'ring-violet-400/70', 'rounded-xl');
     window.setTimeout(() => el.classList.remove('ring-2', 'ring-violet-400/70', 'rounded-xl'), 1600);
+    el.querySelector<HTMLElement>('input, select, textarea')?.focus({ preventScroll: true });
   };
+  // The guided card asks the question for the gap the strip's Next went to, until that gap is filled.
+  const [guide, setGuide] = useState<Gap | null>(null);
   const [lineupOpen] = useState(() => sectionOpen('lineup', true));
   const [notesOpen] = useState(() => sectionOpen('notes', true));
   // While the lineup review is open, Escape and an outside press do not close the panel behind it.
@@ -1068,6 +1069,14 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           cited={edition ? edition.performances.filter((p) => p.status !== 'cancelled').map((p) => p.artistKey) : []}
         />
         <ThingsLeft gaps={gapsLeft} onNext={showGap} />
+        {guide && gapsLeft.includes(guide) && (
+          <div role="note" className="flex items-center justify-between gap-3 rounded-xl border border-violet-500/40 bg-violet-950/30 p-3 text-sm text-violet-100">
+            <span>{GAP_QUESTION[guide]}</span>
+            <button type="button" onClick={() => setGuide(null)} className="inline-flex h-11 items-center rounded-control px-2 text-zinc-300 hover:text-zinc-100 sm:h-9">
+              Done
+            </button>
+          </div>
+        )}
         <div className="flex items-start gap-3">
           <Field label="Event" field="name" value={event.name} onSave={(v) => save({ name: v })} className="flex-1" />
         </div>
