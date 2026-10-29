@@ -231,6 +231,7 @@ const MergePicker: React.FC<{ row: EmailImport; events: LoggedEvent[]; busy: boo
       <div className="flex items-center gap-2">
         <input
           autoFocus
+          aria-label="Which of your events is this?"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Which of your events is this?"

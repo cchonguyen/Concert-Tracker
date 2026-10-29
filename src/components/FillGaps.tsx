@@ -213,6 +213,7 @@ const GapEditor: React.FC<{
         <input
           className={control}
           type="number"
+          aria-label={GAP_LABELS[gap]}
           value={draft}
           placeholder={placeholder[gap] ?? GAP_LABELS[gap]}
           onChange={(e) => setDraft(e.target.value)}
@@ -222,6 +223,7 @@ const GapEditor: React.FC<{
       ) : (
         <SuggestInput
           className={control}
+          aria-label={GAP_LABELS[gap]}
           value={draft}
           placeholder={placeholder[gap] ?? GAP_LABELS[gap]}
           suggestions={suggestions}

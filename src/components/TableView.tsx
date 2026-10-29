@@ -410,6 +410,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
       )}
       <div className="flex flex-wrap items-center gap-2">
         <input
+          aria-label="Search events, venues, acts, people, notes"
           value={filters.q}
           onChange={(e) => set({ q: e.target.value })}
           placeholder="Search events, venues, acts, people, notes"
