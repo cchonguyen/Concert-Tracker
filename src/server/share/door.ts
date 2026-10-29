@@ -4,7 +4,7 @@ import { findShareLink } from './links';
 import { NOT_ACTIVE_HTML, renderSharePage, SHARE_HEADERS, UNAVAILABLE_HTML } from './page';
 import type { ShareSettings } from './types';
 import { buildShareView } from './view';
-import { isPublicPath, oldAppLink } from '../site/publicPaths';
+import { isPublicPath, oldAppLink, robotsTxt, SITE_ORIGIN, sitemapXml } from '../site/publicPaths';
 
 // The page for these settings, read with the share columns only. Used by
 // /s/<code> and by the owner's preview.
@@ -41,6 +41,8 @@ export async function frontDoor(request: Request, deps: DoorDeps): Promise<Respo
   const path = url.pathname;
   const moved = oldAppLink(url);
   if (moved) return new Response(null, { status: 302, headers: { Location: moved, 'Cache-Control': 'no-store' } });
+  if (path === '/robots.txt') return new Response(robotsTxt(SITE_ORIGIN), { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
+  if (path === '/sitemap.xml') return new Response(sitemapXml(SITE_ORIGIN), { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
   if (UNDER_SHARE.test(path)) {
     const method = request.method === 'HEAD' ? 'HEAD' : 'GET';
     const code = request.method === 'GET' || request.method === 'HEAD' ? SHARE_PATH.exec(path)?.[1] : undefined;
