@@ -27,6 +27,7 @@ import { useTheme } from './components/ThemePicker';
 import { MenuButton } from './components/MenuButton';
 import { SharePanel } from './components/SharePanel';
 import { QuickAdd, QuickAddButton, QuickAddFab, SavedToast } from './components/QuickAdd';
+import { AboutDialog } from './components/AboutDialog';
 import { DataPanel, exportCsv } from './components/DataActions';
 import { ListImport } from './components/ListImport';
 import { SheetSync } from './components/SheetSync';
@@ -93,6 +94,7 @@ export default function App() {
   const [account, setAccount] = useState(false);
   const theme = useTheme();
   const [quickAdd, setQuickAdd] = useState(false);
+  const [about, setAbout] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
   const headerShown = useHideOnScroll(headerRef);
   const [saved, setSaved] = useState<LoggedEvent | null>(null);
@@ -432,6 +434,9 @@ export default function App() {
 
       <footer className="border-t border-zinc-900 py-5 text-xs text-zinc-400">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-end gap-3 px-4">
+          <button onClick={() => setAbout(true)} className="font-medium text-zinc-300 hover:text-zinc-100">
+            About
+          </button>
           {status && (
             <span title="Where event details and lineups come from">
               Sources:{' '}
@@ -442,6 +447,7 @@ export default function App() {
         </div>
       </footer>
 
+      {about && <AboutDialog onClose={() => setAbout(false)} />}
       {BACK_TO_TOP.includes(shown) && <BackToTop />}
       <QuickAddFab onClick={() => setQuickAdd(true)} />
       <QuickAdd
