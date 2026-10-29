@@ -247,7 +247,7 @@ export default function App() {
     <div className="min-h-screen bg-zinc-950 font-sans text-zinc-100 selection:bg-violet-600 selection:text-white flex flex-col">
       <header
         ref={headerRef}
-        className={`sticky top-0 z-30 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md transition-transform duration-200 motion-reduce:transition-none ${
+        className={`sticky top-0 z-30 border-b border-zinc-900 bg-zinc-950/90 sm:backdrop-blur-md transition-transform duration-200 motion-reduce:transition-none ${
           headerShown ? '' : '-translate-y-full'
         }`}
       >
