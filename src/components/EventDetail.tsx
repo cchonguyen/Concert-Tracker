@@ -1,7 +1,7 @@
 import { useVault } from './VaultContext';
 import { noteView } from '../services/vaultSession';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Check, CloudSun, ExternalLink, FolderCog, Heart, Link2, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, CloudSun, ExternalLink, FolderCog, Heart, History, Link2, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import {
   ArtistSuggestion,
   DetailCandidate,
@@ -46,6 +46,7 @@ interface EventDetailProps {
   onClose: () => void;
   // Open a name's record in the Manage tab, to change it on every event.
   onManage?: (target: ManageTarget) => void;
+  onOpenHistory?: (eventId: string) => void; // Opens the Log filtered to this show.
 }
 
 // The names on this event that have a record, for "Edit everywhere".
@@ -725,7 +726,7 @@ function cityForVenue(events: LoggedEvent[], venue: string): string | undefined 
   return cities.size === 1 ? [...cities][0] : undefined;
 }
 
-export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChange, onDeleted, onClose, onManage }) => {
+export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChange, onDeleted, onClose, onManage, onOpenHistory }) => {
   const [job, setJob] = useState<LookupJob | null>(null);
   const [edition, setEdition] = useState<Edition | null>(null);
   const [suggestions, setSuggestions] = useState<ArtistSuggestion[]>([]);
@@ -1311,12 +1312,19 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         </section>
 
         <div className="flex items-center justify-between border-t border-zinc-900 pt-4">
-          <button
-            onClick={() => setConfirmingDelete(true)}
-            className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-rose-300"
-          >
-            <Trash2 className="h-3.5 w-3.5" /> Delete event
-          </button>
+          <div className="flex items-center gap-4">
+            {onOpenHistory && (
+              <button onClick={() => onOpenHistory(event.id)} className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-violet-300">
+                <History className="h-3.5 w-3.5" /> History
+              </button>
+            )}
+            <button
+              onClick={() => setConfirmingDelete(true)}
+              className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-rose-300"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Delete event
+            </button>
+          </div>
           {busy === 'save' && <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />}
         </div>
 
