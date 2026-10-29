@@ -50,8 +50,9 @@ import { HomePage } from './components/HomePage';
 import { BackToTop } from './components/ui/BackToTop';
 import { Callout } from './components/ui/Callout';
 import { copy } from './services/copy';
-import { ARTIST_MILESTONES, artistMilestoneLine, claimMilestone, highestMilestoneCrossed, milestoneCounts, milestoneLine, type MilestoneCounts } from './services/milestones';
-import { showTipsAgain } from './services/tips';
+import { ARTIST_MILESTONES, artistMilestoneLine, highestMilestoneCrossed, milestoneCounts, milestoneLine, type MilestoneCounts } from './services/milestones';
+import { loadPrefs, recordMilestone, showTipsAgain } from './services/prefs';
+import type { MilestoneSaved } from './server/auth/prefs';
 import { MilestoneCard } from './components/MilestoneCard';
 import { cityOf } from './services/table';
 import { pastEvents, yearInReview } from './services/stats';
@@ -84,6 +85,8 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   const [events, setEvents] = useState<LoggedEvent[]>([]);
   // The counts last seen from the server or from a change, so a page load never counts as a milestone.
   const counts = useRef<MilestoneCounts | null>(null);
+  // The highest milestone each card kind has shown, as the account has it; null until it is read.
+  const milestoneShown = useRef<MilestoneSaved | null>(null);
   const [milestone, setMilestone] = useState<{ kind: 'shows' | 'artists'; value: number } | null>(null);
   const [lineups, setLineups] = useState<Record<string, LineupSummary>>({});
   const [editions, setEditions] = useState<Record<string, LineupFacts>>({});
@@ -205,20 +208,38 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   };
 
   // Moving between the Table, the timeline views and the Map keeps the same filters.
-  // A show or an act added this session may cross a milestone. Each milestone fires once per account on this browser.
-  // A show card wins when a change crosses both kinds at once.
+  // A show or an act added this session may cross a milestone. Each milestone fires once per account: the highest
+  // one shown is kept on the account (services/prefs.ts). A show card wins when a change crosses both kinds at once.
+  // Until the account's marks are read, no card shows.
+  useEffect(() => {
+    let live = true;
+    void loadPrefs(me.email)
+      .then((p) => {
+        if (live) milestoneShown.current = p.milestone;
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [me.email]);
+
   useEffect(() => {
     const now = milestoneCounts(events, new Date().toISOString().slice(0, 10));
     const before = counts.current;
     counts.current = now;
-    if (before === null) return;
+    const shown = milestoneShown.current;
+    if (before === null || shown === null) return;
     const showHit = highestMilestoneCrossed(before.shows, now.shows);
-    if (showHit !== null && claimMilestone(`liveArchive.milestone.${me.email ?? 'owner'}`, showHit)) {
+    if (showHit !== null && showHit > shown.shows) {
+      milestoneShown.current = { ...shown, shows: showHit };
+      recordMilestone({ shows: showHit });
       setMilestone({ kind: 'shows', value: showHit });
       return;
     }
     const artistHit = highestMilestoneCrossed(before.artists, now.artists, ARTIST_MILESTONES);
-    if (artistHit !== null && claimMilestone(`liveArchive.milestone.artists.${me.email ?? 'owner'}`, artistHit)) {
+    if (artistHit !== null && artistHit > shown.artists) {
+      milestoneShown.current = { ...shown, artists: artistHit };
+      recordMilestone({ artists: artistHit });
       setMilestone({ kind: 'artists', value: artistHit });
     }
   }, [events]);
@@ -361,7 +382,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
               onExport={() => exportCsv(events, editions)}
               onSheets={openSheets}
               onShare={() => (readOnly ? askSample('share') : setSharing(true))}
-              onShowTips={() => showTipsAgain(me.email)}
+              onShowTips={() => void showTipsAgain()}
             />
           </div>
         </div>
@@ -511,7 +532,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
         </div>
       </footer>
 
-      {about && <AboutDialog onClose={() => setAbout(false)} onShowTips={() => showTipsAgain(me.email)} />}
+      {about && <AboutDialog onClose={() => setAbout(false)} onShowTips={() => void showTipsAgain()} />}
       {BACK_TO_TOP.includes(shown) && <BackToTop />}
       <QuickAddFab onClick={() => (readOnly ? askSample('add') : setQuickAdd(true))} />
       <QuickAdd
