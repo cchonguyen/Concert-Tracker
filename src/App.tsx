@@ -53,7 +53,10 @@ import { ARTIST_MILESTONES, artistMilestoneLine, highestMilestoneCrossed, milest
 import { loadPrefs, recordMilestone, showTipsAgain } from './services/prefs';
 import type { MilestoneSaved } from './server/auth/prefs';
 import { MilestoneCard } from './components/MilestoneCard';
-import { cityOf } from './services/table';
+import { cityOf, filterEvents, filtersFromQuery, GAPS, hasGap, sortRows, tableDate } from './services/table';
+import { eventParam, withEventParam } from './services/detailNav';
+import { eventTitle } from './services/series';
+import type { DetailRow } from './components/ui/DetailShell';
 import { pastEvents, yearInReview } from './services/stats';
 import { eventYear } from './services/format';
 import { homeSummary } from './services/home';
@@ -74,6 +77,12 @@ const navStorage = (): NavStorage | null => {
   }
 };
 
+// The date as the list shows it, e.g. "12 Jun 2026" (or "Jun 2026" when the day is not known).
+const dateText = (e: Parameters<typeof tableDate>[0]): string => {
+  const d = tableDate(e);
+  return d ? [d.day, d.month, d.year].filter(Boolean).join(' ') : '';
+};
+
 const initialPage = (): Page => pageFromView(new URLSearchParams(window.location.search).get('view'), { canManage: true });
 
 export default function App({ initialMe }: { initialMe?: Me }) {
@@ -90,7 +99,11 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   const [lineups, setLineups] = useState<Record<string, LineupSummary>>({});
   const [editions, setEditions] = useState<Record<string, LineupFacts>>({});
   const [researching, setResearching] = useState<Set<string>>(new Set());
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The open event comes from the address (`?event=<id>`), so a link reopens it.
+  const [selectedId, setSelectedId] = useState<string | null>(() => eventParam(window.location.search));
+  // The view the open event was opened from, which sets the order of its list. The element that opened it gets focus back.
+  const [listFrom, setListFrom] = useState<Page>(initialPage);
+  const openerRef = useRef<HTMLElement | null>(null);
   const [status, setStatus] = useState<LineupStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -252,6 +265,8 @@ export default function App({ initialMe }: { initialMe?: Me }) {
       markHintSeen(navStorage());
     }
     const params = new URLSearchParams(window.location.search);
+    // Moving to a page closes any open event, so its address parameter goes too.
+    params.delete('event');
     if (next === 'home') {
       if (window.location.search) window.history.replaceState(null, '', window.location.pathname);
     } else {
@@ -292,6 +307,45 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   const went = useMemo(() => wentTo(events, today), [events, today]);
   const seenCount = new Set(went.flatMap((e) => e.seen.map((s) => s.key))).size;
   const selected = events.find((e) => e.id === selectedId) ?? null;
+
+  // Opens an event's detail. Its id goes in the address, so Back closes it and a link reopens it.
+  const openEvent = (id: string) => {
+    if (!selectedId) {
+      openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setListFrom(shown);
+    }
+    const url = `${window.location.pathname}${withEventParam(window.location.search, id)}`;
+    if (!selectedId && !window.history.state?.event) window.history.pushState({ event: id }, '', url);
+    else window.history.replaceState({ event: id }, '', url);
+    setSelectedId(id);
+  };
+  // Closes the detail: Back when this open pushed an entry, otherwise the address is cleaned up in place.
+  const closeEvent = () => {
+    if (window.history.state?.event) window.history.back();
+    else window.history.replaceState(null, '', `${window.location.pathname}${withEventParam(window.location.search, null)}`);
+    setSelectedId(null);
+    openerRef.current?.focus();
+    openerRef.current = null;
+  };
+  // The list the open event sits in: the Table's filters and sort when opened from the Table, else newest first.
+  const detailRows = useMemo<DetailRow[]>(() => {
+    if (!selectedId) return [];
+    const ordered = listFrom === 'table' ? filterEvents(events, filtersFromQuery(window.location.search), lineups, editions) : sortRows(events, 'date', true);
+    return ordered.map((e) => ({
+      id: e.id,
+      title: eventTitle(e),
+      date: dateText(e),
+      gaps: GAPS.filter((g) => hasGap(e, g, lineups[e.id], editions[e.id])).length,
+    }));
+  }, [selectedId, listFrom, events, lineups, editions]);
+
+  // Back and forward move the open event with the address.
+  useEffect(() => {
+    const onPop = () => setSelectedId(eventParam(window.location.search));
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   const toReview = imports.filter((r) => r.status === 'new' && !r.eventId && !(r.startDate && r.startDate > today)).length;
   const canManage = me.role === 'owner';
   // A member who cannot see Manage gets Summary instead.
@@ -463,7 +517,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
               toReview={toReview}
               emailCheck={emailCheck}
               loaded={loaded}
-              onOpen={setSelectedId}
+              onOpen={openEvent}
               onReviewEmail={openReview}
               onOpenTable={openTable}
             />
@@ -474,7 +528,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
             events={events}
             lineups={lineups}
             editions={editions}
-            onOpen={setSelectedId}
+            onOpen={openEvent}
             onChanged={upsert}
             onManage={openManage}
             onImport={openImport}
@@ -489,7 +543,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
             events={events}
             lineups={lineups}
             editions={editions}
-            onOpen={setSelectedId}
+            onOpen={openEvent}
             onOpenTable={openTable}
             onShowInAgenda={(id) => {
               openTab('agenda');
@@ -497,17 +551,17 @@ export default function App({ initialMe }: { initialMe?: Me }) {
             }}
           />
         )}
-        {shown === 'map' && <MapView events={went} lineups={lineups} editions={editions} onOpen={setSelectedId} onOpenTable={openTable} />}
-        {shown === 'stats' && <StatsView events={events} onOpen={setSelectedId} onOpenTable={openTable} />}
+        {shown === 'map' && <MapView events={went} lineups={lineups} editions={editions} onOpen={openEvent} onOpenTable={openTable} />}
+        {shown === 'stats' && <StatsView events={events} onOpen={openEvent} onOpenTable={openTable} />}
         {shown === 'ranking' && (
-          <ArtistsView events={went} onOpenEvent={setSelectedId} onOpenTable={openTable} onManage={(key) => openManage({ kind: 'artist', name: key })} />
+          <ArtistsView events={went} onOpenEvent={openEvent} onOpenTable={openTable} onManage={(key) => openManage({ kind: 'artist', name: key })} />
         )}
         {shown === 'log' && <LogView eventId={logFor} onShowAll={() => setLogFor(null)} />}
         {shown === 'manage' && (
           <ManageView
             events={events}
             target={manageTarget}
-            onOpenEvent={setSelectedId}
+            onOpenEvent={openEvent}
             onOpenTable={openTable}
             onEventsChanged={() => void refresh()}
             onEventChanged={upsert}
@@ -551,7 +605,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
         onReviewEmail={openReview}
         onCaptured={(event) => {
           setQuickAdd(false);
-          toast({ message: 'Saved', action: { label: 'Open', onClick: () => setSelectedId(event.id) } });
+          toast({ message: 'Saved', action: { label: 'Open', onClick: () => openEvent(event.id) } });
           void handleCaptured(event);
         }}
       />
@@ -594,10 +648,12 @@ export default function App({ initialMe }: { initialMe?: Me }) {
             void refresh();
           }}
           onDeleted={() => {
-            setSelectedId(null);
+            closeEvent();
             void refresh();
           }}
-          onClose={() => setSelectedId(null)}
+          onClose={closeEvent}
+          rows={detailRows}
+          onOpen={openEvent}
           onManage={openManage}
           onOpenHistory={openHistory}
         />

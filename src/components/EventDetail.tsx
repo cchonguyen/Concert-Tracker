@@ -33,7 +33,7 @@ import { cityWithRegion } from '../server/events/regions';
 import { attendanceOf, lastDay } from '../server/events/attendance';
 import type { EditionPerformance } from '../server/lineup/types';
 import type { ManageTarget } from './ManageView';
-import { Dialog } from './ui/Dialog';
+import { DetailShell, type DetailRow } from './ui/DetailShell';
 import { Confirm } from './ui/Confirm';
 import { useToast } from './ui/Toast';
 import { Switch } from './ui/Switch';
@@ -54,6 +54,9 @@ interface EventDetailProps {
   onChange: (event: LoggedEvent) => void;
   onDeleted: () => void;
   onClose: () => void;
+  // The list this event sits in (split view and the header's previous, next and next-with-gaps), and how to open another row.
+  rows: DetailRow[];
+  onOpen: (id: string) => void;
   // Open a name's record in the Manage tab, to change it on every event.
   onManage?: (target: ManageTarget) => void;
   onOpenHistory?: (eventId: string) => void; // Opens the Log filtered to this show.
@@ -772,7 +775,7 @@ function cityForVenue(events: LoggedEvent[], venue: string): string | undefined 
   return cities.size === 1 ? [...cities][0] : undefined;
 }
 
-export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChange, onDeleted, onClose, onManage, onOpenHistory }) => {
+export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChange, onDeleted, onClose, rows, onOpen, onManage, onOpenHistory }) => {
   const [job, setJob] = useState<LookupJob | null>(null);
   const [edition, setEdition] = useState<Edition | null>(null);
   const [suggestions, setSuggestions] = useState<ArtistSuggestion[]>([]);
@@ -936,6 +939,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     if (trackRef.current.failed.length > 0) return;
     onClose();
   };
+  // Moving to another event waits for saves in flight, as closing does, and stays here when one failed.
+  const goTo = async (id: string) => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    await Promise.all([...pendingSaves.current]);
+    if (trackRef.current.failed.length > 0) return;
+    onOpen(id);
+  };
   const [weatherNote, setWeatherNote] = useState<string | null>(null);
   const lookUpWeather = () =>
     run('weather', async () => {
@@ -1001,16 +1011,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
 
   // While the lineup review is open, Escape and an outside press do not close the panel behind it.
   return (
-    <Dialog
+    <DetailShell
       title={eventTitle(event)}
-      onClose={reviewing ? () => {} : () => void requestClose()}
-      panelClassName="h-full w-full max-w-xl space-y-6 overflow-y-auto border-l border-zinc-900 bg-zinc-950 p-5 shadow-2xl"
+      rows={rows}
+      openId={event.id}
+      closeDisabled={reviewing}
+      onGo={(id) => void goTo(id)}
+      onClose={() => void requestClose()}
     >
       <FlashContext.Provider value={flashing}>
         <SaveStatus track={track} onRetry={retrySaves} hint={hint} />
         <div className="flex items-start gap-3">
           <Field label="Event" field="name" value={event.name} onSave={(v) => save({ name: v })} className="flex-1" />
-          <IconButton icon={X} label="Close" onClick={() => void requestClose()} className="mt-6" />
         </div>
         {event.input && event.input !== event.name && <p className="-mt-4 text-xs text-zinc-400">You typed: “{event.input}”</p>}
         <div className="-mt-2 space-y-1">
@@ -1381,6 +1393,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           }}
         />
       )}
-    </Dialog>
+    </DetailShell>
   );
 };
