@@ -25,3 +25,13 @@ export function multiUserFromEnv(env: Record<string, string | undefined>): Multi
   if (missing.length) throw new Error(`MULTI_USER=on needs ${missing.join(', ')}.`);
   return { access: access!, supabaseUrl: env.SUPABASE_URL!, anonKey: env.SUPABASE_ANON_KEY!, jwtSecret: env.SUPABASE_JWT_SECRET! };
 }
+
+// The Worker's settings: the process environment (vars and secrets, as
+// nodejs_compat fills it) and the bindings the Worker was handed. Both are
+// read, so MULTI_USER cannot be on in one and missing from the other and leave
+// the app running single-owner. A string in the bindings wins over the process
+// environment only when the process environment does not have it.
+export function workerSettings(bindings: Record<string, unknown>, processEnv: Record<string, string | undefined>): Record<string, string | undefined> {
+  const fromBindings = Object.fromEntries(Object.entries(bindings).filter((e): e is [string, string] => typeof e[1] === 'string'));
+  return { ...fromBindings, ...processEnv };
+}
