@@ -13,12 +13,13 @@ export interface ActivityEntry {
   field: string | null;
   before: unknown;
   after: unknown;
-  sensitive: boolean; // notes and companions: stored as ciphertext, never printed
+  sensitive: boolean; // notes, companions and people: stored as ciphertext or ids, never printed
   at: string;
 }
 
 // Fields whose text is private. The log says that they changed, not what they say.
-export const SENSITIVE_FIELDS = new Set(['notes', 'companions']);
+// `personIds` are the ids of the people you went with (vault on): opaque, but still who you went with.
+export const SENSITIVE_FIELDS = new Set(['notes', 'companions', 'personIds']);
 
 export function isSensitiveField(field: string): boolean {
   return SENSITIVE_FIELDS.has(field);
@@ -31,7 +32,7 @@ export function describeEntry(entry: ActivityEntry, eventName: string): string {
   if (entry.action === 'create') return `You added ${eventName}`;
   if (entry.action === 'undo') return `You undid a change to ${eventName}`;
   if (entry.field === 'notes') return `You updated the notes of ${eventName}`;
-  if (entry.field === 'companions') return `You updated who you went with at ${eventName}`;
+  if (entry.field === 'companions' || entry.field === 'personIds') return `You updated who you went with at ${eventName}`;
   return `You changed ${entry.field ?? 'a field'} of ${eventName}`;
 }
 
@@ -39,12 +40,24 @@ export type UndoCheck = { ok: true } | { ok: false; reason: 'vault-locked' | 'va
 
 // Decide whether an undo may write back. A sensitive field needs the vault unlocked, and a sensitive
 // row that stored no ciphertext (plaintext notes, or rows from before the vault) has nothing to write back.
+// A note whose earlier value is not stored is never written back as empty: that would erase it.
 // Any field changed since the logged write is left alone.
 export function checkUndo(entry: ActivityEntry, current: unknown, vaultLocked: boolean): UndoCheck {
   if (entry.sensitive && vaultLocked) return { ok: false, reason: 'vault-locked' };
   if (entry.sensitive && entry.before === null && entry.after === null) return { ok: false, reason: 'not-undoable' };
+  if (entry.field === 'notes' && entry.before === null) return { ok: false, reason: 'not-undoable' };
   if (!sameValue(current, entry.after)) return { ok: false, reason: 'value-changed' };
   return { ok: true };
+}
+
+// Person ids as the log and the event hold them: an empty list and no list are the same thing.
+export function canonicalIds(v: unknown): string[] | null {
+  return Array.isArray(v) && v.length ? (v as string[]) : null;
+}
+
+// Private text that is not ciphertext (plaintext notes, names in companions) is never kept.
+function hasText(v: unknown): boolean {
+  return v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0);
 }
 
 function sameValue(a: unknown, b: unknown): boolean {
@@ -78,9 +91,15 @@ export function diffEvent(before: LoggedEvent | null, after: LoggedEvent, isCiph
     const a = (after as unknown as Record<string, unknown>)[key];
     if (stableJson(b) === stableJson(a)) continue;
     const sensitive = isSensitiveField(key);
-    // Plaintext private text is never kept in the Log.
+    if (key === 'personIds') {
+      drafts.push({ eventId: after.id, action: 'update', field: key, before: canonicalIds(b), after: canonicalIds(a), sensitive });
+      continue;
+    }
+    // Plaintext private text is never kept in the Log. When the change drops such text, the row keeps neither side:
+    // undoing it would write back nothing, and writing null over the text would lose it.
+    const lost = sensitive && hasText(b) && !isCipher(b);
     const kept = (v: unknown) => (sensitive && !isCipher(v) ? null : v ?? null);
-    drafts.push({ eventId: after.id, action: 'update', field: key, before: kept(b), after: kept(a), sensitive });
+    drafts.push({ eventId: after.id, action: 'update', field: key, before: lost ? null : kept(b), after: lost ? null : kept(a), sensitive });
   }
   return drafts;
 }
