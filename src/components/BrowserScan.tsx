@@ -155,6 +155,8 @@ export const BrowserScan: React.FC<{ status: EmailScanStatus; onFound: (imports:
             <dd>{s.flagged}</dd>
             <dt className="text-zinc-500">Unreadable</dt>
             <dd>{s.unreadable.length}</dd>
+            <dt className="text-zinc-500">Skipped (no receipt wording)</dt>
+            <dd>{s.skipped}</dd>
           </dl>
           {Object.keys(s.bySeller).length > 0 && (
             <div>
