@@ -56,6 +56,20 @@ test('path tricks cannot reach the app or the API through a public prefix', asyn
   }
 });
 
+test('a signed-in visitor on / goes to the app, unless they ask for the public page', async () => {
+  const verify = async (token: string | null | undefined) => token === 'good';
+  const visit = (url: string, cookie: string) =>
+    frontDoor(new Request(`${ORIGIN}${url}`, { headers: { cookie } }), { store: async () => ({}) as never, access: config, verify });
+  const res = (await visit('/', 'other=1; CF_Authorization=good'))!;
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get('location'), '/app');
+  assert.equal(res.headers.get('cache-control'), 'private, no-store');
+  assert.equal(await visit('/?public=1', 'CF_Authorization=good'), null);
+  assert.equal(await visit('/', 'CF_Authorization=stale'), null);
+  assert.equal(await visit('/', ''), null);
+  assert.equal(await visit('/demo', 'CF_Authorization=good'), null, 'the demo never redirects');
+});
+
 test('an old app address goes to /app with the same query', async () => {
   const res = (await door('/?view=table&sheets=ok'))!;
   assert.equal(res.status, 302);
