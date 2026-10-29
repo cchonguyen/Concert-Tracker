@@ -10,6 +10,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
 import { createDeps, createStore, LookupWorker } from './src/server/lineup/service';
+import { accessGateFromEnv } from './src/server/auth/config';
+import { supabaseMemberDirectory } from './src/server/auth/members';
+import { getSupabaseClient } from './src/server/supabase';
 import { createApiApp } from './src/server/app';
 import { backfillEntities, backfillVenuePlaces } from './src/server/entities/linkingStore';
 import { oldAppLink } from './src/server/site/publicPaths';
@@ -21,7 +24,8 @@ async function main() {
     .catch((err) => console.warn('Entity backfill failed:', err instanceof Error ? err.message : err));
   const lineupDeps = createDeps(lineupStore);
   const worker = new LookupWorker(lineupDeps);
-  const app = createApiApp(lineupDeps, worker);
+  // Who may use /api (src/server/auth/config.ts). Nothing is open by default.
+  const app = createApiApp(lineupDeps, worker, accessGateFromEnv(process.env, () => supabaseMemberDirectory(getSupabaseClient()!)));
   worker.start();
   console.log(`Lineup store: ${lineupStore.kind}; Gemini: ${lineupDeps.gemini ? lineupDeps.gemini.model : 'not configured'}`);
 
