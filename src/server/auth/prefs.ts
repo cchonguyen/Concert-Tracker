@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { LineupStore } from '../lineup/store/types';
-import { MILESTONES } from '../../services/milestones';
+import { ARTIST_MILESTONES, MILESTONES } from '../../services/milestones';
 
 // The Home tips and the milestone mark, kept on the account (user_settings in
 // multi-user, app_settings for a single owner) instead of in each browser.
@@ -19,10 +19,18 @@ export interface TipsSaved {
   allHidden: boolean;
 }
 
+// The highest milestone shown for each kind of card; 0 when none yet.
+export interface MilestoneSaved {
+  shows: number;
+  artists: number;
+}
+
 export interface Prefs {
   tips: TipsSaved | null; // null until the account has saved a choice
-  milestone: number; // the highest milestone shown so far; 0 when none
+  milestone: MilestoneSaved;
 }
+
+export const NO_MILESTONE: MilestoneSaved = { shows: 0, artists: 0 };
 
 export class PrefsError extends Error {}
 
@@ -36,11 +44,20 @@ export function cleanTips(input: unknown): TipsSaved {
   return { dismissed: [...new Set(dismissed as string[])], allHidden };
 }
 
-// A milestone is one of the counts in services/milestones.ts, or 0 for none.
-export function cleanMilestone(input: unknown): number {
-  if (input === 0) return 0;
-  if (!(MILESTONES as readonly number[]).includes(input as number)) throw new PrefsError('Milestone must be one of the milestone counts.');
-  return input as number;
+// Checks a milestone patch: any of shows (a MILESTONES count) and artists (an ARTIST_MILESTONES count), each 0 for none.
+export function cleanMilestone(input: unknown): Partial<MilestoneSaved> {
+  if (!input || typeof input !== 'object') throw new PrefsError('Milestone must be an object.');
+  const { shows, artists } = input as Record<string, unknown>;
+  const out: Partial<MilestoneSaved> = {};
+  if (shows !== undefined) {
+    if (shows !== 0 && !(MILESTONES as readonly number[]).includes(shows as number)) throw new PrefsError('Shows milestone must be a milestone count.');
+    out.shows = shows as number;
+  }
+  if (artists !== undefined) {
+    if (artists !== 0 && !(ARTIST_MILESTONES as readonly number[]).includes(artists as number)) throw new PrefsError('Artists milestone must be a milestone count.');
+    out.artists = artists as number;
+  }
+  return out;
 }
 
 export function prefsRouter(store: LineupStore): Router {
@@ -50,9 +67,9 @@ export function prefsRouter(store: LineupStore): Router {
   async function read(): Promise<Prefs> {
     const [tips, milestone] = await Promise.all([
       store.getSetting<TipsSaved>(TIPS_SETTING),
-      store.getSetting<{ shown: number }>(MILESTONE_SETTING),
+      store.getSetting<MilestoneSaved>(MILESTONE_SETTING),
     ]);
-    return { tips: tips ?? null, milestone: milestone?.shown ?? 0 };
+    return { tips: tips ?? null, milestone: { ...NO_MILESTONE, ...(milestone ?? {}) } };
   }
 
   router.get('/me/prefs', async (_req, res) => {
@@ -63,7 +80,7 @@ export function prefsRouter(store: LineupStore): Router {
     }
   });
 
-  // Sends any of { tips, milestone }. The milestone only ever moves up, so an
+  // Sends any of { tips, milestone }. Each milestone kind only ever moves up, so an
   // older browser that sends a lower count cannot bring the card back.
   router.put('/me/prefs', async (req, res) => {
     const body = req.body ?? {};
@@ -71,9 +88,10 @@ export function prefsRouter(store: LineupStore): Router {
       const tips = body.tips === undefined ? undefined : cleanTips(body.tips);
       const milestone = body.milestone === undefined ? undefined : cleanMilestone(body.milestone);
       if (tips) await store.putSetting(TIPS_SETTING, tips);
-      if (milestone !== undefined) {
-        const current = (await store.getSetting<{ shown: number }>(MILESTONE_SETTING))?.shown ?? 0;
-        if (milestone > current) await store.putSetting(MILESTONE_SETTING, { shown: milestone });
+      if (milestone) {
+        const current = { ...NO_MILESTONE, ...((await store.getSetting<MilestoneSaved>(MILESTONE_SETTING)) ?? {}) };
+        const next = { shows: Math.max(current.shows, milestone.shows ?? 0), artists: Math.max(current.artists, milestone.artists ?? 0) };
+        await store.putSetting(MILESTONE_SETTING, next);
       }
       res.json(await read());
     } catch (err) {
