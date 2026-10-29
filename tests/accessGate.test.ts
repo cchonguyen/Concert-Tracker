@@ -7,7 +7,7 @@ import { accessConfigFromEnv, clearAccessKeys } from '../src/server/share/access
 import { accessGateFromEnv, localOwnerFromEnv, workerSettings } from '../src/server/auth/config.ts';
 import { ownerMiddleware } from '../src/server/auth/gate.ts';
 import { createApiApp } from '../src/server/app.ts';
-import type { MemberDirectory } from '../src/server/auth/members.ts';
+import type { MemberStores } from '../src/server/auth/config.ts';
 import type { PipelineDeps } from '../src/server/lineup/pipeline.ts';
 
 const NOW = Date.parse('2026-10-29T12:00:00Z');
@@ -65,14 +65,14 @@ test('a MULTI_USER value that cannot be read as "on" is single-owner, not open',
 
 test('MULTI_USER=on (trimmed, any case) gives the member gate and reads the directory', () => {
   const full = { ...OWNER_ENV, ...SUPABASE };
-  const gate = accessGateFromEnv({ ...full, MULTI_USER: ' On ' }, () => ({}) as MemberDirectory);
+  const gate = accessGateFromEnv({ ...full, MULTI_USER: ' On ' }, () => ({}) as MemberStores);
   assert.equal(gate.kind, 'multi');
   assert.equal(gate.kind === 'multi' && gate.jwtSecret, 'secret');
 });
 
 test('MULTI_USER given only as a Worker binding still turns members on', () => {
   const settings = workerSettings({ MULTI_USER: 'on', ...ACCESS, ...SUPABASE }, {});
-  assert.equal(accessGateFromEnv(settings, () => ({}) as MemberDirectory).kind, 'multi');
+  assert.equal(accessGateFromEnv(settings, () => ({}) as MemberStores).kind, 'multi');
 });
 
 test('the member directory is not read in single-owner mode', () => {

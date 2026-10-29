@@ -72,6 +72,7 @@ function directory(rows: Record<string, { userId: string | null; role: 'owner' |
     listMembers: async () => [],
     inviteMember: async () => {},
     removeMember: async () => {},
+    hasActiveUser: async () => true,
   };
   return { dir, calls };
 }
@@ -86,13 +87,13 @@ test('members: an invited email gets its user id; the first sign-in makes and li
   await assert.rejects(resolveMember('', dir, NOW), NotInvitedError);
 });
 
-test('members: a found member is cached for five minutes, then looked up again', async () => {
+test('members: a found member is cached for 15 seconds, then looked up again', async () => {
   clearMemberCache();
   const { dir, calls } = directory({ 'owner@example.com': { userId: 'u-owner', role: 'owner' } });
   await resolveMember('owner@example.com', dir, NOW);
-  await resolveMember('owner@example.com', dir, NOW + 60_000);
+  await resolveMember('owner@example.com', dir, NOW + 10_000);
   assert.equal(calls.length, 1);
-  await resolveMember('owner@example.com', dir, NOW + 6 * 60_000);
+  await resolveMember('owner@example.com', dir, NOW + 16_000);
   assert.equal(calls.length, 2);
 });
 

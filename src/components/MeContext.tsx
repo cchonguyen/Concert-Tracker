@@ -8,6 +8,7 @@ export interface Me {
   role: 'owner' | 'member';
   email: string | null;
   noticeAccepted?: boolean;
+  pendingRequests?: number; // owner: requests waiting for an answer
 }
 
 const MeContext = createContext<Me>({ multiUser: false, role: 'owner', email: null });

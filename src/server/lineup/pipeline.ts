@@ -35,6 +35,8 @@ export interface PipelineDeps {
   // Web search for lineup pages, used only when every source came back empty.
   search: LineupSearch | null;
   now: () => Date;
+  // Multi-user only: false for a member who is blocked or removed. Their jobs are parked, with no outside call.
+  hasActiveUser?: (userId: string) => Promise<boolean>;
 }
 
 const MAX_ATTEMPTS = 3;
@@ -401,6 +403,14 @@ export async function runJob(
   const job = await deps.store.getJob(jobId);
   const now = deps.now();
   if (!job || !(['queued', 'waiting_quota'].includes(job.status) || isStaleRun(job, now))) return job;
+  if (job.userId && deps.hasActiveUser && !(await deps.hasActiveUser(job.userId))) {
+    job.status = 'waiting_quota';
+    job.waitingReason = 'Paused: this member is blocked or removed. Nothing was sent to any source.';
+    job.nextAttemptAt = undefined;
+    job.updatedAt = now.toISOString();
+    await deps.store.updateJob(job);
+    return job;
+  }
   job.status = 'running';
   job.waitingReason = undefined;
   job.nextAttemptAt = undefined;

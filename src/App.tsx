@@ -37,6 +37,7 @@ import { LogView } from './components/LogView';
 import { MeProvider, type Me } from './components/MeContext';
 import { NoticeModal } from './components/NoticeModal';
 import { MembersPanel } from './components/MembersPanel';
+import { NotInvited } from './components/NotInvited';
 import { AccountPanel } from './components/AccountPanel';
 import { VaultProvider } from './components/VaultContext';
 import { PeopleProvider } from './components/PersonName';
@@ -98,6 +99,8 @@ export default function App() {
   const [hintDue, setHintDue] = useState(() => !hintSeen(navStorage()));
   // Single-owner installs answer owner; until /api/me answers, assume owner so nothing flickers away.
   const [me, setMe] = useState<Me>({ multiUser: false, role: 'owner', email: null });
+  // Set when the server refuses this signed-in email as not invited: the request screen shows instead of the app.
+  const [refusedEmail, setRefusedEmail] = useState<string | null>(null);
   const [members, setMembers] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [account, setAccount] = useState(false);
@@ -130,9 +133,15 @@ export default function App() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [reviewing, selectedId, members, account, quickAdd]);
-  useEffect(() => {
-    meApi.get().then(setMe, () => undefined);
+  // Who is signed in. A 403 "not_invited" is the request screen, not an error.
+  const refreshMe = useCallback(() => {
+    meApi.get().then(setMe, (err: { code?: string; email?: string }) => {
+      if (err?.code === 'not_invited') setRefusedEmail(err.email ?? '');
+    });
   }, []);
+  useEffect(() => {
+    refreshMe();
+  }, [refreshMe]);
 
   const refresh = useCallback(async () => {
     try {
@@ -281,6 +290,8 @@ export default function App() {
   const confirmCount = homeSummary(events, lineups, today).toConfirm.length;
   const researchingCount = Object.values(lineups).filter((l) => isActive(l.status)).length;
 
+  if (refusedEmail !== null) return <NotInvited email={refusedEmail} />;
+
   return (
     <MeProvider me={me}>
     {me.multiUser && me.noticeAccepted === false && (
@@ -331,6 +342,7 @@ export default function App() {
               canMembers={me.multiUser && me.role === 'owner'}
               canAccount={me.multiUser}
               canSheets={me.role === 'owner'}
+              pendingRequests={me.pendingRequests}
               onMembers={() => setMembers(true)}
               onAccount={() => setAccount(true)}
               onImport={openImport}
@@ -377,7 +389,7 @@ export default function App() {
         )}
       </header>
 
-      {members && <MembersPanel onClose={() => setMembers(false)} />}
+      {members && <MembersPanel onClose={() => setMembers(false)} onChanged={refreshMe} />}
       {sharing && <SharePanel onClose={() => setSharing(false)} />}
       {account && <AccountPanel onClose={() => setAccount(false)} />}
 
