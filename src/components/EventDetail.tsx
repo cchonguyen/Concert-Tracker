@@ -1,7 +1,7 @@
 import { useVault } from './VaultContext';
 import { noteView } from '../services/vaultSession';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Check, CloudSun, ExternalLink, FolderCog, Heart, History, Link2, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, CloudSun, ExternalLink, FolderCog, Heart, History, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import {
   ArtistSuggestion,
   DetailCandidate,
@@ -36,7 +36,10 @@ import type { ManageTarget } from './ManageView';
 import { Dialog } from './ui/Dialog';
 import { Confirm } from './ui/Confirm';
 import { useToast } from './ui/Toast';
-import { Tooltip } from './ui/Tooltip';
+import { Switch } from './ui/Switch';
+import { Sheet } from './ui/Sheet';
+import { LineupProgress } from './LineupProgress';
+import { Pill } from './ui/Pill';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
 import { Segmented } from './ui/Segmented';
@@ -338,7 +341,6 @@ type Seen = LoggedEvent['seen'][number];
 type SeenPatch = NonNullable<EventPatch['seen']>;
 
 const toPatch = (seen: Seen[]): SeenPatch => toSeenInput(seen);
-const NEXT_SET: Record<string, Seen['set'] | null> = { none: 'dj', dj: 'live', live: null };
 
 // Whether you went, for an event added before it happened. Until you say,
 // it is left out of Stats, Artists and the Map. Once it is over the app
@@ -446,18 +448,9 @@ const WentCard: React.FC<{
   );
 };
 
-// Who you saw, in two rows: Artist (headliners and acts with no role stated)
-// and Supporting (acts billed as support). Moving an act, or tapping its name
-// to mark it headliner, sets its role as yours.
-// The heart marks your favourite set of the night; sets shows each act's
-// stage and time where a source times it.
-// The set button cycles DJ set, live set and unmarked. The link button pairs
-// acts as a B2B: tap it on one act, then on the other. Each act in a B2B is
-// still its own seen act, so each is credited. "+ solo" on an act in a B2B
-// adds its own solo set at the same event (typing its name again does too);
-// the solo chip has its own set button, and its x takes the solo set away.
-// Typing offers acts you've entered on other events; a click, or arrow keys
-// then Enter, adds one as you spelled it before. Enter alone adds what you typed.
+// Who you saw. Each act is a chip that shows only what is stored about it; a tap opens its editor in a Sheet.
+// Typing offers acts you've entered on other events; a click, or arrow keys then Enter, adds one as you spelled it
+// before. Enter alone adds what you typed. Typing a B2B act's name again adds its solo set.
 const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string[]; onChange: (seen: SeenPatch) => void }> = ({
   seen,
   sets,
@@ -466,7 +459,7 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
 }) => {
   const [draft, setDraft] = useState('');
   const [active, setActive] = useState(-1);
-  const [pairing, setPairing] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   // An act in a B2B without a solo set can be typed again, for its solo set.
   const canSolo = (s: Seen) => Boolean(s.b2b?.length) && !s.solo;
   const matches = matchNames(draft, past, new Set(seen.filter((s) => !canSolo(s)).map((s) => s.key)));
@@ -481,115 +474,21 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
     setActive(-1);
   };
   const add = () => addNames(draft.split(',').map((s) => s.trim()).filter(Boolean));
-  const setRole = (key: string, role: Seen['role'] | null) =>
-    onChange(toPatch(seen).map((s, i) => (seen[i].key === key ? { ...s, role, roleFrom: 'you' as const } : s)));
-  const remove = (key: string) => onChange(toPatch(seen.filter((s) => s.key !== key)));
-  const favourite = (key: string) =>
-    onChange(toPatch(seen).map((s, i) => ({ ...s, favourite: seen[i].key === key && !seen[i].favourite })));
-  const cycleSet = (key: string, solo = false) =>
-    onChange(
-      toPatch(seen).map((s, i) =>
-        seen[i].key !== key
-          ? s
-          : solo
-            ? { ...s, soloSet: NEXT_SET[seen[i].soloSet ?? 'none'] }
-            : { ...s, set: NEXT_SET[seen[i].set ?? 'none'] },
-      ),
-    );
-  const b2bTap = (s: Seen) => {
-    if (pairing === s.key) return setPairing(null);
-    if (pairing) {
-      onChange(toPatch(pairB2b(seen, pairing, s.key)));
-      return setPairing(null);
-    }
-    if (s.b2b?.length) return onChange(toPatch(leaveB2b(seen, s.key)));
-    setPairing(s.key);
-  };
-  const pairingName = seen.find((s) => s.key === pairing)?.name;
   const chip = (s: SlotAct<Seen>) => (
-    <span
+    <button
       key={s.asSolo ? `${s.key}:solo` : s.key}
-      className={`inline-flex items-center gap-1 rounded-full py-1 pl-2.5 pr-1.5 text-sm text-zinc-100 ${
-        pairing === s.key ? 'bg-violet-700/50 ring-1 ring-violet-400' : 'bg-zinc-800'
-      }`}
+      type="button"
+      onClick={() => setEditing(s.key)}
+      title="Edit this act"
+      className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-zinc-800 px-3 text-sm text-zinc-100 hover:bg-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400 sm:min-h-8"
     >
-      <Tooltip label={s.favourite ? 'Favourite set of the night' : 'Mark as favourite set'}>
-        <button
-          onClick={() => favourite(s.key)}
-          aria-label={s.favourite ? `${s.name} is your favourite set` : `Mark ${s.name} as your favourite set`}
-          className={s.favourite ? 'text-rose-400' : 'text-zinc-400 hover:text-rose-300'}
-        >
-          <Heart className={`h-3 w-3 ${s.favourite ? 'fill-rose-400' : ''}`} />
-        </button>
-      </Tooltip>
-      {/* Tapping the name marks or unmarks Headliner, as your choice. */}
-      <button
-        onClick={() => setRole(s.key, s.role === 'headliner' ? null : 'headliner')}
-        aria-label={s.role === 'headliner' ? `Unmark ${s.name} as headliner` : `Mark ${s.name} as headliner`}
-        title={s.role === 'headliner' ? 'Headliner (tap to unmark)' : 'Tap to mark as headliner'}
-        className="hover:text-amber-200"
-      >
-        {s.name}
-      </button>
-      {s.role === 'headliner' && <span className="text-[10px] uppercase text-amber-300/80">headliner</span>}
-      {s.asSolo && <span className="text-[10px] uppercase text-violet-300/80">solo</span>}
-      {sets.get(s.key) && <span className="text-[10px] text-zinc-400">{sets.get(s.key)}</span>}
-      <button
-        onClick={() => cycleSet(s.key, s.asSolo)}
-        aria-label={s.set ? `${s.name}: ${SET_LABELS[s.set]}. Change` : `Mark ${s.name} as DJ set or live set`}
-        title={s.set ? `${SET_LABELS[s.set]} (tap to change)` : 'DJ set or live set?'}
-        className={`rounded px-1 text-[10px] uppercase ${s.set ? 'bg-sky-500/15 text-sky-300' : 'text-zinc-400 hover:text-zinc-300'}`}
-      >
-        {s.set === 'dj' ? 'DJ' : s.set === 'live' ? 'Live' : 'set'}
-      </button>
-      {canSolo(s) && !s.asSolo && (
-        <button
-          onClick={() => onChange(toPatch(setSolo(seen, s.key, true)))}
-          aria-label={`${s.name} also played a solo set`}
-          title="Also saw a solo set"
-          className="text-[10px] text-zinc-400 hover:text-zinc-300"
-        >
-          +solo
-        </button>
-      )}
-      {!s.asSolo && (
-        <Tooltip label={pairing && pairing !== s.key ? `B2B with ${pairingName}` : s.b2b?.length ? 'Take out of the B2B' : 'B2B with another act'}>
-          <button
-            onClick={() => b2bTap(s)}
-            aria-label={
-              pairing && pairing !== s.key
-                ? `B2B with ${pairingName}`
-                : s.b2b?.length
-                  ? `Take ${s.name} out of the B2B`
-                  : `Pair ${s.name} B2B with another act`
-            }
-            className={s.b2b?.length || pairing === s.key ? 'text-violet-300' : 'text-zinc-400 hover:text-zinc-300'}
-          >
-            <Link2 className="h-3 w-3" />
-          </button>
-        </Tooltip>
-      )}
-      {!s.asSolo && (
-        <Tooltip label={s.role === 'support' ? 'Move to Artist' : 'Move to Supporting'}>
-          <button
-            onClick={() => setRole(s.key, s.role === 'support' ? null : 'support')}
-            aria-label={s.role === 'support' ? `Move ${s.name} to Artist` : `Move ${s.name} to Supporting`}
-            className="text-zinc-400 hover:text-zinc-200"
-          >
-            {s.role === 'support' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-          </button>
-        </Tooltip>
-      )}
-      <Tooltip label={s.asSolo ? `Remove ${s.name}'s solo set` : `Remove ${s.name}`}>
-        <button
-          onClick={() => (s.asSolo ? onChange(toPatch(setSolo(seen, s.key, false))) : remove(s.key))}
-          aria-label={s.asSolo ? `Remove ${s.name}'s solo set` : `Remove ${s.name}`}
-          className="text-zinc-400 hover:text-zinc-200"
-        >
-          <X className="h-3 w-3" />
-        </button>
-      </Tooltip>
-    </span>
+      {s.favourite && <Heart aria-label="Favourite set of the night" className="h-3 w-3 fill-rose-400 text-rose-400" />}
+      <span>{s.name}</span>
+      {s.role === 'headliner' && <Pill tone="accent">Headliner</Pill>}
+      {s.asSolo && <Pill>Solo</Pill>}
+      {s.set && <Pill>{s.set === 'dj' ? 'DJ' : 'Live'}</Pill>}
+      {sets.get(s.key) && <span className="text-xs text-zinc-400">{sets.get(s.key)}</span>}
+    </button>
   );
   const artists = artistsOf(seen);
   const support = supportOf(seen);
@@ -607,6 +506,7 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
         ))}
       </span>
     );
+  const editingAct = seen.find((s) => s.key === editing);
   return (
     <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900 p-2">
       <div className="flex flex-wrap items-center gap-1.5">
@@ -619,14 +519,6 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
           <span className="w-20 shrink-0 text-[11px] font-semibold text-zinc-400">Supporting</span>
           {seenSlots(support).map(slot)}
         </div>
-      )}
-      {pairingName && (
-        <p className="text-xs text-violet-300">
-          Tap the link on the act {pairingName} played B2B with.{' '}
-          <button onClick={() => setPairing(null)} className="text-zinc-400 hover:underline">
-            Cancel
-          </button>
-        </p>
       )}
       <input
         value={draft}
@@ -676,6 +568,135 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
           ))}
         </div>
       )}
+      <Sheet open={Boolean(editingAct)} title={editingAct?.name ?? ''} onClose={() => setEditing(null)}>
+        {editingAct && (
+          <ActEditor
+            seen={seen}
+            act={editingAct}
+            time={sets.get(editingAct.key)}
+            onChange={onChange}
+            onRemoved={() => setEditing(null)}
+          />
+        )}
+      </Sheet>
+    </div>
+  );
+};
+
+// One act's settings, in the Sheet: billing, set, B2B partners, the solo set, and the favourite. Each change saves at
+// once, through the same helpers the chip used (setSolo, pairB2b, leaveB2b, toSeenInput).
+const ActEditor: React.FC<{
+  seen: Seen[];
+  act: Seen;
+  time?: string;
+  onChange: (seen: SeenPatch) => void;
+  onRemoved: () => void;
+}> = ({ seen, act, time, onChange, onRemoved }) => {
+  const toast = useToast();
+  const [picking, setPicking] = useState(false);
+  const key = act.key;
+  const patchAct = (change: Partial<SeenPatch[number]>) => onChange(toPatch(seen).map((s, i) => (seen[i].key === key ? { ...s, ...change } : s)));
+  const partners = seen.filter((s) => act.b2b?.includes(s.key));
+  const free = seen.filter((s) => s.key !== key && !act.b2b?.includes(s.key));
+  const favouriteElsewhere = seen.find((s) => s.favourite && s.key !== key);
+  const billingHelp = !act.role
+    ? 'No role stated, so it counts as Artist.'
+    : act.roleFrom === 'you'
+      ? 'Your choice.'
+      : act.roleFrom === 'lineup'
+        ? 'From the lineup. Changing it here makes it your choice.'
+        : 'Set on this act. Changing it here makes it your choice.';
+  return (
+    <div className="space-y-5">
+      {time && <p className="text-sm text-zinc-300">Set time: {time}</p>}
+      <section className="space-y-2">
+        <h4 className={sectionTitle}>Billing</h4>
+        <Segmented<'headliner' | 'artist' | 'support'>
+          label="Billing"
+          value={act.role ?? 'artist'}
+          onChange={(v) => patchAct({ role: v === 'artist' ? null : v, roleFrom: 'you' })}
+          options={[
+            { value: 'headliner', label: 'Headliner' },
+            { value: 'artist', label: 'Artist' },
+            { value: 'support', label: 'Supporting' },
+          ]}
+        />
+        <p className="text-xs text-zinc-400">{billingHelp}</p>
+      </section>
+      <section className="space-y-2">
+        <h4 className={sectionTitle}>Set</h4>
+        <Segmented<'dj' | 'live' | 'none'>
+          label="Set"
+          value={act.set ?? 'none'}
+          onChange={(v) => patchAct({ set: v === 'none' ? null : v })}
+          options={[
+            { value: 'dj', label: 'DJ set' },
+            { value: 'live', label: 'Live set' },
+            { value: 'none', label: 'Not sure' },
+          ]}
+        />
+      </section>
+      <section className="space-y-2">
+        <h4 className={sectionTitle}>Played B2B with</h4>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {partners.map((p) => (
+            <span key={p.key} className="inline-flex items-center gap-1 rounded-full bg-zinc-800 py-1 pl-2.5 pr-1 text-sm text-zinc-100">
+              {p.name}
+              <button
+                type="button"
+                onClick={() => onChange(toPatch(leaveB2b(seen, p.key)))}
+                aria-label={`Take ${p.name} out of the B2B`}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-400 hover:text-zinc-200"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          {!partners.length && <span className="text-xs text-zinc-400">No one yet.</span>}
+          {free.length > 0 && (
+            <Button onClick={() => setPicking((p) => !p)} aria-expanded={picking}>
+              Pick an act {picking ? '▴' : '▾'}
+            </Button>
+          )}
+        </div>
+        {picking && (
+          <div className="flex flex-wrap gap-1.5">
+            {free.map((o) => (
+              <Button
+                key={o.key}
+                onClick={() => {
+                  onChange(toPatch(pairB2b(seen, key, o.key)));
+                  setPicking(false);
+                }}
+              >
+                {o.name}
+              </Button>
+            ))}
+          </div>
+        )}
+        <p className="text-xs text-zinc-400">Both still count as seen, each with full credit.</p>
+      </section>
+      {partners.length > 0 && (
+        <Switch checked={Boolean(act.solo)} onChange={(v) => onChange(toPatch(setSolo(seen, key, v)))} label="Also played a solo set" />
+      )}
+      <Switch
+        checked={Boolean(act.favourite)}
+        onChange={(v) => onChange(toPatch(seen).map((s, i) => ({ ...s, favourite: seen[i].key === key ? v : v ? false : s.favourite })))}
+        label="Favourite set of the night"
+        helper={favouriteElsewhere && !act.favourite ? `Only one per event. Turning this on moves it from ${favouriteElsewhere.name}.` : 'Only one per event.'}
+      />
+      <Button
+        variant="danger"
+        className="w-full"
+        onClick={() => {
+          const before = seen;
+          onChange(toPatch(seen.filter((s) => s.key !== key)));
+          onRemoved();
+          toast({ message: `Removed ${act.name}`, action: { label: 'Undo', onClick: () => onChange(toPatch(before)) } });
+        }}
+      >
+        Remove from who you saw
+      </Button>
     </div>
   );
 };
@@ -718,16 +739,6 @@ const Weather: React.FC<{ event: LoggedEvent; busy: boolean; note: string | null
 function candidateLine(c: DetailCandidate): string {
   return [whenLabel(c), c.venue, c.city, c.country].filter(Boolean).join(' · ');
 }
-
-const JOB_STATUS: Record<LookupJob['status'], string> = {
-  queued: 'Waiting to start',
-  running: 'Looking through sources',
-  waiting_quota: 'Waiting for capacity',
-  needs_review: 'Ready to review',
-  no_data: 'No source listed a lineup',
-  confirmed: 'Confirmed',
-  failed: 'Failed',
-};
 
 // A starting vocabulary for Format; your own past values come first.
 const FORMAT_IDEAS = [
@@ -1266,7 +1277,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           {!job && !edition && (
             <div className="space-y-2">
               <p className="text-xs text-zinc-400">
-                Optional. The app looks for who played in Clashfinder, the promoter's page and ticketing listings, cites every act, and never guesses.
+                Find the lineup looks for who played in Clashfinder, the promoter's page and ticketing listings. It cites every act and never guesses. The link is optional.
               </p>
               <input className={input} value={lineupUrl} onChange={(e) => setLineupUrl(e.target.value)} placeholder="Lineup page, if you know one (optional)" />
             </div>
@@ -1280,60 +1291,29 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </p>
           )}
           {job && !edition && (
-            <div className="space-y-2 rounded-xl border border-zinc-800 p-3">
-              <div className="flex items-center gap-2 text-sm text-zinc-200">
-                {isActive(job.status) && <Loader2 className="h-4 w-4 animate-spin text-violet-300" />}
-                {/* Between steps a job is briefly queued again; it is still looking. */}
-                {job.status === 'queued' && job.stage !== 'collect' && !job.nextAttemptAt ? JOB_STATUS.running : JOB_STATUS[job.status]}
-                {job.status === 'needs_review' && ` · ${job.candidate?.performers.length ?? 0} acts`}
-              </div>
-              {job.status === 'waiting_quota' && (
-                <p className="text-xs text-amber-200/90">
-                  {job.waitingReason} It continues on its own
-                  {job.nextAttemptAt ? ` after ${new Date(job.nextAttemptAt).toLocaleString()}` : ''}; what was found so far is kept.
-                </p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                {(job.status === 'needs_review' || job.status === 'no_data') && (
-                  <Button variant="primary" onClick={() => setReviewing(true)}>
-                    {job.status === 'no_data' ? 'Enter acts by hand' : 'Review lineup'}
-                  </Button>
-                )}
-                {(job.status === 'waiting_quota' || job.status === 'failed') && (
-                  <Button
-                    onClick={() =>
-                      run('retry', async () => {
-                        await lineupApi.retry(job.id);
-                        setTimeout(() => void load(), 500);
-                      })
-                    }
-                  >
-                    <RefreshCw className="h-3 w-3" /> Try now
-                  </Button>
-                )}
-                <button onClick={() => setShowLog((s) => !s)} className="text-xs text-zinc-400 hover:text-zinc-300">
-                  {showLog ? 'Hide' : 'Show'} what it did
-                </button>
-              </div>
-              {showLog && (
-                <ol className="max-h-60 space-y-1 overflow-y-auto font-mono text-[11px] text-zinc-400">
-                  {job.log.map((entry, i) => (
-                    <li key={i}>{entry.message}</li>
-                  ))}
-                </ol>
-              )}
-            </div>
+            <LineupProgress
+              job={job}
+              busy={busy === 'retry'}
+              onRetry={() =>
+                void run('retry', async () => {
+                  await lineupApi.retry(job.id);
+                  setTimeout(() => void load(), 500);
+                })
+              }
+              onReview={() => setReviewing(true)}
+            />
           )}
           {(!job || edition || job.status === 'no_data' || job.status === 'failed') && !isActive(job?.status) && (
-            <button
-              onClick={() => run('lineup', async () => (await eventsApi.findLineup(event.id, lineupUrl || undefined)).event)}
-              disabled={busy === 'lineup' || !(event.year || event.startDate)}
-              title={event.year || event.startDate ? undefined : 'Add when it was first'}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/50 px-3 py-1.5 text-sm text-violet-200 hover:bg-violet-950/40 disabled:opacity-40"
-            >
-              {busy === 'lineup' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-              {job ? 'Look up the lineup again' : 'Find who played'}
-            </button>
+            <div className="space-y-1.5">
+              <Button
+                onClick={() => run('lineup', async () => (await eventsApi.findLineup(event.id, lineupUrl || undefined)).event)}
+                disabled={busy === 'lineup' || !(event.year || event.startDate)}
+              >
+                {busy === 'lineup' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                {job ? 'Look up the lineup again' : 'Find the lineup'}
+              </Button>
+              {!(event.year || event.startDate) && <p className="text-xs text-amber-300/90">Add when it was first, then find the lineup.</p>}
+            </div>
           )}
         </section>
 
