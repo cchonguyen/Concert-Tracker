@@ -55,6 +55,7 @@ export async function createStore(opts: { requireSupabase?: boolean } = {}): Pro
 export function createDeps(store: LineupStore): PipelineDeps {
   const apiKey = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_EXTRACTION_MODEL || 'gemini-flash-lite-latest';
+  const multiUser = process.env.MULTI_USER === 'on';
   const geminiReady = Boolean(apiKey && apiKey !== 'MY_GEMINI_API_KEY');
   // SOURCE_CACHE=on keeps Ticketmaster responses 24 hours (responseCache.ts).
   const fetcher = process.env.SOURCE_CACHE === 'on' ? cachingFetcher(createRateLimitedFetcher(), store) : createRateLimitedFetcher();
@@ -76,8 +77,11 @@ export function createDeps(store: LineupStore): PipelineDeps {
           model,
           dailyLimit: Number(process.env.GEMINI_DAILY_LIMIT || 50),
           perMinute: Number(process.env.GEMINI_PER_MINUTE || 10),
-          ownerReserve: Number(process.env.GEMINI_OWNER_RESERVE || 0),
-          userDaily: Number(process.env.GEMINI_USER_DAILY || 0),
+          // With MULTI_USER=on the recommended caps apply unless set: 20 calls
+          // kept for the owner, 5 interactive and 3 background calls per member.
+          ownerReserve: Number(process.env.GEMINI_OWNER_RESERVE || (multiUser ? 20 : 0)),
+          userDaily: Number(process.env.GEMINI_USER_DAILY || (multiUser ? 5 : 0)),
+          userBackfillDaily: Number(process.env.GEMINI_USER_BACKFILL_DAILY || (multiUser ? 3 : 0)),
         })
       : null,
     search,
