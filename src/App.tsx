@@ -275,7 +275,7 @@ export default function App() {
                   <button
                     key={id}
                     onClick={() => openTab(id === 'home' ? 'home' : rememberedPage(id, { canManage }, navStorage()))}
-                    title={label}
+                    aria-label={label}
                     aria-current={active ? 'page' : undefined}
                     className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 font-medium transition-colors sm:px-3 ${
                       active ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
@@ -313,7 +313,6 @@ export default function App() {
                   <button
                     key={p}
                     onClick={() => openTab(p)}
-                    title={PAGE_LABELS[p]}
                     aria-label={PAGE_LABELS[p]}
                     aria-current={active ? 'page' : undefined}
                     className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
