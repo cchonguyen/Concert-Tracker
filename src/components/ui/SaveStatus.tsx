@@ -20,8 +20,7 @@ export function SaveStatus<P>({ track, onRetry, hint = false }: Props<P>) {
   const failed = track.failed.length > 0 && track.inFlight === 0;
   const saving = track.inFlight > 0;
   return (
-    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs">
-      {hint && <span className="text-zinc-400">Changes save as you go</span>}
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
       <span role="status" aria-live="polite" className={`inline-flex items-center gap-1 ${failed ? 'text-rose-300' : 'text-zinc-400'}`}>
         {saving && <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />}
         {!saving && !failed && label && <Check className="h-3 w-3 text-emerald-300" aria-hidden="true" />}
@@ -33,6 +32,7 @@ export function SaveStatus<P>({ track, onRetry, hint = false }: Props<P>) {
           label
         )}
       </span>
+      {hint && <span className="text-zinc-500 max-sm:hidden">{label ? '· ' : ''}Changes save as you go</span>}
     </div>
   );
 }

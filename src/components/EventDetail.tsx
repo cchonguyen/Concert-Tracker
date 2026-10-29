@@ -1,7 +1,7 @@
 import { useVault } from './VaultContext';
 import { noteView } from '../services/vaultSession';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Check, CircleHelp, CloudSun, ExternalLink, FolderCog, Heart, History, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, ChevronDown, CircleHelp, CloudSun, ExternalLink, FolderCog, Heart, History, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import {
   ArtistSuggestion,
   DetailCandidate,
@@ -29,12 +29,12 @@ import { SuggestInput } from './SuggestInput';
 import { SeenGenres } from './SeenGenres';
 import { EventTitle } from './EventTitle';
 import { hasGap, placePatch, type Gap } from '../services/table';
-import { dateText, GAP_QUESTION, GAP_SECTION, thingsLeft } from '../services/poster';
+import { dateText, GAP_SECTION, thingsLeft } from '../services/poster';
 import { rememberSection, sectionOpen } from '../services/sectionMemory';
 import { Popover } from './ui/Popover';
 import { Burst } from './ui/Burst';
 import { burstConfetti } from './ui/confetti';
-import { PosterHeader, ThingsLeft } from './PosterHeader';
+import { GuidedCard, PosterHeader, ThingsLeft } from './PosterHeader';
 import { cityWithRegion } from '../server/events/regions';
 import { attendanceOf, lastDay } from '../server/events/attendance';
 import type { EditionPerformance } from '../server/lineup/types';
@@ -123,6 +123,9 @@ const NotesField: React.FC<{ stored?: string | null; onSave: (v: string | null) 
 const input =
   'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
 const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
+// A card's own title, as in the design: plain words, not small capitals.
+const cardTitle = 'text-base font-semibold text-zinc-100';
+const card = 'scroll-mt-16 space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4';
 
 // A "?" beside a section title, with two or three sentences on how the section works.
 const SectionHelp: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -378,7 +381,7 @@ const WentCard: React.FC<{
   const [offered, setOffered] = useState<Offered[] | null>(null);
   const state = attendanceOf(event, new Date().toISOString().slice(0, 10));
   const seenKeys = new Set(event.seen.map((s) => s.key));
-  const box = 'space-y-2 rounded-xl border p-3 text-sm';
+  const box = 'space-y-2 rounded-xl border p-4 text-sm';
 
   if (offered) {
     const toggle = (o: Offered) =>
@@ -494,51 +497,73 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
     setActive(-1);
   };
   const add = () => addNames(draft.split(',').map((s) => s.trim()).filter(Boolean));
-  const chip = (s: SlotAct<Seen>) => (
-    <button
-      key={s.asSolo ? `${s.key}:solo` : s.key}
-      type="button"
-      onClick={() => setEditing(s.key)}
-      title="Edit this act"
-      className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-zinc-800 px-3 text-sm text-zinc-100 hover:bg-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400 sm:min-h-8"
-    >
-      {s.favourite && <Heart aria-label="Favourite set of the night" className="h-3 w-3 fill-rose-400 text-rose-400" />}
-      <span>{s.name}</span>
-      {s.role === 'headliner' && <Pill tone="accent">Headliner</Pill>}
+  // One act's name and what is stored about it; the name opens its editor.
+  const act = (s: SlotAct<Seen>) => (
+    <React.Fragment key={s.asSolo ? `${s.key}:solo` : s.key}>
+      <button
+        type="button"
+        onClick={() => setEditing(s.key)}
+        title="Edit this act"
+        className="min-h-11 rounded-control text-left text-sm font-medium text-zinc-100 hover:text-violet-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400 sm:min-h-0"
+      >
+        {s.name}
+      </button>
+      {s.set && <Pill tone="info">{s.set === 'dj' ? 'DJ' : 'Live'}</Pill>}
+      {s.role === 'headliner' && <Pill tone="highlight">Headliner</Pill>}
       {s.asSolo && <Pill>Solo</Pill>}
-      {s.set && <Pill>{s.set === 'dj' ? 'DJ' : 'Live'}</Pill>}
-      {sets.get(s.key) && <span className="text-xs text-zinc-400">{sets.get(s.key)}</span>}
-    </button>
+    </React.Fragment>
   );
   const artists = artistsOf(seen);
   const support = supportOf(seen);
-  // A B2B shows as one slot: its acts side by side, joined by "b2b".
-  const slot = (acts: Array<SlotAct<Seen>>) =>
-    acts.length === 1 ? (
-      chip(acts[0])
-    ) : (
-      <span key={slotId(acts)} className="inline-flex flex-wrap items-center gap-1 rounded-full border border-violet-500/30 p-0.5">
-        {acts.map((a, i) => (
-          <React.Fragment key={a.key}>
-            {i > 0 && <span className="text-[10px] font-semibold uppercase text-violet-300/80">b2b</span>}
-            {chip(a)}
-          </React.Fragment>
-        ))}
-      </span>
+  // One row per slot: a B2B shows its acts in one row, joined by "B2B". The heart and the set time are the slot's.
+  const slot = (acts: Array<SlotAct<Seen>>) => {
+    const favourite = acts.some((a) => a.favourite);
+    const time = acts.map((a) => sets.get(a.key)).find(Boolean);
+    const untyped = acts.find((a) => !a.set);
+    return (
+      <li
+        key={slotId(acts)}
+        className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 ${favourite ? 'border-rose-400/50 bg-rose-500/[0.06]' : 'border-zinc-800 bg-zinc-950/40'}`}
+      >
+        <Heart
+          aria-label={favourite ? 'Favourite set of the night' : undefined}
+          aria-hidden={favourite ? undefined : true}
+          className={`h-4 w-4 shrink-0 ${favourite ? 'fill-rose-400 text-rose-400' : 'text-zinc-700'}`}
+        />
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          {acts.map((a, i) => (
+            <React.Fragment key={a.key}>
+              {i > 0 && <Pill tone="accent">B2B</Pill>}
+              {act(a)}
+            </React.Fragment>
+          ))}
+        </span>
+        {time && <span className="shrink-0 text-xs tabular-nums text-zinc-400">{time}</span>}
+        {!time && untyped && (
+          <button
+            type="button"
+            onClick={() => setEditing(untyped.key)}
+            className="group/type flex min-h-11 shrink-0 items-center sm:min-h-0"
+          >
+            <span className="rounded-full border border-amber-400/40 px-2 py-0.5 text-xs text-amber-300 group-hover/type:bg-amber-400/10">Set type?</span>
+          </button>
+        )}
+      </li>
     );
+  };
   const editingAct = seen.find((s) => s.key === editing);
   return (
-    <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900 p-2">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="w-20 shrink-0 text-[11px] font-semibold text-zinc-400">Artist</span>
-        {seenSlots(artists).map(slot)}
-        {!artists.length && <span className="text-xs text-zinc-400">None yet</span>}
-      </div>
+    <div className="space-y-2">
+      {artists.length > 0 ? (
+        <ul className="space-y-1.5" aria-label="Artists">{seenSlots(artists).map(slot)}</ul>
+      ) : (
+        <p className="text-xs text-zinc-400">None yet. Add who you saw below.</p>
+      )}
       {support.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="w-20 shrink-0 text-[11px] font-semibold text-zinc-400">Supporting</span>
-          {seenSlots(support).map(slot)}
-        </div>
+        <>
+          <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Supporting</p>
+          <ul className="space-y-1.5" aria-label="Supporting">{seenSlots(support).map(slot)}</ul>
+        </>
       )}
       <input
         value={draft}
@@ -564,7 +589,7 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
         onBlur={add}
         placeholder={seen.length ? 'Add another' : 'Type a name and press Enter'}
         aria-label="Add an act you saw"
-        className="w-full bg-transparent px-1.5 py-1 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+        className="w-full rounded-lg border border-dashed border-zinc-700 bg-transparent px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-violet-500 focus:outline-none"
       />
       {matches.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 px-1.5 pb-1" role="listbox" aria-label="Acts you've entered before">
@@ -1046,6 +1071,15 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   };
   // The guided card asks the question for the gap the strip's Next went to, until that gap is filled.
   const [guide, setGuide] = useState<Gap | null>(null);
+  // The Your night summary: who you went with and what the ticket cost, when you've said. Locked names stay hidden.
+  const night = [
+    !event.peopleLocked && event.companions.length ? `With ${event.companions.join(', ')}` : '',
+    event.ticketPrice != null ? `Ticket ${event.ticketPrice}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const current = guide && gapsLeft.includes(guide) ? guide : (gapsLeft[0] ?? null);
+  const at = current ? gapsLeft.indexOf(current) : -1;
   const [lineupOpen] = useState(() => sectionOpen('lineup', true));
   const [notesOpen] = useState(() => sectionOpen('notes', true));
   // While the lineup review is open, Escape and an outside press do not close the panel behind it.
@@ -1055,71 +1089,28 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
       rows={rows}
       openId={event.id}
       closeDisabled={reviewing}
-      onGo={(id) => void goTo(id)}
-      onClose={() => void requestClose()}
-    >
-      <FlashContext.Provider value={flashing}>
-        <SaveStatus track={track} onRetry={retrySaves} hint={hint} />
+      status={<SaveStatus track={track} onRetry={retrySaves} hint={hint} />}
+      hero={
         <PosterHeader
           title={eventTitle(event)}
-          dateText={dateText(event)}
+          label={[dateText(event), event.venue, cityWithRegion(event.city, event.region)].filter(Boolean).join(' · ') || 'No date yet'}
           event={event}
           state={state}
           seen={event.seen}
           cited={edition ? edition.performances.filter((p) => p.status !== 'cancelled').map((p) => p.artistKey) : []}
+          confirmedBy={confirmations.length}
+          onRate={(rating) => void save({ rating })}
         />
-        <ThingsLeft gaps={gapsLeft} onNext={showGap} />
-        {guide && gapsLeft.includes(guide) && (
-          <div role="note" className="flex items-center justify-between gap-3 rounded-xl border border-violet-500/40 bg-violet-950/30 p-3 text-sm text-violet-100">
-            <span>{GAP_QUESTION[guide]}</span>
-            <button type="button" onClick={() => setGuide(null)} className="inline-flex h-11 items-center rounded-control px-2 text-zinc-300 hover:text-zinc-100 sm:h-9">
-              Done
-            </button>
-          </div>
-        )}
-        <div className="flex items-start gap-3">
-          <Field label="Event" field="name" value={event.name} onSave={(v) => save({ name: v })} className="flex-1" />
-        </div>
-        {event.input && event.input !== event.name && <p className="-mt-4 text-xs text-zinc-400">You typed: “{event.input}”</p>}
-        <div className="-mt-2 space-y-1">
-          <div className="flex items-end gap-2">
-            <Field
-              label="Series"
-              field="series"
-              value={event.series}
-              placeholder="Festival or tour it's one year of, e.g. EDC Las Vegas"
-              suggestions={seriesOffers(event, others)}
-              onSave={(v) => save({ series: text(v), ...(text(v) ? {} : { weekend: null }) })}
-              className="flex-1"
-            />
-            {event.series && (
-              <div className="space-y-1">
-                <span className="block text-[11px] font-semibold text-zinc-400">Weekend</span>
-                <Segmented<string>
-                  label="Weekend"
-                  value={event.weekend ? String(event.weekend) : ''}
-                  onChange={(v) => save({ weekend: v ? Number(v) : null })}
-                  options={[
-                    { value: '', label: weekendFromName(event.name) ? `Not set (name says ${weekendFromName(event.name)})` : 'Only one' },
-                    ...[1, 2, 3, 4].map((w) => ({ value: String(w), label: `Weekend ${w}` })),
-                  ]}
-                />
-              </div>
-            )}
-          </div>
-          {(event.series || eventTitle(event) !== event.name) && (
-            <p className="text-[11px] text-zinc-400">
-              Shows as “<EventTitle event={event} />”
-              {(() => {
-                const n = seriesList(events).find((g) => g.name === event.series)?.events.length ?? 1;
-                return n > 1 ? ` · ${n} editions in your log` : '';
-              })()}
-            </p>
-          )}
-        </div>
+      }
+      onGo={(id) => void goTo(id)}
+      onClose={() => void requestClose()}
+    >
+      <FlashContext.Provider value={flashing}>
+        <ThingsLeft gaps={gapsLeft} current={current} onPick={showGap} onNext={() => showGap(gapsLeft[(at + 1) % gapsLeft.length])} />
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
-        <div className="grid min-w-0 gap-6 @[760px]:grid-cols-[1.15fr_1fr] @[760px]:items-start">
-          <div className="min-w-0 space-y-6">
+        <div className="grid min-w-0 gap-5 @[760px]:grid-cols-[1.15fr_1fr] @[760px]:items-start">
+          <div className="min-w-0 space-y-5">
+        {current && <GuidedCard gap={current} index={at + 1} total={gapsLeft.length} onShow={() => showGap(current)} />}
         <WentCard
           event={event}
           lineupActs={lineupActs}
@@ -1130,11 +1121,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         />
 
         {/* Who you saw */}
-        <section id="who-you-saw" className="scroll-mt-16 space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-          <div className="flex items-center gap-1">
-            <h3 className={sectionTitle}>Who you saw</h3>
+        <section id="who-you-saw" className={card}>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className={cardTitle}>
+              Who you saw{event.seen.length > 0 && <span className="font-normal text-zinc-400"> · {event.seen.length}</span>}
+            </h3>
             <SectionHelp label="Who you saw">
-              Each act is a chip. Tap one to set its billing, set type, B2B partners and favourite set. Acts you add here count as seen.
+              Each act is a row. Tap its name to set its billing, set type, B2B partners and favourite set. Acts you add here count as seen.
             </SectionHelp>
           </div>
           <SeenActs seen={event.seen} sets={sets} past={pastArtists} onChange={(seen) => save({ seen })} />
@@ -1191,17 +1184,128 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           )}
         </section>
 
+        {/* Stage 2: the lineup */}
+        <details
+          id="lineup"
+          open={lineupOpen}
+          onToggle={(e) => rememberSection('lineup', e.currentTarget.open)}
+          className={`group ${card}`}
+        >
+          <summary className={`${cardTitle} flex cursor-pointer list-none items-center justify-between gap-2`}>
+            Full lineup
+            <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open:rotate-180" aria-hidden="true" />
+          </summary>
+          {!job && !edition && (
+            <div className="space-y-2">
+              <p className="text-xs text-zinc-400">
+                Find the lineup looks for who played in Clashfinder, the promoter's page and ticketing listings. It cites every act and never guesses. The link is optional.
+              </p>
+              <input className={input} value={lineupUrl} onChange={(e) => setLineupUrl(e.target.value)} placeholder="Lineup page, if you know one (optional)" />
+            </div>
+          )}
+          {edition && (
+            <p className="text-sm text-zinc-300">
+              {lineupActs.length} acts confirmed, each with a source.
+              {job && (
+                <Button className="ml-2" onClick={() => setReviewing(true)}>Edit lineup</Button>
+              )}
+            </p>
+          )}
+          {job && !edition && (
+            <LineupProgress
+              job={job}
+              busy={busy === 'retry'}
+              onRetry={() =>
+                void run('retry', async () => {
+                  await lineupApi.retry(job.id);
+                  setTimeout(() => void load(), 500);
+                })
+              }
+              onReview={() => setReviewing(true)}
+            />
+          )}
+          {(!job || edition || job.status === 'no_data' || job.status === 'failed') && !isActive(job?.status) && (
+            <div className="space-y-1.5">
+              <Button
+                onClick={() => run('lineup', async () => (await eventsApi.findLineup(event.id, lineupUrl || undefined)).event)}
+                disabled={busy === 'lineup' || !(event.year || event.startDate)}
+              >
+                {busy === 'lineup' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                {job ? 'Look up the lineup again' : 'Find the lineup'}
+              </Button>
+              {!(event.year || event.startDate) && <p className="text-xs text-amber-300/90">Add when it was first, then find the lineup.</p>}
+            </div>
+          )}
+        </details>
+
+        {/* What it's called */}
+        <section id="name-series" className={card}>
+          <h3 className={cardTitle}>Name and series</h3>
+          <div className="flex items-start gap-3">
+            <Field label="Event" field="name" value={event.name} onSave={(v) => save({ name: v })} className="flex-1" />
           </div>
-          <div className="min-w-0 space-y-6">
+          {event.input && event.input !== event.name && <p className="text-xs text-zinc-400">You typed: “{event.input}”</p>}
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-end gap-2">
+              <Field
+                label="Series"
+                field="series"
+                value={event.series}
+                placeholder="Festival or tour it's one year of, e.g. EDC Las Vegas"
+                suggestions={seriesOffers(event, others)}
+                onSave={(v) => save({ series: text(v), ...(text(v) ? {} : { weekend: null }) })}
+                className="flex-1"
+              />
+              {event.series && (
+                <div className="space-y-1">
+                  <span className="block text-[11px] font-semibold text-zinc-400">Weekend</span>
+                  <Segmented<string>
+                    label="Weekend"
+                    value={event.weekend ? String(event.weekend) : ''}
+                    onChange={(v) => save({ weekend: v ? Number(v) : null })}
+                    options={[
+                      { value: '', label: weekendFromName(event.name) ? `Not set (name says ${weekendFromName(event.name)})` : 'Only one' },
+                      ...[1, 2, 3, 4].map((w) => ({ value: String(w), label: `Weekend ${w}` })),
+                    ]}
+                  />
+                </div>
+              )}
+            </div>
+            {(event.series || eventTitle(event) !== event.name) && (
+              <p className="text-[11px] text-zinc-400">
+                Shows as “<EventTitle event={event} />”
+                {(() => {
+                  const n = seriesList(events).find((g) => g.name === event.series)?.events.length ?? 1;
+                  return n > 1 ? ` · ${n} editions in your log` : '';
+                })()}
+              </p>
+            )}
+          </div>
+        </section>
+
+          </div>
+          <div className="min-w-0 space-y-5">
         {/* Stage 1: when and where */}
-        <section id="when-where" className="scroll-mt-16 space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-          <div className="flex items-center gap-1">
-            <h3 className={sectionTitle}>When and where</h3>
-            <SectionHelp label="When and where">
-              Check details searches for this date and place and lists what it finds below. Nothing you typed changes until you tap Use on a suggestion.
-            </SectionHelp>
+        <section id="when-where" className={card}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-0.5">
+              <h3 className={cardTitle}>When and where</h3>
+              <SectionHelp label="When and where">
+                Check details searches for this date and place and lists what it finds below. Nothing you typed changes until you tap Use on a suggestion.
+              </SectionHelp>
+            </div>
+            <button
+              type="button"
+              onClick={() => void run('research', () => eventsApi.research(event.id))}
+              disabled={busy === 'research' || busy === 'research-gemini'}
+              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-zinc-700 px-2.5 text-xs text-zinc-200 hover:border-violet-500 hover:text-violet-200 disabled:opacity-50 sm:min-h-8"
+            >
+              {busy === 'research' ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
+              Check details
+            </button>
           </div>
           <CheckDetails
+            inline
             busy={busy === 'research'}
             geminiBusy={busy === 'research-gemini'}
             checkedAt={details.checkedAt}
@@ -1312,65 +1416,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           <Weather event={event} busy={busy === 'weather'} note={weatherNote} onLookUp={lookUpWeather} />
         </section>
 
-        {/* Stage 2: the lineup */}
-        <details
-          id="lineup"
-          open={lineupOpen}
-          onToggle={(e) => rememberSection('lineup', e.currentTarget.open)}
-          className="scroll-mt-16 space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
-        >
-          <summary className={`${sectionTitle} cursor-pointer list-none`}>Full lineup</summary>
-          {!job && !edition && (
-            <div className="space-y-2">
-              <p className="text-xs text-zinc-400">
-                Find the lineup looks for who played in Clashfinder, the promoter's page and ticketing listings. It cites every act and never guesses. The link is optional.
-              </p>
-              <input className={input} value={lineupUrl} onChange={(e) => setLineupUrl(e.target.value)} placeholder="Lineup page, if you know one (optional)" />
-            </div>
-          )}
-          {edition && (
-            <p className="text-sm text-zinc-300">
-              {lineupActs.length} acts confirmed, each with a source.
-              {job && (
-                <Button className="ml-2" onClick={() => setReviewing(true)}>Edit lineup</Button>
-              )}
-            </p>
-          )}
-          {job && !edition && (
-            <LineupProgress
-              job={job}
-              busy={busy === 'retry'}
-              onRetry={() =>
-                void run('retry', async () => {
-                  await lineupApi.retry(job.id);
-                  setTimeout(() => void load(), 500);
-                })
-              }
-              onReview={() => setReviewing(true)}
-            />
-          )}
-          {(!job || edition || job.status === 'no_data' || job.status === 'failed') && !isActive(job?.status) && (
-            <div className="space-y-1.5">
-              <Button
-                onClick={() => run('lineup', async () => (await eventsApi.findLineup(event.id, lineupUrl || undefined)).event)}
-                disabled={busy === 'lineup' || !(event.year || event.startDate)}
-              >
-                {busy === 'lineup' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                {job ? 'Look up the lineup again' : 'Find the lineup'}
-              </Button>
-              {!(event.year || event.startDate) && <p className="text-xs text-amber-300/90">Add when it was first, then find the lineup.</p>}
-            </div>
-          )}
-        </details>
-
         {/* Your details */}
         <details
           id="your-notes"
           open={notesOpen}
           onToggle={(e) => rememberSection('notes', e.currentTarget.open)}
-          className="scroll-mt-16 space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
+          className={`group ${card}`}
         >
-          <summary className={`${sectionTitle} cursor-pointer list-none`}>Your notes</summary>
+          <summary className={`${cardTitle} flex cursor-pointer list-none items-center justify-between gap-2`}>
+            <span className="flex-1">Your night</span>
+            {night && <span className="truncate text-sm font-normal text-zinc-400">{night}</span>}
+            <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open:rotate-180" aria-hidden="true" />
+          </summary>
           <label className="block space-y-1">
             <span className="text-[11px] font-semibold text-zinc-400">Format</span>
             <ChipInput
