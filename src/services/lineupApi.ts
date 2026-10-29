@@ -97,6 +97,7 @@ export const eventsApi = {
   erase: (id: string) => request<unknown>(`/api/events/${id}/erase`, post()),
   emptyTrash: () => request<{ removed: number }>('/api/events/trash/empty', post()).then((r) => r.removed),
   activity: (limit = 200) => request<{ activity: ActivityEntry[] }>(`/api/activity?limit=${limit}`).then((r) => r.activity),
+  undo: (id: string) => request<unknown>(`/api/activity/${id}/undo`, post()),
   research: (id: string, useGemini = false) =>
     request<{ event: LoggedEvent }>(`/api/events/${id}/details`, post({ useGemini })).then((r) => r.event),
   weather: (id: string) => request<{ event: LoggedEvent; note?: string }>(`/api/events/${id}/weather`, post()),
