@@ -25,6 +25,9 @@ import { TimelineTab } from './components/timeline/TimelineTab';
 import { useTheme } from './components/ThemePicker';
 import { MenuButton } from './components/MenuButton';
 import { QuickAdd, QuickAddButton, QuickAddFab, SavedToast } from './components/QuickAdd';
+import { DataPanel, exportCsv } from './components/DataActions';
+import { ListImport } from './components/ListImport';
+import { SheetSync } from './components/SheetSync';
 import { ManageTarget, ManageView } from './components/ManageView';
 import { MeProvider, type Me } from './components/MeContext';
 import { NoticeModal } from './components/NoticeModal';
@@ -87,6 +90,13 @@ export default function App() {
   const [saved, setSaved] = useState<LoggedEvent | null>(null);
   const dismissSaved = useCallback(() => setSaved(null), []);
   const closeQuickAdd = useCallback(() => setQuickAdd(false), []);
+  // Import and Google Sheets open from the Menu, the Table and Quick add alike.
+  // Back from Google's sign-in (?sheets=...) opens Sheets straight away.
+  const [sheetsNotice] = useState(() => new URLSearchParams(window.location.search).get('sheets'));
+  const [dataPanel, setDataPanel] = useState<DataPanel | null>(() => (sheetsNotice ? 'sheets' : null));
+  const openImport = () => setDataPanel('import');
+  const openSheets = () => setDataPanel('sheets');
+  const closeDataPanel = useCallback(() => setDataPanel(null), []);
 
   // N opens Quick add, unless you are typing or another panel is open.
   useEffect(() => {
@@ -251,8 +261,12 @@ export default function App() {
               theme={theme}
               canMembers={me.multiUser && me.role === 'owner'}
               canAccount={me.multiUser}
+              canSheets={me.role === 'owner'}
               onMembers={() => setMembers(true)}
               onAccount={() => setAccount(true)}
+              onImport={openImport}
+              onExport={() => exportCsv(events, editions)}
+              onSheets={openSheets}
             />
           </div>
         </div>
@@ -312,15 +326,13 @@ export default function App() {
             events={events}
             lineups={lineups}
             editions={editions}
-            imports={imports}
             onOpen={setSelectedId}
             onChanged={upsert}
             onCaptured={handleCaptured}
             onManage={openManage}
-            onImported={() => {
-              void refresh();
-              importsApi.list().then(setImports).catch(() => undefined);
-            }}
+            onImport={openImport}
+            onSheets={openSheets}
+            onRefresh={() => void refresh()}
           />
         )}
         {shown === 'timeline' && <TimelineTab events={events} lineups={lineups} editions={editions} onOpen={setSelectedId} onOpenTable={openTable} />}
@@ -359,11 +371,9 @@ export default function App() {
         open={quickAdd}
         onClose={closeQuickAdd}
         emailCheck={emailCheck}
-        events={events}
-        imports={imports}
-        onImported={() => {
-          void refresh();
-          importsApi.list().then(setImports).catch(() => undefined);
+        onImport={() => {
+          setQuickAdd(false);
+          openImport();
         }}
         onReviewEmail={() => setReviewing(true)}
         onCaptured={(event) => {
@@ -373,6 +383,19 @@ export default function App() {
         }}
       />
       {saved && <SavedToast event={saved} onOpen={setSelectedId} onDismiss={dismissSaved} />}
+
+      {dataPanel === 'import' && (
+        <ListImport
+          events={events}
+          imports={imports}
+          onDone={() => {
+            void refresh();
+            importsApi.list().then(setImports).catch(() => undefined);
+          }}
+          onClose={closeDataPanel}
+        />
+      )}
+      {dataPanel === 'sheets' && <SheetSync notice={sheetsNotice} onClose={closeDataPanel} />}
 
       {reviewing && (
         <ImportReview
