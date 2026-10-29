@@ -67,4 +67,7 @@ export interface HistoryEntry {
   events: Array<{ id: string; before: Record<string, unknown>; after: Record<string, unknown> }>;
   createdAt: string;
   undoneAt?: string;
+  // Made in the browser for a change the server cannot read (a person in the
+  // vault): it has no stored entry to undo, and its events changed.
+  eventsChanged?: boolean;
 }

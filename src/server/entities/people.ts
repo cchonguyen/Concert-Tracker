@@ -74,7 +74,7 @@ export function peopleRouter(store: LineupStore): Router {
         }));
       const plain = entities
         .filter((e) => e.kind === 'person' && !e.nameEncrypted)
-        .map((e) => ({ id: e.id, name: e.name, mergedIntoId: e.mergedIntoId, aliases: tokensOf(aliases, e.id) }));
+        .map((e) => ({ id: e.id, name: e.name, attrs: e.attrs, mergedIntoId: e.mergedIntoId, aliases: tokensOf(aliases, e.id) }));
       return { people, plain };
     }),
   );

@@ -9,6 +9,7 @@ import {
   type VaultKeys,
   type VaultMaterial,
 } from './vault';
+import { decryptBundle, type ExportBundle } from './exportBundle';
 
 // The vault's state machine, with no React in it so tests can drive it:
 //   unavailable (single-owner install) | loading -> off -> unlocked (set up)
@@ -87,9 +88,20 @@ export class VaultSession {
     this.material = updated;
   }
 
+  // The unlocked keys, for the people book; null while locked.
+  get unlockedKeys(): VaultKeys | null {
+    return this.keys;
+  }
+
   async encryptNote(plain: string): Promise<string> {
     if (!this.keys) throw new Error('Unlock the vault to save notes.');
     return encryptField(this.keys, plain);
+  }
+
+  // The server's export with notes and people opened, for download. Needs the keys.
+  async openExport(bundle: ExportBundle): Promise<ExportBundle> {
+    if (!this.keys) throw new Error('Unlock the vault to download a readable copy.');
+    return decryptBundle(bundle, this.keys);
   }
 
   // A stored note as shown: plaintext as is, ciphertext decrypted, or null while locked.

@@ -1,6 +1,7 @@
 import type { Edition, LookupJob, SourceType } from '../server/lineup/types';
 import type { ShareSettings } from '../server/share/types';
 import type { NameIndex } from '../server/entities/link';
+import { norm } from './listImport';
 import type { Entity, EntityAlias, EntityLink, HistoryEntry, LinkRole } from '../server/entities/types';
 import type { ConfirmRequest } from '../server/lineup/learning';
 import type { DetailCandidate, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
@@ -10,6 +11,7 @@ import type { ArtistSuggestion } from '../server/events/artists';
 import type { LineupFacts } from '../server/events/scale';
 import type { CityPoint, PlaceGuess } from '../server/events/place';
 import type { ArtistGenres, KnownGenre } from '../server/events/genreTypes';
+import { dehydrateBody, hydrateEvent, type PeopleBook, type PeopleServer } from './vaultPeople';
 
 export type {
   LookupJob,
@@ -33,7 +35,37 @@ export interface LineupStatus {
   quota: { used: number; limit: number; exhaustedUntil?: string } | null;
 }
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
+// With a vault on, the people who went travel as encrypted records. While the
+// page has the vault, names in outgoing events become person ids and incoming
+// events get their names back; without the keys the people are left out and
+// the event is marked (see services/vaultPeople.ts). Set by VaultProvider.
+let peopleHooks: { book: PeopleBook | null } | null = null;
+export const setPeopleHooks = (hooks: { book: PeopleBook | null } | null): void => {
+  peopleHooks = hooks;
+};
+
+async function outgoing(init?: RequestInit): Promise<RequestInit | undefined> {
+  if (!peopleHooks || typeof init?.body !== 'string' || !init.body.includes('"companions"')) return init;
+  const body = JSON.parse(init.body);
+  for (const holder of [body, body?.patch, body?.event]) {
+    if (holder && Array.isArray(holder.companions) && holder.companions.length) Object.assign(holder, await dehydrateBody(holder, peopleHooks.book));
+  }
+  return { ...init, body: JSON.stringify(body) };
+}
+
+function incoming<T>(data: T): T {
+  if (!peopleHooks) return data;
+  const walk = (v: any): any => {
+    if (Array.isArray(v)) return v.map(walk);
+    if (!v || typeof v !== 'object') return v;
+    if (typeof v.id === 'string' && Array.isArray(v.companions) && Array.isArray(v.personIds)) return hydrateEvent(v, peopleHooks!.book);
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
+  };
+  return walk(data);
+}
+
+async function request<T>(url: string, rawInit?: RequestInit): Promise<T> {
+  const init = await outgoing(rawInit);
   const res = await fetch(url, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
@@ -44,7 +76,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     throw Object.assign(new Error(data.error || `Request failed with HTTP ${res.status}`), { retry: data.retry === true, conflict: data.conflict });
   }
-  return data as T;
+  return incoming(data) as T;
 }
 
 const post = (body?: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body ?? {}) });
@@ -193,6 +225,13 @@ export const vaultApi = {
   turnOn: (material: VaultMaterial) => request<unknown>('/api/vault', { method: 'PUT', body: JSON.stringify({ material }) }),
   rewrap: (material: VaultMaterial) => request<unknown>('/api/vault/rewrap', post({ material })),
 };
+export const peopleApi: PeopleServer = {
+  list: () => request('/api/people'),
+  put: (id, body) => request(`/api/people/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  merge: (id, into) => request(`/api/people/${id}/merge`, post({ into })),
+  convert: (id, to) => request(`/api/people/${id}/convert`, post({ to })),
+  finish: () => request('/api/people/finish', post()),
+};
 export const accountApi = {
   exportUrl: '/api/account/export',
   remove: (confirm: string) => request<unknown>('/api/account', { method: 'DELETE', body: JSON.stringify({ confirm }) }),
@@ -216,9 +255,49 @@ export const genresApi = {
 // The records behind your events' names (src/server/entities/).
 // Manage: the records behind your events' names. Every change returns its
 // history entry, which undo takes back.
+// Manage with a vault on: a person whose name is encrypted is shown, renamed,
+// merged and given AKAs through the people book (the server cannot read the
+// name); everything else goes to the server as before.
+const TOKEN = /^[0-9a-f]{64}$/;
+const vaultPerson = (id: string) => peopleHooks?.book?.get(id);
+const noEntry = (operation: HistoryEntry['operation'], summary: string, id: string, eventsChanged = false): HistoryEntry => ({
+  id: '',
+  operation,
+  summary,
+  sourceEntityId: id,
+  entities: { before: [], after: [] },
+  touched: [],
+  aliases: { before: [], after: [] },
+  links: { before: [], after: [] },
+  events: [],
+  createdAt: new Date().toISOString(),
+  eventsChanged,
+});
+
+export function openPeople(data: { entities: Entity[]; aliases: EntityAlias[]; links: EntityLink[]; duplicates: string[][] }) {
+  if (!data.entities.some((e) => e.kind === 'person' && e.nameEncrypted)) return data;
+  const book = peopleHooks?.book ?? null;
+  const entities = data.entities.map((e): Entity => {
+    if (e.kind !== 'person' || !e.nameEncrypted) return e;
+    const p = book?.get(e.id);
+    if (!p) return { ...e, name: 'Locked person', nameNormalized: 'locked person', attrs: {} };
+    const { first, last, note } = p.details;
+    return { ...e, name: p.name, nameNormalized: norm(p.name), attrs: { ...(first ? { first } : {}), ...(last ? { last } : {}), ...(note ? { note } : {}) } };
+  });
+  const ids = new Set(entities.filter((e) => e.kind === 'person' && e.nameEncrypted).map((e) => e.id));
+  const aliases = data.aliases.filter((a) => !(a.kind === 'person' && TOKEN.test(a.aliasNormalized) && ids.has(a.entityId)));
+  for (const id of ids) for (const a of book?.get(id)?.details.aliases ?? []) aliases.push({ entityId: id, kind: 'person', aliasNormalized: norm(a) });
+  return { ...data, entities, aliases };
+}
+
+const renameOnServer = (id: string, name: string) =>
+  request<{ entry: HistoryEntry }>(`/api/entities/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }).then((r) => r.entry);
+const updatePersonOnServer = (id: string, details: { first: string; last?: string; note?: string }) =>
+  request<{ entry: HistoryEntry }>(`/api/entities/${id}/person`, { method: 'PATCH', body: JSON.stringify(details) }).then((r) => r.entry);
+
 export const entitiesApi = {
   names: () => request<{ names: NameIndex }>('/api/entities/names').then((r) => r.names),
-  list: () => request<{ entities: Entity[]; aliases: EntityAlias[]; links: EntityLink[]; duplicates: string[][] }>('/api/entities'),
+  list: () => request<{ entities: Entity[]; aliases: EntityAlias[]; links: EntityLink[]; duplicates: string[][] }>('/api/entities').then(openPeople),
   history: () => request<{ history: HistoryEntry[] }>('/api/entities/history').then((r) => r.history),
   // Data health: venues whose events use more than one city, and look-alikes.
   health: () =>
@@ -233,17 +312,47 @@ export const entitiesApi = {
       post(),
     ),
   createOrganization: (name: string) => request<{ entity: Entity; entry: HistoryEntry }>('/api/entities', post({ kind: 'organization', name })),
-  rename: (id: string, name: string) =>
-    request<{ entry: HistoryEntry }>(`/api/entities/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }).then((r) => r.entry),
-  updatePerson: (id: string, details: { first: string; last?: string; note?: string }) =>
-    request<{ entry: HistoryEntry }>(`/api/entities/${id}/person`, { method: 'PATCH', body: JSON.stringify(details) }).then((r) => r.entry),
+  rename: async (id: string, name: string) => {
+    const person = vaultPerson(id);
+    if (person) {
+      await peopleHooks!.book!.rename(id, name);
+      return noEntry('rename', `Renamed ${person.name} to ${name.trim()}`, id);
+    }
+    return renameOnServer(id, name);
+  },
+  updatePerson: async (id: string, details: { first: string; last?: string; note?: string }) => {
+    const person = vaultPerson(id);
+    if (!person) return updatePersonOnServer(id, details);
+    const book = peopleHooks!.book!;
+    const name = [details.first, details.last].map((x) => x?.trim()).filter(Boolean).join(' ').replace(/\s+/g, ' ');
+    if (name !== person.name) await book.rename(id, name);
+    await book.setDetails(id, { first: details.first.trim(), last: details.last?.trim() || undefined, note: details.note?.trim() || undefined });
+    return noEntry('details', `Updated ${name}'s details`, id);
+  },
   updateAttrs: (id: string, values: Record<string, string>) =>
     request<{ entry: HistoryEntry }>(`/api/entities/${id}/attrs`, { method: 'PATCH', body: JSON.stringify(values) }).then((r) => r.entry),
+  merge: async (id: string, into: string) => {
+    const book = peopleHooks?.book;
+    if (book?.get(id) && book.get(into)) {
+      const [from, target] = [book.get(id)!.name, book.get(into)!.name];
+      await book.merge(id, into);
+      return noEntry('merge', `Merged ${from} into ${target}`, id, true);
+    }
+    return request<{ entry: HistoryEntry }>(`/api/entities/${id}/merge`, post({ into })).then((r) => r.entry);
+  },
+  addAlias: async (id: string, name: string) => {
+    const person = vaultPerson(id);
+    if (!person) return request<{ entry: HistoryEntry }>(`/api/entities/${id}/aliases`, post({ name })).then((r) => r.entry);
+    await peopleHooks!.book!.addAlias(id, name);
+    return noEntry('alias-add', `Added "${name.trim()}" as an AKA of ${person.name}`, id);
+  },
+  removeAlias: async (id: string, name: string) => {
+    const person = vaultPerson(id);
+    if (!person) return request<{ entry: HistoryEntry }>(`/api/entities/${id}/aliases/remove`, post({ name })).then((r) => r.entry);
+    await peopleHooks!.book!.removeAlias(id, name);
+    return noEntry('alias-remove', `Removed the AKA "${name.trim()}" from ${person.name}`, id);
+  },
   createLabel: (name: string, group?: string) => request<{ entity: Entity; entry: HistoryEntry }>('/api/entities', post({ kind: 'label', name, group })),
-  merge: (id: string, into: string) => request<{ entry: HistoryEntry }>(`/api/entities/${id}/merge`, post({ into })).then((r) => r.entry),
-  addAlias: (id: string, name: string) => request<{ entry: HistoryEntry }>(`/api/entities/${id}/aliases`, post({ name })).then((r) => r.entry),
-  removeAlias: (id: string, name: string) =>
-    request<{ entry: HistoryEntry }>(`/api/entities/${id}/aliases/remove`, post({ name })).then((r) => r.entry),
   link: (id: string, to: string, role: LinkRole) =>
     request<{ entry: HistoryEntry }>(`/api/entities/${id}/links`, post({ to, role })).then((r) => r.entry),
   unlink: (id: string, to: string, role: LinkRole) =>
