@@ -15,6 +15,7 @@ import type { MemberDirectory } from './auth/members';
 import { memberMiddleware, requestScopedStore } from './auth/requestScope';
 import { accountRouter, membersRouter, singleOwnerMeRouter } from './auth/routes';
 import { vaultGuard, vaultRouter } from './auth/vault';
+import { peopleRouter } from './entities/people';
 
 // The /api routes, shared by the Node server (server.ts) and the Cloudflare
 // Worker (worker/index.ts). Static files and the job runner are wired by each host.
@@ -45,6 +46,7 @@ export function createApiApp(
     // Your data: the vault's key material, a plaintext-note guard, export and deletion.
     app.use('/api', vaultGuard(lineupDeps.store));
     app.use('/api', vaultRouter(lineupDeps.store));
+    app.use('/api', peopleRouter(lineupDeps.store));
     app.use('/api', accountRouter(multiUser.directory, lineupDeps.store));
   } else {
     app.use('/api', singleOwnerMeRouter());

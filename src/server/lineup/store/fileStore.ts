@@ -528,6 +528,24 @@ export class FileLineupStore implements LineupStore {
     await this.save();
   }
 
+  async deleteEntitiesFor(uid: string | undefined, ids: string[]) {
+    if (!uid) throw new Error('Records are only deleted from a member\'s own tables.');
+    const state = await this.load();
+    const h = this.holder(state, uid);
+    const gone = new Set(ids);
+    for (const id of gone) delete h.entities?.[id];
+    h.entityAliases = (h.entityAliases ?? []).filter((a) => !gone.has(a.entityId));
+    h.entityLinks = (h.entityLinks ?? []).filter((l) => !gone.has(l.fromId) && !gone.has(l.toId));
+    await this.save();
+  }
+
+  async deleteEntityHistoryFor(uid: string | undefined, ids: string[]) {
+    const state = await this.load();
+    const h = this.holder(state, uid);
+    for (const id of ids) delete h.entityHistory?.[id];
+    await this.save();
+  }
+
   async putEntityHistoryFor(uid: string | undefined, entry: HistoryEntry) {
     const state = await this.load();
     const h = this.holder(state, uid);
@@ -581,6 +599,14 @@ export class FileLineupStore implements LineupStore {
 
   async replaceEntityLinks(entityIds: string[], links: EntityLink[]) {
     return this.replaceEntityLinksFor(undefined, entityIds, links);
+  }
+
+  async deleteEntities(ids: string[]) {
+    return this.deleteEntitiesFor(undefined, ids);
+  }
+
+  async deleteEntityHistory(ids: string[]) {
+    return this.deleteEntityHistoryFor(undefined, ids);
   }
 
   async putEntityHistory(entry: HistoryEntry) {
@@ -690,6 +716,8 @@ function scopedFileStore(base: FileLineupStore, scope: UserScope): LineupStore {
     putEntities: (list) => base.putEntitiesFor(scope.userId, list),
     replaceEntityAliases: (ids, list) => base.replaceEntityAliasesFor(scope.userId, ids, list),
     replaceEntityLinks: (ids, list) => base.replaceEntityLinksFor(scope.userId, ids, list),
+    deleteEntities: (ids) => base.deleteEntitiesFor(scope.userId, ids),
+    deleteEntityHistory: (ids) => base.deleteEntityHistoryFor(scope.userId, ids),
     putEntityHistory: (entry) => base.putEntityHistoryFor(scope.userId, entry),
     getEntityHistory: (id) => base.getEntityHistoryFor(scope.userId, id),
     listEntityHistory: (limit) => base.listEntityHistoryFor(scope.userId, limit),

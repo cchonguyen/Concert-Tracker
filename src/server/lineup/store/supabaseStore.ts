@@ -618,6 +618,7 @@ export class SupabaseLineupStore implements LineupStore {
       notes: e.notes ?? null,
       // Only once linked (0014): an event saved without the entity tables
       // leaves these columns out, so it saves before the migration too.
+      ...(e.personIds ? { person_ids: e.personIds } : {}),
       ...(e.refs
         ? {
             venue_id: e.refs.venueId,
@@ -661,6 +662,7 @@ export class SupabaseLineupStore implements LineupStore {
       rating: r.rating ?? undefined,
       ticketPrice: r.ticket_price ?? undefined,
       notes: r.notes ?? undefined,
+      personIds: r.person_ids?.length ? r.person_ids : undefined,
       refs:
         r.companion_ids != null
           ? { venueId: r.venue_id ?? null, placeId: r.place_id ?? null, seriesId: r.series_id ?? null, companionIds: r.companion_ids }
@@ -804,29 +806,67 @@ export class SupabaseLineupStore implements LineupStore {
 
   // Entities (0014) -------------------------------------------------------
 
+  // A member's records live in their own tables (0020): user_entities and
+  // friends, each row carrying user_id. The single-owner app keeps using the
+  // shared ones. Reads go through the member's token, so row level security
+  // is a second lock; writes stamp user_id.
+  private ent(shared: string) {
+    return this.scope ? this.own(`user_${shared}`) : this.db.from(shared);
+  }
+
   // Every row of a table, a page at a time (PostgREST returns 1000 at most).
-  private async all(table: string, what: string): Promise<any[]> {
+  private async all(shared: string, what: string): Promise<any[]> {
     const out: any[] = [];
     for (let from = 0; ; from += 1000) {
-      const rows = this.check(await this.db.from(table).select('*').range(from, from + 999), what) ?? [];
+      const rows = this.check(await this.mine(this.ent(shared).select('*')).range(from, from + 999), what) ?? [];
       out.push(...rows);
       if (rows.length < 1000) return out;
     }
   }
 
+  // An alias is a normalized name, or for an encrypted person a name token.
+  private get aliasCol() {
+    return this.scope ? 'companion_token' : 'alias_normalized';
+  }
+
+  private entityFromRow(r: any): Entity {
+    return {
+      id: r.id,
+      kind: r.kind,
+      name: r.name,
+      nameNormalized: r.name_normalized,
+      ...(r.name_encrypted ? { nameEncrypted: r.name_encrypted } : {}),
+      attrs: r.attrs ?? {},
+      mergedIntoId: r.merged_into_id ?? undefined,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    };
+  }
+
+  private entityRow(e: Entity) {
+    return this.stamp({
+      id: e.id,
+      kind: e.kind,
+      name: e.name,
+      name_normalized: e.nameNormalized,
+      ...(this.scope ? { name_encrypted: e.nameEncrypted ?? null } : {}),
+      attrs: e.attrs,
+      merged_into_id: e.mergedIntoId ?? null,
+      created_at: e.createdAt,
+      updated_at: e.updatedAt,
+    });
+  }
+
+  private aliasRow(a: EntityAlias) {
+    return this.stamp({ entity_id: a.entityId, kind: a.kind, [this.aliasCol]: a.aliasNormalized });
+  }
+
+  private get entityConflict() {
+    return this.scope ? 'user_id,id' : 'id';
+  }
+
   async listEntities() {
-    return (await this.all('entities', 'listEntities')).map(
-      (r): Entity => ({
-        id: r.id,
-        kind: r.kind,
-        name: r.name,
-        nameNormalized: r.name_normalized,
-        attrs: r.attrs ?? {},
-        mergedIntoId: r.merged_into_id ?? undefined,
-        createdAt: r.created_at,
-        updatedAt: r.updated_at,
-      }),
-    );
+    return (await this.all('entities', 'listEntities')).map((r) => this.entityFromRow(r));
   }
 
   async putArtistGenres(rows: ArtistGenres[]) {
@@ -853,28 +893,19 @@ export class SupabaseLineupStore implements LineupStore {
   }
 
   // The live-name, self-merge and missing-target rules are constraints in
-  // 0014; flattening is kept by the only code that merges.
+  // 0014 and 0020; flattening is kept by the only code that merges.
   async addEntities(list: Entity[]) {
-    const rows = [...new Map(list.map((e) => [e.id, e])).values()].map((e) => ({
-      id: e.id,
-      kind: e.kind,
-      name: e.name,
-      name_normalized: e.nameNormalized,
-      attrs: e.attrs,
-      merged_into_id: e.mergedIntoId ?? null,
-      created_at: e.createdAt,
-      updated_at: e.updatedAt,
-    }));
-    if (rows.length) this.check(await this.db.from('entities').upsert(rows, { onConflict: 'id', ignoreDuplicates: true }), 'addEntities');
+    const rows = [...new Map(list.map((e) => [e.id, e])).values()].map((e) => this.entityRow(e));
+    if (rows.length) this.check(await this.ent('entities').upsert(rows, { onConflict: this.entityConflict, ignoreDuplicates: true }), 'addEntities');
   }
 
   async listEntityAliases() {
     return (await this.all('entity_aliases', 'listEntityAliases')).map(
-      (r): EntityAlias => ({ entityId: r.entity_id, kind: r.kind, aliasNormalized: r.alias_normalized }),
+      (r): EntityAlias => ({ entityId: r.entity_id, kind: r.kind, aliasNormalized: r[this.aliasCol] }),
     );
   }
 
-  // unique (kind, alias_normalized) rejects an alias another record holds.
+  // unique (kind, alias) rejects an alias another record holds.
   async addEntityAliases(list: EntityAlias[]) {
     const rows = [...new Map(list.map((a) => [`${a.kind}\u0000${a.aliasNormalized}`, a])).values()];
     const existing = new Map((await this.listEntityAliases()).map((a) => [`${a.kind}\u0000${a.aliasNormalized}`, a.entityId]));
@@ -883,12 +914,7 @@ export class SupabaseLineupStore implements LineupStore {
       if (held && held !== a.entityId) throw new Error(`Supabase addEntityAliases failed: the ${a.kind} alias "${a.aliasNormalized}" already belongs to another record.`);
       return !held;
     });
-    if (fresh.length) {
-      this.check(
-        await this.db.from('entity_aliases').insert(fresh.map((a) => ({ entity_id: a.entityId, kind: a.kind, alias_normalized: a.aliasNormalized }))),
-        'addEntityAliases',
-      );
-    }
+    if (fresh.length) this.check(await this.ent('entity_aliases').insert(fresh.map((a) => this.aliasRow(a))), 'addEntityAliases');
   }
 
   async listEntityLinks() {
@@ -902,36 +928,15 @@ export class SupabaseLineupStore implements LineupStore {
   async addEntityLinks(list: EntityLink[]) {
     if (!list.length) return;
     const ids = [...new Set(list.flatMap((l) => [l.fromId, l.toId]))];
-    const rows = this.check(await this.db.from('entities').select('*').in('id', ids), 'addEntityLinks') ?? [];
-    const byId = new Map(
-      rows.map((r: any): [string, Entity] => [
-        r.id,
-        { id: r.id, kind: r.kind, name: r.name, nameNormalized: r.name_normalized, attrs: r.attrs ?? {}, createdAt: r.created_at, updatedAt: r.updated_at },
-      ]),
-    );
-    checkLinks(byId, list);
+    const rows = this.check(await this.mine(this.ent('entities').select('*').in('id', ids)), 'addEntityLinks') ?? [];
+    checkLinks(new Map(rows.map((r: any): [string, Entity] => [r.id, this.entityFromRow(r)])), list);
     this.check(
-      await this.db
-        .from('entity_links')
-        .upsert(
-          list.map((l) => ({ from_id: l.fromId, to_id: l.toId, role: l.role, created_at: l.createdAt })),
-          { onConflict: 'from_id,to_id,role', ignoreDuplicates: true },
-        ),
+      await this.ent('entity_links').upsert(
+        list.map((l) => this.stamp({ from_id: l.fromId, to_id: l.toId, role: l.role, created_at: l.createdAt })),
+        { onConflict: this.scope ? 'user_id,from_id,to_id,role' : 'from_id,to_id,role', ignoreDuplicates: true },
+      ),
       'addEntityLinks',
     );
-  }
-
-  private entityRow(e: Entity) {
-    return {
-      id: e.id,
-      kind: e.kind,
-      name: e.name,
-      name_normalized: e.nameNormalized,
-      attrs: e.attrs,
-      merged_into_id: e.mergedIntoId ?? null,
-      created_at: e.createdAt,
-      updated_at: e.updatedAt,
-    };
   }
 
   // Merge targets first, so a record is never written merged into one
@@ -939,47 +944,54 @@ export class SupabaseLineupStore implements LineupStore {
   async putEntities(list: Entity[]) {
     if (!list.length) return;
     const rows = [...list].sort((a, b) => Number(Boolean(a.mergedIntoId)) - Number(Boolean(b.mergedIntoId))).map((e) => this.entityRow(e));
-    this.check(await this.db.from('entities').upsert(rows, { onConflict: 'id' }), 'putEntities');
+    this.check(await this.ent('entities').upsert(rows, { onConflict: this.entityConflict }), 'putEntities');
   }
 
   // Not one transaction: the delete and the insert are two requests. The
   // history entry written before them holds what to put back.
   async replaceEntityAliases(entityIds: string[], aliases: EntityAlias[]) {
-    if (entityIds.length) this.check(await this.db.from('entity_aliases').delete().in('entity_id', entityIds), 'replaceEntityAliases');
+    if (entityIds.length) this.check(await this.mine(this.ent('entity_aliases').delete().in('entity_id', entityIds)), 'replaceEntityAliases');
     const rows = [...new Map(aliases.map((a) => [`${a.kind}\u0000${a.aliasNormalized}`, a])).values()];
-    if (rows.length) {
-      this.check(
-        await this.db.from('entity_aliases').insert(rows.map((a) => ({ entity_id: a.entityId, kind: a.kind, alias_normalized: a.aliasNormalized }))),
-        'replaceEntityAliases',
-      );
-    }
+    if (rows.length) this.check(await this.ent('entity_aliases').insert(rows.map((a) => this.aliasRow(a))), 'replaceEntityAliases');
   }
 
   async replaceEntityLinks(entityIds: string[], links: EntityLink[]) {
     if (entityIds.length) {
       const ids = entityIds.join(',');
-      this.check(await this.db.from('entity_links').delete().or(`from_id.in.(${ids}),to_id.in.(${ids})`), 'replaceEntityLinks');
+      this.check(await this.mine(this.ent('entity_links').delete().or(`from_id.in.(${ids}),to_id.in.(${ids})`)), 'replaceEntityLinks');
     }
     await this.addEntityLinks(links);
   }
 
+  async deleteEntities(ids: string[]) {
+    if (!ids.length) return;
+    if (!this.scope) throw new Error('Records are only deleted from a member\'s own tables.');
+    // Their aliases and links go with them (on delete cascade, 0020).
+    this.check(await this.mine(this.ent('entities').delete().in('id', ids)), 'deleteEntities');
+  }
+
+  async deleteEntityHistory(ids: string[]) {
+    if (ids.length) this.check(await this.mine(this.ent('entity_history').delete().in('id', ids)), 'deleteEntityHistory');
+  }
+
   async putEntityHistory(h: HistoryEntry) {
     this.check(
-      await this.db
-        .from('entity_history')
-        .upsert({ id: h.id, operation: h.operation, manifest: h, created_at: h.createdAt, undone_at: h.undoneAt ?? null }),
+      await this.ent('entity_history').upsert(
+        this.stamp({ id: h.id, operation: h.operation, manifest: h, created_at: h.createdAt, undone_at: h.undoneAt ?? null }),
+        { onConflict: this.entityConflict },
+      ),
       'putEntityHistory',
     );
   }
 
   async getEntityHistory(id: string) {
-    const r = this.check(await this.db.from('entity_history').select('manifest').eq('id', id).maybeSingle(), 'getEntityHistory');
+    const r = this.check(await this.mine(this.ent('entity_history').select('manifest').eq('id', id)).maybeSingle(), 'getEntityHistory');
     return r ? ((r as any).manifest as HistoryEntry) : null;
   }
 
   async listEntityHistory(limit: number) {
     const rows = this.check(
-      await this.db.from('entity_history').select('manifest').order('created_at', { ascending: false }).limit(limit),
+      await this.mine(this.ent('entity_history').select('manifest')).order('created_at', { ascending: false }).limit(limit),
       'listEntityHistory',
     );
     return (rows ?? []).map((r: any) => r.manifest as HistoryEntry);

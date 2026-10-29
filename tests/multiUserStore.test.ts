@@ -16,6 +16,7 @@ import type { MultiUserConfig } from '../src/server/auth/config.ts';
 import type { LookupJob } from '../src/server/lineup/types.ts';
 import { accountRouter, membersRouter } from '../src/server/auth/routes.ts';
 import { vaultGuard, vaultRouter } from '../src/server/auth/vault.ts';
+import { peopleRouter } from '../src/server/entities/people.ts';
 
 const ev = (id: string, patch: Partial<LoggedEvent> = {}): LoggedEvent => ({
   id, input: id, name: id, sources: {}, details: { status: 'resolved', candidates: [], notes: [] },
@@ -86,11 +87,11 @@ test('share page: a member\'s link shows only that member\'s events', async () =
   assert.deepEqual(await s.forUser(BOB).listShareLinks(), []);
 });
 
-test('owner-only routes: Manage, Sheets, Gmail, server scans and lineup confirm', () => {
-  for (const [m, p] of [['GET', '/api/entities'], ['PATCH', '/api/entities/x'], ['GET', '/api/sheets'], ['GET', '/api/gmail/connect'], ['POST', '/api/imports/email'], ['PUT', '/api/artist-genres/k']]) {
+test('owner-only routes: Sheets, Gmail, server scans and lineup confirm', () => {
+  for (const [m, p] of [['GET', '/api/sheets'], ['GET', '/api/gmail/connect'], ['POST', '/api/imports/email'], ['PUT', '/api/artist-genres/k']]) {
     assert.equal(ownerOnly(m, p), true, `${m} ${p}`);
   }
-  for (const [m, p] of [['GET', '/api/events'], ['POST', '/api/events'], ['GET', '/api/imports'], ['POST', '/api/imports/proposals'], ['GET', '/api/share'], ['GET', '/api/artist-genres'], ['GET', '/api/lookups'], ['POST', '/api/lookups'], ['POST', '/api/lookups/j1/run'], ['POST', '/api/lookups/j1/confirm'], ['POST', '/api/events/lineups'], ['POST', '/api/events/e1/lineup'], ['GET', '/api/me']]) {
+  for (const [m, p] of [['GET', '/api/events'], ['POST', '/api/events'], ['GET', '/api/imports'], ['POST', '/api/imports/proposals'], ['GET', '/api/share'], ['GET', '/api/artist-genres'], ['GET', '/api/lookups'], ['POST', '/api/lookups'], ['POST', '/api/lookups/j1/run'], ['POST', '/api/lookups/j1/confirm'], ['POST', '/api/events/lineups'], ['POST', '/api/events/e1/lineup'], ['GET', '/api/me'], ['GET', '/api/entities'], ['PATCH', '/api/entities/x'], ['GET', '/api/people']]) {
     assert.equal(ownerOnly(m, p), false, `${m} ${p}`);
   }
 });
@@ -130,9 +131,23 @@ async function apiFixture() {
   app.use('/api', vaultGuard(scoped));
   app.use('/api', vaultRouter(scoped));
   app.use('/api', accountRouter(directory, scoped));
+  app.use('/api', peopleRouter(scoped));
+  app.get('/api/sheets', (_req, res) => res.json({}));
   app.get('/api/events', async (_req, res) => res.json({ me: currentMember()?.email, events: (await scoped.listEvents()).map((e) => e.id) }));
   app.post('/api/events', async (req, res) => { await scoped.putEvent(ev(req.body.id, { notes: req.body.notes })); res.json({ ok: true }); });
   app.get('/api/entities', (_req, res) => res.json({ entities: [] }));
+  app.patch('/api/events/:id', async (req, res) => {
+    const { applyPatch } = await import('../src/server/events/service.ts');
+    const event = await scoped.getEvent(req.params.id);
+    if (!event) return res.status(404).json({ error: 'No such event.' });
+    try {
+      const next = applyPatch(event, req.body, new Date());
+      await scoped.putEvent(next);
+      res.json(next);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
   const server = app.listen(0);
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const call = async (email: string | null, route: string, init: RequestInit = {}) => {
@@ -155,7 +170,8 @@ test('API: no token is 401, a stranger 403, a member sees only their rows, membe
     assert.deepEqual(ann.body, { me: 'ann@example.com', events: ['a1'] });
     assert.deepEqual((await call('bob@example.com', '/api/events')).body.events, ['b1']);
     assert.deepEqual((await call('owner@example.com', '/api/events')).body.events, []);
-    assert.equal((await call('ann@example.com', '/api/entities')).status, 403);
+    assert.equal((await call('ann@example.com', '/api/sheets')).status, 403);
+    assert.equal((await call('ann@example.com', '/api/entities')).status, 200);
     assert.equal((await call('owner@example.com', '/api/entities')).status, 200);
   } finally {
     close();
@@ -301,5 +317,110 @@ test('account: export is your rows only; deletion needs your email, removes you,
     assert.deepEqual((await call('bob@example.com', '/api/events')).body.events, ['b1']);
   } finally {
     close();
+  }
+});
+
+// ---- Per-member records (0020) and people in the vault -----------------------
+
+import { withEntityLinks } from '../src/server/entities/linkingStore.ts';
+import { renameEntity } from '../src/server/entities/manage.ts';
+
+test('records: each member has their own; renaming a venue for one never touches another', async () => {
+  const s = withEntityLinks(await base());
+  const ann = s.forUser!(ANN);
+  const bob = s.forUser!(BOB);
+  await ann.putEvent(ev('a1', { venue: 'Forum', companions: ['Jen'] }));
+  await bob.putEvent(ev('b1', { venue: 'Forum', companions: ['Jen'] }));
+  const names = async (st: typeof ann) => (await st.listEntities()).filter((e) => e.kind !== 'artist').map((e) => `${e.kind}:${e.name}`).sort();
+  assert.deepEqual(await names(ann), ['person:Jen', 'venue:Forum']);
+  assert.deepEqual(await names(bob), ['person:Jen', 'venue:Forum']);
+  assert.deepEqual(await s.listEntities(), []); // the shared tables hold nothing of theirs
+  const venue = (await ann.listEntities()).find((e) => e.kind === 'venue')!;
+  await renameEntity(ann, venue.id, 'The Kia Forum');
+  assert.equal((await ann.getEvent('a1'))!.venue, 'The Kia Forum');
+  assert.equal((await bob.getEvent('b1'))!.venue, 'Forum');
+  assert.deepEqual(await names(bob), ['person:Jen', 'venue:Forum']);
+  assert.equal((await ann.listEntityHistory(10)).length, 1);
+  assert.equal((await bob.listEntityHistory(10)).length, 0);
+});
+
+const CIPHER = (tag: string) => `v1:${Buffer.from(`iv-${tag}`).toString('base64')}:${Buffer.from(`ct-${tag}`).toString('base64')}`;
+const TOKEN = (c: string) => c.repeat(64);
+
+test('people: names are only ever stored encrypted; merge repoints events; plain names are converted then erased', async () => {
+  const { call, close } = await apiFixture();
+  const post = (email: string, route: string, body: unknown, method = 'POST') => call(email, route, { method, body: JSON.stringify(body) });
+  try {
+    const a = 'ann@example.com';
+    // Before the vault, a person is a plain name linked from the event.
+    // (Linking runs in the store; here the event is saved through the fixture's store directly.)
+    assert.equal((await post(a, '/api/people/20000000-0000-4000-8000-000000000001', { nameEncrypted: CIPHER('jen'), tokens: [] }, 'PUT')).status, 409); // vault not on yet
+    assert.equal((await post(a, '/api/vault', { material: MATERIAL }, 'PUT')).status, 200);
+    const J = '20000000-0000-4000-8000-000000000001';
+    const K = '20000000-0000-4000-8000-000000000002';
+    // Plaintext names, odd tokens and details are refused.
+    assert.equal((await post(a, `/api/people/${J}`, { nameEncrypted: 'Jen', tokens: [] }, 'PUT')).status, 400);
+    assert.equal((await post(a, `/api/people/${J}`, { nameEncrypted: CIPHER('jen'), tokens: ['jen'] }, 'PUT')).status, 400);
+    assert.equal((await post(a, `/api/people/${J}`, { nameEncrypted: CIPHER('jen'), tokens: [TOKEN('a')], enc: 'first: Jen' }, 'PUT')).status, 400);
+    assert.equal((await post(a, `/api/people/${J}`, { nameEncrypted: CIPHER('jen'), tokens: [TOKEN('a')] }, 'PUT')).status, 200);
+    assert.equal((await post(a, `/api/people/${K}`, { nameEncrypted: CIPHER('jenny'), tokens: [TOKEN('b')] }, 'PUT')).status, 200);
+    // One token leads to one person.
+    assert.equal((await post(a, `/api/people/${K}`, { nameEncrypted: CIPHER('jenny'), tokens: [TOKEN('a')] }, 'PUT')).status, 409);
+    const listed = (await call(a, '/api/people')).body;
+    assert.deepEqual(listed.people.map((p: any) => [p.id, p.tokens]).sort(), [[J, [TOKEN('a')]], [K, [TOKEN('b')]]]);
+    assert.ok(!JSON.stringify(listed).includes('Jen'));
+    // Bob cannot see Ann's people.
+    assert.deepEqual((await call('bob@example.com', '/api/people')).body.people, []);
+
+    // Events list people by id; plaintext companions are refused now.
+    await post(a, '/api/events', { id: 'e1' });
+    assert.equal((await post(a, '/api/events/e1', { personIds: [J, K, 'not-a-uuid'] }, 'PATCH')).status, 200);
+    assert.equal((await post(a, '/api/events/e1', { companions: ['Jen'] }, 'PATCH')).status, 400);
+    assert.equal((await post(a, '/api/events/e1', { personIds: ['20000000-0000-4000-8000-0000000000ff'] }, 'PATCH')).status, 500); // not one of your people
+    // Merging K into J repoints the event and moves the token.
+    assert.equal((await post(a, `/api/people/${K}/merge`, { into: J })).body.events, 1);
+    const after = (await call(a, '/api/people')).body.people;
+    assert.deepEqual(after.find((p: any) => p.id === J).tokens.sort(), [TOKEN('a'), TOKEN('b')]);
+    assert.equal(after.find((p: any) => p.id === K).mergedIntoId, J);
+  } finally {
+    close();
+  }
+});
+
+test('people: turning the vault on converts plain people, moves their events and links, and leaves no readable name', async () => {
+  const s = withEntityLinks(await base());
+  const ann = s.forUser!(ANN);
+  await ann.putEvents([ev('e1', { companions: ['Jen', 'Sam'] }), ev('e2', { companions: ['Jen'] })]);
+  await ann.putSetting('vault', MATERIAL);
+  const plain = (await ann.listEntities()).filter((e) => e.kind === 'person');
+  assert.deepEqual(plain.map((p) => p.name).sort(), ['Jen', 'Sam']);
+  // A rename left a manifest holding the name; it must go too.
+  const jen = plain.find((p) => p.name === 'Jen')!;
+  await renameEntity(ann, jen.id, 'Jennifer');
+  const app = express();
+  app.use(express.json());
+  const { peopleRouter: people } = await import('../src/server/entities/people.ts');
+  app.use('/api', people(ann));
+  const server = app.listen(0);
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
+  const send = async (route: string, body: unknown, method = 'POST') => (await fetch(url + route, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json() as Promise<any>;
+  try {
+    const J = '30000000-0000-4000-8000-000000000001';
+    const S = '30000000-0000-4000-8000-000000000002';
+    await send(`/people/${J}`, { nameEncrypted: CIPHER('jennifer'), tokens: [TOKEN('1')] }, 'PUT');
+    await send(`/people/${S}`, { nameEncrypted: CIPHER('sam'), tokens: [TOKEN('2')] }, 'PUT');
+    assert.match((await send('/people/finish', {})).error, /still have their names/);
+    await send(`/people/${jen.id}/convert`, { to: J });
+    await send(`/people/${plain.find((p) => p.name === 'Sam')!.id}/convert`, { to: S });
+    assert.deepEqual((await send('/people/finish', {})).erased, 0);
+    const events = await ann.listEvents();
+    assert.deepEqual(events.map((e) => [e.id, e.companions, e.refs?.companionIds, e.personIds]).sort(), [
+      ['e1', [], [], [J, S]],
+      ['e2', [], [], [J]],
+    ]);
+    const stored = JSON.stringify([await ann.listEntities(), await ann.listEntityAliases(), await ann.listEntityHistory(100), events]);
+    for (const name of ['Jen', 'Jennifer', 'Sam']) assert.ok(!stored.includes(name), `${name} is still readable`);
+  } finally {
+    server.close();
   }
 });

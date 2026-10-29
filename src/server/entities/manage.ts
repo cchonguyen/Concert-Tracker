@@ -62,6 +62,7 @@ async function load(store: LineupStore): Promise<World> {
 function live(world: World, id: string, kind?: EntityKind): Entity {
   const e = world.byId.get(id);
   if (!e) throw new ManageError('No such record.', 404);
+  if (e.nameEncrypted) throw new ManageError('This person\'s name is encrypted. Unlock your vault and change them from the People list.', 400);
   if (e.mergedIntoId) throw new ManageError(`"${e.name}" was merged into another record.`, 409);
   if (kind && e.kind !== kind) throw new ManageError(`"${e.name}" is not a ${kind}.`, 400);
   return e;

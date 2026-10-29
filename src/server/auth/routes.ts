@@ -69,12 +69,29 @@ export function accountRouter(directory: MemberDirectory, store: LineupStore): R
   router.get('/account/export', async (_req, res) => {
     try {
       const me = currentMember();
-      const [events, imports, links, jobs] = await Promise.all([store.listEvents(), store.listImports(), store.listShareLinks(), store.listJobs(1000)]);
+      const [events, imports, links, jobs, entities] = await Promise.all([
+        store.listEvents(),
+        store.listImports(),
+        store.listShareLinks(),
+        store.listJobs(1000),
+        store.listEntities().catch(() => []),
+      ]);
       res.set('Content-Disposition', 'attachment; filename="liveArchive-export.json"');
       res.json({
         exportedAt: new Date().toISOString(),
         account: { email: me?.email ?? null, role: me?.role ?? null },
+        // Notes and the people who went are encrypted when the vault is on; the
+        // browser decrypts them into the file you download (services/exportBundle.ts).
         events,
+        // Your records. A person with a vault has an encrypted name (nameEncrypted).
+        records: entities.map((e) => ({
+          id: e.id,
+          kind: e.kind,
+          name: e.name,
+          ...(e.nameEncrypted ? { nameEncrypted: e.nameEncrypted } : {}),
+          attrs: e.attrs,
+          mergedIntoId: e.mergedIntoId ?? null,
+        })),
         emailImports: imports,
         // The link's code is never kept, so only its settings and dates are exported.
         shareLinks: links.map((l) => ({ id: l.id, createdAt: l.createdAt, revokedAt: l.revokedAt ?? null, settings: l.settings })),

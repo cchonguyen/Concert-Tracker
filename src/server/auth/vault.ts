@@ -6,8 +6,7 @@ import { currentMember } from './requestScope';
 // (ciphertext and salts only) and refuses plaintext notes once the vault is
 // on. It never holds a passphrase, a recovery key or an unwrapped key.
 //
-// Scope today: notes. Companions stay plaintext because people are shared
-// records until the entity split; encrypting them needs per-member people.
+// Scope: notes, and the people who went with you (src/server/entities/people.ts).
 // Material lives in the member's settings under VAULT_SETTING.
 
 export const VAULT_SETTING = 'vault';
@@ -56,18 +55,27 @@ export const plaintextNote = (body: any): boolean => {
   return notes.some((n) => !isCiphertext(n));
 };
 
-// Once a member's vault is on, a request that would store a plaintext note is
-// refused, so an old open tab or an import cannot write one back.
+export const plaintextCompanions = (body: any): boolean =>
+  [body?.companions, body?.patch?.companions, body?.event?.companions].some((c) => Array.isArray(c) && c.some((n) => typeof n === 'string' && n.trim()));
+
+// Once a member's vault is on, a request that would store a plaintext note or
+// companion is refused, so an old open tab or an import cannot write one back.
 export function vaultGuard(store: LineupStore) {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!currentMember() || !NOTE_WRITES.some(([m, re]) => m === req.method && re.test(req.originalUrl.split('?')[0]))) return next();
-    if (!plaintextNote(req.body)) return next();
+    const note = plaintextNote(req.body);
+    const names = plaintextCompanions(req.body);
+    if (!note && !names) return next();
     try {
       if (!(await store.getSetting<VaultMaterialJson>(VAULT_SETTING))) return next();
     } catch (err) {
       return res.status(503).json({ error: 'Could not check your vault. Try again.' });
     }
-    res.status(400).json({ error: 'Your vault is on: notes must be encrypted in the browser. Unlock the vault and save again.' });
+    res.status(400).json({
+      error: names && !note
+        ? 'Your vault is on: the people who went must be saved by the browser as encrypted people. Unlock the vault and save again.'
+        : 'Your vault is on: notes must be encrypted in the browser. Unlock the vault and save again.',
+    });
   };
 }
 

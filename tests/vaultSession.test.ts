@@ -82,3 +82,25 @@ test('locked notes show "Vault locked", never an empty box, and cannot be edited
   assert.deepEqual(noteView(''), { kind: 'text', text: '', editable: true });
   assert.deepEqual(noteView('hello'), { kind: 'text', text: 'hello', editable: true });
 });
+
+test('export: the browser opens notes and people into a readable file', async () => {
+  const { createVault, encryptField } = await import('../src/services/vault.ts');
+  const { decryptBundle, hasCiphertext } = await import('../src/services/exportBundle.ts');
+  const v = await createVault('export passphrase', FAST);
+  const bundle = {
+    events: [
+      { id: 'e1', name: 'Show', notes: await encryptField(v.keys, 'great night'), companions: [], personIds: ['p1', 'p2'] },
+      { id: 'e2', name: 'Old', notes: 'plain note', companions: ['Sam'] },
+    ],
+    records: [
+      { id: 'p1', kind: 'person', name: '', nameEncrypted: await encryptField(v.keys, 'Jen'), attrs: { enc: await encryptField(v.keys, JSON.stringify({ note: 'from work' })) } },
+      { id: 'p2', kind: 'person', name: '', nameEncrypted: await encryptField(v.keys, 'Pat'), attrs: {} },
+      { id: 'v1', kind: 'venue', name: 'Forum', attrs: {} },
+    ],
+  };
+  assert.ok(hasCiphertext(bundle));
+  const out = await decryptBundle(bundle, v.keys);
+  assert.deepEqual(out.events!.map((e) => [e.notes, e.companions]), [['great night', ['Jen', 'Pat']], ['plain note', ['Sam']]]);
+  assert.deepEqual(out.records!.map((r) => [r.kind, r.name, r.attrs]), [['person', 'Jen', { note: 'from work' }], ['person', 'Pat', {}], ['venue', 'Forum', {}]]);
+  assert.ok(!JSON.stringify(out).includes('nameEncrypted') && !JSON.stringify(out).includes('v1:'));
+});

@@ -40,6 +40,8 @@ export function newEvent(line: string, now: Date): LoggedEvent {
   });
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export interface EventPatch {
   name?: string;
   year?: number | null;
@@ -57,6 +59,7 @@ export interface EventPatch {
   attendance?: 'planned' | 'missed' | null; // null: you went
   daysAttended?: string[];
   companions?: string[];
+  personIds?: string[]; // vault on: the people by record id (names are encrypted)
   rating?: number | null;
   ticketPrice?: number | null;
   notes?: string | null;
@@ -117,6 +120,7 @@ export function applyPatch(event: LoggedEvent, patch: EventPatch, now: Date): Lo
   }
   if (patch.daysAttended) next.daysAttended = patch.daysAttended.filter((d) => DATE.test(d));
   if (patch.companions) next.companions = [...new Set(patch.companions.map((c) => c.trim()).filter(Boolean))];
+  if (patch.personIds) next.personIds = [...new Set(patch.personIds.filter((id) => typeof id === 'string' && UUID.test(id)))];
   if (patch.rating !== undefined) {
     const r = patch.rating === null ? undefined : Number(patch.rating);
     if (r !== undefined && (!Number.isInteger(r) || r < 1 || r > 5)) throw new InputError('Rating is 1 to 5.');
