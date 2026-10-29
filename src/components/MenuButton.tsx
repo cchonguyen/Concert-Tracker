@@ -1,18 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
-import { Menu, UserCog, Users } from 'lucide-react';
+import { Download, FileUp, Menu, Sheet, UserCog, Users } from 'lucide-react';
 import { Theme, ThemeControls } from './ThemePicker';
 
 interface Props {
   theme: Theme;
   canMembers: boolean; // owner of a multi-user install
   canAccount: boolean; // any multi-user install
+  canSheets: boolean; // Google Sheets stays the owner's
   onMembers: () => void;
   onAccount: () => void;
+  onImport: () => void;
+  onExport: () => void; // every event, as CSV
+  onSheets: () => void;
 }
 
 // One menu for everything about you and the app. A dropdown on desktop and a
 // bottom sheet on phone; Theme sits inline in it.
-export function MenuButton({ theme, canMembers, canAccount, onMembers, onAccount }: Props) {
+export function MenuButton({ theme, canMembers, canAccount, canSheets, onMembers, onAccount, onImport, onExport, onSheets }: Props) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
 
@@ -67,6 +71,23 @@ export function MenuButton({ theme, canMembers, canAccount, onMembers, onAccount
               )}
             </div>
           )}
+          <div className="space-y-1 border-t border-zinc-800 pt-3">
+            <p className="px-1 pb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">Your data</p>
+            <button onClick={() => choose(onImport)} className={item}>
+              <FileUp className="h-3.5 w-3.5" />
+              Import a list (CSV)
+            </button>
+            <button onClick={() => choose(onExport)} className={item}>
+              <Download className="h-3.5 w-3.5" />
+              Export all as CSV
+            </button>
+            {canSheets && (
+              <button onClick={() => choose(onSheets)} className={item}>
+                <Sheet className="h-3.5 w-3.5" />
+                Google Sheets
+              </button>
+            )}
+          </div>
           <div className="space-y-2 border-t border-zinc-800 pt-3">
             <p className="px-1 text-xs font-medium uppercase tracking-wide text-zinc-500">Theme</p>
             <ThemeControls theme={theme} />
