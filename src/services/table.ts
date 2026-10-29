@@ -223,7 +223,9 @@ export function filterEvents(
   editions: Record<string, LineupFacts> = {},
 ): LoggedEvent[] {
   const kept = events.filter((e) => matches(e, f, lineups[e.id], editions[e.id]));
-  return f.sort === 'none' ? kept : sortRows(kept, f.sort, f.desc);
+  // 'Order added' (the untoggled state): newest added first, ties broken by id so the order is stable.
+  if (f.sort === 'none') return [...kept].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+  return sortRows(kept, f.sort, f.desc);
 }
 
 // The pick lists, built only from values in your own log, most used first.
