@@ -6,12 +6,16 @@ import { Page, PAGE_BLURB, PAGE_LABELS, Section, SECTIONS, subPagesFor, SubPage 
 import { LoggedEvent } from '../services/lineupApi';
 import { EmailCard } from './EmailCard';
 import { FeatureTiles } from './FeatureTiles';
+import { YearTile } from './YearTile';
+import type { YearReview } from '../services/stats';
 
 interface HomePageProps {
   canManage: boolean;
   eventCount: number;
   cityCount: number;
   artistCount: number;
+  yearReview: YearReview | null;
+  yearCities: number;
   needs: { confirm: number; email: number; researching: number };
   emailCheck: boolean;
   onCaptured: (event: LoggedEvent) => void;
@@ -36,6 +40,8 @@ export const HomePage: React.FC<HomePageProps> = ({
   eventCount,
   cityCount,
   artistCount,
+  yearReview,
+  yearCities,
   needs,
   emailCheck,
   onCaptured,
@@ -80,6 +86,8 @@ export const HomePage: React.FC<HomePageProps> = ({
       </section>
 
       {emailCheck && <EmailCard waiting={needs.email} onCheck={onReviewEmail} />}
+
+      {yearReview && <YearTile review={yearReview} cities={yearCities} onOpen={() => onOpen('stats')} />}
 
       <FeatureTiles eventCount={eventCount} onOpen={onOpen} onImport={onImport} />
 
