@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, Compass, FolderCog, GalleryHorizontalEnd, House, Library, Map as MapIcon, Mic2, Radio, Table2, Ticket, UserCog, Users } from 'lucide-react';
+import { BarChart3, Compass, FolderCog, GalleryHorizontalEnd, House, Library, Map as MapIcon, Mic2, Radio, Table2, Ticket } from 'lucide-react';
 import {
   EmailImport,
   eventsApi,
@@ -22,7 +22,8 @@ import { TableView } from './components/TableView';
 import { StatsView } from './components/StatsView';
 import { MapView } from './components/MapView';
 import { TimelineTab } from './components/timeline/TimelineTab';
-import { ThemePicker } from './components/ThemePicker';
+import { useTheme } from './components/ThemePicker';
+import { MenuButton } from './components/MenuButton';
 import { ManageTarget, ManageView } from './components/ManageView';
 import { MeProvider, type Me } from './components/MeContext';
 import { NoticeModal } from './components/NoticeModal';
@@ -80,6 +81,7 @@ export default function App() {
   const [me, setMe] = useState<Me>({ multiUser: false, role: 'owner', email: null });
   const [members, setMembers] = useState(false);
   const [account, setAccount] = useState(false);
+  const theme = useTheme();
   useEffect(() => {
     meApi.get().then(setMe, () => undefined);
   }, []);
@@ -225,17 +227,13 @@ export default function App() {
                 );
               })}
             </nav>
-            {me.multiUser && me.role === 'owner' && (
-              <button onClick={() => setMembers(true)} title="Members" aria-label="Members" className="rounded-lg border border-zinc-800 p-2 text-zinc-400 hover:text-zinc-200">
-                <Users className="h-4 w-4" />
-              </button>
-            )}
-            {me.multiUser && (
-              <button onClick={() => setAccount(true)} title="Your account" aria-label="Your account" className="rounded-lg border border-zinc-800 p-2 text-zinc-400 hover:text-zinc-200">
-                <UserCog className="h-4 w-4" />
-              </button>
-            )}
-            <ThemePicker />
+            <MenuButton
+              theme={theme}
+              canMembers={me.multiUser && me.role === 'owner'}
+              canAccount={me.multiUser}
+              onMembers={() => setMembers(true)}
+              onAccount={() => setAccount(true)}
+            />
           </div>
         </div>
         {section && (
