@@ -274,6 +274,8 @@ The Menu (`src/components/MenuButton.tsx`) holds Your account and Members (multi
 
 Reusable controls live in `src/components/ui/`: `IconButton` (an icon with a required label, shown as a title and aria-label, and as a short tooltip after a tap on touch), `FilterControls` (the Filters button, its panel, pills and yes/no toggle, shared by the Table, Map and timeline pages), `BackToTop` (a text pill, "Back to top", that appears after about one screen of scroll, bottom right; on a phone it sits above the + button), `MenuButton` (shows the current choice and opens a list; closes on pick, outside tap or Escape), `Popover` (an anchored panel that opens on hover with a mouse and on tap with touch, and closes on an outside tap or Escape) and `Pill` (a small rounded label). The rule for new work is in AGENTS.md ("Design system"). Only the components the current change needs are in this folder, and more move in as the pages they belong to are touched.
 
+Field saves in the event panel wait 500 ms after the last key (`Field` in `EventDetail.tsx`) and save at once on leaving the field, so a closing sheet still keeps the last value. Icon buttons are 44 px square on phones and 36 px from `sm` up (`IconButton`), and the dismiss buttons on tips and callouts are 40 px.
+
 ## Hosting
 
 The `/api` routes live in `src/server/app.ts` and take a `JobRunner` that starts a job without waiting for it. Two hosts wire them up:

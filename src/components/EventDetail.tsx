@@ -1,6 +1,6 @@
 import { useVault } from './VaultContext';
 import { noteView } from '../services/vaultSession';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Check, CloudSun, ExternalLink, FolderCog, Heart, History, Link2, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import {
   ArtistSuggestion,
@@ -106,7 +106,10 @@ const input =
   'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
 const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
 
-// A text field that saves when you leave it.
+// Typing saves 500 ms after the last key, so a sheet closed at once (iOS Safari) still gets its last value through the blur flush.
+const SAVE_DELAY_MS = 500;
+
+// A text field that saves when you leave it, and 500 ms after you stop typing.
 const Field: React.FC<{
   label: string;
   value?: string | number;
@@ -123,6 +126,22 @@ const Field: React.FC<{
 }> = ({ label, value, type = 'text', placeholder, source, onSave, onType, suggestions, offer, min, className }) => {
   const [draft, setDraft] = useState(value === undefined ? '' : String(value));
   useEffect(() => setDraft(value === undefined ? '' : String(value)), [value]);
+  const pending = useRef<number | null>(null);
+  const latest = useRef({ draft, value, onSave });
+  latest.current = { draft, value, onSave };
+  // Saves the draft now if it differs from the stored value, and cancels any timed save.
+  const flush = () => {
+    if (pending.current !== null) window.clearTimeout(pending.current);
+    pending.current = null;
+    const now = latest.current;
+    if (now.draft !== (now.value === undefined ? '' : String(now.value))) now.onSave(now.draft);
+  };
+  const scheduleSave = () => {
+    if (pending.current !== null) window.clearTimeout(pending.current);
+    pending.current = window.setTimeout(flush, SAVE_DELAY_MS);
+  };
+  // Leaving the field with a save still waiting saves it.
+  useEffect(() => () => flush(), []);
   return (
     <label className={`space-y-1 ${className ?? ''}`}>
       <span className="flex items-center justify-between gap-2 text-[11px] font-semibold text-zinc-400">
@@ -148,12 +167,14 @@ const Field: React.FC<{
           onPick={(v) => {
             setDraft(v);
             onType?.(v);
+            scheduleSave();
           }}
           onChange={(e) => {
             setDraft(e.target.value);
             onType?.(e.target.value);
+            scheduleSave();
           }}
-          onBlur={() => draft !== (value === undefined ? '' : String(value)) && onSave(draft)}
+          onBlur={flush}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
         />
       ) : (
@@ -166,8 +187,9 @@ const Field: React.FC<{
           onChange={(e) => {
             setDraft(e.target.value);
             onType?.(e.target.value);
+            scheduleSave();
           }}
-          onBlur={() => draft !== (value === undefined ? '' : String(value)) && onSave(draft)}
+          onBlur={flush}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
         />
       )}

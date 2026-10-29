@@ -14,7 +14,7 @@ export function IconButton({ icon: Icon, label, className = '', ...rest }: Props
       <button
         type="button"
         aria-label={label}
-        className={`flex h-9 w-9 items-center justify-center rounded-control text-zinc-400 transition-colors hover:text-zinc-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400 ${className}`}
+        className={`flex h-11 w-11 items-center justify-center rounded-control sm:h-9 sm:w-9 text-zinc-400 transition-colors hover:text-zinc-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400 ${className}`}
         {...rest}
       >
         <Icon className="h-4 w-4" aria-hidden="true" />

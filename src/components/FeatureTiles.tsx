@@ -83,7 +83,7 @@ export const FeatureTiles: React.FC<{ eventCount: number; onOpen: (page: Page) =
               <button
                 aria-label={`Hide tip: ${t.title}`}
                 onClick={() => update({ ...saved, dismissed: [...saved.dismissed, t.key] })}
-                className="absolute right-2 top-2 rounded-md p-1 text-zinc-400 hover:text-zinc-100"
+                className="absolute right-1 top-1 rounded-md p-2.5 text-zinc-400 hover:text-zinc-100"
               >
                 <X className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
