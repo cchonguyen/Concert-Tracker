@@ -24,6 +24,7 @@ export interface ShareLink {
   settings: ShareSettings;
   createdAt: string;
   revokedAt?: string;
+  userId?: string; // whose events the page shows (multi-user mode)
 }
 
 // The columns of logged_events the share page reads. Companions, notes,

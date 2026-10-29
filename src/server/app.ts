@@ -10,11 +10,21 @@ import { sheetsFromEnv } from './events/sheets';
 import { genresRouter } from './events/genreRoutes';
 import { entitiesRouter } from './entities/routes';
 import { shareRouter } from './share/routes';
+import type { MultiUserConfig } from './auth/config';
+import type { MemberDirectory } from './auth/members';
+import { memberMiddleware, requestScopedStore } from './auth/requestScope';
 
 // The /api routes, shared by the Node server (server.ts) and the Cloudflare
 // Worker (worker/index.ts). Static files and the job runner are wired by each host.
-export function createApiApp(lineupDeps: PipelineDeps, runner: JobRunner): express.Express {
+// multiUser: when set (MULTI_USER=on), every /api request after /api/health
+// needs an invited member, and the routes see only that member's rows.
+export function createApiApp(
+  baseDeps: PipelineDeps,
+  runner: JobRunner,
+  multiUser?: { config: MultiUserConfig; directory: MemberDirectory },
+): express.Express {
   const app = express();
+  const lineupDeps: PipelineDeps = multiUser ? { ...baseDeps, store: requestScopedStore(baseDeps.store) } : baseDeps;
   // Ticket emails arrive in batches with their HTML, larger than other requests.
   app.use('/api/imports/email', express.json({ limit: '25mb' }));
   // A full re-scan's proposals (quotes only, no mail bodies).
@@ -26,6 +36,8 @@ export function createApiApp(lineupDeps: PipelineDeps, runner: JobRunner): expre
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
+
+  if (multiUser) app.use('/api', memberMiddleware({ ...multiUser, base: baseDeps.store }));
 
   // Your event log: capture and details (stage 1), then lineup lookups (stage 2).
   app.use('/api', eventsRouter(lineupDeps, runner));
