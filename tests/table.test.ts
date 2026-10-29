@@ -155,10 +155,10 @@ test('a sort key cycles usual direction, then the other, then off', () => {
   assert.deepEqual(s, { sort: 'rating', desc: true });
 });
 
-test('unsorted rows keep their order and the address says none', () => {
+test('order added lists the newest added first and the address says none', () => {
   const list = [
-    { id: 'b', name: 'Beta', startDate: '2020-01-01', seen: [] },
-    { id: 'a', name: 'Alpha', startDate: '2024-01-01', seen: [] },
+    { id: 'a', name: 'Alpha', startDate: '2024-01-01', createdAt: '2024-05-01T00:00:00Z', seen: [] },
+    { id: 'b', name: 'Beta', startDate: '2020-01-01', createdAt: '2024-06-01T00:00:00Z', seen: [] },
   ] as unknown as LoggedEvent[];
   assert.deepEqual(ids(filterEvents(list, f({ sort: 'none' }))), ['b', 'a']);
   assert.equal(filtersToQuery(f({ sort: 'none' })), 'sort=none');
@@ -198,4 +198,13 @@ test('format holds several values, and the format filter matches any of them', a
   const list = [ev('x', { format: 'Club night, Rave' }), ev('y', { format: 'Rave' }), ev('z', {})];
   assert.deepEqual(ids(filterEvents(list, f({ format: 'rave', sort: 'name', desc: false }))), ['x', 'y']);
   assert.deepEqual(filterOptions(list).formats, ['Rave', 'Club night']);
+});
+
+test('order added: ties on createdAt are broken by id, newest first', () => {
+  const list = [
+    { id: 'a', name: 'A', startDate: '2026-01-01', createdAt: '2026-01-02T00:00:00Z', seen: [] },
+    { id: 'c', name: 'C', startDate: '2026-01-01', createdAt: '2026-01-03T00:00:00Z', seen: [] },
+    { id: 'b', name: 'B', startDate: '2026-01-01', createdAt: '2026-01-03T00:00:00Z', seen: [] },
+  ] as unknown as LoggedEvent[];
+  assert.deepEqual(ids(filterEvents(list, f({ sort: 'none' }))), ['c', 'b', 'a']);
 });

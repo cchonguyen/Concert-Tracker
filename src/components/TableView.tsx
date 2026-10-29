@@ -326,7 +326,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const pickSort = (choice: SortChoice) => (choice === 'none' ? setFilters((f) => ({ ...f, sort: 'none' })) : sortBy(choice));
   const sortOptions: Array<{ value: SortChoice; label: string }> = [
     ...SORT_OPTIONS.map((o) => ({ value: o.value, label: sortLabel(o.label, filters, o.value) })),
-    { value: 'none', label: 'Unsorted' },
+    { value: 'none', label: 'Order added' },
   ];
   const year = (s: string) => (s ? Number(s) : undefined);
   const list = (values: string[]) => values.map((v) => ({ value: v, label: v }));
@@ -602,7 +602,15 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                   const artists = artistsOf(e.seen);
                   const cell = 'border-b border-zinc-900 px-4 py-3 align-top';
                   return (
-                    <tr key={e.id} onClick={() => onOpen(e.id)} className="cursor-pointer transition-colors hover:bg-zinc-900/60">
+                    <tr
+                      key={e.id}
+                      tabIndex={0}
+                      onClick={() => onOpen(e.id)}
+                      onKeyDown={(k) => {
+                        if (k.key === 'Enter' && k.target === k.currentTarget) onOpen(e.id);
+                      }}
+                      className="cursor-pointer transition-colors hover:bg-zinc-900/60 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-violet-400"
+                    >
                       <td className={`${cell} whitespace-nowrap`}>
                         <DateCell e={e} />
                       </td>
