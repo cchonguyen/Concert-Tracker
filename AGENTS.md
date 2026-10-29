@@ -25,3 +25,9 @@ Read [REQUIREMENTS.md](REQUIREMENTS.md) first: it says what the app is for (reme
 - No demo or seeded data in the app.
 - Run `npm run lint` and `npm test` before committing, and add tests for new adapters or rules.
 - Update ARCHITECTURE.md (and REQUIREMENTS.md, if a requirement changes) in the same change when behavior described there changes.
+
+## Design system
+
+- Shared UI components live in `src/components/ui/` (IconButton, BackToTop, MenuButton, Popover, Pill). Use them for new UI.
+- The design-system approach is wanted: when you touch a component that has its own inline copy of one of these patterns (a dropdown, a tooltip, an icon-only button, a pill, a back-to-top), move it onto the shared component in the same change. Do not build a fresh copy.
+- Only add a shared component when the current change needs it. Do not build the whole library ahead of use.

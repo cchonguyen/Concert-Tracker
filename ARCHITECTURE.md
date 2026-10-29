@@ -266,6 +266,10 @@ Quick add (`src/components/QuickAdd.tsx`) opens the same capture, email check an
 
 The Menu (`src/components/MenuButton.tsx`) holds Your account and Members (multi-user only), Your data (Import a list, Export all as CSV, and Google Sheets for the owner), and Theme inline. Import and Google Sheets panels are opened by `App`, so Menu, Table and Quick add show one copy at a time. The CSV download is shared in `src/components/DataActions.ts`. The Table keeps its own Import, Sheets and Export buttons.
 
+## Shared UI
+
+Reusable controls live in `src/components/ui/`: `IconButton` (an icon with a required label, shown as a title and aria-label, and as a short tooltip after a tap on touch), `BackToTop` (appears after about one screen of scroll, bottom left), `MenuButton` (shows the current choice and opens a list; closes on pick, outside tap or Escape), `Popover` (an anchored panel that opens on hover with a mouse and on tap with touch, and closes on an outside tap or Escape) and `Pill` (a small rounded label). The rule for new work is in AGENTS.md ("Design system"). Only the components the current change needs are in this folder, and more move in as the pages they belong to are touched.
+
 ## Hosting
 
 The `/api` routes live in `src/server/app.ts` and take a `JobRunner` that starts a job without waiting for it. Two hosts wire them up:
