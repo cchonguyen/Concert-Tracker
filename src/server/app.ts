@@ -11,7 +11,7 @@ import { genresRouter } from './events/genreRoutes';
 import { entitiesRouter } from './entities/routes';
 import { shareRouter } from './share/routes';
 import type { AccessGate } from './auth/config';
-import { closedMiddleware, ownerMiddleware } from './auth/gate';
+import { closedMiddleware, localOwnerMiddleware, ownerMiddleware } from './auth/gate';
 import { memberMiddleware, requestScopedStore } from './auth/requestScope';
 import { accountRouter, membersRouter, singleOwnerMeRouter } from './auth/routes';
 import { vaultGuard, vaultRouter } from './auth/vault';
@@ -50,6 +50,9 @@ export function createApiApp(baseDeps: PipelineDeps, runner: JobRunner, gate: Ac
     app.use('/api', accountRouter(gate.directory, lineupDeps.store));
   } else if (gate.kind === 'owner') {
     app.use('/api', ownerMiddleware(gate));
+    app.use('/api', singleOwnerMeRouter());
+  } else if (gate.kind === 'local') {
+    app.use('/api', localOwnerMiddleware());
     app.use('/api', singleOwnerMeRouter());
   } else {
     app.use('/api', closedMiddleware(gate.reason));
