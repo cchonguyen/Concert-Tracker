@@ -95,6 +95,7 @@ export default function App() {
   const theme = useTheme();
   const [quickAdd, setQuickAdd] = useState(false);
   const [about, setAbout] = useState(false);
+  const [logFor, setLogFor] = useState<string | null>(null);
   const headerRef = useRef<HTMLElement>(null);
   const headerShown = useHideOnScroll(headerRef);
   const [saved, setSaved] = useState<LoggedEvent | null>(null);
@@ -183,6 +184,7 @@ export default function App() {
   // Moving between the Table, the timeline views and the Map keeps the same filters.
   const openTab = (next: Page) => {
     setAgendaFocus(null);
+    setLogFor(null);
     // Picking a page from a section's strip is the hint's cue, so it is done. Entering a section from Home is not.
     if (sectionOf(tab)) {
       setHintDue(false);
@@ -209,6 +211,13 @@ export default function App() {
   };
 
   // Open a record in Manage (from the Ranking tab, the Table or an event).
+  // Open the Log filtered to one show (from its History link).
+  const openHistory = (eventId: string) => {
+    setSelectedId(null);
+    openTab('log');
+    setLogFor(eventId);
+  };
+
   const openManage = (target: ManageTarget) => {
     setSelectedId(null);
     setManageTarget({ ...target });
@@ -418,7 +427,7 @@ export default function App() {
         {shown === 'ranking' && (
           <ArtistsView events={went} onOpenEvent={setSelectedId} onOpenTable={openTable} onManage={(key) => openManage({ kind: 'artist', name: key })} />
         )}
-        {shown === 'log' && <LogView />}
+        {shown === 'log' && <LogView eventId={logFor} onShowAll={() => setLogFor(null)} />}
         {shown === 'manage' && (
           <ManageView
             events={events}
@@ -510,6 +519,7 @@ export default function App() {
           }}
           onClose={() => setSelectedId(null)}
           onManage={openManage}
+          onOpenHistory={openHistory}
         />
       )}
     </div>
