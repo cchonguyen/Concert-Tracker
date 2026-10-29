@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
-import { Download, FlaskConical, Loader2, ScanSearch } from 'lucide-react';
+import { Download, Loader2, ScanSearch } from 'lucide-react';
 import { scanGmailInBrowser, scanReportCsv, type GmailScanProgress, type GmailScanResult } from '@livearchive/ticket-scanner';
 import { EmailImport, EmailScanStatus, importsApi } from '../services/lineupApi';
 
 // The browser scan: a one-time Google sign-in (gmail.readonly, nothing kept),
 // Gmail read in this tab by @livearchive/ticket-scanner, and only the shows it
 // found sent to the server. The token is revoked when the scan ends.
-// "Full re-scan" ignores the watermark and never moves it; "Dry run" sends
-// nothing and only shows the report, to compare with the server's check.
+// "Full re-scan" ignores the watermark and never moves it.
 
 const GIS_SRC = 'https://accounts.google.com/gsi/client';
 const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
@@ -48,10 +47,9 @@ function askToken(clientId: string): Promise<string> {
 type Mode = 'incremental' | 'full';
 
 export const BrowserScan: React.FC<{ status: EmailScanStatus; onFound: (imports: EmailImport[]) => void }> = ({ status, onFound }) => {
-  const [dryRun, setDryRun] = useState(true);
   const [running, setRunning] = useState<Mode | null>(null);
   const [progress, setProgress] = useState<GmailScanProgress | null>(null);
-  const [report, setReport] = useState<{ mode: Mode; dryRun: boolean; result: GmailScanResult; saved?: { added: number; changed: number } } | null>(null);
+  const [report, setReport] = useState<{ mode: Mode; result: GmailScanResult; saved?: { added: number; changed: number } } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   if (!status.clientId) return null;
@@ -70,17 +68,14 @@ export const BrowserScan: React.FC<{ status: EmailScanStatus; onFound: (imports:
         ignoreCursors: mode === 'full',
         onProgress: setProgress,
       });
-      let saved;
-      if (!dryRun) {
-        saved = await importsApi.proposals({
-          proposals: result.proposals,
-          messages: result.messages,
-          // Only the incremental check moves the watermark.
-          updatedCursors: mode === 'incremental' ? result.updatedCursors : undefined,
-        });
-        onFound(await importsApi.list().catch(() => []));
-      }
-      setReport({ mode, dryRun, result, saved });
+      const saved = await importsApi.proposals({
+        proposals: result.proposals,
+        messages: result.messages,
+        // Only the incremental check moves the watermark.
+        updatedCursors: mode === 'incremental' ? result.updatedCursors : undefined,
+      });
+      onFound(await importsApi.list().catch(() => []));
+      setReport({ mode, result, saved });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -107,10 +102,6 @@ export const BrowserScan: React.FC<{ status: EmailScanStatus; onFound: (imports:
     <div className="space-y-2 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <p className="mr-auto text-xs text-zinc-400">New scanner, run in this tab</p>
-        <label className="inline-flex items-center gap-1.5 text-xs text-zinc-400">
-          <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} disabled={Boolean(running)} />
-          <FlaskConical className="h-3.5 w-3.5" /> Dry run (save nothing)
-        </label>
         <button className={button} disabled={Boolean(running)} onClick={() => run('incremental')}>
           {running === 'incremental' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScanSearch className="h-3.5 w-3.5" />}
           Check for new tickets
@@ -136,7 +127,8 @@ export const BrowserScan: React.FC<{ status: EmailScanStatus; onFound: (imports:
       {report && s && (
         <div className="space-y-2 text-xs text-zinc-300">
           <p className="font-semibold text-zinc-200">
-            {report.mode === 'full' ? 'Full re-scan' : 'Check'} {report.dryRun ? '(dry run, nothing saved)' : report.saved ? `: ${report.saved.added} new on the review list, ${report.saved.changed} rows updated` : ''}
+            {report.mode === 'full' ? 'Full re-scan' : 'Check'}
+            {report.saved ? `: ${report.saved.added} new on the review list, ${report.saved.changed} rows updated` : ''}
           </p>
           <button className={button} onClick={download}>
             <Download className="h-3.5 w-3.5" /> Download report (CSV)
