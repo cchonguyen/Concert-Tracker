@@ -216,7 +216,8 @@ export interface MemberRow {
 }
 // Who is signed in, and (owner only, multi-user) the invite list.
 export const meApi = {
-  get: () => request<{ multiUser: boolean; role: 'owner' | 'member'; email: string | null }>('/api/me'),
+  get: () => request<{ multiUser: boolean; role: 'owner' | 'member'; email: string | null; noticeAccepted?: boolean }>('/api/me'),
+  acceptNotice: () => request<unknown>('/api/me/notice', post()),
 };
 export const membersApi = {
   list: () => request<{ members: MemberRow[] }>('/api/members').then((r) => r.members),

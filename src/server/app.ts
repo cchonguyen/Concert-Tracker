@@ -42,7 +42,7 @@ export function createApiApp(
 
   if (multiUser) {
     app.use('/api', memberMiddleware({ ...multiUser, base: baseDeps.store }));
-    app.use('/api', membersRouter(multiUser.directory));
+    app.use('/api', membersRouter(multiUser.directory, lineupDeps.store));
     // Your data: the vault's key material, a plaintext-note guard, export and deletion.
     app.use('/api', vaultGuard(lineupDeps.store));
     app.use('/api', vaultRouter(lineupDeps.store));
