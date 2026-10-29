@@ -113,38 +113,41 @@ const CheckEmail: React.FC<{ onFound: (imports: EmailImport[]) => void }> = ({ o
 
   return (
     <div className="space-y-1 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">
-      {/* The server's Gmail connection is one stored sign-in: the owner's. Members scan in the browser below. */}
-      {owner && (
-        <>
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-zinc-400">{status.connected ? summary() : 'Connect Gmail to check for new ticket emails.'}</p>
-        {status.connected ? (
-          <button
-            onClick={check}
-            disabled={checking}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:border-zinc-500 disabled:opacity-40"
-          >
-            {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            Check email
-          </button>
-        ) : (
-          <a
-            href="/api/gmail/connect"
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500"
-          >
-            <Mail className="h-3.5 w-3.5" /> Connect Gmail
-          </a>
-        )}
-      </div>
-      {status.connected && status.account && <p className="text-[11px] text-zinc-400">{status.account}</p>}
-      {error && <p className="text-xs text-rose-300">{error}</p>}
-        </>
-      )}
       <Notice tone="info">
         Google may show an &ldquo;unverified app&rdquo; screen when you connect. This is a personal app, so choose Advanced, then continue. Prefer not to connect Gmail?
         You can also import a CSV spreadsheet or add shows by hand.
       </Notice>
       <BrowserScan status={status} onFound={onFound} />
+      {owner && (
+        <details className="rounded-lg border border-zinc-800 p-2 text-xs">
+          <summary className="cursor-pointer text-zinc-300">More options</summary>
+          <div className="mt-2 space-y-1">
+            <p className="text-[11px] font-semibold text-zinc-400">Check from LiveArchive&rsquo;s server (uses your saved Gmail connection)</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-zinc-400">{status.connected ? summary() : 'Connect Gmail to check for new ticket emails.'}</p>
+          {status.connected ? (
+            <button
+              onClick={check}
+              disabled={checking}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:border-zinc-500 disabled:opacity-40"
+            >
+              {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Check email
+            </button>
+          ) : (
+            <a
+              href="/api/gmail/connect"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500"
+            >
+              <Mail className="h-3.5 w-3.5" /> Connect Gmail
+            </a>
+          )}
+        </div>
+        {status.connected && status.account && <p className="text-[11px] text-zinc-400">{status.account}</p>}
+        {error && <p className="text-xs text-rose-300">{error}</p>}
+          </div>
+        </details>
+      )}
     </div>
   );
 };
