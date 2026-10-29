@@ -1,31 +1,23 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
 import { eventsApi, vaultApi, type LoggedEvent } from '../services/lineupApi';
-import {
-  changePassphrase,
-  createVault,
-  decryptField,
-  encryptField,
-  isCiphertext,
-  unlockWithPassphrase,
-  unlockWithRecoveryKey,
-  type VaultKeys,
-  type VaultMaterial,
-} from '../services/vault';
+import { isCiphertext } from '../services/vault';
+import { VaultSession, type Proof, type VaultStatus } from '../services/vaultSession';
 import { useMe } from './MeContext';
 
-// The vault in the page (multi-user only). Keys live in this tab's memory and
-// are gone on reload or Lock; the server holds only wrapped key material and
-// encrypted notes. Scope today: notes. See ARCHITECTURE.md ("Multi-user").
+// The vault in the page (multi-user only). The state machine is VaultSession;
+// this wraps it for React. Keys live in this tab's memory and are gone on
+// reload or Lock; the server holds only wrapped key material and encrypted
+// notes. Scope today: notes. See ARCHITECTURE.md ("Multi-user").
 
-export type VaultStatus = 'unavailable' | 'loading' | 'off' | 'locked' | 'unlocked';
+export type { VaultStatus };
 
 export interface VaultApi {
   status: VaultStatus;
   // Turn the vault on: returns the recovery key, to be shown once.
   setUp(passphrase: string): Promise<string>;
-  unlock(secret: { passphrase: string } | { recoveryKey: string }): Promise<void>;
+  unlock(secret: Proof): Promise<void>;
   lock(): void;
-  changePassphrase(proof: { passphrase: string } | { recoveryKey: string }, next: string): Promise<void>;
+  changePassphrase(proof: Proof, next: string): Promise<void>;
   encryptNote(plain: string): Promise<string>;
   // A stored note as shown: plaintext as is, ciphertext decrypted, or null while locked.
   readNote(stored: string | undefined): Promise<string | null>;
@@ -45,72 +37,44 @@ export const useVault = () => useContext(Ctx);
 
 export const VaultProvider: React.FC<{ events: LoggedEvent[]; onChanged: () => void; children: React.ReactNode }> = ({ events, onChanged, children }) => {
   const me = useMe();
-  const [status, setStatus] = useState<VaultStatus>(me.multiUser ? 'loading' : 'unavailable');
-  const [material, setMaterial] = useState<VaultMaterial | null>(null);
-  const [keys, setKeys] = useState<VaultKeys | null>(null);
+  const [, rerender] = useReducer((n: number) => n + 1, 0);
+  const session = useMemo(() => new VaultSession(vaultApi, me.multiUser), [me.multiUser]);
+  const latest = useRef({ events, onChanged });
+  latest.current = { events, onChanged };
 
   useEffect(() => {
-    if (!me.multiUser) return;
-    vaultApi.get().then(
-      (v) => {
-        setMaterial(v.material);
-        setStatus(v.state === 'encrypted' ? 'locked' : 'off');
-      },
-      () => setStatus('off'),
-    );
-  }, [me.multiUser]);
+    const off = session.subscribe(rerender);
+    void session.load();
+    return off;
+  }, [session]);
 
   // Notes written before the vault was on (or by a pass that stopped midway)
   // are encrypted whenever the vault opens.
-  const encryptRemaining = useCallback(
-    async (k: VaultKeys) => {
-      const todo = events.filter((e) => e.notes && !isCiphertext(e.notes));
-      for (const e of todo) await eventsApi.update(e.id, { notes: await encryptField(k, e.notes!) });
-      if (todo.length) onChanged();
-    },
-    [events, onChanged],
-  );
+  const encryptRemaining = async () => {
+    const todo = latest.current.events.filter((e) => e.notes && !isCiphertext(e.notes));
+    for (const e of todo) await eventsApi.update(e.id, { notes: await session.encryptNote(e.notes!) });
+    if (todo.length) latest.current.onChanged();
+  };
 
   const api = useMemo<VaultApi>(
     () => ({
-      status,
+      status: session.status,
       async setUp(passphrase) {
-        const v = await createVault(passphrase);
-        await vaultApi.turnOn(v.material);
-        setMaterial(v.material);
-        setKeys(v.keys);
-        setStatus('unlocked');
-        await encryptRemaining(v.keys);
-        return v.recoveryKey;
+        const key = await session.setUp(passphrase);
+        await encryptRemaining();
+        return key;
       },
       async unlock(secret) {
-        if (!material) throw new Error('The vault is not on.');
-        const k = 'passphrase' in secret ? await unlockWithPassphrase(material, secret.passphrase) : await unlockWithRecoveryKey(material, secret.recoveryKey);
-        setKeys(k);
-        setStatus('unlocked');
-        await encryptRemaining(k);
+        await session.unlock(secret);
+        await encryptRemaining();
       },
-      lock() {
-        setKeys(null);
-        setStatus(material ? 'locked' : 'off');
-      },
-      async changePassphrase(proof, next) {
-        if (!material) throw new Error('The vault is not on.');
-        const updated = await changePassphrase(material, proof, next);
-        await vaultApi.rewrap(updated);
-        setMaterial(updated);
-      },
-      async encryptNote(plain) {
-        if (!keys) throw new Error('Unlock the vault to save notes.');
-        return encryptField(keys, plain);
-      },
-      async readNote(stored) {
-        if (!stored) return '';
-        if (!isCiphertext(stored)) return stored;
-        return keys ? decryptField(keys, stored) : null;
-      },
+      lock: () => session.lock(),
+      changePassphrase: (proof, next) => session.changePassphrase(proof, next),
+      encryptNote: (plain) => session.encryptNote(plain),
+      readNote: (stored) => session.readNote(stored),
     }),
-    [status, material, keys, encryptRemaining],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [session, session.status],
   );
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 };
