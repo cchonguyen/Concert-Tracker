@@ -33,6 +33,7 @@ import { cityWithRegion } from '../server/events/regions';
 import { attendanceOf, lastDay } from '../server/events/attendance';
 import type { EditionPerformance } from '../server/lineup/types';
 import type { ManageTarget } from './ManageView';
+import { Dialog } from './ui/Dialog';
 
 interface EventDetailProps {
   event: LoggedEvent;
@@ -882,12 +883,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const offered = suggestions.filter((s) => !seenKeys.has(s.key));
   const roleName = (role?: Seen['role']) => (role === 'support' ? 'Supporting' : 'Artist');
 
+  // While the lineup review is open, Escape and an outside press do not close the panel behind it.
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="h-full w-full max-w-xl space-y-6 overflow-y-auto border-l border-zinc-900 bg-zinc-950 p-5 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog
+      title={eventTitle(event)}
+      onClose={reviewing ? () => {} : onClose}
+      panelClassName="h-full w-full max-w-xl space-y-6 overflow-y-auto border-l border-zinc-900 bg-zinc-950 p-5 shadow-2xl"
+    >
         <div className="flex items-start gap-3">
           <Field label="Event" value={event.name} onSave={(v) => save({ name: v })} className="flex-1" />
           <button onClick={onClose} className="mt-6 text-zinc-500 hover:text-zinc-200" aria-label="Close">
@@ -1319,7 +1321,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           </button>
           {busy === 'save' && <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />}
         </div>
-      </div>
 
       {reviewing && job && (
         <LineupReview
@@ -1334,6 +1335,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           }}
         />
       )}
-    </div>
+    </Dialog>
   );
 };
