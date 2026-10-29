@@ -40,6 +40,7 @@ import { NavStorage, Page, PAGE_LABELS, pageFromView, rememberedPage, rememberPa
 import { PAGE_ICON, SECTION_ICON } from './components/pageIcons';
 import { HomePage } from './components/HomePage';
 import { cityOf } from './services/table';
+import { homeSummary } from './services/home';
 
 // The Table, Timeline and Map views keep their filters in the address (?view=table&...).
 const FILTERED: Page[] = ['table', 'timeline', 'map'];
@@ -207,6 +208,9 @@ export default function App() {
   const section = sectionOf(tab);
   const width = shown === 'table' ? 'max-w-7xl' : shown === 'map' ? 'max-w-6xl' : 'max-w-3xl';
   const cityCount = new Set(went.map((e) => cityOf(e)).filter(Boolean)).size;
+  // Needs you on Home: shows waiting for a yes or no, and lineups still being looked up.
+  const confirmCount = homeSummary(events, lineups, today).toConfirm.length;
+  const researchingCount = Object.values(lineups).filter((l) => isActive(l.status)).length;
 
   return (
     <MeProvider me={me}>
@@ -301,12 +305,17 @@ export default function App() {
             eventCount={events.length}
             cityCount={cityCount}
             artistCount={seenCount}
+            needs={{ confirm: confirmCount, email: toReview, researching: researchingCount }}
+            emailCheck={emailCheck}
+            onCaptured={handleCaptured}
+            onImport={openImport}
+            onReviewEmail={() => setReviewing(true)}
+            onOpenSummary={() => openTab('summary')}
             onOpen={openTab}
           />
         )}
         {shown === 'summary' && (
           <>
-            <CaptureBar onCaptured={handleCaptured} />
             <EventsHome
               events={events}
               lineups={lineups}
