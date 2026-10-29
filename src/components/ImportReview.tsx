@@ -1,4 +1,6 @@
 import { Dialog } from './ui/Dialog';
+import { Tooltip } from './ui/Tooltip';
+import { useToast } from './ui/Toast';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Check, ExternalLink, GitMerge, Loader2, Mail, RefreshCw, Undo2, X } from 'lucide-react';
 import { EmailImport, EmailScanStatus, importsApi, LoggedEvent } from '../services/lineupApi';
@@ -257,7 +259,7 @@ const MergePicker: React.FC<{ row: EmailImport; events: LoggedEvent[]; busy: boo
 
 export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, onAdded, events, onEventChanged, onClose, notice }) => {
   const [merging, setMerging] = useState<string | null>(null);
-  const [merged, setMerged] = useState<string | null>(null);
+  const toast = useToast();
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -330,14 +332,14 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
       onEventChanged(res.event);
       toggle([row.id], false);
       setMerging(null);
-      setMerged(mergeSummary(event.name, res.filled, res.kept));
+      toast({ message: mergeSummary(event.name, res.filled, res.kept) });
     });
   const unmerge = (row: EmailImport) =>
     act(async () => {
       const res = await importsApi.unmerge(row.id);
       merge([res.import]);
       if (res.event) onEventChanged(res.event);
-      setMerged(null);
+      toast({ message: 'Merge undone' });
     });
   const nameOf = (id?: string) => events.find((e) => e.id === id)?.name;
   // A row on the list, with "Same as one of mine" and its picker.
@@ -389,7 +391,6 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
         )}
         <CheckEmail onFound={onChange} />
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
-        {merged && <p className="rounded-lg border border-violet-500/30 bg-violet-950/30 p-2 text-sm text-violet-200">{merged}</p>}
 
         {!toReview.length && <p className="text-sm text-zinc-400">Nothing left to review.</p>}
         {years.map((g) => (
@@ -426,20 +427,23 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
                 note={nameOf(r.eventId) && `${r.mergedFields ? 'Merged into' : r.status === 'added' ? 'Added as' : 'Matched to'} “${nameOf(r.eventId)}”`}
                 action={
                   r.mergedFields ? (
-                    <button onClick={() => unmerge(r)} className="text-zinc-400 hover:text-zinc-200" aria-label="Undo merge" title="Undo merge">
-                      <Undo2 className="h-4 w-4" />
-                    </button>
+                    <Tooltip label="Undo merge">
+                      <button onClick={() => unmerge(r)} className="text-zinc-400 hover:text-zinc-200" aria-label="Undo merge">
+                        <Undo2 className="h-4 w-4" />
+                      </button>
+                    </Tooltip>
                   ) : r.status === 'new' && events.some((e) => e.id === r.eventId) ? (
                     // Matched on its own: merging fills the event's empty fields from the email.
-                    <button
-                      disabled={busy}
-                      onClick={() => mergeInto(r, events.find((e) => e.id === r.eventId)!)}
-                      className="text-zinc-400 hover:text-violet-300 disabled:opacity-40"
-                      aria-label="Merge into this event"
-                      title="Merge into this event"
-                    >
-                      <GitMerge className="h-4 w-4" />
-                    </button>
+                    <Tooltip label="Merge into this event">
+                      <button
+                        disabled={busy}
+                        onClick={() => mergeInto(r, events.find((e) => e.id === r.eventId)!)}
+                        className="text-zinc-400 hover:text-violet-300 disabled:opacity-40"
+                        aria-label="Merge into this event"
+                      >
+                        <GitMerge className="h-4 w-4" />
+                      </button>
+                    </Tooltip>
                   ) : undefined
                 }
               />

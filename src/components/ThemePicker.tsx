@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, Monitor, Moon, Sun } from 'lucide-react';
 import { IconButton } from './ui/IconButton';
+import { Tooltip } from './ui/Tooltip';
 import {
   ACCENT_KEY,
   ACCENTS,
@@ -95,18 +96,18 @@ export function ThemeControls({ theme }: { theme: Theme }) {
       </div>
       <div className="flex justify-between border-t border-zinc-800 pt-3">
         {ACCENTS.map((a) => (
-          <button
-            key={a}
-            onClick={() => pickAccent(a)}
-            title={a[0].toUpperCase() + a.slice(1)}
-            aria-label={`${a} accent`}
-            aria-pressed={accent === a}
-            data-accent={a}
-            style={{ background: 'var(--accent-500)' }}
-            className="flex h-7 w-7 items-center justify-center rounded-full ring-offset-2 ring-offset-zinc-900 hover:ring-2 hover:ring-zinc-600"
-          >
-            {accent === a && <Check className="h-4 w-4 text-white" />}
-          </button>
+          <Tooltip key={a} label={a[0].toUpperCase() + a.slice(1)}>
+            <button
+              onClick={() => pickAccent(a)}
+              aria-label={`${a} accent`}
+              aria-pressed={accent === a}
+              data-accent={a}
+              style={{ background: 'var(--accent-500)' }}
+              className="flex h-7 w-7 items-center justify-center rounded-full ring-offset-2 ring-offset-zinc-900 hover:ring-2 hover:ring-zinc-600"
+            >
+              {accent === a && <Check className="h-4 w-4 text-white" />}
+            </button>
+          </Tooltip>
         ))}
       </div>
     </div>

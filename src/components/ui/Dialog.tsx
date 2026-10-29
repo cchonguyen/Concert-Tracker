@@ -24,6 +24,15 @@ export function Dialog({ title, onClose, placement = 'side', panelClassName, chi
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
 
+  // Blur the field being typed in first, so its save runs before the panel unmounts. iOS Safari
+  // does not always fire blur on close, so a typed value could be lost without this.
+  const flushAndClose = () => {
+    if (document.activeElement instanceof HTMLElement && panel.current?.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
+    closeRef.current();
+  };
+
   useEffect(() => {
     const id = Symbol('dialog');
     openDialogs.push(id);
@@ -35,7 +44,7 @@ export function Dialog({ title, onClose, placement = 'side', panelClassName, chi
     const onKey = (e: KeyboardEvent) => {
       if (openDialogs[openDialogs.length - 1] !== id) return;
       if (e.key === 'Escape') {
-        closeRef.current();
+        flushAndClose();
         return;
       }
       if (e.key !== 'Tab' || !panel.current) return;
@@ -68,7 +77,7 @@ export function Dialog({ title, onClose, placement = 'side', panelClassName, chi
   return (
     <div
       className={center ? 'fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-start sm:pt-24' : 'fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm'}
-      onMouseDown={() => closeRef.current()}
+      onMouseDown={flushAndClose}
     >
       <div
         ref={panel}

@@ -1,10 +1,12 @@
 import { useEffect, useId, useRef, useState, type ComponentType } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { Tooltip } from './Tooltip';
 
 export interface MenuOption<T extends string> {
   value: T;
   label: string;
   icon?: ComponentType<{ className?: string }>;
+  hint?: string; // Shown on hover or focus, for a choice whose name alone is not clear.
 }
 
 interface Props<T extends string> {
@@ -62,25 +64,24 @@ export function MenuButton<T extends string>({ label, value, options, onChange, 
           {options.map((o) => {
             const Icon = o.icon;
             const selected = o.value === value;
-            return (
-              <li key={o.value}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  onClick={() => {
-                    setOpen(false);
-                    onChange(o.value);
-                  }}
-                  className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-zinc-800 ${
-                    selected ? 'text-zinc-100' : 'text-zinc-400'
-                  }`}
-                >
-                  {Icon && <Icon className="h-3.5 w-3.5" />}
-                  {o.label}
-                </button>
-              </li>
+            const option = (
+              <button
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => {
+                  setOpen(false);
+                  onChange(o.value);
+                }}
+                className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-zinc-800 ${
+                  selected ? 'text-zinc-100' : 'text-zinc-400'
+                }`}
+              >
+                {Icon && <Icon className="h-3.5 w-3.5" />}
+                {o.label}
+              </button>
             );
+            return <li key={o.value}>{o.hint ? <Tooltip label={o.hint} className="w-full">{option}</Tooltip> : option}</li>;
           })}
         </ul>
       )}

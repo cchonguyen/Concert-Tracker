@@ -4,6 +4,8 @@ import { CaptureBar } from './CaptureBar';
 import { PAGE_ICON } from './pageIcons';
 import { Page, PAGE_BLURB, PAGE_LABELS, Section, SECTIONS, subPagesFor, SubPage } from '../services/nav';
 import { LoggedEvent } from '../services/lineupApi';
+import { EmailCard } from './EmailCard';
+import { FeatureTiles } from './FeatureTiles';
 
 interface HomePageProps {
   canManage: boolean;
@@ -63,16 +65,15 @@ export const HomePage: React.FC<HomePageProps> = ({
           label={empty ? 'Start with one show you remember' : undefined}
         />
         <div className="flex flex-wrap gap-4 text-sm">
-          {emailCheck && (
-            <button onClick={onReviewEmail} className="text-violet-300 hover:text-violet-200">
-              Check ticket email
-            </button>
-          )}
           <button onClick={onImport} className="text-violet-300 hover:text-violet-200">
             Import a list
           </button>
         </div>
       </section>
+
+      {emailCheck && <EmailCard waiting={needs.email} onCheck={onReviewEmail} />}
+
+      <FeatureTiles eventCount={eventCount} onOpen={onOpen} onImport={onImport} />
 
       {alerts.length > 0 && (
         <section className="space-y-2 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
