@@ -1,59 +1,7 @@
 import React, { useEffect } from 'react';
 import { PartyPopper, X } from 'lucide-react';
 import { Button } from './ui/Button';
-
-const COLORS = ['#a78bfa', '#8b5cf6', '#c4b5fd', '#f4f4f5', '#fbbf24'];
-const PIECES = 120;
-const DURATION_MS = 2000;
-
-// A short confetti burst on a full-screen canvas, removed when it ends. Written inline so no library is installed.
-function burstConfetti() {
-  const canvas = document.createElement('canvas');
-  canvas.setAttribute('aria-hidden', 'true');
-  canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:60';
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  document.body.appendChild(canvas);
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    canvas.remove();
-    return () => undefined;
-  }
-  const pieces = Array.from({ length: PIECES }, () => ({
-    x: canvas.width / 2,
-    y: canvas.height * 0.35,
-    vx: (Math.random() - 0.5) * 14,
-    vy: -Math.random() * 12 - 4,
-    spin: Math.random() * Math.PI,
-    color: COLORS[Math.floor(Math.random() * COLORS.length)],
-  }));
-  const start = performance.now();
-  let frame = 0;
-  const tick = (now: number) => {
-    const elapsed = now - start;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    for (const p of pieces) {
-      p.vy += 0.35;
-      p.vx *= 0.99;
-      p.x += p.vx;
-      p.y += p.vy;
-      p.spin += 0.2;
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.spin);
-      ctx.fillStyle = p.color;
-      ctx.fillRect(-4, -2, 8, 4);
-      ctx.restore();
-    }
-    if (elapsed < DURATION_MS) frame = window.requestAnimationFrame(tick);
-    else canvas.remove();
-  };
-  frame = window.requestAnimationFrame(tick);
-  return () => {
-    window.cancelAnimationFrame(frame);
-    canvas.remove();
-  };
-}
+import { burstConfetti } from './ui/confetti';
 
 // Confetti runs once per card and never under reduced motion; the card alone is enough then.
 export const MilestoneCard: React.FC<{ line: string; actionLabel: string; onAction: () => void; onClose: () => void }> = ({ line, actionLabel, onAction, onClose }) => {
