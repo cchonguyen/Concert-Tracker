@@ -145,6 +145,7 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
               </p>
               <input
                 ref={fileInput}
+                aria-label="Genres file to import"
                 type="file"
                 accept=".json,application/json"
                 className="hidden"

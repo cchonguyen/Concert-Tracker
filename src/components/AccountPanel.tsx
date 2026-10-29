@@ -102,6 +102,7 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
             <input
               type="password"
               className={field}
+              aria-label={useRecovery ? 'Recovery key' : 'Passphrase'}
               placeholder={useRecovery ? 'Recovery key' : 'Passphrase'}
               value={passphrase}
               onChange={(e) => setPassphrase(e.target.value)}
