@@ -38,6 +38,7 @@ import { Confirm } from './ui/Confirm';
 import { useToast } from './ui/Toast';
 import { Switch } from './ui/Switch';
 import { Sheet } from './ui/Sheet';
+import { LineupProgress } from './LineupProgress';
 import { Pill } from './ui/Pill';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
@@ -739,16 +740,6 @@ function candidateLine(c: DetailCandidate): string {
   return [whenLabel(c), c.venue, c.city, c.country].filter(Boolean).join(' · ');
 }
 
-const JOB_STATUS: Record<LookupJob['status'], string> = {
-  queued: 'Waiting to start',
-  running: 'Looking through sources',
-  waiting_quota: 'Waiting for capacity',
-  needs_review: 'Ready to review',
-  no_data: 'No source listed a lineup',
-  confirmed: 'Confirmed',
-  failed: 'Failed',
-};
-
 // A starting vocabulary for Format; your own past values come first.
 const FORMAT_IDEAS = [
   'Club night',
@@ -1286,7 +1277,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           {!job && !edition && (
             <div className="space-y-2">
               <p className="text-xs text-zinc-400">
-                Optional. The app looks for who played in Clashfinder, the promoter's page and ticketing listings, cites every act, and never guesses.
+                Find the lineup looks for who played in Clashfinder, the promoter's page and ticketing listings. It cites every act and never guesses. The link is optional.
               </p>
               <input className={input} value={lineupUrl} onChange={(e) => setLineupUrl(e.target.value)} placeholder="Lineup page, if you know one (optional)" />
             </div>
@@ -1300,60 +1291,29 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </p>
           )}
           {job && !edition && (
-            <div className="space-y-2 rounded-xl border border-zinc-800 p-3">
-              <div className="flex items-center gap-2 text-sm text-zinc-200">
-                {isActive(job.status) && <Loader2 className="h-4 w-4 animate-spin text-violet-300" />}
-                {/* Between steps a job is briefly queued again; it is still looking. */}
-                {job.status === 'queued' && job.stage !== 'collect' && !job.nextAttemptAt ? JOB_STATUS.running : JOB_STATUS[job.status]}
-                {job.status === 'needs_review' && ` · ${job.candidate?.performers.length ?? 0} acts`}
-              </div>
-              {job.status === 'waiting_quota' && (
-                <p className="text-xs text-amber-200/90">
-                  {job.waitingReason} It continues on its own
-                  {job.nextAttemptAt ? ` after ${new Date(job.nextAttemptAt).toLocaleString()}` : ''}; what was found so far is kept.
-                </p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                {(job.status === 'needs_review' || job.status === 'no_data') && (
-                  <Button variant="primary" onClick={() => setReviewing(true)}>
-                    {job.status === 'no_data' ? 'Enter acts by hand' : 'Review lineup'}
-                  </Button>
-                )}
-                {(job.status === 'waiting_quota' || job.status === 'failed') && (
-                  <Button
-                    onClick={() =>
-                      run('retry', async () => {
-                        await lineupApi.retry(job.id);
-                        setTimeout(() => void load(), 500);
-                      })
-                    }
-                  >
-                    <RefreshCw className="h-3 w-3" /> Try now
-                  </Button>
-                )}
-                <button onClick={() => setShowLog((s) => !s)} className="text-xs text-zinc-400 hover:text-zinc-300">
-                  {showLog ? 'Hide' : 'Show'} what it did
-                </button>
-              </div>
-              {showLog && (
-                <ol className="max-h-60 space-y-1 overflow-y-auto font-mono text-[11px] text-zinc-400">
-                  {job.log.map((entry, i) => (
-                    <li key={i}>{entry.message}</li>
-                  ))}
-                </ol>
-              )}
-            </div>
+            <LineupProgress
+              job={job}
+              busy={busy === 'retry'}
+              onRetry={() =>
+                void run('retry', async () => {
+                  await lineupApi.retry(job.id);
+                  setTimeout(() => void load(), 500);
+                })
+              }
+              onReview={() => setReviewing(true)}
+            />
           )}
           {(!job || edition || job.status === 'no_data' || job.status === 'failed') && !isActive(job?.status) && (
-            <button
-              onClick={() => run('lineup', async () => (await eventsApi.findLineup(event.id, lineupUrl || undefined)).event)}
-              disabled={busy === 'lineup' || !(event.year || event.startDate)}
-              title={event.year || event.startDate ? undefined : 'Add when it was first'}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/50 px-3 py-1.5 text-sm text-violet-200 hover:bg-violet-950/40 disabled:opacity-40"
-            >
-              {busy === 'lineup' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-              {job ? 'Look up the lineup again' : 'Find who played'}
-            </button>
+            <div className="space-y-1.5">
+              <Button
+                onClick={() => run('lineup', async () => (await eventsApi.findLineup(event.id, lineupUrl || undefined)).event)}
+                disabled={busy === 'lineup' || !(event.year || event.startDate)}
+              >
+                {busy === 'lineup' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                {job ? 'Look up the lineup again' : 'Find the lineup'}
+              </Button>
+              {!(event.year || event.startDate) && <p className="text-xs text-amber-300/90">Add when it was first, then find the lineup.</p>}
+            </div>
           )}
         </section>
 
