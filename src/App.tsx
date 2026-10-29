@@ -37,15 +37,19 @@ import { AccountPanel } from './components/AccountPanel';
 import { VaultProvider } from './components/VaultContext';
 import { PeopleProvider } from './components/PersonName';
 import { wentTo } from './server/events/attendance';
-import { hintSeen, markHintSeen, NavStorage, Page, PAGE_LABELS, pageFromView, rememberedPage, rememberPage, sectionOf, SECTIONS, subPagesFor, viewFor } from './services/nav';
+import { hintSeen, markHintSeen, NavStorage, Page, PAGE_BLURB, SubPage, PAGE_LABELS, pageFromView, rememberedPage, rememberPage, sectionOf, SECTIONS, subPagesFor, viewFor } from './services/nav';
 import { PAGE_ICON, SECTION_ICON } from './components/pageIcons';
 import { HomePage } from './components/HomePage';
+import { BackToTop } from './components/ui/BackToTop';
 import { cityOf } from './services/table';
 import { homeSummary } from './services/home';
 
 // The Table, the four timeline views and the Map keep their filters in the address (?view=table&...).
 const FILTERED: Page[] = ['table', 'agenda', 'month', 'heatmap', 'river', 'map'];
 const TIMELINE_PAGES: Page[] = ['agenda', 'month', 'heatmap', 'river'];
+// Pages with a title line, and long pages that get Back to top (Agenda and Table have their own).
+const HEADED: Page[] = ['stats', 'map', 'ranking'];
+const BACK_TO_TOP: Page[] = ['summary', 'month', 'stats', 'map', 'ranking'];
 
 // Remembered subtabs live on this device; a browser that blocks storage just forgets them.
 const navStorage = (): NavStorage | null => {
@@ -217,7 +221,8 @@ export default function App() {
   // A member who cannot see Manage gets Summary instead.
   const shown: Page = tab === 'manage' && !canManage ? 'summary' : tab;
   const section = sectionOf(tab);
-  const width = shown === 'table' ? 'max-w-7xl' : shown === 'map' ? 'max-w-6xl' : 'max-w-3xl';
+  // The Table is wide; every other page shares one reading width.
+  const width = shown === 'table' ? 'max-w-7xl' : 'max-w-3xl';
   // The hint is for phones, where the subtabs are icons only.
   const phone = typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches;
   useEffect(() => {
@@ -334,6 +339,12 @@ export default function App() {
       <PeopleProvider events={events} version={events}>
       <main className={`mx-auto w-full ${width} flex-1 space-y-6 px-4 py-6`}>
         {section && <p className="text-xs text-zinc-500 sm:hidden">{`${SECTIONS[section].label} › ${PAGE_LABELS[shown]}`}</p>}
+        {HEADED.includes(shown) && (
+          <div>
+            <h1 className="text-lg font-bold text-zinc-50">{PAGE_LABELS[shown]}</h1>
+            <p className="text-xs text-zinc-500">{PAGE_BLURB[shown as SubPage]}</p>
+          </div>
+        )}
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-3 text-sm text-rose-200">{error}</p>}
         {shown === 'home' && (
           <HomePage
@@ -425,6 +436,7 @@ export default function App() {
         </div>
       </footer>
 
+      {BACK_TO_TOP.includes(shown) && <BackToTop />}
       <QuickAddFab onClick={() => setQuickAdd(true)} />
       <QuickAdd
         open={quickAdd}
