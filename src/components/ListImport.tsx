@@ -1,3 +1,4 @@
+import { Dialog } from './ui/Dialog';
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, FileUp, Loader2, X } from 'lucide-react';
 import { useVault } from './VaultContext';
@@ -254,128 +255,123 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
     ) : null;
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="flex h-full w-full max-w-xl flex-col border-l border-zinc-900 bg-zinc-950 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex-1 space-y-6 overflow-y-auto p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-bold">
-                <FileUp className="h-4 w-4 text-violet-400" /> Import a list
-              </h2>
-              <p className="text-xs text-zinc-500">
-                A CSV of events you went to, from Notion, a spreadsheet or this app's export. Nothing is saved until you press Import.
-                The file only adds: new events, and empty fields, acts and people on events you already have. It never changes what your
-                log already says.
-              </p>
-            </div>
-            <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
-              <X className="h-5 w-5" />
-            </button>
+    <Dialog title="Import a list" onClose={onClose}>
+      <div className="flex-1 space-y-6 overflow-y-auto p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-bold">
+              <FileUp className="h-4 w-4 text-violet-400" /> Import a list
+            </h2>
+            <p className="text-xs text-zinc-500">
+              A CSV of events you went to, from Notion, a spreadsheet or this app's export. Nothing is saved until you press Import.
+              The file only adds: new events, and empty fields, acts and people on events you already have. It never changes what your
+              log already says.
+            </p>
           </div>
-
-          <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:text-zinc-100">
-            <FileUp className="h-3.5 w-3.5" /> {file ? `${file} (choose another)` : 'Choose a CSV file'}
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void open(f);
-                e.target.value = '';
-              }}
-            />
-          </label>
-
-          {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
-
-          {result && (
-            <div className="space-y-1 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-3 text-sm text-emerald-200">
-              <p>
-                {result.created} new event{result.created === 1 ? '' : 's'}, {result.merged} merged into existing ones
-                {result.unchanged ? `, ${result.unchanged} already complete` : ''}.
-              </p>
-              {result.failed.map((f) => (
-                <p key={f.row.id} className="text-rose-200">
-                  {f.row.name}: {f.error}
-                </p>
-              ))}
-            </div>
-          )}
-
-          {list && !list.error && !result && (
-            <>
-              <p className="text-xs text-zinc-400">
-                Read {rows.length} event{rows.length === 1 ? '' : 's'}
-                {list.combined ? `, after combining ${list.combined} repeated row${list.combined === 1 ? '' : 's'}` : ''}. Columns:{' '}
-                {list.columns.map((c) => `${c.header} → ${c.field ? FIELD_LABELS[c.field] : 'not imported'}`).join(' · ')}
-                {groups.same ? `. ${groups.same} row${groups.same === 1 ? '' : 's'} with nothing new.` : ''}
-              </p>
-
-              {people.length > 0 && (
-                <section className="space-y-2">
-                  <h3 className={sectionTitle}>Are you one of these?</h3>
-                  <p className="text-xs text-zinc-600">"Went with" lists other people. Tap your own name to leave it out.</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {people.map(([key, p]) => (
-                      <button
-                        key={key}
-                        onClick={() =>
-                          setLeaveOut((s) => {
-                            const next = new Set(s);
-                            next.has(key) ? next.delete(key) : next.add(key);
-                            return next;
-                          })
-                        }
-                        className={`rounded-full border px-2.5 py-1 text-xs ${
-                          leaveOut.has(key) ? 'border-zinc-800 text-zinc-600 line-through' : 'border-violet-500/50 text-violet-200'
-                        }`}
-                      >
-                        {p.name} <span className="text-zinc-500">{p.count}</span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {renderSection(
-                'Same day as another event',
-                "These share a day with something in your log or your email review under another name. Say whether they're the same event.",
-                groups.choose,
-              )}
-              {renderSection(
-                'Already in your log or email review',
-                "Folded into the matching event (rows from this app's export, by their ID): only its empty fields are filled, and acts and people it doesn't have yet are added.",
-                groups.merge,
-              )}
-              {renderSection(
-                'New',
-                "Each becomes an event with the file's fields.",
-                groups.fresh,
-              )}
-            </>
-          )}
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
-        {list && !list.error && !result && rows.length > 0 && (
-          <div className="flex items-center justify-between gap-3 border-t border-zinc-900 p-4">
-            <span className="text-xs text-zinc-500">
-              {undecided ? `${undecided} still need your choice and won't be imported yet.` : ''}
-            </span>
-            <button
-              onClick={go}
-              disabled={busy || !chosen.length}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40"
-            >
-              {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {`Import ${chosen.length || ''} event${chosen.length === 1 ? '' : 's'}`}
-            </button>
+        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:text-zinc-100">
+          <FileUp className="h-3.5 w-3.5" /> {file ? `${file} (choose another)` : 'Choose a CSV file'}
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void open(f);
+              e.target.value = '';
+            }}
+          />
+        </label>
+
+        {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
+
+        {result && (
+          <div className="space-y-1 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-3 text-sm text-emerald-200">
+            <p>
+              {result.created} new event{result.created === 1 ? '' : 's'}, {result.merged} merged into existing ones
+              {result.unchanged ? `, ${result.unchanged} already complete` : ''}.
+            </p>
+            {result.failed.map((f) => (
+              <p key={f.row.id} className="text-rose-200">
+                {f.row.name}: {f.error}
+              </p>
+            ))}
           </div>
         )}
+
+        {list && !list.error && !result && (
+          <>
+            <p className="text-xs text-zinc-400">
+              Read {rows.length} event{rows.length === 1 ? '' : 's'}
+              {list.combined ? `, after combining ${list.combined} repeated row${list.combined === 1 ? '' : 's'}` : ''}. Columns:{' '}
+              {list.columns.map((c) => `${c.header} → ${c.field ? FIELD_LABELS[c.field] : 'not imported'}`).join(' · ')}
+              {groups.same ? `. ${groups.same} row${groups.same === 1 ? '' : 's'} with nothing new.` : ''}
+            </p>
+
+            {people.length > 0 && (
+              <section className="space-y-2">
+                <h3 className={sectionTitle}>Are you one of these?</h3>
+                <p className="text-xs text-zinc-600">"Went with" lists other people. Tap your own name to leave it out.</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {people.map(([key, p]) => (
+                    <button
+                      key={key}
+                      onClick={() =>
+                        setLeaveOut((s) => {
+                          const next = new Set(s);
+                          next.has(key) ? next.delete(key) : next.add(key);
+                          return next;
+                        })
+                      }
+                      className={`rounded-full border px-2.5 py-1 text-xs ${
+                        leaveOut.has(key) ? 'border-zinc-800 text-zinc-600 line-through' : 'border-violet-500/50 text-violet-200'
+                      }`}
+                    >
+                      {p.name} <span className="text-zinc-500">{p.count}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {renderSection(
+              'Same day as another event',
+              "These share a day with something in your log or your email review under another name. Say whether they're the same event.",
+              groups.choose,
+            )}
+            {renderSection(
+              'Already in your log or email review',
+              "Folded into the matching event (rows from this app's export, by their ID): only its empty fields are filled, and acts and people it doesn't have yet are added.",
+              groups.merge,
+            )}
+            {renderSection(
+              'New',
+              "Each becomes an event with the file's fields.",
+              groups.fresh,
+            )}
+          </>
+        )}
       </div>
-    </div>
+
+      {list && !list.error && !result && rows.length > 0 && (
+        <div className="flex items-center justify-between gap-3 border-t border-zinc-900 p-4">
+          <span className="text-xs text-zinc-500">
+            {undecided ? `${undecided} still need your choice and won't be imported yet.` : ''}
+          </span>
+          <button
+            onClick={go}
+            disabled={busy || !chosen.length}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40"
+          >
+            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {`Import ${chosen.length || ''} event${chosen.length === 1 ? '' : 's'}`}
+          </button>
+        </div>
+      )}
+    </Dialog>
   );
 };
