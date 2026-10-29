@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Archive, ArrowDownUp, FileSpreadsheet, GitMerge, Search, X } from 'lucide-react';
+import { Archive, ArrowDownUp, FileSpreadsheet, GitMerge, Search, Share2, X } from 'lucide-react';
 import type { Page } from '../services/nav';
 import type { TipsSaved } from '../server/auth/prefs';
 import { DEFAULT_TIPS, loadPrefs, TIPS_EVENT, writeTips } from '../services/prefs';
@@ -15,7 +15,7 @@ interface Tile {
   line: string;
   page: Page;
   linkLabel: string;
-  action?: 'import';
+  action?: 'import' | 'share';
 }
 
 export const TILES: Tile[] = [
@@ -24,10 +24,16 @@ export const TILES: Tile[] = [
   { key: 'fill', icon: ArrowDownUp, title: 'Fix many shows at once', line: 'Fill gaps finds every show missing a date, a city or a lineup, and lets you fill them in one pass.', page: 'table', linkLabel: 'Open Table' },
   { key: 'data', icon: FileSpreadsheet, title: 'Your data, your way', line: 'Import a spreadsheet, export everything as CSV, or keep a Google Sheet in sync. Your history is never locked in.', page: 'table', linkLabel: 'Open Import', action: 'import' },
   { key: 'merge', icon: GitMerge, title: 'Tidy as you go', line: 'Two spellings of the same artist or venue? Merge them in a tap, and undo if you change your mind.', page: 'manage', linkLabel: 'Open Manage' },
+  { key: 'share', icon: Share2, title: 'Show friends your year', line: 'Make a link to your history that anyone can open without signing in. Turn it off at any time, and it stops working at once.', page: 'summary', linkLabel: 'Open Share', action: 'share' },
   { key: 'years', icon: Archive, title: 'See your years', line: 'A timeline, a calendar heatmap, a map of every city and the artists you’ve seen most.', page: 'agenda', linkLabel: 'Open Timeline' },
 ];
 
-export const FeatureTiles: React.FC<{ eventCount: number; onOpen: (page: Page) => void; onImport: () => void }> = ({ eventCount, onOpen, onImport }) => {
+export const FeatureTiles: React.FC<{ eventCount: number; onOpen: (page: Page) => void; onImport: () => void; onShare: () => void }> = ({
+  eventCount,
+  onOpen,
+  onImport,
+  onShare,
+}) => {
   const me = useMe();
   // null until the account's choice arrives; nothing shows meanwhile, so a dismissed tip never flashes back.
   const [saved, setSaved] = useState<TipsSaved | null>(null);
@@ -102,7 +108,7 @@ export const FeatureTiles: React.FC<{ eventCount: number; onOpen: (page: Page) =
               <h3 className="pr-6 text-sm font-bold text-zinc-100">{t.title}</h3>
               <p className="mt-1 text-sm text-zinc-400">{t.line}</p>
               <button
-                onClick={() => (t.action === 'import' ? onImport() : onOpen(t.page))}
+                onClick={() => (t.action === 'import' ? onImport() : t.action === 'share' ? onShare() : onOpen(t.page))}
                 className="mt-2 text-sm text-violet-300 hover:text-violet-200"
               >
                 {t.linkLabel}

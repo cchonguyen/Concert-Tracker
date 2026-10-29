@@ -497,6 +497,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
             emailCheck={emailCheck}
             onCaptured={handleCaptured}
             onImport={openImport}
+            onShare={() => (readOnly ? askSample('share') : setSharing(true))}
             onReviewEmail={openReview}
             onOpenSummary={() => openTab('summary')}
             onOpen={openTab}
