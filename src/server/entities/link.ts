@@ -149,11 +149,11 @@ export function nameIndex(entities: Entity[], aliases: EntityAlias[], kinds: Ent
   for (const kind of kinds) out[kind] = {};
   for (const e of entities) {
     const names = out[e.kind];
-    if (names && !e.mergedIntoId) names[e.nameNormalized] = e.id;
+    if (names && !e.mergedIntoId && e.nameNormalized) names[e.nameNormalized] = e.id;
   }
   for (const e of entities) {
     const names = out[e.kind];
-    if (names && e.mergedIntoId) names[e.nameNormalized] ??= live(e.id);
+    if (names && e.mergedIntoId && e.nameNormalized) names[e.nameNormalized] ??= live(e.id);
   }
   for (const a of aliases) {
     const names = out[a.kind];

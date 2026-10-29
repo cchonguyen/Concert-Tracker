@@ -138,6 +138,10 @@ export interface LoggedEvent extends EventFacts {
   weather?: EventWeather;
   daysAttended: string[];
   companions: string[];
+  // Multi-user with the vault on: the people who went, by record id. Their
+  // names are encrypted, so `companions` stays empty and the browser fills the
+  // names in (src/services/vaultPeople.ts).
+  personIds?: string[];
   rating?: number;
   ticketPrice?: number;
   notes?: string;

@@ -49,6 +49,7 @@ interface FileState {
   entityAliases?: EntityAlias[];
   entityLinks?: EntityLink[];
   entityHistory?: Record<string, HistoryEntry>;
+  userEntities?: Record<string, Pick<FileState, 'entities' | 'entityAliases' | 'entityLinks' | 'entityHistory'>>;
   shareLinks?: Record<string, ShareLink>;
   // Multi-user: who owns each personal row (`<table>:<id>` to user id); a row
   // with no entry is the owner's, as in Supabase where user_id defaults to
@@ -333,10 +334,14 @@ export class FileLineupStore implements LineupStore {
   }
 
   async putEvents(events: LoggedEvent[]) {
+    return this.putEventsFor(undefined, events);
+  }
+
+  async putEventsFor(uid: string | undefined, events: LoggedEvent[]) {
     const state = await this.load();
     // The foreign keys Supabase has on venue_id, place_id and series_id,
     // plus the IDs inside companions and seen that it cannot check.
-    const entities = new Map(Object.entries(state.entities ?? {}));
+    const entities = new Map(Object.entries(this.holder(state, uid).entities ?? {}));
     for (const e of events) checkEventRefs(entities, e);
     for (const e of events) state.events[e.id] = clone(splitEventCity(e));
     await this.save();
@@ -423,32 +428,44 @@ export class FileLineupStore implements LineupStore {
     await this.save();
   }
 
-  async listEntities() {
-    return clone(Object.values((await this.load()).entities ?? {}));
+  // The entity tables of one member (Supabase: user_entities and friends), or
+  // of the single-owner app (the state itself) when uid is undefined.
+  private holder(state: FileState, uid?: string): Pick<FileState, 'entities' | 'entityAliases' | 'entityLinks' | 'entityHistory'> {
+    if (!uid) return state;
+    state.userEntities ??= {};
+    return (state.userEntities[uid] ??= {});
   }
 
-  async addEntities(entities: Entity[]) {
+  async listEntitiesFor(uid: string | undefined) {
     const state = await this.load();
-    const all = new Map(Object.entries(state.entities ?? {}));
+    return clone(Object.values(this.holder(state, uid).entities ?? {}));
+  }
+
+  async addEntitiesFor(uid: string | undefined, entities: Entity[]) {
+    const state = await this.load();
+    const h = this.holder(state, uid);
+    const all = new Map(Object.entries(h.entities ?? {}));
     const fresh = [...new Map(entities.filter((e) => !all.has(e.id)).map((e) => [e.id, e])).values()];
     checkEntities(all, fresh);
-    state.entities = { ...state.entities };
-    for (const e of fresh) state.entities[e.id] = clone(e);
+    h.entities = { ...h.entities };
+    for (const e of fresh) h.entities[e.id] = clone(e);
     await this.save();
   }
 
-  async listEntityAliases() {
-    return clone((await this.load()).entityAliases ?? []);
+  async listEntityAliasesFor(uid: string | undefined) {
+    const state = await this.load();
+    return clone(this.holder(state, uid).entityAliases ?? []);
   }
 
-  async addEntityAliases(aliases: EntityAlias[]) {
+  async addEntityAliasesFor(uid: string | undefined, aliases: EntityAlias[]) {
     const state = await this.load();
-    const existing = state.entityAliases ?? [];
+    const h = this.holder(state, uid);
+    const existing = h.entityAliases ?? [];
     const held = new Set(existing.map((a) => `${a.kind}\u0000${a.aliasNormalized}\u0000${a.entityId}`));
     const fresh = aliases.filter((a) => !held.has(`${a.kind}\u0000${a.aliasNormalized}\u0000${a.entityId}`));
-    checkAliases(new Map(Object.entries(state.entities ?? {})), existing, fresh);
+    checkAliases(new Map(Object.entries(h.entities ?? {})), existing, fresh);
     const seen = new Set<string>();
-    state.entityAliases = [
+    h.entityAliases = [
       ...existing,
       ...fresh.filter((a) => {
         const k = `${a.kind}\u0000${a.aliasNormalized}`;
@@ -458,68 +475,124 @@ export class FileLineupStore implements LineupStore {
     await this.save();
   }
 
-  async listEntityLinks() {
-    return clone((await this.load()).entityLinks ?? []);
+  async listEntityLinksFor(uid: string | undefined) {
+    const state = await this.load();
+    return clone(this.holder(state, uid).entityLinks ?? []);
   }
 
-  async addEntityLinks(links: EntityLink[]) {
+  async addEntityLinksFor(uid: string | undefined, links: EntityLink[]) {
     const state = await this.load();
-    const existing = state.entityLinks ?? [];
+    const h = this.holder(state, uid);
+    const existing = h.entityLinks ?? [];
     const pk = (l: EntityLink) => `${l.fromId}\u0000${l.toId}\u0000${l.role}`;
     const have = new Set(existing.map(pk));
     const fresh = [...new Map(links.filter((l) => !have.has(pk(l))).map((l) => [pk(l), l])).values()];
-    checkLinks(new Map(Object.entries(state.entities ?? {})), fresh);
-    state.entityLinks = [...existing, ...fresh.map(clone)];
+    checkLinks(new Map(Object.entries(h.entities ?? {})), fresh);
+    h.entityLinks = [...existing, ...fresh.map(clone)];
     await this.save();
   }
 
-  async putEntities(entities: Entity[]) {
+  async putEntitiesFor(uid: string | undefined, entities: Entity[]) {
     const state = await this.load();
-    checkEntities(new Map(Object.entries(state.entities ?? {})), entities);
-    state.entities = { ...state.entities };
-    for (const e of entities) state.entities[e.id] = clone(e);
+    const h = this.holder(state, uid);
+    checkEntities(new Map(Object.entries(h.entities ?? {})), entities);
+    h.entities = { ...h.entities };
+    for (const e of entities) h.entities[e.id] = clone(e);
     await this.save();
   }
 
-  async replaceEntityAliases(entityIds: string[], aliases: EntityAlias[]) {
+  async replaceEntityAliasesFor(uid: string | undefined, entityIds: string[], aliases: EntityAlias[]) {
     const state = await this.load();
+    const h = this.holder(state, uid);
     const ids = new Set(entityIds);
-    const kept = (state.entityAliases ?? []).filter((a) => !ids.has(a.entityId));
-    checkAliases(new Map(Object.entries(state.entities ?? {})), kept, aliases);
+    const kept = (h.entityAliases ?? []).filter((a) => !ids.has(a.entityId));
+    checkAliases(new Map(Object.entries(h.entities ?? {})), kept, aliases);
     const seen = new Set<string>();
     const fresh = aliases.filter((a) => {
       const k = `${a.kind}\u0000${a.aliasNormalized}`;
       return !seen.has(k) && Boolean(seen.add(k));
     });
-    state.entityAliases = [...kept, ...fresh.map(clone)];
+    h.entityAliases = [...kept, ...fresh.map(clone)];
     await this.save();
+  }
+
+  async replaceEntityLinksFor(uid: string | undefined, entityIds: string[], links: EntityLink[]) {
+    const state = await this.load();
+    const h = this.holder(state, uid);
+    const ids = new Set(entityIds);
+    const kept = (h.entityLinks ?? []).filter((l) => !ids.has(l.fromId) && !ids.has(l.toId));
+    checkLinks(new Map(Object.entries(h.entities ?? {})), links);
+    const pk = (l: EntityLink) => `${l.fromId}\u0000${l.toId}\u0000${l.role}`;
+    const have = new Set(kept.map(pk));
+    h.entityLinks = [...kept, ...links.filter((l) => !have.has(pk(l)) && Boolean(have.add(pk(l)))).map(clone)];
+    await this.save();
+  }
+
+  async putEntityHistoryFor(uid: string | undefined, entry: HistoryEntry) {
+    const state = await this.load();
+    const h = this.holder(state, uid);
+    h.entityHistory = { ...h.entityHistory, [entry.id]: clone(entry) };
+    await this.save();
+  }
+
+  async getEntityHistoryFor(uid: string | undefined, id: string) {
+    const state = await this.load();
+    const found = this.holder(state, uid).entityHistory?.[id];
+    return found ? clone(found) : null;
+  }
+
+  async listEntityHistoryFor(uid: string | undefined, limit: number) {
+    const state = await this.load();
+    const all = Object.values(this.holder(state, uid).entityHistory ?? {});
+    return clone(all.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit));
+  }
+
+  async listEntities() {
+    return this.listEntitiesFor(undefined);
+  }
+
+  async addEntities(entities: Entity[]) {
+    return this.addEntitiesFor(undefined, entities);
+  }
+
+  async listEntityAliases() {
+    return this.listEntityAliasesFor(undefined);
+  }
+
+  async addEntityAliases(aliases: EntityAlias[]) {
+    return this.addEntityAliasesFor(undefined, aliases);
+  }
+
+  async listEntityLinks() {
+    return this.listEntityLinksFor(undefined);
+  }
+
+  async addEntityLinks(links: EntityLink[]) {
+    return this.addEntityLinksFor(undefined, links);
+  }
+
+  async putEntities(entities: Entity[]) {
+    return this.putEntitiesFor(undefined, entities);
+  }
+
+  async replaceEntityAliases(entityIds: string[], aliases: EntityAlias[]) {
+    return this.replaceEntityAliasesFor(undefined, entityIds, aliases);
   }
 
   async replaceEntityLinks(entityIds: string[], links: EntityLink[]) {
-    const state = await this.load();
-    const ids = new Set(entityIds);
-    const kept = (state.entityLinks ?? []).filter((l) => !ids.has(l.fromId) && !ids.has(l.toId));
-    checkLinks(new Map(Object.entries(state.entities ?? {})), links);
-    const pk = (l: EntityLink) => `${l.fromId}\u0000${l.toId}\u0000${l.role}`;
-    const have = new Set(kept.map(pk));
-    state.entityLinks = [...kept, ...links.filter((l) => !have.has(pk(l)) && Boolean(have.add(pk(l)))).map(clone)];
-    await this.save();
+    return this.replaceEntityLinksFor(undefined, entityIds, links);
   }
 
   async putEntityHistory(entry: HistoryEntry) {
-    const state = await this.load();
-    state.entityHistory = { ...state.entityHistory, [entry.id]: clone(entry) };
-    await this.save();
+    return this.putEntityHistoryFor(undefined, entry);
   }
 
   async getEntityHistory(id: string) {
-    const h = (await this.load()).entityHistory?.[id];
-    return h ? clone(h) : null;
+    return this.getEntityHistoryFor(undefined, id);
   }
 
   async listEntityHistory(limit: number) {
-    const all = Object.values((await this.load()).entityHistory ?? {});
-    return clone(all.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit));
+    return this.listEntityHistoryFor(undefined, limit);
   }
 
   async getCachedResponse(key: string, now: Date) {
@@ -601,12 +674,25 @@ function scopedFileStore(base: FileLineupStore, scope: UserScope): LineupStore {
     },
     async putEvent(event) {
       await claim('event', [event.id]);
-      await base.putEvent(event);
+      await base.putEventsFor(scope.userId, [event]);
     },
     async putEvents(events) {
       await claim('event', events.map((e) => e.id));
-      await base.putEvents(events);
+      await base.putEventsFor(scope.userId, events);
     },
+    // Each member has their own records (user_entities and friends in Supabase).
+    listEntities: () => base.listEntitiesFor(scope.userId),
+    addEntities: (list) => base.addEntitiesFor(scope.userId, list),
+    listEntityAliases: () => base.listEntityAliasesFor(scope.userId),
+    addEntityAliases: (list) => base.addEntityAliasesFor(scope.userId, list),
+    listEntityLinks: () => base.listEntityLinksFor(scope.userId),
+    addEntityLinks: (list) => base.addEntityLinksFor(scope.userId, list),
+    putEntities: (list) => base.putEntitiesFor(scope.userId, list),
+    replaceEntityAliases: (ids, list) => base.replaceEntityAliasesFor(scope.userId, ids, list),
+    replaceEntityLinks: (ids, list) => base.replaceEntityLinksFor(scope.userId, ids, list),
+    putEntityHistory: (entry) => base.putEntityHistoryFor(scope.userId, entry),
+    getEntityHistory: (id) => base.getEntityHistoryFor(scope.userId, id),
+    listEntityHistory: (limit) => base.listEntityHistoryFor(scope.userId, limit),
     async getEvent(id) {
       return (await mine('event', id)) ? base.getEvent(id) : null;
     },

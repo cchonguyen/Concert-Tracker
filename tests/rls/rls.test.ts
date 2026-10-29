@@ -33,7 +33,7 @@ test('row level security: members see and change only their own rows', { skip: !
   psql('postgres', ['-c', 'drop database if exists concert_rls_test', '-c', 'create database concert_rls_test']);
   const db = (file: string) => psql('concert_rls_test', ['-f', file]);
   db(path.resolve('tests/rls/stub.sql'));
-  for (const m of ['0002_source_first_lineups.sql', '0003_event_log.sql', '0004_email_imports.sql', '0006_app_settings.sql', '0015_share_links.sql', '0017_members_and_user_id.sql']) db(migration(m));
+  for (const m of ['0002_source_first_lineups.sql', '0003_event_log.sql', '0004_email_imports.sql', '0006_app_settings.sql', '0014_entities.sql', '0015_share_links.sql', '0016_entity_labels.sql', '0017_members_and_user_id.sql']) db(migration(m));
   psql('concert_rls_test', [], `
     insert into auth.users(id, email) values ('${OWNER}','owner@x'), ('${ANN}','ann@x'), ('${BOB}','bob@x');
     insert into members(email, user_id, role) values ('owner@x','${OWNER}','owner'), ('ann@x','${ANN}','member'), ('bob@x','${BOB}','member');
@@ -71,6 +71,49 @@ test('row level security: members see and change only their own rows', { skip: !
   // The invite list is invisible to every member, the owner included.
   assert.equal(as(ANN, `select count(*) from members;`), '0');
   assert.equal(as(OWNER, `select count(*) from members;`), '0');
+  // Per-member records (0020): own rows only, forged user_id refused, ids may repeat across members.
+  db(migration('0020_per_member_entities.sql'));
+  const ent = (id: string, user: string, name: string, kind = 'venue') =>
+    `insert into user_entities(user_id, id, kind, name, name_normalized) values ('${user}', '${id}', '${kind}', '${name}', '${name.toLowerCase()}');`;
+  const V1 = '10000000-0000-4000-8000-000000000001';
+  assert.ok(!as(ANN, ent(V1, ANN, 'Forum')).startsWith('ERROR'));
+  assert.ok(!as(BOB, ent(V1, BOB, 'Forum')).startsWith('ERROR')); // same id and name, a different member
+  assert.match(as(ANN, ent('10000000-0000-4000-8000-000000000002', BOB, 'Sneaky')), /row-level security/);
+  assert.equal(as(BOB, `select count(*) from user_entities;`), '1');
+  assert.equal(as(OWNER, `select count(*) from user_entities;`), '0');
+  assert.match(as(ANN, ent('10000000-0000-4000-8000-000000000003', ANN, 'Forum')), /duplicate key/); // one live name per kind
+  // A person with a vault has an encrypted name and no readable one; a plain name cannot sit beside it.
+  const P1 = '20000000-0000-4000-8000-000000000001';
+  assert.ok(!as(ANN, `insert into user_entities(user_id, id, kind, name_encrypted) values ('${ANN}', '${P1}', 'person', 'v1:aaa:bbb');`).startsWith('ERROR'));
+  assert.match(as(ANN, `insert into user_entities(user_id, id, kind, name, name_normalized, name_encrypted) values ('${ANN}', '20000000-0000-4000-8000-000000000002', 'person', 'Jen', 'jen', 'v1:aaa:bbb');`), /violates check constraint/);
+  assert.match(as(ANN, `insert into user_entities(user_id, id, kind, name_encrypted) values ('${ANN}', '20000000-0000-4000-8000-000000000003', 'venue', 'v1:aaa:bbb');`), /violates check constraint/);
+  // Alias tokens are per member; another member's record cannot be aliased.
+  assert.ok(!as(ANN, `insert into user_entity_aliases(user_id, entity_id, kind, companion_token) values ('${ANN}', '${P1}', 'person', 'tok1');`).startsWith('ERROR'));
+  assert.match(as(BOB, `insert into user_entity_aliases(user_id, entity_id, kind, companion_token) values ('${BOB}', '${P1}', 'person', 'tok1');`), /foreign key|violates/);
+  assert.equal(as(BOB, `select count(*) from user_entity_aliases;`), '0');
+  // Events may point at their own records and people only (the trigger replaces the old foreign keys).
+  const evWith = (id: string, user: string, cols: string) => `insert into logged_events(id, name, user_id, ${cols.split('=')[0]}) values ('${id}', '${id}', '${user}', ${cols.split('=')[1]});`;
+  assert.ok(!as(ANN, evWith('e-ok', ANN, `venue_id='${V1}'`)).startsWith('ERROR'));
+  assert.ok(!as(ANN, evWith('e-p', ANN, `person_ids=array['${P1}']::uuid[]`)).startsWith('ERROR'));
+  assert.match(as(BOB, evWith('e-bob-p', BOB, `person_ids=array['${P1}']::uuid[]`)), /not one of this user/);
+  assert.match(as(BOB, evWith('e-bad', BOB, `venue_id='99999999-0000-4000-8000-000000000009'`)), /does not exist/);
+  // Genres, links and history follow the same rule.
+  assert.ok(!as(ANN, `insert into user_artist_genres(user_id, artist_key, name, genres) values ('${ANN}', 'moon garden', 'Moon Garden', '[]');`).startsWith('ERROR'));
+  assert.equal(as(BOB, `select count(*) from user_artist_genres;`), '0');
+  assert.ok(!as(ANN, `insert into user_entity_history(user_id, id, operation, manifest) values ('${ANN}', '30000000-0000-4000-8000-000000000001', 'rename', '{}');`).startsWith('ERROR'));
+  assert.equal(as(BOB, `select count(*) from user_entity_history;`), '0');
+  // 0021 copies the owner's old records with the same ids; members' rows are untouched.
+  psql('concert_rls_test', [], `
+    insert into entities(id, kind, name, name_normalized) values ('${V1}', 'venue', 'Forum', 'forum'), ('40000000-0000-4000-8000-000000000001', 'venue', 'The Wiltern', 'the wiltern');
+    insert into entities(id, kind, name, name_normalized, merged_into_id) values ('40000000-0000-4000-8000-000000000002', 'venue', 'Wiltern', 'wiltern', '40000000-0000-4000-8000-000000000001');
+    insert into entity_aliases(entity_id, kind, alias_normalized) values ('40000000-0000-4000-8000-000000000001', 'venue', 'wiltern theatre');`);
+  db(migration('0021_owner_entities_copy.sql'));
+  assert.equal(as(OWNER, `select string_agg(name, ',' order by name) from user_entities;`), 'Forum,The Wiltern,Wiltern');
+  assert.equal(as(OWNER, `select merged_into_id from user_entities where name = 'Wiltern';`), '40000000-0000-4000-8000-000000000001');
+  assert.equal(as(OWNER, `select companion_token from user_entity_aliases;`), 'wiltern theatre');
+  assert.equal(as(ANN, `select count(*) from user_entities;`), '2');
+  db(migration('0021_owner_entities_copy.sql')); // safe to run twice
+  assert.equal(as(OWNER, `select count(*) from user_entities;`), '3');
   // Without a user id in the token nothing is visible.
   assert.equal(as('', `select count(*) from logged_events;`), '0');
   // 0018 left user_id required.

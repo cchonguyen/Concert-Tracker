@@ -11,6 +11,10 @@ export interface Entity {
   kind: EntityKind;
   name: string;
   nameNormalized: string;
+  // A member's person whose vault is on: the name is encrypted in the browser
+  // (name and nameNormalized stay empty, so the server never holds it) and
+  // typed names find it through alias tokens (src/services/vault.ts, nameToken).
+  nameEncrypted?: string;
   // Facts about the thing itself. A place keeps { city, region?, country? }.
   attrs: Record<string, unknown>;
   // Set when merged into another record; never chains (merges are flattened).
