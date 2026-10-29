@@ -27,6 +27,7 @@ export interface OwnerGate {
 export type AccessGate =
   | ({ kind: 'multi'; directory: MemberDirectory } & MultiUserConfig)
   | ({ kind: 'owner' } & OwnerGate)
+  | { kind: 'local' } // the Node dev server on loopback only (localOwnerFromEnv)
   | { kind: 'closed'; reason: string };
 
 export function multiUserFromEnv(env: Record<string, string | undefined>): MultiUserConfig | null {
@@ -75,4 +76,17 @@ export function accessGateFromEnv(env: Record<string, string | undefined>, direc
 export function workerSettings(bindings: Record<string, unknown>, processEnv: Record<string, string | undefined>): Record<string, string | undefined> {
   const fromBindings = Object.fromEntries(Object.entries(bindings).filter((e): e is [string, string] => typeof e[1] === 'string'));
   return { ...fromBindings, ...processEnv };
+}
+
+// Local development only: the Node dev server (server.ts) on this machine, with
+// no Access sign-in. It is refused (returns null) in production, and only the
+// Node server asks for it, so the Worker can never be in this mode. The server
+// listens on 127.0.0.1 in this mode (see gate.ts, localOwnerMiddleware).
+export function localOwnerFromEnv(env: Record<string, string | undefined>): boolean {
+  if (env.LOCAL_DEV_OWNER?.trim().toLowerCase() !== 'on') return false;
+  if (env.NODE_ENV === 'production') {
+    console.warn('LOCAL_DEV_OWNER is ignored in production.');
+    return false;
+  }
+  return true;
 }
