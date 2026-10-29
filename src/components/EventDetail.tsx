@@ -36,6 +36,7 @@ import type { ManageTarget } from './ManageView';
 import { Dialog } from './ui/Dialog';
 import { Confirm } from './ui/Confirm';
 import { useToast } from './ui/Toast';
+import { Tooltip } from './ui/Tooltip';
 
 interface EventDetailProps {
   event: LoggedEvent;
@@ -483,14 +484,15 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
         pairing === s.key ? 'bg-violet-700/50 ring-1 ring-violet-400' : 'bg-zinc-800'
       }`}
     >
-      <button
-        onClick={() => favourite(s.key)}
-        aria-label={s.favourite ? `${s.name} is your favourite set` : `Mark ${s.name} as your favourite set`}
-        title={s.favourite ? 'Favourite set of the night' : 'Mark as favourite set'}
-        className={s.favourite ? 'text-rose-400' : 'text-zinc-400 hover:text-rose-300'}
-      >
-        <Heart className={`h-3 w-3 ${s.favourite ? 'fill-rose-400' : ''}`} />
-      </button>
+      <Tooltip label={s.favourite ? 'Favourite set of the night' : 'Mark as favourite set'}>
+        <button
+          onClick={() => favourite(s.key)}
+          aria-label={s.favourite ? `${s.name} is your favourite set` : `Mark ${s.name} as your favourite set`}
+          className={s.favourite ? 'text-rose-400' : 'text-zinc-400 hover:text-rose-300'}
+        >
+          <Heart className={`h-3 w-3 ${s.favourite ? 'fill-rose-400' : ''}`} />
+        </button>
+      </Tooltip>
       {/* Tapping the name marks or unmarks Headliner, as your choice. */}
       <button
         onClick={() => setRole(s.key, s.role === 'headliner' ? null : 'headliner')}
@@ -522,38 +524,42 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
         </button>
       )}
       {!s.asSolo && (
-        <button
-          onClick={() => b2bTap(s)}
-          aria-label={
-            pairing && pairing !== s.key
-              ? `B2B with ${pairingName}`
-              : s.b2b?.length
-                ? `Take ${s.name} out of the B2B`
-                : `Pair ${s.name} B2B with another act`
-          }
-          title={pairing && pairing !== s.key ? `B2B with ${pairingName}` : s.b2b?.length ? 'Take out of the B2B' : 'B2B with another act'}
-          className={s.b2b?.length || pairing === s.key ? 'text-violet-300' : 'text-zinc-400 hover:text-zinc-300'}
-        >
-          <Link2 className="h-3 w-3" />
-        </button>
+        <Tooltip label={pairing && pairing !== s.key ? `B2B with ${pairingName}` : s.b2b?.length ? 'Take out of the B2B' : 'B2B with another act'}>
+          <button
+            onClick={() => b2bTap(s)}
+            aria-label={
+              pairing && pairing !== s.key
+                ? `B2B with ${pairingName}`
+                : s.b2b?.length
+                  ? `Take ${s.name} out of the B2B`
+                  : `Pair ${s.name} B2B with another act`
+            }
+            className={s.b2b?.length || pairing === s.key ? 'text-violet-300' : 'text-zinc-400 hover:text-zinc-300'}
+          >
+            <Link2 className="h-3 w-3" />
+          </button>
+        </Tooltip>
       )}
       {!s.asSolo && (
+        <Tooltip label={s.role === 'support' ? 'Move to Artist' : 'Move to Supporting'}>
+          <button
+            onClick={() => setRole(s.key, s.role === 'support' ? null : 'support')}
+            aria-label={s.role === 'support' ? `Move ${s.name} to Artist` : `Move ${s.name} to Supporting`}
+            className="text-zinc-400 hover:text-zinc-200"
+          >
+            {s.role === 'support' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+          </button>
+        </Tooltip>
+      )}
+      <Tooltip label={s.asSolo ? `Remove ${s.name}'s solo set` : `Remove ${s.name}`}>
         <button
-          onClick={() => setRole(s.key, s.role === 'support' ? null : 'support')}
-          aria-label={s.role === 'support' ? `Move ${s.name} to Artist` : `Move ${s.name} to Supporting`}
-          title={s.role === 'support' ? 'Move to Artist' : 'Move to Supporting'}
+          onClick={() => (s.asSolo ? onChange(toPatch(setSolo(seen, s.key, false))) : remove(s.key))}
+          aria-label={s.asSolo ? `Remove ${s.name}'s solo set` : `Remove ${s.name}`}
           className="text-zinc-400 hover:text-zinc-200"
         >
-          {s.role === 'support' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+          <X className="h-3 w-3" />
         </button>
-      )}
-      <button
-        onClick={() => (s.asSolo ? onChange(toPatch(setSolo(seen, s.key, false))) : remove(s.key))}
-        aria-label={s.asSolo ? `Remove ${s.name}'s solo set` : `Remove ${s.name}`}
-        className="text-zinc-400 hover:text-zinc-200"
-      >
-        <X className="h-3 w-3" />
-      </button>
+      </Tooltip>
     </span>
   );
   const artists = artistsOf(seen);

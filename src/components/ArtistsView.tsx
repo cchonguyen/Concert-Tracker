@@ -5,6 +5,7 @@ import { ArtistGenres, genresByArtist, topStyles } from '../services/genres';
 import { artistGaps, spanLabel } from '../services/insights';
 import { whenLabel } from '../services/format';
 import { EventTitle } from './EventTitle';
+import { Tooltip } from './ui/Tooltip';
 import { ARTIST_SORTS, artistSummaries, ArtistSort, ArtistSummary, groupArtists, jumpTargets } from '../services/artists';
 
 interface ArtistsViewProps {
@@ -415,17 +416,17 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
               ['detailed', LayoutList, 'Detailed'],
             ] as const
           ).map(([value, Icon, label]) => (
-            <button
-              key={value}
-              role="radio"
-              aria-checked={density === value}
-              aria-label={label}
-              title={label}
-              onClick={() => setDensity(value)}
-              className={`rounded-lg px-2 py-1.5 ${density === value ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-            </button>
+            <Tooltip key={value} label={label}>
+              <button
+                role="radio"
+                aria-checked={density === value}
+                aria-label={label}
+                onClick={() => setDensity(value)}
+                className={`rounded-lg px-2 py-1.5 ${density === value ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
           ))}
         </div>
       </div>
