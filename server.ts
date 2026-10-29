@@ -11,7 +11,7 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 
 import { createDeps, createStore, LookupWorker } from './src/server/lineup/service';
 import { accessGateFromEnv, localOwnerFromEnv } from './src/server/auth/config';
-import { supabaseMemberDirectory } from './src/server/auth/members';
+import { supabaseMemberStores } from './src/server/auth/members';
 import { getSupabaseClient } from './src/server/supabase';
 import { createApiApp } from './src/server/app';
 import { backfillEntities, backfillVenuePlaces } from './src/server/entities/linkingStore';
@@ -27,7 +27,7 @@ async function main() {
   // Who may use /api (src/server/auth/config.ts). Nothing is open by default.
   // LOCAL_DEV_OWNER=on (development only) lets this machine use /api without Access.
   const localOwner = localOwnerFromEnv(process.env);
-  const gate = localOwner ? { kind: 'local' as const } : accessGateFromEnv(process.env, () => supabaseMemberDirectory(getSupabaseClient()!));
+  const gate = localOwner ? { kind: 'local' as const } : accessGateFromEnv(process.env, () => supabaseMemberStores(getSupabaseClient()!));
   const app = createApiApp(lineupDeps, worker, gate);
   worker.start();
   console.log(`Lineup store: ${lineupStore.kind}; Gemini: ${lineupDeps.gemini ? lineupDeps.gemini.model : 'not configured'}`);

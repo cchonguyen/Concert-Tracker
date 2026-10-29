@@ -18,7 +18,7 @@ Ranked goals:
 
 ## 2. Who uses it
 
-- One person (the owner), by default. No social features. Two exceptions: a read-only share page of your past events, at a link you create and can turn off at any time (see ARCHITECTURE.md, Share page); and, only when the owner turns on `MULTI_USER` and invites them by email, a few friends who each keep their own private tracker (see ARCHITECTURE.md, Multi-user). Each member's events, imports, lookups, share link and settings are theirs alone; nobody sees another member's rows, and the owner has no extra view of them.
+- One person (the owner), by default. No social features. Two exceptions: a read-only share page of your past events, at a link you create and can turn off at any time (see ARCHITECTURE.md, Share page); and, only when the owner turns on `MULTI_USER` and invites them by email or approves their request to join, a few friends who each keep their own private tracker (see ARCHITECTURE.md, Multi-user). Each member's events, imports, lookups, share link and settings are theirs alone; nobody sees another member's rows, and the owner has no extra view of them.
 - Tens to a few hundred events over a lifetime; a festival can have 200+ acts.
 - Used on a phone right after a show and on a laptop when catching up on old ones.
 - The owner is not a developer and should never need to read logs, pick a data source or understand quotas to use the app.

@@ -11,3 +11,10 @@ end $$;
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 alter default privileges in schema public grant select, insert, update, delete on tables to authenticated;
+do $$ begin
+  if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role nologin bypassrls; end if;
+end $$;
+-- The server's key (service_role) bypasses row level security and reads every table.
+grant usage on schema public to service_role;
+grant all on all tables in schema public to service_role;
+alter default privileges in schema public grant all on tables to service_role;

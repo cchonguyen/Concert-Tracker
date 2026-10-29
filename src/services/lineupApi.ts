@@ -74,8 +74,14 @@ async function request<T>(url: string, rawInit?: RequestInit): Promise<T> {
   const data = await res.json().catch(() => ({}));
   // `retry`: the server says to wait a moment and call again.
   // `conflict`: a record that already has the name (Manage), to merge into.
+  // `not_invited` (403): the signed-in email has no tracker here; the refusal screen shows it (NotInvited.tsx).
   if (!res.ok) {
-    throw Object.assign(new Error(data.error || `Request failed with HTTP ${res.status}`), { retry: data.retry === true, conflict: data.conflict });
+    throw Object.assign(new Error(data.error || `Request failed with HTTP ${res.status}`), {
+      retry: data.retry === true,
+      conflict: data.conflict,
+      code: data.code,
+      email: data.email,
+    });
   }
   return incoming(data) as T;
 }
@@ -219,17 +225,46 @@ export interface MemberRow {
   email: string;
   role: 'owner' | 'member';
   joined: boolean;
+  blocked?: boolean;
   invitedAt: string;
 }
 // Who is signed in, and (owner only, multi-user) the invite list.
 export const meApi = {
-  get: () => request<{ multiUser: boolean; role: 'owner' | 'member'; email: string | null; noticeAccepted?: boolean }>('/api/me'),
+  get: () =>
+    request<{ multiUser: boolean; role: 'owner' | 'member'; email: string | null; noticeAccepted?: boolean; pendingRequests?: number }>('/api/me'),
   acceptNotice: () => request<unknown>('/api/me/notice', post()),
 };
 export const membersApi = {
   list: () => request<{ members: MemberRow[] }>('/api/members').then((r) => r.members),
   invite: (email: string) => request<unknown>('/api/members', post({ email })),
-  remove: (email: string) => request<unknown>(`/api/members/${encodeURIComponent(email)}`, { method: 'DELETE' }),
+  // Deletes the member's account and data. The server wants the email again as `confirm`.
+  remove: (email: string) => request<unknown>(`/api/members/${encodeURIComponent(email)}`, { method: 'DELETE', body: JSON.stringify({ confirm: email }) }),
+};
+
+// Request access (ARCHITECTURE.md "Request access"). The owner's list, settings and status changes.
+export type RequestStatus = 'pending' | 'accepted' | 'declined' | 'left';
+export interface AccessRequestRow {
+  email: string;
+  status: RequestStatus;
+  source: 'requested' | 'invited' | 'blocked';
+  requestedAt: string;
+  statusChangedAt: string;
+  hasAccount: boolean;
+  blocked: boolean;
+}
+export interface RequestSettings {
+  paused: boolean;
+  cap: number;
+}
+export const accessRequestsApi = {
+  // A signed-in stranger: their own state, and the ask itself.
+  mine: () => request<{ state: 'none' | 'sent' | 'closed' }>('/api/access-requests/mine'),
+  ask: () => request<{ state: 'sent' | 'closed' }>('/api/access-requests', post()),
+  list: () => request<{ requests: AccessRequestRow[]; settings: RequestSettings; pending: number }>('/api/access-requests'),
+  setStatus: (email: string, to: 'pending' | 'accepted' | 'declined') =>
+    request<unknown>(`/api/access-requests/${encodeURIComponent(email)}`, { method: 'PUT', body: JSON.stringify({ to }) }),
+  saveSettings: (patch: Partial<RequestSettings>) =>
+    request<{ settings: RequestSettings }>('/api/access-requests/settings', { method: 'PUT', body: JSON.stringify(patch) }),
 };
 
 import type { VaultMaterial } from './vault';
