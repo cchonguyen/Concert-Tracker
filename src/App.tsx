@@ -24,6 +24,7 @@ import { MapView } from './components/MapView';
 import { TimelineTab } from './components/timeline/TimelineTab';
 import { useTheme } from './components/ThemePicker';
 import { MenuButton } from './components/MenuButton';
+import { QuickAdd, QuickAddButton, QuickAddFab, SavedToast } from './components/QuickAdd';
 import { ManageTarget, ManageView } from './components/ManageView';
 import { MeProvider, type Me } from './components/MeContext';
 import { NoticeModal } from './components/NoticeModal';
@@ -82,6 +83,24 @@ export default function App() {
   const [members, setMembers] = useState(false);
   const [account, setAccount] = useState(false);
   const theme = useTheme();
+  const [quickAdd, setQuickAdd] = useState(false);
+  const [saved, setSaved] = useState<LoggedEvent | null>(null);
+  const dismissSaved = useCallback(() => setSaved(null), []);
+  const closeQuickAdd = useCallback(() => setQuickAdd(false), []);
+
+  // N opens Quick add, unless you are typing or another panel is open.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key !== 'n' && e.key !== 'N') || e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = document.activeElement;
+      if (el instanceof HTMLElement && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return;
+      if (reviewing || selectedId || members || account || quickAdd) return;
+      e.preventDefault();
+      setQuickAdd(true);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [reviewing, selectedId, members, account, quickAdd]);
   useEffect(() => {
     meApi.get().then(setMe, () => undefined);
   }, []);
@@ -227,6 +246,7 @@ export default function App() {
                 );
               })}
             </nav>
+            <QuickAddButton onClick={() => setQuickAdd(true)} />
             <MenuButton
               theme={theme}
               canMembers={me.multiUser && me.role === 'owner'}
@@ -333,6 +353,26 @@ export default function App() {
           )}
         </div>
       </footer>
+
+      <QuickAddFab onClick={() => setQuickAdd(true)} />
+      <QuickAdd
+        open={quickAdd}
+        onClose={closeQuickAdd}
+        emailCheck={emailCheck}
+        events={events}
+        imports={imports}
+        onImported={() => {
+          void refresh();
+          importsApi.list().then(setImports).catch(() => undefined);
+        }}
+        onReviewEmail={() => setReviewing(true)}
+        onCaptured={(event) => {
+          setQuickAdd(false);
+          setSaved(event);
+          void handleCaptured(event);
+        }}
+      />
+      {saved && <SavedToast event={saved} onOpen={setSelectedId} onDismiss={dismissSaved} />}
 
       {reviewing && (
         <ImportReview
