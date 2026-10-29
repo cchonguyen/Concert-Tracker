@@ -38,6 +38,7 @@ async function main() {
     const moved = oldAppLink(new URL(req.originalUrl, 'http://localhost'));
     if (moved) return res.redirect(302, moved);
     if (req.path === '/app') req.url = `/app.html${req.url.slice('/app'.length)}`;
+    if (req.path === '/demo') req.url = `/demo.html${req.url.slice('/demo'.length)}`;
     next();
   });
 

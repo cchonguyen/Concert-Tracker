@@ -280,7 +280,7 @@ The `/api` routes live in `src/server/app.ts` and take a `JobRunner` that starts
 
 | | Node (`server.ts`, `npm run dev`) | Cloudflare Worker (`worker/index.ts`, `wrangler.jsonc`) |
 | --- | --- | --- |
-| Frontend | Vite middleware in dev, `dist/` in production (two pages: the marketing page and the app, see Public pages) | Workers static assets from `dist/`, unknown addresses get `404.html`; the Worker runs for `/`, the app page, `/robots.txt`, `/sitemap.xml`, `/api/*` and the share page (`/s`, `/s/*`, `/S`, `/S/*`), and hands the pages it lets through to the static assets (`ASSETS`)
+| Frontend | Vite middleware in dev, `dist/` in production (pages: the marketing page, the app and the demo, see Public pages) | Workers static assets from `dist/`, unknown addresses get `404.html`; the Worker runs for `/`, the app page, `/demo`, `/robots.txt`, `/sitemap.xml`, `/api/*` and the share page (`/s`, `/s/*`, `/S`, `/S/*`), and hands the pages it lets through to the static assets (`ASSETS`)
 | API | Express | The same Express app, through `handleAsNodeRequest` from `cloudflare:node` (`nodejs_compat`) |
 | Starting a job | `LookupWorker.kick` runs it in-process | A message on the `concert-tracker-lookups` Queue |
 | Due and parked jobs | `setInterval` every 20 s | Cron Trigger every minute sends due jobs to the Queue |
@@ -310,7 +310,12 @@ Anyone can open the public pages without signing in. The app itself is at the ad
 - The marketing page is `/` (static `index.html`, not part of the React app). Signed-in visitors get `/app` instead, unless the address has `?public=1`.
 - Old app addresses (`/?view=...`, `/?gmail=...`, `/?sheets=...`) redirect with 302 to `/app` with the same query. Google's return addresses after Connect Gmail and Connect Sheets point at `/app`.
 - Unknown addresses get `404.html`.
+- Signed-in visitors: the Worker checks the `CF_Authorization` cookie (`isSignedIn` in `door.ts`, with the same token check as the second lock). A signed-in visitor on `/` is sent to the app with a 302 unless the address has `?public=1`. On `/demo` the Worker marks `<html data-signed-in>` and the demo banner offers "Go to your archive"; both responses are `private, no-store` with `Vary: Cookie`. Local development has no Access, so every visitor there is signed out.
 - The marketing page is plain HTML (no React, no script) with its canonical and Open Graph URLs filled from `site.config.json` at build time. `robots.txt` and `sitemap.xml` are written by the Worker from the same origin (`SITE_ORIGIN` in `publicPaths.ts`). `robots.txt` disallows the app, the API and the share pages; the sitemap lists `/`, `/demo`, `/privacy` and `/terms`. `og.png` is the share image.
+
+- The demo at `/demo` (`demo.html`, `src/demo/`) shows the app's own Summary, Table, Timeline, Map, Stats and Ranking views over fictional sample data (`sampleData.ts`: made-up artists, festivals and venues; real cities). Its event screen (`DemoEventDetail.tsx`) is a separate read-only view of the same facts, not the app's `EventDetail`, which loads lineups and places from the server when it opens. Write buttons open a one-sentence explainer with "Log in (invite only)" and "Back to demo".
+- Nothing in the demo calls the server. `src/demo/guard.ts` replaces `fetch` so any `/api` request is refused, and `main.tsx` installs it first. Nothing outside `src/demo/` imports from it (tests/demo.test.ts). `scripts/check-demo-isolation.mjs` runs after every build and fails if the sample data is in any file the app loads.
+- `MapView` takes an optional `pointFor` so the demo supplies its city coordinates without a server call.
 
 Public allowlist. The Access bypass policy must list the same paths; the Worker's front door uses the same list. A test checks that this list and `publicPaths.ts` agree:
 

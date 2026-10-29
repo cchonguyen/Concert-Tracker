@@ -3,7 +3,7 @@ import { createApiApp, healthStatus } from '../src/server/app';
 import { PipelineDeps, runJob } from '../src/server/lineup/pipeline';
 import { createDeps, createStore } from '../src/server/lineup/service';
 import { backfillEntities, backfillVenuePlaces } from '../src/server/entities/linkingStore';
-import { frontDoor } from '../src/server/share/door';
+import { frontDoor, isSignedIn } from '../src/server/share/door';
 import { accessConfigFromEnv } from '../src/server/share/access';
 import { isRetentionTime, runRetention } from '../src/server/events/retention';
 import { accessGateFromEnv, multiUserFromEnv, workerSettings } from '../src/server/auth/config';
@@ -77,12 +77,28 @@ async function ensureServer(env: Env): Promise<void> {
 
 export default {
   async fetch(request, env, ctx) {
+    const access = accessConfigFromEnv(workerSettings(env as unknown as Record<string, unknown>, process.env));
     const answered = await frontDoor(request, {
       store: () => getDeps().then((d) => d.store),
-      access: accessConfigFromEnv(workerSettings(env as unknown as Record<string, unknown>, process.env)),
+      access,
     });
     if (answered) return answered;
     const path = new URL(request.url).pathname;
+    if (path === '/demo' && (await isSignedIn(request, access))) {
+      // A signed-in visitor gets the demo with a mark on <html>; the demo's
+      // banner then offers "Go to your archive". The page differs by visitor,
+      // so it is never cached.
+      const page = await env.ASSETS.fetch(request);
+      const marked = new HTMLRewriter().on('html', {
+        element: (el) => {
+          el.setAttribute('data-signed-in', '');
+        },
+      }).transform(page);
+      const headers = new Headers(marked.headers);
+      headers.set('Cache-Control', 'private, no-store');
+      headers.append('Vary', 'Cookie');
+      return new Response(marked.body, { status: marked.status, headers });
+    }
     if (path !== '/api' && !path.startsWith('/api/')) return env.ASSETS.fetch(request);
     // Health answers even when startup fails: it says only that the server is up.
     if (path === '/api/health' && request.method === 'GET') return Response.json(healthStatus());
