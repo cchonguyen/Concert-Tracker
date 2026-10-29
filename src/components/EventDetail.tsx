@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useIsOwner } from './MeContext';
 import { ArrowDown, ArrowUp, Check, CloudSun, ExternalLink, FolderCog, Heart, Link2, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import {
   ArtistSuggestion,
@@ -685,7 +684,6 @@ function cityForVenue(events: LoggedEvent[], venue: string): string | undefined 
 }
 
 export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChange, onDeleted, onClose, onManage }) => {
-  const isOwner = useIsOwner();
   const [job, setJob] = useState<LookupJob | null>(null);
   const [edition, setEdition] = useState<Edition | null>(null);
   const [suggestions, setSuggestions] = useState<ArtistSuggestion[]>([]);
@@ -1196,7 +1194,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               )}
             </div>
           )}
-          {isOwner && (!job || edition || job.status === 'no_data' || job.status === 'failed') && !isActive(job?.status) && (
+          {(!job || edition || job.status === 'no_data' || job.status === 'failed') && !isActive(job?.status) && (
             <button
               onClick={() => run('lineup', async () => (await eventsApi.findLineup(event.id, lineupUrl || undefined)).event)}
               disabled={busy === 'lineup' || !(event.year || event.startDate)}

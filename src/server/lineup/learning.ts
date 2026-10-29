@@ -268,6 +268,79 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
   return { edition, event: updated };
 }
 
+// A member's review of a lookup. It changes only the member's own event: the
+// acts they ticked go into its `seen` (a lineup act as billed, or a name they
+// typed as "you"). It writes nothing shared: no edition, performances,
+// corrections, source stats, blocklist, aliases or series, because the shared
+// lineup is written only by the owner's review, from sources with quotes
+// (ARCHITECTURE.md, Multi-user). If the owner already confirmed this edition,
+// the member's event links to it.
+export async function confirmLookupForMember(store: LineupStore, job: LookupJob, req: ConfirmRequest): Promise<ConfirmResult> {
+  if (!['needs_review', 'no_data', 'confirmed'].includes(job.status)) {
+    throw new Error(`Lookup is ${job.status}; it can be confirmed once it has finished.`);
+  }
+  const event = job.eventId ? await store.getEvent(job.eventId) : null;
+  if (!event) throw new Error('This lookup is not attached to one of your events.');
+  const now = new Date().toISOString();
+  const byKey = new Map<string, CandidatePerformer>((job.candidate?.performers ?? []).map((p) => [p.key, p]));
+  const ticked: SeenAct[] = [];
+  const setChosen = new Set<string>();
+  const reviewedKeys = new Set<string>();
+  const draft: EditionPerformance[] = [];
+
+  for (const reviewed of req.performers) {
+    const name = reviewed.name.trim();
+    if (!name) continue;
+    reviewedKeys.add(normalizeName(name));
+    if (!reviewed.accepted) continue;
+    const cand = reviewed.key ? byKey.get(reviewed.key) : undefined;
+    if (cand) draft.push(toPerformance(cand, name));
+    if (!reviewed.seen) continue;
+    const billing = reviewed.billing !== undefined ? (isBilling(reviewed.billing) ? reviewed.billing : undefined) : cand?.billing;
+    const act: SeenAct = { key: normalizeName(name), name, from: cand ? 'lineup' : 'you' };
+    if (billing) {
+      act.role = billing;
+      act.roleFrom = cand && billing === cand.billing ? 'lineup' : 'you';
+    }
+    if (cand?.set) act.set = cand.set;
+    if (reviewed.set !== undefined) {
+      setChosen.add(act.key);
+      if (isSetKind(reviewed.set)) act.set = reviewed.set;
+      else delete act.set;
+    }
+    if (cand?.b2b?.length) act.b2b = cand.b2b;
+    ticked.push(act);
+  }
+
+  const existing = await store.getEditionByKey(job.editionKey);
+  const updated: LoggedEvent = {
+    ...event,
+    editionId: existing?.id ?? event.editionId,
+    seen: mergeSeen(event.seen, ticked, reviewedKeys, setChosen),
+    updatedAt: now,
+  };
+  await store.putEvent(updated);
+
+  job.status = 'confirmed';
+  job.editionId = existing?.id;
+  job.updatedAt = now;
+  job.log = [...job.log, { at: now, message: `You saw ${ticked.length} act(s); saved to your event only.` }];
+  await store.updateJob(job);
+  // What the page shows after a review: the shared edition if the owner has
+  // confirmed one, else a draft of the sourced acts you accepted (not stored).
+  const edition: Edition = existing ?? {
+    id: `draft-${job.id}`,
+    key: job.editionKey,
+    seriesSlug: seriesSlugFor(job.input.eventName),
+    year: job.input.year,
+    name: event.name,
+    status: 'draft',
+    performances: dedupe(draft),
+    updatedAt: now,
+  };
+  return { edition, event: updated };
+}
+
 // Remember the lineup page for next year and keep a confirmed extraction
 // example per website for Gemini's next read of that site.
 async function learnFromSources(

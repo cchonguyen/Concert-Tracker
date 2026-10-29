@@ -86,10 +86,10 @@ test('share page: a member\'s link shows only that member\'s events', async () =
 });
 
 test('owner-only routes: Manage, Sheets, Gmail, server scans and lineup confirm', () => {
-  for (const [m, p] of [['GET', '/api/entities'], ['PATCH', '/api/entities/x'], ['GET', '/api/sheets'], ['GET', '/api/gmail/connect'], ['POST', '/api/imports/email'], ['POST', '/api/lookups/j1/confirm'], ['POST', '/api/lookups'], ['POST', '/api/lookups/j1/run'], ['POST', '/api/events/lineups'], ['POST', '/api/events/e1/lineup'], ['PUT', '/api/artist-genres/k']]) {
+  for (const [m, p] of [['GET', '/api/entities'], ['PATCH', '/api/entities/x'], ['GET', '/api/sheets'], ['GET', '/api/gmail/connect'], ['POST', '/api/imports/email'], ['PUT', '/api/artist-genres/k']]) {
     assert.equal(ownerOnly(m, p), true, `${m} ${p}`);
   }
-  for (const [m, p] of [['GET', '/api/events'], ['POST', '/api/events'], ['GET', '/api/imports'], ['POST', '/api/imports/proposals'], ['GET', '/api/share'], ['GET', '/api/artist-genres'], ['GET', '/api/lookups'], ['GET', '/api/me']]) {
+  for (const [m, p] of [['GET', '/api/events'], ['POST', '/api/events'], ['GET', '/api/imports'], ['POST', '/api/imports/proposals'], ['GET', '/api/share'], ['GET', '/api/artist-genres'], ['GET', '/api/lookups'], ['POST', '/api/lookups'], ['POST', '/api/lookups/j1/run'], ['POST', '/api/lookups/j1/confirm'], ['POST', '/api/events/lineups'], ['POST', '/api/events/e1/lineup'], ['GET', '/api/me']]) {
     assert.equal(ownerOnly(m, p), false, `${m} ${p}`);
   }
 });
@@ -189,4 +189,47 @@ test('API: /me says who you are; only the owner lists, invites and removes membe
   } finally {
     close();
   }
+});
+
+test('member lineup review: ticks go to the member\'s own event only; nothing shared is written', async () => {
+  const { confirmLookupForMember } = await import('../src/server/lineup/learning.ts');
+  const s = await base();
+  const mine = s.forUser(ANN);
+  await mine.putEvent(ev('e1', { name: 'Fest 2025' }));
+  const j: LookupJob = {
+    ...job('j1'),
+    status: 'needs_review',
+    stage: 'done',
+    eventId: 'e1',
+    editionKey: 'fest/2025',
+    input: { eventName: 'Fest', year: 2025 } as any,
+    candidate: {
+      performers: [
+        { key: 'velvet tide', name: 'Velvet Tide', days: [], stages: [], status: 'billed', confidence: 0.9, sources: [{ sourceType: 'promoter', sourceUrl: 'https://fest.example', quotedSpan: 'Velvet Tide', evidence: 'billed', extractor: 'x' }] },
+        { key: 'moon garden', name: 'Moon Garden', days: [], stages: [], status: 'billed', confidence: 0.9, sources: [] },
+      ],
+    } as any,
+  };
+  await mine.createJob(j);
+  const result = await confirmLookupForMember(mine, (await mine.getJob('j1'))!, {
+    performers: [
+      { key: 'velvet tide', name: 'Velvet Tide', accepted: true, seen: true },
+      { key: 'moon garden', name: 'Moon Garden', accepted: true, seen: false },
+      { name: 'My Friend DJ', accepted: true, seen: true },
+    ],
+  });
+  assert.deepEqual((await mine.getEvent('e1'))!.seen.map((a) => [a.name, a.from]), [['Velvet Tide', 'lineup'], ['My Friend DJ', 'you']]);
+  assert.equal(result.edition.status, 'draft');
+  assert.deepEqual(result.edition.performances.map((p) => p.name).sort(), ['Moon Garden', 'Velvet Tide']);
+  // Nothing shared: no edition, series, corrections, stats, blocklist or aliases.
+  assert.equal(await s.getEditionByKey('fest/2025'), null);
+  assert.equal(await s.getSeries('fest'), null);
+  assert.deepEqual(await s.getSourceStats(), []);
+  assert.deepEqual(await s.getAliases(), {});
+  assert.equal((await mine.getJob('j1'))!.status, 'confirmed');
+  // Another member cannot review or see it.
+  assert.equal(await s.forUser(BOB).getJob('j1'), null);
+  // A lookup not tied to one of their events is refused.
+  await mine.createJob({ ...job('j2'), status: 'needs_review' });
+  await assert.rejects(confirmLookupForMember(mine, (await mine.getJob('j2'))!, { performers: [] }), /not attached to one of your events/);
 });

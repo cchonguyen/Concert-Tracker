@@ -45,19 +45,15 @@ export function runAsMember<T>(member: SignedInMember, store: LineupStore, fn: (
 
 // Routes a member (not the owner) may not use until their data is split per
 // member: Manage and its records (people are shared records today), genre
-// edits (yours win for everyone), lineup review (writes the shared lineup),
+// edits (yours win for everyone),
 // Sheets and the server's Gmail check (one stored Google sign-in each).
+// Lineup lookups are open to members: their review (confirmLookupForMember)
+// writes only their own event.
 const OWNER_ONLY: Array<[method: string | null, pattern: RegExp]> = [
   [null, /^\/api\/entities(\/|$)/],
   [null, /^\/api\/sheets(\/|$)/],
   [null, /^\/api\/gmail(\/|$)/],
   ['POST', /^\/api\/imports\/(email|scan)$/],
-  [null, /^\/api\/lookups\/[^/]+\/confirm$/],
-  // Starting a lineup lookup is the owner's until a member can confirm one:
-  // confirming writes the shared lineup, and a member's own review path
-  // (acts into their own seen only) is not built.
-  ['POST', /^\/api\/lookups(\/[^/]+\/run)?$/],
-  ['POST', /^\/api\/events\/(lineups|[^/]+\/lineup)$/],
   ['PUT', /^\/api\/artist-genres\//],
   ['POST', /^\/api\/artist-genres\//],
 ];
