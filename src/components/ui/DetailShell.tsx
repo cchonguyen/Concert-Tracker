@@ -215,7 +215,7 @@ export function DetailShell({ title, rows, openId, closeDisabled = false, onGo, 
           </div>
         </header>
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className={`mx-auto w-full space-y-6 p-5 ${width}`}>{children}</div>
+          <div className={`@container mx-auto w-full space-y-6 p-5 ${width}`}>{children}</div>
         </div>
       </section>
     </>
