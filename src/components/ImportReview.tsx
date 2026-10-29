@@ -1,3 +1,4 @@
+import { Dialog } from './ui/Dialog';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Check, ExternalLink, GitMerge, Loader2, Mail, RefreshCw, Undo2, X } from 'lucide-react';
 import { EmailImport, EmailScanStatus, importsApi, LoggedEvent } from '../services/lineupApi';
@@ -357,142 +358,137 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
   );
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="flex h-full w-full max-w-xl flex-col border-l border-zinc-900 bg-zinc-950 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex-1 space-y-6 overflow-y-auto p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-bold">
-                <Mail className="h-4 w-4 text-violet-400" /> From your ticket emails
-              </h2>
-              <p className="text-xs text-zinc-500">
-                A ticket doesn't prove you went, so tick the ones you did. Each one is saved with a link to its email.
-              </p>
-            </div>
-            <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          {notice && (
-            <p
-              className={`rounded-lg border p-2 text-sm ${
-                notice === 'connected' ? 'border-violet-500/30 bg-violet-950/30 text-violet-200' : 'border-rose-500/30 bg-rose-950/30 text-rose-200'
-              }`}
-            >
-              {notice === 'connected' ? 'Gmail is connected. Press Check email to look for new tickets.' : notice}
+    <Dialog title="Review import" onClose={onClose}>
+      <div className="flex-1 space-y-6 overflow-y-auto p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-bold">
+              <Mail className="h-4 w-4 text-violet-400" /> From your ticket emails
+            </h2>
+            <p className="text-xs text-zinc-500">
+              A ticket doesn't prove you went, so tick the ones you did. Each one is saved with a link to its email.
             </p>
-          )}
-          <CheckEmail onFound={onChange} />
-          {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
-          {merged && <p className="rounded-lg border border-violet-500/30 bg-violet-950/30 p-2 text-sm text-violet-200">{merged}</p>}
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        {notice && (
+          <p
+            className={`rounded-lg border p-2 text-sm ${
+              notice === 'connected' ? 'border-violet-500/30 bg-violet-950/30 text-violet-200' : 'border-rose-500/30 bg-rose-950/30 text-rose-200'
+            }`}
+          >
+            {notice === 'connected' ? 'Gmail is connected. Press Check email to look for new tickets.' : notice}
+          </p>
+        )}
+        <CheckEmail onFound={onChange} />
+        {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
+        {merged && <p className="rounded-lg border border-violet-500/30 bg-violet-950/30 p-2 text-sm text-violet-200">{merged}</p>}
 
-          {!toReview.length && <p className="text-sm text-zinc-500">Nothing left to review.</p>}
-          {years.map((g) => (
-            <section key={g.label} className="space-y-2">
-              <div className="flex items-baseline justify-between">
-                <h3 className="text-sm font-bold text-zinc-300">
-                  {g.label} <span className="text-xs font-normal text-zinc-600">{g.rows.length}</span>
-                </h3>
-                <button onClick={() => toggle(g.rows.map((r) => r.id))} className="text-xs text-zinc-400 hover:text-zinc-200">
-                  {g.rows.every((r) => ticked.has(r.id)) ? 'Untick all' : `Tick all in ${g.label}`}
-                </button>
-              </div>
-              {g.rows.map(reviewRow)}
-            </section>
-          ))}
+        {!toReview.length && <p className="text-sm text-zinc-500">Nothing left to review.</p>}
+        {years.map((g) => (
+          <section key={g.label} className="space-y-2">
+            <div className="flex items-baseline justify-between">
+              <h3 className="text-sm font-bold text-zinc-300">
+                {g.label} <span className="text-xs font-normal text-zinc-600">{g.rows.length}</span>
+              </h3>
+              <button onClick={() => toggle(g.rows.map((r) => r.id))} className="text-xs text-zinc-400 hover:text-zinc-200">
+                {g.rows.every((r) => ticked.has(r.id)) ? 'Untick all' : `Tick all in ${g.label}`}
+              </button>
+            </div>
+            {g.rows.map(reviewRow)}
+          </section>
+        ))}
 
-          {upcoming.length > 0 && (
-            <section className="space-y-2">
-              <h3 className={sectionTitle}>Still ahead ({upcoming.length})</h3>
-              <p className="text-xs text-zinc-600">
-                Tick one to add it as upcoming: it isn't counted until you say you went, and once it's over the app asks. Unticked ones stay here.
-              </p>
-              {upcoming.map(reviewRow)}
-            </section>
-          )}
+        {upcoming.length > 0 && (
+          <section className="space-y-2">
+            <h3 className={sectionTitle}>Still ahead ({upcoming.length})</h3>
+            <p className="text-xs text-zinc-600">
+              Tick one to add it as upcoming: it isn't counted until you say you went, and once it's over the app asks. Unticked ones stay here.
+            </p>
+            {upcoming.map(reviewRow)}
+          </section>
+        )}
 
-          {logged.length > 0 && (
-            <details className="space-y-2">
-              <summary className={`${sectionTitle} cursor-pointer`}>Already in your log ({logged.length})</summary>
-              {logged.map((r) => (
-                <Row
-                  key={r.id}
-                  row={r}
-                  note={nameOf(r.eventId) && `${r.mergedFields ? 'Merged into' : r.status === 'added' ? 'Added as' : 'Matched to'} “${nameOf(r.eventId)}”`}
-                  action={
-                    r.mergedFields ? (
-                      <button onClick={() => unmerge(r)} className="text-zinc-500 hover:text-zinc-200" aria-label="Undo merge" title="Undo merge">
-                        <Undo2 className="h-4 w-4" />
-                      </button>
-                    ) : r.status === 'new' && events.some((e) => e.id === r.eventId) ? (
-                      // Matched on its own: merging fills the event's empty fields from the email.
-                      <button
-                        disabled={busy}
-                        onClick={() => mergeInto(r, events.find((e) => e.id === r.eventId)!)}
-                        className="text-zinc-500 hover:text-violet-300 disabled:opacity-40"
-                        aria-label="Merge into this event"
-                        title="Merge into this event"
-                      >
-                        <GitMerge className="h-4 w-4" />
-                      </button>
-                    ) : undefined
-                  }
-                />
-              ))}
-            </details>
-          )}
-
-          {skipped.length > 0 && (
-            <details className="space-y-2">
-              <summary className={`${sectionTitle} cursor-pointer`}>Left out ({skipped.length})</summary>
-              {skipped.map((r) => (
-                <Row
-                  key={r.id}
-                  row={r}
-                  action={
-                    <button onClick={() => skip([r.id], true)} className="text-zinc-500 hover:text-zinc-200" aria-label="Put back">
+        {logged.length > 0 && (
+          <details className="space-y-2">
+            <summary className={`${sectionTitle} cursor-pointer`}>Already in your log ({logged.length})</summary>
+            {logged.map((r) => (
+              <Row
+                key={r.id}
+                row={r}
+                note={nameOf(r.eventId) && `${r.mergedFields ? 'Merged into' : r.status === 'added' ? 'Added as' : 'Matched to'} “${nameOf(r.eventId)}”`}
+                action={
+                  r.mergedFields ? (
+                    <button onClick={() => unmerge(r)} className="text-zinc-500 hover:text-zinc-200" aria-label="Undo merge" title="Undo merge">
                       <Undo2 className="h-4 w-4" />
                     </button>
-                  }
-                />
-              ))}
-            </details>
-          )}
+                  ) : r.status === 'new' && events.some((e) => e.id === r.eventId) ? (
+                    // Matched on its own: merging fills the event's empty fields from the email.
+                    <button
+                      disabled={busy}
+                      onClick={() => mergeInto(r, events.find((e) => e.id === r.eventId)!)}
+                      className="text-zinc-500 hover:text-violet-300 disabled:opacity-40"
+                      aria-label="Merge into this event"
+                      title="Merge into this event"
+                    >
+                      <GitMerge className="h-4 w-4" />
+                    </button>
+                  ) : undefined
+                }
+              />
+            ))}
+          </details>
+        )}
 
-          {unreadable.length > 0 && (
-            <details className="space-y-2">
-              <summary className={`${sectionTitle} cursor-pointer`}>Couldn't read ({unreadable.length})</summary>
-              <p className="text-xs text-zinc-600">Ticket emails in a layout the app doesn't know yet. Open one and add it by typing a line.</p>
-              {unreadable.map((r) => (
-                <Row key={r.id} row={{ ...r, dateText: undefined }} />
-              ))}
-            </details>
-          )}
-        </div>
+        {skipped.length > 0 && (
+          <details className="space-y-2">
+            <summary className={`${sectionTitle} cursor-pointer`}>Left out ({skipped.length})</summary>
+            {skipped.map((r) => (
+              <Row
+                key={r.id}
+                row={r}
+                action={
+                  <button onClick={() => skip([r.id], true)} className="text-zinc-500 hover:text-zinc-200" aria-label="Put back">
+                    <Undo2 className="h-4 w-4" />
+                  </button>
+                }
+              />
+            ))}
+          </details>
+        )}
 
-        {(toReview.length > 0 || upcoming.length > 0) && (
-          <div className="flex items-center justify-between gap-3 border-t border-zinc-900 p-4">
-            <button
-              onClick={() => skip(chosen)}
-              disabled={busy || !chosen.length}
-              className="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-40"
-            >
-              Leave these out
-            </button>
-            <button
-              onClick={add}
-              disabled={busy || !chosen.length}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40"
-            >
-              {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Add {chosen.length || ''} event{chosen.length === 1 ? '' : 's'}
-            </button>
-          </div>
+        {unreadable.length > 0 && (
+          <details className="space-y-2">
+            <summary className={`${sectionTitle} cursor-pointer`}>Couldn't read ({unreadable.length})</summary>
+            <p className="text-xs text-zinc-600">Ticket emails in a layout the app doesn't know yet. Open one and add it by typing a line.</p>
+            {unreadable.map((r) => (
+              <Row key={r.id} row={{ ...r, dateText: undefined }} />
+            ))}
+          </details>
         )}
       </div>
-    </div>
+
+      {(toReview.length > 0 || upcoming.length > 0) && (
+        <div className="flex items-center justify-between gap-3 border-t border-zinc-900 p-4">
+          <button
+            onClick={() => skip(chosen)}
+            disabled={busy || !chosen.length}
+            className="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-40"
+          >
+            Leave these out
+          </button>
+          <button
+            onClick={add}
+            disabled={busy || !chosen.length}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40"
+          >
+            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Add {chosen.length || ''} event{chosen.length === 1 ? '' : 's'}
+          </button>
+        </div>
+      )}
+    </Dialog>
   );
 };
