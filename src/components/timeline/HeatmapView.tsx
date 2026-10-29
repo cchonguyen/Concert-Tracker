@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { placeLabel } from '../../services/format';
 import { DayState, heatmapRows, heatmapYear, MONTH_NAMES, TimelineViewProps, WEEKDAY_SHORT, weekday } from '../../services/timeline';
 import { EventTitle } from '../EventTitle';
+import { BackToTop } from '../ui/BackToTop';
 import { ATTENDANCE_STYLE, ConfirmMark, Rating } from './parts';
 
 // Heatmap: one row per year, newest first, a square per day. Days you went
@@ -191,6 +192,7 @@ export const HeatmapView: React.FC<TimelineViewProps> = ({ model, range, selecte
           </section>
         ),
       )}
+      <BackToTop />
     </div>
   );
 };
