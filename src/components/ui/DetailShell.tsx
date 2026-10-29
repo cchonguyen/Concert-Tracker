@@ -156,8 +156,8 @@ export function DetailShell({ title, rows, openId, closeDisabled = false, onGo, 
   const width = mode === 'split' ? 'max-w-6xl' : 'max-w-2xl';
   const navButton ='inline-flex h-11 items-center gap-1 rounded-control px-2 text-xs text-zinc-300 hover:text-violet-300 disabled:opacity-40 sm:h-9';
 
-  return (
-    <div className="fixed inset-0 z-40 flex">
+  const body = (
+    <>
       {mode === 'split' ? (
         <nav ref={listEl} aria-label="Events" className="flex w-[240px] shrink-0 flex-col overflow-y-auto border-r border-zinc-900 bg-zinc-950 min-[1440px]:w-[280px]">
           {rows.map((r) => {
@@ -218,6 +218,16 @@ export function DetailShell({ title, rows, openId, closeDisabled = false, onGo, 
           <div className={`mx-auto w-full space-y-6 p-5 ${width}`}>{children}</div>
         </div>
       </section>
-    </div>
+    </>
   );
+
+  // The split view is the Table's width, centred over a dimmed page, so the detail reads as part of the same page.
+  if (mode === 'split') {
+    return (
+      <div className="fixed inset-0 z-40 flex justify-center bg-black/60 p-4">
+        <div className="flex h-full w-full max-w-6xl overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl">{body}</div>
+      </div>
+    );
+  }
+  return <div className="fixed inset-0 z-40 flex">{body}</div>;
 }
