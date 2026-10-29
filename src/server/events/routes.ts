@@ -9,6 +9,7 @@ import { LineupSummary } from './types';
 import { artistSuggestions, eventPerformers, nameArtistSuggestions, pastArtists, MAX_BULK_SUGGESTIONS, storedNameSuggestions } from './artists';
 import type { LineupFacts } from './scale';
 import { lookupWeather } from './weather';
+import { undoActivity } from './undo';
 
 // /api/events: your event log. Stage 1 is capture plus details research;
 // stage 2 starts a lineup lookup from a saved event.
@@ -55,6 +56,17 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
   router.get('/events/deleted', async (_req, res) => {
     try {
       res.json({ events: await deps.store.listDeletedEvents() });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Undo one Log row. 409 says why it was left alone, so the Log can tell you.
+  router.post('/activity/:id/undo', async (req, res) => {
+    try {
+      const out = await undoActivity(deps.store, req.params.id);
+      if (out.ok) return res.status(204).end();
+      res.status(out.reason === 'not-found' ? 404 : 409).json({ error: out.reason });
     } catch (err) {
       fail(res, err);
     }

@@ -59,6 +59,27 @@ export function LogView() {
     }
   };
 
+  // Says why a change could not be undone, in words, instead of showing the code the server sent.
+  const undoReason = (err: unknown) => {
+    const text = err instanceof Error ? err.message : '';
+    if (text.includes('value-changed')) return 'Not undone: that field was changed again after this.';
+    if (text.includes('vault-locked')) return 'Unlock vault to undo.';
+    if (text.includes('gone')) return 'Not undone: that show is no longer there.';
+    return 'Could not undo that change.';
+  };
+
+  const undo = async (a: ActivityEntry) => {
+    setBusy(a.id);
+    try {
+      await eventsApi.undo(a.id);
+      await load();
+    } catch (err) {
+      setError(undoReason(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const nameOf = (id: string | null) => (id && names[id]) || 'a show';
   const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -126,9 +147,20 @@ export function LogView() {
         ) : (
           <ul className="divide-y divide-zinc-800 rounded-card border border-zinc-800">
             {activity.map((a) => (
-              <li key={a.id} className="px-4 py-2.5">
-                <p className="text-sm text-zinc-200">{describeEntry(a, nameOf(a.eventId))}</p>
-                <p className="text-xs text-zinc-400">{when(a.at)}</p>
+              <li key={a.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-sm text-zinc-200">{describeEntry(a, nameOf(a.eventId))}</p>
+                  <p className="text-xs text-zinc-400">{when(a.at)}</p>
+                </div>
+                {a.action !== 'undo' && a.eventId && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => void undo(a)}
+                    disabled={busy !== null || a.sensitive}
+                  >
+                    {a.sensitive ? 'Unlock vault to undo' : 'Undo'}
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
