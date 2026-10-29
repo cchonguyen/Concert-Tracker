@@ -332,6 +332,13 @@ Built on the branch `claude/multi-user`, **off by default and not applied to the
 - **Quota lanes**: `GEMINI_OWNER_RESERVE=20`, `GEMINI_USER_DAILY=5` interactive, 3 a day per member for backfill round-robin.
 - **Checking the token bridge**: `scripts/verify-jwt-mint.ts` mints a 60-second token and checks against the real project that PostgREST reads `auth.uid()` and RLS limits rows to that user. Run it before turning `MULTI_USER` on.
 
+## Activity log and Recently deleted
+
+- Deleting a show moves it to Recently deleted (`logged_events.deleted_at`). Reads skip deleted shows, including Share, CSV import matching and Sheets. Restore clears `deleted_at`. A nightly job erases trash older than 90 days.
+- Every save and delete writes `activity_log` rows: one `create` row, one `update` row per changed field, and `delete` or `restore` rows. Sensitive fields (notes, companions) log that they changed, never the value.
+- Undo writes a value back only if the field still holds the value the change wrote, and never a sensitive field while the vault is locked (`src/server/events/activityLog.ts`).
+- The Log rows are kept one year. Migration 0023 adds both pieces and must be applied before this code runs against Supabase.
+
 ## Configuration
 
 See [`.env.example`](.env.example). Each source is optional; the app reports which ones are off and works with whatever is configured. `IMPORT_TOKEN` turns on posting ticket emails; it is a secret (`wrangler secret put IMPORT_TOKEN` on Cloudflare). `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` turn on Check email and Google Sheets sync (secrets too; Sheets also needs the Google Sheets API turned on in that Google Cloud project); `APP_URL` is the site's address, used for Google's redirect. `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` turn on the Worker's own Access token check (see Share page). `MULTI_USER=on` (with those two, `SUPABASE_ANON_KEY` and `SUPABASE_JWT_SECRET`) turns on members (see Multi-user); half set is an error. `GEMINI_USER_DAILY` and `GEMINI_OWNER_RESERVE` set per-member limits.

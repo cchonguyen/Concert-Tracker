@@ -120,6 +120,7 @@ export interface LoggedEvent extends EventFacts {
   details: EventDetails;
   lineupJobId?: string;
   editionId?: string;
+  deletedAt?: string; // set when you delete the show; cleared by Restore. Reads skip deleted shows.
   seen: SeenAct[];
   kind?: EventKind; // your choice; absent means worked out by the rule
   // What kind of night it was (club night, warehouse party, block party, ...),

@@ -14,6 +14,7 @@ import {
   SourceType,
 } from '../types';
 import { LoggedEvent } from '../../events/types';
+import { diffEvent, type ActivityDraft, type ActivityEntry } from '../../events/activityLog';
 import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
@@ -669,29 +670,97 @@ export class SupabaseLineupStore implements LineupStore {
           : undefined,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
+      deletedAt: r.deleted_at ?? undefined,
     });
   }
 
+  // A save never touches deleted_at: only delete and restore change it.
   async putEvent(e: LoggedEvent) {
-    this.check(await this.own('logged_events').upsert(this.stamp(this.eventToRow(e))), 'putEvent');
+    await this.putEvents([e]);
   }
 
   async putEvents(list: LoggedEvent[]) {
-    if (list.length) this.check(await this.own('logged_events').upsert(list.map((e) => this.stamp(this.eventToRow(e)))), 'putEvents');
+    if (!list.length) return;
+    const before = await this.priorEvents(list.map((e) => e.id));
+    this.check(await this.own('logged_events').upsert(list.map((e) => this.stamp(this.eventToRow(e)))), 'putEvents');
+    const now = new Date().toISOString();
+    await this.writeActivity(list.flatMap((e) => diffEvent(before.get(e.id) ?? null, splitEventCity(e))), now);
   }
 
   async getEvent(id: string) {
-    const r = this.check(await this.mine(this.own('logged_events').select('*').eq('id', id)).maybeSingle(), 'getEvent');
+    const r = this.check(await this.mine(this.own('logged_events').select('*').eq('id', id).is('deleted_at', null)).maybeSingle(), 'getEvent');
     return r ? this.rowToEvent(r) : null;
   }
 
   async listEvents() {
-    const rows = this.check(await this.mine(this.own('logged_events').select('*')), 'listEvents');
+    const rows = this.check(await this.mine(this.own('logged_events').select('*').is('deleted_at', null)), 'listEvents');
     return (rows ?? []).map((r: any) => this.rowToEvent(r));
   }
 
+  // Delete moves the show to Recently deleted. The nightly job erases it after 90 days.
   async deleteEvent(id: string) {
-    this.check(await this.mine(this.own('logged_events').delete().eq('id', id)), 'deleteEvent');
+    const now = new Date().toISOString();
+    const r = this.check(await this.mine(this.own('logged_events').select('id').eq('id', id).is('deleted_at', null)).maybeSingle(), 'deleteEvent');
+    if (!r) return;
+    this.check(await this.mine(this.own('logged_events').update({ deleted_at: now }).eq('id', id)), 'deleteEvent');
+    await this.writeActivity([{ eventId: id, action: 'delete', field: null, before: null, after: null, sensitive: false }], now);
+  }
+
+  async restoreEvent(id: string) {
+    const now = new Date().toISOString();
+    const r = this.check(await this.mine(this.own('logged_events').select('id').eq('id', id).not('deleted_at', 'is', null)).maybeSingle(), 'restoreEvent');
+    if (!r) return false;
+    this.check(await this.mine(this.own('logged_events').update({ deleted_at: null }).eq('id', id)), 'restoreEvent');
+    await this.writeActivity([{ eventId: id, action: 'restore', field: null, before: null, after: null, sensitive: false }], now);
+    return true;
+  }
+
+  async listDeletedEvents() {
+    const rows = this.check(await this.mine(this.own('logged_events').select('*').not('deleted_at', 'is', null)), 'listDeletedEvents');
+    return (rows ?? []).map((r: any) => this.rowToEvent(r));
+  }
+
+  // Erases Recently deleted shows older than the cutoff. Run by the nightly job, never from a member's scope.
+  async purgeDeletedEvents(olderThan: string) {
+    if (this.scope) return 0;
+    const rows = this.check(await this.own('logged_events').delete().not('deleted_at', 'is', null).lt('deleted_at', olderThan).select('id'), 'purgeDeletedEvents');
+    return (rows ?? []).length;
+  }
+
+  async listActivity(limit: number): Promise<ActivityEntry[]> {
+    const rows = this.check(await this.mine(this.own('activity_log').select('id,event_id,action,field,before_value,after_value,sensitive,created_at').order('created_at', { ascending: false }).limit(limit)), 'listActivity');
+    return (rows ?? []).map((r: any) => ({
+      id: r.id,
+      eventId: r.event_id ?? null,
+      action: r.action,
+      field: r.field ?? null,
+      before: r.before_value ?? null,
+      after: r.after_value ?? null,
+      sensitive: Boolean(r.sensitive),
+      at: r.created_at,
+    }));
+  }
+
+  private async priorEvents(ids: string[]) {
+    const rows = this.check(await this.mine(this.own('logged_events').select('*').in('id', ids)), 'priorEvents');
+    return new Map((rows ?? []).map((r: any) => [r.id as string, this.rowToEvent(r)]));
+  }
+
+  // The Log rows for one save or one delete. Field values for sensitive fields are already blank in the draft.
+  private async writeActivity(drafts: ActivityDraft[], at: string) {
+    if (!drafts.length) return;
+    const rows = drafts.map((d) =>
+      this.stamp({
+        event_id: d.eventId,
+        action: d.action,
+        field: d.field,
+        before_value: d.before ?? null,
+        after_value: d.after ?? null,
+        sensitive: d.sensitive,
+        created_at: at,
+      }),
+    );
+    this.check(await this.own('activity_log').insert(rows), 'activity log');
   }
 
   // email_imports (0004) is optional: the app starts without it and only
@@ -1067,7 +1136,7 @@ export class SupabaseLineupStore implements LineupStore {
   // Only the named columns are read, so private fields never leave the
   // database for the share page.
   async listShareEvents() {
-    const rows = this.check(await this.mine(this.own('logged_events').select(SHARE_EVENT_COLUMNS.join(','))), 'listShareEvents');
+    const rows = this.check(await this.mine(this.own('logged_events').select(SHARE_EVENT_COLUMNS.join(',')).is('deleted_at', null)), 'listShareEvents');
     return (rows ?? []).map((r: any) => this.rowToEvent(r));
   }
 }

@@ -1,3 +1,5 @@
+import type { LoggedEvent } from './types';
+
 // The activity log's rules, kept pure so they can be tested without a database.
 // Undo writes a value back only if the field still holds the value the change wrote.
 // That is the same rule as the sync rule: never overwrite a newer edit with an older copy.
@@ -44,5 +46,49 @@ export function checkUndo(entry: ActivityEntry, current: unknown, vaultLocked: b
 }
 
 function sameValue(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  return stableJson(a) === stableJson(b);
+}
+
+// One row the store writes. Sensitive fields carry no values yet, since the vault is not on main.
+export interface ActivityDraft {
+  eventId: string;
+  action: ActivityAction;
+  field: string | null;
+  before: unknown;
+  after: unknown;
+  sensitive: boolean;
+}
+
+// Fields that are bookkeeping, not something you chose. They never make a log row.
+const IGNORED_FIELDS = new Set(['id', 'createdAt', 'updatedAt', 'deletedAt']);
+
+// Work out what changed between the stored event and the one being saved.
+// A new event gives one 'create' row; an edit gives one 'update' row per changed field.
+export function diffEvent(before: LoggedEvent | null, after: LoggedEvent): ActivityDraft[] {
+  if (!before) return [{ eventId: after.id, action: 'create', field: null, before: null, after: null, sensitive: false }];
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  const drafts: ActivityDraft[] = [];
+  for (const key of [...keys].sort()) {
+    if (IGNORED_FIELDS.has(key)) continue;
+    const b = (before as unknown as Record<string, unknown>)[key];
+    const a = (after as unknown as Record<string, unknown>)[key];
+    if (stableJson(b) === stableJson(a)) continue;
+    const sensitive = isSensitiveField(key);
+    drafts.push({ eventId: after.id, action: 'update', field: key, before: sensitive ? null : b ?? null, after: sensitive ? null : a ?? null, sensitive });
+  }
+  return drafts;
+}
+
+// Key order must not matter: a row read back from the database can list keys in another order.
+export function stableJson(value: unknown): string {
+  if (value === undefined) return 'null';
+  if (Array.isArray(value)) return `[${value.map((v) => stableJson(v)).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([x], [y]) => x.localeCompare(y))
+      .map(([k, v]) => `${JSON.stringify(k)}:${stableJson(v)}`);
+    return `{${entries.join(',')}}`;
+  }
+  return JSON.stringify(value ?? null);
 }
