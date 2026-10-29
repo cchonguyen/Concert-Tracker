@@ -26,7 +26,8 @@ import { TimelineTab } from './components/timeline/TimelineTab';
 import { useTheme } from './components/ThemePicker';
 import { MenuButton } from './components/MenuButton';
 import { SharePanel } from './components/SharePanel';
-import { QuickAdd, QuickAddButton, QuickAddFab, SavedToast } from './components/QuickAdd';
+import { QuickAdd, QuickAddButton, QuickAddFab } from './components/QuickAdd';
+import { useToast } from './components/ui/Toast';
 import { AboutDialog } from './components/AboutDialog';
 import { DataPanel, exportCsv } from './components/DataActions';
 import { ListImport } from './components/ListImport';
@@ -44,6 +45,10 @@ import { hintSeen, markHintSeen, NavStorage, Page, PAGE_BLURB, SubPage, PAGE_LAB
 import { PAGE_ICON, SECTION_ICON } from './components/pageIcons';
 import { HomePage } from './components/HomePage';
 import { BackToTop } from './components/ui/BackToTop';
+import { Callout } from './components/ui/Callout';
+import { copy } from './services/copy';
+import { highestMilestoneCrossed } from './services/milestones';
+import { MilestoneCard } from './components/MilestoneCard';
 import { cityOf } from './services/table';
 import { homeSummary } from './services/home';
 
@@ -68,6 +73,9 @@ const initialPage = (): Page => pageFromView(new URLSearchParams(window.location
 export default function App() {
   const [tab, setTab] = useState<Page>(initialPage);
   const [events, setEvents] = useState<LoggedEvent[]>([]);
+  // The show count last seen from the server or from a change, so a page load never counts as a milestone.
+  const showCount = useRef<number | null>(null);
+  const [milestone, setMilestone] = useState<number | null>(null);
   const [lineups, setLineups] = useState<Record<string, LineupSummary>>({});
   const [editions, setEditions] = useState<Record<string, LineupFacts>>({});
   const [researching, setResearching] = useState<Set<string>>(new Set());
@@ -98,8 +106,7 @@ export default function App() {
   const [logFor, setLogFor] = useState<string | null>(null);
   const headerRef = useRef<HTMLElement>(null);
   const headerShown = useHideOnScroll(headerRef);
-  const [saved, setSaved] = useState<LoggedEvent | null>(null);
-  const dismissSaved = useCallback(() => setSaved(null), []);
+  const toast = useToast();
   const closeQuickAdd = useCallback(() => setQuickAdd(false), []);
   // Import and Google Sheets open from the Menu, the Table and Quick add alike.
   // Back from Google's sign-in (?sheets=...) opens Sheets straight away.
@@ -129,6 +136,7 @@ export default function App() {
   const refresh = useCallback(async () => {
     try {
       const data = await eventsApi.list();
+      showCount.current = data.events.length;
       setEvents(data.events);
       setLineups(data.lineups);
       setEditions(data.editions ?? {});
@@ -182,6 +190,24 @@ export default function App() {
   };
 
   // Moving between the Table, the timeline views and the Map keeps the same filters.
+  // A show added this session may cross a milestone. Each milestone fires once per account on this browser.
+  useEffect(() => {
+    const count = events.length;
+    const before = showCount.current;
+    showCount.current = count;
+    if (before === null || count <= before) return;
+    const hit = highestMilestoneCrossed(before, count);
+    if (hit === null) return;
+    const key = `liveArchive.milestone.${me.email ?? 'owner'}`;
+    try {
+      if (Number(window.localStorage.getItem(key) ?? 0) >= hit) return;
+      window.localStorage.setItem(key, String(hit));
+    } catch {
+      // Without storage the card can repeat on reload; the card itself still works.
+    }
+    setMilestone(hit);
+  }, [events.length]);
+
   const openTab = (next: Page) => {
     setAgendaFocus(null);
     setLogFor(null);
@@ -363,6 +389,7 @@ export default function App() {
           </div>
         )}
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-3 text-sm text-rose-200">{error}</p>}
+        {shown in copy.callouts && <Callout id={shown}>{copy.callouts[shown as keyof typeof copy.callouts]}</Callout>}
         {shown === 'home' && (
           <HomePage
             canManage={canManage}
@@ -470,11 +497,10 @@ export default function App() {
         onReviewEmail={() => setReviewing(true)}
         onCaptured={(event) => {
           setQuickAdd(false);
-          setSaved(event);
+          toast({ message: 'Saved', action: { label: 'Open', onClick: () => setSelectedId(event.id) } });
           void handleCaptured(event);
         }}
       />
-      {saved && <SavedToast event={saved} onOpen={setSelectedId} onDismiss={dismissSaved} />}
 
       {dataPanel === 'import' && (
         <ListImport
@@ -524,6 +550,16 @@ export default function App() {
       )}
     </div>
     </VaultProvider>
+      {milestone !== null && (
+        <MilestoneCard
+          milestone={milestone}
+          onSeeYear={() => {
+            setMilestone(null);
+            openTab('agenda');
+          }}
+          onClose={() => setMilestone(null)}
+        />
+      )}
     </MeProvider>
   );
 }

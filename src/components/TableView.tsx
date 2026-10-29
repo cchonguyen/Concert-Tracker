@@ -324,9 +324,9 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   // A column header and the sort menu both cycle: the usual direction, the other, then off.
   const sortBy = (key: SortKey) => setFilters((f) => ({ ...f, ...nextSort(f, key) }));
   const pickSort = (choice: SortChoice) => (choice === 'none' ? setFilters((f) => ({ ...f, sort: 'none' })) : sortBy(choice));
-  const sortOptions: Array<{ value: SortChoice; label: string }> = [
+  const sortOptions: Array<{ value: SortChoice; label: string; hint?: string }> = [
     ...SORT_OPTIONS.map((o) => ({ value: o.value, label: sortLabel(o.label, filters, o.value) })),
-    { value: 'none', label: 'Order added' },
+    { value: 'none', label: 'Order added', hint: 'Sort by order added (newest first)' },
   ];
   const year = (s: string) => (s ? Number(s) : undefined);
   const list = (values: string[]) => values.map((v) => ({ value: v, label: v }));
