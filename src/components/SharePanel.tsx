@@ -1,3 +1,4 @@
+import { Dialog } from './ui/Dialog';
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, Check, Copy, ExternalLink, Loader2, Share2, X } from 'lucide-react';
 import { ShareLinkView, shareApi } from '../services/lineupApi';
@@ -136,105 +137,103 @@ export const SharePanel: React.FC<SharePanelProps> = ({ onClose }) => {
   const nameChanged = link && settings.displayName.trim() !== link.settings.displayName;
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="flex h-full w-full max-w-xl flex-col border-l border-zinc-900 bg-zinc-950 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex-1 space-y-5 overflow-y-auto p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-bold">
-                <Share2 className="h-4 w-4 text-violet-400" /> Share
-              </h2>
-              <p className="text-xs text-zinc-500">
-                A read-only page of the events you went to, for anyone with the link. It shows events only once they are over, and never who you
-                went with, notes, ratings, prices or upcoming plans.
-              </p>
-            </div>
-            <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
-              <X className="h-5 w-5" />
-            </button>
+    <Dialog title="Share" onClose={onClose}>
+      <div className="flex-1 space-y-5 overflow-y-auto p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-bold">
+              <Share2 className="h-4 w-4 text-violet-400" /> Share
+            </h2>
+            <p className="text-xs text-zinc-500">
+              A read-only page of the events you went to, for anyone with the link. It shows events only once they are over, and never who you
+              went with, notes, ratings, prices or upcoming plans.
+            </p>
           </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-          {error && (
-            <p className="flex items-start gap-2 rounded-lg border border-amber-900/60 bg-amber-950/30 p-3 text-sm text-amber-200">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
-            </p>
-          )}
+        {error && (
+          <p className="flex items-start gap-2 rounded-lg border border-amber-900/60 bg-amber-950/30 p-3 text-sm text-amber-200">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
+          </p>
+        )}
 
-          {link === undefined ? (
-            <p className="flex items-center gap-2 text-sm text-zinc-500">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-            </p>
-          ) : (
-            <>
-              <section className="space-y-2">
-                <label className="block text-sm text-zinc-300" htmlFor="share-name">
-                  Name on the page
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    id="share-name"
-                    value={settings.displayName}
-                    maxLength={60}
-                    onChange={(e) => change({ displayName: e.target.value })}
-                    placeholder="Your name"
-                    className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-                  />
-                  {nameChanged && (
-                    <button
-                      className={button}
-                      disabled={!!busy || !settings.displayName.trim()}
-                      onClick={() => run('save', async () => setLink(await shareApi.update(settings)))}
-                    >
-                      Save
-                    </button>
-                  )}
-                </div>
-              </section>
+        {link === undefined ? (
+          <p className="flex items-center gap-2 text-sm text-zinc-500">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+          </p>
+        ) : (
+          <>
+            <section className="space-y-2">
+              <label className="block text-sm text-zinc-300" htmlFor="share-name">
+                Name on the page
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="share-name"
+                  value={settings.displayName}
+                  maxLength={60}
+                  onChange={(e) => change({ displayName: e.target.value })}
+                  placeholder="Your name"
+                  className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                />
+                {nameChanged && (
+                  <button
+                    className={button}
+                    disabled={!!busy || !settings.displayName.trim()}
+                    onClick={() => run('save', async () => setLink(await shareApi.update(settings)))}
+                  >
+                    Save
+                  </button>
+                )}
+              </div>
+            </section>
 
-              <section className="space-y-3">
-                {toggle('showDates', 'Show exact dates', 'Off: years only, and events in a year listed A to Z.')}
-                {toggle('showVenues', 'Show venues', 'Off: city only.')}
-                {toggle('showFormat', 'Show format', 'Club night, warehouse party and the like.')}
-              </section>
+            <section className="space-y-3">
+              {toggle('showDates', 'Show exact dates', 'Off: years only, and events in a year listed A to Z.')}
+              {toggle('showVenues', 'Show venues', 'Off: city only.')}
+              {toggle('showFormat', 'Show format', 'Club night, warehouse party and the like.')}
+            </section>
 
-              {link ? (
-                <section className="space-y-3 rounded-xl border border-zinc-900 bg-zinc-900/40 p-4">
-                  <p className="text-sm text-zinc-300">Link active since {day(link.createdAt)}.</p>
-                  {url ? (
-                    <div className="flex gap-2">
-                      <input readOnly value={url} onFocus={(e) => e.target.select()} className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-300" />
-                      <button className={button} onClick={copy}>
-                        {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-zinc-500">
-                      For safety only a fingerprint of the link is kept, so it can't be shown again here. Make a new link to copy one (the old one stops
-                      working).
-                    </p>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    <a className={button} href={shareApi.previewUrl} target="_blank" rel="noreferrer">
-                      <ExternalLink className="h-4 w-4" /> Preview
-                    </a>
-                    <button className={button} disabled={!!busy} onClick={create}>
-                      {busy === 'create' && <Loader2 className="h-4 w-4 animate-spin" />} New link
-                    </button>
-                    <button className={button} disabled={!!busy} onClick={turnOff}>
-                      {busy === 'off' && <Loader2 className="h-4 w-4 animate-spin" />} Turn off
+            {link ? (
+              <section className="space-y-3 rounded-xl border border-zinc-900 bg-zinc-900/40 p-4">
+                <p className="text-sm text-zinc-300">Link active since {day(link.createdAt)}.</p>
+                {url ? (
+                  <div className="flex gap-2">
+                    <input readOnly value={url} onFocus={(e) => e.target.select()} className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-300" />
+                    <button className={button} onClick={copy}>
+                      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? 'Copied' : 'Copy'}
                     </button>
                   </div>
-                  <p className="text-xs text-zinc-500">New link and Turn off stop the current link at once. Anyone you sent it to sees "This link isn't active".</p>
-                </section>
-              ) : (
-                <button className={primary} disabled={!!busy || !settings.displayName.trim()} onClick={create}>
-                  {busy === 'create' && <Loader2 className="h-4 w-4 animate-spin" />} Create link
-                </button>
-              )}
-            </>
-          )}
-        </div>
+                ) : (
+                  <p className="text-xs text-zinc-500">
+                    For safety only a fingerprint of the link is kept, so it can't be shown again here. Make a new link to copy one (the old one stops
+                    working).
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <a className={button} href={shareApi.previewUrl} target="_blank" rel="noreferrer">
+                    <ExternalLink className="h-4 w-4" /> Preview
+                  </a>
+                  <button className={button} disabled={!!busy} onClick={create}>
+                    {busy === 'create' && <Loader2 className="h-4 w-4 animate-spin" />} New link
+                  </button>
+                  <button className={button} disabled={!!busy} onClick={turnOff}>
+                    {busy === 'off' && <Loader2 className="h-4 w-4 animate-spin" />} Turn off
+                  </button>
+                </div>
+                <p className="text-xs text-zinc-500">New link and Turn off stop the current link at once. Anyone you sent it to sees "This link isn't active".</p>
+              </section>
+            ) : (
+              <button className={primary} disabled={!!busy || !settings.displayName.trim()} onClick={create}>
+                {busy === 'create' && <Loader2 className="h-4 w-4 animate-spin" />} Create link
+              </button>
+            )}
+          </>
+        )}
       </div>
-    </div>
+    </Dialog>
   );
 };
