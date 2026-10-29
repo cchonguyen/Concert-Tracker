@@ -50,7 +50,7 @@ import { HomePage } from './components/HomePage';
 import { BackToTop } from './components/ui/BackToTop';
 import { Callout } from './components/ui/Callout';
 import { copy } from './services/copy';
-import { highestMilestoneCrossed } from './services/milestones';
+import { ARTIST_MILESTONES, artistMilestoneLine, claimMilestone, highestMilestoneCrossed, milestoneCounts, milestoneLine, type MilestoneCounts } from './services/milestones';
 import { showTipsAgain } from './services/tips';
 import { MilestoneCard } from './components/MilestoneCard';
 import { cityOf } from './services/table';
@@ -80,9 +80,9 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   const { readOnly, ask: askSample } = useSampleGate();
   const [tab, setTab] = useState<Page>(initialPage);
   const [events, setEvents] = useState<LoggedEvent[]>([]);
-  // The show count last seen from the server or from a change, so a page load never counts as a milestone.
-  const showCount = useRef<number | null>(null);
-  const [milestone, setMilestone] = useState<number | null>(null);
+  // The counts last seen from the server or from a change, so a page load never counts as a milestone.
+  const counts = useRef<MilestoneCounts | null>(null);
+  const [milestone, setMilestone] = useState<{ kind: 'shows' | 'artists'; value: number } | null>(null);
   const [lineups, setLineups] = useState<Record<string, LineupSummary>>({});
   const [editions, setEditions] = useState<Record<string, LineupFacts>>({});
   const [researching, setResearching] = useState<Set<string>>(new Set());
@@ -149,7 +149,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   const refresh = useCallback(async () => {
     try {
       const data = await eventsApi.list();
-      showCount.current = data.events.length;
+      counts.current = milestoneCounts(data.events, new Date().toISOString().slice(0, 10));
       setEvents(data.events);
       setLineups(data.lineups);
       setEditions(data.editions ?? {});
@@ -203,23 +203,23 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   };
 
   // Moving between the Table, the timeline views and the Map keeps the same filters.
-  // A show added this session may cross a milestone. Each milestone fires once per account on this browser.
+  // A show or an act added this session may cross a milestone. Each milestone fires once per account on this browser.
+  // A show card wins when a change crosses both kinds at once.
   useEffect(() => {
-    const count = events.length;
-    const before = showCount.current;
-    showCount.current = count;
-    if (before === null || count <= before) return;
-    const hit = highestMilestoneCrossed(before, count);
-    if (hit === null) return;
-    const key = `liveArchive.milestone.${me.email ?? 'owner'}`;
-    try {
-      if (Number(window.localStorage.getItem(key) ?? 0) >= hit) return;
-      window.localStorage.setItem(key, String(hit));
-    } catch {
-      // Without storage the card can repeat on reload; the card itself still works.
+    const now = milestoneCounts(events, new Date().toISOString().slice(0, 10));
+    const before = counts.current;
+    counts.current = now;
+    if (before === null) return;
+    const showHit = highestMilestoneCrossed(before.shows, now.shows);
+    if (showHit !== null && claimMilestone(`liveArchive.milestone.${me.email ?? 'owner'}`, showHit)) {
+      setMilestone({ kind: 'shows', value: showHit });
+      return;
     }
-    setMilestone(hit);
-  }, [events.length]);
+    const artistHit = highestMilestoneCrossed(before.artists, now.artists, ARTIST_MILESTONES);
+    if (artistHit !== null && claimMilestone(`liveArchive.milestone.artists.${me.email ?? 'owner'}`, artistHit)) {
+      setMilestone({ kind: 'artists', value: artistHit });
+    }
+  }, [events]);
 
   const openTab = (next: Page) => {
     setAgendaFocus(null);
@@ -571,10 +571,11 @@ export default function App({ initialMe }: { initialMe?: Me }) {
     </VaultProvider>
       {milestone !== null && (
         <MilestoneCard
-          milestone={milestone}
-          onSeeYear={() => {
+          line={milestone.kind === 'shows' ? milestoneLine(milestone.value) : artistMilestoneLine(milestone.value)}
+          actionLabel={milestone.kind === 'shows' ? 'See your year' : 'See your artists'}
+          onAction={() => {
             setMilestone(null);
-            openTab('agenda');
+            openTab(milestone.kind === 'shows' ? 'agenda' : 'ranking');
           }}
           onClose={() => setMilestone(null)}
         />
