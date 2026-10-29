@@ -1,7 +1,7 @@
 import { Check, ChevronRight } from 'lucide-react';
 import type { LoggedEvent, SeenAct } from '../server/events/types';
 import type { AttendanceState } from '../server/events/attendance';
-import { billLines, GAP_LABEL, GAP_QUESTION, GAP_SECTION, type SectionId } from '../services/poster';
+import { billLines, GAP_LABEL, GAP_QUESTION } from '../services/poster';
 import type { Gap } from '../services/table';
 import { Pill } from './ui/Pill';
 
@@ -10,12 +10,6 @@ const STATUS: Record<AttendanceState, { text: string; tone: 'good' | 'warn' | 'n
   upcoming: { text: 'Upcoming', tone: 'neutral' },
   confirm: { text: 'Did you go?', tone: 'warn' },
   missed: { text: "Didn't go", tone: 'neutral' },
-};
-
-const SECTION_NAME: Record<SectionId, string> = {
-  'when-where': 'When and where',
-  'who-you-saw': 'Who you saw',
-  'your-notes': 'Your night',
 };
 
 interface Props {
@@ -73,17 +67,20 @@ export function PosterHeader({ title, label, event, state, seen, cited, confirme
       <h2 className="text-3xl font-extrabold uppercase leading-none tracking-tight text-zinc-50 sm:text-4xl">{title}</h2>
       {bill.large.length > 0 && <p className="text-lg font-medium leading-snug text-zinc-100">{bill.large.map((a) => a.name).join(' · ')}</p>}
       {small.length > 0 && <p className="text-sm font-medium text-zinc-400">{small.join(' · ')}</p>}
-      <div className="flex flex-wrap gap-2 pt-2">
-        <Pill tone={status.tone}>
-          {status.tone === 'good' && <Check className="h-3 w-3" aria-hidden="true" />}
-          {status.text}
-        </Pill>
-        {confirmedBy > 0 && (
-          <Pill tone="good">
-            Date confirmed · {confirmedBy} {confirmedBy === 1 ? 'source' : 'sources'}
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2 pt-2">
+        <div className="flex flex-wrap gap-2">
+          <Pill tone={status.tone}>
+            {status.tone === 'good' && <Check className="h-3 w-3" aria-hidden="true" />}
+            {status.text}
           </Pill>
-        )}
-        {cited.length > 0 && <Pill tone="accent">Lineup · {cited.length} acts, all cited</Pill>}
+          {confirmedBy > 0 && (
+            <Pill tone="good">
+              Date confirmed · {confirmedBy} {confirmedBy === 1 ? 'source' : 'sources'}
+            </Pill>
+          )}
+          {cited.length > 0 && <Pill tone="accent">Lineup · {cited.length} acts, all cited</Pill>}
+        </div>
+        {state === 'upcoming' && <p className="text-xs text-zinc-400 sm:text-right">Upcoming. Not counted until you say you went.</p>}
       </div>
     </header>
   );
@@ -91,7 +88,7 @@ export function PosterHeader({ title, label, event, state, seen, cited, confirme
 
 interface StripProps {
   gaps: Gap[];
-  current: Gap | null;
+  current: Gap | null; // The gap being asked about; its question shows in the strip.
   onPick: (gap: Gap) => void;
   onNext: () => void;
 }
@@ -130,6 +127,7 @@ export function ThingsLeft({ gaps, current, onPick, onNext }: StripProps) {
           </li>
         ))}
       </ul>
+      {current && <span className="min-w-0 text-sm text-violet-100">{GAP_QUESTION[current]}</span>}
       <span className="grow" />
       <button
         type="button"
@@ -139,27 +137,5 @@ export function ThingsLeft({ gaps, current, onPick, onNext }: StripProps) {
         Next <ChevronRight className="h-4 w-4" aria-hidden="true" />
       </button>
     </section>
-  );
-}
-
-// The guided card: the question for the gap being asked about, where it is filled in, and a way there.
-export function GuidedCard({ gap, index, total, onShow }: { gap: Gap; index: number; total: number; onShow: () => void }) {
-  return (
-    <div className="space-y-3 rounded-xl border border-violet-500/45 bg-gradient-to-b from-violet-500/10 to-violet-500/[0.02] p-4">
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-base font-semibold text-zinc-100">{GAP_QUESTION[gap]}</p>
-        <p className="shrink-0 pt-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-400">
-          {index} of {total}
-        </p>
-      </div>
-      <p className="text-sm text-zinc-400">It's filled in under {SECTION_NAME[GAP_SECTION[gap]]}.</p>
-      <button
-        type="button"
-        onClick={onShow}
-        className="inline-flex min-h-11 items-center gap-0.5 rounded-control border border-violet-400/60 px-3 text-sm text-violet-100 hover:bg-violet-500/15 sm:min-h-9"
-      >
-        Show me <ChevronRight className="h-4 w-4" aria-hidden="true" />
-      </button>
-    </div>
   );
 }
