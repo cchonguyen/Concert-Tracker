@@ -37,6 +37,11 @@ import { Dialog } from './ui/Dialog';
 import { Confirm } from './ui/Confirm';
 import { useToast } from './ui/Toast';
 import { Tooltip } from './ui/Tooltip';
+import { Button } from './ui/Button';
+import { IconButton } from './ui/IconButton';
+import { Segmented } from './ui/Segmented';
+import { SaveStatus } from './ui/SaveStatus';
+import { beginSave, emptyTrack, failSave, hintVisit, succeedSave, takeFailed, type SaveTrack } from '../services/saveStatus';
 
 interface EventDetailProps {
   event: LoggedEvent;
@@ -108,6 +113,10 @@ const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
 
 // Typing saves 500 ms after the last key, so a sheet closed at once (iOS Safari) still gets its last value through the blur flush.
 const SAVE_DELAY_MS = 500;
+// Counts how many times an event has been opened on this device, for the "Changes save as you go" hint.
+const HINT_KEY = 'liveArchive.saveHint';
+// The fields a save has just written; each one flashes for a moment.
+const FlashContext = React.createContext<string[]>([]);
 
 // A text field that saves when you leave it, and 500 ms after you stop typing.
 const Field: React.FC<{
@@ -123,7 +132,11 @@ const Field: React.FC<{
   offer?: { value: string; from: string; onUse: () => void };
   min?: string;
   className?: string;
-}> = ({ label, value, type = 'text', placeholder, source, onSave, onType, suggestions, offer, min, className }) => {
+  // The event field this saves, so a save of it flashes.
+  field?: keyof EventPatch;
+}> = ({ label, value, type = 'text', placeholder, source, onSave, onType, suggestions, offer, min, className, field }) => {
+  const flashing = React.useContext(FlashContext);
+  const flash = field !== undefined && flashing.includes(field);
   const [draft, setDraft] = useState(value === undefined ? '' : String(value));
   useEffect(() => setDraft(value === undefined ? '' : String(value)), [value]);
   const pending = useRef<number | null>(null);
@@ -143,9 +156,12 @@ const Field: React.FC<{
   // Leaving the field with a save still waiting saves it.
   useEffect(() => () => flush(), []);
   return (
-    <label className={`space-y-1 ${className ?? ''}`}>
+    <label className={`-m-0.5 space-y-1 rounded-lg p-0.5 transition-shadow motion-reduce:transition-none ${flash ? 'ring-1 ring-emerald-500/60' : ''} ${className ?? ''}`}>
       <span className="flex items-center justify-between gap-2 text-[11px] font-semibold text-zinc-400">
-        {label}
+        <span className="inline-flex items-center gap-1">
+          {label}
+          {flash && <Check className="h-3 w-3 text-emerald-300" aria-label="Saved" />}
+        </span>
         {source && source.sourceType !== 'user' && (
           <a
             href={source.sourceUrl}
@@ -380,14 +396,8 @@ const WentCard: React.FC<{
         )}
         {days.length > 1 && <DaysWent days={days} attended={event.daysAttended} onChange={(daysAttended) => onSave({ daysAttended })} />}
         <div className="flex flex-wrap items-center gap-3">
-          {canReview && (
-            <button onClick={onReview} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500">
-              Review the lineup
-            </button>
-          )}
-          <button onClick={() => setOffered(null)} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900">
-            Done
-          </button>
+          {canReview && <Button variant="primary" onClick={onReview}>Review the lineup</Button>}
+          <Button onClick={() => setOffered(null)}>Done</Button>
           <span className="text-xs text-zinc-400">Add anyone else under Who you saw.</span>
         </div>
       </div>
@@ -429,12 +439,8 @@ const WentCard: React.FC<{
       <p className="font-semibold text-violet-100">Did you go?</p>
       <p className="text-xs text-zinc-400">It's over, and it stays out of Stats, Artists and the Map until you say.</p>
       <div className="flex flex-wrap gap-2">
-        <button onClick={went} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500">
-          Yes, I went
-        </button>
-        <button onClick={() => onSave({ attendance: 'missed' })} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900">
-          No, I didn't go
-        </button>
+        <Button variant="primary" onClick={went}>Yes, I went</Button>
+        <Button onClick={() => onSave({ attendance: 'missed' })}>No, I didn't go</Button>
       </div>
     </div>
   );
@@ -865,7 +871,59 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
       setBusy(null);
     }
   };
-  const save = (patch: EventPatch) => run('save', () => eventsApi.update(event.id, patch));
+  // Saves are tracked for the status line. A failed patch is kept so Try again can resend it.
+  const [track, setTrack] = useState<SaveTrack<EventPatch>>(() => emptyTrack<EventPatch>());
+  const trackRef = useRef(track);
+  const pendingSaves = useRef(new Set<Promise<void>>());
+  const [flashing, setFlashing] = useState<string[]>([]);
+  const flashTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+  }, []);
+  const [hint] = useState(() => {
+    try {
+      const visit = hintVisit(window.localStorage.getItem(HINT_KEY));
+      window.localStorage.setItem(HINT_KEY, String(visit.next));
+      return visit.show;
+    } catch {
+      return false;
+    }
+  });
+  const update = (fn: (t: SaveTrack<EventPatch>) => SaveTrack<EventPatch>) => {
+    trackRef.current = fn(trackRef.current);
+    setTrack(trackRef.current);
+  };
+  const flash = (keys: string[]) => {
+    setFlashing(keys);
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlashing([]), 1000);
+  };
+  const sendPatch = (patch: EventPatch) => {
+    update(beginSave);
+    const sent = eventsApi.update(event.id, patch).then(
+      (updated) => {
+        onChange(updated);
+        update((t) => succeedSave(t, Date.now()));
+        flash(Object.keys(patch));
+      },
+      () => update((t) => failSave(t, patch)),
+    );
+    pendingSaves.current.add(sent);
+    void sent.finally(() => pendingSaves.current.delete(sent));
+  };
+  const save = (patch: EventPatch) => sendPatch(patch);
+  const retrySaves = () => {
+    const { track: rest, patches } = takeFailed(trackRef.current);
+    update(() => rest);
+    patches.forEach((patch) => sendPatch(patch));
+  };
+  // Closing first blurs the field being typed in, so its save starts and is waited for. A failed save keeps the detail open.
+  const requestClose = async () => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    await Promise.all([...pendingSaves.current]);
+    if (trackRef.current.failed.length > 0) return;
+    onClose();
+  };
   const [weatherNote, setWeatherNote] = useState<string | null>(null);
   const lookUpWeather = () =>
     run('weather', async () => {
@@ -905,7 +963,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     return {
       value: field === 'endDate' ? whenLabel({ startDate: v }) ?? v : v,
       from: src ? FIELD_SOURCE_LABELS[src.sourceType] : 'a source',
-      onUse: () => void run('save', () => eventsApi.pick(event.id, confirmed.id, [field])),
+      onUse: () => void run('pick', () => eventsApi.pick(event.id, confirmed.id, [field])),
     };
   };
   const confirmations = dateConfirmations(event);
@@ -920,20 +978,21 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   return (
     <Dialog
       title={eventTitle(event)}
-      onClose={reviewing ? () => {} : onClose}
+      onClose={reviewing ? () => {} : () => void requestClose()}
       panelClassName="h-full w-full max-w-xl space-y-6 overflow-y-auto border-l border-zinc-900 bg-zinc-950 p-5 shadow-2xl"
     >
+      <FlashContext.Provider value={flashing}>
+        <SaveStatus track={track} onRetry={retrySaves} hint={hint} />
         <div className="flex items-start gap-3">
-          <Field label="Event" value={event.name} onSave={(v) => save({ name: v })} className="flex-1" />
-          <button onClick={onClose} className="mt-6 text-zinc-400 hover:text-zinc-200" aria-label="Close">
-            <X className="h-5 w-5" />
-          </button>
+          <Field label="Event" field="name" value={event.name} onSave={(v) => save({ name: v })} className="flex-1" />
+          <IconButton icon={X} label="Close" onClick={() => void requestClose()} className="mt-6" />
         </div>
         {event.input && event.input !== event.name && <p className="-mt-4 text-xs text-zinc-400">You typed: “{event.input}”</p>}
         <div className="-mt-2 space-y-1">
           <div className="flex items-end gap-2">
             <Field
               label="Series"
+              field="series"
               value={event.series}
               placeholder="Festival or tour it's one year of, e.g. EDC Las Vegas"
               suggestions={seriesOffers(event, others)}
@@ -941,21 +1000,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               className="flex-1"
             />
             {event.series && (
-              <label className="space-y-1">
-                <span className="text-[11px] font-semibold text-zinc-400">Weekend</span>
-                <select
-                  className={input}
-                  value={event.weekend ?? ''}
-                  onChange={(e) => save({ weekend: e.target.value ? Number(e.target.value) : null })}
-                >
-                  <option value="">{weekendFromName(event.name) ? `Not set (name says ${weekendFromName(event.name)})` : 'Only one'}</option>
-                  {[1, 2, 3, 4].map((w) => (
-                    <option key={w} value={w}>
-                      Weekend {w}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="space-y-1">
+                <span className="block text-[11px] font-semibold text-zinc-400">Weekend</span>
+                <Segmented<string>
+                  label="Weekend"
+                  value={event.weekend ? String(event.weekend) : ''}
+                  onChange={(v) => save({ weekend: v ? Number(v) : null })}
+                  options={[
+                    { value: '', label: weekendFromName(event.name) ? `Not set (name says ${weekendFromName(event.name)})` : 'Only one' },
+                    ...[1, 2, 3, 4].map((w) => ({ value: String(w), label: `Weekend ${w}` })),
+                  ]}
+                />
+              </div>
             )}
           </div>
           {(event.series || eventTitle(event) !== event.name) && (
@@ -1009,11 +1065,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Date" type="date" value={event.startDate} source={event.sources.startDate} onSave={(v) => save({ startDate: text(v) })} />
+            <Field label="Date" field="startDate" type="date" value={event.startDate} source={event.sources.startDate} onSave={(v) => save({ startDate: text(v) })} />
             {/* Shows the start date until you change it, so the picker opens on the
                 right month; stored only when it differs (a single-day event has no last day). */}
             <Field
               label="Last day"
+              field="endDate"
               type="date"
               value={event.endDate ?? event.startDate}
               min={event.startDate}
@@ -1025,10 +1082,11 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               <DaysWent days={days} attended={event.daysAttended} onChange={(daysAttended) => save({ daysAttended })} />
             )}
             {!event.startDate && (
-              <Field label="Year, if that's all you know" type="number" value={event.year} placeholder="2024" onSave={(v) => save({ year: v ? Number(v) : null })} />
+              <Field label="Year, if that's all you know" field="year" type="number" value={event.year} placeholder="2024" onSave={(v) => save({ year: v ? Number(v) : null })} />
             )}
             <Field
               label="Venue"
+              field="venue"
               value={event.venue}
               source={event.sources.venue}
               suggestions={pastVenues}
@@ -1041,6 +1099,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             />
             <Field
               label="City"
+              field="city"
               value={event.city}
               placeholder="City"
               source={event.sources.city}
@@ -1051,6 +1110,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             />
             <Field
               label="State"
+              field="region"
               value={event.region}
               placeholder="NV, or the region"
               source={event.sources.region}
@@ -1062,24 +1122,23 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               }
               onSave={(v) => save({ region: text(v) })}
             />
-            <Field label="Country" value={event.country} source={event.sources.country} offer={offer('country')} onSave={(v) => save({ country: text(v) })} />
-            <label className="space-y-1">
+            <Field label="Country" field="country" value={event.country} source={event.sources.country} offer={offer('country')} onSave={(v) => save({ country: text(v) })} />
+            <div className="col-span-2 space-y-1">
               <span className="flex items-center justify-between gap-2 text-[11px] font-semibold text-zinc-400">
                 Type
                 <span className="font-normal text-zinc-400">{scale.by === 'rule' && scale.kind ? scale.reason : ''}</span>
               </span>
-              <select
-                className={input}
+              <Segmented<string>
+                label="Type"
                 value={event.kind ?? ''}
-                onChange={(e) => save({ kind: (e.target.value || null) as EventPatch['kind'] })}
-              >
-                <option value="">
-                  {worked.kind ? `${KIND_LABELS[worked.kind]} (worked out)` : 'Not known yet'}
-                </option>
-                <option value="concert">Concert</option>
-                <option value="festival">Festival</option>
-              </select>
-            </label>
+                onChange={(v) => save({ kind: (v || null) as EventPatch['kind'] })}
+                options={[
+                  { value: '', label: worked.kind ? `${KIND_LABELS[worked.kind]} (worked out)` : 'Not known yet' },
+                  { value: 'concert', label: 'Concert' },
+                  { value: 'festival', label: 'Festival' },
+                ]}
+              />
+            </div>
           </div>
 
           {/* What Gemini did on the last "Look again with Gemini". */}
@@ -1216,9 +1275,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             <p className="text-sm text-zinc-300">
               {lineupActs.length} acts confirmed, each with a source.
               {job && (
-                <button onClick={() => setReviewing(true)} className="ml-2 rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-200 hover:bg-zinc-900">
-                  Edit lineup
-                </button>
+                <Button className="ml-2" onClick={() => setReviewing(true)}>Edit lineup</Button>
               )}
             </p>
           )}
@@ -1238,22 +1295,21 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               )}
               <div className="flex flex-wrap gap-2">
                 {(job.status === 'needs_review' || job.status === 'no_data') && (
-                  <button onClick={() => setReviewing(true)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500">
+                  <Button variant="primary" onClick={() => setReviewing(true)}>
                     {job.status === 'no_data' ? 'Enter acts by hand' : 'Review lineup'}
-                  </button>
+                  </Button>
                 )}
                 {(job.status === 'waiting_quota' || job.status === 'failed') && (
-                  <button
+                  <Button
                     onClick={() =>
                       run('retry', async () => {
                         await lineupApi.retry(job.id);
                         setTimeout(() => void load(), 500);
                       })
                     }
-                    className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900"
                   >
                     <RefreshCw className="h-3 w-3" /> Try now
-                  </button>
+                  </Button>
                 )}
                 <button onClick={() => setShowLog((s) => !s)} className="text-xs text-zinc-400 hover:text-zinc-300">
                   {showLog ? 'Hide' : 'Show'} what it did
@@ -1329,6 +1385,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </div>
             <Field
               label="Ticket price"
+              field="ticketPrice"
               type="number"
               value={event.ticketPrice}
               source={event.sources.ticketPrice}
@@ -1353,8 +1410,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               <Trash2 className="h-3.5 w-3.5" /> Delete event
             </button>
           </div>
-          {busy === 'save' && <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />}
         </div>
+      </FlashContext.Provider>
 
       {confirmingDelete && (
         <Confirm
