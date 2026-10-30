@@ -57,31 +57,38 @@ export async function verifyAccessToken(token: string | null | undefined, config
   return (await readAccessClaims(token, config, now, getJson)) !== null;
 }
 
+// Every refusal says why in the Worker log, so a sign-in that should work can
+// be traced to the check that failed. The token is never logged.
+const refused = (why: string): null => {
+  console.warn(`Access token refused: ${why}`);
+  return null;
+};
+
 // The same checks as verifyAccessToken, returning who signed in. A token with
 // no email is refused: the email is how a member is found.
 export async function readAccessClaims(token: string | null | undefined, config: AccessConfig, now = Date.now(), getJson = defaultGetJson): Promise<AccessClaims | null> {
-  if (!token) return null;
+  if (!token) return refused('no Access token on the request');
   const parts = token.split('.');
-  if (parts.length !== 3) return null;
+  if (parts.length !== 3) return refused('token is not three parts');
   try {
     const header = json(parts[0]);
     const payload = json(parts[1]);
-    if (header.alg !== 'RS256' || typeof header.kid !== 'string') return null;
+    if (header.alg !== 'RS256' || typeof header.kid !== 'string') return refused(`unsupported header alg=${header.alg}`);
     const auds = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
-    if (!auds.includes(config.aud)) return null;
-    if (payload.iss !== config.teamDomain) return null;
-    if (typeof payload.exp !== 'number' || payload.exp * 1000 <= now) return null;
-    if (typeof payload.nbf === 'number' && payload.nbf * 1000 > now + 60_000) return null;
+    if (!auds.includes(config.aud)) return refused('audience does not match ACCESS_AUD');
+    if (payload.iss !== config.teamDomain) return refused(`issuer ${payload.iss} does not match ACCESS_TEAM_DOMAIN ${config.teamDomain}`);
+    if (typeof payload.exp !== 'number' || payload.exp * 1000 <= now) return refused('token has expired (or clock is off)');
+    if (typeof payload.nbf === 'number' && payload.nbf * 1000 > now + 60_000) return refused('token is not valid yet (clock is off)');
     let jwk = (await keysFor(config, getJson, now, false)).find((k) => k.kid === header.kid);
     jwk ??= (await keysFor(config, getJson, now, true)).find((k) => k.kid === header.kid);
-    if (!jwk) return null;
+    if (!jwk) return refused('no signing key matches the token kid');
     const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
     const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64url(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
-    if (!ok) return null;
+    if (!ok) return refused('signature does not verify');
     // A service token (machine login) has no email; only people are members.
     const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
     return { email, sub: typeof payload.sub === 'string' ? payload.sub : '' };
-  } catch {
-    return null;
+  } catch (err) {
+    return refused(`check failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
