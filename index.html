@@ -6,7 +6,7 @@
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="theme-color" content="#022c22" />
+    <meta name="theme-color" content="#0b0a24" />
     <title>LiveArchive · Remember every show you went to</title>
     <meta name="description" content="Remember every show you went to and everyone you saw there. A personal concert log that reads lineups from their sources and never guesses." />
     <link rel="canonical" href="__SITE_ORIGIN__/" />
@@ -20,9 +20,10 @@
       {"@context":"https://schema.org","@type":"WebApplication","name":"LiveArchive","url":"__SITE_ORIGIN__/","applicationCategory":"LifestyleApplication","description":"A personal log of the concerts and festivals you attended and the acts you saw."}
     </script>
     <style>
-      :root { --bg: #022c22; --panel: #064e3b; --ink: #ecfdf5; --muted: #a7f3d0; --accent: #6ee7b7; --line: rgba(110, 231, 183, 0.25); }
+      /* Colours taken from the logo: blue #0878F9, indigo #3024F4, purple #A000E8. */
+      :root { --bg: #0b0a24; --panel: #17153a; --ink: #eef2ff; --muted: #b9c2f5; --accent: #5aa9ff; --on-accent: #ffffff; --line: rgba(90, 169, 255, 0.25); }
       @media (prefers-color-scheme: light) {
-        :root:not([data-theme="dark"]) { --bg: #fafafa; --panel: #ffffff; --ink: #064e3b; --muted: #047857; --accent: #047857; --line: rgba(4, 120, 87, 0.2); }
+        :root:not([data-theme="dark"]) { --bg: #fafafa; --panel: #ffffff; --ink: #14123a; --muted: #3f3aa8; --accent: #3024F4; --on-accent: #ffffff; --line: rgba(48, 36, 244, 0.2); }
       }
       body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, sans-serif; }
       main { max-width: 56rem; margin: 0 auto; padding: 0 16px 64px; }
@@ -36,7 +37,7 @@
       .lede { font-size: 1.2rem; color: var(--muted); max-width: 40rem; }
       .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
       .button { display: inline-block; padding: 10px 18px; border-radius: 10px; border: 1px solid var(--accent); text-decoration: none; }
-      .button.primary { background: var(--accent); color: var(--bg); font-weight: 600; }
+      .button.primary { background: linear-gradient(115deg, #0878F9, #3024F4 50%, #A000E8); border-color: transparent; color: var(--on-accent); font-weight: 600; }
       .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
       .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
       .card p { color: var(--muted); font-size: 0.95rem; margin: 0; }
@@ -47,6 +48,7 @@
   <body>
     <main>
       <header id="about">
+        <img src="/logo.svg" alt="" width="64" height="64" style="display: block; margin-bottom: 16px" />
         <h1>LiveArchive</h1>
         <p class="lede">Remember every show you went to and everyone you saw there.</p>
         <p>Type one line about a concert or festival. LiveArchive finds the date, venue and lineup from the sources it reads, shows where each name came from, and keeps your record of who you saw.</p>

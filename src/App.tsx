@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useHideOnScroll } from './components/headerScroll';
-import { House, Radio } from 'lucide-react';
+import { House } from 'lucide-react';
 import {
   EmailImport,
   eventsApi,
@@ -388,9 +388,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
       >
         <div className={`mx-auto flex ${headerWidth} items-center justify-between gap-3 px-4 py-3`}>
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-violet-600 to-cyan-400">
-              <Radio className="h-4 w-4 text-white" />
-            </div>
+            <img src="/logo.svg" alt="LiveArchive" className="h-8 w-8" />
             <span className="hidden text-base font-extrabold tracking-tight sm:inline">
               Live<span className="text-violet-400">Archive</span>
             </span>
