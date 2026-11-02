@@ -9,6 +9,7 @@ export interface ArtistSummary {
   key: string;
   name: string; // as written on your most recent event with them
   events: LoggedEvent[]; // newest first; undated last
+  sets: number; // total sets seen
   headlined: number; // events where they were stored as headliner
   supported: number; // events where they were stored as support
   favourites: number; // events where they were your favourite set
@@ -34,19 +35,53 @@ const when = (e: LoggedEvent) =>
 
 export function artistSummaries(events: LoggedEvent[]): ArtistSummary[] {
   const newestFirst = [...events].sort((a, b) => when(b).localeCompare(when(a)) || b.createdAt.localeCompare(a.createdAt));
-  const map = new Map<string, ArtistSummary & { cityCounts: Map<string, { name: string; n: number }> }>();
+  const map = new Map<
+    string,
+    ArtistSummary & {
+      cityCounts: Map<string, { name: string; n: number }>;
+      eventIds: Set<string>;
+      favouriteEvents: Set<string>;
+      headlinedEvents: Set<string>;
+      supportedEvents: Set<string>;
+    }
+  >();
   for (const e of newestFirst) {
     for (const s of e.seen) {
       let a = map.get(s.key);
       if (!a) {
-        a = { key: s.key, name: s.name, events: [], headlined: 0, supported: 0, favourites: 0, cities: [], cityCounts: new Map() };
+        a = {
+          key: s.key,
+          name: s.name,
+          events: [],
+          sets: 0,
+          headlined: 0,
+          supported: 0,
+          favourites: 0,
+          cities: [],
+          cityCounts: new Map(),
+          eventIds: new Set(),
+          favouriteEvents: new Set(),
+          headlinedEvents: new Set(),
+          supportedEvents: new Set(),
+        };
         map.set(s.key, a);
       }
-      if (a.events.some((x) => x.id === e.id)) continue;
+      a.sets += 1;
+      if (s.role === 'headliner' && !a.headlinedEvents.has(e.id)) {
+        a.headlinedEvents.add(e.id);
+        a.headlined += 1;
+      }
+      if (s.role === 'support' && !a.supportedEvents.has(e.id)) {
+        a.supportedEvents.add(e.id);
+        a.supported += 1;
+      }
+      if (s.favourite && !a.favouriteEvents.has(e.id)) {
+        a.favouriteEvents.add(e.id);
+        a.favourites += 1;
+      }
+      if (a.eventIds.has(e.id)) continue;
+      a.eventIds.add(e.id);
       a.events.push(e);
-      if (s.role === 'headliner') a.headlined += 1;
-      if (s.role === 'support') a.supported += 1;
-      if (s.favourite) a.favourites += 1;
       const y = eventYear(e);
       if (y !== null) {
         a.firstYear = a.firstYear === undefined ? y : Math.min(a.firstYear, y);
@@ -60,7 +95,7 @@ export function artistSummaries(events: LoggedEvent[]): ArtistSummary[] {
       }
     }
   }
-  return [...map.values()].map(({ cityCounts, ...a }) => ({
+  return [...map.values()].map(({ cityCounts, eventIds, favouriteEvents, headlinedEvents, supportedEvents, ...a }) => ({
     ...a,
     cities: [...cityCounts.values()].sort((x, y) => y.n - x.n || x.name.localeCompare(y.name)).map((c) => c.name),
   }));

@@ -88,6 +88,8 @@ export function candidateFromEdition(edition: Edition): CandidateLineup {
       .filter((p) => p.status !== 'cancelled')
       .map((p) => ({
         key: p.artistKey,
+        slotId: p.slotId,
+        b2b: p.b2b,
         name: p.name,
         days: p.days,
         stages: p.stages,
