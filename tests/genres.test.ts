@@ -233,3 +233,23 @@ test('setOwnGenres keeps known spellings and parents, adds new genres, and reset
   assert.equal(await setOwnGenres(store, 'bonobo', undefined, now, true), null);
   assert.deepEqual(await store.listArtistGenres(), []);
 });
+
+test('setOwnGenres allows setting genres for an artist entity from Manage', async () => {
+  const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'genres-')));
+  await store.putEntities([
+    {
+      id: 'artist-caribou',
+      kind: 'artist',
+      name: 'Caribou',
+      nameNormalized: 'caribou',
+      attrs: {},
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    },
+  ]);
+  await store.putSetting(GENRE_MAP_SETTING, map);
+  const now = new Date('2026-10-27T00:00:00Z');
+  const r = await setOwnGenres(store, 'caribou', ['house'], now);
+  assert.equal(r?.name, 'Caribou');
+  assert.deepEqual(r?.genres, [{ style: 'house', parent: 'electronic', weight: 1 }]);
+});
