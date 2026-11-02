@@ -27,6 +27,7 @@ export function createSampleSource(start: SampleStart): SampleSource {
     '/api/vault': () => ({ state: 'plaintext', material: null }),
     // Nothing saved in the sample: the tips show in full and the milestone never fires.
     '/api/me/prefs': () => ({ tips: null, milestone: { shows: 0, artists: 0 } }),
+    '/api/me/email-prefs': () => ({ email: start.email ?? 'sample@example.com', optedOut: false, optedOutAt: null, configured: false }),
     '/api/artist-genres': () => ({ genres: [], hasMap: false, known: [] }),
   };
 

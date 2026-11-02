@@ -13,6 +13,7 @@ export const PUBLIC_EXACT_PATHS: readonly string[] = [
   '/privacy.html',
   '/terms',
   '/terms.html',
+  '/unsubscribe',
   '/robots.txt',
   '/sitemap.xml',
   '/og.png',
@@ -59,6 +60,7 @@ export const robotsTxt = (origin: string): string =>
     'Disallow: /app',
     'Disallow: /api/',
     'Disallow: /s/',
+    'Disallow: /unsubscribe',
     `Sitemap: ${origin}/sitemap.xml`,
     '',
   ].join('\n');

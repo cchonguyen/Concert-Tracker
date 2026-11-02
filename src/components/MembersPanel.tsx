@@ -1,6 +1,6 @@
 import { Dialog } from './ui/Dialog';
 import React, { useEffect, useState } from 'react';
-import { Loader2, Trash2, UserPlus, X } from 'lucide-react';
+import { Loader2, Mail, Trash2, UserPlus, X } from 'lucide-react';
 import { IconButton } from './ui/IconButton';
 import { Confirm } from './ui/Confirm';
 import { Button } from './ui/Button';
@@ -25,6 +25,8 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
   const [members, setMembers] = useState<MemberRow[] | null>(null);
   const [requests, setRequests] = useState<{ rows: AccessRequestRow[]; settings: RequestSettings } | null>(null);
   const [email, setEmail] = useState('');
+  const [sendInviteEmail, setSendInviteEmail] = useState(true);
+  const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<RequestStatus | 'all'>('all');
@@ -47,6 +49,7 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     setError(null);
+    setNote(null);
     try {
       await fn();
       await load();
@@ -58,8 +61,64 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
     }
   };
 
-  const setStatus = (who: string, to: 'pending' | 'accepted' | 'declined') => act(() => accessRequestsApi.setStatus(who, to));
+  const formatEmailNote = (
+    who: string,
+    res: { emailSent?: boolean; emailReason?: string } | undefined,
+    kind: 'invite' | 'welcome',
+    isResend = false,
+  ) => {
+    if (!res || res.emailSent === undefined) return null;
+    if (res.emailSent) return `${isResend ? 'Resent' : 'Sent'} ${kind} email to ${who}.`;
+    if (res.emailReason === 'opted_out') return `${who} has opted out of emails.`;
+    if (res.emailReason === 'already_sent') return `${kind === 'invite' ? 'Invite' : 'Welcome'} email was already sent to ${who}.`;
+    if (res.emailReason === 'not_configured') {
+      return isResend ? 'Email notifications are not configured.' : `Added ${who} (email notifications are not configured).`;
+    }
+    return isResend
+      ? `Could not resend email to ${who} (${res.emailReason}).`
+      : `Saved ${who}, but the email could not be sent (${res.emailReason}).`;
+  };
+
+  const setStatus = (who: string, to: 'pending' | 'accepted' | 'declined') =>
+    act(async () => {
+      const res = await accessRequestsApi.setStatus(who, to);
+      if (to === 'accepted') setNote(formatEmailNote(who, res, 'welcome'));
+    });
   const saveSettings = (patch: Partial<RequestSettings>) => act(() => accessRequestsApi.saveSettings(patch).then(() => setCapDraft(null)));
+
+  const unaccepted = members?.filter((m) => m.role !== 'owner' && !m.joined && !m.blocked) ?? [];
+
+  const resendInvite = (who: string) =>
+    act(async () => {
+      const res = await membersApi.invite(who, { sendEmail: true, resend: true });
+      setNote(formatEmailNote(who, res, 'invite', true));
+    });
+
+  const resendAllInvites = () =>
+    act(async () => {
+      const targets = unaccepted.map((m) => m.email);
+      let sentCount = 0;
+      const failures: string[] = [];
+      for (const target of targets) {
+        try {
+          const res = await membersApi.invite(target, { sendEmail: true, resend: true });
+          if (res.emailSent) {
+            sentCount++;
+          } else {
+            failures.push(`${target} (${res.emailReason ?? 'not sent'})`);
+          }
+        } catch (e) {
+          failures.push(`${target} (${errorText(e)})`);
+        }
+      }
+      if (failures.length === 0) {
+        setNote(`Resent invite email to ${sentCount} ${sentCount === 1 ? 'person' : 'people'}.`);
+      } else if (sentCount > 0) {
+        setNote(`Resent invite email to ${sentCount} ${sentCount === 1 ? 'person' : 'people'}. Failed: ${failures.join(', ')}`);
+      } else {
+        setError(`Failed to resend invite emails: ${failures.join(', ')}`);
+      }
+    });
 
   const rows = requests?.rows ?? [];
   const shown = filter === 'all' ? rows : rows.filter((r) => r.status === filter);
@@ -117,58 +176,92 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
         ))}
       </div>
       {error && <p className="text-xs text-rose-300">{error}</p>}
+      {note && <p className="text-xs text-emerald-300">{note}</p>}
 
       {tab === 'members' && (
         <>
           <p className="text-xs text-zinc-400">
-            Each member keeps their own events, imports and share link. Nobody, you included, sees another member's events here. Add the same email in
-            Cloudflare Access so they can sign in.
+            Each member keeps their own events, imports and share link. Nobody, you included, sees another member's events here.
           </p>
           <form
-            className="flex gap-2"
+            className="space-y-2"
             onSubmit={(e) => {
               e.preventDefault();
+              const target = email.trim().toLowerCase();
               act(async () => {
-                await membersApi.invite(email);
+                const res = await membersApi.invite(target, { sendEmail: sendInviteEmail });
                 setEmail('');
+                setNote(formatEmailNote(target, res, 'invite'));
               });
             }}
           >
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="friend@example.com"
-              className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm"
-            />
-            <button type="submit" disabled={busy || !email.trim()} className={button}>
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} Invite
-            </button>
+            <div className="flex gap-2">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="friend@example.com"
+                className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm"
+              />
+              <button type="submit" disabled={busy || !email.trim()} className={button}>
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} Invite
+              </button>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-zinc-400">
+              <input type="checkbox" checked={sendInviteEmail} onChange={(e) => setSendInviteEmail(e.target.checked)} />
+              Send invite email with sign-in instructions
+            </label>
           </form>
           {members === null ? (
             <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
           ) : (
-            <ul className="space-y-2">
-              {members.map((m) => (
-                <li key={m.email} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3 text-sm">
-                  <div className="min-w-0">
-                    <p className="truncate text-zinc-100">{m.email}</p>
-                    <p className="text-[11px] text-zinc-400">
-                      {m.role === 'owner' ? 'Owner' : m.blocked ? 'Blocked' : m.joined ? 'Member' : 'Invited, not signed in yet'}
-                    </p>
-                  </div>
-                  {m.role !== 'owner' && (
-                    <IconButton
-                      icon={Trash2}
-                      label={`Delete data for ${m.email}`}
-                      disabled={busy}
-                      onClick={() => setConfirm({ kind: 'delete', email: m.email })}
-                      className="hover:text-rose-300"
-                    />
-                  )}
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-2">
+              {unaccepted.length > 0 && (
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <span className="text-xs text-zinc-400">
+                    {unaccepted.length} {unaccepted.length === 1 ? 'invite pending' : 'invites pending'}
+                  </span>
+                  <Button variant="ghost" disabled={busy} onClick={resendAllInvites}>
+                    <Mail className="h-3.5 w-3.5" />
+                    Resend all invite emails
+                  </Button>
+                </div>
+              )}
+              <ul className="space-y-2">
+                {members.map((m) => {
+                  const canResend = m.role !== 'owner' && !m.joined && !m.blocked;
+                  return (
+                    <li key={m.email} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate text-zinc-100">{m.email}</p>
+                        <p className="text-[11px] text-zinc-400">
+                          {m.role === 'owner' ? 'Owner' : m.blocked ? 'Blocked' : m.joined ? 'Member' : 'Invited, not signed in yet'}
+                        </p>
+                      </div>
+                      {m.role !== 'owner' && (
+                        <div className="flex items-center gap-1">
+                          {canResend && (
+                            <IconButton
+                              icon={Mail}
+                              label={`Resend invite email to ${m.email}`}
+                              disabled={busy}
+                              onClick={() => resendInvite(m.email)}
+                            />
+                          )}
+                          <IconButton
+                            icon={Trash2}
+                            label={`Delete data for ${m.email}`}
+                            disabled={busy}
+                            onClick={() => setConfirm({ kind: 'delete', email: m.email })}
+                            className="hover:text-rose-300"
+                          />
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           )}
         </>
       )}

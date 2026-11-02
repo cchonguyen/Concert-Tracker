@@ -4,6 +4,7 @@ import type { MultiUserConfig } from './config';
 import { clearMemberCache, NotInvitedError, resolveMember, type MemberDirectory } from './members';
 import { currentMember } from './requestScope';
 import { cleanSettingsPatch, type AccessRequestStore } from './requests';
+import type { EmailNotifier } from '../email/notifier';
 
 // Request access (ARCHITECTURE.md "Request access"). The public router is
 // mounted before memberMiddleware: a signed-in stranger may ask, and sees only
@@ -51,7 +52,7 @@ export function accessRequestRouter(deps: RequestRouteDeps): Router {
 }
 
 // The owner's side, behind memberMiddleware and the owner check.
-export function accessRequestOwnerRouter(requests: AccessRequestStore): Router {
+export function accessRequestOwnerRouter(requests: AccessRequestStore, notifier?: EmailNotifier): Router {
   const router = Router();
   const fail = (res: Response, err: unknown, status = 400) => res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
   const ownerOnly = (_req: Request, res: Response, next: NextFunction) =>
@@ -81,9 +82,14 @@ export function accessRequestOwnerRouter(requests: AccessRequestStore): Router {
     const to = req.body?.to;
     if (!EMAIL.test(email) || email.length > 200) return fail(res, new Error('Enter a valid email address.'));
     if (!STATUSES.includes(to)) return fail(res, new Error('Choose pending, accepted or declined.'));
+    const sendEmail = req.body?.sendEmail !== false;
     try {
       await requests.setStatus(email, to);
       clearMemberCache(email);
+      if (to === 'accepted' && notifier && sendEmail) {
+        const mail = await notifier.sendWelcome(email);
+        return res.json({ ok: true, emailSent: mail.sent, ...(mail.reason ? { emailReason: mail.reason } : {}) });
+      }
       res.json({ ok: true });
     } catch (err) {
       fail(res, err);

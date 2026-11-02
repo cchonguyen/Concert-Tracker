@@ -13,6 +13,7 @@ import {
   summarize,
   tableDate,
   TableFilters,
+  todayLineIndex,
 } from '../src/services/table.ts';
 
 const ev = (id: string, patch: Partial<LoggedEvent>): LoggedEvent => ({
@@ -207,4 +208,54 @@ test('order added: ties on createdAt are broken by id, newest first', () => {
     { id: 'b', name: 'B', startDate: '2026-01-01', createdAt: '2026-01-03T00:00:00Z', seen: [] },
   ] as unknown as LoggedEvent[];
   assert.deepEqual(ids(filterEvents(list, f({ sort: 'none' }))), ['c', 'b', 'a']);
+});
+
+test('today line indicator sits between future and past events when sorted by date', () => {
+  const TODAY = '2026-10-21';
+  const fut = ev('fut', { startDate: '2026-11-01' });
+  const onToday = ev('today', { startDate: '2026-10-21' });
+  const past = ev('past', { startDate: '2026-09-01' });
+  const undated = ev('undated', {});
+
+  // Newest first (desc: true): future -> Today line -> on-today -> past -> undated
+  const descRows = [fut, onToday, past, undated];
+  assert.equal(todayLineIndex(descRows, { sort: 'date', desc: true }, TODAY), 1);
+
+  // Newest first with no on-today event: future -> Today line -> past
+  assert.equal(todayLineIndex([fut, past], { sort: 'date', desc: true }, TODAY), 1);
+
+  // Newest first with only past and undated: Today line sits at the top (0)
+  assert.equal(todayLineIndex([past, undated], { sort: 'date', desc: true }, TODAY), 0);
+
+  // Newest first with only future events: Today line sits at the end
+  assert.equal(todayLineIndex([fut], { sort: 'date', desc: true }, TODAY), 1);
+
+  // Newest first with future and undated: Today line sits before undated
+  assert.equal(todayLineIndex([fut, undated], { sort: 'date', desc: true }, TODAY), 1);
+
+  // Oldest first (desc: false): past -> on-today -> Today line -> future -> undated
+  const ascRows = [past, onToday, fut, undated];
+  assert.equal(todayLineIndex(ascRows, { sort: 'date', desc: false }, TODAY), 2);
+
+  // Oldest first with only past events: Today line sits after past events
+  assert.equal(todayLineIndex([past], { sort: 'date', desc: false }, TODAY), 1);
+  assert.equal(todayLineIndex([past, undated], { sort: 'date', desc: false }, TODAY), 1);
+
+  // Oldest first with only future events: Today line sits at the top (0)
+  assert.equal(todayLineIndex([fut], { sort: 'date', desc: false }, TODAY), 0);
+  assert.equal(todayLineIndex([fut, undated], { sort: 'date', desc: false }, TODAY), 0);
+
+  // Only undated rows: no today line (-1)
+  assert.equal(todayLineIndex([undated], { sort: 'date', desc: true }, TODAY), -1);
+
+  // Sorted by another column or none: no today line (-1)
+  assert.equal(todayLineIndex(descRows, { sort: 'name', desc: true }, TODAY), -1);
+  assert.equal(todayLineIndex(descRows, { sort: 'none', desc: true }, TODAY), -1);
+
+  // Year range excluding today's year: no today line (-1)
+  assert.equal(todayLineIndex(descRows, { sort: 'date', desc: true, yearFrom: 2027 }, TODAY), -1);
+  assert.equal(todayLineIndex(descRows, { sort: 'date', desc: true, yearTo: 2025 }, TODAY), -1);
+
+  // Year range including today's year: today line shows
+  assert.equal(todayLineIndex(descRows, { sort: 'date', desc: true, yearFrom: 2026, yearTo: 2026 }, TODAY), 1);
 });

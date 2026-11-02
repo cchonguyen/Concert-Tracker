@@ -127,7 +127,7 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 ## 9. Non-functional requirements
 
 - **Hosting**: a Cloudflare Worker at concert.charliechonguyen.com with Supabase as the only durable store; a Node server for local development. See ARCHITECTURE.md.
-- **Cost**: free tiers only (Gemini free tier, Ticketmaster, setlist.fm non-commercial, Clashfinder, Brave Search free plan, Workers Free, Supabase free).
+- **Cost**: free tiers only (Gemini free tier, Ticketmaster, setlist.fm non-commercial, Clashfinder, Brave Search free plan, Resend free tier, Workers Free, Supabase free).
 - **Respect sources**: all fetching through the shared rate-limited fetcher (MusicBrainz 1 request/second); AXS is never scraped; credentials are redacted from anything stored or shown.
 - **Responsiveness**: capture returns as soon as the row is stored. Stage 1 research completes within a single request. Stage 2 runs in the background and the UI polls.
 - **Privacy**: the site holds one person's history, or each invited member's own; put it behind Cloudflare Access. With multi-user on, members only reach their own rows, and notes, companions and people's names are meant to be encrypted in the browser (the vault, built but not yet used).
@@ -153,7 +153,7 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 ## 11. Out of scope
 
 - Open sign-up, social feeds, recommendations. Other people use the app only by the owner's invitation (multi-user, off by default); sharing otherwise is the read-only share page.
-- Ticket purchasing, calendars of upcoming shows beyond your own, notifications (the "Did you go?" prompt waits in the app).
+- Ticket purchasing, calendars of upcoming shows beyond your own, show notifications (the "Did you go?" prompt waits in the app; account invite, approval welcome and a max-once-daily access-request digest email for the owner are in scope when multi-user email is configured, with one-click opt-out).
 - Inferring what you saw from lineups (you tick it, or it isn't recorded).
 - Importing from email without review, or signing in to ticket accounts (connecting your own Gmail read-only for Check email is in scope).
 

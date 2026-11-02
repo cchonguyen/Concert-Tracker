@@ -1,7 +1,7 @@
 import { Dialog } from './ui/Dialog';
-import React, { useState } from 'react';
-import { Download, Lock, Unlock, X } from 'lucide-react';
-import { accountApi } from '../services/lineupApi';
+import React, { useEffect, useState } from 'react';
+import { Download, Lock, Mail, Unlock, X } from 'lucide-react';
+import { accountApi, emailPrefsApi, type EmailPrefsView } from '../services/lineupApi';
 import { hasCiphertext, type ExportBundle } from '../services/exportBundle';
 import { useMe } from './MeContext';
 import { useVault } from './VaultContext';
@@ -21,10 +21,16 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
   const [next, setNext] = useState('');
   const [useRecovery, setUseRecovery] = useState(false);
   const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
+  const [emailPrefs, setEmailPrefs] = useState<EmailPrefsView | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!me.multiUser || !me.email) return;
+    emailPrefsApi.get().then(setEmailPrefs, () => {});
+  }, [me.multiUser, me.email]);
 
   const act = async (fn: () => Promise<unknown>, message?: string) => {
     setBusy(true);
@@ -147,6 +153,39 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
               Change passphrase
             </button>
           </>
+        )}
+      </section>
+
+      <section className="space-y-2 border-t border-zinc-900 pt-4">
+        <h3 className="text-sm font-semibold">Email notifications</h3>
+        <p className="text-xs text-zinc-400">
+          {me.role === 'owner'
+            ? 'Receive at most one daily digest email when new access requests arrive.'
+            : 'Receive account invite and approval confirmation emails. Every email also has a one-click unsubscribe link.'}
+        </p>
+        {emailPrefs ? (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs text-zinc-300">
+              {emailPrefs.optedOut ? 'Opted out of all emails' : 'Subscribed to account emails'}
+            </span>
+            <button
+              className={button}
+              disabled={busy}
+              onClick={() =>
+                act(
+                  async () => {
+                    const updated = await emailPrefsApi.setOptOut(!emailPrefs.optedOut);
+                    setEmailPrefs(updated);
+                  },
+                  emailPrefs.optedOut ? 'Subscribed to emails again.' : 'Opted out of LiveArchive emails.',
+                )
+              }
+            >
+              <Mail className="h-3.5 w-3.5" /> {emailPrefs.optedOut ? 'Receive emails' : 'Opt out of emails'}
+            </button>
+          </div>
+        ) : (
+          <p className="text-xs text-zinc-500">Loading email settings…</p>
         )}
       </section>
 

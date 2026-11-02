@@ -111,7 +111,7 @@ export interface FetchResponse {
 }
 
 export interface Fetcher {
-  get(url: string, init?: { headers?: Record<string, string>; timeoutMs?: number }): Promise<FetchResponse>;
+  get(url: string, init?: { headers?: Record<string, string>; timeoutMs?: number; maxRetries?: number }): Promise<FetchResponse>;
 }
 
 export type JobStatus =

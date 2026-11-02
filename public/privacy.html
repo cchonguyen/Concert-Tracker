@@ -23,14 +23,14 @@
     <main>
       <p><a href="/">LiveArchive</a> · <a href="/terms">Terms</a></p>
       <h1>Privacy</h1>
-      <p class="muted">Last updated 2026-10-29. This describes what the code does today. It is not legal advice.</p>
+      <p class="muted">Last updated 2026-11-01. This describes what the code does today. It is not legal advice.</p>
 
       <h2>What LiveArchive stores</h2>
       <p>For each event you add: its name, dates, venue, city, the acts you saw, ratings, prices, and any notes. Companions (the people you went with) and notes can be encrypted in your browser with a passphrase you choose. When that vault is on, the server holds only the encrypted text and the salts. It never holds your passphrase or the key.</p>
       <p>Events in Recently deleted are erased after 90 days. Activity log rows are erased after a year.</p>
 
       <h2>Signing in</h2>
-      <p>Access to the app is by invitation only. Sign-in goes through Cloudflare Access, which checks your Google account. The app also checks Cloudflare's sign-in token on each request. If your Google account has no tracker here, you can ask for access. The owner sees the email on your Google account and decides. The app keeps that email, and the date you asked and the owner's decisions, so that a declined email stays declined. To ask for that record to be removed, contact the owner of this app directly.
+      <p>Access to the app is by invitation only. Sign-in goes through Cloudflare Access, which checks your Google account. The app also checks Cloudflare's sign-in token on each request. If your Google account has no tracker here, you can ask for access. The owner sees the email on your Google account and decides. The app keeps that email, and the date you asked and the owner's decisions, so that a declined email stays declined. When you are invited or approved, the app may send an email to that address with sign-in instructions or a welcome note; you can opt out in one click from the link in any email or in Your account. To ask for your record to be removed, contact the owner of this app directly.
 
       <h2>Google data</h2>
       <p><strong>Check email</strong> reads your Gmail, read-only, and only messages from the ticket senders the app knows how to read. It reads the message contents on the server to find shows, and it keeps the refresh token that lets it check again. What it finds is put on a review list, and nothing is saved until you tick it.</p>
@@ -42,6 +42,7 @@
       <ul>
         <li><strong>Lookup sources</strong> (Clashfinder, promoter pages, Ticketmaster, MusicBrainz, setlist.fm, Brave Search) receive the names, dates and places of the events you look up.</li>
         <li><strong>Gemini</strong> reads only web pages the app fetched, and only when you press "Look again with Gemini" on an event. It never receives your email text or your personal notes.</li>
+        <li><strong>Email delivery</strong>: when account emails are turned on, Resend receives the recipient email address and the invite, approval or request-digest message to deliver it.</li>
         <li><strong>Hosting and database</strong>: the app runs on Cloudflare Workers and stores its data in Supabase.</li>
       </ul>
 

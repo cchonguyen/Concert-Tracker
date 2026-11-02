@@ -18,6 +18,10 @@ import { prefsRouter } from './auth/prefs';
 import { accessRequestOwnerRouter, accessRequestRouter } from './auth/requestRoutes';
 import { vaultGuard, vaultRouter } from './auth/vault';
 import { peopleRouter } from './entities/people';
+import { createEmailNotifier, type EmailNotifier } from './email/notifier';
+import { resendFromEnv } from './email/sender';
+import { memoryEmailPreferences, type EmailPreferenceStore } from './email/store';
+import { unsubscribeSecretFromEnv } from './email/unsubscribe';
 
 // The body of GET /api/health. It says only that the server is up, and it
 // answers even when access is closed (config.ts).
@@ -27,7 +31,12 @@ export const healthStatus = () => ({ status: 'ok', timestamp: new Date().toISOSt
 // Worker (worker/index.ts). Static files and the job runner are wired by each host.
 // gate: who may use /api (config.ts). Every /api request after /api/health passes
 // it: members (MULTI_USER=on), the owner (OWNER_EMAIL), or nobody (closed, 503).
-export function createApiApp(baseDeps: PipelineDeps, runner: JobRunner, gate: AccessGate): express.Express {
+export function createApiApp(
+  baseDeps: PipelineDeps,
+  runner: JobRunner,
+  gate: AccessGate,
+  emailNotifier?: EmailNotifier,
+): express.Express {
   const app = express();
   const lineupDeps: PipelineDeps = gate.kind === 'multi' ? { ...baseDeps, store: requestScopedStore(baseDeps.store) } : baseDeps;
   // Ticket emails arrive in batches with their HTML, larger than other requests.
@@ -43,11 +52,31 @@ export function createApiApp(baseDeps: PipelineDeps, runner: JobRunner, gate: Ac
   });
 
   if (gate.kind === 'multi') {
+    const prefs: EmailPreferenceStore =
+      gate.directory.getEmailPreference && gate.directory.setEmailOptOut && gate.directory.markEmailSent
+        ? (gate.directory as EmailPreferenceStore)
+        : memoryEmailPreferences();
+    const notifier =
+      emailNotifier ??
+      createEmailNotifier({
+        sender: resendFromEnv(),
+        prefs,
+        requests: gate.directory,
+        ownerEmail: process.env.OWNER_EMAIL ?? null,
+        secret: unsubscribeSecretFromEnv() ?? gate.jwtSecret,
+      });
+    const directory = {
+      ...gate.directory,
+      onFirstJoin: async (email: string) => {
+        await gate.directory.onFirstJoin?.(email);
+        await notifier.sendWelcome(email);
+      },
+    };
     // Asking for access comes before the member check: a stranger may ask (requestRoutes.ts).
-    app.use('/api', accessRequestRouter({ config: gate, directory: gate.directory, requests: gate.directory }));
-    app.use('/api', memberMiddleware({ config: gate, directory: gate.directory, base: baseDeps.store }));
-    app.use('/api', membersRouter(gate.directory, lineupDeps.store, gate.directory));
-    app.use('/api', accessRequestOwnerRouter(gate.directory));
+    app.use('/api', accessRequestRouter({ config: gate, directory, requests: gate.directory }));
+    app.use('/api', memberMiddleware({ config: gate, directory, base: baseDeps.store }));
+    app.use('/api', membersRouter(directory, lineupDeps.store, gate.directory, notifier));
+    app.use('/api', accessRequestOwnerRouter(gate.directory, notifier));
     // Your data: the vault's key material, a plaintext-note guard, export and deletion.
     app.use('/api', vaultGuard(lineupDeps.store));
     app.use('/api', vaultRouter(lineupDeps.store));

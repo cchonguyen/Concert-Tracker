@@ -1,9 +1,10 @@
 import { type AccessConfig, accessConfigFromEnv } from '../share/access';
+import type { EmailPreferenceStore } from '../email/store';
 import type { MemberDirectory } from './members';
 import type { AccessRequestStore } from './requests';
 
-// The member directory and the request store are one object in production (supabaseMemberStores).
-export type MemberStores = MemberDirectory & AccessRequestStore;
+// The member directory, request store and email preferences are one object in production (supabaseMemberStores).
+export type MemberStores = MemberDirectory & AccessRequestStore & Partial<EmailPreferenceStore>;
 
 // Who may use /api. Every request is checked; nothing is open by default.
 //  - MULTI_USER=on (exactly, after trimming): members. Every /api request

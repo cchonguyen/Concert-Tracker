@@ -192,6 +192,37 @@ function sortValue(e: LoggedEvent, key: SortKey): string | number | undefined {
   }
 }
 
+function isFuture(e: LoggedEvent, day: string): boolean {
+  const v = sortValue(e, 'date');
+  if (v === undefined) return false;
+  return String(v) > day;
+}
+
+// Where the Today line sits among the rows, or -1 when it should not show
+// (sorted by something other than date, outside the filtered year range,
+// or no dated rows). Sits between the future and the past; an event on today
+// groups with past events, and undated events sort last.
+export function todayLineIndex(
+  rows: LoggedEvent[],
+  filters: Pick<TableFilters, 'sort' | 'desc' | 'yearFrom' | 'yearTo'>,
+  day = today(),
+): number {
+  if (filters.sort !== 'date') return -1;
+  const todayYear = Number(day.slice(0, 4));
+  if (filters.yearFrom !== undefined && filters.yearFrom > todayYear) return -1;
+  if (filters.yearTo !== undefined && filters.yearTo < todayYear) return -1;
+  if (!rows.some((e) => sortValue(e, 'date') !== undefined)) return -1;
+
+  if (filters.desc) {
+    const idx = rows.findIndex((e) => !isFuture(e, day));
+    return idx === -1 ? rows.length : idx;
+  }
+  const futureIdx = rows.findIndex((e) => isFuture(e, day));
+  if (futureIdx !== -1) return futureIdx;
+  const undatedIdx = rows.findIndex((e) => sortValue(e, 'date') === undefined);
+  return undatedIdx !== -1 ? undatedIdx : rows.length;
+}
+
 export function sortRows(events: LoggedEvent[], key: SortKey, desc: boolean): LoggedEvent[] {
   return [...events].sort((a, b) => {
     const va = sortValue(a, key);

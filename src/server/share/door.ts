@@ -5,6 +5,8 @@ import { NOT_ACTIVE_HTML, renderSharePage, SHARE_HEADERS, UNAVAILABLE_HTML } fro
 import type { ShareSettings } from './types';
 import { buildShareView } from './view';
 import { isPublicPath, oldAppLink, robotsTxt, SITE_ORIGIN, sitemapXml } from '../site/publicPaths';
+import type { EmailPreferenceStore } from '../email/store';
+import { handleUnsubscribeRequest, unsubscribeSecretFromEnv } from '../email/unsubscribe';
 
 // The page for these settings, read with the share columns only. Used by
 // /s/<code> and by the owner's preview.
@@ -45,6 +47,8 @@ export interface DoorDeps {
   access: AccessConfig | null;
   now?: () => Date;
   verify?: typeof verifyAccessToken;
+  emailPrefs?: () => Promise<EmailPreferenceStore | null>;
+  unsubscribeSecret?: string | null;
 }
 
 const html = (body: string, status: number, method: string) =>
@@ -62,6 +66,13 @@ export async function frontDoor(request: Request, deps: DoorDeps): Promise<Respo
   }
   if (path === '/robots.txt') return new Response(robotsTxt(SITE_ORIGIN), { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
   if (path === '/sitemap.xml') return new Response(sitemapXml(SITE_ORIGIN), { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
+  if (path === '/unsubscribe') {
+    return handleUnsubscribeRequest(request, {
+      prefs: deps.emailPrefs ?? (async () => null),
+      secret: deps.unsubscribeSecret !== undefined ? deps.unsubscribeSecret : unsubscribeSecretFromEnv(),
+      now: deps.now,
+    });
+  }
   if (UNDER_SHARE.test(path)) {
     const method = request.method === 'HEAD' ? 'HEAD' : 'GET';
     const code = request.method === 'GET' || request.method === 'HEAD' ? SHARE_PATH.exec(path)?.[1] : undefined;

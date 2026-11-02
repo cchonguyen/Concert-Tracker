@@ -258,9 +258,22 @@ export const prefsApi = {
   saveTips: (tips: TipsSaved) => request<Prefs>('/api/me/prefs', { method: 'PUT', body: JSON.stringify({ tips }) }),
   saveMilestone: (milestone: Partial<MilestoneSaved>) => request<Prefs>('/api/me/prefs', { method: 'PUT', body: JSON.stringify({ milestone }) }),
 };
+export interface EmailPrefsView {
+  email: string;
+  optedOut: boolean;
+  optedOutAt: string | null;
+  configured: boolean;
+}
+export const emailPrefsApi = {
+  get: () => request<EmailPrefsView>('/api/me/email-prefs'),
+  setOptOut: (optedOut: boolean) =>
+    request<EmailPrefsView>('/api/me/email-prefs', { method: 'PUT', body: JSON.stringify({ optedOut }) }),
+};
+
 export const membersApi = {
   list: () => request<{ members: MemberRow[] }>('/api/members').then((r) => r.members),
-  invite: (email: string) => request<unknown>('/api/members', post({ email })),
+  invite: (email: string, opts?: { sendEmail?: boolean; resend?: boolean }) =>
+    request<{ ok: boolean; emailSent?: boolean; emailReason?: string }>('/api/members', post({ email, ...opts })),
   // Deletes the member's account and data. The server wants the email again as `confirm`.
   remove: (email: string) => request<unknown>(`/api/members/${encodeURIComponent(email)}`, { method: 'DELETE', body: JSON.stringify({ confirm: email }) }),
 };
@@ -285,8 +298,11 @@ export const accessRequestsApi = {
   mine: () => request<{ state: 'none' | 'sent' | 'closed' }>('/api/access-requests/mine'),
   ask: () => request<{ state: 'sent' | 'closed' }>('/api/access-requests', post()),
   list: () => request<{ requests: AccessRequestRow[]; settings: RequestSettings; pending: number }>('/api/access-requests'),
-  setStatus: (email: string, to: 'pending' | 'accepted' | 'declined') =>
-    request<unknown>(`/api/access-requests/${encodeURIComponent(email)}`, { method: 'PUT', body: JSON.stringify({ to }) }),
+  setStatus: (email: string, to: 'pending' | 'accepted' | 'declined', opts?: { sendEmail?: boolean }) =>
+    request<{ ok: boolean; emailSent?: boolean; emailReason?: string }>(`/api/access-requests/${encodeURIComponent(email)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ to, ...opts }),
+    }),
   saveSettings: (patch: Partial<RequestSettings>) =>
     request<{ settings: RequestSettings }>('/api/access-requests/settings', { method: 'PUT', body: JSON.stringify(patch) }),
 };

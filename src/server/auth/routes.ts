@@ -3,6 +3,7 @@ import { clearMemberCache, type MemberDirectory } from './members';
 import { currentMember } from './requestScope';
 import type { AccessRequestStore } from './requests';
 import type { LineupStore } from '../lineup/store/types';
+import type { EmailNotifier } from '../email/notifier';
 
 // GET /api/me tells the page who is signed in, so it can hide what a member
 // cannot use. /api/members is the owner's invite list.
@@ -19,7 +20,12 @@ export function singleOwnerMeRouter(): Router {
 export const NOTICE_VERSION = 1;
 export const NOTICE_SETTING = 'notice_accepted';
 
-export function membersRouter(directory: MemberDirectory, store: LineupStore, requests: Pick<AccessRequestStore, 'pendingCount'>): Router {
+export function membersRouter(
+  directory: MemberDirectory,
+  store: LineupStore,
+  requests: Pick<AccessRequestStore, 'pendingCount'>,
+  notifier?: EmailNotifier,
+): Router {
   const router = Router();
   const fail = (res: any, err: unknown, status = 400) => res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
   const ownerOnly = (_req: any, res: any, next: any) => (currentMember()?.role === 'owner' ? next() : fail(res, new Error('Only the owner can do this.'), 403));
@@ -47,6 +53,31 @@ export function membersRouter(directory: MemberDirectory, store: LineupStore, re
     }
   });
 
+  router.get('/me/email-prefs', async (_req, res) => {
+    const me = currentMember();
+    if (!me?.email) return fail(res, new Error('Sign in required.'), 401);
+    if (!notifier) return res.json({ email: me.email, optedOut: false, optedOutAt: null, configured: false });
+    try {
+      const pref = await notifier.getPreference(me.email);
+      res.json({ email: pref.email, optedOut: pref.optedOut, optedOutAt: pref.optedOutAt, configured: notifier.configured });
+    } catch (err) {
+      fail(res, err, 500);
+    }
+  });
+
+  router.put('/me/email-prefs', async (req, res) => {
+    const me = currentMember();
+    if (!me?.email) return fail(res, new Error('Sign in required.'), 401);
+    if (typeof req.body?.optedOut !== 'boolean') return fail(res, new Error('optedOut must be true or false.'), 400);
+    if (!notifier) return fail(res, new Error('Email preferences are not available.'), 503);
+    try {
+      const pref = await notifier.setOptOut(me.email, req.body.optedOut);
+      res.json({ email: pref.email, optedOut: pref.optedOut, optedOutAt: pref.optedOutAt, configured: notifier.configured });
+    } catch (err) {
+      fail(res, err, 500);
+    }
+  });
+
   router.get('/members', ownerOnly, async (_req, res) => {
     try {
       res.json({ members: (await directory.listMembers()).map((m) => ({ email: m.email, role: m.role, joined: Boolean(m.userId), blocked: m.blocked, invitedAt: m.invitedAt })) });
@@ -58,8 +89,13 @@ export function membersRouter(directory: MemberDirectory, store: LineupStore, re
   router.post('/members', ownerOnly, async (req, res) => {
     const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
     if (!EMAIL.test(email) || email.length > 200) return fail(res, new Error('Enter a valid email address.'));
+    const sendEmail = req.body?.sendEmail !== false;
     try {
       await directory.inviteMember(email);
+      if (notifier && sendEmail) {
+        const mail = await notifier.sendInvite(email, { resend: Boolean(req.body?.resend) });
+        return res.status(201).json({ ok: true, emailSent: mail.sent, ...(mail.reason ? { emailReason: mail.reason } : {}) });
+      }
       res.status(201).json({ ok: true });
     } catch (err) {
       fail(res, err);
