@@ -84,6 +84,7 @@ export interface LineupStore {
   // Normalized alias -> canonical display name.
   getAliases(): Promise<Record<string, string>>;
   putAliases(aliases: Record<string, string>): Promise<void>;
+  deleteAlias(alias: string): Promise<void>;
 
   getBlocklist(domains: string[]): Promise<BlocklistEntry[]>;
   // One rejection each; repeats in the list count again.

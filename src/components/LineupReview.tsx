@@ -1,12 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AlertTriangle, ExternalLink, Loader2, Plus, X } from 'lucide-react';
 import type { RejectReason } from '../server/lineup/learning';
-import { lineupApi, LoggedEvent, LookupJob, SOURCE_LABELS } from '../services/lineupApi';
+import { lineupApi, collaborationsApi, type CollaborationItem, LoggedEvent, LookupJob, SOURCE_LABELS } from '../services/lineupApi';
 import { EventTitle } from './EventTitle';
 import { filterOptions, groupReviewSlots, startRows } from '../services/reviewRows';
 import { readActName } from '../server/lineup/actName';
 import { normalizeName } from '../server/lineup/text';
 import type { Edition } from '../server/lineup/types';
+import { Button } from './ui/Button';
+import { IconButton } from './ui/IconButton';
+import { Pill } from './ui/Pill';
+import { SuggestInput } from './SuggestInput';
 
 interface LineupReviewProps {
   job: LookupJob;
@@ -110,9 +114,62 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
       ),
     );
 
+  const [collabs, setCollabs] = useState<CollaborationItem[]>([]);
+  useEffect(() => {
+    collaborationsApi.list().then(setCollabs).catch(() => undefined);
+  }, []);
+
+  const collabSuggestions = useMemo(() => collabs.map((c) => c.alias), [collabs]);
+
+  const removePartnerFromSlot = (slotId: string, itemIndexToRemove: number) => {
+    setRows((rs) => {
+      const remainingItems = rs.filter((r, idx) => r.slotId === slotId && idx !== itemIndexToRemove);
+      const removedKey = rs[itemIndexToRemove]?.key || normalizeName(rs[itemIndexToRemove]?.name || '');
+
+      return rs
+        .filter((_, idx) => idx !== itemIndexToRemove)
+        .map((r) => {
+          if (r.slotId === slotId) {
+            if (remainingItems.length === 1) {
+              // Revert to solo act
+              const { slotId: _s, alias: _a, b2b: _b, ...rest } = r;
+              return rest;
+            }
+            return {
+              ...r,
+              b2b: r.b2b?.filter((k) => k !== removedKey),
+            };
+          }
+          return r;
+        });
+    });
+  };
+
   const splitRowIfB2b = (index: number) => {
     const row = rows[index];
     if (!row) return;
+
+    // Check if name matches a known collaboration
+    const matchingCollab = collabs.find((c) => normalizeName(c.alias) === normalizeName(row.name));
+    if (matchingCollab) {
+      const slotId = row.slotId || crypto.randomUUID();
+      const allKeys = matchingCollab.partners.map(normalizeName).filter(Boolean);
+      const replacementRows: Row[] = matchingCollab.partners.map((part) => {
+        const key = normalizeName(part);
+        return {
+          ...row,
+          key,
+          slotId,
+          alias: matchingCollab.alias,
+          b2b: allKeys.filter((k) => k !== key),
+          name: part,
+          originalName: undefined,
+        };
+      });
+      setRows((rs) => [...rs.slice(0, index), ...replacementRows, ...rs.slice(index + 1)]);
+      return;
+    }
+
     const read = readActName(row.name);
     if (read.parts.length <= 1) return;
     const allKeys = read.parts.map(normalizeName).filter(Boolean);
@@ -136,6 +193,38 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
   const addAct = () => {
     const name = newAct.trim();
     if (!name) return;
+
+    const matchingCollab = collabs.find((c) => normalizeName(c.alias) === normalizeName(name));
+    if (matchingCollab) {
+      const slotId = crypto.randomUUID();
+      const allKeys = matchingCollab.partners.map(normalizeName).filter(Boolean);
+      const newRows: Row[] = matchingCollab.partners.map((part) => {
+        const key = normalizeName(part);
+        return {
+          key,
+          slotId,
+          alias: matchingCollab.alias,
+          b2b: allKeys.filter((k) => k !== key),
+          name: part,
+          accepted: true,
+          rejectReason: 'not_an_act',
+          seen: true,
+          billing: '',
+          set: '',
+          days: [],
+          stages: [],
+          confidence: 1,
+          flagged: false,
+          missingFrom: [],
+          status: 'billed',
+          sources: [],
+        };
+      });
+      setRows((rs) => [...rs, ...newRows]);
+      setNewAct('');
+      return;
+    }
+
     const read = readActName(name);
     if (read.parts.length > 1) {
       const slotId = crypto.randomUUID();
@@ -341,9 +430,9 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
                                 }
                               }}
                             />
-                            <button
-                              type="button"
-                              className="shrink-0 rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs font-medium text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+                            <Button
+                              variant="secondary"
+                              className="shrink-0 text-xs py-1 px-2 h-auto text-zinc-400 hover:text-zinc-200"
                               title="Make B2B: pairs this act with another artist"
                               onClick={() => {
                                 const idx = slot.items[0].index;
@@ -351,15 +440,16 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
                               }}
                             >
                               + B2B
-                            </button>
+                            </Button>
                           </div>
                         ) : (
                           <div className="space-y-1.5">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="font-semibold text-zinc-100">{slot.name}</span>
-                              <button
-                                type="button"
-                                className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[11px] text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+                              {slot.alias && <Pill tone="accent">{slot.alias}</Pill>}
+                              <Button
+                                variant="secondary"
+                                className="text-xs py-0.5 px-2 h-auto text-zinc-400 hover:text-zinc-200"
                                 title="Add another partner to this set (B3B/B4B)"
                                 onClick={() => {
                                   const slotId = slot.items[0].item.slotId || crypto.randomUUID();
@@ -383,29 +473,45 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
                                 }}
                               >
                                 + Partner
-                              </button>
+                              </Button>
                             </div>
                             <div className="flex flex-wrap items-center gap-1.5">
                               {slot.items.map((it) => (
-                                <input
+                                <div
                                   key={it.index}
-                                  className={`${input} max-w-[150px] py-0.5 text-xs`}
-                                  value={it.item.name}
-                                  onChange={(e) => update(it.index, { name: e.target.value })}
-                                  onBlur={() => splitRowIfB2b(it.index)}
-                                  placeholder="Artist name"
-                                  title={`Edit name for ${it.item.name}`}
-                                  aria-label={`Name for ${it.item.name}`}
-                                />
+                                  className="inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900/90 px-1.5 py-0.5"
+                                >
+                                  <input
+                                    className="bg-transparent text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none max-w-[120px]"
+                                    value={it.item.name}
+                                    onChange={(e) => update(it.index, { name: e.target.value })}
+                                    onBlur={() => splitRowIfB2b(it.index)}
+                                    placeholder="Artist name"
+                                    title={`Edit name for ${it.item.name}`}
+                                    aria-label={`Name for ${it.item.name}`}
+                                  />
+                                  <IconButton
+                                    icon={X}
+                                    label={`Remove ${it.item.name || 'partner'} from set`}
+                                    size="chip"
+                                    onClick={() => removePartnerFromSlot(slot.id, it.index)}
+                                  />
+                                </div>
                               ))}
-                              <input
-                                className={`${input} max-w-[150px] py-0.5 text-xs text-sky-300 placeholder:text-zinc-600`}
-                                placeholder="AKA (e.g. Subjohnics)"
+                              <SuggestInput
                                 value={slot.items[0].item.alias ?? ''}
+                                suggestions={collabSuggestions}
+                                onPick={(pickedAlias) => {
+                                  const matching = collabs.find((c) => normalizeName(c.alias) === normalizeName(pickedAlias));
+                                  const val = matching?.alias ?? pickedAlias;
+                                  slot.items.forEach((it) => update(it.index, { alias: val }));
+                                }}
                                 onChange={(e) => {
                                   const alias = e.target.value.trim() || undefined;
                                   slot.items.forEach((it) => update(it.index, { alias }));
                                 }}
+                                placeholder="AKA (e.g. Subjohnics)"
+                                className={`${input} max-w-[150px] py-0.5 text-xs text-sky-300 placeholder:text-zinc-600`}
                                 title="Set collaborative project moniker (AKA)"
                                 aria-label="Collaboration Alias"
                               />
@@ -414,12 +520,12 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
                         )}
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
                           {slot.flagged && (
-                            <span className="inline-flex items-center gap-1 text-amber-300">
+                            <Pill tone="warn">
                               <AlertTriangle className="h-3 w-3" /> low evidence
-                            </span>
+                            </Pill>
                           )}
-                          {slot.status === 'performed' && <span className="text-emerald-300">confirmed performed</span>}
-                          {slot.isB2b && <span className="text-sky-300">B2B set</span>}
+                          {slot.status === 'performed' && <Pill tone="good">confirmed performed</Pill>}
+                          {slot.isB2b && <Pill tone="info">{slot.items.length > 2 ? `B${slot.items.length}B set` : 'B2B set'}</Pill>}
                           {uniqueSources.some((src) => src.sourceType !== 'user') && (
                             <span
                               className="text-zinc-400"
