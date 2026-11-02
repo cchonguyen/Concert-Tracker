@@ -79,7 +79,7 @@ export function top(events: LoggedEvent[], by: RankBy, n = 10): Ranked[] {
     groups.set(key, g);
   };
   for (const e of events) {
-    if (by === 'artist') for (const s of new Map(e.seen.map((s) => [s.key, s])).values()) add(s.key, s.name);
+    if (by === 'artist') for (const s of e.seen) add(s.key, s.name);
     if (by === 'venue' && e.venue) add(fold(e.venue), e.venue);
     const city = cityWithRegion(e.city, e.region);
     if (by === 'city' && city) add(fold(city), city);
