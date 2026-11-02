@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   BlocklistEntry,
   CandidateFacts,
@@ -159,33 +160,72 @@ function sourcesOf(claims: PerformerClaim[]): CandidateSource[] {
   return [...bySource.values()];
 }
 
+interface PerformanceGroup {
+  groupKey: string;
+  artistKey: string;
+  slotId?: string;
+  b2b?: string[];
+  claims: PerformerClaim[];
+}
+
 export function mergeLineup(ctx: MergeContext): CandidateLineup {
   const priority = ctx.priority?.length ? ctx.priority : DEFAULT_PRIORITY;
-  const groups = new Map<string, PerformerClaim[]>();
+  const groups = new Map<string, PerformanceGroup>();
+  const slotIds = new Map<string, string>();
+  const djGroups = new Set<string>();
   let dropped = 0;
 
-  // "A b2b B" becomes A and B, paired; a "DJ Set" suffix becomes the mark.
-  const djKeys = new Set<string>();
-  const partners = new Map<string, Set<string>>();
   for (const whole of ctx.claims) {
     if (isBlocked(whole.name, whole.sourceUrl, ctx.blocklist)) {
       dropped += 1;
       continue;
     }
     const read = readActName(canonicalName(whole.name, ctx.aliases));
-    const keys: string[] = [];
+    const validParts: Array<{ part: string; key: string; claim: PerformerClaim }> = [];
     for (const part of read.parts) {
       const claim = read.parts.length === 1 && !read.dj ? whole : { ...whole, name: part };
-      if (claim !== whole && isBlocked(part, claim.sourceUrl, ctx.blocklist)) continue;
+      if (claim !== whole && isBlocked(part, claim.sourceUrl, ctx.blocklist)) {
+        dropped += 1;
+        continue;
+      }
       const key = normalizeName(canonicalName(part, ctx.aliases));
       if (!key) continue;
-      keys.push(key);
-      if (read.dj) djKeys.add(key);
-      const group = groups.get(key) ?? [];
-      group.push(claim);
-      groups.set(key, group);
+      validParts.push({ part, key, claim });
     }
-    for (const k of keys) for (const o of keys) if (o !== k) partners.set(k, (partners.get(k) ?? new Set()).add(o));
+
+    if (validParts.length === 0) continue;
+
+    const allKeys = [...new Set(validParts.map((v) => v.key))].sort();
+    let slotId: string | undefined;
+    if (allKeys.length > 1) {
+      const slotSig = allKeys.join('::');
+      slotId = slotIds.get(slotSig);
+      if (!slotId) {
+        slotId = randomUUID();
+        slotIds.set(slotSig, slotId);
+      }
+    }
+
+    for (const v of validParts) {
+      const artistKey = v.key;
+      const b2bPartners = allKeys.length > 1 ? allKeys.filter((k) => k !== artistKey) : [];
+      const groupKey = b2bPartners.length > 0 ? `${artistKey}::b2b::${allKeys.join('::')}` : `${artistKey}::solo`;
+
+      if (read.dj) djGroups.add(groupKey);
+
+      let group = groups.get(groupKey);
+      if (!group) {
+        group = {
+          groupKey,
+          artistKey,
+          slotId,
+          b2b: b2bPartners.length > 0 ? b2bPartners : undefined,
+          claims: [],
+        };
+        groups.set(groupKey, group);
+      }
+      group.claims.push(v.claim);
+    }
   }
 
   // Pages found by web search are only as good as their agreement: an
@@ -195,26 +235,30 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
 
   // Which sources gave a full lineup for this edition.
   const actsBySource = new Map<SourceType, Set<string>>();
-  for (const [key, claims] of groups) {
-    for (const c of claims) actsBySource.set(c.sourceType, (actsBySource.get(c.sourceType) ?? new Set()).add(key));
+  for (const group of groups.values()) {
+    for (const c of group.claims) {
+      actsBySource.set(c.sourceType, (actsBySource.get(c.sourceType) ?? new Set()).add(group.artistKey));
+    }
   }
   const fullLineups = FULL_LINEUP_SOURCES.filter((t) => (actsBySource.get(t)?.size ?? 0) >= FULL_LINEUP_MIN_ACTS);
 
   const performers: CandidatePerformer[] = [];
-  for (const [key, claims] of groups) {
+  for (const group of groups.values()) {
+    const claims = group.claims;
     const byPriority = [...claims].sort(
       (a, b) => priority.indexOf(a.sourceType) - priority.indexOf(b.sourceType),
     );
-    const aliasName = ctx.aliases[key];
+    const aliasName = ctx.aliases[group.artistKey];
     const types = [...new Set(claims.map((c) => c.sourceType))];
     const missingFrom = fullLineups.filter((t) => !types.includes(t));
     const reliability = (t: SourceType) => sourceReliability(t, ctx.seriesSlug, ctx.stats);
     const confidence = combineConfidence(types.map(reliability), missingFrom.map(reliability));
     performers.push({
-      key,
+      key: group.artistKey,
+      slotId: group.slotId,
       name: aliasName ?? preferredSpelling(byPriority[0].name.trim(), ctx.spellings ?? {}),
-      ...(djKeys.has(key) ? { set: 'dj' as const } : {}),
-      ...(partners.has(key) ? { b2b: [...partners.get(key)!] } : {}),
+      ...(djGroups.has(group.groupKey) ? { set: 'dj' as const } : {}),
+      ...(group.b2b ? { b2b: group.b2b } : {}),
       mbid: claims.find((c) => c.mbid)?.mbid,
       days: [...new Set(claims.map((c) => c.day).filter((d): d is string => Boolean(d)))].sort(),
       stages: [...new Set(claims.map((c) => c.stage).filter((s): s is string => Boolean(s)))],
@@ -231,7 +275,12 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
     });
   }
 
-  performers.sort((a, b) => b.confidence - a.confidence || a.name.localeCompare(b.name));
+  performers.sort(
+    (a, b) =>
+      b.confidence - a.confidence ||
+      a.name.localeCompare(b.name) ||
+      (a.slotId ?? '').localeCompare(b.slotId ?? ''),
+  );
   return {
     editionKey: ctx.editionKey,
     cached: false,

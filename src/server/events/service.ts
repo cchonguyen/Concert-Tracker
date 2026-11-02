@@ -152,8 +152,12 @@ function cleanSeen(list: NonNullable<EventPatch['seen']>): SeenAct[] {
   for (const s of list) {
     const name = text(s.name);
     const key = name && normalizeName(name);
-    if (!key || out.has(key)) continue;
+    if (!key) continue;
+    const actKey = s.id ?? (s.slotId ? `${key}:${s.slotId}` : (s.b2b?.length ? `${key}:b2b:${s.b2b.slice().sort().join('+')}` : key));
+    if (out.has(actKey)) continue;
     const act: SeenAct = { key, name: name!, from: s.from === 'lineup' ? 'lineup' : 'you' };
+    if (s.id) act.id = s.id;
+    if (s.slotId) act.slotId = s.slotId;
     if (isBilling(s.role)) {
       act.role = s.role;
       act.roleFrom = s.roleFrom === 'lineup' ? 'lineup' : 'you';
@@ -163,7 +167,7 @@ function cleanSeen(list: NonNullable<EventPatch['seen']>): SeenAct[] {
     if (Array.isArray(s.b2b)) act.b2b = s.b2b.map((k) => normalizeName(String(k))).filter((k) => k && k !== key);
     if (s.solo === true) act.solo = true;
     if (s.solo === true && isSetKind(s.soloSet)) act.soloSet = s.soloSet;
-    out.set(key, act);
+    out.set(actKey, act);
   }
   return withB2b([...out.values()]);
 }
