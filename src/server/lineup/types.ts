@@ -157,7 +157,6 @@ export interface CandidatePerformer {
   flagged: boolean; // low evidence, needs a look
   // From the lineup's own words ("A b2b B", "X DJ Set"); see actName.ts.
   set?: 'dj';
-  slotId?: string; // identifier of the performance slot (shared by B2B partners)
   b2b?: string[]; // keys of the acts billed with it as a B2B
   sources: CandidateSource[];
 }
@@ -221,14 +220,12 @@ export interface EditionPerformance {
   artistKey: string;
   name: string;
   mbid?: string;
-  slotId?: string;
-  b2b?: string[];
+  b2b?: string[]; // partners in this B2B performance
   days: string[];
   stages: string[];
   status: 'billed' | 'performed' | 'cancelled';
   billing?: Billing; // absent: no lead stated (filed under Artist)
   confidence: number;
-  b2b?: string[]; // partners in this B2B performance
   sources: CandidateSource[];
 }
 
