@@ -88,28 +88,93 @@ export function parseEventList(json: unknown): EventListEntry[] {
 // ones. Those are guesses, so they are never used as evidence.
 const SPECULATIVE = /\b(fantasy|prediction|predicted|predictions|guess|guesses|wishlist)\b/i;
 
+export const FESTIVAL_STOPWORDS = /\b(music|festival|arts|annual)\b/gi;
+const STOPWORDS_COMPOUND = /\b(music|festival|arts|annual)(\s+(?:and|&)\s+(?:music|festival|arts|annual))*\b/gi;
+export const WEEKEND_PATTERN = /\b(?:weekend|wknd)[\s-]*\d+\b|(?:^|[\s_/-]|\d)w[\s-]*\d+(?![a-z0-9])/gi;
+
+export function stripStopwords(text: string): string {
+  return text.replace(STOPWORDS_COMPOUND, ' ').replace(FESTIVAL_STOPWORDS, ' ');
+}
+
+export function weekendFromName(text: string): number | null {
+  if (!text) return null;
+  const m1 = text.match(/\b(?:weekend|wknd)[\s-]*(\d+)\b/i);
+  if (m1) return Number(m1[1]);
+  const m2 = text.match(/(?:^|[\s_/-]|\d)w[\s-]*(\d+)(?![a-z0-9])/i);
+  if (m2) return Number(m2[1]);
+  return null;
+}
+
+export function daysBetween(a: string, b: string): number {
+  const dateA = a.slice(0, 10);
+  const dateB = b.slice(0, 10);
+  const msA = Date.parse(`${dateA}T00:00:00Z`);
+  const msB = Date.parse(`${dateB}T00:00:00Z`);
+  if (Number.isNaN(msA) || Number.isNaN(msB)) return Infinity;
+  return Math.abs(Math.round((msA - msB) / 86_400_000));
+}
+
 // Several slugs often exist for one edition (edc2026, edclv2026, a livestream
 // schedule...). Candidates must match every word of the event name in the
 // title, or start the slug with those words run together, and fall in the
 // year. Among them the most-edited public clash wins, as the crowd's choice.
-export function matchEdition(entries: EventListEntry[], eventName: string, year: number): EventListEntry | null {
-  const wanted = normalizeName(eventName.replace(/\b(19|20)\d{2}\b/g, ' ')).split(' ').filter(Boolean);
+// When an event date or weekend is known, date-window proximity and matching
+// weekend tokens disambiguate multi-weekend festivals (e.g. Coachella W1 vs W2).
+export function matchEdition(
+  entries: EventListEntry[],
+  eventName: string,
+  year: number,
+  targetStartDateOrOptions?: string | { startDate?: string },
+): EventListEntry | null {
+  const targetStartDate =
+    typeof targetStartDateOrOptions === 'string'
+      ? targetStartDateOrOptions
+      : targetStartDateOrOptions?.startDate;
+  const targetWeekend = weekendFromName(eventName);
+
+  const stripped = stripStopwords(eventName.replace(/\b(19|20)\d{2}\b/g, ' '))
+    .replace(WEEKEND_PATTERN, ' ');
+  let wanted = normalizeName(stripped).split(' ').filter(Boolean);
+  if (!wanted.length) {
+    wanted = normalizeName(eventName.replace(/\b(19|20)\d{2}\b/g, ' ')).split(' ').filter(Boolean);
+  }
   if (!wanted.length) return null;
   const joined = wanted.join('');
   const yy = String(year).slice(2);
   let best: { entry: EventListEntry; score: number } | null = null;
   for (const entry of entries) {
-    if (entry.isPrivate || SPECULATIVE.test(entry.name) || entry.numActs === 0) continue;
+    if (entry.isPrivate || SPECULATIVE.test(entry.name) || SPECULATIVE.test(entry.slug) || entry.numActs === 0) continue;
+
+    const entryWeekend = weekendFromName(entry.name) ?? weekendFromName(entry.slug);
+    if (targetWeekend !== null && entryWeekend !== null && entryWeekend !== targetWeekend) {
+      continue;
+    }
+
     const name = normalizeName(entry.name);
-    const titleHit = wanted.every((w) => ` ${name} `.includes(` ${w} `));
+    const cleanEntryName = normalizeName(stripStopwords(entry.name));
+    const titleHit = wanted.every((w) => ` ${name} `.includes(` ${w} `) || ` ${cleanEntryName} `.includes(` ${w} `));
     const slugHit = entry.slug.toLowerCase().startsWith(joined);
     if (!titleHit && !slugHit) continue;
     const yearHit = entry.startDate
       ? entry.startDate.startsWith(String(year))
       : name.includes(String(year)) || new RegExp(`(^|[^0-9])(${year}|${yy})$`).test(entry.slug);
     if (!yearHit) continue;
-    const score =
-      (titleHit ? 1_000_000 : 0) + (entry.edits ?? 0) * 10 + Math.min(entry.numActs ?? 0, 9) - Math.abs(name.length - wanted.join(' ').length) / 1000;
+    let score =
+      (titleHit ? 1_000_000 : 0) +
+      (entry.edits ?? 0) * 10 +
+      Math.min(entry.numActs ?? 0, 9) -
+      Math.abs(cleanEntryName.replace(/\b(19|20)\d{2}\b/g, ' ').trim().length - wanted.join(' ').length) / 1000;
+
+    if (targetStartDate && entry.startDate) {
+      if (daysBetween(entry.startDate, targetStartDate) <= 2) {
+        score += 500_000;
+      }
+    }
+
+    if (targetWeekend !== null && entryWeekend === targetWeekend) {
+      score += 500_000;
+    }
+
     if (!best || score > best.score) best = { entry, score };
   }
   return best?.entry ?? null;
@@ -162,7 +227,7 @@ export const clashfinderAdapter: SourceAdapter = {
       const listUrl = `${BASE}/data/events/all.json?${auth}`;
       const res = await ctx.fetcher.get(listUrl);
       if (res.status === 401) throw new HttpError(401, listUrl, 'Clashfinder rejected the credentials (401). Check CLASHFINDER_* settings.');
-      const match = matchEdition(parseEventList(parseJson(res)), ctx.input.eventName, ctx.input.year);
+      const match = matchEdition(parseEventList(parseJson(res)), ctx.input.eventName, ctx.input.year, ctx.input.startDate);
       if (!match) {
         result.notes.push('Clashfinder: no matching edition in the event list.');
         return result;

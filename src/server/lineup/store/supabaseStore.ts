@@ -705,6 +705,7 @@ export class SupabaseLineupStore implements LineupStore {
         this.own('logged_events')
           .select('seen')
           .is('deleted_at', null)
+          .order('id', { ascending: true })
       ).range(from, from + 999);
       if (error) throw new Error(`Supabase listSeenArtistNames failed: ${error.message}`);
       const rows = data ?? [];

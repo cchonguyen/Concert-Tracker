@@ -30,8 +30,8 @@ test('scopedFileStore: returns only the scoped member\'s seen artist names', asy
   const bobStore = baseStore.forUser(BOB);
 
   await annStore.putEvents([
-    ev('a1', ['Radiohead', 'The Smile']),
-    ev('a2', ['Thom Yorke']),
+    ev('a1', ['Radiohead  ', 'The Smile']),
+    ev('a2', [' Thom Yorke ']),
   ]);
   await bobStore.putEvent(ev('b1', ['Portishead', 'Massive Attack']));
 
@@ -72,7 +72,7 @@ test('scopedFileStore: excludes deleted events from listSeenArtistNames', async 
 });
 
 test('SupabaseLineupStore: pages through rows and respects scoping in listSeenArtistNames', async () => {
-  const queries: Array<{ table: string; select?: string; range?: [number, number]; filters: any[] }> = [];
+  const queries: Array<{ table: string; select?: string; range?: [number, number]; filters: any[]; order?: any }> = [];
 
   // Mock Supabase client
   const createMockDb = (totalRows: number) => {
@@ -93,6 +93,10 @@ test('SupabaseLineupStore: pages through rows and respects scoping in listSeenAr
           },
           eq(col: string, val: any) {
             queryState.filters.push({ op: 'eq', col, val });
+            return builder;
+          },
+          order(col: string, opts: any) {
+            queryState.order = { col, opts };
             return builder;
           },
           range(from: number, to: number) {
@@ -132,6 +136,7 @@ test('SupabaseLineupStore: pages through rows and respects scoping in listSeenAr
   for (const q of queries) {
     assert.equal(q.table, 'logged_events');
     assert.equal(q.select, 'seen');
+    assert.deepEqual(q.order, { col: 'id', opts: { ascending: true } });
     assert.ok(q.filters.some((f) => f.col === 'user_id' && f.val === ANN.userId));
     assert.ok(q.filters.some((f) => f.col === 'deleted_at' && f.val === null));
   }

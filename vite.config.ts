@@ -5,7 +5,7 @@ import {defineConfig} from 'vite';
 import {readFileSync} from 'fs';
 
 // The site's one address (site.config.json) goes into the marketing and app pages.
-const siteOrigin: string = JSON.parse(readFileSync(path.resolve(__dirname, 'site.config.json'), 'utf8')).origin;
+const siteOrigin: string = JSON.parse(readFileSync(path.resolve(import.meta.dirname, 'site.config.json'), 'utf8')).origin;
 const siteOriginHtml = {
   name: 'site-origin',
   transformIndexHtml: (html: string) => html.replaceAll('__SITE_ORIGIN__', siteOrigin),
@@ -16,7 +16,7 @@ export default defineConfig(() => {
     plugins: [react(), tailwindcss(), siteOriginHtml],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(import.meta.dirname, '.'),
       },
     },
     // Two pages: "/" is the public marketing page (index.html) and "/app" is
@@ -24,8 +24,8 @@ export default defineConfig(() => {
     build: {
       rollupOptions: {
         input: {
-          index: path.resolve(__dirname, 'index.html'),
-          app: path.resolve(__dirname, 'app.html'),
+          index: path.resolve(import.meta.dirname, 'index.html'),
+          app: path.resolve(import.meta.dirname, 'app.html'),
         },
       },
     },

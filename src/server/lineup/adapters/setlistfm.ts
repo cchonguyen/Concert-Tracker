@@ -10,12 +10,13 @@ import { emptyResult, makeDocument } from './common';
 const VERSION = 'setlistfm@1';
 const MAX_PAGES_PER_DAY = 5;
 
-interface Setlist {
+export interface Setlist {
   url?: string;
   eventDate?: string; // dd-MM-yyyy
   artist?: { mbid?: string; name?: string };
   venue?: { name?: string; city?: { name?: string } };
   tour?: { name?: string };
+  info?: string;
 }
 
 interface SetlistSearch {
@@ -24,17 +25,38 @@ interface SetlistSearch {
   itemsPerPage?: number;
 }
 
+const STOP_WORDS = new Set(['the', 'a', 'an', 'and', 'at', 'in', 'of', 'on', 'for', 'to', 'with']);
+
 export function toSetlistDate(iso: string): string {
   const [y, m, d] = iso.split('-');
   return `${d}-${m}-${y}`;
 }
 
 export function belongsToEvent(s: Setlist, eventName: string, venue?: string): boolean {
-  const v = normalizeName(s.venue?.name ?? '');
-  if (venue && v && (v.includes(normalizeName(venue)) || normalizeName(venue).includes(v))) return true;
   const words = normalizeName(eventName.replace(/\b(19|20)\d{2}\b/g, ' ')).split(' ').filter(Boolean);
-  const hay = ` ${normalizeName(`${s.tour?.name ?? ''} ${s.venue?.name ?? ''}`)} `;
-  return words.length > 0 && words.every((w) => hay.includes(` ${w} `));
+  if (words.length === 0) return false;
+
+  const v = normalizeName(s.venue?.name ?? '');
+  const targetVenue = venue ? normalizeName(venue) : '';
+  const venueMatches = Boolean(targetVenue && v && (v.includes(targetVenue) || targetVenue.includes(v)));
+
+  const artistName = normalizeName(s.artist?.name ?? '');
+  const tourName = normalizeName(s.tour?.name ?? '');
+  const infoText = normalizeName(s.info ?? '');
+
+  const metaHay = ` ${artistName} ${tourName} ${infoText} `;
+  const tourVenueHay = ` ${tourName} ${v} `;
+  const fullHay = ` ${artistName} ${tourName} ${v} ${infoText} `;
+
+  if (venueMatches) {
+    const significantWords = words.filter((w) => !STOP_WORDS.has(w));
+    const checkWords = significantWords.length > 0 ? significantWords : words;
+    const hasWordOverlap = checkWords.some((w) => metaHay.includes(` ${w} `));
+    const tourVenueMatch = words.every((w) => tourVenueHay.includes(` ${w} `));
+    return hasWordOverlap || tourVenueMatch;
+  }
+
+  return words.every((w) => fullHay.includes(` ${w} `));
 }
 
 export const setlistfmAdapter: SourceAdapter = {

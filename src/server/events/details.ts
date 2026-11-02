@@ -157,7 +157,7 @@ export const clashfinderFinder: DetailFinder = {
   async find(q, fetcher) {
     const res = await fetcher.get(`https://clashfinder.com/data/events/all.json?${clashfinderAuthQuery()}`);
     if (res.status !== 200) return [];
-    const match = matchEdition(parseEventList(parseJson(res)), q.name, q.year!);
+    const match = matchEdition(parseEventList(parseJson(res)), q.name, q.year!, q.startDate);
     if (!match) return [];
     const c = candidate('clashfinder', `https://clashfinder.com/s/${match.slug}/`, { name: match.name, startDate: match.startDate });
     return !q.month && !q.startDate ? [c] : inWindow(c.startDate, searchWindow(q)) ? [c] : [];

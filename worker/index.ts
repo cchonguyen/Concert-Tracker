@@ -83,8 +83,16 @@ function ensureServer(env: Env): Promise<void> {
       gate,
     );
     await new Promise<void>((resolve, reject) => {
-      const server = app.listen(PORT, () => resolve());
-      server.once('error', (err) => reject(err));
+      let started = false;
+      const server = app.listen(PORT, () => {
+        started = true;
+        resolve();
+      });
+      server.on('error', (err) => {
+        serverPromise = null;
+        if (!started) reject(err);
+        else console.error('Server runtime error:', err);
+      });
     });
   })().catch((err) => {
     serverPromise = null;
@@ -207,9 +215,35 @@ export default {
         message.ack();
       } catch (err) {
         const messageText = redactSecrets(err instanceof Error ? err.message : String(err));
-        console.error(`Queue job ${jobId} unhandled failure:`, messageText);
-        // Retry with backoff rather than silently swallowing or throwing out of the batch
-        message.retry({ delaySeconds: 60 });
+        console.error(`Queue job ${jobId} unhandled failure (attempt ${message.attempts}):`, messageText);
+        try {
+          const current = await deps.store.getJob(jobId);
+          if (current && current.status === 'running') {
+            if (message.attempts >= 3) {
+              await deps.store.updateJob({
+                ...current,
+                status: 'failed',
+                lastError: `Queue delivery failed after ${message.attempts} attempts: ${messageText}`,
+                updatedAt: deps.now().toISOString(),
+              });
+            } else {
+              await deps.store.updateJob({
+                ...current,
+                status: 'queued',
+                nextAttemptAt: new Date(deps.now().getTime() + 60_000).toISOString(),
+                updatedAt: deps.now().toISOString(),
+              });
+            }
+          }
+        } catch (storeErr) {
+          console.error(`Failed to update job ${jobId} state after queue error:`, storeErr);
+        }
+        if (message.attempts >= 3) {
+          // Final retry exhausted: acknowledge message (dead-letter queue collects it)
+          message.ack();
+        } else {
+          message.retry({ delaySeconds: 60 });
+        }
       }
     }
   },

@@ -303,7 +303,13 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
 
   const claims = await deps.store.listPerformerClaims(job.id);
   const canDiscover = deps.search && deps.gemini && deps.quota && !job.discoveryDone;
-  job.stage = claims.length === 0 && canDiscover ? 'discover' : 'merge';
+  const isSparseFestival =
+    Boolean(
+      (job.input.endDate && job.input.endDate !== job.input.startDate) ||
+        (job.facts.endDate && job.facts.startDate && job.facts.endDate[0]?.value !== job.facts.startDate[0]?.value),
+    ) && claims.length < 5;
+  const needsDiscovery = (claims.length === 0 || isSparseFestival) && canDiscover;
+  job.stage = needsDiscovery ? 'discover' : 'merge';
 }
 
 const SEARCH_RESULTS_TO_TRY = 6;
