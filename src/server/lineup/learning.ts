@@ -210,7 +210,10 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
 
     if (cand) {
       if (fresh) stats.push(...statDeltas(types, slug, true));
-      if (name !== cand.name) {
+      const isPartnerSwap =
+        Boolean(cand.b2b?.includes(normalizeName(name))) ||
+        Boolean(reviewed.b2b?.includes(normalizeName(cand.name)));
+      if (name !== cand.name && !isPartnerSwap) {
         aliases[normalizeName(cand.name)] = name;
         corrections.push({
           id: randomUUID(),

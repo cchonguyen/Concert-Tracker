@@ -160,3 +160,53 @@ test('groupReviewSlots formats slot name with alias when present, and supports 3
   assert.equal(b3bSlots[0].name, 'OMG TBA (Skrillex b2b Four Tet b2b Fred again..)');
   assert.equal(b3bSlots[0].items.length, 3);
 });
+
+test('reopening B2B performances does not swap partners via sameSource', () => {
+  const b2bSource = { sourceType: 'clashfinder' as const, sourceUrl: 'https://clashfinder.com/s/x/', quotedSpan: 'Henri Bergmann b2b Layla Benitez', evidence: 'crowd' as const, extractor: 'cf' };
+
+  // Two candidate performers sharing the exact same B2B source
+  const candHenri = {
+    key: 'henri bergmann',
+    name: 'Henri Bergmann',
+    slotId: 'new-slot-id-1',
+    b2b: ['layla benitez'],
+    days: [],
+    stages: [],
+    confidence: 1,
+    flagged: false,
+    status: 'billed',
+    sources: [b2bSource],
+  } as any;
+  const candLayla = {
+    key: 'layla benitez',
+    name: 'Layla Benitez',
+    slotId: 'new-slot-id-1',
+    b2b: ['henri bergmann'],
+    days: [],
+    stages: [],
+    confidence: 1,
+    flagged: false,
+    status: 'billed',
+    sources: [b2bSource],
+  } as any;
+
+  // Saved edition where performances appear in reverse order or have different slotIds
+  const edition = {
+    performances: [
+      { artistKey: 'layla benitez', name: 'Layla Benitez', slotId: 'old-slot-id', b2b: ['henri bergmann'], days: [], stages: [], status: 'billed', confidence: 1, sources: [b2bSource] },
+      { artistKey: 'henri bergmann', name: 'Henri Bergmann', slotId: 'old-slot-id', b2b: ['layla benitez'], days: [], stages: [], status: 'billed', confidence: 1, sources: [b2bSource] },
+    ],
+  } as any;
+
+  const rows = startRows([candHenri, candLayla], edition);
+  assert.equal(rows.length, 2);
+  // candHenri should match Henri Bergmann, NOT Layla Benitez
+  assert.equal(rows[0].name, 'Henri Bergmann');
+  assert.equal(rows[0].candidate?.name, 'Henri Bergmann');
+  assert.equal(rows[0].seenKey, 'henri bergmann');
+
+  // candLayla should match Layla Benitez, NOT Henri Bergmann
+  assert.equal(rows[1].name, 'Layla Benitez');
+  assert.equal(rows[1].candidate?.name, 'Layla Benitez');
+  assert.equal(rows[1].seenKey, 'layla benitez');
+});
