@@ -698,6 +698,27 @@ export class SupabaseLineupStore implements LineupStore {
     return (rows ?? []).map((r: any) => this.rowToEvent(r));
   }
 
+  async listSeenArtistNames(): Promise<string[]> {
+    const names: string[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await this.mine(
+        this.own('logged_events')
+          .select('seen')
+          .is('deleted_at', null)
+      ).range(from, from + 999);
+      if (error) throw new Error(`Supabase listSeenArtistNames failed: ${error.message}`);
+      const rows = data ?? [];
+      for (const r of rows) {
+        const seen = Array.isArray(r.seen) ? r.seen : [];
+        for (const a of seen) {
+          if (a && typeof a.name === 'string' && a.name.trim()) names.push(a.name.trim());
+        }
+      }
+      if (rows.length < 1000) break;
+    }
+    return names;
+  }
+
   // Delete moves the show to Recently deleted. The nightly job erases it after 90 days.
   async deleteEvent(id: string) {
     const now = new Date().toISOString();

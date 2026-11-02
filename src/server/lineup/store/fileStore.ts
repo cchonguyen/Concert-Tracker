@@ -366,6 +366,11 @@ export class FileLineupStore implements LineupStore {
     return clone(Object.values((await this.load()).events).filter((e) => !e.deletedAt).map((e) => splitEventCity(e)));
   }
 
+  async listSeenArtistNames(): Promise<string[]> {
+    const events = Object.values((await this.load()).events);
+    return events.filter((e) => !e.deletedAt).flatMap((e) => (e.seen ?? []).map((a) => a.name));
+  }
+
   // Delete moves the show to Recently deleted. Nothing is erased until the nightly purge.
   async deleteEvent(id: string) {
     return this.deleteEventFor(undefined, id);
@@ -866,6 +871,10 @@ function scopedFileStore(base: FileLineupStore, scope: UserScope): LineupStore {
     },
     async listEvents() {
       return keep('event', await base.listEvents());
+    },
+    listSeenArtistNames: async () => {
+      const myEvents = await keep('event', await base.listEvents());
+      return myEvents.filter((e) => !e.deletedAt).flatMap((e) => e.seen.map((a) => a.name));
     },
     async deleteEvent(id) {
       if (await mine('event', id)) await base.deleteEventFor(scope.userId, id);

@@ -13,6 +13,7 @@ import { createEmailNotifier, isDigestTime } from '../src/server/email/notifier'
 import { resendFromEnv } from '../src/server/email/sender';
 import { supabaseEmailPreferences } from '../src/server/email/store';
 import { unsubscribeSecretFromEnv } from '../src/server/email/unsubscribe';
+import { redactSecrets } from '../src/server/lineup/http';
 
 // Cloudflare Worker entry. Static files are served from ./dist by Workers
 // static assets (wrangler.jsonc); only /api/*, the share page (/s/*) and the
@@ -43,7 +44,7 @@ interface Env {
 
 const PORT = 8080;
 let depsPromise: Promise<PipelineDeps> | null = null;
-let listening = false;
+let serverPromise: Promise<void> | null = null;
 
 // Built once per isolate. process.env is populated from vars and secrets by
 // nodejs_compat. A failed start is retried on the next request. With
@@ -64,26 +65,32 @@ function getDeps(env: Env): Promise<PipelineDeps> {
   return depsPromise;
 }
 
-async function ensureServer(env: Env): Promise<void> {
-  if (listening) return;
-  const deps = await getDeps(env);
-  if (listening) return;
-  // Who may use /api (src/server/auth/config.ts). Read from the bindings as
-  // well as the process environment, so MULTI_USER cannot be on in one and
-  // missing from the other. Anything that cannot be read is closed, not open.
-  const settings = workerSettings(env as unknown as Record<string, unknown>, process.env);
-  const gate = accessGateFromEnv(settings, () => supabaseMemberStores(getSupabaseClient()!));
-  const app = createApiApp(
-    deps,
-    {
-      kick: async (jobId, force) => {
-        await env.LOOKUP_QUEUE.send({ jobId, force });
+function ensureServer(env: Env): Promise<void> {
+  serverPromise ??= (async () => {
+    const deps = await getDeps(env);
+    // Who may use /api (src/server/auth/config.ts). Read from the bindings as
+    // well as the process environment, so MULTI_USER cannot be on in one and
+    // missing from the other. Anything that cannot be read is closed, not open.
+    const settings = workerSettings(env as unknown as Record<string, unknown>, process.env);
+    const gate = accessGateFromEnv(settings, () => supabaseMemberStores(getSupabaseClient()!));
+    const app = createApiApp(
+      deps,
+      {
+        kick: async (jobId, force) => {
+          await env.LOOKUP_QUEUE.send({ jobId, force });
+        },
       },
-    },
-    gate,
-  );
-  app.listen(PORT);
-  listening = true;
+      gate,
+    );
+    await new Promise<void>((resolve, reject) => {
+      const server = app.listen(PORT, () => resolve());
+      server.once('error', (err) => reject(err));
+    });
+  })().catch((err) => {
+    serverPromise = null;
+    throw err;
+  });
+  return serverPromise;
 }
 
 export default {
@@ -192,11 +199,18 @@ export default {
     const deps = await getDeps(env);
     for (const message of batch.messages) {
       const { jobId, force } = message.body;
-      // One stage (or one page) per message: a whole lookup in one
-      // invocation went past the 50-subrequest limit and was left "running".
-      const job = await runJob(deps, jobId, { force, oneStep: true });
-      if (job?.status === 'queued' && !job.nextAttemptAt) await env.LOOKUP_QUEUE.send({ jobId, force });
-      message.ack();
+      try {
+        // One stage (or one page) per message: a whole lookup in one
+        // invocation went past the 50-subrequest limit and was left "running".
+        const job = await runJob(deps, jobId, { force, oneStep: true });
+        if (job?.status === 'queued' && !job.nextAttemptAt) await env.LOOKUP_QUEUE.send({ jobId, force });
+        message.ack();
+      } catch (err) {
+        const messageText = redactSecrets(err instanceof Error ? err.message : String(err));
+        console.error(`Queue job ${jobId} unhandled failure:`, messageText);
+        // Retry with backoff rather than silently swallowing or throwing out of the batch
+        message.retry({ delaySeconds: 60 });
+      }
     }
   },
 } satisfies ExportedHandler<Env, LookupMessage>;

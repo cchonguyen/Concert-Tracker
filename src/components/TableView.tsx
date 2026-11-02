@@ -123,6 +123,26 @@ const NEEDS_TITLES = { date: 'No date yet', pick: 'Pick needed', review: 'Lineup
 
 const readQuery = () => filtersFromQuery(typeof window === 'undefined' ? '' : window.location.search);
 
+export function nextRowId(
+  events: { id: string }[],
+  currentId: string,
+  key: 'ArrowUp' | 'ArrowDown' | 'Home' | 'End',
+): string | null {
+  if (events.length === 0) return null;
+  const index = events.findIndex((e) => e.id === currentId);
+  if (index === -1) return null;
+  switch (key) {
+    case 'ArrowDown':
+      return events[Math.min(events.length - 1, index + 1)].id;
+    case 'ArrowUp':
+      return events[Math.max(0, index - 1)].id;
+    case 'Home':
+      return events[0].id;
+    case 'End':
+      return events[events.length - 1].id;
+  }
+}
+
 const dash = <span className="text-zinc-700">–</span>;
 
 // Day, month and year in fixed-width slots, so they line up down the column.
@@ -173,21 +193,21 @@ const Stars: React.FC<{ rating?: number | null }> = ({ rating }) =>
     dash
   );
 
+const WENT_TONES: Record<Exclude<AttendanceState, 'went'>, 'accent' | 'info' | 'neutral'> = {
+  confirm: 'accent',
+  upcoming: 'info',
+  missed: 'neutral',
+};
+
 // Upcoming, waiting for you to say you went, or missed. Nothing for an
 // event you went to.
 const WentBadge: React.FC<{ state: AttendanceState }> = ({ state }) =>
   state === 'went' ? null : (
     <span
       title={state === 'confirm' ? "Over: open it to say whether you went. Not counted until then." : 'Not counted in Stats, Artists or the Map'}
-      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs leading-4 ${
-        state === 'confirm'
-          ? 'border-violet-500/40 bg-violet-600/15 text-violet-200'
-          : state === 'upcoming'
-            ? 'border-sky-500/30 bg-sky-500/10 text-sky-300'
-            : 'border-zinc-700 text-zinc-400'
-      }`}
+      className="inline-flex whitespace-nowrap"
     >
-      {ATTENDANCE_LABELS[state]}
+      <Pill tone={WENT_TONES[state]}>{ATTENDANCE_LABELS[state]}</Pill>
     </span>
   );
 
@@ -244,8 +264,10 @@ const DetailsCell: React.FC<{
 const NeedsBadge: React.FC<{ needs: keyof typeof NEEDS_LABELS }> = ({ needs }) => {
   const Icon = NEEDS_ICONS[needs];
   return (
-    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300">
-      <Icon className="h-3 w-3" /> {NEEDS_LABELS[needs]}
+    <span className="whitespace-nowrap">
+      <Pill tone="warn">
+        <Icon className="h-3 w-3" /> {NEEDS_LABELS[needs]}
+      </Pill>
     </span>
   );
 };
@@ -425,10 +447,12 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
         {filters.series && (
           <button
             onClick={() => set({ series: '' })}
-            className="inline-flex items-center gap-1 rounded-full border border-violet-500/50 px-2.5 py-1 text-xs text-violet-200 hover:bg-violet-950/40"
+            className="inline-flex rounded-full hover:opacity-80"
             aria-label={`Stop showing only ${filters.series}`}
           >
-            <Layers className="h-3 w-3" /> {filters.series} <X className="h-3 w-3" />
+            <Pill tone="accent">
+              <Layers className="h-3 w-3" /> {filters.series} <X className="h-3 w-3" />
+            </Pill>
           </button>
         )}
         {active > 0 && (
@@ -601,7 +625,20 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody
+                onKeyDown={(k) => {
+                  if (k.key !== 'ArrowUp' && k.key !== 'ArrowDown' && k.key !== 'Home' && k.key !== 'End') return;
+                  const target = k.target;
+                  if (!(target instanceof HTMLElement) || target.tagName !== 'TR') return;
+                  const currentId = target.getAttribute('data-event-id');
+                  if (!currentId) return;
+                  const nextId = nextRowId(rows, currentId, k.key);
+                  if (!nextId) return;
+                  k.preventDefault();
+                  const nextRow = k.currentTarget.querySelector<HTMLElement>(`tr[data-event-id="${CSS.escape(nextId)}"]`);
+                  nextRow?.focus();
+                }}
+              >
                 {rows.map((e, i) => {
                   const needs = needsOf(e, lineups[e.id]);
                   const artists = artistsOf(e.seen);
@@ -617,11 +654,12 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                       )}
                       <tr
                         tabIndex={0}
+                        data-event-id={e.id}
                         onClick={() => onOpen(e.id)}
                         onKeyDown={(k) => {
                           if (k.key === 'Enter' && k.target === k.currentTarget) onOpen(e.id);
                         }}
-                        className="cursor-pointer transition-colors hover:bg-zinc-900/60 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-violet-400"
+                        className="scroll-mt-16 cursor-pointer transition-colors hover:bg-zinc-900/60 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-violet-400"
                       >
                         <td className={`${cell} whitespace-nowrap`}>
                           <DateCell e={e} />

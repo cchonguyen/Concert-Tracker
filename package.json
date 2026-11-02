@@ -1,5 +1,6 @@
 {
-  "name": "react-example",
+  "name": "livearchive",
+  "description": "Personal concert tracking and lineup archive",
   "private": true,
   "version": "0.0.0",
   "type": "module",
