@@ -90,6 +90,7 @@ function ensureServer(env: Env): Promise<void> {
       });
       server.on('error', (err) => {
         serverPromise = null;
+        try { server.close(); } catch {}
         if (!started) reject(err);
         else console.error('Server runtime error:', err);
       });
@@ -219,7 +220,8 @@ export default {
         try {
           const current = await deps.store.getJob(jobId);
           if (current && current.status === 'running') {
-            if (message.attempts >= 3) {
+            // attempts starts at 1; with max_retries = 3, attempt >= 4 is the final delivery attempt
+            if (message.attempts >= 4) {
               await deps.store.updateJob({
                 ...current,
                 status: 'failed',
@@ -238,12 +240,9 @@ export default {
         } catch (storeErr) {
           console.error(`Failed to update job ${jobId} state after queue error:`, storeErr);
         }
-        if (message.attempts >= 3) {
-          // Final retry exhausted: acknowledge message (dead-letter queue collects it)
-          message.ack();
-        } else {
-          message.retry({ delaySeconds: 60 });
-        }
+        // Retry with backoff. Once max_retries (3) is exceeded, Cloudflare Queues automatically
+        // routes the message to the configured dead-letter queue (concert-tracker-lookups-dlq).
+        message.retry({ delaySeconds: 60 });
       }
     }
   },
