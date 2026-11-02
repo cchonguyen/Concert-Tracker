@@ -72,6 +72,7 @@ export interface SeenAct {
   id?: string; // unique instance id for this performance on the event
   key: string; // normalized name
   name: string;
+  alias?: string; // collaborative project moniker (e.g. Subjohnics, Kx5)
   from: 'you' | 'lineup';
   role?: Billing;
   roleFrom?: 'you' | 'lineup';

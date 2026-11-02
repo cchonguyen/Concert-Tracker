@@ -18,6 +18,12 @@ test('a lineup name is read for B2B pairs and a DJ set suffix', () => {
   assert.deepEqual(readActName('Disclosure DJ Set'), { parts: ['Disclosure'], dj: true });
   assert.deepEqual(readActName('DJ Set'), { parts: ['DJ Set'], dj: false }); // nothing left: leave it
   assert.deepEqual(readActName('Bob2B'), { parts: ['Bob2B'], dj: false });
+  assert.deepEqual(readActName('Skrillex B3B Four Tet B3B Fred again..'), { parts: ['Skrillex', 'Four Tet', 'Fred again..'], dj: false });
+  assert.deepEqual(readActName('Artist A b/3/b Artist B'), { parts: ['Artist A', 'Artist B'], dj: false });
+  assert.deepEqual(readActName('Artist A b4b Artist B'), { parts: ['Artist A', 'Artist B'], dj: false });
+  assert.deepEqual(readActName('Artist A b2b2b Artist B'), { parts: ['Artist A', 'Artist B'], dj: false });
+  assert.deepEqual(readActName('Artist A back to back Artist B'), { parts: ['Artist A', 'Artist B'], dj: false });
+  assert.deepEqual(readActName('Artist A back-to-back Artist B'), { parts: ['Artist A', 'Artist B'], dj: false });
 });
 
 test('your spelling wins, else one-case names go to Proper Case', () => {

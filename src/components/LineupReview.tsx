@@ -19,6 +19,7 @@ interface LineupReviewProps {
 interface Row {
   key?: string;
   slotId?: string;
+  alias?: string;
   b2b?: string[];
   name: string;
   originalName?: string;
@@ -62,6 +63,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
     startRows(candidate?.performers ?? [], edition).map((r) => ({
       key: r.key,
       slotId: r.slotId,
+      alias: r.alias,
       b2b: r.b2b,
       name: r.name,
       originalName: r.candidate?.name,
@@ -210,6 +212,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
         performers: expandedRows.map((r) => ({
           key: r.key,
           slotId: r.slotId,
+          alias: r.alias,
           b2b: r.b2b,
           name: r.name,
           accepted: r.accepted,
@@ -351,19 +354,61 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
                             </button>
                           </div>
                         ) : (
-                          <div className="space-y-1">
-                            <div className="font-semibold text-zinc-100">{slot.name}</div>
+                          <div className="space-y-1.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-zinc-100">{slot.name}</span>
+                              <button
+                                type="button"
+                                className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[11px] text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+                                title="Add another partner to this set (B3B/B4B)"
+                                onClick={() => {
+                                  const slotId = slot.items[0].item.slotId || crypto.randomUUID();
+                                  const newPartner: Row = {
+                                    slotId,
+                                    name: '',
+                                    accepted: true,
+                                    rejectReason: 'not_an_act',
+                                    seen: slot.items.some((it) => it.item.seen),
+                                    billing: '',
+                                    set: '',
+                                    days: slot.days,
+                                    stages: slot.stages,
+                                    confidence: 1,
+                                    flagged: false,
+                                    missingFrom: [],
+                                    status: 'billed',
+                                    sources: [],
+                                  };
+                                  setRows((rs) => [...rs, newPartner]);
+                                }}
+                              >
+                                + Partner
+                              </button>
+                            </div>
                             <div className="flex flex-wrap items-center gap-1.5">
                               {slot.items.map((it) => (
                                 <input
                                   key={it.index}
-                                  className={`${input} max-w-[160px] py-0.5 text-xs`}
+                                  className={`${input} max-w-[150px] py-0.5 text-xs`}
                                   value={it.item.name}
                                   onChange={(e) => update(it.index, { name: e.target.value })}
+                                  onBlur={() => splitRowIfB2b(it.index)}
+                                  placeholder="Artist name"
                                   title={`Edit name for ${it.item.name}`}
                                   aria-label={`Name for ${it.item.name}`}
                                 />
                               ))}
+                              <input
+                                className={`${input} max-w-[150px] py-0.5 text-xs text-sky-300 placeholder:text-zinc-600`}
+                                placeholder="AKA (e.g. Subjohnics)"
+                                value={slot.items[0].item.alias ?? ''}
+                                onChange={(e) => {
+                                  const alias = e.target.value.trim() || undefined;
+                                  slot.items.forEach((it) => update(it.index, { alias }));
+                                }}
+                                title="Set collaborative project moniker (AKA)"
+                                aria-label="Collaboration Alias"
+                              />
                             </div>
                           </div>
                         )}

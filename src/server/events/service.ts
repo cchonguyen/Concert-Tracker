@@ -158,6 +158,7 @@ function cleanSeen(list: NonNullable<EventPatch['seen']>): SeenAct[] {
     const act: SeenAct = { key, name: name!, from: s.from === 'lineup' ? 'lineup' : 'you' };
     if (s.id) act.id = s.id;
     if (s.slotId) act.slotId = s.slotId;
+    if (s.alias) act.alias = text(s.alias);
     if (isBilling(s.role)) {
       act.role = s.role;
       act.roleFrom = s.roleFrom === 'lineup' ? 'lineup' : 'you';

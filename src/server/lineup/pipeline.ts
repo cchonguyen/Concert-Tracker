@@ -89,6 +89,7 @@ export function candidateFromEdition(edition: Edition): CandidateLineup {
       .map((p) => ({
         key: p.artistKey,
         slotId: p.slotId,
+        alias: p.alias,
         b2b: p.b2b,
         name: p.name,
         days: p.days,
