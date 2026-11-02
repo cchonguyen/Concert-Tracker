@@ -23,6 +23,7 @@ export interface AccessRequest {
 export interface RequestSettings {
   paused: boolean;
   cap: number;
+  lastDigestAt?: string;
 }
 
 // What a non-member's request may get back. "closed" covers the pause and a full pending list.

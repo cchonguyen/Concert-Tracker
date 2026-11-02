@@ -51,6 +51,7 @@ import {
   summarize,
   tableDate,
   TableFilters,
+  todayLineIndex,
 } from '../services/table';
 import { useIsOwner } from './MeContext';
 import { FillGaps } from './FillGaps';
@@ -74,6 +75,7 @@ interface TableViewProps {
   onImport: () => void; // the same Import as the Menu and Quick add
   onSheets: () => void; // the same Google Sheets as the Menu
   onRefresh: () => void; // reload events after a fill-in
+  today?: string;
 }
 
 const control =
@@ -291,9 +293,17 @@ const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, 
   );
 };
 
+const TodayIndicator: React.FC = () => (
+  <div className="flex items-center gap-2 py-1 text-[11px] font-bold uppercase tracking-wide text-violet-300">
+    <span className="h-px flex-1 bg-violet-500/50" />
+    Today
+    <span className="h-px flex-1 bg-violet-500/50" />
+  </div>
+);
+
 // Every event as a row you can filter, sort and export. A row opens the usual
 // event panel for editing; "Import a list" adds events from a CSV you kept.
-export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, onOpen, onChanged, onManage, onImport, onSheets, onRefresh }) => {
+export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, onOpen, onChanged, onManage, onImport, onSheets, onRefresh, today: todayProp }) => {
   const [filling, setFilling] = useState(false);
   const [linking, setLinking] = useState(false);
   const toast = useToast();
@@ -310,7 +320,8 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const options = useMemo(() => filterOptions(events), [events]);
   const rows = useMemo(() => filterEvents(events, filters, lineups, editions), [events, filters, lineups, editions]);
   const summary = useMemo(() => summarize(rows), [rows]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayProp ?? new Date().toISOString().slice(0, 10);
+  const todayLine = useMemo(() => todayLineIndex(rows, filters, today), [rows, filters, today]);
   const active = activeFilterCount(filters);
   const set = (patch: Partial<TableFilters>) => setFilters((f) => ({ ...f, ...patch }));
   const setHas = (field: HasField, v: Has) => setFilters((f) => ({ ...f, has: { ...f.has, [field]: v } }));
@@ -591,103 +602,130 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                 </tr>
               </thead>
               <tbody>
-                {rows.map((e) => {
+                {rows.map((e, i) => {
                   const needs = needsOf(e, lineups[e.id]);
                   const artists = artistsOf(e.seen);
                   const cell = 'border-b border-zinc-900 px-4 py-3 align-top';
                   return (
-                    <tr
-                      key={e.id}
-                      tabIndex={0}
-                      onClick={() => onOpen(e.id)}
-                      onKeyDown={(k) => {
-                        if (k.key === 'Enter' && k.target === k.currentTarget) onOpen(e.id);
-                      }}
-                      className="cursor-pointer transition-colors hover:bg-zinc-900/60 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-violet-400"
-                    >
-                      <td className={`${cell} whitespace-nowrap`}>
-                        <DateCell e={e} />
-                      </td>
-                      <td className={`${cell} font-medium text-zinc-100`}>
-                        <EventTitle event={e} />
-                      </td>
-                      <td className={cell}>
-                        {e.venue || e.city ? (
-                          <>
-                            <div className="text-zinc-200">{e.venue ?? <span className="text-zinc-400">Venue not known</span>}</div>
-                            {e.city && (
-                              <div className="mt-0.5 flex items-center gap-1 text-xs text-zinc-400">
-                                <MapPin className="h-3 w-3 shrink-0" /> {cityOf(e)}
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          dash
-                        )}
-                      </td>
-                      <td className={cell} title={e.seen.map((s) => s.name).join(', ')}>
-                        {e.seen.length ? (
-                          <div className="flex items-start gap-2">
-                            <span className="mt-px shrink-0 rounded-md bg-zinc-800 px-1.5 text-[11px] font-semibold tabular-nums text-zinc-300">
-                              {e.seen.length}
-                            </span>
-                            <div className="space-y-0.5">{artists.length > 0 && <Acts seen={artists} />}</div>
-                          </div>
-                        ) : (
-                          dash
-                        )}
-                      </td>
-                      <td className={cell}>
-                        <DetailsCell
-                          e={e}
-                          kind={kindLabel(e, editions[e.id])}
-                          state={attendanceOf(e, today)}
-                          needs={needs}
-                          confirmed={Boolean(e.editionId)}
-                          onSeries={() => set({ series: e.series! })}
-                        />
-                      </td>
-                    </tr>
+                    <React.Fragment key={e.id}>
+                      {i === todayLine && (
+                        <tr key="today-indicator">
+                          <td colSpan={COLUMNS.length} className="border-b border-zinc-900 px-4 py-2">
+                            <TodayIndicator />
+                          </td>
+                        </tr>
+                      )}
+                      <tr
+                        tabIndex={0}
+                        onClick={() => onOpen(e.id)}
+                        onKeyDown={(k) => {
+                          if (k.key === 'Enter' && k.target === k.currentTarget) onOpen(e.id);
+                        }}
+                        className="cursor-pointer transition-colors hover:bg-zinc-900/60 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-violet-400"
+                      >
+                        <td className={`${cell} whitespace-nowrap`}>
+                          <DateCell e={e} />
+                        </td>
+                        <td className={`${cell} font-medium text-zinc-100`}>
+                          <EventTitle event={e} />
+                        </td>
+                        <td className={cell}>
+                          {e.venue || e.city ? (
+                            <>
+                              <div className="text-zinc-200">{e.venue ?? <span className="text-zinc-400">Venue not known</span>}</div>
+                              {e.city && (
+                                <div className="mt-0.5 flex items-center gap-1 text-xs text-zinc-400">
+                                  <MapPin className="h-3 w-3 shrink-0" /> {cityOf(e)}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            dash
+                          )}
+                        </td>
+                        <td className={cell} title={e.seen.map((s) => s.name).join(', ')}>
+                          {e.seen.length ? (
+                            <div className="flex items-start gap-2">
+                              <span className="mt-px shrink-0 rounded-md bg-zinc-800 px-1.5 text-[11px] font-semibold tabular-nums text-zinc-300">
+                                {e.seen.length}
+                              </span>
+                              <div className="space-y-0.5">{artists.length > 0 && <Acts seen={artists} />}</div>
+                            </div>
+                          ) : (
+                            dash
+                          )}
+                        </td>
+                        <td className={cell}>
+                          <DetailsCell
+                            e={e}
+                            kind={kindLabel(e, editions[e.id])}
+                            state={attendanceOf(e, today)}
+                            needs={needs}
+                            confirmed={Boolean(e.editionId)}
+                            onSeries={() => set({ series: e.series! })}
+                          />
+                        </td>
+                      </tr>
+                    </React.Fragment>
                   );
                 })}
+                {todayLine === rows.length && todayLine > 0 && (
+                  <tr key="today-indicator">
+                    <td colSpan={COLUMNS.length} className="border-b border-zinc-900 px-4 py-2">
+                      <TodayIndicator />
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
 
           <ul className="divide-y divide-zinc-900 rounded-xl border border-zinc-900 md:hidden">
-            {rows.map((e) => {
+            {rows.map((e, i) => {
               const needs = needsOf(e, lineups[e.id]);
               return (
-                <li key={e.id}>
-                  <button onClick={() => onOpen(e.id)} className="flex w-full items-start gap-3 px-3 py-3 text-left hover:bg-zinc-900/60">
-                    <div className="w-28 shrink-0">
-                      <DateCell e={e} />
-                    </div>
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="truncate font-medium text-zinc-100"><EventTitle event={e} /></div>
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-400">
-                        <WentBadge state={attendanceOf(e, today)} />
-                        <KindBadge kind={kindLabel(e, editions[e.id])} />
-                        {formatsOf(e.format).map((f) => (
-                          <FormatChip key={f} value={f} />
-                        ))}
-                        {(e.venue || e.city) && (
-                          <span className="inline-flex min-w-0 items-center gap-1 truncate">
-                            <MapPin className="h-3 w-3 shrink-0 text-zinc-400" />
-                            {[e.venue, cityOf(e)].filter(Boolean).join(' · ')}
-                          </span>
-                        )}
+                <React.Fragment key={e.id}>
+                  {i === todayLine && (
+                    <li key="today-indicator" className="px-3 py-2">
+                      <TodayIndicator />
+                    </li>
+                  )}
+                  <li key={e.id}>
+                    <button onClick={() => onOpen(e.id)} className="flex w-full items-start gap-3 px-3 py-3 text-left hover:bg-zinc-900/60">
+                      <div className="w-28 shrink-0">
+                        <DateCell e={e} />
                       </div>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
-                        {e.seen.length > 0 && <span>{e.seen.length} seen</span>}
-                        {e.rating ? <Stars rating={e.rating} /> : null}
-                        {needs && <NeedsBadge needs={needs} />}
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="truncate font-medium text-zinc-100"><EventTitle event={e} /></div>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-400">
+                          <WentBadge state={attendanceOf(e, today)} />
+                          <KindBadge kind={kindLabel(e, editions[e.id])} />
+                          {formatsOf(e.format).map((f) => (
+                            <FormatChip key={f} value={f} />
+                          ))}
+                          {(e.venue || e.city) && (
+                            <span className="inline-flex min-w-0 items-center gap-1 truncate">
+                              <MapPin className="h-3 w-3 shrink-0 text-zinc-400" />
+                              {[e.venue, cityOf(e)].filter(Boolean).join(' · ')}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
+                          {e.seen.length > 0 && <span>{e.seen.length} seen</span>}
+                          {e.rating ? <Stars rating={e.rating} /> : null}
+                          {needs && <NeedsBadge needs={needs} />}
+                        </div>
                       </div>
-                    </div>
-                  </button>
-                </li>
+                    </button>
+                  </li>
+                </React.Fragment>
               );
             })}
+            {todayLine === rows.length && todayLine > 0 && (
+              <li key="today-indicator" className="px-3 py-2">
+                <TodayIndicator />
+              </li>
+            )}
           </ul>
         </>
       )}

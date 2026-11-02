@@ -4,7 +4,7 @@ import { Fetcher, FetchResponse } from './types';
 // exceed 1 req/s; the others are kept polite.
 const HOST_INTERVAL_MS: Record<string, number> = {
   'api.search.brave.com': 1100,
-  'musicbrainz.org': 1100,
+  'musicbrainz.org': 1500,
   'api.setlist.fm': 600,
   'app.ticketmaster.com': 300,
   'clashfinder.com': 1000,
@@ -107,24 +107,42 @@ export function createRateLimitedFetcher(): Fetcher {
   return {
     async get(url, init = {}): Promise<FetchResponse> {
       const host = assertPublicHttpUrl(url).hostname.replace(/^www\./, '');
-      await waitTurn(host);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), init.timeoutMs ?? 15000);
-      try {
-        const res = await fetch(url, {
-          signal: controller.signal,
-          redirect: 'follow',
-          headers: { 'User-Agent': userAgent(), ...init.headers },
-        }).catch((err) => {
-          const cause = (err as { cause?: { code?: string } })?.cause?.code;
-          throw new Error(`Could not reach ${host}${cause ? ` (${cause})` : ''}: ${err instanceof Error ? err.message : String(err)}`);
-        });
-        const headers: Record<string, string> = {};
-        res.headers.forEach((v, k) => (headers[k] = v));
-        return { url: res.url || url, status: res.status, headers, body: await res.text() };
-      } finally {
-        clearTimeout(timeout);
+      const maxRetries = init.maxRetries ?? (host === 'musicbrainz.org' ? 2 : 0);
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        await waitTurn(host);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), init.timeoutMs ?? 15000);
+        try {
+          const res = await fetch(url, {
+            signal: controller.signal,
+            redirect: 'follow',
+            headers: { 'User-Agent': userAgent(), ...init.headers },
+          }).catch((err) => {
+            const cause = (err as { cause?: { code?: string } })?.cause?.code;
+            throw new Error(`Could not reach ${host}${cause ? ` (${cause})` : ''}: ${err instanceof Error ? err.message : String(err)}`);
+          });
+          const headers: Record<string, string> = {};
+          res.headers.forEach((v, k) => (headers[k] = v));
+          const body = await res.text();
+          const response: FetchResponse = { url: res.url || url, status: res.status, headers, body };
+
+          if ((res.status === 503 || res.status === 429) && attempt < maxRetries) {
+            const retryHeader = headers['retry-after'];
+            const retrySeconds = retryHeader ? Number(retryHeader) : NaN;
+            const delayMs = !Number.isNaN(retrySeconds) && retrySeconds > 0
+              ? Math.min(retrySeconds * 1000, 10000)
+              : 2000 * Math.pow(2, attempt);
+            nextSlot.set(host, Math.max(nextSlot.get(host) ?? 0, Date.now() + delayMs));
+            await new Promise((r) => setTimeout(r, delayMs));
+            continue;
+          }
+
+          return response;
+        } finally {
+          clearTimeout(timeout);
+        }
       }
+      throw new Error(`Exceeded max retries for ${host}`);
     },
   };
 }

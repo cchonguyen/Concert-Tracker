@@ -9,6 +9,10 @@ import { isRetentionTime, runRetention } from '../src/server/events/retention';
 import { accessGateFromEnv, multiUserFromEnv, workerSettings } from '../src/server/auth/config';
 import { supabaseMemberStores } from '../src/server/auth/members';
 import { getSupabaseClient } from '../src/server/supabase';
+import { createEmailNotifier, isDigestTime } from '../src/server/email/notifier';
+import { resendFromEnv } from '../src/server/email/sender';
+import { supabaseEmailPreferences } from '../src/server/email/store';
+import { unsubscribeSecretFromEnv } from '../src/server/email/unsubscribe';
 
 // Cloudflare Worker entry. Static files are served from ./dist by Workers
 // static assets (wrangler.jsonc); only /api/*, the share page (/s/*) and the
@@ -84,10 +88,17 @@ async function ensureServer(env: Env): Promise<void> {
 
 export default {
   async fetch(request, env, ctx) {
-    const access = accessConfigFromEnv(workerSettings(env as unknown as Record<string, unknown>, process.env));
+    const settings = workerSettings(env as unknown as Record<string, unknown>, process.env);
+    const access = accessConfigFromEnv(settings);
     const answered = await frontDoor(request, {
       store: () => getDeps(env).then((d) => d.store),
       access,
+      emailPrefs: async () => {
+        await getDeps(env);
+        const db = getSupabaseClient();
+        return db ? supabaseEmailPreferences(db) : null;
+      },
+      unsubscribeSecret: unsubscribeSecretFromEnv(settings),
     });
     if (answered) return answered;
     const path = new URL(request.url).pathname;
@@ -147,6 +158,28 @@ export default {
         console.log(`Retention: ${purged.events} deleted shows, ${purged.activity} log rows erased.`);
       } catch (err) {
         console.error('Retention failed:', err instanceof Error ? err.message : String(err));
+      }
+    }
+    // Once a day, at 16:00 UTC (8:00 AM PST): send at most 1 digest email of new access requests to the owner.
+    const settings = workerSettings(env as unknown as Record<string, unknown>, process.env);
+    if (isDigestTime(now) && multiUserFromEnv(settings)) {
+      try {
+        const db = getSupabaseClient();
+        if (db) {
+          const stores = supabaseMemberStores(db);
+          const notifier = createEmailNotifier({
+            sender: resendFromEnv(settings),
+            prefs: stores,
+            requests: stores,
+            ownerEmail: settings.OWNER_EMAIL ?? null,
+            secret: unsubscribeSecretFromEnv(settings),
+            now: () => now,
+          });
+          const digest = await notifier.runDigest(now);
+          if (digest.sent) console.log(`Request digest: sent (${digest.count} new requests).`);
+        }
+      } catch (err) {
+        console.error('Request digest failed:', err instanceof Error ? err.message : String(err));
       }
     }
     const due = await deps.store.dueJobs(deps.now(), 5);

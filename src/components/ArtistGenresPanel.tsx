@@ -1,6 +1,6 @@
 import { Dialog } from './ui/Dialog';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FileUp, Loader2, Square, Tags, X } from 'lucide-react';
+import { FileUp, Loader2, RefreshCw, Square, Tags, X } from 'lucide-react';
 import { genresApi, LoggedEvent } from '../services/lineupApi';
 import { ArtistGenres, genresByArtist, missingGenreKeys } from '../services/genres';
 import { MAX_MUSICBRAINZ_GENRES } from '../server/events/genreTypes';
@@ -47,7 +47,15 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
   const fromFile = known.filter((k) => by.get(k)?.source === 'music-story').length;
   const fromYou = known.filter((k) => by.get(k)?.source === 'you').length;
   const missing = useMemo(() => missingGenreKeys(events, rows ?? []), [events, rows]);
-  const checkedNone = [...seenKeys].filter((k) => by.get(k) && !by.get(k)!.genres.length && by.get(k)!.source === 'musicbrainz').length;
+  const noneKeys = useMemo(
+    () => [...seenKeys].filter((k) => by.get(k) && !by.get(k)!.genres.length && by.get(k)!.source === 'musicbrainz'),
+    [seenKeys, by],
+  );
+  const allMbKeys = useMemo(
+    () => [...seenKeys].filter((k) => by.get(k)?.source === 'musicbrainz'),
+    [seenKeys, by],
+  );
+  const checkedNone = noneKeys.length;
 
   const importFile = async (file: File) => {
     setBusy('import');
@@ -73,8 +81,9 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
     }
   };
 
-  const lookUp = async () => {
-    const keys = missing;
+  const lookUp = async (keysToLookup = missing) => {
+    const keys = keysToLookup;
+    if (!keys.length) return;
     stop.current = false;
     setBusy('musicbrainz');
     setError(null);
@@ -91,6 +100,7 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
         setProgress({ done: Math.min(i + MAX_MUSICBRAINZ_GENRES, keys.length), total: keys.length });
       }
       setMessage(`MusicBrainz had genres for ${found} of the ${done} acts looked up${stop.current ? ' before you stopped' : ''}.`);
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -159,9 +169,13 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
             <section className="space-y-2">
               <h3 className="text-sm font-semibold text-zinc-200">2. Look up the rest on MusicBrainz</h3>
               <p className="text-xs text-zinc-400">
-                {hasMap
-                  ? `${missing.length === 1 ? '1 act has' : `${missing.length} acts have`} no genre from music-story and ${missing.length === 1 ? 'has' : 'have'} not been looked up. Each takes a few seconds; only an exact, unambiguous name match is used, and its genres are read through music-story's genre map.`
-                  : 'Import the music-story file first: its genre map is how MusicBrainz genres are read.'}
+                {!hasMap
+                  ? 'Import the music-story file first: its genre map is how MusicBrainz genres are read.'
+                  : missing.length > 0
+                    ? `${missing.length === 1 ? '1 act has' : `${missing.length} acts have`} no genre from music-story and ${missing.length === 1 ? 'has' : 'have'} not been looked up.${noneKeys.length > 0 ? ` (${noneKeys.length} previously looked up with none found)` : ''} Each takes a few seconds; only an exact, unambiguous name match is used, and its genres are read through music-story's genre map.`
+                    : noneKeys.length > 0
+                      ? `All acts have been checked. ${noneKeys.length === 1 ? '1 act was' : `${noneKeys.length} acts were`} looked up with no genre found. You can retry the MusicBrainz scan for ${noneKeys.length === 1 ? 'it' : 'them'}.`
+                      : 'All acts have genres assigned.'}
               </p>
               {busy === 'musicbrainz' ? (
                 <div className="flex items-center gap-3 text-sm text-zinc-300">
@@ -172,9 +186,23 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
                   </button>
                 </div>
               ) : (
-                <button className={button} disabled={!hasMap || !missing.length || Boolean(busy)} onClick={() => void lookUp()}>
-                  <Tags className="h-4 w-4" /> Look up {missing.length} on MusicBrainz
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {missing.length > 0 && (
+                    <button className={button} disabled={!hasMap || Boolean(busy)} onClick={() => void lookUp(missing)}>
+                      <Tags className="h-4 w-4" /> Look up {missing.length} on MusicBrainz
+                    </button>
+                  )}
+                  {noneKeys.length > 0 && (
+                    <button className={button} disabled={!hasMap || Boolean(busy)} onClick={() => void lookUp(noneKeys)}>
+                      <RefreshCw className="h-4 w-4" /> Retry MusicBrainz scan ({noneKeys.length})
+                    </button>
+                  )}
+                  {allMbKeys.length > noneKeys.length && (
+                    <button className={button} disabled={!hasMap || Boolean(busy)} onClick={() => void lookUp(allMbKeys)}>
+                      <RefreshCw className="h-4 w-4" /> Re-scan all ({allMbKeys.length})
+                    </button>
+                  )}
+                </div>
               )}
             </section>
           </>

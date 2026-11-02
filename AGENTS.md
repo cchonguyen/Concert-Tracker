@@ -26,6 +26,8 @@ Read [REQUIREMENTS.md](REQUIREMENTS.md) first: it says what the app is for (reme
 - Public pages at the base address (`/`, `/privacy`, `/terms`, and any new page there) are listed in `PUBLIC_EXACT_PATHS` in `src/server/site/publicPaths.ts` in the same change that adds them. The Worker refuses every page not on that list once Access is on, and `tests/publicPagesList.test.ts` fails when one is missing. Anything under `/app` or `/api` stays off the list.
 - Run `npm run lint` and `npm test` before committing, and add tests for new adapters or rules.
 - Update ARCHITECTURE.md (and REQUIREMENTS.md, if a requirement changes) in the same change when behavior described there changes.
+- When designing a new subsystem or modifying more than 3 architectural areas, present the plan and file breakdown first, and wait for confirmation before modifying code.
+- Store multi-step feature plans and design specs inside the repository (under `docs/` or `specs/`) rather than only in ephemeral session artifacts.
 
 ## Design system
 

@@ -30,13 +30,15 @@ test('access requests: the functions answer only the server, and each transition
   for (const m of ['0002_source_first_lineups.sql', '0003_event_log.sql', '0004_email_imports.sql', '0006_app_settings.sql', '0014_entities.sql', '0015_share_links.sql', '0016_entity_labels.sql', '0017_members_and_user_id.sql']) psql(DB, ['-f', migration(m)]);
   psql(DB, [], `insert into members(email, role) values ('owner@x', 'owner'), ('ann@x', 'member');`);
   psql(DB, ['-f', migration('0024_access_requests.sql')]);
+  psql(DB, ['-f', migration('0028_email_notifications.sql')]);
 
-  // The anon and authenticated keys cannot call any of the four functions.
+  // The anon and authenticated keys cannot call any of the four functions or read email_preferences.
   for (const role of ['anon', 'authenticated']) {
     assert.match(as(role, `select access_request_submit('new@x', null);`), /permission denied/);
     assert.match(as(role, `select access_request_state('new@x', null);`), /permission denied/);
     assert.match(as(role, `select access_request_set('new@x', 'accepted', 'invited');`), /permission denied/);
     assert.match(as(role, `select access_request_removed('ann@x', 'owner');`), /permission denied/);
+    assert.match(as(role, `select * from email_preferences;`), /permission denied/);
   }
 
   // The backfill: existing members are accepted, as invited.

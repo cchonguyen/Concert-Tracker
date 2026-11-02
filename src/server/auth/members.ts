@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { supabaseEmailPreferences, type EmailPreferenceStore } from '../email/store';
 import { supabaseAccessRequests, type AccessRequestStore } from './requests';
 
 // Who may use the app. Cloudflare Access decides who can sign in; this list
@@ -29,6 +30,9 @@ export interface MemberDirectory {
   removeMember(email: string, by?: 'owner' | 'self'): Promise<void>;
   // False for a removed or blocked member. runJob parks their jobs (src/server/lineup/pipeline.ts).
   hasActiveUser(userId: string): Promise<boolean>;
+  // Optional hook run once when an invited member signs in for the first time
+  // and their Auth user is linked (sends the welcome email if not already sent).
+  onFirstJoin?: (email: string) => void | Promise<unknown>;
 }
 
 export interface SignedInMember {
@@ -62,6 +66,11 @@ export async function resolveMember(email: string, dir: MemberDirectory, now = D
   if (!userId) {
     userId = await dir.createAuthUser(key);
     await dir.linkMember(key, userId);
+    if (dir.onFirstJoin) {
+      await Promise.resolve(dir.onFirstJoin(key)).catch((err) => {
+        console.warn('Welcome email on first join failed:', err instanceof Error ? err.message : String(err));
+      });
+    }
   }
   const member: SignedInMember = { email: key, userId, role: found.role };
   cache.set(key, { member, until: now + CACHE_MS });
@@ -121,7 +130,7 @@ export function supabaseMemberDirectory(db: SupabaseClient): MemberDirectory {
   };
 }
 
-// The directory and the request store, both on the service key (one client).
-export function supabaseMemberStores(db: SupabaseClient): MemberDirectory & AccessRequestStore {
-  return { ...supabaseMemberDirectory(db), ...supabaseAccessRequests(db) };
+// The directory, request store and email preference store, all on the service key (one client).
+export function supabaseMemberStores(db: SupabaseClient): MemberDirectory & AccessRequestStore & EmailPreferenceStore {
+  return { ...supabaseMemberDirectory(db), ...supabaseAccessRequests(db), ...supabaseEmailPreferences(db) };
 }
