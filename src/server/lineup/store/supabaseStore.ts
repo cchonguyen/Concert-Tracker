@@ -343,6 +343,9 @@ export class SupabaseLineupStore implements LineupStore {
       updatedAt: row.updated_at,
       performances: perfs.map((p: any) => ({
         artistKey: p.artist_key,
+        slotId: p.slot_id ?? undefined,
+        alias: p.alias ?? undefined,
+        b2b: p.b2b?.length ? p.b2b : undefined,
         name: p.name,
         days: p.days ?? [],
         stages: p.stages ?? [],
@@ -411,17 +414,23 @@ export class SupabaseLineupStore implements LineupStore {
     if (e.performances.length > 0) {
       this.check(
         await this.db.from('performances').insert(
-          e.performances.map((p) => ({
-            edition_id: e.id,
-            artist_key: p.artistKey,
-            name: p.name,
-            days: p.days,
-            stages: p.stages,
-            status: p.status,
-            billing: p.billing ?? null,
-            confidence: p.confidence,
-            sources: p.sources,
-          })),
+          e.performances.map((p) => {
+            const row: Record<string, any> = {
+              edition_id: e.id,
+              artist_key: p.artistKey,
+              name: p.name,
+              days: p.days,
+              stages: p.stages,
+              status: p.status,
+              billing: p.billing ?? null,
+              confidence: p.confidence,
+              sources: p.sources,
+            };
+            if (p.slotId) row.slot_id = p.slotId;
+            if (p.alias) row.alias = p.alias;
+            if (p.b2b?.length) row.b2b = p.b2b;
+            return row;
+          }),
         ),
         'upsertEdition performances',
       );
