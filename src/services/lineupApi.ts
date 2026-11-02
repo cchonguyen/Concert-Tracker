@@ -448,6 +448,21 @@ export const entitiesApi = {
     request<{ entry: HistoryEntry }>(`/api/entities/${id}/links/remove`, post({ to, role })).then((r) => r.entry),
 };
 
+export interface CollaborationItem {
+  alias: string;
+  aliasNormalized: string;
+  canonicalName: string;
+  partners: string[];
+}
+
+export const collaborationsApi = {
+  list: () => request<CollaborationItem[]>('/api/collaborations'),
+  save: (body: { alias: string; partners: string[]; oldAlias?: string }) =>
+    request<{ record: CollaborationItem; entry: HistoryEntry }>('/api/collaborations', post(body)),
+  remove: (alias: string) =>
+    request<{ entry: HistoryEntry }>(`/api/collaborations/${encodeURIComponent(alias)}`, { method: 'DELETE' }),
+};
+
 export const lineupApi = {
   status: () => request<LineupStatus>('/api/lineup/status'),
   retry: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}/run`, post()).then((r) => r.job),

@@ -281,6 +281,11 @@ export class FileLineupStore implements LineupStore {
     await this.save();
   }
 
+  async deleteAlias(alias: string) {
+    delete (await this.load()).aliases[alias];
+    await this.save();
+  }
+
   async getBlocklist(domains: string[]) {
     return clone((await this.load()).blocklist.filter((b) => domains.includes(b.domain)));
   }

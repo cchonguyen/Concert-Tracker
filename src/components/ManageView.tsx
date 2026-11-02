@@ -6,6 +6,7 @@ import { norm } from '../services/listImport';
 import { DataHealth } from './DataHealth';
 import { ManageEntry } from './ManageEntry';
 import { SeriesPanel } from './SeriesPanel';
+import { CollaborationsCard } from './CollaborationsCard';
 import { MenuButton, type MenuOption } from './ui/MenuButton';
 
 // The Manage tab: the records behind your events' names (artists, people,
@@ -334,6 +335,17 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
         />
       ) : (
         <section className="space-y-3">
+          {kind === 'artist' && (
+            <CollaborationsCard
+              allArtists={live.map((e) => ({ id: e.id, name: e.name }))}
+              searchQuery={query}
+              onOpenArtist={(id) => {
+                setKind('artist');
+                setOpenId(id);
+              }}
+              onChanged={changed}
+            />
+          )}
           {kind === 'series' && (
             <details className="rounded-xl border border-zinc-900 p-3">
               <summary className="cursor-pointer text-sm font-semibold text-zinc-200">Link the years of a festival or tour</summary>
