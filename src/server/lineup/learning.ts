@@ -249,6 +249,8 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
         };
     if (reviewed.days) perf.days = reviewed.days;
     if (reviewed.stages) perf.stages = reviewed.stages;
+    if (reviewed.slotId) perf.slotId = reviewed.slotId;
+    if (reviewed.b2b?.length) perf.b2b = reviewed.b2b;
     if (reviewed.billing !== undefined) perf.billing = isBilling(reviewed.billing) ? reviewed.billing : undefined;
     if (reviewed.seen) {
       perf.status = 'performed'; // you were there
