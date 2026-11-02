@@ -53,6 +53,17 @@ test('clashfinder: real list format (title in desc, Unix dates, duplicate slugs)
   assert.equal(matchEdition(spelled, 'EDC', 2026)?.slug, 'edc2026');
 });
 
+test('clashfinder: weekend date proximity and festival stop-words disambiguation', () => {
+  const list = parseEventList({
+    coachella2024w1: { name: 'coachella2024w1', desc: 'Coachella 2024 Weekend 1', startDate: '2024-04-12', edits: 900, numActs: 150 },
+    coachella2024w2: { name: 'coachella2024w2', desc: 'Coachella 2024 Weekend 2', startDate: '2024-04-19', edits: 300, numActs: 150 },
+    portola2023: { name: 'portola2023', desc: 'Portola 2023', startDate: '2023-09-30', edits: 50, numActs: 80 },
+  });
+  assert.equal(matchEdition(list, 'Coachella', 2024, '2024-04-19')?.slug, 'coachella2024w2');
+  assert.equal(matchEdition(list, 'Coachella Weekend 2', 2024)?.slug, 'coachella2024w2');
+  assert.equal(matchEdition(list, 'Portola Music Festival', 2023)?.slug, 'portola2023');
+});
+
 test('clashfinder: parses acts with stage and day', async () => {
   process.env.CLASHFINDER_USERNAME = 'me';
   process.env.CLASHFINDER_PUBLIC_KEY = 'k';
@@ -143,7 +154,8 @@ test('ticketmaster: only listings whose name matches the event', async () => {
 
 test('setlist.fm: date format and event matching', () => {
   assert.equal(toSetlistDate('2025-05-16'), '16-05-2025');
-  assert.equal(belongsToEvent({ venue: { name: 'Las Vegas Motor Speedway' } }, 'EDC', 'Las Vegas Motor Speedway'), true);
+  assert.equal(belongsToEvent({ tour: { name: 'EDC' }, venue: { name: 'Las Vegas Motor Speedway' } }, 'EDC', 'Las Vegas Motor Speedway'), true);
+  assert.equal(belongsToEvent({ venue: { name: 'Las Vegas Motor Speedway' } }, 'EDC', 'Las Vegas Motor Speedway'), false);
   assert.equal(belongsToEvent({ venue: { name: 'Omnia' } }, 'EDC Las Vegas', 'Las Vegas Motor Speedway'), false);
   assert.equal(belongsToEvent({ tour: { name: 'EDC Las Vegas 2025' }, venue: { name: 'LVMS' } }, 'EDC Las Vegas'), true);
 });

@@ -36,7 +36,7 @@ export function redactUrl(raw: string): string {
   }
 }
 
-const SECRET_ENV = [
+export const SECRET_ENV = [
   'GEMINI_API_KEY',
   'TICKETMASTER_API_KEY',
   'SETLISTFM_API_KEY',
@@ -45,6 +45,13 @@ const SECRET_ENV = [
   'CLASHFINDER_PRIVATE_KEY',
   'SUPABASE_SERVICE_ROLE_KEY',
   'SUPABASE_ANON_KEY',
+  'SUPABASE_JWT_SECRET',
+  'IMPORT_TOKEN',
+  'GOOGLE_CLIENT_SECRET',
+  'SHEETS_TOKEN_ENC_KEY',
+  'GOOGLE_PICKER_API_KEY',
+  'RESEND_API_KEY',
+  'EMAIL_UNSUBSCRIBE_SECRET',
 ];
 
 // Last line of defence for text shown to people: removes configured secret

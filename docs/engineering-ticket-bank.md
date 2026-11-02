@@ -41,6 +41,18 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 | **FEAT-02** | Feature | Bulk Fast Back-Fill Mode (Multi-Line Batch Capture) | P2 | Medium | `src/components/`, `src/server/` |
 | **FEAT-03** | Feature | Single-Artist Performance Setlist Linking (setlist.fm) — **blocked** | P2 | Medium | `src/server/events/`, `src/components/` |
 | **FEAT-04** | Feature | Client-Side Shareable Poster & Year-in-Review Image Export | P2 | Medium | `src/components/`, `src/services/` |
+| **LINEUP-01** | Lineup | Decouple Web Discovery from Zero Claims ("Starvation Bug") | P1 | Small | `src/server/lineup/pipeline.ts` |
+| **LINEUP-02** | Lineup | Clashfinder Weekend & Date-Window Matching Disambiguation | P1 | Medium | `src/server/lineup/adapters/clashfinder.ts` |
+| **LINEUP-03** | Lineup | Content-Aware Lineup Windowing & Navigation Stripping | P2 | Medium | `src/server/lineup/text.ts` |
+| **LINEUP-04** | Lineup | Tighten Setlist.fm Venue Matching Against Concurrent Shows | P2 | Small | `src/server/lineup/adapters/setlistfm.ts` |
+| **LINEUP-05** | Lineup | Canonical Edition Re-Sync / Freshness Protocol — **blocked** | P2 | Large | `src/server/lineup/` |
+| **PERF-04** | Optimization | Clashfinder `all.json` Worker Caching & Memory Guard | P2 | Small | `src/server/lineup/adapters/clashfinder.ts` |
+| **PERF-05** | Optimization | Client Bundle Code-Splitting for Heavy Sub-Views | P2 | Medium | `src/App.tsx`, `vite.config.ts` |
+| **TECH-01** | Reliability | Eliminate Catastrophic Backtracking in `htmlToText` | P2 | Medium | `src/server/lineup/text.ts` |
+| **TECH-02** | Tech Debt | Strict Typing for Source Adapters (Eliminate `any`) | P3 | Small | `src/server/lineup/adapters/` |
+| **TECH-03** | Reliability | Subrequest Budget Guard for Worker Pipeline Runs | P2 | Medium | `src/server/lineup/pipeline.ts` |
+| **TECH-04** | Tooling | In-Memory Express Request Dispatcher for Integration Tests | P2 | Medium | `tests/helpers/testApp.ts` |
+| **TECH-05** | Tooling | Modernize Vite Config to Native Mode (`import.meta.dirname`) | P3 | Trivial | `vite.config.ts` |
 
 ---
 
@@ -441,6 +453,194 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
   3. Provide "Copy Image" (Clipboard API) and "Download PNG" actions.
 - **Invariants**: 100% client-side; no server-side rendering or image storage; privacy fields (notes, companions) excluded.
 - **Test Plan**: Generate PNG for test event; verify output dimensions and crisp rendering on retina displays.
+
+---
+
+## Track 7: Lineup Discovery & Robustness
+
+### [LINEUP-01] Decouple Web Discovery from Zero Claims ("Starvation Bug")
+- **Classification**: Bug / Pipeline Robustness
+- **Priority**: P1 (High)
+- **Files**: [`src/server/lineup/pipeline.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/pipeline.ts)
+- **Problem**:
+  In `stageExtract`, transition to `stageDiscover` only triggers if `claims.length === 0`. If Ticketmaster returns a stub listing with only 1 or 2 headliners for a 100-act festival, `claims.length > 0`, so web search and promoter discovery never run. The festival is merged with an incomplete 2-artist lineup.
+- **Implementation Strategy**:
+  1. Define a stub lineup heuristic: an event is considered a stub if `claims.length === 0`, OR if `claims.length < 5` and the event is a multi-day festival (e.g., `job.input.endDate && job.input.endDate !== job.input.startDate`).
+  2. In `stageExtract`, allow transitioning to `discover` when claims are sparse:
+     ```typescript
+     const isSparseFestival = (job.input.endDate && job.input.endDate !== job.input.startDate) && claims.length < 5;
+     const needsDiscovery = (claims.length === 0 || isSparseFestival) && canDiscover;
+     job.stage = needsDiscovery ? 'discover' : 'merge';
+     ```
+  3. Ensure existing claims from the first wave are preserved and merged alongside newly discovered claims in `stageMerge`.
+- **Invariants**: Discovered claims still require verbatim verification; snippets are never claims.
+- **Test Plan**: Unit test in `tests/pipeline.test.ts` where Ticketmaster returns 1 performer for a 3-day festival → assert `job.stage === 'discover'` and search is invoked.
+
+---
+
+### [LINEUP-02] Clashfinder Weekend & Date-Window Matching Disambiguation
+- **Classification**: Matching Correctness
+- **Priority**: P1 (High)
+- **Files**: [`src/server/lineup/adapters/clashfinder.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/adapters/clashfinder.ts)
+- **Problem**:
+  `matchEdition` selects candidate clashes based on edit count without verifying weekend or specific event dates. For festivals with multiple weekends (e.g. Coachella W1 vs W2, Tomorrowland), Weekend 2 attendees are silently given Weekend 1 timetables. Additionally, strict word matching (`wanted.every(...)`) rejects valid clashes if the user's event title includes extraneous descriptor tokens like "Festival" or "Weekend 1".
+- **Implementation Strategy**:
+  1. Extract weekend tokens from event names (e.g. `w1`, `w2`, `weekend 1`, `wknd 2`) via `weekendFromName`.
+  2. When candidate entries have `startDate`:
+     - Compare entry `startDate` with `ctx.input.startDate`. A clash whose start date matches the event's start date within ±2 days receives a heavy score bonus (`+500,000`).
+     - If the event specifies Weekend N, penalize clashes that explicitly declare a different weekend in their title or slug.
+  3. Relax title matching: strip generic festival stop-words (`music`, `festival`, `arts`, `annual`) from the comparison so `"Portola Music Festival"` matches a Clashfinder entry titled `"Portola 2023"`.
+- **Invariants**: Speculative and fantasy clashes remain rejected (`SPECULATIVE.test(name)`).
+- **Test Plan**:
+  - Add test in `tests/adapters.test.ts` with mock editions for `coachella2024w1` (900 edits, April 12) and `coachella2024w2` (300 edits, April 19).
+  - Searching for Coachella with `startDate: '2024-04-19'` must pick `coachella2024w2`.
+
+---
+
+### [LINEUP-03] Content-Aware Lineup Windowing & Navigation Stripping
+- **Classification**: Extraction Reliability
+- **Priority**: P2 (Medium)
+- **Files**: [`src/server/lineup/text.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/text.ts), [`src/server/lineup/gemini.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/gemini.ts)
+- **Problem**:
+  `lineupWindow` searches for `/line[- ]?up|artists|performers/i` and takes a 40,000 character substring. In practice, site navigation headers trigger this match within the first 200 characters, taking the top 40,000 characters of hero copy, ticket tiers, and FAQs, while silently truncating alphabetical lineups at the bottom of the page.
+- **Implementation Strategy**:
+  1. Improve boilerplate reduction in `htmlToText`: strip `<nav>`, `<header>`, `<footer>`, `<dialog>`, and inline SVG blocks before plain-text extraction.
+  2. Implement block-density windowing:
+     - Search for clusters where line length is short and artist-like (e.g. blocks of lines with 2–35 characters).
+     - If the document exceeds `MAX_DOC_CHARS` (40k), start the window at the highest-density roster block rather than the first keyword occurrence.
+- **Invariants**: `isVerbatim` check must still pass against the raw stored document.
+- **Test Plan**: Test against a synthetic HTML page with a 10kb navigation/FAQ header and a 50kb roster → verify names from the end of the alphabet (e.g. "Zedd") are preserved in the extraction window.
+
+---
+
+### [LINEUP-04] Tighten Setlist.fm Venue Matching Against Concurrent Shows
+- **Classification**: Correctness / False Positives
+- **Priority**: P2 (Medium)
+- **Files**: [`src/server/lineup/adapters/setlistfm.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/adapters/setlistfm.ts)
+- **Problem**:
+  In `belongsToEvent`, a setlist is accepted if `venue` matches, with zero validation against the event or artist name:
+  ```typescript
+  if (venue && v && (v.includes(normalizeName(venue)) || normalizeName(venue).includes(v))) return true;
+  ```
+  At major complexes with multiple rooms (e.g. Brooklyn Mirage / Kings Hall, The O2, Printworks) or multi-show days, setlists from completely unrelated concurrent events at the same venue are pulled in.
+- **Implementation Strategy**:
+  1. For single-artist concerts: require either the artist name, tour name, or event name to overlap with the setlist artist/tour.
+  2. For festivals: if matching by venue alone, only accept the setlist if the artist was already billed by another primary source (Clashfinder, promoter, or Ticketmaster), using setlist.fm strictly as a *confirmatory* source as documented.
+- **Invariants**: Do not add unknown acts as confirmed performers based on venue alone.
+- **Test Plan**: Add test where venue is "Brooklyn Mirage" on date `2024-06-15`, but setlist artist is "Ambient Artist" while event is "Techno Night" with no overlap → assert `belongsToEvent` returns `false`.
+
+---
+
+### [LINEUP-05] Canonical Edition Re-Sync / Freshness Protocol
+- **Classification**: Architecture / Cache Evolution
+- **Priority**: P2 (Medium)
+- **Files**: [`src/server/lineup/pipeline.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/pipeline.ts), [`src/server/lineup/service.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/service.ts)
+- **Status**: **BLOCKED / REQUIRES ARCHITECTURAL ALIGNMENT**
+- **Problem**:
+  Invariant 5 mandates: *"Resolve once, reuse forever."* If an edition is resolved early (e.g. Phase 1), later lookups reuse the cached edition with zero network calls, preventing users from seeing final timetables.
+- **Required Alignment**:
+  - Requires updating ARCHITECTURE.md to define the conditions for edition re-sync (e.g. only when requested on events that were resolved prior to the event's end date).
+  - Must specify behavior for `logged_events.seen` acts that users already marked as seen.
+
+---
+
+## Track 8: Engineering Excellence, Performance & Tech Debt
+
+### [PERF-04] Clashfinder `all.json` Worker Caching & Memory Guard
+- **Classification**: Performance & Worker Stability
+- **Priority**: P2 (Medium)
+- **Files**: [`src/server/lineup/adapters/clashfinder.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/adapters/clashfinder.ts), [`src/server/lineup/http.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/http.ts)
+- **Problem**:
+  When a festival slug is unknown, the adapter fetches `https://clashfinder.com/data/events/all.json`. This endpoint contains the full history of all Clashfinder events. Repeatedly parsing this multi-megabyte payload in a Cloudflare Worker risks exceeding the isolate memory and CPU execution limits.
+- **Implementation Strategy**:
+  1. Cache the parsed event list in memory / KV with a 24-hour TTL, keyed by date.
+  2. Abort gracefully with a log entry if `all.json` exceeds 10MB or fetch timeout exceeds 10 seconds.
+- **Invariants**: Never bypass rate limiting on `clashfinder.com` (1 req/sec).
+- **Test Plan**: Mock `all.json` response; verify subsequent lookups within 24 hours hit cache without repeating the HTTP GET.
+
+---
+
+### [PERF-05] Client Bundle Code-Splitting for Heavy Sub-Views
+- **Classification**: Performance & Mobile Optimization
+- **Priority**: P2 (Medium)
+- **Files**: [`src/App.tsx`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/App.tsx), [`vite.config.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/vite.config.ts)
+- **Problem**:
+  `npm run build` generates a single monolithic client bundle of 883 kB (`app-*.js`), triggering Vite's chunk size warning. All views—including `MapView` (which pulls in Leaflet), `TimelineTab` (River, Month, Heatmap, Agenda), and `ManageView`—are loaded synchronously on the initial visit. For mobile phone users capturing events on cellular connections, this hurts time-to-interactive.
+- **Implementation Strategy**:
+  1. Wrap non-critical top-level views in `React.lazy()` with a lightweight fallback:
+     ```typescript
+     const MapView = React.lazy(() => import('./components/MapView'));
+     const TimelineTab = React.lazy(() => import('./components/timeline/TimelineTab'));
+     const ManageView = React.lazy(() => import('./components/ManageView'));
+     ```
+  2. Configure Vite `build.rollupOptions.output.manualChunks` to split large vendor dependencies (`leaflet`, `lucide-react`) into standalone cached chunks.
+- **Invariants**: Capture bar and Events Home must remain instantly available without loading delays.
+- **Test Plan**: `npm run build`; assert main vendor entry point drops below 350 kB; verify Map and Timeline tabs load on demand.
+
+---
+
+### [TECH-01] Safe HTML-to-Text Parser (Eliminate Catastrophic Regex Backtracking)
+- **Classification**: Performance & Reliability
+- **Priority**: P2 (Medium)
+- **Files**: [`src/server/lineup/text.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/text.ts)
+- **Problem**:
+  `htmlToText` executes global regexes with greedy dot-matching across raw HTML bodies (`replace(/<script[\s\S]*?<\/script>/gi, ' ')`). On malformed or unclosed tags in large scraped documents (1–3 MB), `[\s\S]*?` causes catastrophic backtracking in V8, locking the Worker thread and throwing CPU limit exceptions.
+- **Implementation Strategy**:
+  1. Replace nested multiline regexes with a safe single-pass parser or non-backtracking tokenizer.
+  2. Enforce a hard maximum input size before processing (e.g. `body.slice(0, 1_000_000)`).
+- **Test Plan**: Benchmark with an unclosed `<script>` tag across a 2MB payload; assert completion in < 15 ms without regex timeout.
+
+---
+
+### [TECH-02] Strict Typing for Source Adapters (Eliminate `any` in Parsers)
+- **Classification**: Type Safety & Tech Debt
+- **Priority**: P3 (Low)
+- **Files**: [`src/server/lineup/adapters/clashfinder.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/adapters/clashfinder.ts), [`src/server/events/details.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/events/details.ts)
+- **Problem**:
+  Multiple adapter entry points use `any` for parsed payloads (e.g., `parseEventData(json: any)` in `clashfinder.ts:126`, `parseJson<any>(res)` in `details.ts:135`, and `read(slug: unknown, v: any)` in `clashfinder.ts:62`). This disables TypeScript strict checks across raw external JSON contracts.
+- **Implementation Strategy**:
+  1. Define explicit TypeScript interfaces for Clashfinder event payloads (`ClashfinderLocation`, `ClashfinderEvent`, `ClashfinderApiEventList`).
+  2. Use runtime type guards (`isRecord`, `isString`) instead of raw type assertions.
+- **Test Plan**: `npm run lint` and `npm test` with strict null checks.
+
+---
+
+### [TECH-03] Subrequest Budget Guard for Worker Pipeline Runs
+- **Classification**: Cloudflare Worker Hardening
+- **Priority**: P2 (Medium)
+- **Files**: [`src/server/lineup/pipeline.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/pipeline.ts), [`src/server/lineup/http.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/http.ts)
+- **Problem**:
+  Cloudflare Workers have a hard ceiling of 50 subrequests (external `fetch` or Supabase REST queries) per invocation. A single lookup run that triggers first-wave adapters (Clashfinder, Ticketmaster, Wayback checks, redirects) + Gemini extraction + search discovery can hit the 50-call limit, crashing the queue worker unhandled.
+- **Implementation Strategy**:
+  1. Introduce a subrequest counter on `Fetcher`.
+  2. If subrequests approach 40 within a single job execution, pause the job, persist current state, and re-enqueue the next stage to be picked up in a fresh Worker invocation.
+- **Test Plan**: Simulate an invocation with 42 mock subrequests → assert job pauses with status `running` and yields without throwing Worker limit error.
+
+---
+
+### [TECH-04] In-Memory Express Request Dispatcher for Integration Tests
+- **Classification**: Engineering Excellence & Test Speed
+- **Priority**: P2 (Medium)
+- **Files**: `tests/helpers/testApp.ts`, integration test files
+- **Problem**:
+  13 test files currently spin up a real HTTP server with `app.listen(0)` and make real TCP requests to `127.0.0.1`. This introduces port-binding race conditions, slows down the test suite by several seconds, and causes `connect EPERM` failures in isolated sandboxes.
+- **Implementation Strategy**:
+  1. Create a lightweight test helper `dispatch(app, requestInit)` that passes a `Request` through Express middleware in memory via Node's `http.IncomingMessage` / `http.ServerResponse` mocks without opening real OS network sockets.
+  2. Migrate `tests/shareApi.test.ts` and `tests/sheets.test.ts` onto this in-memory caller.
+- **Test Plan**: Run all migrated test files in a restricted sandbox without loopback permissions → assert 100% pass rate in < 200 ms.
+
+---
+
+### [TECH-05] Modernize Vite Config to Native Mode
+- **Classification**: Cleanup / Build Tooling
+- **Priority**: P3 (Low)
+- **Files**: [`vite.config.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/vite.config.ts)
+- **Problem**:
+  Vite 8 logs a deprecation warning on every build:
+  `Your Vite config uses features that are unsupported by configLoader: 'native'... __dirname (vite.config.ts:8:65). Use import.meta.dirname instead.`
+- **Implementation Strategy**:
+  Replace `__dirname` with `import.meta.dirname` in [`vite.config.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/vite.config.ts#L8).
+- **Test Plan**: Run `npm run build`; assert zero deprecation warnings.
 
 ---
 
