@@ -144,6 +144,7 @@ export interface CandidateSource {
 
 export interface CandidatePerformer {
   key: string; // normalized merge key
+  slotId?: string; // identifier of the performance slot (shared by B2B partners)
   name: string;
   mbid?: string;
   days: string[];
@@ -216,6 +217,7 @@ export interface SeriesRecord {
 }
 
 export interface EditionPerformance {
+  slotId?: string; // identifier of the performance slot (shared by B2B partners)
   artistKey: string;
   name: string;
   mbid?: string;
@@ -226,6 +228,7 @@ export interface EditionPerformance {
   status: 'billed' | 'performed' | 'cancelled';
   billing?: Billing; // absent: no lead stated (filed under Artist)
   confidence: number;
+  b2b?: string[]; // partners in this B2B performance
   sources: CandidateSource[];
 }
 
