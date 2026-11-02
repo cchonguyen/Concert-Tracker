@@ -23,7 +23,7 @@ import { StatsView } from './components/StatsView';
 import { MapView } from './components/MapView';
 import { TimelineTab } from './components/timeline/TimelineTab';
 import { useTheme } from './components/ThemePicker';
-import { MenuButton } from './components/MenuButton';
+import { AppHeaderMenu } from './components/AppHeaderMenu';
 import { SharePanel } from './components/SharePanel';
 import { QuickAdd, QuickAddButton, QuickAddFab } from './components/QuickAdd';
 import { useToast } from './components/ui/Toast';
@@ -369,14 +369,18 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   // Needs you on Home: shows waiting for a yes or no, and lineups still being looked up.
   const confirmCount = homeSummary(events, lineups, today).toConfirm.length;
   const researchingCount = Object.values(lineups).filter((l) => isActive(l.status)).length;
+  const notice = Boolean(me.multiUser && me.noticeAccepted === false);
 
   return (
     <MeProvider me={me}>
-    {me.multiUser && me.noticeAccepted === false && (
+    {notice && (
       <NoticeModal onAccepted={() => setMe((m) => ({ ...m, noticeAccepted: true }))} />
     )}
     <VaultProvider events={events} onChanged={refresh}>
-    <div className="min-h-screen bg-zinc-950 font-sans text-zinc-100 selection:bg-violet-600 selection:text-white flex flex-col">
+    <div
+      inert={Boolean(notice)}
+      className="min-h-screen bg-zinc-950 font-sans text-zinc-100 selection:bg-violet-600 selection:text-white flex flex-col"
+    >
       {sampleMe?.sample && (
         <SampleBanner mode={sampleMe.sample} email={sampleMe.email} signedIn={document.documentElement.hasAttribute('data-signed-in')} />
       )}
@@ -416,7 +420,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
               })}
             </nav>
             <QuickAddButton onClick={() => (readOnly ? askSample('add') : setQuickAdd(true))} />
-            <MenuButton
+            <AppHeaderMenu
               theme={theme}
               canMembers={me.multiUser && me.role === 'owner'}
               canAccount={me.multiUser}

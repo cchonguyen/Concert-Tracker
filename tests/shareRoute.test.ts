@@ -152,6 +152,30 @@ test('Access tokens: only a signed, current token for this app and team passes',
   assert.equal(await check(`${h}.${p}.`), false);
 });
 
+test('Access token keys: imported CryptoKey is cached by kid and cleared by clearAccessKeys', async () => {
+  const { config, sign, good, getJson } = await accessFixture();
+  let importCalls = 0;
+  const originalImport = crypto.subtle.importKey.bind(crypto.subtle);
+  crypto.subtle.importKey = (async (...args: Parameters<typeof originalImport>) => {
+    importCalls++;
+    return originalImport(...args);
+  }) as typeof crypto.subtle.importKey;
+  try {
+    const token = await sign(good);
+    assert.equal(await verifyAccessToken(token, config, NOW.getTime(), getJson), true);
+    assert.equal(importCalls, 1);
+    // Second verification with the same kid reuses the cached CryptoKey without re-importing
+    assert.equal(await verifyAccessToken(token, config, NOW.getTime(), getJson), true);
+    assert.equal(importCalls, 1);
+    // After clearing the cache, verification imports the key again
+    clearAccessKeys();
+    assert.equal(await verifyAccessToken(token, config, NOW.getTime(), getJson), true);
+    assert.equal(importCalls, 2);
+  } finally {
+    crypto.subtle.importKey = originalImport;
+  }
+});
+
 test('with Access configured, everything but the share page needs a valid token', async () => {
   const { store, code } = await setup();
   const { config, sign, good, getJson } = await accessFixture();

@@ -105,6 +105,8 @@ export interface LineupStore {
   putEvents(events: LoggedEvent[]): Promise<void>;
   getEvent(id: string): Promise<LoggedEvent | null>;
   listEvents(): Promise<LoggedEvent[]>;
+  // Distinct or all artist names you have seen across non-deleted events, for spelling resolution.
+  listSeenArtistNames(): Promise<string[]>;
   // Delete moves a show to Recently deleted; restore brings it back; the nightly job purges old trash.
   deleteEvent(id: string): Promise<void>;
   restoreEvent(id: string): Promise<boolean>;

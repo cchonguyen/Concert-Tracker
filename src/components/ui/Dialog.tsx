@@ -2,9 +2,11 @@ import { useEffect, useRef, type ReactNode } from 'react';
 
 interface Props {
   title: string; // Read by screen readers as the dialog's name. Shown by the content, not here.
-  onClose: () => void;
+  onClose?: () => void;
   placement?: 'side' | 'center';
   panelClassName?: string; // Replaces the default panel look, for panels that already have their own width and padding.
+  dismissible?: boolean;
+  layer?: 'normal' | 'top';
   children: ReactNode;
 }
 
@@ -19,10 +21,20 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), selec
 // A modal dialog shell: a side panel (side) or a centred card (center).
 // While open it moves focus inside, keeps Tab inside, closes on Escape or an outside press, locks page scroll,
 // and returns focus to the control that opened it.
-export function Dialog({ title, onClose, placement = 'side', panelClassName, children }: Props) {
+export function Dialog({
+  title,
+  onClose,
+  placement = 'side',
+  panelClassName,
+  dismissible = true,
+  layer = 'normal',
+  children,
+}: Props) {
   const panel = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const dismissibleRef = useRef(dismissible);
+  dismissibleRef.current = dismissible;
 
   // Blur the field being typed in first, so its save runs before the panel unmounts. iOS Safari
   // does not always fire blur on close, so a typed value could be lost without this.
@@ -30,7 +42,7 @@ export function Dialog({ title, onClose, placement = 'side', panelClassName, chi
     if (document.activeElement instanceof HTMLElement && panel.current?.contains(document.activeElement)) {
       document.activeElement.blur();
     }
-    closeRef.current();
+    closeRef.current?.();
   };
 
   useEffect(() => {
@@ -44,6 +56,10 @@ export function Dialog({ title, onClose, placement = 'side', panelClassName, chi
     const onKey = (e: KeyboardEvent) => {
       if (openDialogs[openDialogs.length - 1] !== id) return;
       if (e.key === 'Escape') {
+        if (!dismissibleRef.current) {
+          e.preventDefault();
+          return;
+        }
         flushAndClose();
         return;
       }
@@ -74,10 +90,15 @@ export function Dialog({ title, onClose, placement = 'side', panelClassName, chi
   }, []);
 
   const center = placement === 'center';
+  const zClass = layer === 'top' ? 'z-[100]' : center ? 'z-50' : 'z-40';
   return (
     <div
-      className={center ? 'fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-start sm:pt-24' : 'fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm'}
-      onMouseDown={flushAndClose}
+      className={
+        center
+          ? `fixed inset-0 ${zClass} flex items-end justify-center bg-black/60 sm:items-start sm:pt-24`
+          : `fixed inset-0 ${zClass} flex justify-end bg-black/60 backdrop-blur-sm`
+      }
+      onMouseDown={dismissible ? flushAndClose : undefined}
     >
       <div
         ref={panel}

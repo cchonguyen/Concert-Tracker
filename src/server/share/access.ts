@@ -25,15 +25,29 @@ const json = (s: string) => JSON.parse(new TextDecoder().decode(b64url(s)));
 
 // Signing keys, per team, for an hour; fetched again when a token names a
 // key not held.
-const keyCache = new Map<string, { keys: Jwk[]; until: number }>();
+interface CachedTeamKeys {
+  keys: Jwk[];
+  cryptoKeys: Map<string, CryptoKey>;
+  until: number;
+}
 
-async function keysFor(config: AccessConfig, getJson: GetJson, now: number, refresh: boolean): Promise<Jwk[]> {
+const keyCache = new Map<string, CachedTeamKeys>();
+
+async function keysFor(config: AccessConfig, getJson: GetJson, now: number, refresh: boolean): Promise<CachedTeamKeys> {
   const hit = keyCache.get(config.teamDomain);
-  if (hit && hit.until > now && !refresh) return hit.keys;
+  if (hit && hit.until > now && !refresh) return hit;
   const body = (await getJson(`${config.teamDomain}/cdn-cgi/access/certs`)) as { keys?: Jwk[] };
   const keys = Array.isArray(body?.keys) ? body.keys : [];
-  keyCache.set(config.teamDomain, { keys, until: now + 3_600_000 });
-  return keys;
+  const validKids = new Set(keys.map((k) => k.kid).filter((k): k is string => Boolean(k)));
+  const cryptoKeys = new Map<string, CryptoKey>();
+  if (hit) {
+    for (const [kid, key] of hit.cryptoKeys) {
+      if (validKids.has(kid)) cryptoKeys.set(kid, key);
+    }
+  }
+  const entry: CachedTeamKeys = { keys, cryptoKeys, until: now + 3_600_000 };
+  keyCache.set(config.teamDomain, entry);
+  return entry;
 }
 
 export const clearAccessKeys = () => keyCache.clear();
@@ -79,10 +93,21 @@ export async function readAccessClaims(token: string | null | undefined, config:
     if (payload.iss !== config.teamDomain) return refused(`issuer ${payload.iss} does not match ACCESS_TEAM_DOMAIN ${config.teamDomain}`);
     if (typeof payload.exp !== 'number' || payload.exp * 1000 <= now) return refused('token has expired (or clock is off)');
     if (typeof payload.nbf === 'number' && payload.nbf * 1000 > now + 60_000) return refused('token is not valid yet (clock is off)');
-    let jwk = (await keysFor(config, getJson, now, false)).find((k) => k.kid === header.kid);
-    jwk ??= (await keysFor(config, getJson, now, true)).find((k) => k.kid === header.kid);
-    if (!jwk) return refused('no signing key matches the token kid');
-    const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+    let cached = await keysFor(config, getJson, now, false);
+    let key = cached.cryptoKeys.get(header.kid);
+    if (!key) {
+      let jwk = cached.keys.find((k) => k.kid === header.kid);
+      if (!jwk) {
+        cached = await keysFor(config, getJson, now, true);
+        key = cached.cryptoKeys.get(header.kid);
+        jwk = cached.keys.find((k) => k.kid === header.kid);
+      }
+      if (!key && jwk) {
+        key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+        if (jwk.kid) cached.cryptoKeys.set(jwk.kid, key);
+      }
+    }
+    if (!key) return refused('no signing key matches the token kid');
     const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64url(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
     if (!ok) return refused('signature does not verify');
     // A service token (machine login) has no email; only people are members.
