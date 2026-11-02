@@ -1,14 +1,24 @@
 # Session Handoff
 
-- **Active slice:** none. Share S1 (PR #57), S2 (PR #60) and S3 done; Manage M6 done (2026-10-28): all Manage slices built.
-- **Last step (Manage M6):** insights in `src/services/insights.ts` (artist gaps on Artists cards and artist pages, person shows together / first show / seen only with them, `introduced_me_to` person→artist link, series editions and streaks). Tests: `tests/insights.test.ts`.
-- **Earlier (Manage M5b):** Labels category in Manage (add with group), Labels + Details sections on venue/series pages (linked offers, group gap chips), label page lists its records, Data health shows gaps, offers, rare labels, offered cities, venues with no place.
-- **Earlier (Manage M5a):** labels as records (kind `label`, migration 0016, `has_label` links from venue/series, one per group), per-kind details (`src/server/entities/attrs.ts`, `PATCH /api/entities/:id/attrs`), Data health queries in `src/services/dataHealth.ts` (category gaps, linked label offers, rare labels, venues without place, venues with offered cities). Tests: `tests/labels.test.ts`.
-- **Earlier (Manage M4b):** `PersonName` + `PeopleProvider` (`src/components/PersonName.tsx`) pick full / First L. / initials by measured width; used in the Table's With column. Person page in Manage has First, Last, Note (Save renames everywhere). `people.ts` now uses the client `norm` (the server `normalizeName` pulls in node:crypto).
-- **Earlier (Manage M4a):** person first/last name and note via `PATCH /api/entities/:id/person` (`updatePerson` in `manage.ts`, history operation `details` for a note-only change, else a rename); display forms in `src/services/people.ts` (`displayNames`: full, First L., initials, one step longer on collision). Tests: `tests/people.test.ts`.
-- **Earlier (Manage M3b):** Data health category in Manage (`src/components/DataHealth.tsx`): venues whose events disagree on the city with one-tap city chips, rerun of the agree-only venue pass, look-alike groups with confirmed merge.
-- **Last step (Share S3):** owner controls at `/api/share` (`src/server/share/routes.ts`: status, create, settings, turn off, preview) and `SharePanel.tsx` behind a Share button in Stats. The full link is kept only in the making browser's localStorage (`share-link`). Tests: `tests/shareApi.test.ts`.
-- **Earlier (Manage M3a):** a venue in a place fills its events' city, state and country on every save (`src/server/entities/venuePlace.ts`, linking store), marked `sourceType: 'venue'`; replaced cities kept as `attrs.placeOffers` on the venue; old weather flagged `cityChanged`. New venues saved with a city are put in it; a one-time pass after the first backfill (`backfillVenuePlaces`, setting `venue_places_backfill`) links only venues whose events agree, as one undoable change. `GET /api/entities/health` lists venues whose events disagree; `POST /api/entities/venues/places` reruns the pass. Tests: `tests/venuePlace.test.ts`.
-- **Earlier (Share S2):** `src/server/share/door.ts` runs first in `worker/index.ts`; `page.ts` renders script-free escaped HTML; `access.ts` verifies the Access JWT when `ACCESS_TEAM_DOMAIN` + `ACCESS_AUD` are set. Tests: `tests/shareRoute.test.ts`.
-- **Next steps:** Manage: no slices left; Charlie to apply 0014 + 0016 and deploy, then review the Manage tab. Share: Slice S4 (release, needs Charlie and the Mac).
-- **Blockers:** Share S4 needs Charlie: Access team domain and audience tag, then the Access bypass app on `/s/*`, then deploy from the Mac. Migration 0015 is already applied. Manage needs migrations 0014 and 0016 applied before deploy (0016 only for labels).
+- **Last Active Platform:** Google Antigravity
+- **Active Branch / State:** `antigravity/multi-favourite-sets`
+- **Branch Owner:** Antigravity / Charlie Cho Nguyen
+- **Active slice:** B2B and Solo Performance Architecture & Multiple Favourites
+- **Files Modified in Last Turn:**
+  - `src/server/events/types.ts`: Added `id?: string`, `slotId?: string` to `SeenAct`.
+  - `src/server/lineup/types.ts`: Added `slotId?: string`, `b2b?: string[]` to `EditionPerformance` and `CandidatePerformer`.
+  - `src/server/lineup/actName.ts`: Updated `B2B` regex to handle multi-B2Bs (`A b2b B b2b C`), `vs`, `vs.`, and variants.
+  - `src/server/lineup/merge.ts`: Group claims by performance slot (`artistKey::solo` vs `artistKey::b2b::slotSignature`), avoiding collapsing solo and B2B claims into one.
+  - `src/server/lineup/learning.ts`: Preserved `b2b`, `slotId`, and instance `id` in `toPerformance`, `confirmLookup`, `confirmLookupForMember`, `dedupe`, and `mergeSeen`.
+  - `src/server/lineup/pipeline.ts`: Preserved `b2b` and `slotId` in `candidateFromEdition`.
+  - `src/server/events/seen.ts`: Refactored `seenSlots`, `withB2b`, `b2bGroups`, and `toSeenInput` to support multiple performance instances per artist. Exported `lineupSlots`.
+  - `src/server/events/service.ts`: Preserved `id` and `slotId` in `cleanSeen` without collapsing distinct performances.
+  - `src/services/reviewRows.ts`: Grouped candidate review slots using `groupReviewSlots`.
+  - `src/components/LineupReview.tsx`: Rendered B2B slots as unified review rows with synchronized "Saw it" and "Keep" actions.
+  - `src/components/EventDetail.tsx`: Rendered B2B lineup pills as unified `[Artist A b2b Artist B]` pills and disambiguated act selection in "Who you saw".
+  - `src/services/stats.ts`: Counted viewings linearly for each instance in `e.seen` while unique artists remains distinct keys.
+  - `src/services/artists.ts`: Tracked `sets: number` and unique `events` in `artistSummaries`.
+  - `tests/mergeB2bSolo.test.ts`, `tests/seenSlots.test.ts`, `tests/reviewRows.test.ts`, `tests/actName.test.ts`: Added test coverage for B2B and solo performances.
+  - `REQUIREMENTS.md` & `ARCHITECTURE.md`: Documented B2B and solo performance architecture (R3.10).
+- **Verification Status:** All 648 unit tests pass, `npm run lint` clean (0 errors).
+

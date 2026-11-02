@@ -145,11 +145,10 @@ function setField(ev: LoggedEvent, f: EventField, value: string | undefined): vo
 }
 
 // A role you set is yours unless it is the lineup's role sent back unchanged.
-// Only the first act marked favourite keeps the mark. DJ set, live set and
+// Favourite set marks are yours. DJ set, live set and
 // B2B are yours; a B2B partner must be another act on this event.
 function cleanSeen(list: NonNullable<EventPatch['seen']>): SeenAct[] {
   const out = new Map<string, SeenAct>();
-  let favourite = false;
   for (const s of list) {
     const name = text(s.name);
     const key = name && normalizeName(name);
@@ -159,7 +158,7 @@ function cleanSeen(list: NonNullable<EventPatch['seen']>): SeenAct[] {
       act.role = s.role;
       act.roleFrom = s.roleFrom === 'lineup' ? 'lineup' : 'you';
     }
-    if (s.favourite === true && !favourite) favourite = act.favourite = true;
+    if (s.favourite === true) act.favourite = true;
     if (isSetKind(s.set)) act.set = s.set;
     if (Array.isArray(s.b2b)) act.b2b = s.b2b.map((k) => normalizeName(String(k))).filter((k) => k && k !== key);
     if (s.solo === true) act.solo = true;
