@@ -189,7 +189,8 @@ export function knownGenres(map: GenreMapEntry[], rows: ArtistGenres[]): KnownGe
 // your genres so the found ones show again.
 export async function setOwnGenres(store: LineupStore, key: string, styles: unknown, now: Date, reset = false) {
   const seen = (await store.listEvents()).flatMap((e) => e.seen).find((s) => s.key === key);
-  if (!seen) throw new InputError('Only acts you saw can have genres.');
+  const entity = !seen ? (await store.listEntities()).find((e) => e.kind === 'artist' && !e.mergedIntoId && e.nameNormalized === key) : undefined;
+  if (!seen && !entity) throw new InputError('Only acts you saw can have genres.');
   if (reset) {
     await store.deleteArtistGenres(key, 'you');
     return null;
@@ -209,7 +210,7 @@ export async function setOwnGenres(store: LineupStore, key: string, styles: unkn
   const weight = picked.size ? Math.round((1 / picked.size) * 10_000) / 10_000 : 0;
   const row: ArtistGenres = {
     key,
-    name: seen.name,
+    name: (seen?.name ?? entity?.name)!,
     source: 'you',
     genres: [...picked.values()].map((g) => ({ ...g, weight })),
     checkedAt: now.toISOString(),

@@ -1,7 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { ArrowLeft, GitMerge, Loader2, Plus, Sparkles, Table2, X } from 'lucide-react';
-import { entitiesApi, LoggedEvent } from '../services/lineupApi';
+import { entitiesApi, genresApi, LoggedEvent } from '../services/lineupApi';
 import type { Entity, HistoryEntry, LinkRole } from '../server/entities/types';
+import type { KnownGenre } from '../server/events/genreTypes';
+import { ArtistGenres } from '../services/genres';
 import { whenLabel } from '../services/format';
 import { norm } from '../services/listImport';
 import { EventTitle } from './EventTitle';
@@ -11,6 +13,7 @@ import { categoryGaps, LABELLED, linkedSuggestions } from '../services/dataHealt
 import { artistGaps, personInsights, seriesStreak, spanLabel } from '../services/insights';
 import { wentTo } from '../server/events/attendance';
 import { entityLabel, KINDS, ManageData } from './ManageView';
+import { SuggestInput } from './SuggestInput';
 
 // One record in the Manage tab: its events, Rename everywhere, Merge into
 // another, AKAs, and its links (a venue's place, a series' hosts).
@@ -225,6 +228,8 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
           <p className="text-xs text-zinc-400">Typed on an event, an AKA is found as this {meta.one}.</p>
         </div>
       )}
+
+      {entity.kind === 'artist' && <ArtistGenresEditor entity={entity} events={events} />}
 
       {entity.kind === 'venue' && (
         <div className="space-y-1.5">
@@ -701,6 +706,212 @@ const Insights: React.FC<{
           <Picker options={artists} placeholder="An artist they got you into…" label="Add an artist they introduced" onPick={(a) => void link(a, 'introduced_me_to', true)} />
         </div>
       )}
+    </div>
+  );
+};
+
+const SOURCE_NAMES: Record<ArtistGenres['source'], string> = {
+  'music-story': 'music-story',
+  musicbrainz: 'MusicBrainz',
+  you: 'you',
+};
+
+const ArtistGenresEditor: React.FC<{
+  entity: Entity;
+  events: LoggedEvent[];
+}> = ({ entity, events }) => {
+  const [rows, setRows] = useState<ArtistGenres[] | null>(null);
+  const [known, setKnown] = useState<KnownGenre[]>([]);
+  const [hasMap, setHasMap] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const actKey = useMemo(() => {
+    return (
+      events.flatMap((e) => e.seen).find((s) => s.artistId === entity.id || s.key === entity.nameNormalized)?.key ??
+      entity.nameNormalized
+    );
+  }, [events, entity.id, entity.nameNormalized]);
+
+  useEffect(() => {
+    genresApi
+      .list()
+      .then((r) => {
+        setRows(r.genres);
+        setKnown(r.known);
+        setHasMap(r.hasMap);
+      })
+      .catch(() => setRows(null));
+  }, [actKey]);
+
+  const own = useMemo(() => {
+    return (rows ?? []).find((r) => r.key === actKey && r.source === 'you');
+  }, [rows, actKey]);
+
+  const found = useMemo(() => {
+    const list = (rows ?? []).filter((r) => r.key === actKey && r.source !== 'you');
+    const ms = list.find((r) => r.source === 'music-story');
+    if (ms?.genres.length) return ms;
+    const mb = list.find((r) => r.source === 'musicbrainz');
+    if (mb?.genres.length) return mb;
+    return ms ?? mb;
+  }, [rows, actKey]);
+
+  const shown = own ?? found;
+  const styles = (shown?.genres ?? []).map((g) => g.style);
+  const has = new Set(styles.map((s) => s.toLowerCase()));
+  const offers = known.map((g) => g.style).filter((s) => !has.has(s.toLowerCase()));
+
+  const save = async (next: string[] | null) => {
+    setBusy(true);
+    setError(null);
+    try {
+      if (next === null) {
+        await genresApi.resetOwn(actKey);
+        setRows((prev) => (prev ?? []).filter((r) => !(r.key === actKey && r.source === 'you')));
+      } else {
+        const row = await genresApi.setOwn(actKey, next);
+        setRows((prev) => [...(prev ?? []).filter((r) => !(r.key === actKey && r.source === 'you')), row]);
+        setKnown((prev) =>
+          row.genres.reduce(
+            (list, g) => (list.some((k) => k.style.toLowerCase() === g.style.toLowerCase()) ? list : [...list, { style: g.style, parent: g.parent }]),
+            prev,
+          ),
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const add = (value: string) => {
+    const style = value.replace(/\s+/g, ' ').trim();
+    setDraft('');
+    if (style && !has.has(style.toLowerCase())) void save([...styles, style]);
+  };
+
+  const lookupMb = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const got = await genresApi.musicBrainz([actKey]);
+      setRows((prev) => [...(prev ?? []).filter((r) => !got.some((g) => g.key === r.key && g.source === r.source)), ...got]);
+      if (!got.some((g) => g.genres.length)) {
+        setError('No genres found on MusicBrainz for this artist.');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!rows) return null;
+
+  return (
+    <div className="space-y-1.5">
+      <h3 className={sectionTitle}>Genres</h3>
+      {styles.length > 0 && (
+        <ul className="flex flex-wrap items-center gap-1.5">
+          {styles.map((s) => (
+            <li
+              key={s}
+              title={own ? 'Set by you' : `From ${SOURCE_NAMES[shown!.source]}`}
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
+                own
+                  ? 'border-violet-500/40 bg-violet-600/25 text-violet-100'
+                  : 'border-zinc-800 bg-zinc-900 text-zinc-300'
+              }`}
+            >
+              {s}
+              <button
+                type="button"
+                onClick={() => void save(styles.filter((x) => x !== s))}
+                disabled={busy}
+                className="text-zinc-400 hover:text-rose-300"
+                aria-label={`Remove genre ${s}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </li>
+          ))}
+          {own && found?.genres.length ? (
+            <li>
+              <button
+                type="button"
+                onClick={() => void save(null)}
+                disabled={busy}
+                title={`Show the genres from ${SOURCE_NAMES[found.source]} again: ${found.genres.map((g) => g.style).join(', ')}`}
+                className="text-xs text-zinc-400 hover:text-violet-300"
+              >
+                Use {SOURCE_NAMES[found.source]}'s
+              </button>
+            </li>
+          ) : null}
+        </ul>
+      )}
+      {!styles.length && (
+        <p className="text-xs text-zinc-400">
+          {own ? 'None, as you set.' : found?.source === 'musicbrainz' ? 'Checked on MusicBrainz: no genre found.' : 'No genre yet.'}
+          {own && found?.genres.length ? (
+            <button
+              type="button"
+              onClick={() => void save(null)}
+              disabled={busy}
+              className="ml-2 text-zinc-400 hover:text-violet-300"
+            >
+              Use {SOURCE_NAMES[found.source]}'s
+            </button>
+          ) : null}
+          {hasMap && !own && (!found || (!found.genres.length && found.source !== 'musicbrainz')) ? (
+            <button
+              type="button"
+              onClick={() => void lookupMb()}
+              disabled={busy}
+              className="ml-2 text-zinc-400 hover:text-violet-300"
+            >
+              Look up on MusicBrainz
+            </button>
+          ) : null}
+        </p>
+      )}
+      <form
+        className="flex max-w-sm gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (draft.trim()) add(draft);
+        }}
+      >
+        <div className="w-full">
+          <SuggestInput
+            value={draft}
+            suggestions={offers}
+            placeholder="Add a genre"
+            aria-label="Add a genre"
+            className={control}
+            onChange={(e) => setDraft(e.target.value)}
+            onPick={add}
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={!draft.trim() || busy}
+          className={quiet}
+        >
+          <Plus className="h-3.5 w-3.5" /> Add
+        </button>
+      </form>
+      <p className="text-xs text-zinc-400">
+        {own
+          ? 'Set by you; overrides imported genres.'
+          : shown
+            ? `From ${SOURCE_NAMES[shown.source]}. Editing sets your own genres.`
+            : 'Typed on an artist, your genres override any found later.'}
+      </p>
+      {error && <p className="text-xs text-rose-300">{error}</p>}
     </div>
   );
 };
