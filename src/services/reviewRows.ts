@@ -121,17 +121,23 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
     if (p.slotId) {
       saved = editionPerformances.find((e) => !used.has(e) && e.slotId === p.slotId && e.artistKey === p.key);
     }
-    // 2. Same source
-    if (!saved) {
-      saved = editionPerformances.find((e) => !used.has(e) && sameSource(e, p));
-    }
-    // 3. Same artistKey and same b2b partners
+    // 2. Same artistKey and same b2b partners
     if (!saved) {
       saved = editionPerformances.find((e) => !used.has(e) && e.artistKey === p.key && b2bEqual(e.b2b, p.b2b));
     }
-    // 4. Same artistKey fallback
+    // 3. Same artistKey fallback
     if (!saved) {
       saved = editionPerformances.find((e) => !used.has(e) && e.artistKey === p.key);
+    }
+    // 4. Same source fallback (only when artistKey was not found, e.g. renamed acts)
+    if (!saved) {
+      const sourceMatches = editionPerformances.filter((e) => !used.has(e) && sameSource(e, p));
+      if (sourceMatches.length === 1) {
+        saved = sourceMatches[0];
+      } else if (sourceMatches.length > 1) {
+        // If multiple performances share the source (like B2B partners), match the one with matching b2b structure if possible
+        saved = sourceMatches.find((e) => b2bEqual(e.b2b, p.b2b)) ?? sourceMatches[0];
+      }
     }
 
     if (!saved) {
