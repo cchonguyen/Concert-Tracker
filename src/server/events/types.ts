@@ -69,16 +69,18 @@ export type SetKind = 'dj' | 'live';
 // set and b2b are yours only. Acts in a B2B are still separate seen acts, so
 // each one is credited; b2b lists the keys of the others on this event.
 export interface SeenAct {
+  id?: string; // unique instance id for this performance on the event
   key: string; // normalized name
   name: string;
   from: 'you' | 'lineup';
   role?: Billing;
   roleFrom?: 'you' | 'lineup';
-  favourite?: boolean; // your set of the night; at most one per event
+  favourite?: boolean; // your favourite set(s) of the event
   set?: SetKind; // in a B2B: how the B2B was played
   b2b?: string[];
+  slotId?: string; // links acts in the same B2B slot or performance
   // In a B2B, you also saw this act play on its own at the event; soloSet is
-  // how that set was played. Still one seen act, credited once.
+  // how that set was played. Still supported for backward compatibility.
   solo?: boolean;
   soloSet?: SetKind;
   // The artist record this act points at (src/server/entities/). Filled from

@@ -55,16 +55,24 @@ test('set times from Clashfinder are kept on the source, every set of the act', 
   assert.equal(p.sources.find((s) => s.sourceType === 'promoter')!.sets, undefined);
 });
 
-test('one favourite set per event, and it outlives a lineup review', () => {
+test('multiple favourite sets per event, and they outlive a lineup review', () => {
   const ev = newEvent('Porter Robinson 2024', NOW);
   const next = applyPatch(
     ev,
     { seen: [{ name: 'Porter Robinson', favourite: true }, { name: 'Wavedash', favourite: true }, { name: 'Jai Wolf' }] },
     NOW,
   );
-  assert.deepEqual(next.seen.map((s) => Boolean(s.favourite)), [true, false, false]);
-  const merged = mergeSeen(next.seen, [{ key: 'porter robinson', name: 'Porter Robinson', from: 'lineup' }], new Set(['porter robinson']));
+  assert.deepEqual(next.seen.map((s) => Boolean(s.favourite)), [true, true, false]);
+  const merged = mergeSeen(
+    next.seen,
+    [
+      { key: 'porter robinson', name: 'Porter Robinson', from: 'lineup' },
+      { key: 'wavedash', name: 'Wavedash', from: 'lineup' },
+    ],
+    new Set(['porter robinson', 'wavedash']),
+  );
   assert.equal(merged.find((s) => s.key === 'porter robinson')!.favourite, true);
+  assert.equal(merged.find((s) => s.key === 'wavedash')!.favourite, true);
 });
 
 const geocode = (results: unknown[]) => ({ 'https://geocoding-api.open-meteo.com/': { body: { results } } });
@@ -137,6 +145,16 @@ test('Fill gaps finds a missing favourite and weather; CSV has both', () => {
   const [cols, cells] = parseCsv(eventsToCsv([fav]));
   assert.equal(cells[cols.indexOf('Favourite set')], 'Porter Robinson');
   assert.ok(cols.includes('Weather'));
+
+  const multiFav = {
+    ...ev,
+    seen: [
+      { key: 'porter robinson', name: 'Porter Robinson', from: 'you' as const, favourite: true },
+      { key: 'wavedash', name: 'Wavedash', from: 'you' as const, favourite: true },
+    ],
+  };
+  const [, multiCells] = parseCsv(eventsToCsv([multiFav]));
+  assert.equal(multiCells[cols.indexOf('Favourite set')], 'Porter Robinson; Wavedash');
 });
 
 test('adding an act suggests ones you entered before, most seen first', () => {
