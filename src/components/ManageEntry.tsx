@@ -1,11 +1,13 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { ArrowLeft, GitMerge, Loader2, Plus, Sparkles, Table2, X } from 'lucide-react';
-import { entitiesApi, genresApi, LoggedEvent } from '../services/lineupApi';
+import { entitiesApi, genresApi, collaborationsApi, type CollaborationItem, LoggedEvent } from '../services/lineupApi';
 import type { Entity, HistoryEntry, LinkRole } from '../server/entities/types';
 import type { KnownGenre } from '../server/events/genreTypes';
 import { ArtistGenres } from '../services/genres';
 import { whenLabel } from '../services/format';
 import { norm } from '../services/listImport';
+import { normalizeName } from '../server/lineup/text';
+import { Pill } from './ui/Pill';
 import { EventTitle } from './EventTitle';
 import { personParts } from '../services/people';
 import { attrFields } from '../server/entities/attrs';
@@ -96,6 +98,19 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
   const live = (kind: Entity['kind']) => data.entities.filter((e) => e.kind === kind && !e.mergedIntoId);
   const akas = data.aliases.filter((a) => a.entityId === entity.id).map((a) => a.aliasNormalized).sort();
   const sorted = [...events].sort((a, b) => (b.startDate ?? String(b.year ?? '')).localeCompare(a.startDate ?? String(a.year ?? '')));
+
+  const [collabs, setCollabs] = useState<CollaborationItem[]>([]);
+  useEffect(() => {
+    if (entity.kind === 'artist') {
+      collaborationsApi.list().then(setCollabs).catch(() => undefined);
+    }
+  }, [entity.kind, entity.id]);
+
+  const artistCollabs = useMemo(() => {
+    if (entity.kind !== 'artist') return [];
+    const normName = entity.nameNormalized;
+    return collabs.filter((c) => c.partners.some((p) => normalizeName(p) === normName));
+  }, [collabs, entity.kind, entity.nameNormalized]);
 
   const run = async (what: string, fn: () => Promise<HistoryEntry>, after?: (entry: HistoryEntry) => void) => {
     setBusy(what);
@@ -230,6 +245,50 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
       )}
 
       {entity.kind === 'artist' && <ArtistGenresEditor entity={entity} events={events} />}
+
+      {entity.kind === 'artist' && artistCollabs.length > 0 && (
+        <div className="space-y-2">
+          <h3 className={sectionTitle}>Collaborative Projects</h3>
+          <div className="space-y-1.5">
+            {artistCollabs.map((c) => {
+              const otherPartners = c.partners.filter((p) => normalizeName(p) !== entity.nameNormalized);
+              return (
+                <div
+                  key={c.aliasNormalized}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-900 bg-zinc-900/40 p-2.5"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm text-zinc-100">{c.alias}</span>
+                      <Pill tone="accent">Collaboration</Pill>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-400">
+                      <span>with</span>
+                      {otherPartners.map((partner) => {
+                        const partnerEntity = data.entities.find(
+                          (e) => e.kind === 'artist' && !e.mergedIntoId && e.nameNormalized === normalizeName(partner),
+                        );
+                        return partnerEntity ? (
+                          <button
+                            key={partner}
+                            type="button"
+                            onClick={() => onOpen(partnerEntity.id)}
+                            className="inline-flex hover:underline text-violet-300"
+                          >
+                            <Pill tone="neutral">{partner}</Pill>
+                          </button>
+                        ) : (
+                          <Pill key={partner} tone="neutral">{partner}</Pill>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {entity.kind === 'venue' && (
         <div className="space-y-1.5">
