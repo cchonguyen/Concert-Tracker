@@ -25,6 +25,7 @@ export type RejectReason = 'not_an_act' | 'wrong_event' | 'cancelled';
 export interface ReviewedPerformer {
   key?: string; // candidate key; absent for acts you added
   slotId?: string;
+  alias?: string;
   b2b?: string[];
   name: string;
   accepted: boolean;
@@ -240,6 +241,7 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
           artistKey: normalizeName(name),
           name,
           slotId: reviewed.slotId,
+          alias: reviewed.alias,
           b2b: reviewed.b2b,
           days: [],
           stages: [],
@@ -250,6 +252,7 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
     if (reviewed.days) perf.days = reviewed.days;
     if (reviewed.stages) perf.stages = reviewed.stages;
     if (reviewed.slotId) perf.slotId = reviewed.slotId;
+    if (reviewed.alias) perf.alias = reviewed.alias;
     if (reviewed.b2b?.length) perf.b2b = reviewed.b2b;
     if (reviewed.billing !== undefined) perf.billing = isBilling(reviewed.billing) ? reviewed.billing : undefined;
     if (reviewed.seen) {
@@ -262,6 +265,8 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
       };
       const actSlotId = cand?.slotId ?? reviewed.slotId;
       if (actSlotId) act.slotId = actSlotId;
+      const actAlias = reviewed.alias ?? cand?.alias;
+      if (actAlias) act.alias = actAlias;
       const actB2b = cand?.b2b?.length ? cand.b2b : reviewed.b2b;
       if (actB2b?.length) act.b2b = actB2b;
       if (perf.billing) {
@@ -278,6 +283,13 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
       ticked.push(act);
     }
     performances.push(perf);
+    if (reviewed.alias && (perf.b2b?.length || reviewed.b2b?.length)) {
+      const aliasKey = normalizeName(reviewed.alias);
+      if (aliasKey && !aliases[aliasKey]) {
+        const partners = [reviewed.name, ...(reviewed.b2b ?? perf.b2b ?? []).map((k) => req.performers.find((p) => normalizeName(p.name) === k)?.name ?? k)];
+        aliases[aliasKey] = partners.join(' b2b ');
+      }
+    }
     if (cand) {
       for (const s of cand.sources) {
         acceptedByDoc.set(s.sourceUrl, [...(acceptedByDoc.get(s.sourceUrl) ?? []), cand.name]);
@@ -371,6 +383,8 @@ export async function confirmLookupForMember(store: LineupStore, job: LookupJob,
     };
     const actSlotId = cand?.slotId ?? reviewed.slotId;
     if (actSlotId) act.slotId = actSlotId;
+    const actAlias = reviewed.alias ?? cand?.alias;
+    if (actAlias) act.alias = actAlias;
     const actB2b = cand?.b2b?.length ? cand.b2b : reviewed.b2b;
     if (actB2b?.length) act.b2b = actB2b;
     if (billing) {
@@ -459,6 +473,7 @@ function toPerformance(cand: CandidatePerformer, name: string): EditionPerforman
     artistKey: normalizeName(name),
     name,
     slotId: cand.slotId,
+    alias: cand.alias,
     b2b: cand.b2b,
     days: cand.days,
     stages: cand.stages,

@@ -1,20 +1,27 @@
 # Session Handoff
 
 - **Last Active Platform:** Google Antigravity
-- **Active Branch / State:** `main` (clean, verified, deployed)
+- **Active Branch / State:** `antigravity/b3b-and-collaboration-aliases`
 - **Branch Owner:** Antigravity / Charlie Cho Nguyen
-- **Active slice:** B2B and Solo Performance Architecture & Multiple Favourites
-- **Merge Commits:**
-  - `bb08c1e`: PR #181 (`feat(lineup): implement B2B and solo performance architecture`)
-  - `ecd7729`: PR #183 (`fix(lineup): add typecheck script and slotId/b2b performance types`)
-  - `52d18b0`: PR #182 (`feat: allow multiple favourite sets per event`)
-  - `1b05972`: PR #184 (`fix(lineup): remove duplicate slotId and b2b fields in types`)
-- **Deploy Result:**
-  - Cloudflare Workers deployed to `https://concert.charliechonguyen.com` via `wrangler deploy` (`npm run cf:deploy`).
-  - Current Version ID: `637e5e18-e94c-4c33-9114-c98737a72605`.
+- **Active slice:** B3B / Multi-Artist Sets & Collaboration Aliases
+- **Files Modified:**
+  - `docs/b3b-and-collaboration-aliases-spec.md`: Architecture specification for multi-artist B3B/B4B sets and collaboration aliases.
+  - `src/server/lineup/actName.ts`: Extended B2B delimiter regex to match `b3b`, `b4b`, `b2b2b`, and back-to-back phrases.
+  - `src/server/lineup/types.ts`: Added optional `alias` to `CandidatePerformer` and `EditionPerformance`.
+  - `src/server/events/types.ts`: Added optional `alias` to `SeenAct`.
+  - `src/server/events/seen.ts`: Added optional `alias` to `SeenInput`, `toSeenInput`, and `Linked`.
+  - `src/server/events/service.ts`: Preserved `alias` in `cleanSeen`.
+  - `src/server/lineup/merge.ts`: In `findPerformanceGroups` / `mergeLineup`, preserved alias and recorded original candidate name when resolving aliases.
+  - `src/server/lineup/pipeline.ts`: Preserved `alias` when converting `candidateFromEdition`.
+  - `src/server/lineup/learning.ts`: Propagated `reviewed.alias` to `EditionPerformance` and `SeenAct` in `confirmLookup`, and saved alias mappings to `store.addArtistAlias`.
+  - `src/services/reviewRows.ts`: Propagated `alias` through start rows and review slots; formatted slot title as `${alias} (${partnerNames})`.
+  - `src/components/EventDetail.tsx`: Rendered collaboration aliases in "Who you saw", allowed editing alias in `ActEditor`, and preserved alias when adding from lineup pills.
+  - `src/components/LineupReview.tsx`: Added `+ Partner` button for chaining 3+ artists into B3B/B4B slots; added inline AKA/alias input on review rows.
+  - `tests/actName.test.ts`: Added unit tests for `b3b`, `b4b`, `b2b2b`, and `back to back` delimiter patterns.
+  - `tests/reviewRows.test.ts`: Added unit tests for slot name alias formatting and 3-artist B3B grouping.
+  - `tests/mergeB2bSolo.test.ts`: Added unit tests for alias resolution into constituent B2B candidates.
 - **Verification Status:**
   - `npm run typecheck`: Passed (0 errors)
   - `npm run lint`: Passed (0 errors)
-  - `npm test`: Passed (648 pass, 0 fail)
-  - `harness-main-watch`: Passed, `harness-main-red` tag cleared from origin.
-- **Immediate Next Step for Claude:** Repository and production are fully up to date and verified green.
+  - `npm test`: Passed (651 pass, 0 fail)
+- **Immediate Next Step:** Push branch, open PR, verify checks, and request user review.
