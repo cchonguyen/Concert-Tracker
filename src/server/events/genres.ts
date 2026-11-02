@@ -152,7 +152,11 @@ export async function musicBrainzGenres(store: LineupStore, fetcher: Fetcher, ke
   const seen = new Map((await seenArtists(store, await store.listEvents())).map((a) => [a.key, a]));
   const rows: ArtistGenres[] = [];
   for (const key of keys) {
-    const act = seen.get(key);
+    let act = seen.get(key);
+    if (!act) {
+      const entity = (await store.listEntities()).find((e) => e.kind === 'artist' && !e.mergedIntoId && e.nameNormalized === key);
+      if (entity) act = { key: entity.nameNormalized, name: entity.name };
+    }
     if (!act) continue;
     let mbid = act.mbid;
     if (!mbid) {
