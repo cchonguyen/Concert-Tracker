@@ -401,7 +401,12 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
                     (s, idx, arr) => arr.findIndex((o) => o.sourceType === s.sourceType && o.sourceUrl === s.sourceUrl) === idx,
                   );
                   const allMissingFrom = [...new Set(slot.items.flatMap((it) => it.item.missingFrom))];
-                  const renamedItems = slot.items.filter((it) => it.item.originalName && it.item.name !== it.item.originalName);
+                  const renamedItems = slot.items.filter((it) => {
+                    const orig = it.item.originalName;
+                    if (!orig || it.item.name === orig) return false;
+                    const origKey = normalizeName(orig);
+                    return !slot.items.some((other) => other.index !== it.index && normalizeName(other.item.name) === origKey);
+                  });
 
                   return (
                     <tr key={slot.id} className={`border-t border-zinc-900 ${allAccepted ? '' : 'opacity-50'}`}>
