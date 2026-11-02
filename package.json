@@ -10,6 +10,7 @@
     "start": "tsx server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p worker",
     "lint": "tsc --noEmit && tsc --noEmit -p worker",
     "test": "node --import tsx --test tests/*.test.ts packages/ticket-scanner/tests/*.test.ts",
     "test:rls": "node --import tsx --test tests/rls/*.test.ts",
