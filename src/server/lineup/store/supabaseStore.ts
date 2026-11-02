@@ -486,6 +486,10 @@ export class SupabaseLineupStore implements LineupStore {
     if (rows.length) this.check(await this.db.from('artist_aliases').upsert(rows), 'putAliases');
   }
 
+  async deleteAlias(alias: string) {
+    this.check(await this.db.from('artist_aliases').delete().eq('alias_normalized', alias), 'deleteAlias');
+  }
+
   async getBlocklist(domains: string[]) {
     const rows = this.check(await this.db.from('extraction_blocklist').select('*').in('domain', domains), 'getBlocklist');
     return (rows ?? []).map((r: any): BlocklistEntry => ({ domain: r.domain, normalized: r.normalized, rejections: r.rejections }));

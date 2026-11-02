@@ -50,7 +50,7 @@ export const toSeenInput = (seen: SeenAct[]): SeenInput[] =>
 type Linked = { id?: string; slotId?: string; alias?: string; key: string; b2b?: string[]; set?: SetKind; solo?: boolean; soloSet?: SetKind };
 
 // Helper to group performance items into B2B slots by instance identity
-function findPerformanceGroups<T>(
+export function findPerformanceGroups<T>(
   items: T[],
   getKey: (item: T) => string,
   getB2b: (item: T) => string[] | undefined,

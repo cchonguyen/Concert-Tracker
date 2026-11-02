@@ -1,17 +1,20 @@
 # Session Handoff
 
 - **Last Active Platform:** Google Antigravity
-- **Active Branch / State:** `main` (clean, verified, deployed)
+- **Active Branch / State:** `antigravity/collab-aliases-ui-and-lineup-review`
 - **Branch Owner:** Antigravity / Charlie Cho Nguyen
-- **Active slice:** B3B Multi-Artist Sets & Collaboration Aliases
+- **Active slice:** Manage Collaboration Aliases & Lineup Review Improvements
 - **Merge Commits:**
   - `74d0255`: PR #186 (`feat(lineup): support B3B multi-artist sets and collaboration aliases`)
-- **Deploy Result:**
-  - Cloudflare Workers deployed to `https://concert.charliechonguyen.com` via `wrangler deploy` (`npm run cf:deploy`).
-  - Current Version ID: `9af09882-9e64-4da7-a20e-c290eb696887`.
+  - `38ea096`: PR #187 (`feat(lineup): allow multiple performances per artist in Postgres with slotId, alias, and b2b`)
+- **Key Changes in Slice:**
+  - Added "Collaborations & Group Projects" management card in Manage -> Artists (`src/components/CollaborationsCard.tsx`).
+  - Added "Collaborative Projects" listing on artist profiles in Manage with one-click partner navigation (`src/components/ManageEntry.tsx`).
+  - Added `/api/collaborations` CRUD API with event propagation & manage history logging (`src/server/entities/collaborations.ts`).
+  - Upgraded Lineup Review with auto-expansion of registered collaboration monikers, individual partner deletion with smooth fallback to solo acts, SuggestInput for alias monikers, and design system Button/IconButton/Pill adoption (`src/components/LineupReview.tsx`).
 - **Verification Status:**
   - `npm run typecheck`: Passed (0 errors)
   - `npm run lint`: Passed (0 errors)
-  - `npm test`: Passed (651 pass, 0 fail)
+  - `npm test`: Passed (652 pass, 0 fail)
   - `harness-main-watch`: Passed, `harness-main-red` tag absent from origin.
-- **Immediate Next Step for Claude:** Repository and production are fully up to date and verified green.
+- **Immediate Next Step:** Open PR, verify CI checks, merge to `main`, and deploy.

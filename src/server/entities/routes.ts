@@ -87,5 +87,33 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     manage(async (req) => ({ entry: await removeLink(store, req.params.id, String(req.body?.to ?? ''), req.body?.role) })),
   );
 
+  // Multi-artist collaboration / group project aliases
+  router.get('/collaborations', async (_req, res) => {
+    try {
+      const { listCollaborations } = await import('./collaborations');
+      res.json(await listCollaborations(store));
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  router.post('/collaborations', async (req, res) => {
+    try {
+      const { saveCollaboration } = await import('./collaborations');
+      res.json(await saveCollaboration(store, req.body ?? {}));
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  router.delete('/collaborations/:alias', async (req, res) => {
+    try {
+      const { removeCollaboration } = await import('./collaborations');
+      res.json(await removeCollaboration(store, req.params.alias));
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   return router;
 }
