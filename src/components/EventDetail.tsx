@@ -498,10 +498,10 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
       {s.asSolo && <Pill>Solo</Pill>}
     </React.Fragment>
   );
-  // The favourite set is one per event: turning this one on moves it from whoever had it.
+  // Favourite sets: turning this on marks the set as a favourite.
   const toggleFavourite = (key: string) => {
     const on = !seen.find((s) => s.key === key)?.favourite;
-    onChange(toPatch(seen).map((s, i) => ({ ...s, favourite: seen[i].key === key ? on : on ? false : s.favourite })));
+    onChange(toPatch(seen).map((s, i) => ({ ...s, favourite: seen[i].key === key ? on : s.favourite })));
   };
   const artists = artistsOf(seen);
   const support = supportOf(seen);
@@ -520,8 +520,8 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
           type="button"
           onClick={() => toggleFavourite(acts[0].key)}
           aria-pressed={favourite}
-          aria-label={favourite ? 'Favourite set of the night. Tap to unset.' : 'Make this the favourite set'}
-          title={favourite ? 'Favourite set of the night' : 'Make this the favourite set'}
+          aria-label={favourite ? 'Favourite set. Tap to unset.' : 'Mark as favourite set'}
+          title={favourite ? 'Favourite set' : 'Mark as favourite set'}
           className="flex w-11 shrink-0 items-center justify-center hover:bg-rose-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400 sm:w-10"
         >
           <Heart className={`h-4 w-4 ${favourite ? 'fill-rose-400 text-rose-400' : 'text-zinc-600'}`} aria-hidden="true" />
@@ -641,7 +641,6 @@ const ActEditor: React.FC<{
   const patchAct = (change: Partial<SeenPatch[number]>) => onChange(toPatch(seen).map((s, i) => (seen[i].key === key ? { ...s, ...change } : s)));
   const partners = seen.filter((s) => act.b2b?.includes(s.key));
   const free = seen.filter((s) => s.key !== key && !act.b2b?.includes(s.key));
-  const favouriteElsewhere = seen.find((s) => s.favourite && s.key !== key);
   const [bursts, setBursts] = useState(0);
   const billingHelp = !act.role
     ? 'No role stated, so it counts as Artist.'
@@ -728,10 +727,10 @@ const ActEditor: React.FC<{
           checked={Boolean(act.favourite)}
           onChange={(v) => {
             if (v) setBursts((n) => n + 1);
-            onChange(toPatch(seen).map((s, i) => ({ ...s, favourite: seen[i].key === key ? v : v ? false : s.favourite })));
+            onChange(toPatch(seen).map((s, i) => ({ ...s, favourite: seen[i].key === key ? v : s.favourite })));
           }}
-          label="Favourite set of the night"
-          helper={favouriteElsewhere && !act.favourite ? `Only one per event. Turning this on moves it from ${favouriteElsewhere.name}.` : 'Only one per event.'}
+          label="Favourite set"
+          helper="Mark sets that were highlights of the event."
         />
         <Burst icon={Heart} trigger={bursts} />
       </div>
@@ -1389,7 +1388,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               Who you saw{event.seen.length > 0 && <span className="font-normal text-zinc-400"> · {event.seen.length}</span>}
             </h3>
             <SectionHelp label="Who you saw">
-              Each act is a row. Tap the row to set its billing, set type and B2B partners. Tap the heart to make it the favourite set. Acts you add here count as seen.
+              Each act is a row. Tap the row to set its billing, set type and B2B partners. Tap the heart to mark a favourite set. Acts you add here count as seen.
             </SectionHelp>
           </div>
           <SeenActs seen={event.seen} sets={sets} past={pastArtists} onChange={(seen) => save({ seen })} />
