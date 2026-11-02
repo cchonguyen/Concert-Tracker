@@ -140,3 +140,23 @@ test('startRows automatically unpacks legacy unparsed B2B performances from edit
   assert.equal(slots[0].isB2b, true);
   assert.equal(slots[0].items.length, 2);
 });
+
+test('groupReviewSlots formats slot name with alias when present, and supports 3-artist B3B slots', () => {
+  const p1 = { key: 'john summit', name: 'John Summit', slotId: 'slot-subjohnics', b2b: ['subtronics'], alias: 'Subjohnics' };
+  const p2 = { key: 'subtronics', name: 'Subtronics', slotId: 'slot-subjohnics', b2b: ['john summit'], alias: 'Subjohnics' };
+  const slots = groupReviewSlots([p1, p2]);
+  assert.equal(slots.length, 1);
+  assert.equal(slots[0].alias, 'Subjohnics');
+  assert.equal(slots[0].name, 'Subjohnics (John Summit b2b Subtronics)');
+  assert.equal(slots[0].isB2b, true);
+
+  // 3-artist B3B with alias
+  const b3b1 = { key: 'skrillex', name: 'Skrillex', slotId: 'slot-pang', b2b: ['four tet', 'fred again..'], alias: 'OMG TBA' };
+  const b3b2 = { key: 'four tet', name: 'Four Tet', slotId: 'slot-pang', b2b: ['skrillex', 'fred again..'], alias: 'OMG TBA' };
+  const b3b3 = { key: 'fred again..', name: 'Fred again..', slotId: 'slot-pang', b2b: ['skrillex', 'four tet'], alias: 'OMG TBA' };
+  const b3bSlots = groupReviewSlots([b3b1, b3b2, b3b3]);
+  assert.equal(b3bSlots.length, 1);
+  assert.equal(b3bSlots[0].alias, 'OMG TBA');
+  assert.equal(b3bSlots[0].name, 'OMG TBA (Skrillex b2b Four Tet b2b Fred again..)');
+  assert.equal(b3bSlots[0].items.length, 3);
+});

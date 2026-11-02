@@ -542,12 +542,19 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
           className="flex min-h-11 min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 py-2 pr-3 text-left hover:bg-zinc-800/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400 sm:min-h-0"
         >
           <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+            {acts.some((a) => a.alias) && (
+              <span className="font-semibold text-zinc-100 mr-0.5">
+                {acts.find((a) => a.alias)?.alias}
+              </span>
+            )}
+            {acts.some((a) => a.alias) && <span className="text-xs text-zinc-500 mr-0.5">(</span>}
             {acts.map((a, i) => (
               <React.Fragment key={a.key}>
                 {i > 0 && <Pill tone="accent">B2B</Pill>}
                 {act(a)}
               </React.Fragment>
             ))}
+            {acts.some((a) => a.alias) && <span className="text-xs text-zinc-500">)</span>}
           </span>
           {time && <span className="shrink-0 text-xs tabular-nums text-zinc-400">{time}</span>}
           {!time && untyped && <span className="shrink-0 rounded-full border border-amber-400/40 px-2 py-0.5 text-xs text-amber-300">Set type?</span>}
@@ -732,6 +739,22 @@ const ActEditor: React.FC<{
         )}
         <p className="text-xs text-zinc-400">Both still count as seen, each with full credit.</p>
       </section>
+      {partners.length > 0 && (
+        <section className="space-y-1.5">
+          <h4 className={sectionTitle}>Collaboration Alias / Moniker</h4>
+          <input
+            className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-violet-500 focus:outline-none"
+            placeholder="e.g. Subjohnics, Kx5, ISOKNOCK"
+            value={act.alias ?? ''}
+            onChange={(e) => {
+              const val = e.target.value.trim() || undefined;
+              const partnerKeys = new Set([key, ...partners.map((p) => p.key)]);
+              onChange(toPatch(seen.map((s) => (partnerKeys.has(s.key) ? { ...s, alias: val } : s))));
+            }}
+          />
+          <p className="text-xs text-zinc-400">Optional project name (e.g. Subjohnics for John Summit B2B Subtronics).</p>
+        </section>
+      )}
       {partners.length > 0 && (
         <Switch checked={Boolean(act.solo)} onChange={(v) => onChange(toPatch(setSolo(seen, key, v)))} label="Also played a solo set" />
       )}
@@ -1525,6 +1548,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                                   from: 'lineup' as const,
                                   role: p.billing,
                                   roleFrom: p.billing ? ('lineup' as const) : undefined,
+                                  slotId: p.slotId,
+                                  alias: p.alias,
                                   b2b: partners,
                                 };
                               });
