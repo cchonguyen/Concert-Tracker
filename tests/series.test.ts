@@ -123,7 +123,9 @@ test('B2B pairs join into one group and can be taken apart', () => {
 test('your set marks outlive a lineup review, and the CSV lists them', () => {
   const before = [act('Sasha', { set: 'dj' as const, b2b: ['john digweed'] }), act('John Digweed', { b2b: ['sasha'] })];
   const merged = mergeSeen(before, [{ key: 'sasha', name: 'Sasha', from: 'lineup' }], new Set(['sasha']));
-  assert.deepEqual(merged.find((s) => s.key === 'sasha'), { key: 'sasha', name: 'Sasha', from: 'lineup', set: 'dj', b2b: ['john digweed'] });
+  const sasha = merged.find((s) => s.key === 'sasha');
+  assert.ok(sasha?.id);
+  assert.deepEqual({ key: sasha?.key, name: sasha?.name, from: sasha?.from, set: sasha?.set, b2b: sasha?.b2b }, { key: 'sasha', name: 'Sasha', from: 'lineup', set: 'dj', b2b: ['john digweed'] });
   const csv = eventsToCsv([{ ...ev('Movement 2024'), seen: merged }]);
   assert.match(csv, /,John Digweed b2b Sasha \(DJ set\),/);
 });

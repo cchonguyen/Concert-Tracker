@@ -22,6 +22,7 @@ import { artistsOf, dateConfirmations, datesBetween, formatsOf, joinFormats, mat
 import { actSets, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
+import { groupReviewSlots } from '../services/reviewRows';
 import { norm } from '../services/listImport';
 import { leaveB2b, pairB2b, seenSlots, SET_LABELS, setSolo, SlotAct, slotId, toSeenInput } from '../server/events/seen';
 import { eventTitle, seriesList, seriesOffers } from '../services/series';
@@ -498,19 +499,23 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
       {s.asSolo && <Pill>Solo</Pill>}
     </React.Fragment>
   );
-  // The favourite set is one per event: turning this one on moves it from whoever had it.
-  const toggleFavourite = (key: string) => {
-    const on = !seen.find((s) => s.key === key)?.favourite;
-    onChange(toPatch(seen).map((s, i) => ({ ...s, favourite: seen[i].key === key ? on : on ? false : s.favourite })));
-  };
-  const artists = artistsOf(seen);
-  const support = supportOf(seen);
+  // Favourite sets: turning this on marks the set as a favourite.
+  type SeenWithMeta = Seen & { _instanceId: string; _index: number };
+  const seenWithMeta: SeenWithMeta[] = seen.map((s, i) => ({
+    ...s,
+    _instanceId: s.id ?? `${s.key}:${i}`,
+    _index: i,
+  }));
+  const artists = seenWithMeta.filter((s) => s.role !== 'support');
+  const support = seenWithMeta.filter((s) => s.role === 'support');
   // One row per slot: a B2B shows its acts in one row, joined by "B2B". The heart toggles the favourite set and the rest
   // of the row opens the act's editor, so each part of the row does one thing.
-  const slot = (acts: Array<SlotAct<Seen>>) => {
+  const slot = (acts: Array<SlotAct<SeenWithMeta>>) => {
     const favourite = acts.some((a) => a.favourite);
     const time = acts.map((a) => sets.get(a.key)).find(Boolean);
     const untyped = acts.find((a) => !a.set);
+    const primary = acts[0];
+    const instanceId = primary._instanceId + (primary.asSolo ? ':solo' : '');
     return (
       <li
         key={slotId(acts)}
@@ -518,17 +523,21 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
       >
         <button
           type="button"
-          onClick={() => toggleFavourite(acts[0].key)}
+          onClick={() => {
+            const targetIndices = new Set(acts.map((a) => a._index));
+            const nextOn = !acts.some((a) => a.favourite);
+            onChange(toPatch(seen).map((s, i) => (targetIndices.has(i) ? { ...s, favourite: nextOn } : s)));
+          }}
           aria-pressed={favourite}
-          aria-label={favourite ? 'Favourite set of the night. Tap to unset.' : 'Make this the favourite set'}
-          title={favourite ? 'Favourite set of the night' : 'Make this the favourite set'}
+          aria-label={favourite ? 'Favourite set. Tap to unset.' : 'Mark as favourite set'}
+          title={favourite ? 'Favourite set' : 'Mark as favourite set'}
           className="flex w-11 shrink-0 items-center justify-center hover:bg-rose-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400 sm:w-10"
         >
           <Heart className={`h-4 w-4 ${favourite ? 'fill-rose-400 text-rose-400' : 'text-zinc-600'}`} aria-hidden="true" />
         </button>
         <button
           type="button"
-          onClick={() => setEditing(acts[0].key)}
+          onClick={() => setEditing(instanceId)}
           title="Edit this act"
           className="flex min-h-11 min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 py-2 pr-3 text-left hover:bg-zinc-800/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400 sm:min-h-0"
         >
@@ -546,7 +555,7 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
       </li>
     );
   };
-  const editingAct = seen.find((s) => s.key === editing);
+  const editingAct = seenWithMeta.find((s) => s._instanceId === editing || `${s._instanceId}:solo` === editing);
   return (
     <div className="space-y-2">
       {/* The list scrolls in its own box, with the bar always there, so a long bill does not push the rest of the card down. */}
@@ -616,6 +625,7 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
           <ActEditor
             seen={seen}
             act={editingAct}
+            actIndex={editingAct._index}
             time={sets.get(editingAct.key)}
             onChange={onChange}
             onRemoved={() => setEditing(null)}
@@ -631,17 +641,19 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
 const ActEditor: React.FC<{
   seen: Seen[];
   act: Seen;
+  actIndex?: number;
   time?: string;
   onChange: (seen: SeenPatch) => void;
   onRemoved: () => void;
-}> = ({ seen, act, time, onChange, onRemoved }) => {
+}> = ({ seen, act, actIndex, time, onChange, onRemoved }) => {
   const toast = useToast();
   const [picking, setPicking] = useState(false);
+  const targetIndex = actIndex !== undefined ? actIndex : seen.findIndex((s) => (s.id && act.id ? s.id === act.id : s.key === act.key));
   const key = act.key;
-  const patchAct = (change: Partial<SeenPatch[number]>) => onChange(toPatch(seen).map((s, i) => (seen[i].key === key ? { ...s, ...change } : s)));
-  const partners = seen.filter((s) => act.b2b?.includes(s.key));
-  const free = seen.filter((s) => s.key !== key && !act.b2b?.includes(s.key));
-  const favouriteElsewhere = seen.find((s) => s.favourite && s.key !== key);
+  const patchAct = (change: Partial<SeenPatch[number]>) =>
+    onChange(toPatch(seen).map((s, i) => (i === targetIndex ? { ...s, ...change } : s)));
+  const partners = seen.filter((s, i) => i !== targetIndex && act.b2b?.includes(s.key));
+  const free = seen.filter((s, i) => i !== targetIndex && !act.b2b?.includes(s.key));
   const [bursts, setBursts] = useState(0);
   const billingHelp = !act.role
     ? 'No role stated, so it counts as Artist.'
@@ -728,10 +740,10 @@ const ActEditor: React.FC<{
           checked={Boolean(act.favourite)}
           onChange={(v) => {
             if (v) setBursts((n) => n + 1);
-            onChange(toPatch(seen).map((s, i) => ({ ...s, favourite: seen[i].key === key ? v : v ? false : s.favourite })));
+            onChange(toPatch(seen).map((s, i) => (i === targetIndex ? { ...s, favourite: v } : s)));
           }}
-          label="Favourite set of the night"
-          helper={favouriteElsewhere && !act.favourite ? `Only one per event. Turning this on moves it from ${favouriteElsewhere.name}.` : 'Only one per event.'}
+          label="Favourite set"
+          helper="Mark sets that were highlights of the event."
         />
         <Burst icon={Heart} trigger={bursts} />
       </div>
@@ -740,7 +752,7 @@ const ActEditor: React.FC<{
         className="w-full"
         onClick={() => {
           const before = seen;
-          onChange(toPatch(seen.filter((s) => s.key !== key)));
+          onChange(toPatch(seen.filter((_, i) => i !== targetIndex)));
           onRemoved();
           toast({ message: `Removed ${act.name}`, action: { label: 'Undo', onClick: () => onChange(toPatch(before)) } });
         }}
@@ -1389,7 +1401,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               Who you saw{event.seen.length > 0 && <span className="font-normal text-zinc-400"> · {event.seen.length}</span>}
             </h3>
             <SectionHelp label="Who you saw">
-              Each act is a row. Tap the row to set its billing, set type and B2B partners. Tap the heart to make it the favourite set. Acts you add here count as seen.
+              Each act is a row. Tap the row to set its billing, set type and B2B partners. Tap the heart to mark a favourite set. Acts you add here count as seen.
             </SectionHelp>
           </div>
           <SeenActs seen={event.seen} sets={sets} past={pastArtists} onChange={(seen) => save({ seen })} />
@@ -1446,33 +1458,96 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               onReview={() => setReviewing(true)}
             />
           )}
-          {lineupActs.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-[11px] text-zinc-400">From the lineup, tap to mark who you saw:</p>
-              <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-scroll pr-1">
-                {lineupActs.map((p) => {
-                  const on = seenKeys.has(p.artistKey);
-                  return (
-                    <button
-                      key={p.artistKey}
-                      onClick={() =>
-                        save({
-                          seen: on
-                            ? toPatch(event.seen.filter((s) => s.key !== p.artistKey))
-                            : [...toPatch(event.seen), { name: p.name, from: 'lineup', role: p.billing, roleFrom: p.billing ? 'lineup' : undefined }],
-                        })
-                      }
-                      title={[p.billing && `Billed as ${p.billing}`, sets.get(p.artistKey)].filter(Boolean).join(' · ') || undefined}
-                      className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
-                    >
-                      {p.name}
-                      {p.billing === 'support' && <span className="ml-1 text-[10px] text-zinc-400">support</span>}
-                    </button>
-                  );
-                })}
+          {lineupActs.length > 0 && (() => {
+            const lineupSlots = groupReviewSlots(lineupActs.map((p) => ({ ...p, key: p.artistKey })));
+            return (
+              <div className="space-y-1.5">
+                <p className="text-[11px] text-zinc-400">From the lineup, tap to mark who you saw:</p>
+                <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-scroll pr-1">
+                  {lineupSlots.map((slot) => {
+                    const slotKeys = new Set(slot.items.map((it) => it.item.artistKey));
+                    const isSolo = slot.items.length === 1 && (!slot.items[0].item.b2b || slot.items[0].item.b2b.length === 0);
+                    const on = isSolo
+                      ? event.seen.some((s) => s.key === slot.items[0].item.artistKey && (!s.b2b?.length || s.solo))
+                      : slotKeys.size > 0 && [...slotKeys].every((k) => event.seen.some((s) => s.key === k && s.b2b?.some((partner) => slotKeys.has(partner))));
+                    const title = [
+                      slot.items.some((it) => it.item.billing === 'support') && 'Billed as support',
+                      slot.items.some((it) => it.item.billing === 'headliner') && 'Headliner',
+                      slot.items.map((it) => sets.get(it.item.artistKey)).filter(Boolean).join(' · '),
+                    ].filter(Boolean).join(' · ') || undefined;
+
+                    return (
+                      <button
+                        key={slot.id}
+                        onClick={() => {
+                          if (on) {
+                            if (isSolo) {
+                              const artistKey = slot.items[0].item.artistKey;
+                              const nextSeen: SeenPatch = [];
+                              for (const s of event.seen) {
+                                if (s.key === artistKey && (!s.b2b?.length || !s.b2b)) continue;
+                                if (s.key === artistKey && s.solo) {
+                                  const { solo: _s, soloSet: _ss, ...rest } = s;
+                                  nextSeen.push(rest as SeenPatch[number]);
+                                  continue;
+                                }
+                                nextSeen.push(s as SeenPatch[number]);
+                              }
+                              save({ seen: toPatch(nextSeen as any) });
+                            } else {
+                              const nextSeen = event.seen.filter(
+                                (s) => !(slotKeys.has(s.key) && s.b2b?.some((partner) => slotKeys.has(partner))),
+                              );
+                              save({ seen: toPatch(nextSeen) });
+                            }
+                          } else {
+                            if (isSolo) {
+                              const p = slot.items[0].item;
+                              save({
+                                seen: [
+                                  ...toPatch(event.seen),
+                                  {
+                                    name: p.name,
+                                    from: 'lineup' as const,
+                                    role: p.billing,
+                                    roleFrom: p.billing ? ('lineup' as const) : undefined,
+                                  },
+                                ],
+                              });
+                            } else {
+                              const newActs = slot.items.map((it) => {
+                                const p = it.item;
+                                const partners = slot.items
+                                  .filter((other) => other.item.artistKey !== p.artistKey)
+                                  .map((other) => other.item.artistKey);
+                                return {
+                                  name: p.name,
+                                  from: 'lineup' as const,
+                                  role: p.billing,
+                                  roleFrom: p.billing ? ('lineup' as const) : undefined,
+                                  b2b: partners,
+                                };
+                              });
+                              save({
+                                seen: [...toPatch(event.seen), ...newActs],
+                              });
+                            }
+                          }
+                        }}
+                        title={title}
+                        className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-violet-500 bg-violet-600/30 text-violet-100' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
+                      >
+                        {slot.name}
+                        {slot.items.some((it) => it.item.billing === 'support') && (
+                          <span className="ml-1 text-[10px] text-zinc-400">support</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {(!job || edition || job.status === 'no_data' || job.status === 'failed') && !isActive(job?.status) && (
             <div className="space-y-1.5">

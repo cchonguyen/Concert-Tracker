@@ -24,6 +24,8 @@ export type RejectReason = 'not_an_act' | 'wrong_event' | 'cancelled';
 
 export interface ReviewedPerformer {
   key?: string; // candidate key; absent for acts you added
+  slotId?: string;
+  b2b?: string[];
   name: string;
   accepted: boolean;
   rejectReason?: RejectReason;
@@ -70,21 +72,71 @@ function editionFacts(job: LookupJob, event: LoggedEvent | null, sent?: EditionF
 // by hand that the lineup did not list.
 // A set type chosen in the review (setChosen) replaces your earlier one.
 export function mergeSeen(before: SeenAct[], ticked: SeenAct[], reviewedKeys: Set<string>, setChosen = new Set<string>()): SeenAct[] {
-  const out = new Map<string, SeenAct>();
-  for (const s of before) if (!reviewedKeys.has(s.key)) out.set(s.key, s);
-  for (const s of ticked) {
-    // Your favourite, set and B2B marks outlive a review of the lineup.
-    const was = before.find((b) => b.key === s.key);
-    out.set(s.key, {
+  const out: SeenAct[] = [];
+  for (const s of before) {
+    if (!reviewedKeys.has(s.key)) {
+      out.push(s.id ? s : { ...s, id: randomUUID() });
+    }
+  }
+  for (const raw of ticked) {
+    const s: SeenAct = { ...raw, id: raw.id || randomUUID() };
+    const was = before.find((b) => {
+      if (s.id && b.id && b.id === s.id) return true;
+      if (s.slotId && b.slotId && b.slotId === s.slotId && b.key === s.key) return true;
+      if (s.b2b?.length) {
+        return b.key === s.key && b.b2b && b.b2b.length === s.b2b.length && b.b2b.every((k) => s.b2b!.includes(k));
+      }
+      return b.key === s.key && (!b.b2b || b.b2b.length === 0);
+    }) ?? before.find((b) => b.key === s.key);
+
+    out.push({
       ...s,
       ...(was?.favourite ? { favourite: true } : {}),
       ...(was?.set && !setChosen.has(s.key) ? { set: was.set } : {}),
-      ...(was?.b2b ? { b2b: was.b2b } : {}),
+      ...(s.b2b?.length ? { b2b: s.b2b } : (was?.b2b ? { b2b: was.b2b } : {})),
       ...(was?.solo ? { solo: true } : {}),
       ...(was?.soloSet ? { soloSet: was.soloSet } : {}),
     });
   }
-  return withB2b([...out.values()]);
+  return withB2b(out);
+}
+
+function findCandidate(
+  candidates: CandidatePerformer[],
+  reviewed: ReviewedPerformer,
+  usedCandidates: Set<CandidatePerformer>,
+): CandidatePerformer | undefined {
+  if (!reviewed.key) return undefined;
+  if (reviewed.slotId) {
+    const match = candidates.find((c) => !usedCandidates.has(c) && c.key === reviewed.key && c.slotId === reviewed.slotId);
+    if (match) {
+      usedCandidates.add(match);
+      return match;
+    }
+  }
+  if (reviewed.b2b?.length) {
+    const match = candidates.find((c) => {
+      if (usedCandidates.has(c) || c.key !== reviewed.key || !c.b2b) return false;
+      return c.b2b.length === reviewed.b2b!.length && c.b2b.every((k) => reviewed.b2b!.includes(k));
+    });
+    if (match) {
+      usedCandidates.add(match);
+      return match;
+    }
+  }
+  if (!reviewed.slotId && (!reviewed.b2b || reviewed.b2b.length === 0)) {
+    const match = candidates.find((c) => !usedCandidates.has(c) && c.key === reviewed.key && (!c.b2b || c.b2b.length === 0) && !c.slotId);
+    if (match) {
+      usedCandidates.add(match);
+      return match;
+    }
+  }
+  const fallback = candidates.find((c) => !usedCandidates.has(c) && c.key === reviewed.key);
+  if (fallback) {
+    usedCandidates.add(fallback);
+    return fallback;
+  }
+  return undefined;
 }
 
 const EXAMPLE_CHARS = 6000;
@@ -111,7 +163,8 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
   const slug = seriesSlugFor(job.input.eventName);
   // Cached lineups and re-edits of a confirmed one were already counted once.
   const fresh = !job.candidate?.cached && job.status !== 'confirmed';
-  const byKey = new Map<string, CandidatePerformer>((job.candidate?.performers ?? []).map((p) => [p.key, p]));
+  const candidates = job.candidate?.performers ?? [];
+  const usedCandidates = new Set<CandidatePerformer>();
   const performances: EditionPerformance[] = [];
   const ticked: SeenAct[] = [];
   const setChosen = new Set<string>();
@@ -128,7 +181,7 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
     const name = reviewed.name.trim();
     if (!name) continue;
     reviewedKeys.add(normalizeName(name));
-    const cand = reviewed.key ? byKey.get(reviewed.key) : undefined;
+    const cand = findCandidate(candidates, reviewed, usedCandidates);
     const types = cand?.sources.map((s) => s.sourceType) ?? [];
     const urls = cand?.sources.map((s) => s.sourceUrl) ?? [];
 
@@ -181,11 +234,13 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
       });
     }
 
-    const perf = cand
+    const perf: EditionPerformance = cand
       ? toPerformance(cand, name)
       : {
           artistKey: normalizeName(name),
           name,
+          slotId: reviewed.slotId,
+          b2b: reviewed.b2b,
           days: [],
           stages: [],
           status: 'billed' as const,
@@ -197,7 +252,16 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
     if (reviewed.billing !== undefined) perf.billing = isBilling(reviewed.billing) ? reviewed.billing : undefined;
     if (reviewed.seen) {
       perf.status = 'performed'; // you were there
-      const act: SeenAct = { key: perf.artistKey, name: perf.name, from: cand ? 'lineup' : 'you' };
+      const act: SeenAct = {
+        id: randomUUID(),
+        key: perf.artistKey,
+        name: perf.name,
+        from: cand ? 'lineup' : 'you',
+      };
+      const actSlotId = cand?.slotId ?? reviewed.slotId;
+      if (actSlotId) act.slotId = actSlotId;
+      const actB2b = cand?.b2b?.length ? cand.b2b : reviewed.b2b;
+      if (actB2b?.length) act.b2b = actB2b;
       if (perf.billing) {
         act.role = perf.billing;
         act.roleFrom = cand && perf.billing === cand.billing ? 'lineup' : 'you';
@@ -209,7 +273,6 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
         if (isSetKind(reviewed.set)) act.set = reviewed.set;
         else delete act.set;
       }
-      if (cand?.b2b?.length) act.b2b = cand.b2b;
       ticked.push(act);
     }
     performances.push(perf);
@@ -282,7 +345,8 @@ export async function confirmLookupForMember(store: LineupStore, job: LookupJob,
   const event = job.eventId ? await store.getEvent(job.eventId) : null;
   if (!event) throw new Error('This lookup is not attached to one of your events.');
   const now = new Date().toISOString();
-  const byKey = new Map<string, CandidatePerformer>((job.candidate?.performers ?? []).map((p) => [p.key, p]));
+  const candidates = job.candidate?.performers ?? [];
+  const usedCandidates = new Set<CandidatePerformer>();
   const ticked: SeenAct[] = [];
   const setChosen = new Set<string>();
   const reviewedKeys = new Set<string>();
@@ -293,11 +357,20 @@ export async function confirmLookupForMember(store: LineupStore, job: LookupJob,
     if (!name) continue;
     reviewedKeys.add(normalizeName(name));
     if (!reviewed.accepted) continue;
-    const cand = reviewed.key ? byKey.get(reviewed.key) : undefined;
+    const cand = findCandidate(candidates, reviewed, usedCandidates);
     if (cand) draft.push(toPerformance(cand, name));
     if (!reviewed.seen) continue;
     const billing = reviewed.billing !== undefined ? (isBilling(reviewed.billing) ? reviewed.billing : undefined) : cand?.billing;
-    const act: SeenAct = { key: normalizeName(name), name, from: cand ? 'lineup' : 'you' };
+    const act: SeenAct = {
+      id: randomUUID(),
+      key: normalizeName(name),
+      name,
+      from: cand ? 'lineup' : 'you',
+    };
+    const actSlotId = cand?.slotId ?? reviewed.slotId;
+    if (actSlotId) act.slotId = actSlotId;
+    const actB2b = cand?.b2b?.length ? cand.b2b : reviewed.b2b;
+    if (actB2b?.length) act.b2b = actB2b;
     if (billing) {
       act.role = billing;
       act.roleFrom = cand && billing === cand.billing ? 'lineup' : 'you';
@@ -308,7 +381,6 @@ export async function confirmLookupForMember(store: LineupStore, job: LookupJob,
       if (isSetKind(reviewed.set)) act.set = reviewed.set;
       else delete act.set;
     }
-    if (cand?.b2b?.length) act.b2b = cand.b2b;
     ticked.push(act);
   }
 
@@ -384,6 +456,8 @@ function toPerformance(cand: CandidatePerformer, name: string): EditionPerforman
   return {
     artistKey: normalizeName(name),
     name,
+    slotId: cand.slotId,
+    b2b: cand.b2b,
     days: cand.days,
     stages: cand.stages,
     status: cand.status,
@@ -394,11 +468,27 @@ function toPerformance(cand: CandidatePerformer, name: string): EditionPerforman
 }
 
 function dedupe(perfs: EditionPerformance[]): EditionPerformance[] {
-  const map = new Map<string, EditionPerformance>();
+  const out: EditionPerformance[] = [];
   for (const p of perfs) {
-    const prev = map.get(p.artistKey);
-    if (!prev) map.set(p.artistKey, p);
-    else {
+    const prev = out.find((existing) => {
+      if (existing.artistKey !== p.artistKey) return false;
+      if (existing.slotId && p.slotId) return existing.slotId === p.slotId;
+      const existingIsB2b = Boolean(existing.b2b?.length);
+      const pIsB2b = Boolean(p.b2b?.length);
+      if (existingIsB2b !== pIsB2b) return false;
+      if (existingIsB2b && pIsB2b) {
+        const p1 = [...existing.b2b!].sort().join(',');
+        const p2 = [...p.b2b!].sort().join(',');
+        return p1 === p2;
+      }
+      return true;
+    });
+
+    if (!prev) {
+      out.push({ ...p });
+    } else {
+      prev.slotId ??= p.slotId;
+      prev.b2b ??= p.b2b;
       prev.days = [...new Set([...prev.days, ...p.days])].sort();
       prev.stages = [...new Set([...prev.stages, ...p.stages])];
       prev.sources = [...prev.sources, ...p.sources];
@@ -406,5 +496,5 @@ function dedupe(perfs: EditionPerformance[]): EditionPerformance[] {
       prev.billing ??= p.billing;
     }
   }
-  return [...map.values()];
+  return out;
 }
