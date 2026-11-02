@@ -1,6 +1,8 @@
 // Which acts the review screen starts from. A first review starts from the
 // lookup's candidate; reopening a confirmed lineup starts from what you saved,
 // so earlier keeps, rejections, renames and hand-added acts carry over.
+import { readActName } from '../server/lineup/actName';
+import { normalizeName } from '../server/lineup/text';
 import type { CandidatePerformer, Edition, EditionPerformance } from '../server/lineup/types';
 
 export interface StartRow {
@@ -26,7 +28,72 @@ const b2bEqual = (a?: string[], b?: string[]) => {
   return sa === sb;
 };
 
-export function startRows(performers: CandidatePerformer[], edition?: Edition | null): StartRow[] {
+function unpackCandidates(list: CandidatePerformer[]): CandidatePerformer[] {
+  const result: CandidatePerformer[] = [];
+  for (const p of list) {
+    if (p.b2b?.length) {
+      result.push(p);
+      continue;
+    }
+    const read = readActName(p.name);
+    if (read.parts.length <= 1) {
+      result.push(p);
+      continue;
+    }
+    const allKeys = read.parts.map(normalizeName).filter(Boolean);
+    if (allKeys.length <= 1) {
+      result.push(p);
+      continue;
+    }
+    const slotId = p.slotId || crypto.randomUUID();
+    for (const part of read.parts) {
+      const key = normalizeName(part);
+      result.push({
+        ...p,
+        key,
+        name: part,
+        slotId,
+        b2b: allKeys.filter((k) => k !== key),
+      });
+    }
+  }
+  return result;
+}
+
+function unpackPerformances(list: EditionPerformance[]): EditionPerformance[] {
+  const result: EditionPerformance[] = [];
+  for (const e of list) {
+    if (e.b2b?.length) {
+      result.push(e);
+      continue;
+    }
+    const read = readActName(e.name);
+    if (read.parts.length <= 1) {
+      result.push(e);
+      continue;
+    }
+    const allKeys = read.parts.map(normalizeName).filter(Boolean);
+    if (allKeys.length <= 1) {
+      result.push(e);
+      continue;
+    }
+    const slotId = e.slotId || crypto.randomUUID();
+    for (const part of read.parts) {
+      const key = normalizeName(part);
+      result.push({
+        ...e,
+        artistKey: key,
+        name: part,
+        slotId,
+        b2b: allKeys.filter((k) => k !== key),
+      });
+    }
+  }
+  return result;
+}
+
+export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition | null): StartRow[] {
+  const performers = unpackCandidates(rawPerformers);
   if (!edition) {
     return performers.map((p) => ({
       key: p.key,
@@ -42,24 +109,25 @@ export function startRows(performers: CandidatePerformer[], edition?: Edition | 
       candidate: p,
     }));
   }
+  const editionPerformances = unpackPerformances(edition.performances);
   const used = new Set<EditionPerformance>();
   const rows: StartRow[] = performers.map((p) => {
     // 1. Same slotId if available on both
     let saved: EditionPerformance | undefined;
     if (p.slotId) {
-      saved = edition.performances.find((e) => !used.has(e) && e.slotId === p.slotId && e.artistKey === p.key);
+      saved = editionPerformances.find((e) => !used.has(e) && e.slotId === p.slotId && e.artistKey === p.key);
     }
     // 2. Same source
     if (!saved) {
-      saved = edition.performances.find((e) => !used.has(e) && sameSource(e, p));
+      saved = editionPerformances.find((e) => !used.has(e) && sameSource(e, p));
     }
     // 3. Same artistKey and same b2b partners
     if (!saved) {
-      saved = edition.performances.find((e) => !used.has(e) && e.artistKey === p.key && b2bEqual(e.b2b, p.b2b));
+      saved = editionPerformances.find((e) => !used.has(e) && e.artistKey === p.key && b2bEqual(e.b2b, p.b2b));
     }
     // 4. Same artistKey fallback
     if (!saved) {
-      saved = edition.performances.find((e) => !used.has(e) && e.artistKey === p.key);
+      saved = editionPerformances.find((e) => !used.has(e) && e.artistKey === p.key);
     }
 
     if (!saved) {
@@ -94,7 +162,7 @@ export function startRows(performers: CandidatePerformer[], edition?: Edition | 
     };
   });
   // Acts you added by hand last time have no candidate.
-  for (const e of edition.performances) {
+  for (const e of editionPerformances) {
     if (used.has(e) || e.status === 'cancelled') continue;
     rows.push({
       seenKey: e.artistKey,

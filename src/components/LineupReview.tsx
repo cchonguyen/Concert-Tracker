@@ -4,6 +4,8 @@ import type { RejectReason } from '../server/lineup/learning';
 import { lineupApi, LoggedEvent, LookupJob, SOURCE_LABELS } from '../services/lineupApi';
 import { EventTitle } from './EventTitle';
 import { filterOptions, groupReviewSlots, startRows } from '../services/reviewRows';
+import { readActName } from '../server/lineup/actName';
+import { normalizeName } from '../server/lineup/text';
 import type { Edition } from '../server/lineup/types';
 
 interface LineupReviewProps {
@@ -47,7 +49,11 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
   const yourRole = new Map(event.seen.filter((s) => s.roleFrom === 'you').map((s) => [s.key, s.role ?? '']));
   const isRowSeen = (r: { seenKey: string; b2b?: string[] }): boolean => {
     if (r.b2b?.length) {
-      return event.seen.some((s) => s.key === r.seenKey && s.b2b?.length && s.b2b.some((k) => r.b2b!.includes(k)));
+      return event.seen.some((s) => {
+        if (s.key === r.seenKey && s.b2b?.length && s.b2b.some((k) => r.b2b!.includes(k))) return true;
+        const parts = readActName(s.name).parts.map(normalizeName);
+        return parts.length > 1 && parts.includes(r.seenKey) && r.b2b!.some((k) => parts.includes(k));
+      });
     }
     return event.seen.some((s) => s.key === r.seenKey && (!s.b2b?.length || s.solo));
   };
@@ -102,13 +108,78 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
       ),
     );
 
+  const splitRowIfB2b = (index: number) => {
+    const row = rows[index];
+    if (!row) return;
+    const read = readActName(row.name);
+    if (read.parts.length <= 1) return;
+    const allKeys = read.parts.map(normalizeName).filter(Boolean);
+    if (allKeys.length <= 1) return;
+    const slotId = row.slotId || crypto.randomUUID();
+    const replacementRows: Row[] = read.parts.map((part) => {
+      const key = normalizeName(part);
+      return {
+        ...row,
+        key,
+        name: part,
+        slotId,
+        b2b: allKeys.filter((k) => k !== key),
+        originalName: undefined,
+        set: read.dj ? 'dj' : row.set,
+      };
+    });
+    setRows((rs) => [...rs.slice(0, index), ...replacementRows, ...rs.slice(index + 1)]);
+  };
+
   const addAct = () => {
     const name = newAct.trim();
     if (!name) return;
-    setRows((rs) => [
-      ...rs,
-      { name, accepted: true, rejectReason: 'not_an_act', seen: true, billing: '', set: '', days: [], stages: [], confidence: 1, flagged: false, missingFrom: [], status: 'billed', sources: [] },
-    ]);
+    const read = readActName(name);
+    if (read.parts.length > 1) {
+      const slotId = crypto.randomUUID();
+      const allKeys = read.parts.map(normalizeName).filter(Boolean);
+      const newRows: Row[] = read.parts.map((part) => {
+        const key = normalizeName(part);
+        return {
+          key,
+          slotId,
+          b2b: allKeys.filter((k) => k !== key),
+          name: part,
+          accepted: true,
+          rejectReason: 'not_an_act',
+          seen: true,
+          billing: '',
+          set: read.dj ? 'dj' : '',
+          days: [],
+          stages: [],
+          confidence: 1,
+          flagged: false,
+          missingFrom: [],
+          status: 'billed',
+          sources: [],
+        };
+      });
+      setRows((rs) => [...rs, ...newRows]);
+    } else {
+      setRows((rs) => [
+        ...rs,
+        {
+          name,
+          accepted: true,
+          rejectReason: 'not_an_act',
+          seen: true,
+          billing: '',
+          set: read.dj ? 'dj' : '',
+          days: [],
+          stages: [],
+          confidence: 1,
+          flagged: false,
+          missingFrom: [],
+          status: 'billed',
+          sources: [],
+        },
+      ]);
+    }
     setNewAct('');
   };
 
@@ -116,9 +187,30 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
     setError(null);
     setSaving(true);
     try {
+      const expandedRows = rows.flatMap((r) => {
+        if (r.b2b?.length) return [r];
+        const read = readActName(r.name);
+        if (read.parts.length <= 1) return [r];
+        const allKeys = read.parts.map(normalizeName).filter(Boolean);
+        if (allKeys.length <= 1) return [r];
+        const slotId = r.slotId || crypto.randomUUID();
+        return read.parts.map((part) => {
+          const key = normalizeName(part);
+          return {
+            ...r,
+            key,
+            name: part,
+            slotId,
+            b2b: allKeys.filter((k) => k !== key),
+          };
+        });
+      });
+
       const { event: updated } = await lineupApi.confirm(job.id, {
-        performers: rows.map((r) => ({
+        performers: expandedRows.map((r) => ({
           key: r.key,
+          slotId: r.slotId,
+          b2b: r.b2b,
           name: r.name,
           accepted: r.accepted,
           rejectReason: r.accepted ? undefined : r.rejectReason,
@@ -233,11 +325,31 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
                       </td>
                       <td className="p-2 align-top">
                         {slot.items.length === 1 ? (
-                          <input
-                            className={input}
-                            value={slot.items[0].item.name}
-                            onChange={(e) => update(slot.items[0].index, { name: e.target.value })}
-                          />
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              className={input}
+                              value={slot.items[0].item.name}
+                              onChange={(e) => update(slot.items[0].index, { name: e.target.value })}
+                              onBlur={() => splitRowIfB2b(slot.items[0].index)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  splitRowIfB2b(slot.items[0].index);
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className="shrink-0 rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs font-medium text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+                              title="Make B2B: pairs this act with another artist"
+                              onClick={() => {
+                                const idx = slot.items[0].index;
+                                update(idx, { name: `${slot.items[0].item.name} b2b ` });
+                              }}
+                            >
+                              + B2B
+                            </button>
+                          </div>
                         ) : (
                           <div className="space-y-1">
                             <div className="font-semibold text-zinc-100">{slot.name}</div>
