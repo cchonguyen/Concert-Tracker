@@ -24,17 +24,18 @@ export function Callout({ id, tone = 'info', children }: { id: string; tone?: No
     setGone(true);
   };
   return (
-    <div className="relative">
-      <Notice tone={tone} className="pr-9">
+    <aside aria-label="Tip" className="relative">
+      <Notice tone={tone} className="pr-11">
         {children}
       </Notice>
       <button
+        type="button"
         onClick={dismiss}
         aria-label="Dismiss this tip"
-        className="absolute right-1 top-1 rounded-md p-2.5 text-zinc-400 hover:text-zinc-100"
+        className="absolute right-1 top-1 flex h-10 w-10 items-center justify-center rounded-control text-zinc-400 hover:text-zinc-100"
       >
         <X className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
-    </div>
+    </aside>
   );
 }
