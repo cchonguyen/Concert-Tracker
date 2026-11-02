@@ -252,4 +252,16 @@ test('setOwnGenres allows setting genres for an artist entity from Manage', asyn
   const r = await setOwnGenres(store, 'caribou', ['house'], now);
   assert.equal(r?.name, 'Caribou');
   assert.deepEqual(r?.genres, [{ style: 'house', parent: 'electronic', weight: 1 }]);
+
+  // musicBrainzGenres also works for artist entity
+  const { fetcher } = fakeFetcher({
+    'https://musicbrainz.org/ws/2/artist/?query=artist%3A%22Caribou%22&fmt=json&limit=5': {
+      body: { artists: [{ id: 'mb-caribou', name: 'Caribou', score: 100 }] },
+    },
+    'https://musicbrainz.org/ws/2/artist/mb-caribou?inc=genres&fmt=json': { body: { genres: [{ name: 'techno', count: 1 }] } },
+  });
+  const mbRows = await musicBrainzGenres(store, fetcher, ['caribou'], now);
+  assert.equal(mbRows.length, 1);
+  assert.equal(mbRows[0].name, 'Caribou');
+  assert.deepEqual(mbRows[0].genres, [{ parent: 'electronic', style: 'techno', weight: 1 }]);
 });
