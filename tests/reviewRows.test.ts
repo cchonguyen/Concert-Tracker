@@ -103,3 +103,40 @@ test('B2B slot grouping links the performers', () => {
   assert.deepEqual(mixedSlots[1].stages, ['Kinetic Field']);
   assert.equal(mixedSlots[1].items.length, 2);
 });
+
+test('startRows automatically unpacks legacy unparsed B2B performances from edition', () => {
+  const edition = {
+    performances: [
+      {
+        artistKey: 'armin van buuren x adam beyer',
+        name: 'Armin van Buuren x Adam Beyer',
+        days: ['2026-04-10', '2026-04-11'],
+        stages: ['Quasar', 'Yuma'],
+        status: 'performed',
+        confidence: 0.99,
+        sources: [src('Armin van Buuren x Adam Beyer')],
+      },
+    ],
+  } as any;
+
+  const rows = startRows([], edition);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].name, 'Armin van Buuren');
+  assert.equal(rows[0].seenKey, 'armin van buuren');
+  assert.ok(rows[0].slotId);
+  assert.deepEqual(rows[0].b2b, ['adam beyer']);
+  assert.deepEqual(rows[0].days, ['2026-04-10', '2026-04-11']);
+  assert.deepEqual(rows[0].stages, ['Quasar', 'Yuma']);
+
+  assert.equal(rows[1].name, 'Adam Beyer');
+  assert.equal(rows[1].seenKey, 'adam beyer');
+  assert.equal(rows[1].slotId, rows[0].slotId);
+  assert.deepEqual(rows[1].b2b, ['armin van buuren']);
+  assert.deepEqual(rows[1].days, ['2026-04-10', '2026-04-11']);
+
+  const slots = groupReviewSlots(rows);
+  assert.equal(slots.length, 1);
+  assert.equal(slots[0].name, 'Armin van Buuren b2b Adam Beyer');
+  assert.equal(slots[0].isB2b, true);
+  assert.equal(slots[0].items.length, 2);
+});

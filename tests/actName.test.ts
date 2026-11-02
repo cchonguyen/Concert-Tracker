@@ -10,6 +10,9 @@ test('a lineup name is read for B2B pairs and a DJ set suffix', () => {
   assert.deepEqual(readActName('A b2b B b2b C'), { parts: ['A', 'B', 'C'], dj: false });
   assert.deepEqual(readActName('Cirez D vs Adam Beyer'), { parts: ['Cirez D', 'Adam Beyer'], dj: false });
   assert.deepEqual(readActName('Cirez D vs. Adam Beyer'), { parts: ['Cirez D', 'Adam Beyer'], dj: false });
+  assert.deepEqual(readActName('Armin van Buuren x Adam Beyer'), { parts: ['Armin van Buuren', 'Adam Beyer'], dj: false });
+  assert.deepEqual(readActName('RL Grime X Knock2'), { parts: ['RL Grime', 'Knock2'], dj: false });
+  assert.deepEqual(readActName('Skrillex x Four Tet x Fred again..'), { parts: ['Skrillex', 'Four Tet', 'Fred again..'], dj: false });
   assert.deepEqual(readActName('Porter Robinson (DJ Set)'), { parts: ['Porter Robinson'], dj: true });
   assert.deepEqual(readActName('Kaskade - DJ set'), { parts: ['Kaskade'], dj: true });
   assert.deepEqual(readActName('Disclosure DJ Set'), { parts: ['Disclosure'], dj: true });
