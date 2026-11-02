@@ -9,7 +9,7 @@ export interface ActName {
 }
 
 const DJ_SET = /\s*[-–—:]?\s*[([]?\s*\bdj[\s-]?set\b\s*[)\]]?\s*$/i;
-const B2B = /\s+(?:b(?:2|[/]2[/]|ack[\s-]+to[\s-]+)b(?:ack)?|vs\.?|[xX])\s+/i;
+const B2B = /\s+(?:b(?:[2-9]|[/][2-9][/]|ack[\s-]+to[\s-]+)b(?:ack)?|b(?:[2-9]b)+|vs\.?|[xX])\s+/i;
 
 export function readActName(name: string): ActName {
   let rest = name.trim();

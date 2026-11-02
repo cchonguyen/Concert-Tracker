@@ -18,6 +18,7 @@ export const isSetKind = (v: unknown): v is SetKind => v === 'dj' || v === 'live
 export interface SeenInput {
   id?: string;
   slotId?: string;
+  alias?: string;
   name: string;
   from?: SeenAct['from'];
   role?: Billing | null;
@@ -32,10 +33,11 @@ export interface SeenInput {
 // The whole seen list as a patch, keeping every mark, so a change to one act
 // never drops another's.
 export const toSeenInput = (seen: SeenAct[]): SeenInput[] =>
-  seen.map(({ id, slotId, name, from, role, roleFrom, favourite, set, b2b, solo, soloSet }) => {
+  seen.map(({ id, slotId, alias, name, from, role, roleFrom, favourite, set, b2b, solo, soloSet }) => {
     const out: SeenInput = { name, from };
     if (id) out.id = id;
     if (slotId) out.slotId = slotId;
+    if (alias) out.alias = alias;
     if (role) Object.assign(out, { role, roleFrom });
     if (favourite) out.favourite = true;
     if (set) out.set = set;
@@ -45,7 +47,7 @@ export const toSeenInput = (seen: SeenAct[]): SeenInput[] =>
     return out;
   });
 
-type Linked = { id?: string; slotId?: string; key: string; b2b?: string[]; set?: SetKind; solo?: boolean; soloSet?: SetKind };
+type Linked = { id?: string; slotId?: string; alias?: string; key: string; b2b?: string[]; set?: SetKind; solo?: boolean; soloSet?: SetKind };
 
 // Helper to group performance items into B2B slots by instance identity
 function findPerformanceGroups<T>(

@@ -145,6 +145,7 @@ export interface CandidateSource {
 export interface CandidatePerformer {
   key: string; // normalized merge key
   slotId?: string; // identifier of the performance slot (shared by B2B partners)
+  alias?: string; // collaborative project moniker (e.g. Subjohnics, Kx5)
   name: string;
   mbid?: string;
   days: string[];
@@ -218,6 +219,7 @@ export interface SeriesRecord {
 export interface EditionPerformance {
   slotId?: string; // identifier of the performance slot (shared by B2B partners)
   artistKey: string;
+  alias?: string; // collaborative project moniker (e.g. Subjohnics, Kx5)
   name: string;
   mbid?: string;
   b2b?: string[]; // partners in this B2B performance

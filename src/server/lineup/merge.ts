@@ -164,6 +164,7 @@ interface PerformanceGroup {
   groupKey: string;
   artistKey: string;
   slotId?: string;
+  alias?: string;
   b2b?: string[];
   claims: PerformerClaim[];
 }
@@ -180,7 +181,9 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
       dropped += 1;
       continue;
     }
-    const read = readActName(canonicalName(whole.name, ctx.aliases));
+    const canonical = canonicalName(whole.name, ctx.aliases);
+    const read = readActName(canonical);
+    const alias = canonical !== whole.name && read.parts.length > 1 ? whole.name : undefined;
     const validParts: Array<{ part: string; key: string; claim: PerformerClaim }> = [];
     for (const part of read.parts) {
       const claim = read.parts.length === 1 && !read.dj ? whole : { ...whole, name: part };
@@ -219,11 +222,13 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
           groupKey,
           artistKey,
           slotId,
+          alias,
           b2b: b2bPartners.length > 0 ? b2bPartners : undefined,
           claims: [],
         };
         groups.set(groupKey, group);
       }
+      if (alias && !group.alias) group.alias = alias;
       group.claims.push(v.claim);
     }
   }
@@ -257,6 +262,7 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
       key: group.artistKey,
       slotId: group.slotId,
       name: aliasName ?? preferredSpelling(byPriority[0].name.trim(), ctx.spellings ?? {}),
+      ...(group.alias ? { alias: group.alias } : {}),
       ...(djGroups.has(group.groupKey) ? { set: 'dj' as const } : {}),
       ...(group.b2b ? { b2b: group.b2b } : {}),
       mbid: claims.find((c) => c.mbid)?.mbid,

@@ -272,3 +272,23 @@ test('mergeSeen does not collapse multiple seen acts for the same artist and ass
   assert.ok(b2b);
   assert.equal(b2b.slotId, 'slot-1');
 });
+
+test('mergeLineup resolves collaboration aliases (e.g. Subjohnics) into B2B candidates with alias preserved', () => {
+  const claims = [claim('Subjohnics', { day: '2024-05-19', stage: 'kineticFIELD' })];
+  const lineup = mergeLineup({
+    ...baseMerge,
+    aliases: { subjohnics: 'John Summit b2b Subtronics' },
+    claims,
+  });
+
+  assert.equal(lineup.performers.length, 2);
+  const summit = lineup.performers.find((p) => p.name === 'John Summit');
+  const subtronics = lineup.performers.find((p) => p.name === 'Subtronics');
+
+  assert.ok(summit && subtronics);
+  assert.equal(summit.alias, 'Subjohnics');
+  assert.equal(subtronics.alias, 'Subjohnics');
+  assert.equal(summit.slotId, subtronics.slotId);
+  assert.deepEqual(summit.b2b, ['subtronics']);
+  assert.deepEqual(subtronics.b2b, ['john summit']);
+});

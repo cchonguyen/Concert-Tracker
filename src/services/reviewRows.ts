@@ -9,6 +9,7 @@ export interface StartRow {
   key?: string;
   seenKey: string; // the key a seen act would have
   slotId?: string;
+  alias?: string;
   b2b?: string[];
   name: string;
   accepted: boolean;
@@ -53,6 +54,7 @@ function unpackCandidates(list: CandidatePerformer[]): CandidatePerformer[] {
         key,
         name: part,
         slotId,
+        alias: p.alias,
         b2b: allKeys.filter((k) => k !== key),
       });
     }
@@ -85,6 +87,7 @@ function unpackPerformances(list: EditionPerformance[]): EditionPerformance[] {
         artistKey: key,
         name: part,
         slotId,
+        alias: e.alias,
         b2b: allKeys.filter((k) => k !== key),
       });
     }
@@ -99,6 +102,7 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
       key: p.key,
       seenKey: p.key,
       slotId: p.slotId,
+      alias: p.alias,
       b2b: p.b2b,
       name: p.name,
       accepted: !p.flagged,
@@ -135,6 +139,7 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
         key: p.key,
         seenKey: p.key,
         slotId: p.slotId,
+        alias: p.alias,
         b2b: p.b2b,
         name: p.name,
         accepted: false,
@@ -151,6 +156,7 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
       key: p.key,
       seenKey: saved.artistKey,
       slotId: p.slotId ?? saved.slotId,
+      alias: saved.alias ?? p.alias,
       b2b: p.b2b ?? saved.b2b,
       name: saved.name,
       accepted: !cancelled,
@@ -167,6 +173,7 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
     rows.push({
       seenKey: e.artistKey,
       slotId: e.slotId,
+      alias: e.alias,
       b2b: e.b2b,
       name: e.name,
       accepted: true,
@@ -182,6 +189,7 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
 export interface ReviewSlot<T> {
   id: string;
   name: string;
+  alias?: string;
   isB2b: boolean;
   b2bPartners: string[];
   days: string[];
@@ -195,6 +203,7 @@ export interface ReviewSlot<T> {
 export interface SlotCandidateItem {
   key?: string;
   slotId?: string;
+  alias?: string;
   b2b?: string[];
   name: string;
   days?: string[];
@@ -248,8 +257,10 @@ export function groupReviewSlots<T extends SlotCandidateItem>(items: T[]): Array
   for (const indices of groups.values()) {
     const members = indices.map((idx) => ({ item: items[idx], index: idx }));
     const isB2b = members.length > 1 || Boolean(members[0].item.b2b?.length);
+    const alias = members.find((m) => m.item.alias)?.item.alias;
+    const partnerNames = members.map((m) => m.item.name).join(' b2b ');
     const name = members.length > 1
-      ? members.map((m) => m.item.name).join(' b2b ')
+      ? (alias ? `${alias} (${partnerNames})` : partnerNames)
       : members[0].item.name;
     const days = [...new Set(members.flatMap((m) => m.item.days ?? []))].sort();
     const stages = [...new Set(members.flatMap((m) => m.item.stages ?? []))].sort((a, b) => a.localeCompare(b));
@@ -262,6 +273,7 @@ export function groupReviewSlots<T extends SlotCandidateItem>(items: T[]): Array
     slots.push({
       id,
       name,
+      alias,
       isB2b,
       b2bPartners,
       days,
