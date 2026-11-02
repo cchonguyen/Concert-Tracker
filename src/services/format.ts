@@ -114,6 +114,7 @@ export function suggestionsFor(query: string, suggestions: string[], limit = 8):
 }
 
 export const favouriteOf = (seen: SeenAct[]) => seen.find((s) => s.favourite);
+export const favouritesOf = (seen: SeenAct[]) => seen.filter((s) => s.favourite);
 
 // WMO weather codes, as Open-Meteo reports them.
 export function weatherWord(code?: number): string {
@@ -213,7 +214,7 @@ export function eventRows(
     e.seen.map((s) => s.name).join('; '),
     artistsOf(e.seen).map((s) => s.name).join('; '),
     supportOf(e.seen).map((s) => s.name).join('; '),
-    favouriteOf(e.seen)?.name,
+    favouritesOf(e.seen).map((s) => s.name).join('; '),
     seenSlots(e.seen)
       .filter((slot) => slot.length > 1 || slot[0].set || slot[0].asSolo)
       .map(slotLabel)
