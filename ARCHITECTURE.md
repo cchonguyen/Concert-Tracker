@@ -19,7 +19,7 @@ You type one line about an event you went to. It is saved at once (stage 1), and
 
 Stage 2 never changes the event's date or place, and stage 1 never waits on stage 2.
 
-The owner can also start a canonical lookup for an edition with no saved event ("Ingest canonical lineup", owner only). It writes only to the shared catalog (`event_editions`, `performances`, `canonical_artists`) and never to any member's `logged_events`. Such a lookup follows the same quota, fetch and verbatim rules as stage 2. Only confirmed editions feed member suggestions; drafts stay with the owner.
+The owner can also start a canonical lookup for an edition with no saved event ("Ingest canonical lineup", owner only). It writes only to the shared catalog (`event_editions`, `performances`, `canonical_artists`) and never to any member's `logged_events`. Such a lookup follows the same quota, fetch and verbatim rules as stage 2. Only confirmed editions feed member suggestions; drafts stay with the owner. The owner confirms an edition with `POST /api/manage/canonical/confirm` (previews the merge diff unless `apply: true`; stored acts are kept, blank facts filled, differing facts reported and not overwritten). Admin-curated acts use the `user` source type with extractor `admin_curation` and an optional weblink.
 
 ## Invariants
 
