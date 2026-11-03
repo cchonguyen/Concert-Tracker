@@ -135,6 +135,8 @@ export interface LineupStore {
   listUnresolvedArtists(limit: number): Promise<ArtistIdentity[]>;
   // Every canonical artist (canonical_artists), for the owner's Global Archive.
   listArtists(): Promise<ArtistIdentity[]>;
+  // Owner view only: artist name key -> members who have it on a live event. Null where the store cannot count across members.
+  communityCounts(): Promise<Map<string, number> | null>;
 
   // Genres of acts you saw (0013), one row per act and source.
   listArtistGenres(): Promise<ArtistGenres[]>;

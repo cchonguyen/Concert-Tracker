@@ -72,7 +72,13 @@ export interface CanonicalArtistSummary {
 // Unifies the owner's catalog (spec 3.2). Counts only; no member names.
 // origins: from_me = in the owner's own seen names; unmanaged_fetch = in
 // canonical_artists; community_import is not set until the aggregate exists.
-export function unifyArtists(input: { canonical: ArtistIdentity[]; ownerNames: string[]; editions: Edition[] }): CanonicalArtistSummary[] {
+export function unifyArtists(input: {
+  canonical: ArtistIdentity[];
+  ownerNames: string[];
+  editions: Edition[];
+  // From communityCounts(): name key -> members. Omit or null leaves communityCount null.
+  communityCounts?: Map<string, number> | null;
+}): CanonicalArtistSummary[] {
   const byKey = new Map<string, CanonicalArtistSummary>();
   const ensure = (key: string, name: string, mbid?: string): CanonicalArtistSummary => {
     let row = byKey.get(key);
@@ -98,6 +104,10 @@ export function unifyArtists(input: { canonical: ArtistIdentity[]; ownerNames: s
       const row = byKey.get(p.artistKey);
       if (row) row.editionsCount += 1;
     }
+  }
+  // With counts, every row gets a number (0 when no live event has it). Without, null: unknown, not zero.
+  if (input.communityCounts) {
+    for (const row of byKey.values()) row.communityCount = input.communityCounts.get(row.key) ?? 0;
   }
   return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
