@@ -101,3 +101,41 @@ export function unifyArtists(input: { canonical: ArtistIdentity[]; ownerNames: s
   }
   return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
+
+// The acts of one canonical artist across editions (for the artist detail view).
+export interface ArtistAppearance {
+  editionId: string;
+  editionName: string;
+  year: number;
+  startDate: string | null;
+  venue: string | null;
+  city: string | null;
+  status: Edition['status'];
+  billing: string | null;
+  set: string | null;
+  days: string[];
+  stages: string[];
+}
+
+export function appearancesOf(editions: Edition[], artistKey: string): ArtistAppearance[] {
+  const out: ArtistAppearance[] = [];
+  for (const e of editions) {
+    for (const p of e.performances) {
+      if (p.artistKey !== artistKey) continue;
+      out.push({
+        editionId: e.id,
+        editionName: e.name,
+        year: e.year,
+        startDate: e.startDate ?? null,
+        venue: e.venue ?? null,
+        city: e.city ?? null,
+        status: e.status,
+        billing: p.billing ?? null,
+        set: p.set ?? null,
+        days: p.days,
+        stages: p.stages,
+      });
+    }
+  }
+  return out.sort((a, b) => b.year - a.year || a.editionName.localeCompare(b.editionName));
+}
