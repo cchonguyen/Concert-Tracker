@@ -1,23 +1,24 @@
 # Session Handoff
 
 - **Last Active Platform:** Google Antigravity
-- **Active Branch / State:** `antigravity/clean-coachella-lineup-and-stages-2` (PR #191 open, clean, verified)
+- **Active Branch / State:** `main` (clean, verified, deployed)
 - **Branch Owner:** Antigravity / Charlie Cho Nguyen
-- **Active slice:** Coachella 2023 & 2025 Lineup Cleanup & Stage Filtering
-- **Pull Request:** https://github.com/cchonguyen/Concert-Tracker/pull/191
-- **Files Modified in Last Turn:**
-  - `src/server/lineup/actName.ts`
-  - `src/server/lineup/adapters/clashfinder.ts`
-  - `src/server/lineup/merge.ts`
-  - `src/components/EventDetail.tsx`
-  - `scripts/clean-coachella.ts`
-  - `tests/actName.test.ts`
-  - `tests/adapters.test.ts`
+- **Active slice:** Coachella 2023 & 2025 Lineup Cleanup, Stage Filtering & Non-Music Exclusion
+- **Merge Commits:**
+  - `74d0255`: PR #186 (`feat(lineup): support B3B multi-artist sets and collaboration aliases`)
+  - `38ea096`: PR #187 (`feat(lineup): allow multiple performances per artist in Postgres with slotId, alias, and b2b`)
+  - `c52710c`: PR #188 (`feat(manage): add collaborative group aliases management and enhance lineup review`)
+  - `d4dd0fb`: PR #189 (`fix(lineup): prevent B2B partners from swapping via sameSource in reviewRows`)
+  - `80dbfe8`: PR #191 (`fix(lineup): clean non-music programming, silent disco slots, and add stage filtering for Coachella 2023 & 2025`)
+- **Deploy Result:**
+  - Cloudflare Workers deployed to `https://concert.charliechonguyen.com` via `npm run cf:deploy`.
+  - Current Version ID: `81a49fe6-4658-4049-9f2d-0b8934c2f45a`.
 - **Database Status:**
-  - Live Supabase cleaned: Coachella 2023 (reduced from 261 to 235 acts, corrected edition name to "Coachella 2023 Weekend 1") and Coachella 2025 (reduced from 272 to 241 acts).
-  - Aliases learned in `artist_aliases` (`keleena zanders` -> `Kaleena Zanders`, `wavegroove` -> `Wave Groove`).
+  - Live Supabase cleaned:
+    - Coachella 2023 (`0de5b120-6394-4322-8e96-5d9dbf5e2cca`): Purged 26 junk entries (POSTed Studio workshops, The Dome silent discos and climate panels). Corrected edition name from "Coachella 2024 Weekend 1" to "Coachella 2023 Weekend 1". Reduced from 261 to 235 acts.
+    - Coachella 2025 (`559e735f-ade2-48fd-9de4-938ebe0923db`): Purged 31 junk entries (campground yoga, 5K runs, silent discos). Learned aliases (`keleena zanders` -> `Kaleena Zanders`, `wavegroove` -> `Wave Groove`). Reduced from 272 to 241 acts.
 - **Verification Status:**
   - `npm run lint`: Passed (0 errors)
   - `npm test`: Passed (657 pass, 0 fail)
   - `harness-main-watch`: Passed, `harness-main-red` tag absent from origin.
-- **Immediate Next Step for Claude:** Review and merge PR #191 into `main`.
+- **Immediate Next Step:** Repository and production are fully up to date and verified green.
