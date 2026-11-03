@@ -908,6 +908,14 @@ export class SupabaseLineupStore implements LineupStore {
     );
   }
 
+  // Counts come from the canonical_community_counts() function (migration 0033),
+  // which returns only a name key and a number.
+  async communityCounts(): Promise<Map<string, number> | null> {
+    const { data, error } = await this.db.rpc('canonical_community_counts');
+    if (error) throw new Error(`Supabase communityCounts failed: ${error.message}`);
+    return new Map((data ?? []).map((r: { name_key: string; member_count: number }) => [r.name_key, r.member_count]));
+  }
+
   async listArtists() {
     const out: ArtistIdentity[] = [];
     for (let from = 0; ; from += 1000) {
