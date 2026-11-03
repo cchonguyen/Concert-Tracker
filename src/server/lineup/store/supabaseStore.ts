@@ -903,6 +903,19 @@ export class SupabaseLineupStore implements LineupStore {
     );
   }
 
+  async listArtists() {
+    const out: ArtistIdentity[] = [];
+    for (let from = 0; ; from += 1000) {
+      const rows = this.check(
+        await this.db.from('canonical_artists').select('*').order('key').range(from, from + 999),
+        'listArtists',
+      );
+      for (const r of (rows ?? []) as any[]) out.push({ key: r.key, name: r.name, mbid: r.mbid ?? undefined, resolvedAt: r.resolved_at ?? undefined });
+      if (!rows || rows.length < 1000) break;
+    }
+    return out;
+  }
+
   async listUnresolvedArtists(limit: number) {
     const rows = this.check(
       await this.db.from('canonical_artists').select('*').is('resolved_at', null).limit(limit),

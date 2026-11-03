@@ -525,6 +525,10 @@ export class FileLineupStore implements LineupStore {
     await this.save();
   }
 
+  async listArtists() {
+    return clone(Object.values((await this.load()).artists));
+  }
+
   async listUnresolvedArtists(limit: number) {
     return clone(
       Object.values((await this.load()).artists)
