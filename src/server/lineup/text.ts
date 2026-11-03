@@ -1,16 +1,8 @@
 import { createHash } from 'node:crypto';
 
-// Lowercase, strip diacritics and punctuation, collapse whitespace.
-// Used for merge keys and the verbatim check; never for display.
-export function normalizeName(value: string): string {
-  return value
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim();
-}
+import { normalizeName } from './normalizeName';
+
+export { normalizeName };
 
 export function slugify(value: string): string {
   return normalizeName(value).replace(/\s+/g, '-');

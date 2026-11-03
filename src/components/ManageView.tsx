@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Building2, HeartPulse, History, Layers, Loader2, MapPin, Mic2, Plus, Search, Tag, Undo2, Users } from 'lucide-react';
-import { entitiesApi, LoggedEvent } from '../services/lineupApi';
+import { canonicalApi, entitiesApi, LoggedEvent } from '../services/lineupApi';
+import type { ArtistOrigin, CanonicalArtistSummary } from '../server/entities/canonicalManage';
+import { normalizeName } from '../server/lineup/normalizeName';
 import type { Entity, EntityAlias, EntityKind, EntityLink, HistoryEntry } from '../server/entities/types';
 import { norm } from '../services/listImport';
 import { DataHealth } from './DataHealth';
@@ -10,6 +12,12 @@ import { CollaborationsCard } from './CollaborationsCard';
 import { MenuButton, type MenuOption } from './ui/MenuButton';
 import { CanonicalArchive } from './CanonicalArchive';
 import { useIsOwner } from './MeContext';
+
+const ORIGIN_BADGE: Record<ArtistOrigin, string> = {
+  from_me: 'From me',
+  unmanaged_fetch: 'Unmanaged fetch',
+  community_import: 'Community import',
+};
 
 // The Manage tab: the records behind your events' names (artists, people,
 // venues, places, series, organizations, labels), one list per kind. Open one to
@@ -91,6 +99,15 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   const [error, setError] = useState<string | null>(null);
   const [kind, setKind] = useState<ManageKind | 'history' | 'health'>(target?.kind ?? 'artist');
   const isOwner = useIsOwner();
+  // Owner only: where each of my artist names also sits in the shared catalog (origin badges).
+  const [origins, setOrigins] = useState<Map<string, CanonicalArtistSummary['origins']>>(new Map());
+  useEffect(() => {
+    if (!isOwner) return;
+    canonicalApi
+      .artists()
+      .then(({ artists }) => setOrigins(new Map(artists.map((a) => [a.key, a.origins]))))
+      .catch(() => setOrigins(new Map()));
+  }, [isOwner]);
   const [scope, setScope] = useState<'mine' | 'archive'>('mine');
   const [openId, setOpenId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -440,6 +457,12 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
                           Look-alike
                         </span>
                       )}
+                      {e.kind === 'artist' &&
+                        (origins.get(normalizeName(e.name)) ?? []).map((o) => (
+                          <span key={o} className="shrink-0 rounded-full border border-zinc-700 px-1.5 text-[11px] text-zinc-300">
+                            {ORIGIN_BADGE[o]}
+                          </span>
+                        ))}
                       {akas > 0 && <span className="shrink-0 text-[11px] text-zinc-400">{akas} AKA</span>}
                       {hosts > 0 && <span className="shrink-0 text-[11px] text-zinc-400">hosted</span>}
                       {e.kind === 'label' && typeof e.attrs.group === 'string' && <span className="shrink-0 text-[11px] text-zinc-400">{e.attrs.group}</span>}
