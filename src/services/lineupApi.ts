@@ -483,6 +483,7 @@ export const lineupApi = {
     request<{ applied: boolean; diff: unknown; edition?: unknown }>('/api/manage/canonical/confirm', post(body)),
   status: () => request<LineupStatus>('/api/lineup/status'),
   retry: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}/run`, post()).then((r) => r.job),
+  job: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}`).then((r) => r.job),
   confirm: (id: string, body: ConfirmRequest) =>
     request<{ edition: Edition; event: LoggedEvent | null }>(`/api/lookups/${id}/confirm`, post(body)),
 };
