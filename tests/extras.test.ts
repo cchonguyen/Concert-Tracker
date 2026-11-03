@@ -6,7 +6,7 @@ import { PerformerClaim } from '../src/server/lineup/types.ts';
 import { actSets, setLabel } from '../src/server/events/sets.ts';
 import { applyPatch, newEvent } from '../src/server/events/service.ts';
 import { lookupWeather, placesFor, weatherDays } from '../src/server/events/weather.ts';
-import { eventsToCsv, matchNames, pastArtistNames, pastCompanionNames, suggestionsFor, weatherLine, weatherText } from '../src/services/format.ts';
+import { eventsToCsv, matchNames, pastArtistNames, pastCompanionNames, pastSets, suggestionsFor, weatherLine, weatherText } from '../src/services/format.ts';
 import { hasGap } from '../src/services/table.ts';
 import { parseCsv } from '../src/services/listImport.ts';
 import { LoggedEvent } from '../src/server/events/types.ts';
@@ -177,6 +177,30 @@ test('adding who you went with suggests people from your other events', () => {
   assert.deepEqual(matchNames('s', past, new Set()), ['Sam']);
   assert.deepEqual(matchNames('kim', past, new Set()), ['Alex Kim']); // a later word
   assert.deepEqual(matchNames('s', past, new Set(['sam'])), []); // already on the event
+});
+
+test('pastSets collects historical unique non-empty set strings across events', () => {
+  const evWithSets = (sets: Array<{ set?: string; soloSet?: string }>): LoggedEvent => ({
+    ...newEvent('Festival', NOW),
+    seen: sets.map((s, i) => ({
+      key: `act-${i}`,
+      name: `Act ${i}`,
+      from: 'you' as const,
+      set: s.set,
+      soloSet: s.soloSet,
+    })),
+  });
+  const events = [
+    evWithSets([{ set: 'DJ Set' }, { set: 'Live' }]),
+    evWithSets([{ set: 'dj' }, { set: 'Sunrise Set' }, { set: 'HOLO' }]),
+    evWithSets([{ set: 'dj set' }, { set: 'Sunrise Set' }, { soloSet: 'Live' }]),
+  ];
+  const past = pastSets(events);
+  assert.equal(past[0], 'DJ Set');
+  assert.ok(past.includes('Live'));
+  assert.ok(past.includes('Sunrise Set'));
+  assert.ok(past.includes('HOLO'));
+  assert.equal(past.length, 4);
 });
 
 test('artists from titles for many events come from stored data only', async () => {

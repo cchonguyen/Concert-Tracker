@@ -10,9 +10,37 @@ import type { SeenAct, SetKind } from './types';
 // supported as distinct performance instances.
 // Browser-safe: the event view and the Table use it.
 
-export const SET_LABELS: Record<SetKind, string> = { dj: 'DJ set', live: 'Live set' };
+export function normalizeSet(raw?: string | null): string | undefined {
+  if (!raw || typeof raw !== 'string') return undefined;
+  let trimmed = raw.trim();
+  if ((trimmed.startsWith('(') && trimmed.endsWith(')')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
+  if (!trimmed) return undefined;
+  if (/^(?:dj[\s-]?set|dj)$/i.test(trimmed)) return 'DJ Set';
+  if (/^(?:live[\s-]?set|live)$/i.test(trimmed)) return 'Live';
+  return trimmed;
+}
 
-export const isSetKind = (v: unknown): v is SetKind => v === 'dj' || v === 'live';
+export const SET_LABELS: Record<string, string> = new Proxy(
+  {
+    dj: 'DJ Set',
+    live: 'Live',
+    'DJ Set': 'DJ Set',
+    Live: 'Live',
+  },
+  {
+    get(target, prop: string) {
+      if (typeof prop === 'string') {
+        if (prop in target) return (target as Record<string, string>)[prop];
+        return prop;
+      }
+      return undefined;
+    },
+  },
+);
+
+export const isSetKind = (v: unknown): v is SetKind => typeof v === 'string' && v.trim().length > 0;
 
 // One act as an event patch sends it (EventPatch.seen).
 export interface SeenInput {
@@ -362,19 +390,26 @@ export function lineupSlots<T extends { artistKey: string; b2b?: string[]; name:
   return out;
 }
 
-// "Sasha b2b John Digweed (DJ set)", "Bicep (Live set)", "Sasha (solo, DJ set)"
+// "Sasha b2b John Digweed (DJ Set)", "Bicep (Live)", "Sasha (solo, DJ Set)"
 // for the solo set of an act also in a B2B, or the bare name. Acts in a B2B
 // marked differently each keep their own mark.
 export function slotLabel(slot: Array<SlotAct<Pick<SeenAct, 'name' | 'set'>>>): string {
   if (slot.length === 1 && slot[0].asSolo) {
-    const set = slot[0].set;
-    return `${slot[0].name} (solo${set ? `, ${SET_LABELS[set]}` : ''})`;
+    const rawSet = slot[0].set;
+    const label = rawSet ? (SET_LABELS[rawSet] || rawSet) : '';
+    return `${slot[0].name} (solo${label ? `, ${label}` : ''})`;
   }
   const sets = new Set(slot.map((s) => s.set));
   if (sets.size === 1) {
-    const set = slot[0].set;
+    const rawSet = slot[0].set;
+    const label = rawSet ? (SET_LABELS[rawSet] || rawSet) : '';
     const names = slot.map((s) => s.name).join(' b2b ');
-    return set ? `${names} (${SET_LABELS[set]})` : names;
+    return label ? `${names} (${label})` : names;
   }
-  return slot.map((s) => (s.set ? `${s.name} (${SET_LABELS[s.set]})` : s.name)).join(' b2b ');
+  return slot
+    .map((s) => {
+      const label = s.set ? (SET_LABELS[s.set] || s.set) : '';
+      return label ? `${s.name} (${label})` : s.name;
+    })
+    .join(' b2b ');
 }

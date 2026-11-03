@@ -97,11 +97,11 @@ test('DJ set, live set and B2B are kept as yours; each act in a B2B is its own s
       ['Sasha', 'dj', ['john digweed']],
       ['John Digweed', 'dj', ['sasha']],
       ['Bicep', 'live', undefined],
-      ['Nobody', undefined, undefined],
+      ['Nobody', 'acoustic', undefined],
     ],
   );
   assert.equal(e.seen.length, 4); // everyone credited
-  assert.deepEqual(seenSlots(e.seen).map(slotLabel), ['Sasha b2b John Digweed (DJ set)', 'Bicep (Live set)', 'Nobody']);
+  assert.deepEqual(seenSlots(e.seen).map(slotLabel), ['Sasha b2b John Digweed (DJ Set)', 'Bicep (Live)', 'Nobody (acoustic)']);
   // A patch built from the event keeps every mark.
   assert.deepEqual(applyPatch(e, { seen: toSeenInput(e.seen) }, NOW).seen, e.seen);
   // Removing a partner leaves the other act on its own.
@@ -117,7 +117,7 @@ test('B2B pairs join into one group and can be taken apart', () => {
   assert.equal(slotLabel(seenSlots(seen)[0]), 'A b2b B b2b C');
   seen = leaveB2b(seen, 'b');
   assert.deepEqual(b2bGroups(seen), [['a', 'c']]);
-  assert.equal(slotLabel([act('A', { set: 'dj' }), act('B', { set: 'live' })]), 'A (DJ set) b2b B (Live set)');
+  assert.equal(slotLabel([act('A', { set: 'dj' }), act('B', { set: 'live' })]), 'A (DJ Set) b2b B (Live)');
 });
 
 test('your set marks outlive a lineup review, and the CSV lists them', () => {
@@ -127,7 +127,7 @@ test('your set marks outlive a lineup review, and the CSV lists them', () => {
   assert.ok(sasha?.id);
   assert.deepEqual({ key: sasha?.key, name: sasha?.name, from: sasha?.from, set: sasha?.set, b2b: sasha?.b2b }, { key: 'sasha', name: 'Sasha', from: 'lineup', set: 'dj', b2b: ['john digweed'] });
   const csv = eventsToCsv([{ ...ev('Movement 2024'), seen: merged }]);
-  assert.match(csv, /,John Digweed b2b Sasha \(DJ set\),/);
+  assert.match(csv, /,John Digweed b2b Sasha \(DJ Set\),/);
 });
 
 test('series take the town from the city: same festival, two cities, two series', () => {
@@ -224,16 +224,16 @@ test('an act in a B2B can also have its own solo set, credited once', () => {
       ['Bicep', undefined, undefined],
     ],
   );
-  assert.deepEqual(seenSlots(e.seen).map(slotLabel), ['Sasha b2b John Digweed (DJ set)', 'Sasha (solo, Live set)', 'Bicep']);
+  assert.deepEqual(seenSlots(e.seen).map(slotLabel), ['Sasha b2b John Digweed (DJ Set)', 'Sasha (solo, Live)', 'Bicep']);
   assert.deepEqual(applyPatch(e, { seen: toSeenInput(e.seen) }, NOW).seen, e.seen);
-  assert.match(eventsToCsv([e]), /Sasha b2b John Digweed \(DJ set\); Sasha \(solo, Live set\)/);
+  assert.match(eventsToCsv([e]), /Sasha b2b John Digweed \(DJ Set\); Sasha \(solo, Live\)/);
 
   // Breaking up the B2B keeps Sasha's solo set as Sasha's set.
   const apart = leaveB2b(e.seen, 'sasha');
   assert.deepEqual(apart.find((s) => s.key === 'sasha'), { key: 'sasha', name: 'Sasha', from: 'you', set: 'live' });
   // Taking the solo set away leaves the B2B as it was.
   const noSolo = setSolo(e.seen, 'sasha', false);
-  assert.deepEqual(seenSlots(noSolo).map(slotLabel), ['Sasha b2b John Digweed (DJ set)', 'Bicep']);
+  assert.deepEqual(seenSlots(noSolo).map(slotLabel), ['Sasha b2b John Digweed (DJ Set)', 'Bicep']);
   // It outlives a lineup review.
   const merged = mergeSeen(e.seen, [{ key: 'sasha', name: 'Sasha', from: 'lineup' }], new Set(['sasha']));
   assert.equal(merged.find((s) => s.key === 'sasha')!.soloSet, 'live');

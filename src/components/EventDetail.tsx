@@ -18,7 +18,7 @@ import {
   FIELD_SOURCE_LABELS,
   SOURCE_LABELS,
 } from '../services/lineupApi';
-import { artistsOf, dateConfirmations, datesBetween, formatsOf, joinFormats, matchNames, pastArtistNames, pastCompanionNames, supportOf, weatherLine, whenLabel } from '../services/format';
+import { artistsOf, dateConfirmations, datesBetween, formatsOf, joinFormats, matchNames, pastArtistNames, pastCompanionNames, pastSets, supportOf, weatherLine, whenLabel } from '../services/format';
 import { actSets, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
@@ -467,10 +467,17 @@ const WentCard: React.FC<{
 // Who you saw. Each act is a row that shows only what is stored about it; a tap on the row opens its editor in a Sheet.
 // Typing offers acts you've entered on other events; a click, or arrow keys then Enter, adds one as you spelled it
 // before. Enter alone adds what you typed. Typing a B2B act's name again adds its solo set.
-const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string[]; onChange: (seen: SeenPatch) => void }> = ({
+const SeenActs: React.FC<{
+  seen: Seen[];
+  sets: Map<string, string>;
+  past: string[];
+  pastSets: string[];
+  onChange: (seen: SeenPatch) => void;
+}> = ({
   seen,
   sets,
   past,
+  pastSets: pastSetsList,
   onChange,
 }) => {
   const [draft, setDraft] = useState('');
@@ -494,7 +501,15 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
   const act = (s: SlotAct<Seen>) => (
     <React.Fragment key={s.asSolo ? `${s.key}:solo` : s.key}>
       <span className="text-sm font-medium text-zinc-100">{s.name}</span>
-      {s.set && <Pill tone="info">{s.set === 'dj' ? 'DJ' : 'Live'}</Pill>}
+      {s.set && (
+        <Pill tone="info">
+          {s.set.toLowerCase() === 'dj' || s.set.toLowerCase() === 'dj set'
+            ? 'DJ'
+            : s.set.toLowerCase() === 'live' || s.set.toLowerCase() === 'live set'
+              ? 'Live'
+              : s.set}
+        </Pill>
+      )}
       {s.role === 'headliner' && <Pill tone="highlight">Headliner</Pill>}
       {s.asSolo && <Pill>Solo</Pill>}
     </React.Fragment>
@@ -634,6 +649,7 @@ const SeenActs: React.FC<{ seen: Seen[]; sets: Map<string, string>; past: string
             act={editingAct}
             actIndex={editingAct._index}
             time={sets.get(editingAct.key)}
+            pastSets={pastSetsList}
             onChange={onChange}
             onRemoved={() => setEditing(null)}
           />
@@ -650,9 +666,10 @@ const ActEditor: React.FC<{
   act: Seen;
   actIndex?: number;
   time?: string;
+  pastSets?: string[];
   onChange: (seen: SeenPatch) => void;
   onRemoved: () => void;
-}> = ({ seen, act, actIndex, time, onChange, onRemoved }) => {
+}> = ({ seen, act, actIndex, time, pastSets: pastSetsList = [], onChange, onRemoved }) => {
   const toast = useToast();
   const [picking, setPicking] = useState(false);
   const targetIndex = actIndex !== undefined ? actIndex : seen.findIndex((s) => (s.id && act.id ? s.id === act.id : s.key === act.key));
@@ -688,15 +705,58 @@ const ActEditor: React.FC<{
       </section>
       <section className="space-y-2">
         <h4 className={sectionTitle}>Set</h4>
-        <Segmented<'dj' | 'live' | 'none'>
-          label="Set"
-          value={act.set ?? 'none'}
-          onChange={(v) => patchAct({ set: v === 'none' ? null : v })}
-          options={[
-            { value: 'dj', label: 'DJ set' },
-            { value: 'live', label: 'Live set' },
-            { value: 'none', label: 'Not sure' },
-          ]}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              const isDj = act.set?.toLowerCase() === 'dj set' || act.set?.toLowerCase() === 'dj';
+              patchAct({ set: isDj ? null : 'DJ Set' });
+            }}
+            aria-pressed={act.set?.toLowerCase() === 'dj set' || act.set?.toLowerCase() === 'dj'}
+            className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+              act.set?.toLowerCase() === 'dj set' || act.set?.toLowerCase() === 'dj'
+                ? 'border-violet-500 bg-violet-600/30 font-medium text-violet-100'
+                : 'border-zinc-800 text-zinc-300 hover:border-zinc-700 hover:text-zinc-100'
+            }`}
+          >
+            DJ Set
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const isLive = act.set?.toLowerCase() === 'live' || act.set?.toLowerCase() === 'live set';
+              patchAct({ set: isLive ? null : 'Live' });
+            }}
+            aria-pressed={act.set?.toLowerCase() === 'live' || act.set?.toLowerCase() === 'live set'}
+            className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+              act.set?.toLowerCase() === 'live' || act.set?.toLowerCase() === 'live set'
+                ? 'border-violet-500 bg-violet-600/30 font-medium text-violet-100'
+                : 'border-zinc-800 text-zinc-300 hover:border-zinc-700 hover:text-zinc-100'
+            }`}
+          >
+            Live
+          </button>
+          {Boolean(act.set) && (
+            <button
+              type="button"
+              onClick={() => patchAct({ set: null })}
+              title="Clear set"
+              aria-label="Clear set"
+              className="inline-flex items-center gap-1 rounded-full border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+            >
+              <X className="h-3 w-3" /> Clear
+            </button>
+          )}
+        </div>
+        <SuggestInput
+          value={act.set ?? ''}
+          suggestions={pastSetsList}
+          onPick={(val) => patchAct({ set: val.trim() || null })}
+          onChange={(e) => patchAct({ set: e.target.value || null })}
+          onBlur={(e) => patchAct({ set: e.target.value.trim() || null })}
+          placeholder="e.g. Throwback Set, Sunrise Set, HOLO, Redux"
+          aria-label="Set format or theme"
+          className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-violet-500 focus:outline-none"
         />
       </section>
       <section className="space-y-2">
@@ -931,6 +991,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   }, [events, event.id]);
   const pastArtists = useMemo(() => pastArtistNames(others), [events, event.id]);
   const pastCompanions = useMemo(() => pastCompanionNames(others), [events, event.id]);
+  const pastSetsList = useMemo(() => pastSets(events), [events]);
 
   const load = useCallback(async () => {
     try {
@@ -1430,7 +1491,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               Each act is a row. Tap the row to set its billing, set type and B2B partners. Tap the heart to mark a favourite set. Acts you add here count as seen.
             </SectionHelp>
           </div>
-          <SeenActs seen={event.seen} sets={sets} past={pastArtists} onChange={(seen) => save({ seen })} />
+          <SeenActs seen={event.seen} sets={sets} past={pastArtists} pastSets={pastSetsList} onChange={(seen) => save({ seen })} />
           <SeenGenres event={event} />
           {offered.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 text-xs">

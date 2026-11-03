@@ -279,11 +279,16 @@ const NeedsBadge: React.FC<{ needs: keyof typeof NEEDS_LABELS }> = ({ needs }) =
 const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, muted }) => {
   const slots = seenSlots(actsInOrder(seen));
   const shown = slots.slice(0, 3);
-  const tag = (set: 'dj' | 'live') => (
-    <span className="ml-1 text-[10px] uppercase text-sky-300/80" title={SET_LABELS[set]}>
-      {set === 'dj' ? 'DJ' : 'Live'}
-    </span>
-  );
+  const tag = (set: string) => {
+    const isDj = set.toLowerCase() === 'dj' || set.toLowerCase() === 'dj set';
+    const isLive = set.toLowerCase() === 'live' || set.toLowerCase() === 'live set';
+    const label = isDj ? 'DJ' : isLive ? 'Live' : set;
+    return (
+      <span className={`ml-1 text-[10px] ${isDj || isLive ? 'uppercase' : ''} text-sky-300/80`} title={SET_LABELS[set] || set}>
+        {label}
+      </span>
+    );
+  };
   return (
     <span className={muted ? 'text-zinc-400' : 'text-zinc-200'}>
       {shown.map((slot, i) => {

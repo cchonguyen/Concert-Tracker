@@ -1,15 +1,18 @@
 // What a lineup's own words say about an act's name, read in code: "A b2b B"
-// is two acts playing together, and a "DJ Set" suffix marks the set, not the
-// name. Each part is still found verbatim in the quote it came from.
+// is two acts playing together, and a set suffix (e.g. "(DJ Set)", "(Live)",
+// "presents HOLO", ": Redux") marks the set, not the name. Each part is still
+// found verbatim in the quote it came from.
+import { normalizeSet } from '../events/seen';
 import { normalizeName } from './text';
 
 export interface ActName {
   parts: string[];
-  dj: boolean;
+  set?: string;
 }
 
-const DJ_SET = /\s*[-–—:]?\s*[([]?\s*\bdj[\s-]?set\b\s*[)\]]?\s*$/i;
 const B2B = /\s+(?:b(?:[2-9]|[/][2-9][/]|ack[\s-]+to[\s-]+)b(?:ack)?|b(?:[2-9]b)+|vs\.?|[xX])\s+/i;
+const SET_KEYWORDS = /\b(?:set|live|dj|redux|throwback|sunrise|sunset|acoustic|360|retrospective)\b/i;
+const ISO_COUNTRY_CODE = /^[A-Z]{2}$/;
 
 // Festival camp activities, workouts, panels, talks, and non-musical programming
 // that should not be extracted as concert or festival lineup acts.
@@ -44,8 +47,7 @@ function cleanPart(s: string): string {
 
 export function readActName(name: string): ActName {
   let rest = name.trim();
-  const dj = DJ_SET.test(rest) && rest.replace(DJ_SET, '').trim().length > 0;
-  if (dj) rest = rest.replace(DJ_SET, '').trim();
+  if (!rest) return { parts: [name] };
 
   // If formatted as "Alias/Concept (Artist A b2b Artist B)", unwrap the inner b2b set
   const parenMatch = rest.match(/^([^(]+)\s*\(([^)]+)\)$/);
@@ -53,9 +55,68 @@ export function readActName(name: string): ActName {
     rest = parenMatch[2].trim();
   }
 
+  let extractedSet: string | undefined;
+
+  // a. Trailing parenthetical or bracketed suffix
+  const trailingBracket = rest.match(/\s*[([]([^()[\]]*)[)\]]\s*$/);
+  if (trailingBracket) {
+    const inner = trailingBracket[1].trim();
+    const left = rest.slice(0, trailingBracket.index).trim();
+    // d. Disambiguation ISO country code guard (e.g. (BE), (FR), (UK), (US)) & inner b2b check
+    if (!ISO_COUNTRY_CODE.test(inner) && left.length > 0 && !B2B.test(inner)) {
+      extractedSet = normalizeSet(inner);
+      rest = left;
+    }
+  }
+
+  // b. "Presents" / "Pres." connector
+  if (!extractedSet) {
+    const presentsMatch = rest.match(/\s+(?:presents|pres\.?)\s+(.*)$/i);
+    if (presentsMatch) {
+      const left = rest.slice(0, presentsMatch.index).trim();
+      const candidate = presentsMatch[1].trim();
+      if (left.length > 0 && candidate.length > 0) {
+        extractedSet = normalizeSet(candidate);
+        rest = left;
+      }
+    }
+  }
+
+  // c. Clashfinder colon/hyphen suffix gated by whitelist keywords
+  if (!extractedSet) {
+    const sepMatch = rest.match(/(?:\s+[-–—:]\s*|:\s+)(.*)$/);
+    if (sepMatch) {
+      const candidate = sepMatch[1].trim();
+      if (SET_KEYWORDS.test(candidate)) {
+        const left = rest.slice(0, sepMatch.index).trim();
+        if (left.length > 0) {
+          extractedSet = normalizeSet(candidate);
+          rest = left;
+        }
+      }
+    }
+  }
+
+  // Fallback for bare "DJ Set" or "Live Set" suffix without punctuation (e.g. "Disclosure DJ Set")
+  if (!extractedSet) {
+    const bareMatch = rest.match(/\s+\b(dj[\s-]?set|live[\s-]?set)\b\s*$/i);
+    if (bareMatch) {
+      const left = rest.slice(0, bareMatch.index).trim();
+      if (left.length > 0) {
+        extractedSet = normalizeSet(bareMatch[1]);
+        rest = left;
+      }
+    }
+  }
+
+  // e. Strip set suffix before splitting on B2B delimiters
   const rawParts = rest.split(B2B).map((p) => p.trim()).filter(Boolean);
   const parts = (rawParts.length ? rawParts : [rest]).map(cleanPart).filter(Boolean);
-  return { parts: parts.length ? parts : [rest], dj };
+
+  return {
+    parts: parts.length ? parts : [rest],
+    ...(extractedSet ? { set: extractedSet } : {}),
+  };
 }
 
 // The spelling you used before for the same name (any capitalization), else

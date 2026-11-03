@@ -61,8 +61,8 @@ export interface EventDetails {
   checkedAt?: string;
 }
 
-// How an act played, as you mark it. Never filled from a lineup or a guess.
-export type SetKind = 'dj' | 'live';
+// How an act played, as you mark it or as billed on a lineup (e.g. "DJ Set", "Live", "Sunrise Set").
+export type SetKind = string;
 
 // Artist: headliner, or no role stated. Supporting: role 'support', which
 // needs a source that says so, or you.
