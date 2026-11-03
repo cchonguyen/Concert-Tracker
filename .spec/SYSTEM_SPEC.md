@@ -7,7 +7,7 @@ The full spec already lives in the project docs. This file holds only what `/tri
 - Hard rules for every change: [AGENTS.md](../AGENTS.md)
 
 ## 1. Core Scope & MVP Boundaries
-Feature: **Manage section** (triaged 2026-10-28). Full design: [designs/manage-section.md](designs/manage-section.md).
+Feature: **Manage section** (triaged 2026-10-28). Full design: [../docs/manage-section-design.md](../docs/manage-section-design.md).
 
 - **Core user problem:** artists, people, venues, places and series are free text copied onto each event, so fixing a spelling means editing events one by one, and the copies drift apart. Charlie wants one place to rename, merge and describe each of them once.
 - **MVP deliverables:**

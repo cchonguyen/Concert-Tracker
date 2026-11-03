@@ -1,20 +1,7 @@
 # Session Handoff
 
-- **Last Active Platform:** Google Antigravity
-- **Active Branch / State:** `main` (clean, verified, deployed)
-- **Branch Owner:** Antigravity / Charlie Cho Nguyen
-- **Active slice:** Unified `set` Field & Clashfinder Extraction
-- **Merge Commits:**
-  - `c9b7c86`: PR #192 (`feat(lineup): unify set field and support Clashfinder concept extraction`)
-- **Deploy Result:**
-  - Cloudflare Workers deployed to `https://concert.charliechonguyen.com` via `npm run cf:deploy`.
-  - Current Version ID: `b6c58d16-acc8-4023-9468-f590881e7c45`.
-- **Database Status:**
-  - Live Supabase (`mybwchgqhrpvdczqigma` / `concert-tracker`):
-    - Applied migration `0030_performance_set.sql` (`alter table performances add column if not exists set text;`).
-    - Verified column `set text` exists on table `performances`.
-- **Verification Status:**
-  - `npm run lint`: Passed (0 errors)
-  - `npm test`: Passed (660 pass, 0 fail)
-  - `harness-main-watch`: Passed, `harness-main-red` tag absent from origin.
-- **Immediate Next Step:** Repository and production are fully up to date and verified green.
+- **Last Active Platform:** Claude Code (cloud session)
+- **Active Branch / State:** `claude/project-thread-edhlfs`, docs restructure for the Context Atlas. PR open against `main`.
+- **Done this session:** Moved the Manage design to `docs/manage-section-design.md`, archived the superseded collaboration-alias design under `docs/archive/`, added `docs/tier3-specs.md`, `docs/CONTEXT_ATLAS.md` and `docs/README.md`, added the Atlas index `.spec/ATLAS.md`, and added the missing boundary, contract and archive files.
+- **Verification Status:** `npm run lint` passed. `npm test` passed (676 pass, 0 fail). `node .harness/scripts/navigator.mjs --check` reports only the AGENTS.md line cap (62 lines against 40). The cap is raised in `claude-harness-hub`; it reaches this repo on the next sync.
+- **Immediate Next Step:** Merge the docs PR and the hub PR, then run `/sync-harness` to pick up the new cap.
