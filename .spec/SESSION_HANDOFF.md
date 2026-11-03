@@ -1,9 +1,10 @@
 # Session Handoff
 
 - **Last Active Platform:** Google Antigravity
-- **Active Branch / State:** `antigravity/unified-set-field` (tested and green)
+- **Active Branch / State:** `antigravity/unified-set-field` (PR #192 opened: https://github.com/cchonguyen/Concert-Tracker/pull/192)
 - **Branch Owner:** Antigravity / Charlie Cho Nguyen
 - **Active slice:** Unified `set` Field & Clashfinder Extraction
+- **Pull Request:** #192 (`feat(lineup): unify set field and support Clashfinder concept extraction`)
 - **Files Modified in Last Turn:**
   - `docs/unified-set-field-and-clashfinder-extraction-spec.md`
   - `supabase/migrations/0030_performance_set.sql`
@@ -23,10 +24,11 @@
   - `REQUIREMENTS.md`
   - `tests/actName.test.ts`
   - `tests/extras.test.ts`
+  - `tests/reviewRows.test.ts`
   - `tests/seenSlots.test.ts`
   - `tests/series.test.ts`
 - **Verification Status:**
   - `npm run lint`: Passed (0 errors)
   - `npm test`: Passed (660 pass, 0 fail)
   - `node --test .harness/hooks/lib/runner-matcher.test.mjs`: Passed (3 pass, 0 fail)
-- **Immediate Next Step:** Push branch, open and merge PR into `main`, and apply migration `0030_performance_set.sql` to live database.
+- **Immediate Next Step:** Apply migration `supabase/migrations/0030_performance_set.sql` on live Supabase and merge PR #192 into `main`.
