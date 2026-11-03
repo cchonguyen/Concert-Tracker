@@ -1821,7 +1821,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           onClose={() => setReviewing(false)}
           onSaved={(updated) => {
             setReviewing(false);
-            onChange(updated);
+            if (updated) onChange(updated);
             void load();
           }}
         />
