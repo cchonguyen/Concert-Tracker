@@ -3,7 +3,7 @@ import { PipelineDeps } from '../lineup/pipeline';
 import { isLinking } from './linkingStore';
 import { nameIndex, possibleDuplicates } from './link';
 import { EntityIntegrityError } from './integrity';
-import { CANONICAL_EDITION_LIMIT, EditionStatusFilter, isOwner, listCanonicalEditions, unifyArtists } from './canonicalManage';
+import { appearancesOf, CANONICAL_EDITION_LIMIT, EditionStatusFilter, isOwner, listCanonicalEditions, unifyArtists } from './canonicalManage';
 import { currentMember } from '../auth/requestScope';
 import { CanonicalInputError, confirmCanonicalEdition, parseCanonicalInput } from '../lineup/canonicalIngest';
 import {
@@ -71,6 +71,27 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     }
   });
 
+  // Detail views (owner only): one edition with its acts, one artist with the editions they appear in.
+  router.get(
+    '/manage/canonical/editions/:id',
+    ownerOnly as any,
+    manage(async (req) => {
+      const edition = await store.getEdition(req.params.id);
+      if (!edition) throw new ManageError('No such edition.', 404);
+      return { edition };
+    }),
+  );
+  router.get(
+    '/manage/canonical/artists/:key',
+    ownerOnly as any,
+    manage(async (req) => {
+      const key = String(req.params.key);
+      const [canonical, editions, ownerNames] = await Promise.all([store.listArtists(), store.listEditions(CANONICAL_EDITION_LIMIT), store.listSeenArtistNames()]);
+      const row = unifyArtists({ canonical, ownerNames, editions }).find((a) => a.key === key);
+      if (!row) throw new ManageError('No such artist.', 404);
+      return { artist: row, appearances: appearancesOf(editions, key) };
+    }),
+  );
   router.get(
     '/manage/canonical/artists',
     ownerOnly as any,

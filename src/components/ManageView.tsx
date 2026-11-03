@@ -220,6 +220,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   const meta = KINDS.find((k) => k.kind === kind);
   // The search box belongs to a record list: not on Data health, History or an open record.
   const showSearch = kind !== 'history' && kind !== 'health' && !(open && open.kind === kind);
+  // In the Global archive the Find box filters the archive's artist list, so it stays shown.
 
   return (
     <div className="space-y-4">
@@ -233,7 +234,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
 
       {/* One menu for the section, on the row with the search box (on the right). */}
       <div className="flex items-center gap-2">
-        {showSearch && (
+        {(showSearch || (scope === 'archive' && isOwner)) && (
           <label className="relative block min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-zinc-400" />
             <input
@@ -284,7 +285,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
       )}
 
       {scope === 'archive' && isOwner ? (
-        <CanonicalArchive />
+        <CanonicalArchive artistQuery={query} />
       ) : kind === 'health' ? (
         <DataHealth
           data={data}
