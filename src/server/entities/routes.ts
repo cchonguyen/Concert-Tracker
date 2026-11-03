@@ -3,6 +3,8 @@ import { PipelineDeps } from '../lineup/pipeline';
 import { isLinking } from './linkingStore';
 import { nameIndex, possibleDuplicates } from './link';
 import { EntityIntegrityError } from './integrity';
+import { EditionStatusFilter, listCanonicalEditions } from './canonicalManage';
+import { currentMember } from '../auth/requestScope';
 import {
   addAlias,
   addLink,
@@ -52,6 +54,19 @@ export function entitiesRouter(deps: PipelineDeps): Router {
       }
     };
   const store = deps.store;
+
+  // Owner-only canonical archive (spec Phase 1). Members get 403.
+  const ownerOnly = (_req: any, res: Response, next: () => void) =>
+    currentMember()?.role === 'owner' ? next() : res.status(403).json({ error: 'Only the owner can do this.' });
+  router.get(
+    '/manage/canonical/editions',
+    ownerOnly as any,
+    manage(async (req) => {
+      const status = ['all', 'confirmed', 'draft'].includes(req.query.status) ? (req.query.status as EditionStatusFilter) : 'all';
+      const editions = await store.listEditions(1000);
+      return { editions: listCanonicalEditions(editions, { query: typeof req.query.query === 'string' ? req.query.query : '', status }) };
+    }),
+  );
 
   router.get(
     '/entities',
