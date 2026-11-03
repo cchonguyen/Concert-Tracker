@@ -88,6 +88,8 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
     try {
       const job = await deps.store.getJob(req.params.id);
       if (!job) return res.status(404).json({ error: 'Lookup not found.' });
+      // A lookup with no saved event feeds the shared catalog: only the owner may run it.
+      if (!job.eventId && !isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
       await runner.kick(job.id, true);
       res.json({ job: safeJob(job) });
     } catch (err) {
@@ -99,6 +101,7 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
     try {
       const job = await deps.store.getJob(req.params.id);
       if (!job) return res.status(404).json({ error: 'Lookup not found.' });
+      if (!job.eventId && !isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
       // A member's review changes only their own event; the owner's writes the shared lineup.
       if (currentMember()?.role === 'member') return res.json(await confirmLookupForMember(deps.store, job, req.body as ConfirmRequest));
       const result = await confirmLookup(deps.store, job, req.body as ConfirmRequest);
