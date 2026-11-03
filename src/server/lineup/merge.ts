@@ -14,7 +14,7 @@ import {
   SourceType,
 } from './types';
 import { domainOf, normalizeName } from './text';
-import { preferredSpelling, readActName } from './actName';
+import { isNonMusicProgramming, isSilentDiscoSlot, preferredSpelling, readActName } from './actName';
 
 // Starting reliability per source before any review history exists. The
 // measured accept/reject rate from your reviews pulls these toward reality.
@@ -177,7 +177,7 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
   let dropped = 0;
 
   for (const whole of ctx.claims) {
-    if (isBlocked(whole.name, whole.sourceUrl, ctx.blocklist)) {
+    if (isBlocked(whole.name, whole.sourceUrl, ctx.blocklist) || isNonMusicProgramming(whole.name) || isSilentDiscoSlot(whole.name)) {
       dropped += 1;
       continue;
     }
@@ -187,7 +187,7 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
     const validParts: Array<{ part: string; key: string; claim: PerformerClaim }> = [];
     for (const part of read.parts) {
       const claim = read.parts.length === 1 && !read.dj ? whole : { ...whole, name: part };
-      if (claim !== whole && isBlocked(part, claim.sourceUrl, ctx.blocklist)) {
+      if (claim !== whole && (isBlocked(part, claim.sourceUrl, ctx.blocklist) || isNonMusicProgramming(part) || isSilentDiscoSlot(part))) {
         dropped += 1;
         continue;
       }

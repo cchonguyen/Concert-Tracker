@@ -72,6 +72,11 @@ test('clashfinder: parses acts with stage and day', async () => {
     locations: [
       { name: 'kineticFIELD', events: [{ name: 'Kaskade', start: '2025-05-16 23:00', end: '2025-05-17 00:30' }] },
       { name: 'circuitGROUNDS', events: [{ name: 'Eric Prydz', start: '2025-05-17 03:00', end: '2025-05-17 04:30' }] },
+      { name: 'Camp EDC', events: [
+        { name: 'Awaken Flow Yoga with Allison Delgado', start: '2025-05-16 09:00', end: '2025-05-16 10:00' },
+        { name: 'CH 1: DJ Mish; CH 2: Minimize', start: '2025-05-16 02:00', end: '2025-05-16 03:00' },
+        { name: '(Surprise)', start: '2025-05-16 16:00', end: '2025-05-16 17:00' },
+      ]},
     ],
   };
   assert.equal(parseEventData(data).acts.length, 2);
