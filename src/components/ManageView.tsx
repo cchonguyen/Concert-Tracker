@@ -8,6 +8,8 @@ import { ManageEntry } from './ManageEntry';
 import { SeriesPanel } from './SeriesPanel';
 import { CollaborationsCard } from './CollaborationsCard';
 import { MenuButton, type MenuOption } from './ui/MenuButton';
+import { CanonicalArchive } from './CanonicalArchive';
+import { useIsOwner } from './MeContext';
 
 // The Manage tab: the records behind your events' names (artists, people,
 // venues, places, series, organizations, labels), one list per kind. Open one to
@@ -88,6 +90,8 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   const [data, setData] = useState<ManageData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [kind, setKind] = useState<ManageKind | 'history' | 'health'>(target?.kind ?? 'artist');
+  const isOwner = useIsOwner();
+  const [scope, setScope] = useState<'mine' | 'archive'>('mine');
   const [openId, setOpenId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [history, setHistory] = useState<HistoryEntry[] | null>(null);
@@ -272,7 +276,16 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
         </div>
       )}
 
-      {kind === 'health' ? (
+      {isOwner && (
+        <div role="tablist" aria-label="Manage scope" className="flex gap-2 text-sm">
+          <button role="tab" aria-selected={scope === 'mine'} onClick={() => setScope('mine')} className={scope === 'mine' ? 'rounded-lg bg-zinc-800 px-3 py-1.5 text-zinc-50' : 'rounded-lg px-3 py-1.5 text-zinc-400 hover:text-zinc-200'}>My records</button>
+          <button role="tab" aria-selected={scope === 'archive'} onClick={() => setScope('archive')} className={scope === 'archive' ? 'rounded-lg bg-zinc-800 px-3 py-1.5 text-zinc-50' : 'rounded-lg px-3 py-1.5 text-zinc-400 hover:text-zinc-200'}>Global archive</button>
+        </div>
+      )}
+
+      {scope === 'archive' && isOwner ? (
+        <CanonicalArchive />
+      ) : kind === 'health' ? (
         <DataHealth
           data={data}
           events={events}
