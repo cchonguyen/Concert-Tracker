@@ -3,7 +3,7 @@ import { PipelineDeps } from '../lineup/pipeline';
 import { isLinking } from './linkingStore';
 import { nameIndex, possibleDuplicates } from './link';
 import { EntityIntegrityError } from './integrity';
-import { EditionStatusFilter, listCanonicalEditions } from './canonicalManage';
+import { EditionStatusFilter, isOwner, listCanonicalEditions, unifyArtists } from './canonicalManage';
 import { currentMember } from '../auth/requestScope';
 import {
   addAlias,
@@ -57,7 +57,15 @@ export function entitiesRouter(deps: PipelineDeps): Router {
 
   // Owner-only canonical archive (spec Phase 1). Members get 403.
   const ownerOnly = (_req: any, res: Response, next: () => void) =>
-    currentMember()?.role === 'owner' ? next() : res.status(403).json({ error: 'Only the owner can do this.' });
+    isOwner(currentMember()) ? next() : res.status(403).json({ error: 'Only the owner can do this.' });
+  router.get(
+    '/manage/canonical/artists',
+    ownerOnly as any,
+    manage(async () => {
+      const [canonical, editions, ownerNames] = await Promise.all([store.listArtists(), store.listEditions(1000), store.listSeenArtistNames()]);
+      return { artists: unifyArtists({ canonical, ownerNames, editions }) };
+    }),
+  );
   router.get(
     '/manage/canonical/editions',
     ownerOnly as any,

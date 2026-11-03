@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { listCanonicalEditions, summarizeEdition } from '../src/server/entities/canonicalManage.ts';
+import { isOwner, listCanonicalEditions, summarizeEdition, unifyArtists } from '../src/server/entities/canonicalManage.ts';
+import { currentMember, runAsMember } from '../src/server/auth/requestScope.ts';
 import type { Edition } from '../src/server/lineup/types.ts';
 
 const AT = '2026-11-03T00:00:00.000Z';
@@ -47,4 +48,36 @@ test('query matches name, series or venue, ignoring case', () => {
 test('newest year first, then name', () => {
   const list = [ed({ id: 'old', year: 2023, name: 'A' }), ed({ id: 'b', year: 2024, name: 'B' }), ed({ id: 'a', year: 2024, name: 'A' })];
   assert.deepEqual(listCanonicalEditions(list).map((e) => e.id), ['a', 'b', 'old']);
+});
+
+test('artists: origins from the owner and canonical layers; community count stays unknown', () => {
+  const canonical = [{ key: 'porter robinson', name: 'Porter Robinson', mbid: 'c4393710' }, { key: 'rufus du sol', name: 'Rüfüs Du Sol' }];
+  const edition = ed({
+    status: 'confirmed',
+    performances: [
+      { artistKey: 'porter robinson', name: 'Porter Robinson', days: [], stages: [], status: 'billed', confidence: 1, sources: [] } as any,
+      { artistKey: 'porter robinson', name: 'Porter Robinson', days: [], stages: [], status: 'billed', confidence: 1, sources: [] } as any,
+    ],
+  });
+  const rows = unifyArtists({ canonical, ownerNames: ['Porter Robinson', 'Only Me'], editions: [edition] });
+  const pr = rows.find((r) => r.key === 'porter robinson')!;
+  assert.deepEqual(pr.origins, ['unmanaged_fetch', 'from_me']);
+  assert.equal(pr.editionsCount, 2);
+  assert.equal(pr.mbid, 'c4393710');
+  assert.equal(pr.communityCount, null);
+  assert.deepEqual(rows.find((r) => r.key === 'only me')!.origins, ['from_me']);
+});
+
+test('artists: performances in draft editions are not counted', () => {
+  const draft = ed({ status: 'draft', performances: [{ artistKey: 'a', name: 'A', days: [], stages: [], status: 'billed', confidence: 1, sources: [] } as any] });
+  const rows = unifyArtists({ canonical: [{ key: 'a', name: 'A' }], ownerNames: [], editions: [draft] });
+  assert.equal(rows[0].editionsCount, 0);
+});
+
+test('owner guard: only the owner passes; members and anonymous requests do not', async () => {
+  const store = {} as any;
+  assert.equal(isOwner(null), false);
+  assert.equal(isOwner(currentMember()), false);
+  await runAsMember({ role: 'member', uid: 'u1' } as any, store, () => assert.equal(isOwner(currentMember()), false));
+  await runAsMember({ role: 'owner', uid: 'u0' } as any, store, () => assert.equal(isOwner(currentMember()), true));
 });
