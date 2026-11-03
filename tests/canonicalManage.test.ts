@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isOwner, listCanonicalEditions, summarizeEdition, unifyArtists } from '../src/server/entities/canonicalManage.ts';
+import { appearancesOf, isOwner, listCanonicalEditions, summarizeEdition, unifyArtists } from '../src/server/entities/canonicalManage.ts';
 import { currentMember, runAsMember } from '../src/server/auth/requestScope.ts';
 import type { Edition } from '../src/server/lineup/types.ts';
 
@@ -80,4 +80,15 @@ test('owner guard: only the owner passes; members and anonymous requests do not'
   assert.equal(isOwner(currentMember()), false);
   await runAsMember({ role: 'member', uid: 'u1' } as any, store, () => assert.equal(isOwner(currentMember()), false));
   await runAsMember({ role: 'owner', uid: 'u0' } as any, store, () => assert.equal(isOwner(currentMember()), true));
+});
+
+test('appearances: one artist across editions, newest first, billing and set per edition', () => {
+  const perf = (artistKey: string, over: any = {}) => ({ artistKey, name: artistKey, days: [], stages: [], status: 'billed', confidence: 1, sources: [], ...over });
+  const old = ed({ id: 'o', name: 'Old', year: 2023, performances: [perf('a', { billing: 'support' }), perf('b')] });
+  const newer = ed({ id: 'n', name: 'New', year: 2024, performances: [perf('a', { set: 'DJ Set' })] });
+  const rows = appearancesOf([old, newer], 'a');
+  assert.deepEqual(rows.map((r) => r.editionId), ['n', 'o']);
+  assert.equal(rows[0].set, 'DJ Set');
+  assert.equal(rows[1].billing, 'support');
+  assert.deepEqual(appearancesOf([old, newer], 'zzz'), []);
 });
