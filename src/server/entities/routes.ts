@@ -5,6 +5,7 @@ import { nameIndex, possibleDuplicates } from './link';
 import { EntityIntegrityError } from './integrity';
 import { EditionStatusFilter, isOwner, listCanonicalEditions, unifyArtists } from './canonicalManage';
 import { currentMember } from '../auth/requestScope';
+import { CanonicalInputError, confirmCanonicalEdition, parseCanonicalInput } from '../lineup/canonicalIngest';
 import {
   addAlias,
   addLink,
@@ -58,6 +59,18 @@ export function entitiesRouter(deps: PipelineDeps): Router {
   // Owner-only canonical archive (spec Phase 1). Members get 403.
   const ownerOnly = (_req: any, res: Response, next: () => void) =>
     isOwner(currentMember()) ? next() : res.status(403).json({ error: 'Only the owner can do this.' });
+  // Canonical confirm (Phase 2a). Preview by default; { apply: true } writes.
+  router.post('/manage/canonical/confirm', ownerOnly as any, async (req, res) => {
+    try {
+      const input = parseCanonicalInput(req.body);
+      res.json(await confirmCanonicalEdition(store, input));
+    } catch (err) {
+      if (err instanceof CanonicalInputError) return res.status(400).json({ error: err.message });
+      if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   router.get(
     '/manage/canonical/artists',
     ownerOnly as any,
