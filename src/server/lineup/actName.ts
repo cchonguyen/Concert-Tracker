@@ -11,11 +11,50 @@ export interface ActName {
 const DJ_SET = /\s*[-–—:]?\s*[([]?\s*\bdj[\s-]?set\b\s*[)\]]?\s*$/i;
 const B2B = /\s+(?:b(?:[2-9]|[/][2-9][/]|ack[\s-]+to[\s-]+)b(?:ack)?|b(?:[2-9]b)+|vs\.?|[xX])\s+/i;
 
+// Festival camp activities, workouts, panels, talks, and non-musical programming
+// that should not be extracted as concert or festival lineup acts.
+const NON_MUSIC_PROGRAMMING =
+  /\b(?:yoga|sound\s+bath|bass\s+restore|campgrounds?\s+5k|5k\s+(?:run|walk)|rockstar\s+workout|workout|main\s+stage\s+moves|water\s+balloon|dating\s+game|win\s+vip|upgrade!|grassroots\s+activism|activis(?:m|t)|storytelling\s+for\s+change|fan's\s+world|sounds\s+of\s+nature|chew\s+on\s+this|planting\s+a\s+flag|solochella|let's\s+be\s+friends|climate\b|sustainability|environmentalist|nutrition|single\s+use\s+plastic|future\s+of\s+food|moderated\s+by|stargazing|ambassador|congressman|united\s+nations|camp\s+city\s+breakers|dr\.\s+[a-z]+|search\s+for\s+life|artists?\s+of\s+nasa|waterworld|chef\s+priyanka|ecokitchen)\b/i;
+
+const PLACEHOLDER = /^\s*\(?\s*(?:surprise|tba|tbd)\s*\)?\s*$/i;
+
+export function isNonMusicProgramming(name: string): boolean {
+  return NON_MUSIC_PROGRAMMING.test(name) || PLACEHOLDER.test(name);
+}
+
+// Multi-channel silent disco headphone schedules (e.g. "CH 1: DJ Mish; CH 2: Minimize").
+const SILENT_DISCO = /\bCH\s*\d+\s*:/i;
+
+export function isSilentDiscoSlot(name: string): boolean {
+  return SILENT_DISCO.test(name);
+}
+
+function cleanPart(s: string): string {
+  let out = s.trim();
+  // Strip unmatched leading parenthesis
+  if (out.startsWith('(') && !out.includes(')')) {
+    out = out.slice(1).trim();
+  }
+  // Strip unmatched trailing parenthesis
+  if (out.endsWith(')') && !out.includes('(')) {
+    out = out.slice(0, -1).trim();
+  }
+  return out;
+}
+
 export function readActName(name: string): ActName {
   let rest = name.trim();
   const dj = DJ_SET.test(rest) && rest.replace(DJ_SET, '').trim().length > 0;
   if (dj) rest = rest.replace(DJ_SET, '').trim();
-  const parts = rest.split(B2B).map((p) => p.trim()).filter(Boolean);
+
+  // If formatted as "Alias/Concept (Artist A b2b Artist B)", unwrap the inner b2b set
+  const parenMatch = rest.match(/^([^(]+)\s*\(([^)]+)\)$/);
+  if (parenMatch && B2B.test(parenMatch[2])) {
+    rest = parenMatch[2].trim();
+  }
+
+  const rawParts = rest.split(B2B).map((p) => p.trim()).filter(Boolean);
+  const parts = (rawParts.length ? rawParts : [rest]).map(cleanPart).filter(Boolean);
   return { parts: parts.length ? parts : [rest], dj };
 }
 

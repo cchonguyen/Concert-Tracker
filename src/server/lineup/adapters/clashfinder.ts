@@ -1,6 +1,7 @@
 import { AdapterContext, AdapterResult, NewPerformerClaim, SourceAdapter } from '../types';
 import { HttpError, parseJson } from '../http';
 import { normalizeName, sha256 } from '../text';
+import { isNonMusicProgramming, isSilentDiscoSlot } from '../actName';
 import { emptyResult, fact, makeDocument } from './common';
 
 // Clashfinder (https://clashfinder.com/pages/api/). Crowd-sourced, but the
@@ -193,7 +194,9 @@ export function parseEventData(json: any): { eventName?: string; acts: Clashfind
   for (const loc of Array.isArray(json?.locations) ? json.locations : []) {
     for (const ev of Array.isArray(loc?.events) ? loc.events : []) {
       if (typeof ev?.name === 'string' && ev.name.trim()) {
-        acts.push({ name: ev.name.trim(), start: ev.start, end: ev.end, stage: loc?.name });
+        const trimmed = ev.name.trim();
+        if (isNonMusicProgramming(trimmed) || isSilentDiscoSlot(trimmed)) continue;
+        acts.push({ name: trimmed, start: ev.start, end: ev.end, stage: loc?.name });
       }
     }
   }

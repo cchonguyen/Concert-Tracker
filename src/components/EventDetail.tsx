@@ -873,6 +873,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const [reviewing, setReviewing] = useState(false);
   const [cityQuery, setCityQuery] = useState('');
   const [foundCities, setFoundCities] = useState<string[]>([]);
+  const [lineupStage, setLineupStage] = useState<string>('all');
+  const [lineupDay, setLineupDay] = useState<string>('all');
+  const [lineupSearch, setLineupSearch] = useState<string>('');
 
   useEffect(() => {
     if (cityQuery.trim().length < 3) return setFoundCities([]);
@@ -1483,11 +1486,125 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           )}
           {lineupActs.length > 0 && (() => {
             const lineupSlots = groupReviewSlots(lineupActs.map((p) => ({ ...p, key: p.artistKey })));
+            const allStages = Array.from(
+              new Set(lineupActs.flatMap((p) => p.stages || []).filter(Boolean)),
+            ).sort();
+            const allDays = Array.from(
+              new Set(lineupActs.flatMap((p) => p.days || []).filter(Boolean)),
+            ).sort();
+
+            const filteredSlots = lineupSlots.filter((slot) => {
+              if (lineupStage !== 'all') {
+                const matchesStage = slot.items.some((it) => it.item.stages?.includes(lineupStage));
+                if (!matchesStage) return false;
+              }
+              if (lineupDay !== 'all') {
+                const matchesDay = slot.items.some((it) => it.item.days?.includes(lineupDay));
+                if (!matchesDay) return false;
+              }
+              if (lineupSearch.trim()) {
+                const q = lineupSearch.toLowerCase();
+                const matchesSearch = slot.items.some((it) => it.item.name.toLowerCase().includes(q));
+                if (!matchesSearch) return false;
+              }
+              return true;
+            });
+
             return (
-              <div className="space-y-1.5">
-                <p className="text-[11px] text-zinc-400">From the lineup, tap to mark who you saw:</p>
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
+                  <p className="text-[11px] text-zinc-400">
+                    From the lineup, tap to mark who you saw
+                    {filteredSlots.length !== lineupSlots.length ? ` (${filteredSlots.length} of ${lineupSlots.length})` : ''}:
+                  </p>
+                </div>
+
+                {(allStages.length > 1 || allDays.length > 1 || lineupSlots.length > 20) && (
+                  <div className="space-y-1.5 rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-2">
+                    {lineupSlots.length > 20 && (
+                      <input
+                        type="search"
+                        value={lineupSearch}
+                        onChange={(e) => setLineupSearch(e.target.value)}
+                        placeholder="Search acts..."
+                        className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-200 placeholder-zinc-500 focus:border-violet-500 focus:outline-none"
+                      />
+                    )}
+
+                    {allDays.length > 1 && (
+                      <div className="flex items-center gap-1 overflow-x-auto pb-0.5 text-xs">
+                        <span className="shrink-0 text-[10px] text-zinc-500 mr-1">Day:</span>
+                        <button
+                          type="button"
+                          onClick={() => setLineupDay('all')}
+                          className={`rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
+                            lineupDay === 'all'
+                              ? 'border-violet-500/60 bg-violet-600/25 text-violet-100 font-medium'
+                              : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          All days
+                        </button>
+                        {allDays.map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => setLineupDay(d)}
+                            className={`rounded-md border px-2 py-0.5 text-[11px] shrink-0 transition-colors ${
+                              lineupDay === d
+                                ? 'border-violet-500/60 bg-violet-600/25 text-violet-100 font-medium'
+                                : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            {whenLabel({ startDate: d }) ?? d}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {allStages.length > 1 && (
+                      <div className="flex items-center gap-1 overflow-x-auto pb-0.5 text-xs">
+                        <span className="shrink-0 text-[10px] text-zinc-500 mr-1">Stage:</span>
+                        <button
+                          type="button"
+                          onClick={() => setLineupStage('all')}
+                          className={`rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
+                            lineupStage === 'all'
+                              ? 'border-violet-500/60 bg-violet-600/25 text-violet-100 font-medium'
+                              : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          All stages
+                        </button>
+                        {allStages.map((stage) => {
+                          const count = lineupSlots.filter((slot) =>
+                            slot.items.some((it) => it.item.stages?.includes(stage)),
+                          ).length;
+                          return (
+                            <button
+                              key={stage}
+                              type="button"
+                              onClick={() => setLineupStage(stage)}
+                              className={`rounded-md border px-2 py-0.5 text-[11px] shrink-0 transition-colors ${
+                                lineupStage === stage
+                                  ? 'border-violet-500/60 bg-violet-600/25 text-violet-100 font-medium'
+                                  : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200'
+                              }`}
+                            >
+                              {stage} <span className="text-[10px] opacity-70">({count})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-scroll pr-1">
-                  {lineupSlots.map((slot) => {
+                  {filteredSlots.length === 0 ? (
+                    <p className="py-3 text-xs text-zinc-500">No acts match the selected stage or filter.</p>
+                  ) : (
+                    filteredSlots.map((slot) => {
                     const slotKeys = new Set(slot.items.map((it) => it.item.artistKey));
                     const isSolo = slot.items.length === 1 && (!slot.items[0].item.b2b || slot.items[0].item.b2b.length === 0);
                     const on = isSolo
@@ -1568,7 +1685,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                         )}
                       </button>
                     );
-                  })}
+                  })
+                )}
                 </div>
               </div>
             );
