@@ -24,6 +24,7 @@
     ".claude/commands/triage.md": "ad40b780121be05bca801589041da254f258945106b312133b08f5504f58a40f",
     ".claude/harness-rules.md": "9868897255a8a0ca7730d0c6e3b364946b80c49933180cf15c16b29c7d7a20d6",
     ".harness-version": "33bdaf9e2d6bcbde2e4e613e865e403f8fe21fc621078d34c30b0bdc7f68d903",
+    ".harness/config/thresholds.json": "933d9c1f642b1614021da1f3bdf5d28f5781e12963ca32b045831469e4553745",
     ".harness/hooks/bash-guard.mjs": "20f99540d4a5cc0f15fbafbed2908f16076e5e25ab694f76f01cbfc4dc6a672e",
     ".harness/hooks/lib/guard-hooks.test.mjs": "50c3ca42f7e29b64b7de6aa6fc12b4c508aecffce305e9e0c5769a7215c2ce0b",
     ".harness/hooks/lib/guard-rules.mjs": "de17a342890df91a3a998bfb511432c75efb79c1dc519fe8aee8b7097ab036ad",
