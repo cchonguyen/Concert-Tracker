@@ -133,6 +133,8 @@ export interface LineupStore {
   // Adds the artists not stored yet; existing ones are left as they are.
   ensureArtists(artists: ArtistIdentity[]): Promise<void>;
   listUnresolvedArtists(limit: number): Promise<ArtistIdentity[]>;
+  // Every canonical artist (canonical_artists), for the owner's Global Archive.
+  listArtists(): Promise<ArtistIdentity[]>;
 
   // Genres of acts you saw (0013), one row per act and source.
   listArtistGenres(): Promise<ArtistGenres[]>;
