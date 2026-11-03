@@ -6,6 +6,7 @@ import { EventTitle } from './EventTitle';
 import { filterOptions, groupReviewSlots, startRows } from '../services/reviewRows';
 import { readActName } from '../server/lineup/actName';
 import { normalizeName } from '../server/lineup/text';
+import { normalizeSet } from '../server/events/seen';
 import type { Edition } from '../server/lineup/types';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
@@ -37,7 +38,7 @@ interface Row {
   flagged: boolean;
   missingFrom: string[];
   status: 'billed' | 'performed';
-  set: '' | 'dj' | 'live'; // yours, or as the lineup billed it
+  set: string; // yours, or as the lineup billed it
   b2bDisplay?: string; // who it was billed B2B with
   sources: NonNullable<LookupJob['candidate']>['performers'][number]['sources'];
 }
@@ -64,27 +65,30 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
   };
 
   const [rows, setRows] = useState<Row[]>(
-    startRows(candidate?.performers ?? [], edition).map((r) => ({
-      key: r.key,
-      slotId: r.slotId,
-      alias: r.alias,
-      b2b: r.b2b,
-      name: r.name,
-      originalName: r.candidate?.name,
-      accepted: r.accepted,
-      rejectReason: r.cancelled ? 'cancelled' : 'not_an_act',
-      seen: isRowSeen(r),
-      billing: (yourRole.get(r.seenKey) ?? r.billing ?? '') as Row['billing'],
-      days: r.days,
-      stages: r.stages,
-      confidence: r.candidate?.confidence ?? 1,
-      flagged: r.candidate?.flagged ?? false,
-      missingFrom: (r.candidate?.missingFrom ?? []).map((t) => SOURCE_LABELS[t]),
-      status: r.candidate?.status === 'performed' ? 'performed' : 'billed',
-      sources: r.candidate?.sources ?? [],
-      set: yourSet.get(r.seenKey) ?? r.candidate?.set ?? '',
-      b2bDisplay: r.candidate?.b2b?.map((k) => candidate?.performers.find((p) => p.key === k)?.name ?? k).join(', '),
-    })),
+    startRows(candidate?.performers ?? [], edition).map((r) => {
+      const rawSet = yourSet.get(r.seenKey) ?? r.set ?? r.candidate?.set ?? '';
+      return {
+        key: r.key,
+        slotId: r.slotId,
+        alias: r.alias,
+        b2b: r.b2b,
+        name: r.name,
+        originalName: r.candidate?.name,
+        accepted: r.accepted,
+        rejectReason: r.cancelled ? 'cancelled' : 'not_an_act',
+        seen: isRowSeen(r),
+        billing: (yourRole.get(r.seenKey) ?? r.billing ?? '') as Row['billing'],
+        days: r.days,
+        stages: r.stages,
+        confidence: r.candidate?.confidence ?? 1,
+        flagged: r.candidate?.flagged ?? false,
+        missingFrom: (r.candidate?.missingFrom ?? []).map((t) => SOURCE_LABELS[t]),
+        status: r.candidate?.status === 'performed' ? 'performed' : 'billed',
+        sources: r.candidate?.sources ?? [],
+        set: normalizeSet(rawSet) ?? rawSet ?? '',
+        b2bDisplay: r.candidate?.b2b?.map((k) => candidate?.performers.find((p) => p.key === k)?.name ?? k).join(', '),
+      };
+    }),
   );
   const options = filterOptions(rows);
   const [day, setDay] = useState('');
@@ -94,6 +98,12 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
   const [newAct, setNewAct] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const setSuggestions = useMemo(() => {
+    const common = ['DJ Set', 'Live'];
+    const fromRows = rows.map((r) => r.set.trim()).filter((s) => s && !common.includes(s));
+    return [...common, ...new Set(fromRows)];
+  }, [rows]);
 
   const slots = groupReviewSlots(rows);
   const visible = slots.filter(
@@ -171,6 +181,13 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
     }
 
     const read = readActName(row.name);
+    if (read.parts.length === 1 && read.set) {
+      update(index, {
+        name: read.parts[0],
+        set: read.set || row.set,
+      });
+      return;
+    }
     if (read.parts.length <= 1) return;
     const allKeys = read.parts.map(normalizeName).filter(Boolean);
     if (allKeys.length <= 1) return;
@@ -184,7 +201,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
         slotId,
         b2b: allKeys.filter((k) => k !== key),
         originalName: undefined,
-        set: read.dj ? 'dj' : row.set,
+        set: read.set || row.set,
       };
     });
     setRows((rs) => [...rs.slice(0, index), ...replacementRows, ...rs.slice(index + 1)]);
@@ -240,7 +257,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
           rejectReason: 'not_an_act',
           seen: true,
           billing: '',
-          set: read.dj ? 'dj' : '',
+          set: read.set || '',
           days: [],
           stages: [],
           confidence: 1,
@@ -255,12 +272,12 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
       setRows((rs) => [
         ...rs,
         {
-          name,
+          name: read.parts[0] || name,
           accepted: true,
           rejectReason: 'not_an_act',
           seen: true,
           billing: '',
-          set: read.dj ? 'dj' : '',
+          set: read.set || '',
           days: [],
           stages: [],
           confidence: 1,
@@ -386,7 +403,8 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
                   <th className="p-2">Keep</th>
                   <th className="p-2">Act</th>
                   <th className="p-2">Sources</th>
-                  <th className="p-2">Billed as</th>
+                  <th className="p-2">Role</th>
+                  <th className="p-2">Set</th>
                   <th className="p-2">Day / stage</th>
                   <th className="p-2">Saw it</th>
                 </tr>
@@ -595,24 +613,33 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
                             slot.items.forEach((it) => update(it.index, { billing }));
                           }}
                           title="Artist: headliner, or no lead stated. Supporting: billed as support."
+                          aria-label={`Role for ${slot.name}`}
                         >
                           <option value="">Artist</option>
                           <option value="headliner">Headliner</option>
                           <option value="support">Supporting</option>
                         </select>
-                        <select
-                          className="mt-1 block rounded border border-zinc-800 bg-zinc-900 px-1 py-1 text-xs text-zinc-200"
-                          value={slot.items[0].item.set}
+                      </td>
+                      <td className="p-2 align-top min-w-[130px] max-w-[180px]">
+                        <SuggestInput
+                          value={slot.items[0].item.set ?? ''}
+                          suggestions={setSuggestions}
+                          onPick={(pickedSet) => {
+                            const trimmed = pickedSet.trim();
+                            slot.items.forEach((it) => update(it.index, { set: trimmed }));
+                          }}
                           onChange={(e) => {
-                            const set = e.target.value as Row['set'];
+                            const set = e.target.value;
                             slot.items.forEach((it) => update(it.index, { set }));
                           }}
-                          aria-label={`Set type for ${slot.name}`}
-                        >
-                          <option value="">Set type</option>
-                          <option value="dj">DJ set</option>
-                          <option value="live">Live set</option>
-                        </select>
+                          onBlur={(e) => {
+                            const trimmed = e.target.value.trim();
+                            slot.items.forEach((it) => update(it.index, { set: trimmed }));
+                          }}
+                          placeholder="Set type"
+                          className="w-full rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-200 placeholder-zinc-500 focus:border-violet-500 focus:outline-none"
+                          aria-label={`Set for ${slot.name}`}
+                        />
                       </td>
                       <td className="p-2 align-top text-[11px] text-zinc-400">
                         {slot.days.join(', ')}

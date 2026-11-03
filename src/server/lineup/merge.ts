@@ -173,7 +173,7 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
   const priority = ctx.priority?.length ? ctx.priority : DEFAULT_PRIORITY;
   const groups = new Map<string, PerformanceGroup>();
   const slotIds = new Map<string, string>();
-  const djGroups = new Set<string>();
+  const setGroups = new Map<string, string>();
   let dropped = 0;
 
   for (const whole of ctx.claims) {
@@ -186,7 +186,7 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
     const alias = canonical !== whole.name && read.parts.length > 1 ? whole.name : undefined;
     const validParts: Array<{ part: string; key: string; claim: PerformerClaim }> = [];
     for (const part of read.parts) {
-      const claim = read.parts.length === 1 && !read.dj ? whole : { ...whole, name: part };
+      const claim = read.parts.length === 1 && !read.set ? whole : { ...whole, name: part };
       if (claim !== whole && (isBlocked(part, claim.sourceUrl, ctx.blocklist) || isNonMusicProgramming(part) || isSilentDiscoSlot(part))) {
         dropped += 1;
         continue;
@@ -199,9 +199,10 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
     if (validParts.length === 0) continue;
 
     const allKeys = [...new Set(validParts.map((v) => v.key))].sort();
+    const setKey = read.set ? normalizeName(read.set) : '';
     let slotId: string | undefined;
     if (allKeys.length > 1) {
-      const slotSig = allKeys.join('::');
+      const slotSig = `${allKeys.join('::')}${setKey ? `::${setKey}` : ''}`;
       slotId = slotIds.get(slotSig);
       if (!slotId) {
         slotId = randomUUID();
@@ -212,9 +213,11 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
     for (const v of validParts) {
       const artistKey = v.key;
       const b2bPartners = allKeys.length > 1 ? allKeys.filter((k) => k !== artistKey) : [];
-      const groupKey = b2bPartners.length > 0 ? `${artistKey}::b2b::${allKeys.join('::')}` : `${artistKey}::solo`;
+      const groupKey = b2bPartners.length > 0
+        ? `${artistKey}::b2b::${allKeys.join('::')}${setKey ? `::${setKey}` : ''}`
+        : `${artistKey}::solo${setKey ? `::${setKey}` : ''}`;
 
-      if (read.dj) djGroups.add(groupKey);
+      if (read.set) setGroups.set(groupKey, read.set);
 
       let group = groups.get(groupKey);
       if (!group) {
@@ -263,7 +266,7 @@ export function mergeLineup(ctx: MergeContext): CandidateLineup {
       slotId: group.slotId,
       name: aliasName ?? preferredSpelling(byPriority[0].name.trim(), ctx.spellings ?? {}),
       ...(group.alias ? { alias: group.alias } : {}),
-      ...(djGroups.has(group.groupKey) ? { set: 'dj' as const } : {}),
+      ...(setGroups.has(group.groupKey) ? { set: setGroups.get(group.groupKey) } : {}),
       ...(group.b2b ? { b2b: group.b2b } : {}),
       mbid: claims.find((c) => c.mbid)?.mbid,
       days: [...new Set(claims.map((c) => c.day).filter((d): d is string => Boolean(d)))].sort(),

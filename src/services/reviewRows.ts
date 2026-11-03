@@ -15,6 +15,7 @@ export interface StartRow {
   accepted: boolean;
   cancelled: boolean;
   billing?: string;
+  set?: string;
   days: string[];
   stages: string[];
   candidate?: CandidatePerformer;
@@ -56,6 +57,7 @@ function unpackCandidates(list: CandidatePerformer[]): CandidatePerformer[] {
         slotId,
         alias: p.alias,
         b2b: allKeys.filter((k) => k !== key),
+        set: p.set ?? read.set,
       });
     }
   }
@@ -89,6 +91,7 @@ function unpackPerformances(list: EditionPerformance[]): EditionPerformance[] {
         slotId,
         alias: e.alias,
         b2b: allKeys.filter((k) => k !== key),
+        set: e.set ?? read.set,
       });
     }
   }
@@ -108,6 +111,7 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
       accepted: !p.flagged,
       cancelled: false,
       billing: p.billing,
+      set: p.set,
       days: p.days,
       stages: p.stages,
       candidate: p,
@@ -151,6 +155,7 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
         accepted: false,
         cancelled: false,
         billing: p.billing,
+        set: p.set,
         days: p.days,
         stages: p.stages,
         candidate: p,
@@ -168,6 +173,7 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
       accepted: !cancelled,
       cancelled,
       billing: saved.billing,
+      set: saved.set ?? p.set,
       days: saved.days,
       stages: saved.stages,
       candidate: p,
@@ -185,6 +191,7 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
       accepted: true,
       cancelled: false,
       billing: e.billing,
+      set: e.set,
       days: e.days,
       stages: e.stages,
     });

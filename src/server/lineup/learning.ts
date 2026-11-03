@@ -477,6 +477,7 @@ function toPerformance(cand: CandidatePerformer, name: string): EditionPerforman
     name,
     slotId: cand.slotId,
     alias: cand.alias,
+    set: cand.set,
     b2b: cand.b2b,
     days: cand.days,
     stages: cand.stages,
@@ -492,6 +493,7 @@ function dedupe(perfs: EditionPerformance[]): EditionPerformance[] {
   for (const p of perfs) {
     const prev = out.find((existing) => {
       if (existing.artistKey !== p.artistKey) return false;
+      if (existing.set !== p.set) return false;
       if (existing.slotId && p.slotId) return existing.slotId === p.slotId;
       const existingIsB2b = Boolean(existing.b2b?.length);
       const pIsB2b = Boolean(p.b2b?.length);
