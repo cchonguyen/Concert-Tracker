@@ -92,3 +92,17 @@ test('appearances: one artist across editions, newest first, billing and set per
   assert.equal(rows[1].billing, 'support');
   assert.deepEqual(appearancesOf([old, newer], 'zzz'), []);
 });
+
+test('unifyArtists: community counts fill in per key; without counts it stays null', async () => {
+  const canonical = [{ key: 'porter robinson', name: 'Porter Robinson' } as any];
+  const withCounts = unifyArtists({
+    canonical,
+    ownerNames: ['Only Me'],
+    editions: [],
+    communityCounts: new Map([['porter robinson', 4]]),
+  });
+  assert.equal(withCounts.find((r) => r.key === 'porter robinson')!.communityCount, 4);
+  assert.equal(withCounts.find((r) => r.key === 'only me')!.communityCount, 0, 'no live event has it: zero, not unknown');
+  const without = unifyArtists({ canonical, ownerNames: [], editions: [], communityCounts: null });
+  assert.equal(without[0].communityCount, null);
+});

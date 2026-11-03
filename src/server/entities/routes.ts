@@ -86,8 +86,13 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     ownerOnly as any,
     manage(async (req) => {
       const key = String(req.params.key);
-      const [canonical, editions, ownerNames] = await Promise.all([store.listArtists(), store.listEditions(CANONICAL_EDITION_LIMIT), store.listSeenArtistNames()]);
-      const row = unifyArtists({ canonical, ownerNames, editions }).find((a) => a.key === key);
+      const [canonical, editions, ownerNames, communityCounts] = await Promise.all([
+        store.listArtists(),
+        store.listEditions(CANONICAL_EDITION_LIMIT),
+        store.listSeenArtistNames(),
+        store.communityCounts(),
+      ]);
+      const row = unifyArtists({ canonical, ownerNames, editions, communityCounts }).find((a) => a.key === key);
       if (!row) throw new ManageError('No such artist.', 404);
       return { artist: row, appearances: appearancesOf(editions, key) };
     }),
@@ -96,8 +101,13 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     '/manage/canonical/artists',
     ownerOnly as any,
     manage(async () => {
-      const [canonical, editions, ownerNames] = await Promise.all([store.listArtists(), store.listEditions(CANONICAL_EDITION_LIMIT), store.listSeenArtistNames()]);
-      return { artists: unifyArtists({ canonical, ownerNames, editions }) };
+      const [canonical, editions, ownerNames, communityCounts] = await Promise.all([
+        store.listArtists(),
+        store.listEditions(CANONICAL_EDITION_LIMIT),
+        store.listSeenArtistNames(),
+        store.communityCounts(),
+      ]);
+      return { artists: unifyArtists({ canonical, ownerNames, editions, communityCounts }) };
     }),
   );
   router.get(
