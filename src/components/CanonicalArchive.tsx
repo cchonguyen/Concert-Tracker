@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { canonicalApi, LookupJob } from '../services/lineupApi';
+import { canonicalApi, lineupApi, LookupJob } from '../services/lineupApi';
 import type { Edition } from '../server/lineup/types';
 import type { ArtistAppearance } from '../server/entities/canonicalManage';
 import type { CanonicalArtistSummary, CanonicalEditionSummary } from '../server/entities/canonicalManage';
@@ -87,6 +87,21 @@ export const CanonicalArchive: React.FC<{ artistQuery?: string }> = ({ artistQue
     }
   };
 
+  // A queued or waiting lookup advances on the server's minute cron, so poll it
+  // until it reaches review or a final state. Stops when the panel closes.
+  const jobId = job?.id;
+  const jobStatus = job?.status;
+  useEffect(() => {
+    if (!jobId || (jobStatus !== 'queued' && jobStatus !== 'running' && jobStatus !== 'waiting_quota')) return;
+    const timer = window.setInterval(() => {
+      lineupApi
+        .job(jobId)
+        .then((latest) => setJob(latest))
+        .catch(() => undefined);
+    }, 20_000);
+    return () => window.clearInterval(timer);
+  }, [jobId, jobStatus]);
+
   const refreshAfterSave = () => {
     setJob(null);
     setName('');
@@ -100,7 +115,12 @@ export const CanonicalArchive: React.FC<{ artistQuery?: string }> = ({ artistQue
     }
     return (
       <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/60 p-4 text-sm text-zinc-300">
-        <p>The lookup for {job.input.eventName} {job.input.year} is {job.status.replace(/_/g, ' ')}. Come back when it is ready to review.</p>
+        <p>
+          The lookup for {job.input.eventName} {job.input.year} is {job.status.replace(/_/g, ' ')}.
+          {job.status === 'waiting_quota' ? ' It waits for the AI quota to reset and then continues on its own.' : ''}
+          {job.status === 'queued' || job.status === 'running' ? ' This page checks again every 20 seconds and opens the review when it is ready.' : ''}
+          {job.status === 'no_data' || job.status === 'failed' ? ' No lineup was found for this event.' : ''}
+        </p>
         <button onClick={() => setJob(null)} className="text-violet-300 hover:text-violet-200">Back to the archive</button>
       </div>
     );
