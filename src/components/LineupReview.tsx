@@ -15,9 +15,11 @@ import { SuggestInput } from './SuggestInput';
 
 interface LineupReviewProps {
   job: LookupJob;
-  event: LoggedEvent;
+  event?: LoggedEvent; // undefined in canonical mode (no saved event)
+  // personal: your log (the default with an event). canonical: the shared catalog (owner only).
+  mode?: 'personal' | 'canonical';
   onClose: () => void;
-  onSaved: (event: LoggedEvent) => void;
+  onSaved: (event?: LoggedEvent) => void;
   edition?: Edition | null; // set when reopening a confirmed lineup
 }
 
@@ -48,20 +50,22 @@ const input =
 
 // Stage 2 review: keep, fix or reject each act and tick who you saw. The
 // event's date and place come from the event itself, not from here.
-export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition, onClose, onSaved }) => {
+export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, edition, onClose, onSaved }) => {
+  const canonical = (mode ?? (event ? 'personal' : 'canonical')) === 'canonical';
+  const seenSource = event?.seen ?? [];
   const candidate = job.candidate;
   // A role you set on a seen act wins over the sources'.
-  const yourSet = new Map(event.seen.filter((s) => s.set).map((s) => [s.key, s.set!]));
-  const yourRole = new Map(event.seen.filter((s) => s.roleFrom === 'you').map((s) => [s.key, s.role ?? '']));
+  const yourSet = new Map(seenSource.filter((s) => s.set).map((s) => [s.key, s.set!]));
+  const yourRole = new Map(seenSource.filter((s) => s.roleFrom === 'you').map((s) => [s.key, s.role ?? '']));
   const isRowSeen = (r: { seenKey: string; b2b?: string[] }): boolean => {
     if (r.b2b?.length) {
-      return event.seen.some((s) => {
+      return seenSource.some((s) => {
         if (s.key === r.seenKey && s.b2b?.length && s.b2b.some((k) => r.b2b!.includes(k))) return true;
         const parts = readActName(s.name).parts.map(normalizeName);
         return parts.length > 1 && parts.includes(r.seenKey) && r.b2b!.some((k) => parts.includes(k));
       });
     }
-    return event.seen.some((s) => s.key === r.seenKey && (!s.b2b?.length || s.solo));
+    return seenSource.some((s) => s.key === r.seenKey && (!s.b2b?.length || s.solo));
   };
 
   const [rows, setRows] = useState<Row[]>(
@@ -314,6 +318,28 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
         });
       });
 
+      if (canonical) {
+        await lineupApi.canonicalConfirm({
+          name: job.input.eventName,
+          year: job.input.year,
+          startDate: job.input.startDate,
+          endDate: job.input.endDate,
+          venue: job.input.venue,
+          city: job.input.city,
+          country: job.input.country,
+          apply: true,
+          performers: expandedRows.map((r) => ({
+            name: r.name,
+            accepted: r.accepted,
+            billing: (r.billing || undefined) as 'headliner' | 'support' | undefined,
+            days: r.days,
+            stages: r.stages,
+            set: r.set || undefined,
+          })),
+        });
+        onSaved(undefined);
+        return;
+      }
       const { event: updated } = await lineupApi.confirm(job.id, {
         performers: expandedRows.map((r) => ({
           key: r.key,
@@ -350,7 +376,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
       <div className="w-full max-w-5xl space-y-5 rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-bold text-zinc-50">Who played <EventTitle event={event} /></h2>
+            <h2 className="text-lg font-bold text-zinc-50">{canonical ? 'Lineup for ' : 'Who played '}{event ? <EventTitle event={event} /> : `${job.input.eventName} ${job.input.year}`}</h2>
             <p className="text-xs text-zinc-400">
               {edition
                 ? 'Your saved lineup. Change anything and save again.'
@@ -389,10 +415,14 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
             )}
             <span className="mx-1 text-zinc-700">|</span>
             <button className="text-zinc-300 hover:underline" onClick={() => setAll({ accepted: true })}>Accept shown</button>
-            <button className="text-zinc-300 hover:underline" onClick={() => setAll({ seen: true })}>Saw all shown</button>
-            <button className="text-zinc-300 hover:underline" onClick={() => setAll({ seen: false })}>Saw none shown</button>
+            {!canonical && (
+              <>
+                <button className="text-zinc-300 hover:underline" onClick={() => setAll({ seen: true })}>Saw all shown</button>
+                <button className="text-zinc-300 hover:underline" onClick={() => setAll({ seen: false })}>Saw none shown</button>
+              </>
+            )}
             <span className="ml-auto text-zinc-400">
-              {rows.filter((r) => r.accepted).length} accepted · {seenCount} seen
+              {rows.filter((r) => r.accepted).length} accepted{!canonical && ` · ${seenCount} seen`}
             </span>
           </div>
 
@@ -406,7 +436,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
                   <th className="p-2">Role</th>
                   <th className="p-2">Set</th>
                   <th className="p-2">Day / stage</th>
-                  <th className="p-2">Saw it</th>
+                  {!canonical && <th className="p-2">Saw it</th>}
                 </tr>
               </thead>
               <tbody>
@@ -645,17 +675,19 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
                         {slot.days.join(', ')}
                         {slot.stages.length > 0 && <div>{slot.stages.join(', ')}</div>}
                       </td>
-                      <td className="p-2 align-top">
-                        <input
-                          type="checkbox"
-                          disabled={!anyAccepted}
-                          checked={allSeen}
-                          onChange={(e) => {
-                            const seen = e.target.checked;
-                            slot.items.forEach((it) => update(it.index, { seen }));
-                          }}
-                        />
-                      </td>
+                      {!canonical && (
+                        <td className="p-2 align-top">
+                          <input
+                            type="checkbox"
+                            disabled={!anyAccepted}
+                            checked={allSeen}
+                            onChange={(e) => {
+                              const seen = e.target.checked;
+                              slot.items.forEach((it) => update(it.index, { seen }));
+                            }}
+                          />
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -687,7 +719,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, edition,
             className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            Save lineup ({seenCount} seen)
+            {canonical ? `Save canonical edition (${rows.filter((r) => r.accepted).length} billed acts)` : `Save lineup (${seenCount} seen)`}
           </button>
         </div>
       </div>
