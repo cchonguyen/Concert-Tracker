@@ -5,6 +5,9 @@ import { normalizeName } from '../lineup/text';
 // Only shared facts: no personal attendance, prices, notes or companions.
 // Only confirmed editions are shown to members' suggestions (owner sees both).
 
+// The newest editions the archive loads in one request (Workers' subrequest budget).
+export const CANONICAL_EDITION_LIMIT = 200;
+
 export type EditionStatusFilter = 'all' | 'confirmed' | 'draft';
 
 export interface CanonicalEditionSummary {

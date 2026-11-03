@@ -452,12 +452,17 @@ export class SupabaseLineupStore implements LineupStore {
     return out;
   }
 
+  // One query for the edition rows, then the batched loader (getEditions):
+  // loading each edition on its own cost one Worker subrequest per row, which
+  // hit Workers' 50-subrequest limit on a long list.
   async listEditions(limit: number) {
     const rows = this.check(
       await this.db.from('event_editions').select('*').order('updated_at', { ascending: false }).limit(limit),
       'listEditions',
     );
-    return Promise.all((rows ?? []).map((r) => this.loadEdition(r)));
+    const ids = (rows ?? []).map((r: any) => r.id as string);
+    const loaded = new Map((await this.getEditions(ids)).map((e) => [e.id, e]));
+    return ids.map((id) => loaded.get(id)).filter((e): e is Edition => Boolean(e));
   }
 
   // Quota -----------------------------------------------------------------

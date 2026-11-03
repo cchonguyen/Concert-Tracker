@@ -3,7 +3,7 @@ import { PipelineDeps } from '../lineup/pipeline';
 import { isLinking } from './linkingStore';
 import { nameIndex, possibleDuplicates } from './link';
 import { EntityIntegrityError } from './integrity';
-import { EditionStatusFilter, isOwner, listCanonicalEditions, unifyArtists } from './canonicalManage';
+import { CANONICAL_EDITION_LIMIT, EditionStatusFilter, isOwner, listCanonicalEditions, unifyArtists } from './canonicalManage';
 import { currentMember } from '../auth/requestScope';
 import { CanonicalInputError, confirmCanonicalEdition, parseCanonicalInput } from '../lineup/canonicalIngest';
 import {
@@ -75,7 +75,7 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     '/manage/canonical/artists',
     ownerOnly as any,
     manage(async () => {
-      const [canonical, editions, ownerNames] = await Promise.all([store.listArtists(), store.listEditions(1000), store.listSeenArtistNames()]);
+      const [canonical, editions, ownerNames] = await Promise.all([store.listArtists(), store.listEditions(CANONICAL_EDITION_LIMIT), store.listSeenArtistNames()]);
       return { artists: unifyArtists({ canonical, ownerNames, editions }) };
     }),
   );
@@ -84,7 +84,7 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     ownerOnly as any,
     manage(async (req) => {
       const status = ['all', 'confirmed', 'draft'].includes(req.query.status) ? (req.query.status as EditionStatusFilter) : 'all';
-      const editions = await store.listEditions(1000);
+      const editions = await store.listEditions(CANONICAL_EDITION_LIMIT);
       return { editions: listCanonicalEditions(editions, { query: typeof req.query.query === 'string' ? req.query.query : '', status }) };
     }),
   );
