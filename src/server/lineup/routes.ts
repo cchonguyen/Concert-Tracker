@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { createLookup, enqueueArtistResolution, InputError, PipelineDeps } from './pipeline';
 import { confirmLookup, confirmLookupForMember, ConfirmRequest } from './learning';
 import { currentMember } from '../auth/requestScope';
+import { isOwner } from '../entities/canonicalManage';
 import { configuredSources, JobRunner } from './service';
 import { redactSecrets } from './http';
 import { LookupJob } from './types';
@@ -35,11 +36,37 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
     }
   });
 
+  // Lookups with no saved event are the owner's canonical ingest (Phase 2b). Members use /events/:id/lineup.
   router.post('/lookups', async (req, res) => {
+    if (!isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
     try {
       const job = await createLookup(deps, req.body ?? {});
       if (job.status === 'queued') await runner.kick(job.id);
       res.status(201).json({ job });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Canonical ingest (Phase 2b): a lookup for an edition with no saved event.
+  // Owner only. The job has no eventId, so confirming it writes only the shared
+  // catalog (POST /api/manage/canonical/confirm), never a personal log.
+  router.post('/manage/canonical/ingest', async (req, res) => {
+    if (!isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
+    try {
+      const { name, year, startDate, endDate, venue, city, country, lineupUrl } = (req.body ?? {}) as Record<string, unknown>;
+      const job = await createLookup(deps, {
+        eventName: name as string,
+        year: year as number,
+        startDate: startDate as string | undefined,
+        endDate: endDate as string | undefined,
+        venue: venue as string | undefined,
+        city: city as string | undefined,
+        country: country as string | undefined,
+        lineupUrl: lineupUrl as string | undefined,
+      });
+      if (job.status === 'queued') await runner.kick(job.id);
+      res.status(201).json({ job: safeJob(job) });
     } catch (err) {
       fail(res, err);
     }
