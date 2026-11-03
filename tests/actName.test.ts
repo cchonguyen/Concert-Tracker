@@ -11,25 +11,65 @@ import { mergeLineup } from '../src/server/lineup/merge.ts';
 import { PerformerClaim } from '../src/server/lineup/types.ts';
 
 test('a lineup name is read for B2B pairs and a DJ set suffix', () => {
-  assert.deepEqual(readActName('Sasha b2b John Digweed'), { parts: ['Sasha', 'John Digweed'], dj: false });
-  assert.deepEqual(readActName('Dom Dolla B2B John Summit B2B Mau P'), { parts: ['Dom Dolla', 'John Summit', 'Mau P'], dj: false });
-  assert.deepEqual(readActName('A b2b B b2b C'), { parts: ['A', 'B', 'C'], dj: false });
-  assert.deepEqual(readActName('Cirez D vs Adam Beyer'), { parts: ['Cirez D', 'Adam Beyer'], dj: false });
-  assert.deepEqual(readActName('Cirez D vs. Adam Beyer'), { parts: ['Cirez D', 'Adam Beyer'], dj: false });
-  assert.deepEqual(readActName('Armin van Buuren x Adam Beyer'), { parts: ['Armin van Buuren', 'Adam Beyer'], dj: false });
-  assert.deepEqual(readActName('RL Grime X Knock2'), { parts: ['RL Grime', 'Knock2'], dj: false });
-  assert.deepEqual(readActName('Skrillex x Four Tet x Fred again..'), { parts: ['Skrillex', 'Four Tet', 'Fred again..'], dj: false });
-  assert.deepEqual(readActName('Porter Robinson (DJ Set)'), { parts: ['Porter Robinson'], dj: true });
-  assert.deepEqual(readActName('Kaskade - DJ set'), { parts: ['Kaskade'], dj: true });
-  assert.deepEqual(readActName('Disclosure DJ Set'), { parts: ['Disclosure'], dj: true });
-  assert.deepEqual(readActName('DJ Set'), { parts: ['DJ Set'], dj: false }); // nothing left: leave it
-  assert.deepEqual(readActName('Bob2B'), { parts: ['Bob2B'], dj: false });
-  assert.deepEqual(readActName('Skrillex B3B Four Tet B3B Fred again..'), { parts: ['Skrillex', 'Four Tet', 'Fred again..'], dj: false });
-  assert.deepEqual(readActName('Artist A b/3/b Artist B'), { parts: ['Artist A', 'Artist B'], dj: false });
-  assert.deepEqual(readActName('Artist A b4b Artist B'), { parts: ['Artist A', 'Artist B'], dj: false });
-  assert.deepEqual(readActName('Artist A b2b2b Artist B'), { parts: ['Artist A', 'Artist B'], dj: false });
-  assert.deepEqual(readActName('Artist A back to back Artist B'), { parts: ['Artist A', 'Artist B'], dj: false });
-  assert.deepEqual(readActName('Artist A back-to-back Artist B'), { parts: ['Artist A', 'Artist B'], dj: false });
+  assert.deepEqual(readActName('Sasha b2b John Digweed'), { parts: ['Sasha', 'John Digweed'] });
+  assert.deepEqual(readActName('Dom Dolla B2B John Summit B2B Mau P'), { parts: ['Dom Dolla', 'John Summit', 'Mau P'] });
+  assert.deepEqual(readActName('A b2b B b2b C'), { parts: ['A', 'B', 'C'] });
+  assert.deepEqual(readActName('Cirez D vs Adam Beyer'), { parts: ['Cirez D', 'Adam Beyer'] });
+  assert.deepEqual(readActName('Cirez D vs. Adam Beyer'), { parts: ['Cirez D', 'Adam Beyer'] });
+  assert.deepEqual(readActName('Armin van Buuren x Adam Beyer'), { parts: ['Armin van Buuren', 'Adam Beyer'] });
+  assert.deepEqual(readActName('RL Grime X Knock2'), { parts: ['RL Grime', 'Knock2'] });
+  assert.deepEqual(readActName('Skrillex x Four Tet x Fred again..'), { parts: ['Skrillex', 'Four Tet', 'Fred again..'] });
+  assert.deepEqual(readActName('Porter Robinson (DJ Set)'), { parts: ['Porter Robinson'], set: 'DJ Set' });
+  assert.deepEqual(readActName('Kaskade - DJ set'), { parts: ['Kaskade'], set: 'DJ Set' });
+  assert.deepEqual(readActName('Disclosure DJ Set'), { parts: ['Disclosure'], set: 'DJ Set' });
+  assert.deepEqual(readActName('DJ Set'), { parts: ['DJ Set'] }); // nothing left: leave it
+  assert.deepEqual(readActName('Bob2B'), { parts: ['Bob2B'] });
+  assert.deepEqual(readActName('Skrillex B3B Four Tet B3B Fred again..'), { parts: ['Skrillex', 'Four Tet', 'Fred again..'] });
+  assert.deepEqual(readActName('Artist A b/3/b Artist B'), { parts: ['Artist A', 'Artist B'] });
+  assert.deepEqual(readActName('Artist A b4b Artist B'), { parts: ['Artist A', 'Artist B'] });
+  assert.deepEqual(readActName('Artist A b2b2b Artist B'), { parts: ['Artist A', 'Artist B'] });
+  assert.deepEqual(readActName('Artist A back to back Artist B'), { parts: ['Artist A', 'Artist B'] });
+  assert.deepEqual(readActName('Artist A back-to-back Artist B'), { parts: ['Artist A', 'Artist B'] });
+});
+
+test('readActName extracts set suffixes across parentheses, presents, and clashfinder delimiters', () => {
+  // Trailing parenthetical & bracketed concepts
+  assert.deepEqual(readActName('Bicep (Live)'), { parts: ['Bicep'], set: 'Live' });
+  assert.deepEqual(readActName('Bicep (Live Set)'), { parts: ['Bicep'], set: 'Live' });
+  assert.deepEqual(readActName('Tiësto (Sunrise Set)'), { parts: ['Tiësto'], set: 'Sunrise Set' });
+  assert.deepEqual(readActName('Seven Lions [100% 128 Set]'), { parts: ['Seven Lions'], set: '100% 128 Set' });
+
+  // Presents / Pres. connector
+  assert.deepEqual(readActName('Adventure Club presents Throwback Set'), { parts: ['Adventure Club'], set: 'Throwback Set' });
+  assert.deepEqual(readActName('Eric Prydz pres. HOLO'), { parts: ['Eric Prydz'], set: 'HOLO' });
+  assert.deepEqual(readActName('Eric Prydz presents HOLO'), { parts: ['Eric Prydz'], set: 'HOLO' });
+
+  // Clashfinder colon / hyphen suffix with whitelist keywords
+  assert.deepEqual(readActName('Kaskade: Redux'), { parts: ['Kaskade'], set: 'Redux' });
+  assert.deepEqual(readActName('Bonobo - Live'), { parts: ['Bonobo'], set: 'Live' });
+  assert.deepEqual(readActName('Above & Beyond - Acoustic'), { parts: ['Above & Beyond'], set: 'Acoustic' });
+  assert.deepEqual(readActName('Above & Beyond: Acoustic'), { parts: ['Above & Beyond'], set: 'Acoustic' });
+  assert.deepEqual(readActName('Swedish House Mafia - 360'), { parts: ['Swedish House Mafia'], set: '360' });
+
+  // Disambiguation ISO country code guard
+  assert.deepEqual(readActName('Transmission (UK)'), { parts: ['Transmission (UK)'] });
+  assert.deepEqual(readActName('Alix Perez (BE)'), { parts: ['Alix Perez (BE)'] });
+  assert.deepEqual(readActName('Phoenix (FR)'), { parts: ['Phoenix (FR)'] });
+  assert.deepEqual(readActName('Air (FR)'), { parts: ['Air (FR)'] });
+
+  // B2B with set modifier stripped first
+  assert.deepEqual(readActName('Slander b2b NGHTMRE (Gud Vibrations)'), {
+    parts: ['Slander', 'NGHTMRE'],
+    set: 'Gud Vibrations',
+  });
+  assert.deepEqual(readActName('Dom Dolla b2b John Summit (Everything Always)'), {
+    parts: ['Dom Dolla', 'John Summit'],
+    set: 'Everything Always',
+  });
+
+  // Hyphenated and colon artist names preserved without false positive set extraction
+  assert.deepEqual(readActName('Jay-Z'), { parts: ['Jay-Z'] });
+  assert.deepEqual(readActName('BLOND:ISH'), { parts: ['BLOND:ISH'] });
 });
 
 test('your spelling wins, else one-case names go to Proper Case', () => {
@@ -62,7 +102,7 @@ test('merge splits B2B and DJ set claims, each part cited with the whole quote',
   assert.deepEqual(by['Sasha'].b2b, ['john digweed']);
   assert.deepEqual(by['John Digweed'].b2b, ['sasha']);
   assert.equal(by['John Digweed'].sources[0].quotedSpan, 'SASHA b2b John Digweed');
-  assert.equal(by['Porter Robinson'].set, 'dj');
+  assert.equal(by['Porter Robinson'].set, 'DJ Set');
   assert.equal(by['Sasha'].set, undefined);
 });
 

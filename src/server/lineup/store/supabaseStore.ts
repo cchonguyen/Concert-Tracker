@@ -345,6 +345,7 @@ export class SupabaseLineupStore implements LineupStore {
         artistKey: p.artist_key,
         slotId: p.slot_id ?? undefined,
         alias: p.alias ?? undefined,
+        set: p.set ?? undefined,
         b2b: p.b2b?.length ? p.b2b : undefined,
         name: p.name,
         days: p.days ?? [],
@@ -428,6 +429,7 @@ export class SupabaseLineupStore implements LineupStore {
             };
             if (p.slotId) row.slot_id = p.slotId;
             if (p.alias) row.alias = p.alias;
+            if (p.set) row.set = p.set;
             if (p.b2b?.length) row.b2b = p.b2b;
             return row;
           }),

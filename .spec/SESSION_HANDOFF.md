@@ -1,24 +1,34 @@
 # Session Handoff
 
 - **Last Active Platform:** Google Antigravity
-- **Active Branch / State:** `main` (clean, verified, deployed)
+- **Active Branch / State:** `antigravity/unified-set-field` (PR #192 opened: https://github.com/cchonguyen/Concert-Tracker/pull/192)
 - **Branch Owner:** Antigravity / Charlie Cho Nguyen
-- **Active slice:** Coachella 2023 & 2025 Lineup Cleanup, Stage Filtering & Non-Music Exclusion
-- **Merge Commits:**
-  - `74d0255`: PR #186 (`feat(lineup): support B3B multi-artist sets and collaboration aliases`)
-  - `38ea096`: PR #187 (`feat(lineup): allow multiple performances per artist in Postgres with slotId, alias, and b2b`)
-  - `c52710c`: PR #188 (`feat(manage): add collaborative group aliases management and enhance lineup review`)
-  - `d4dd0fb`: PR #189 (`fix(lineup): prevent B2B partners from swapping via sameSource in reviewRows`)
-  - `80dbfe8`: PR #191 (`fix(lineup): clean non-music programming, silent disco slots, and add stage filtering for Coachella 2023 & 2025`)
-- **Deploy Result:**
-  - Cloudflare Workers deployed to `https://concert.charliechonguyen.com` via `npm run cf:deploy`.
-  - Current Version ID: `81a49fe6-4658-4049-9f2d-0b8934c2f45a`.
-- **Database Status:**
-  - Live Supabase cleaned:
-    - Coachella 2023 (`0de5b120-6394-4322-8e96-5d9dbf5e2cca`): Purged 26 junk entries (POSTed Studio workshops, The Dome silent discos and climate panels). Corrected edition name from "Coachella 2024 Weekend 1" to "Coachella 2023 Weekend 1". Reduced from 261 to 235 acts.
-    - Coachella 2025 (`559e735f-ade2-48fd-9de4-938ebe0923db`): Purged 31 junk entries (campground yoga, 5K runs, silent discos). Learned aliases (`keleena zanders` -> `Kaleena Zanders`, `wavegroove` -> `Wave Groove`). Reduced from 272 to 241 acts.
+- **Active slice:** Unified `set` Field & Clashfinder Extraction
+- **Pull Request:** #192 (`feat(lineup): unify set field and support Clashfinder concept extraction`)
+- **Files Modified in Last Turn:**
+  - `docs/unified-set-field-and-clashfinder-extraction-spec.md`
+  - `supabase/migrations/0030_performance_set.sql`
+  - `src/server/events/types.ts`
+  - `src/server/events/seen.ts`
+  - `src/server/lineup/types.ts`
+  - `src/server/lineup/actName.ts`
+  - `src/server/lineup/merge.ts`
+  - `src/server/lineup/learning.ts`
+  - `src/server/lineup/store/supabaseStore.ts`
+  - `src/services/format.ts`
+  - `src/services/reviewRows.ts`
+  - `src/components/EventDetail.tsx`
+  - `src/components/LineupReview.tsx`
+  - `src/components/TableView.tsx`
+  - `ARCHITECTURE.md`
+  - `REQUIREMENTS.md`
+  - `tests/actName.test.ts`
+  - `tests/extras.test.ts`
+  - `tests/reviewRows.test.ts`
+  - `tests/seenSlots.test.ts`
+  - `tests/series.test.ts`
 - **Verification Status:**
   - `npm run lint`: Passed (0 errors)
-  - `npm test`: Passed (657 pass, 0 fail)
-  - `harness-main-watch`: Passed, `harness-main-red` tag absent from origin.
-- **Immediate Next Step:** Repository and production are fully up to date and verified green.
+  - `npm test`: Passed (660 pass, 0 fail)
+  - `node --test .harness/hooks/lib/runner-matcher.test.mjs`: Passed (3 pass, 0 fail)
+- **Immediate Next Step:** Apply migration `supabase/migrations/0030_performance_set.sql` on live Supabase and merge PR #192 into `main`.
