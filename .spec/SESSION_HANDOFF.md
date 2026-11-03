@@ -1,34 +1,20 @@
 # Session Handoff
 
 - **Last Active Platform:** Google Antigravity
-- **Active Branch / State:** `antigravity/unified-set-field` (PR #192 opened: https://github.com/cchonguyen/Concert-Tracker/pull/192)
+- **Active Branch / State:** `main` (clean, verified, deployed)
 - **Branch Owner:** Antigravity / Charlie Cho Nguyen
 - **Active slice:** Unified `set` Field & Clashfinder Extraction
-- **Pull Request:** #192 (`feat(lineup): unify set field and support Clashfinder concept extraction`)
-- **Files Modified in Last Turn:**
-  - `docs/unified-set-field-and-clashfinder-extraction-spec.md`
-  - `supabase/migrations/0030_performance_set.sql`
-  - `src/server/events/types.ts`
-  - `src/server/events/seen.ts`
-  - `src/server/lineup/types.ts`
-  - `src/server/lineup/actName.ts`
-  - `src/server/lineup/merge.ts`
-  - `src/server/lineup/learning.ts`
-  - `src/server/lineup/store/supabaseStore.ts`
-  - `src/services/format.ts`
-  - `src/services/reviewRows.ts`
-  - `src/components/EventDetail.tsx`
-  - `src/components/LineupReview.tsx`
-  - `src/components/TableView.tsx`
-  - `ARCHITECTURE.md`
-  - `REQUIREMENTS.md`
-  - `tests/actName.test.ts`
-  - `tests/extras.test.ts`
-  - `tests/reviewRows.test.ts`
-  - `tests/seenSlots.test.ts`
-  - `tests/series.test.ts`
+- **Merge Commits:**
+  - `c9b7c86`: PR #192 (`feat(lineup): unify set field and support Clashfinder concept extraction`)
+- **Deploy Result:**
+  - Cloudflare Workers deployed to `https://concert.charliechonguyen.com` via `npm run cf:deploy`.
+  - Current Version ID: `b6c58d16-acc8-4023-9468-f590881e7c45`.
+- **Database Status:**
+  - Live Supabase (`mybwchgqhrpvdczqigma` / `concert-tracker`):
+    - Applied migration `0030_performance_set.sql` (`alter table performances add column if not exists set text;`).
+    - Verified column `set text` exists on table `performances`.
 - **Verification Status:**
   - `npm run lint`: Passed (0 errors)
   - `npm test`: Passed (660 pass, 0 fail)
-  - `node --test .harness/hooks/lib/runner-matcher.test.mjs`: Passed (3 pass, 0 fail)
-- **Immediate Next Step:** Apply migration `supabase/migrations/0030_performance_set.sql` on live Supabase and merge PR #192 into `main`.
+  - `harness-main-watch`: Passed, `harness-main-red` tag absent from origin.
+- **Immediate Next Step:** Repository and production are fully up to date and verified green.
