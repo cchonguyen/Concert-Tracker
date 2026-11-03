@@ -529,6 +529,11 @@ export class FileLineupStore implements LineupStore {
     return clone(Object.values((await this.load()).artists));
   }
 
+  // The file store is the single-user dev store: no cross-member counts.
+  async communityCounts(): Promise<Map<string, number> | null> {
+    return null;
+  }
+
   async listUnresolvedArtists(limit: number) {
     return clone(
       Object.values((await this.load()).artists)
