@@ -142,6 +142,12 @@ export interface CandidateSource {
   sets?: SetTime[]; // the sets this source times for the act, if any
 }
 
+// From the lineup's own words ("A b2b B", "Porter Robinson (DJ Set)", "Kaskade: Redux"); see actName.ts.
+export interface ActName {
+  parts: string[];
+  set?: string;
+}
+
 export interface CandidatePerformer {
   key: string; // normalized merge key
   slotId?: string; // identifier of the performance slot (shared by B2B partners)
@@ -157,7 +163,7 @@ export interface CandidatePerformer {
   missingFrom?: SourceType[];
   flagged: boolean; // low evidence, needs a look
   // From the lineup's own words ("A b2b B", "X DJ Set"); see actName.ts.
-  set?: 'dj';
+  set?: string;
   b2b?: string[]; // keys of the acts billed with it as a B2B
   sources: CandidateSource[];
 }
@@ -222,6 +228,7 @@ export interface EditionPerformance {
   alias?: string; // collaborative project moniker (e.g. Subjohnics, Kx5)
   name: string;
   mbid?: string;
+  set?: string;
   b2b?: string[]; // partners in this B2B performance
   days: string[];
   stages: string[];

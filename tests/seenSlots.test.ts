@@ -81,9 +81,28 @@ test('legacy acts with solo: true still unpack properly', () => {
   const slots = seenSlots(seen);
   assert.equal(slots.length, 3);
   assert.deepEqual(slots.map(slotLabel), [
-    'Sasha b2b John Digweed (DJ set)',
-    'Sasha (solo, Live set)',
+    'Sasha b2b John Digweed (DJ Set)',
+    'Sasha (solo, Live)',
     'Bicep',
+  ]);
+});
+
+test('slotLabel formats custom set strings cleanly in parentheses', () => {
+  const seen: SeenAct[] = [
+    act('Porter Robinson', { set: 'DJ Set' }),
+    act('Tiësto', { set: 'Sunrise Set' }),
+    act('Slander', { set: 'Gud Vibrations', b2b: ['nghtmre'] }),
+    act('NGHTMRE', { set: 'Gud Vibrations', b2b: ['slander'] }),
+    act('Eric Prydz', { set: 'HOLO' }),
+  ];
+
+  const slots = seenSlots(seen);
+  assert.equal(slots.length, 4);
+  assert.deepEqual(slots.map(slotLabel), [
+    'Porter Robinson (DJ Set)',
+    'Tiësto (Sunrise Set)',
+    'Slander b2b NGHTMRE (Gud Vibrations)',
+    'Eric Prydz (HOLO)',
   ]);
 });
 

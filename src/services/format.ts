@@ -2,7 +2,7 @@ import type { LoggedEvent, SeenAct, WeatherDay } from '../server/events/types';
 import { isCiphertext } from './vault';
 import { eventScale, KIND_LABELS, LineupFacts } from '../server/events/scale';
 import { norm } from './listImport';
-import { seenSlots, slotLabel } from '../server/events/seen';
+import { seenSlots, slotLabel, normalizeSet } from '../server/events/seen';
 import { cityWithRegion } from '../server/events/regions';
 import { attendanceOf, AttendanceState } from '../server/events/attendance';
 
@@ -88,6 +88,14 @@ function pastNames(names: string[][]): string[] {
 // Acts you've seen and people you went with, across your events.
 export const pastArtistNames = (events: LoggedEvent[]) => pastNames(events.map((e) => e.seen.map((s) => s.name)));
 export const pastCompanionNames = (events: LoggedEvent[]) => pastNames(events.map((e) => e.companions));
+export const pastSets = (events: LoggedEvent[]) =>
+  pastNames(
+    events.map((e) =>
+      (e.seen ?? [])
+        .flatMap((s) => [normalizeSet(s.set), normalizeSet(s.soloSet)])
+        .filter((v): v is string => Boolean(v)),
+    ),
+  );
 
 // Names matching what you're typing: those starting with it first, then
 // those with a word starting with it. Names already on the event are left out.
