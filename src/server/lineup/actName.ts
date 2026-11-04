@@ -54,6 +54,14 @@ function cleanPart(s: string): string {
   return out;
 }
 
+// A B2B mark that cannot be a part of a name: "b2b", "b3b", "back to back", "vs".
+// " X " is left out on purpose: it is also how some act names are written.
+const UNAMBIGUOUS_B2B = /\s+(?:b(?:[2-9]|[/][2-9][/]|ack[\s-]+to[\s-]+)b(?:ack)?|b(?:[2-9]b)+|vs\.?)\s+/i;
+
+export function hasUnambiguousB2bMark(name: string): boolean {
+  return UNAMBIGUOUS_B2B.test(name);
+}
+
 export function readActName(name: string): ActName {
   let rest = name.trim();
   if (!rest) return { parts: [name] };

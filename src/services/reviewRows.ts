@@ -12,6 +12,7 @@ export interface StartRow {
   alias?: string;
   b2b?: string[];
   name: string;
+  oneAct?: boolean; // you kept this name as one act
   accepted: boolean;
   cancelled: boolean;
   billing?: string;
@@ -30,10 +31,11 @@ const b2bEqual = (a?: string[], b?: string[]) => {
   return sa === sb;
 };
 
-function unpackCandidates(list: CandidatePerformer[]): CandidatePerformer[] {
+// Acts you kept whole (keepWhole: their keys) are not split, even when a later lookup still says "A X B".
+function unpackCandidates(list: CandidatePerformer[], keepWhole: Set<string>): CandidatePerformer[] {
   const result: CandidatePerformer[] = [];
   for (const p of list) {
-    if (p.b2b?.length) {
+    if (p.b2b?.length || keepWhole.has(normalizeName(p.name))) {
       result.push(p);
       continue;
     }
@@ -67,7 +69,8 @@ function unpackCandidates(list: CandidatePerformer[]): CandidatePerformer[] {
 function unpackPerformances(list: EditionPerformance[]): EditionPerformance[] {
   const result: EditionPerformance[] = [];
   for (const e of list) {
-    if (e.b2b?.length) {
+    // A saved act with oneAct was kept whole by you: it is never split on reload.
+    if (e.b2b?.length || e.oneAct) {
       result.push(e);
       continue;
     }
@@ -99,7 +102,8 @@ function unpackPerformances(list: EditionPerformance[]): EditionPerformance[] {
 }
 
 export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition | null): StartRow[] {
-  const performers = unpackCandidates(rawPerformers);
+  const keepWhole = new Set((edition?.performances ?? []).filter((e) => e.oneAct).map((e) => e.artistKey));
+  const performers = unpackCandidates(rawPerformers, keepWhole);
   if (!edition) {
     return performers.map((p) => ({
       key: p.key,
@@ -170,6 +174,7 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
       alias: saved.alias ?? p.alias,
       b2b: p.b2b ?? saved.b2b,
       name: saved.name,
+      oneAct: saved.oneAct,
       accepted: !cancelled,
       cancelled,
       billing: saved.billing,
@@ -188,6 +193,7 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
       alias: e.alias,
       b2b: e.b2b,
       name: e.name,
+      oneAct: e.oneAct,
       accepted: true,
       cancelled: false,
       billing: e.billing,
