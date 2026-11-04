@@ -230,6 +230,8 @@ export interface EditionPerformance {
   mbid?: string;
   set?: string;
   b2b?: string[]; // partners in this B2B performance
+  // Kept whole by you: a name with a splitting marker (" X ") that is one act. Never split.
+  oneAct?: boolean;
   days: string[];
   stages: string[];
   status: 'billed' | 'performed' | 'cancelled';
