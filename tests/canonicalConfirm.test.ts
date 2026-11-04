@@ -211,3 +211,25 @@ test('member gets 403 on the edition detail and on the confirm preview', async (
     assert.equal(confirm.status, 403);
   });
 });
+
+// Saving a catalog lookup from the archive closes its line: status leaves needs_review.
+test('apply closes its catalog lookup; a preview and a personal lookup are left alone', async () => {
+  const s = await store();
+  const job = (id: string, eventId?: string) => ({
+    id, kind: 'lineup', input: { eventName: base.name, year: 2024 }, editionKey: 'portola-music-festival/2024-09-28',
+    status: 'needs_review', stage: 'done', attempts: 0, log: [], eventId, createdAt: '', updatedAt: '',
+  }) as any;
+  await s.createJob(job('canon-1'));
+  await s.createJob(job('personal-1', 'evt-1'));
+
+  await confirmCanonicalEdition(s, parseCanonicalInput({ ...base, jobId: 'canon-1' }));
+  assert.equal((await s.getJob('canon-1'))?.status, 'needs_review');
+
+  await confirmCanonicalEdition(s, parseCanonicalInput({ ...base, jobId: 'canon-1', apply: true }));
+  const closed = await s.getJob('canon-1');
+  assert.equal(closed?.status, 'confirmed');
+  assert.equal(closed?.editionId, (await s.getEditionByKey('portola-music-festival/2024-09-28'))?.id);
+
+  await confirmCanonicalEdition(s, parseCanonicalInput({ ...base, jobId: 'personal-1', apply: true }));
+  assert.equal((await s.getJob('personal-1'))?.status, 'needs_review');
+});
