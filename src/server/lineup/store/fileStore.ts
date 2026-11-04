@@ -159,6 +159,11 @@ export class FileLineupStore implements LineupStore {
     return clone(jobs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit));
   }
 
+  async listCanonicalJobs(limit: number) {
+    const jobs = Object.values((await this.load()).jobs).filter((j) => j.kind === 'lineup' && !j.eventId);
+    return clone(jobs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit));
+  }
+
   async getJobs(ids: string[]) {
     const jobs = (await this.load()).jobs;
     return clone(ids.map((id) => jobs[id]).filter(Boolean));
@@ -836,6 +841,9 @@ function scopedFileStore(base: FileLineupStore, scope: UserScope): LineupStore {
     },
     async listJobs(limit) {
       return (await keep('job', await base.listJobs(Number.MAX_SAFE_INTEGER))).slice(0, limit);
+    },
+    async listCanonicalJobs(limit) {
+      return (await keep('job', await base.listCanonicalJobs(Number.MAX_SAFE_INTEGER))).slice(0, limit);
     },
     async getJobs(ids) {
       return keep('job', await base.getJobs(ids));
