@@ -3,18 +3,19 @@ import { AlertTriangle, ExternalLink, Loader2, Plus, X } from 'lucide-react';
 import type { RejectReason } from '../server/lineup/learning';
 import { lineupApi, collaborationsApi, type CollaborationItem, LoggedEvent, LookupJob, SOURCE_LABELS } from '../services/lineupApi';
 import { EventTitle } from './EventTitle';
-import { filterOptions, groupReviewSlots, startRows } from '../services/reviewRows';
+import { filterOptions, groupReviewSlots, startRows, type ReviewSubject } from '../services/reviewRows';
 import { readActName } from '../server/lineup/actName';
 import { normalizeName } from '../server/lineup/text';
 import { normalizeSet } from '../server/events/seen';
 import type { Edition } from '../server/lineup/types';
+import type { CanonicalConfirmInput, CanonicalDiff } from '../server/lineup/canonicalIngest';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
 import { Pill } from './ui/Pill';
 import { SuggestInput } from './SuggestInput';
 
 interface LineupReviewProps {
-  job: LookupJob;
+  job: ReviewSubject; // a lookup's job, or a saved edition (reviewSubjectFromEdition)
   event?: LoggedEvent; // undefined in canonical mode (no saved event)
   // personal: your log (the default with an event). canonical: the shared catalog (owner only).
   mode?: 'personal' | 'canonical';
@@ -102,6 +103,8 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
   const [newAct, setNewAct] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Canonical save shows the merge diff first. The preview is kept with the request it was made for.
+  const [preview, setPreview] = useState<{ key: string; diff: CanonicalDiff } | null>(null);
 
   const setSuggestions = useMemo(() => {
     const common = ['DJ Set', 'Live'];
@@ -295,53 +298,82 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
     setNewAct('');
   };
 
-  const save = async () => {
+  // The acts as the review leaves them, with brackets expanded for B2B names.
+  const expandRows = () =>
+    rows.flatMap((r) => {
+      if (r.b2b?.length) return [r];
+      const read = readActName(r.name);
+      if (read.parts.length <= 1) return [r];
+      const allKeys = read.parts.map(normalizeName).filter(Boolean);
+      if (allKeys.length <= 1) return [r];
+      const slotId = r.slotId || crypto.randomUUID();
+      return read.parts.map((part) => {
+        const key = normalizeName(part);
+        return {
+          ...r,
+          key,
+          name: part,
+          slotId,
+          b2b: allKeys.filter((k) => k !== key),
+        };
+      });
+    });
+
+  // The canonical request. Preview and save send the same one, so the diff shown is the diff saved.
+  const canonicalRequest = (): CanonicalConfirmInput => ({
+    name: job.input.eventName,
+    year: job.input.year,
+    startDate: job.input.startDate,
+    endDate: job.input.endDate,
+    venue: job.input.venue,
+    city: job.input.city,
+    country: job.input.country,
+    performers: expandRows().map((r) => ({
+      name: r.name,
+      accepted: r.accepted,
+      billing: (r.billing || undefined) as 'headliner' | 'support' | undefined,
+      days: r.days,
+      stages: r.stages,
+      set: r.set || undefined,
+    })),
+  });
+
+  const previewCanonical = async () => {
     setError(null);
     setSaving(true);
     try {
-      const expandedRows = rows.flatMap((r) => {
-        if (r.b2b?.length) return [r];
-        const read = readActName(r.name);
-        if (read.parts.length <= 1) return [r];
-        const allKeys = read.parts.map(normalizeName).filter(Boolean);
-        if (allKeys.length <= 1) return [r];
-        const slotId = r.slotId || crypto.randomUUID();
-        return read.parts.map((part) => {
-          const key = normalizeName(part);
-          return {
-            ...r,
-            key,
-            name: part,
-            slotId,
-            b2b: allKeys.filter((k) => k !== key),
-          };
-        });
-      });
+      const request = canonicalRequest();
+      const result = await lineupApi.canonicalConfirm({ ...request, apply: false });
+      setPreview({ key: JSON.stringify(request), diff: result.diff as CanonicalDiff });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
 
-      if (canonical) {
-        await lineupApi.canonicalConfirm({
-          name: job.input.eventName,
-          year: job.input.year,
-          startDate: job.input.startDate,
-          endDate: job.input.endDate,
-          venue: job.input.venue,
-          city: job.input.city,
-          country: job.input.country,
-          apply: true,
-          performers: expandedRows.map((r) => ({
-            name: r.name,
-            accepted: r.accepted,
-            billing: (r.billing || undefined) as 'headliner' | 'support' | undefined,
-            days: r.days,
-            stages: r.stages,
-            set: r.set || undefined,
-          })),
-        });
+  const save = async () => {
+    if (canonical) {
+      const request = canonicalRequest();
+      // First press shows the diff; the second press (with the same acts) saves.
+      if (!preview || preview.key !== JSON.stringify(request)) return previewCanonical();
+      setError(null);
+      setSaving(true);
+      try {
+        await lineupApi.canonicalConfirm({ ...request, apply: true });
         onSaved(undefined);
-        return;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setSaving(false);
       }
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
       const { event: updated } = await lineupApi.confirm(job.id, {
-        performers: expandedRows.map((r) => ({
+        performers: expandRows().map((r) => ({
           key: r.key,
           slotId: r.slotId,
           alias: r.alias,
@@ -363,6 +395,8 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
       setSaving(false);
     }
   };
+
+  const previewed = canonical && preview !== null && preview.key === JSON.stringify(canonicalRequest());
 
   const seenCount = rows.filter((r) => r.accepted && r.seen).length;
 
@@ -710,6 +744,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
           </div>
         </div>
 
+        {canonical && preview && <CanonicalDiffPanel diff={preview.diff} stale={!previewed} />}
         <div className="flex items-center justify-end gap-3">
           {error && <p className="mr-auto text-sm text-rose-300">{error}</p>}
           <button onClick={onClose} className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200">Cancel</button>
@@ -719,10 +754,45 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
             className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            {canonical ? `Save canonical edition (${rows.filter((r) => r.accepted).length} billed acts)` : `Save lineup (${seenCount} seen)`}
+            {canonical
+              ? previewed
+                ? 'Confirm and save edition'
+                : `Review changes (${rows.filter((r) => r.accepted).length} billed acts)`
+              : `Save lineup (${seenCount} seen)`}
           </button>
         </div>
       </div>
     </div>
   );
 };
+
+const FACT_LABEL: Record<string, string> = {
+  name: 'Name',
+  startDate: 'Start date',
+  endDate: 'End date',
+  venue: 'Venue',
+  city: 'City',
+  country: 'Country',
+};
+
+// What saving will change in the archive, shown before the save (the server's preview).
+const CanonicalDiffPanel: React.FC<{ diff: CanonicalDiff; stale: boolean }> = ({ diff, stale }) => (
+  <section aria-label="Changes to save" className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 text-sm">
+    <h3 className="font-semibold text-zinc-100">Changes to save</h3>
+    {stale && <p className="text-amber-300">The acts changed since this preview. Review changes again before saving.</p>}
+    <ul className="space-y-1 text-zinc-300">
+      <li>Added ({diff.added.length}): {diff.added.length ? diff.added.join(', ') : 'none'}</li>
+      <li>Changed ({diff.changed.length}): {diff.changed.length ? `${diff.changed.join(', ')}, set, days, stages or role replaced` : 'none'}</li>
+      <li>Unchanged ({diff.unchanged.length}): {diff.unchanged.length ? diff.unchanged.join(', ') : 'none'}</li>
+      {diff.filledFacts.length > 0 && (
+        <li>Blank details filled: {diff.filledFacts.map((f) => FACT_LABEL[f] ?? f).join(', ')}</li>
+      )}
+      {diff.factConflicts.map((c) => (
+        <li key={c.field}>
+          {FACT_LABEL[c.field] ?? c.field}: kept "{c.stored}", not replaced with "{c.sent}"
+        </li>
+      ))}
+    </ul>
+    <p className="text-xs text-zinc-500">Acts you untick are not removed from the archive; they stay as stored.</p>
+  </section>
+);
