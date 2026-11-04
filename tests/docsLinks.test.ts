@@ -70,6 +70,22 @@ test('every top-level doc in docs/ is listed in docs/README.md', () => {
   assert.deepEqual(missing, []);
 });
 
+// Every repo path the open ticket bank names must exist, or carry the
+// "(planned, not yet created)" marker. A marker on a path that exists is stale.
+test('every project path named in the open ticket bank exists or is marked planned', () => {
+  const text = readFileSync(path.join(docsDir, 'engineering-ticket-bank.md'), 'utf8');
+  const pathSpan = /`((?:src|tests|scripts|supabase|docs|worker)\/[^`\s]*)`(\]\([^)]*\))?( \(planned, not yet created\))?/g;
+  const problems: string[] = [];
+  for (const match of text.matchAll(pathSpan)) {
+    const clean = match[1].replace(/\/\*$/, '').replace(/\/$/, '');
+    const exists = existsSync(path.join(root, clean));
+    const marked = Boolean(match[3]);
+    if (!exists && !marked) problems.push(`missing, unmarked: ${match[1]}`);
+    if (exists && marked) problems.push(`exists, but marked planned: ${match[1]}`);
+  }
+  assert.deepEqual(problems, []);
+});
+
 test('every closed ticket carries a Closed verdict line', () => {
   const text = readFileSync(path.join(docsDir, 'archive', 'engineering-ticket-bank-closed.md'), 'utf8');
   const matches = [...text.matchAll(/^### \[([A-Z0-9-]+)\]/gm)];
