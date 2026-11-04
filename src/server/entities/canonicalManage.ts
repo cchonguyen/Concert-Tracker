@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { ArtistIdentity, Edition, EditionPerformance } from '../lineup/types';
 import { normalizeName } from '../lineup/text';
-import type { LineupStore } from '../lineup/store/types';
+import type { CanonicalUndoResult, LineupStore } from '../lineup/store/types';
+import { CanonicalStoreError } from '../lineup/store/types';
 import { currentMember } from '../auth/requestScope';
 import { ArtistAliasRow, ArtistEditionRow, CANONICAL_OPERATIONS, CanonicalChange, Entity, EntityAlias, EntityLink, HistoryEntry } from './types';
 import { applyEntityChangePlan, cleanName, EntityChangePlan, ManageError, planEntityMerge, planEntityRename, undoEntry, UndoResult } from './manage';
@@ -867,9 +868,29 @@ async function undoArtistChange(store: LineupStore, entry: HistoryEntry, at: str
   return { entry: done, restored: 0, skipped: personal?.skipped ?? [] };
 }
 
+// Undo of a canonical apply made through the file store (8.7). Those applies are kept in the store's
+// canonical change log, not in entity history, so the history lookup above does not find them.
+// The owner check runs first; the store then checks the "after" side and writes nothing on refusal.
+export type CanonicalUndoOutcome = CanonicalUndoResult & { undoneAt?: string };
+
+async function undoFileCanonicalChange(store: LineupStore, id: string, at: string): Promise<UndoResult | CanonicalUndoOutcome> {
+  if (!isOwner(currentMember())) throw new ManageError('Only the owner can do this.', 403);
+  try {
+    const result = await store.undoCanonicalArtistChange(id);
+    return { ...result, undoneAt: at };
+  } catch (err) {
+    if (err instanceof CanonicalStoreError && err.code === 'stale') throw new ManageError(err.message, 409);
+    if (err instanceof CanonicalStoreError && err.code === 'forbidden') throw new ManageError('Only the owner can do this.', 403);
+    // The file store reports an id it does not hold as this message: fall through to the Manage path's 404.
+    if (err instanceof CanonicalStoreError && err.message === 'No such change.') return undoEntry(store, id, at);
+    throw err;
+  }
+}
+
 // Undo for any history entry: a catalog artist change, or a Manage change (manage.ts).
-export async function undoHistory(store: LineupStore, id: string, at = now()): Promise<UndoResult> {
+export async function undoHistory(store: LineupStore, id: string, at = now()): Promise<UndoResult | CanonicalUndoOutcome> {
   const entry = await store.getEntityHistory(id);
   if (entry?.canonical) return undoArtistChange(store, entry, at);
+  if (!entry) return undoFileCanonicalChange(store, id, at);
   return undoEntry(store, id, at);
 }

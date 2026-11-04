@@ -337,3 +337,169 @@ test('apply recomputes the plan on the server and ignores any plan sent by the c
     assert.deepEqual(await store.getArtist('old artist'), { key: 'old artist', name: 'Old Artist' });
   });
 });
+
+// Slice UX3: the owner's Changes list and canonical undo authorization. Changes are made through the
+// catalog artist routes (GA3), which write entity history rows, so the same undo route reverses them.
+const CHANGES = '/api/manage/canonical/changes';
+const UNDO_REFUSAL = 'Those records changed after this. Undo the later change first.';
+const undoUrl = (id: string) => `/api/entities/history/${id}/undo`;
+
+// A canonical history row as the store keeps it: a HistoryEntry whose operation is canonical.
+function canonicalRow(id: string, createdAt: string, operation = 'canonical-rename') {
+  return {
+    id,
+    operation,
+    summary: `Renamed artist ${id}`,
+    sourceEntityId: '',
+    createdAt,
+    entities: { before: [], after: [] },
+    touched: [],
+    aliases: { before: [], after: [] },
+    links: { before: [], after: [] },
+    events: [],
+    canonical: {
+      key: 'old artist',
+      artists: { before: [{ key: 'old artist', name: 'Old Artist' }], after: [{ key: 'new artist', name: 'New Artist' }] },
+      performances: { before: [], after: [] },
+      aliases: { before: [], after: [] },
+    },
+  };
+}
+
+// The owner's rename through the catalog route; returns the history entry.
+async function renameVia(app: express.Express, key: string, name: string): Promise<{ id: string }> {
+  const res = await dispatch(app, { url: `/api/manage/canonical/artists/${encodeURIComponent(key)}`, method: 'PATCH', headers: JSON_HEADERS, body: { name } });
+  assert.equal(res.status, 200);
+  return ((await res.json()) as { entry: { id: string } }).entry;
+}
+
+// The same store, viewed as another user (the store and its files are shared).
+function appAs(store: FileLineupStore, member: { role: string; uid: string }): express.Express {
+  const linkedStore = withEntityLinks(store);
+  const app = express();
+  app.use(express.json());
+  app.use((_req, _res, next) => runAsMember(member as any, linkedStore as any, next));
+  app.use('/api', entitiesRouter({ store: linkedStore, now: () => new Date(SEED_AT) } as any));
+  return app;
+}
+
+type ChangesPage = { changes: Array<{ id: string; undoneAt: string | null; time: string; [k: string]: unknown }>; nextCursor: string | null; hasMore: boolean };
+
+test('members get 403 on the changes list', async () => {
+  await withApp({ role: 'member', uid: 'u1' }, async (app) => {
+    const res = await dispatch(app, { url: CHANGES });
+    assert.equal(res.status, 403);
+    assert.match(((await res.json()) as { error: string }).error, /Only the owner/);
+  });
+});
+
+test('owner changes list returns only canonical operations, newest first, without the manifest', async () => {
+  await withSeededApp({ role: 'owner', uid: 'u0' }, async (app, store) => {
+    await store.putEntityHistory(canonicalRow('c-old', '2026-11-01T00:00:00.000Z') as any);
+    await store.putEntityHistory(canonicalRow('c-new', '2026-11-02T00:00:00.000Z', 'canonical-merge') as any);
+    // A newer, non-canonical change must not be listed.
+    await store.putEntityHistory({ ...canonicalRow('plain-newest', '2026-11-03T00:00:00.000Z'), operation: 'rename' } as any);
+
+    const res = await dispatch(app, { url: CHANGES });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as ChangesPage;
+    assert.deepEqual(body.changes.map((c) => c.id), ['c-new', 'c-old']);
+    assert.deepEqual(Object.keys(body.changes[0]).sort(), ['after', 'before', 'id', 'operation', 'summary', 'time', 'undoneAt']);
+    assert.equal(body.changes[0].operation, 'canonical-merge');
+    assert.equal(body.changes[0].before, 'Old Artist');
+    assert.equal(body.changes[0].after, 'New Artist');
+    assert.equal(body.changes[0].time, '2026-11-02T00:00:00.000Z');
+    assert.equal(body.changes[0].undoneAt, null);
+    assert.equal(body.hasMore, false);
+    assert.equal(body.nextCursor, null);
+  });
+});
+
+test('changes pages with tied timestamps have no duplicates or gaps across two pages', async () => {
+  await withSeededApp({ role: 'owner', uid: 'u0' }, async (app, store) => {
+    const tied = '2026-11-02T10:00:00.000Z';
+    const older = '2026-11-01T00:00:00.000Z';
+    const ids: string[] = [];
+    // 60 rows share one timestamp and 10 are older, so the first page ends inside the tied group.
+    for (let i = 0; i < 70; i++) {
+      const id = `t-${String(i).padStart(3, '0')}`;
+      ids.push(id);
+      await store.putEntityHistory(canonicalRow(id, i < 60 ? tied : older) as any);
+    }
+
+    const first = (await (await dispatch(app, { url: CHANGES })).json()) as ChangesPage;
+    assert.equal(first.changes.length, 50);
+    assert.equal(first.hasMore, true);
+    assert.ok(first.nextCursor, 'a cursor is offered while older changes remain');
+
+    const second = (await (await dispatch(app, { url: `${CHANGES}?cursor=${encodeURIComponent(first.nextCursor!)}` })).json()) as ChangesPage;
+    assert.equal(second.hasMore, false);
+    assert.equal(second.nextCursor, null);
+
+    const seen = [...first.changes, ...second.changes].map((c) => c.id);
+    assert.equal(new Set(seen).size, 70, 'no duplicates');
+    const expected = [...ids.slice(0, 60)].reverse().concat([...ids.slice(60)].reverse());
+    assert.deepEqual(seen, expected, 'no gaps, newest first with id as the tie-break');
+  });
+});
+
+test('a member cannot undo a canonical change: 403 before any mutation', async () => {
+  await withSeededApp({ role: 'owner', uid: 'u0' }, async (app, store, dir) => {
+    const renamed = await renameVia(app, 'old artist', 'New Artist');
+    const before = await stateText(dir);
+    const res = await dispatch(appAs(store, { role: 'member', uid: 'u1' }), { url: undoUrl(renamed.id), method: 'POST' });
+    assert.equal(res.status, 403);
+    assert.match(((await res.json()) as { error: string }).error, /Only the owner/);
+    assert.equal(await stateText(dir), before, 'the refused undo writes nothing');
+    assert.equal((await store.getEntityHistory(renamed.id))?.undoneAt, undefined, 'the change is still active');
+  });
+});
+
+test('members can still undo their ordinary Manage changes', async () => {
+  await withSeededApp({ role: 'member', uid: 'u1' }, async (app, store) => {
+    // Organizations are the record kind a member adds in Manage (venues come from events).
+    const created = await dispatch(app, { url: '/api/entities', method: 'POST', headers: JSON_HEADERS, body: { kind: 'organization', name: 'Ordinary Hall' } });
+    assert.equal(created.status, 200);
+    const org = ((await created.json()) as { entity: { id: string } }).entity;
+    const renamed = await dispatch(app, { url: `/api/entities/${org.id}`, method: 'PATCH', headers: JSON_HEADERS, body: { name: 'Ordinary Hall 2' } });
+    assert.equal(renamed.status, 200);
+    const entry = ((await renamed.json()) as { entry: { id: string } }).entry;
+
+    const undone = await dispatch(app, { url: undoUrl(entry.id), method: 'POST' });
+    assert.equal(undone.status, 200, 'the shared undo route is not gated for members');
+    assert.notEqual((await store.getEntityHistory(entry.id))?.undoneAt, undefined);
+  });
+});
+
+test('a 409 undo refusal leaves the canonical change active and returns the refusal text', async () => {
+  await withSeededApp({ role: 'owner', uid: 'u0' }, async (app, store, dir) => {
+    const first = await renameVia(app, 'old artist', 'New Artist');
+    await renameVia(app, 'new artist', 'Third Artist');
+    const before = await stateText(dir);
+
+    const res = await dispatch(app, { url: undoUrl(first.id), method: 'POST' });
+    assert.equal(res.status, 409);
+    assert.equal(((await res.json()) as { error: string }).error, UNDO_REFUSAL);
+    assert.equal(await stateText(dir), before, 'the refused undo writes nothing');
+    assert.equal((await store.getEntityHistory(first.id))?.undoneAt, undefined, 'the change stays active');
+
+    const list = (await (await dispatch(app, { url: CHANGES })).json()) as ChangesPage;
+    assert.equal(list.changes.find((c) => c.id === first.id)?.undoneAt, null, 'the list still shows it as active');
+  });
+});
+
+test('undoing the later change and then the earlier one marks both rows undone in the list', async () => {
+  await withSeededApp({ role: 'owner', uid: 'u0' }, async (app) => {
+    const first = await renameVia(app, 'old artist', 'New Artist');
+    const later = await renameVia(app, 'new artist', 'Third Artist');
+    assert.equal((await dispatch(app, { url: undoUrl(later.id), method: 'POST' })).status, 200);
+    assert.equal((await dispatch(app, { url: undoUrl(first.id), method: 'POST' })).status, 200);
+
+    const list = (await (await dispatch(app, { url: CHANGES })).json()) as ChangesPage;
+    for (const id of [first.id, later.id]) {
+      const row = list.changes.find((c) => c.id === id);
+      assert.ok(row, `${id} is listed`);
+      assert.equal(typeof row!.undoneAt, 'string', `${id} carries its undoneAt`);
+    }
+  });
+});

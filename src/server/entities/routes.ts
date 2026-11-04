@@ -19,7 +19,7 @@ import {
   unifyArtists,
   withAkas,
 } from './canonicalManage';
-import { CanonicalStoreError } from '../lineup/store/types';
+import { CanonicalHistoryCursorError, CanonicalHistoryEntry, CanonicalStoreError } from '../lineup/store/types';
 import { currentMember } from '../auth/requestScope';
 import {
   CanonicalInputError,
@@ -48,6 +48,37 @@ import {
 // name/into and extra fields are refused with 400. The apply body also takes previewFingerprint.
 const ARTIST_OPS = ['rename', 'alias-add', 'alias-remove', 'merge'] as const;
 const PREVIEW_STALE = 'Preview is out of date; review it again';
+
+// Owner's Changes list (slice UX3): canonical operations only, newest first, 50 per page. The manifest and
+// member details stay on the server; a row carries only what the list shows.
+const CHANGES_PAGE = 50;
+
+type ChangeManifest = { summary?: unknown; canonical?: { artists?: Record<string, unknown>; aliases?: Record<string, unknown> } };
+
+const namesIn = (list: unknown): string[] =>
+  Array.isArray(list) ? list.flatMap((x) => (x && typeof x === 'object' && typeof (x as { name?: unknown }).name === 'string' ? [(x as { name: string }).name] : [])) : [];
+const akasIn = (list: unknown): string[] =>
+  Array.isArray(list) ? list.flatMap((x) => (x && typeof x === 'object' && typeof (x as { alias?: unknown }).alias === 'string' ? [(x as { alias: string }).alias] : [])) : [];
+
+// One side of a change as text: the artist names, then the AKAs ("Old Artist · AKA Old AKA"). "none" when empty.
+function changeSide(canonical: ChangeManifest['canonical'], side: 'before' | 'after'): string {
+  const names = namesIn(canonical?.artists?.[side]);
+  const akas = akasIn(canonical?.aliases?.[side]);
+  return [names.join(', '), akas.length ? `AKA ${akas.join(', ')}` : ''].filter(Boolean).join(' · ') || 'none';
+}
+
+function changeRow(entry: CanonicalHistoryEntry) {
+  const m = (entry.manifest && typeof entry.manifest === 'object' ? entry.manifest : {}) as ChangeManifest;
+  return {
+    id: entry.id,
+    operation: entry.operation,
+    summary: typeof m.summary === 'string' ? m.summary : '',
+    time: entry.createdAt,
+    before: changeSide(m.canonical, 'before'),
+    after: changeSide(m.canonical, 'after'),
+    undoneAt: entry.undoneAt ?? null,
+  };
+}
 
 function artistChangeBody(body: unknown, withFingerprint: boolean): { input: ArtistChangeInput; previewFingerprint?: string } {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new ManageError('Send one operation: rename, alias-add, alias-remove or merge.', 400);
@@ -239,6 +270,21 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     }),
   );
 
+  // Owner only. Keyset paging on (createdAt, id) descending; nextCursor is null on the last page.
+  router.get(
+    '/manage/canonical/changes',
+    ownerOnly as any,
+    manage(async (req) => {
+      const cursor = typeof req.query.cursor === 'string' && req.query.cursor !== '' ? req.query.cursor : null;
+      try {
+        const page = await store.listCanonicalHistoryPage({ limit: CHANGES_PAGE, cursor });
+        return { changes: page.entries.map(changeRow), nextCursor: page.nextCursor, hasMore: page.nextCursor !== null };
+      } catch (err) {
+        if (err instanceof CanonicalHistoryCursorError) throw new ManageError('That page of changes is out of date. Reload the list.', 400);
+        throw err;
+      }
+    }),
+  );
   router.get(
     '/entities',
     manage(async () => {

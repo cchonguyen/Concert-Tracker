@@ -547,3 +547,39 @@ test('planner: a merge into itself and an empty AKA are refused', async () => {
   await assert.rejects(planArtistChange(store, 'porter', { op: 'merge', into: 'porter' }, AT), (e: any) => e.status === 400);
   await assert.rejects(planArtistChange(store, 'porter', { op: 'alias-add', name: '  ' }, AT), (e: any) => e.status === 400);
 });
+
+// ---- Undo of a file-store canonical apply (8.10) ---------------------------------
+
+test('file store: an applied canonical change is undone by its id, restores the state, and is marked undone; members get 403 and nothing is written', async () => {
+  const store: any = await freshStore();
+  await seeded(store);
+  const plan = await planArtistChange(store, 'deadmau5', { op: 'rename', name: 'Joel Zimmerman' }, AT, { communityCounts: false });
+  const fingerprint = await asOwner(store, () => store.canonicalArtistFingerprint(plan.entry));
+  await asOwner(store, () => store.applyCanonicalArtistChange(plan.entry, fingerprint));
+  assert.equal((await store.getArtist('joel zimmerman'))?.name, 'Joel Zimmerman');
+
+  // A member may not undo it: 403 from the function and from the route, and no write at all.
+  const undoneAt = async () => (await store.listCanonicalHistoryPage()).entries.find((e: any) => e.id === plan.id)?.undoneAt;
+  const beforeRefusal = await snapshot(store);
+  await runAsMember(MEMBER, store, async () => {
+    await assert.rejects(undoHistory(store, plan.id, AT), (e: any) => e.status === 403);
+  });
+  const memberApp = express();
+  memberApp.use(express.json());
+  memberApp.use((_req, _res, next) => runAsMember(MEMBER, store, next));
+  memberApp.use('/api', entitiesRouter({ store } as any));
+  const refused = await dispatch(memberApp, { method: 'POST', url: `/api/entities/history/${plan.id}/undo`, headers: { 'content-type': 'application/json' }, body: {} });
+  assert.equal(refused.status, 403);
+  assert.equal(await snapshot(store), beforeRefusal, 'a refused undo changes nothing');
+  assert.equal(await undoneAt(), undefined);
+
+  // The owner undoes it: the rename is put back and the entry is marked undone.
+  await asOwner(store, () => undoHistory(store, plan.id, AT));
+  assert.equal((await store.getArtist('deadmau5'))?.name, 'deadmau5');
+  assert.equal(await store.getArtist('joel zimmerman'), null);
+  assert.equal((await store.getAliases())['deadmau5'], undefined);
+  assert.ok(await undoneAt(), 'the entry carries its undone time');
+
+  // Undone once: a second undo is refused, not repeated.
+  await assert.rejects(asOwner(store, () => undoHistory(store, plan.id, AT)), (e: any) => e.status === 409);
+});
