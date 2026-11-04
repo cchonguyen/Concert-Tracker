@@ -2,10 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { canonicalApi, entitiesApi, lineupApi, LookupJob, SOURCE_LABELS } from '../services/lineupApi';
 import { reviewSubjectFromEdition } from '../services/reviewRows';
-import type { HistoryEntry } from '../server/entities/types';
 import type { Edition, EditionPerformance } from '../server/lineup/types';
 import type { ArtistAppearance, CanonicalArtistRecord, CanonicalEditionSummary } from '../server/entities/canonicalManage';
-import { CanonicalArtistEntry, ORIGIN_LABEL } from './CanonicalArtistEntry';
+import { CanonicalArtistEntry, ORIGIN_LABEL, type SavedChange } from './CanonicalArtistEntry';
 import { LineupReview } from './LineupReview';
 import { Button } from './ui/Button';
 import { Pill } from './ui/Pill';
@@ -80,7 +79,7 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
   };
 
   // A saved change: show it with Undo, then the artist where it now is (the list after a merge).
-  const changed = async (entry: HistoryEntry, key: string | null) => {
+  const changed = async (entry: SavedChange, key: string | null) => {
     setNotice({ text: `${entry.summary}.`, undo: entry.id });
     await loadList();
     if (key === null) setDetail(null);
@@ -165,7 +164,8 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
 };
 
 const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ query, status }) => {
-  const [editions, setEditions] = useState<CanonicalEditionSummary[] | null>(null);
+  // The page is the first 200 matches of the filter (searched across the whole catalog); `total` counts every match.
+  const [page, setPage] = useState<{ editions: CanonicalEditionSummary[]; total: number; hasMore: boolean } | null>(null);
   const [detail, setDetail] = useState<Edition | null>(null);
   // Edit lineup: the review screen, seeded from the saved edition (canonical mode).
   const [editing, setEditing] = useState(false);
@@ -173,7 +173,7 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
 
   const load = useCallback(async () => {
     try {
-      setEditions((await canonicalApi.editions(query, status)).editions);
+      setPage(await canonicalApi.editions(query, status));
       setError(null);
     } catch (err) {
       setError(messageOf(err));
@@ -228,22 +228,27 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
   return (
     <section className="space-y-2">
       {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
-      {editions === null ? (
+      {page === null ? (
         <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
-      ) : editions.length === 0 ? (
+      ) : page.editions.length === 0 ? (
         <p className="text-sm text-zinc-400">{query || status !== 'all' ? 'No editions match.' : 'No editions yet. Ingest one under Lookups.'}</p>
       ) : (
-        <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
-          {editions.map((e) => (
-            <li key={e.id}>
-              <button onClick={() => void openEdition(e.id)} className="flex w-full flex-wrap items-baseline gap-x-3 p-2.5 text-left text-sm hover:bg-zinc-900/60">
-                <span className="font-medium text-zinc-100">{e.name}</span>
-                <span className="text-xs text-zinc-400">{[e.startDate, e.venue, e.city].filter(Boolean).join(' · ') || 'Details missing'}</span>
-                <span className="ml-auto text-xs text-zinc-400">{e.performanceCount} billed · {e.status === 'confirmed' ? 'confirmed' : 'draft'}{e.hasSetTimes ? ' · set times' : ''}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <>
+          <p className="text-xs text-zinc-400" role="status">
+            {page.hasMore ? `Showing ${page.editions.length} of ${page.total}` : `${page.total} ${page.total === 1 ? 'edition' : 'editions'}`}
+          </p>
+          <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+            {page.editions.map((e) => (
+              <li key={e.id}>
+                <button onClick={() => void openEdition(e.id)} className="flex w-full flex-wrap items-baseline gap-x-3 p-2.5 text-left text-sm hover:bg-zinc-900/60">
+                  <span className="font-medium text-zinc-100">{e.name}</span>
+                  <span className="text-xs text-zinc-400">{[e.startDate, e.venue, e.city].filter(Boolean).join(' · ') || 'Details missing'}</span>
+                  <span className="ml-auto text-xs text-zinc-400">{e.performanceCount} billed · {e.status === 'confirmed' ? 'confirmed' : 'draft'}{e.hasSetTimes ? ' · set times' : ''}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </section>
   );
