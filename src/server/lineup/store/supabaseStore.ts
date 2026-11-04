@@ -4,6 +4,7 @@ import {
   BlocklistEntry,
   Correction,
   Edition,
+  EditionPerformance,
   ExtractionExample,
   LookupJob,
   PerformerClaim,
@@ -21,7 +22,7 @@ import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
 import { LineupStore, MAX_EXAMPLES_PER_DOMAIN, roundRobin, STALE_RUN_MS, type UserScope } from './types';
-import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
+import { ArtistEditionRow, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import { checkLinks } from '../../entities/integrity';
 import { SHARE_EVENT_COLUMNS, type ShareLink } from '../../share/types';
 import type { CachedResponse } from '../responseCache';
@@ -334,6 +335,43 @@ export class SupabaseLineupStore implements LineupStore {
     return this.toEdition(row, perfs ?? []);
   }
 
+  // One performances row as an edition performance (the row carries no edition ID).
+  private toPerformance(p: any): EditionPerformance {
+    return {
+      artistKey: p.artist_key,
+      slotId: p.slot_id ?? undefined,
+      alias: p.alias ?? undefined,
+      set: p.set ?? undefined,
+      b2b: p.b2b?.length ? p.b2b : undefined,
+      name: p.name,
+      days: p.days ?? [],
+      stages: p.stages ?? [],
+      status: p.status,
+      billing: p.billing ?? undefined,
+      confidence: Number(p.confidence),
+      sources: p.sources ?? [],
+    };
+  }
+
+  private performanceRow(editionId: string, p: EditionPerformance) {
+    const row: Record<string, any> = {
+      edition_id: editionId,
+      artist_key: p.artistKey,
+      name: p.name,
+      days: p.days,
+      stages: p.stages,
+      status: p.status,
+      billing: p.billing ?? null,
+      confidence: p.confidence,
+      sources: p.sources,
+    };
+    if (p.slotId) row.slot_id = p.slotId;
+    if (p.alias) row.alias = p.alias;
+    if (p.set) row.set = p.set;
+    if (p.b2b?.length) row.b2b = p.b2b;
+    return row;
+  }
+
   private toEdition(row: any, perfs: any[]): Edition {
     return {
       id: row.id,
@@ -349,20 +387,7 @@ export class SupabaseLineupStore implements LineupStore {
       status: row.status,
       confirmedAt: row.confirmed_at ?? undefined,
       updatedAt: row.updated_at,
-      performances: perfs.map((p: any) => ({
-        artistKey: p.artist_key,
-        slotId: p.slot_id ?? undefined,
-        alias: p.alias ?? undefined,
-        set: p.set ?? undefined,
-        b2b: p.b2b?.length ? p.b2b : undefined,
-        name: p.name,
-        days: p.days ?? [],
-        stages: p.stages ?? [],
-        status: p.status,
-        billing: p.billing ?? undefined,
-        confidence: Number(p.confidence),
-        sources: p.sources ?? [],
-      })),
+      performances: perfs.map((p: any) => this.toPerformance(p)),
     };
   }
 
@@ -423,24 +448,7 @@ export class SupabaseLineupStore implements LineupStore {
     if (e.performances.length > 0) {
       this.check(
         await this.db.from('performances').insert(
-          e.performances.map((p) => {
-            const row: Record<string, any> = {
-              edition_id: e.id,
-              artist_key: p.artistKey,
-              name: p.name,
-              days: p.days,
-              stages: p.stages,
-              status: p.status,
-              billing: p.billing ?? null,
-              confidence: p.confidence,
-              sources: p.sources,
-            };
-            if (p.slotId) row.slot_id = p.slotId;
-            if (p.alias) row.alias = p.alias;
-            if (p.set) row.set = p.set;
-            if (p.b2b?.length) row.b2b = p.b2b;
-            return row;
-          }),
+          e.performances.map((p) => this.performanceRow(e.id, p)),
         ),
         'upsertEdition performances',
       );
@@ -935,6 +943,45 @@ export class SupabaseLineupStore implements LineupStore {
       if (!rows || rows.length < 1000) break;
     }
     return out;
+  }
+
+  async deleteArtists(keys: string[]) {
+    if (keys.length) this.check(await this.db.from('canonical_artists').delete().in('key', keys), 'deleteArtists');
+  }
+
+  async artistPerformances(keys: string[]): Promise<ArtistEditionRow[]> {
+    const out: ArtistEditionRow[] = [];
+    for (let i = 0; i < keys.length; i += 200) {
+      const rows = this.check(
+        await this.db.from('performances').select('*').in('artist_key', keys.slice(i, i + 200)),
+        'artistPerformances',
+      );
+      for (const r of (rows ?? []) as any[]) out.push({ editionId: r.edition_id, ...this.toPerformance(r) });
+    }
+    return out;
+  }
+
+  async putArtistPerformances(rows: ArtistEditionRow[]) {
+    if (rows.length) {
+      this.check(
+        await this.db.from('performances').upsert(rows.map((r) => this.performanceRow(r.editionId, r)), { onConflict: 'edition_id,artist_key' }),
+        'putArtistPerformances',
+      );
+    }
+  }
+
+  // One delete per artist key and chunk of editions, so a merge stays within a Worker's subrequest limit.
+  async deleteArtistPerformances(rows: Array<{ editionId: string; artistKey: string }>) {
+    const byKey = new Map<string, string[]>();
+    for (const r of rows) byKey.set(r.artistKey, [...(byKey.get(r.artistKey) ?? []), r.editionId]);
+    for (const [artistKey, editionIds] of byKey) {
+      for (let i = 0; i < editionIds.length; i += 200) {
+        this.check(
+          await this.db.from('performances').delete().eq('artist_key', artistKey).in('edition_id', editionIds.slice(i, i + 200)),
+          'deleteArtistPerformances',
+        );
+      }
+    }
   }
 
   async listUnresolvedArtists(limit: number) {

@@ -19,7 +19,7 @@ import { attrFields } from './attrs';
 export class ManageError extends Error {
   constructor(
     message: string,
-    readonly status: 400 | 404 | 409,
+    readonly status: 400 | 403 | 404 | 409,
     // A record that already has the name: merging into it is the way on.
     readonly conflict?: { id: string; name: string },
   ) {
@@ -91,7 +91,7 @@ function keyFor(entity: Entity, name: string): string {
   return normalizeName([name, entity.attrs.region, entity.attrs.country].filter(Boolean).join(' '));
 }
 
-const cleanName = (name: unknown): string => {
+export const cleanName = (name: unknown): string => {
   const out = typeof name === 'string' ? name.trim().replace(/\s+/g, ' ') : '';
   if (!normalizeName(out)) throw new ManageError('A name needs at least one letter or digit.', 400);
   return out;
