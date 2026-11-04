@@ -1,15 +1,27 @@
 import React, { useState } from 'react';
 import { GitMerge, Loader2, Plus, X } from 'lucide-react';
-import { canonicalApi } from '../services/lineupApi';
-import type { HistoryEntry } from '../server/entities/types';
-import type { ArtistAppearance, CanonicalArtistRecord } from '../server/entities/canonicalManage';
+import {
+  applyCanonicalArtistChange,
+  canonicalApi,
+  previewCanonicalArtistChange,
+  type CanonicalArtistOperation,
+  type CanonicalArtistPreview,
+} from '../services/lineupApi';
+import type { SaveTrack } from '../services/saveStatus';
+import type { ArtistAppearance, ArtistChangeImpact, CanonicalArtistRecord } from '../server/entities/canonicalManage';
 import { normalizeName } from '../server/lineup/text';
+import { Button } from './ui/Button';
+import { Callout } from './ui/Callout';
 import { IconButton } from './ui/IconButton';
+import { Notice } from './ui/Notice';
 import { Pill } from './ui/Pill';
+import { SaveStatus } from './ui/SaveStatus';
 
 // One catalog artist as a record (Global archive, GA3). Same layout as ManageEntry:
 // name, AKAs, MusicBrainz id, origins, editions billed, community count, appearances.
 // Missing data says so. Member events are never changed: only the shared catalog.
+// Rename, AKA add/remove and merge are two presses: "Preview" asks the server what the change
+// would do (writes nothing), then "Apply" saves exactly that previewed change.
 
 export const ORIGIN_LABEL: Record<CanonicalArtistRecord['origins'][number], string> = {
   from_me: 'From me',
@@ -25,9 +37,34 @@ const quiet =
   'inline-flex shrink-0 items-center gap-1 rounded-lg border border-zinc-800 px-2.5 py-1.5 text-sm text-zinc-300 hover:text-zinc-100 disabled:opacity-40';
 const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
 
+const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
+// The server's 409 when the fingerprint no longer matches the current state (the apply route).
+const isStale = (err: unknown) => messageOf(err).includes('Preview is out of date');
+
+type Section = 'name' | 'aka' | 'merge';
+
+// A previewed change waiting for its second press. Nothing is written until Apply.
+interface Pending {
+  section: Section;
+  op: CanonicalArtistOperation;
+  // The change in words, old to new.
+  label: string;
+  // Where the artist is after apply; null when it was merged away.
+  next: string | null;
+  preview: CanonicalArtistPreview;
+  // Rejected as stale: the only action is to preview again.
+  stale: boolean;
+}
+
 interface Problem {
   message: string;
   with?: { id: string; name: string };
+}
+
+// What a saved change reports back: its history id (for Undo) and its one-line summary.
+export interface SavedChange {
+  id: string;
+  summary: string;
 }
 
 export interface CanonicalArtistEntryProps {
@@ -37,34 +74,125 @@ export interface CanonicalArtistEntryProps {
   artists: CanonicalArtistRecord[];
   onBack: () => void;
   // A change was saved. `key` is where the artist is now; null when it was merged away.
-  onChanged: (entry: HistoryEntry, key: string | null) => void;
+  onChanged: (entry: SavedChange, key: string | null) => void;
 }
+
+const ImpactCounts: React.FC<{ impact: ArtistChangeImpact }> = ({ impact }) => (
+  <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
+    <div>
+      <dt className="text-zinc-500">Editions changed</dt>
+      <dd className="text-zinc-100">{impact.editionsAffected}</dd>
+    </div>
+    <div>
+      <dt className="text-zinc-500">Performances moved</dt>
+      <dd className="text-zinc-100">{impact.performancesMoved}</dd>
+    </div>
+    <div>
+      <dt className="text-zinc-500">Your records changed</dt>
+      <dd className="text-zinc-100">{impact.ownerRecordsAffected}</dd>
+    </div>
+    <div>
+      <dt className="text-zinc-500">Community names changed</dt>
+      <dd className="text-zinc-100">{impact.communityNameKeysAffected ?? 'Not available'}</dd>
+    </div>
+  </dl>
+);
 
 export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ artist, appearances, artists, onBack, onChanged }) => {
   const [name, setName] = useState(artist.name);
   const [aka, setAka] = useState('');
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState<'preview' | 'apply' | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
+  const [applyFailed, setApplyFailed] = useState(false);
   const [merging, setMerging] = useState(false);
   const [pick, setPick] = useState('');
   const [target, setTarget] = useState<CanonicalArtistRecord | null>(null);
+  const [pending, setPending] = useState<Pending | null>(null);
 
-  // Runs one change. True when it was saved (the parent then shows its Undo).
-  const run = async (what: string, fn: () => Promise<HistoryEntry>, next: (entry: HistoryEntry) => string | null): Promise<boolean> => {
-    setBusy(what);
+  // Editing a section's input drops its preview, so Apply can never save an intent the screen no longer shows.
+  const clearPending = (section: Section) => setPending((p) => (p && p.section === section ? null : p));
+
+  // First press: ask the server what the change would do. Writes nothing.
+  const preview = async (section: Section, op: CanonicalArtistOperation, label: string, next: string | null) => {
+    setBusy('preview');
     setProblem(null);
+    setApplyFailed(false);
     try {
-      const entry = await fn();
-      onChanged(entry, next(entry));
-      return true;
+      const result = await previewCanonicalArtistChange(artist.key, op);
+      setPending({ section, op, label, next, preview: result, stale: false });
     } catch (err) {
       const conflict = (err as { conflict?: { id: string; name: string } }).conflict;
-      setProblem({ message: err instanceof Error ? err.message : String(err), with: conflict });
-      return false;
+      setProblem({ message: messageOf(err), with: conflict });
     } finally {
       setBusy(null);
     }
   };
+
+  // Second press: apply exactly the previewed operation, with the fingerprint of that preview.
+  const apply = async () => {
+    if (!pending || pending.stale) return;
+    const current = pending;
+    setBusy('apply');
+    setProblem(null);
+    setApplyFailed(false);
+    try {
+      const applied = await applyCanonicalArtistChange(artist.key, current.op, current.preview.previewFingerprint);
+      setPending(null);
+      if (current.op.op === 'alias-add') setAka('');
+      onChanged({ id: applied.entry.id, summary: applied.entry.summary }, current.next);
+    } catch (err) {
+      if (isStale(err)) {
+        setPending({ ...current, stale: true });
+      } else {
+        setApplyFailed(true);
+        setProblem({ message: messageOf(err) });
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const refresh = () => {
+    if (pending) void preview(pending.section, pending.op, pending.label, pending.next);
+  };
+
+  const cancel = () => {
+    setPending(null);
+    setApplyFailed(false);
+  };
+
+  const applyTrack: SaveTrack<'apply'> = { inFlight: busy === 'apply' ? 1 : 0, failed: applyFailed ? ['apply'] : [], savedAt: null };
+
+  // The preview for one section, shown directly above its apply action.
+  const pendingPanel = (section: Section) =>
+    pending && pending.section === section ? (
+      <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 text-sm">
+        <p className="text-zinc-100">{pending.label}</p>
+        {pending.stale ? (
+          <Notice tone="warning">This preview is out of date, so nothing was saved. Preview again to see the current impact.</Notice>
+        ) : (
+          <div className="space-y-1">
+            <p className="text-[11px] uppercase text-zinc-500">Impact</p>
+            <ImpactCounts impact={pending.preview.impact} />
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {pending.stale ? (
+            <Button variant="primary" onClick={refresh} disabled={Boolean(busy)}>
+              Preview again
+            </Button>
+          ) : (
+            <Button variant="primary" onClick={() => void apply()} disabled={Boolean(busy)}>
+              {busy === 'apply' ? 'Saving…' : 'Apply'}
+            </Button>
+          )}
+          <Button variant="ghost" onClick={cancel} disabled={busy === 'apply'}>
+            Cancel
+          </Button>
+        </div>
+        <SaveStatus track={applyTrack} onRetry={() => void apply()} />
+      </div>
+    ) : null;
 
   const trimmed = name.trim();
   const renamed = trimmed !== '' && trimmed !== artist.name;
@@ -87,6 +215,10 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
   return (
     <div className="space-y-5">
       <button onClick={onBack} className="text-sm text-violet-300 hover:text-violet-200">← Back to artists</button>
+
+      <Callout id="canonical-artist-preview">
+        Changes to the shared catalog are previewed first: nothing is saved until you press Apply. Undo is offered after each save.
+      </Callout>
 
       <div className="space-y-2">
         <h3 className="text-lg font-semibold text-zinc-50">{artist.name}</h3>
@@ -119,12 +251,20 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
           className="flex gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            if (renamed) void run('rename', () => canonicalApi.renameArtist(artist.key, trimmed), () => normalizeName(trimmed));
+            if (renamed) void preview('name', { op: 'rename', name: trimmed }, `Name: “${artist.name}” → “${trimmed}”`, normalizeName(trimmed));
           }}
         >
-          <input className={control} value={name} onChange={(e) => setName(e.target.value)} aria-label="Name" />
+          <input
+            className={control}
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              clearPending('name');
+            }}
+            aria-label="Name"
+          />
           <button type="submit" disabled={!renamed || Boolean(busy)} className={primary}>
-            {busy === 'rename' && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Rename
+            {busy === 'preview' && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Preview rename
           </button>
         </form>
         {renamed && (
@@ -132,6 +272,7 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
             Changes the shared catalog only; member events keep the names they typed. “{artist.name}” is kept as an AKA.
           </p>
         )}
+        {pendingPanel('name')}
       </div>
 
       <div className="space-y-1.5">
@@ -146,7 +287,7 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
                   label={`Remove AKA ${a}`}
                   size="chip"
                   disabled={Boolean(busy)}
-                  onClick={() => void run(`aka:${a}`, () => canonicalApi.removeArtistAka(artist.key, a), () => artist.key)}
+                  onClick={() => void preview('aka', { op: 'alias-remove', name: a }, `Also known as: remove “${a}”`, artist.key)}
                 />
               </li>
             ))}
@@ -158,15 +299,25 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
           className="flex gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            if (aka.trim()) void run('aka', () => canonicalApi.addArtistAka(artist.key, aka.trim()), () => artist.key).then((ok) => ok && setAka(''));
+            if (aka.trim()) void preview('aka', { op: 'alias-add', name: aka.trim() }, `Also known as: add “${aka.trim()}”`, artist.key);
           }}
         >
-          <input className={control} value={aka} onChange={(e) => setAka(e.target.value)} placeholder="Another name or spelling" aria-label="Add an AKA" />
+          <input
+            className={control}
+            value={aka}
+            onChange={(e) => {
+              setAka(e.target.value);
+              clearPending('aka');
+            }}
+            placeholder="Another name or spelling"
+            aria-label="Add an AKA"
+          />
           <button type="submit" disabled={!akaSpelling || Boolean(busy)} className={quiet}>
-            <Plus className="h-3.5 w-3.5" /> Add
+            <Plus className="h-3.5 w-3.5" /> Preview
           </button>
         </form>
         <p className="text-xs text-zinc-400">Lineups that name this artist by an AKA are matched to it.</p>
+        {pendingPanel('aka')}
       </div>
 
       <div className="space-y-1.5">
@@ -182,7 +333,10 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
               {candidates.map((a) => (
                 <li key={a.key}>
                   <button
-                    onClick={() => setTarget(a)}
+                    onClick={() => {
+                      setTarget(a);
+                      clearPending('merge');
+                    }}
                     className={`flex w-full items-center gap-2 p-2 text-left text-sm hover:bg-zinc-900/60 ${target?.key === a.key ? 'text-violet-200' : 'text-zinc-200'}`}
                   >
                     {a.name}
@@ -197,12 +351,29 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
                   “{artist.name}” merges into “{target.name}”, and “{artist.name}” becomes an AKA. Its editions and performances move to “{target.name}”.
                   Your own record of this artist follows too, when you have one. Member events are not changed. {mbidNote} You can undo it.
                 </p>
-                <div className="flex gap-2">
-                  <button onClick={() => void run('merge', () => canonicalApi.mergeArtist(artist.key, target.key), () => null)} disabled={Boolean(busy)} className={primary}>
-                    {busy === 'merge' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitMerge className="h-3.5 w-3.5" />} Merge
-                  </button>
-                  <button onClick={() => { setMerging(false); setTarget(null); setPick(''); }} className={quiet}>Cancel</button>
-                </div>
+                {pendingPanel('merge')}
+                {!(pending && pending.section === 'merge') && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => void preview('merge', { op: 'merge', into: target.key }, `Merge: “${artist.name}” → “${target.name}”`, null)}
+                      disabled={Boolean(busy)}
+                      className={primary}
+                    >
+                      {busy === 'preview' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitMerge className="h-3.5 w-3.5" />} Preview merge
+                    </button>
+                  </div>
+                )}
+                <button
+                  onClick={() => {
+                    setMerging(false);
+                    setTarget(null);
+                    setPick('');
+                    setPending(null);
+                  }}
+                  className={quiet}
+                >
+                  Cancel
+                </button>
               </div>
             )}
           </div>
