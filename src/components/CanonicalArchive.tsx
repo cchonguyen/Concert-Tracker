@@ -1,19 +1,21 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { canonicalApi, entitiesApi, lineupApi, LookupJob, SOURCE_LABELS } from '../services/lineupApi';
+import { canonicalApi, CanonicalChangeRow, entitiesApi, lineupApi, LookupJob, SOURCE_LABELS, UndoConflictError } from '../services/lineupApi';
 import { reviewSubjectFromEdition } from '../services/reviewRows';
 import type { Edition, EditionPerformance } from '../server/lineup/types';
 import type { ArtistAppearance, CanonicalArtistRecord, CanonicalEditionSummary } from '../server/entities/canonicalManage';
 import { CanonicalArtistEntry, ORIGIN_LABEL, type SavedChange } from './CanonicalArtistEntry';
 import { LineupReview } from './LineupReview';
 import { Button } from './ui/Button';
+import { Callout } from './ui/Callout';
+import { Notice } from './ui/Notice';
 import { Pill } from './ui/Pill';
 
 // Global Archive (owner only, spec Phase 4). Each section is one body rendered by ManageView:
-// Artists, Editions & Lineups, Lookups. Counts only; no member names. Never writes a personal log.
+// Artists, Editions & Lineups, Lookups, Changes. Counts only; no member names. Never writes a personal log.
 // The search box and the edition status filter live in ManageView and arrive as props.
 
-export type ArchiveSection = 'artists' | 'editions' | 'lookups';
+export type ArchiveSection = 'artists' | 'editions' | 'lookups' | 'changes';
 export type EditionStatus = 'all' | 'confirmed' | 'draft';
 
 // The ingest queue's status, in words (the Pill tone adds color; the words carry the meaning).
@@ -44,6 +46,7 @@ const field = 'rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-
 
 export const CanonicalArchive: React.FC<{ section: ArchiveSection; query: string; status: EditionStatus }> = ({ section, query, status }) => {
   if (section === 'lookups') return <ArchiveLookups />;
+  if (section === 'changes') return <ArchiveChanges />;
   if (section === 'editions') return <ArchiveEditions query={query} status={status} />;
   return <ArchiveArtists query={query} />;
 };
@@ -375,6 +378,122 @@ const ArchiveLookups: React.FC = () => {
         )}
       </section>
     </div>
+  );
+};
+
+const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
+// The Changes list (slice 8.10, owner only): canonical changes, newest first, 50 a page through Load more.
+// Undo is offered while a change is not undone. A refused Undo (409) leaves the row as it was and shows the server's message.
+type ChangesList = { rows: CanonicalChangeRow[]; nextCursor: string | null; hasMore: boolean };
+
+const ArchiveChanges: React.FC = () => {
+  const [list, setList] = useState<ChangesList | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  // Reloads the first page. Entries already loaded past it stay, in order, so a refresh never shrinks the list.
+  const loadFirst = useCallback(async () => {
+    const first = await canonicalApi.changes();
+    setList((prev) => {
+      const fresh: ChangesList = { rows: first.changes, nextCursor: first.nextCursor, hasMore: first.hasMore };
+      if (!prev) return fresh;
+      const shown = new Set(first.changes.map((r) => r.id));
+      const beyond = prev.rows.filter((r) => !shown.has(r.id));
+      return beyond.length === 0 ? fresh : { rows: [...first.changes, ...beyond], nextCursor: prev.nextCursor, hasMore: prev.hasMore };
+    });
+  }, []);
+
+  useEffect(() => {
+    loadFirst().catch((err) => setError(messageOf(err)));
+  }, [loadFirst]);
+
+  // Appends the next page from the cursor. A failure keeps every row already shown.
+  const loadMore = async () => {
+    const cursor = list?.nextCursor;
+    if (!cursor) return;
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const page = await canonicalApi.changes(cursor);
+      setList((prev) =>
+        prev && {
+          rows: [...prev.rows, ...page.changes.filter((r) => !prev.rows.some((x) => x.id === r.id))],
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+        },
+      );
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const undo = async (row: CanonicalChangeRow) => {
+    setBusyId(row.id);
+    setError(null);
+    setDone(null);
+    try {
+      const r = await canonicalApi.undoChange(row.id);
+      const undoneAt = r.entry?.undoneAt ?? r.undoneAt ?? new Date().toISOString();
+      setList((prev) => prev && { ...prev, rows: prev.rows.map((x) => (x.id === row.id ? { ...x, undoneAt } : x)) });
+      setDone(`Undid: ${row.summary}.`);
+      await loadFirst();
+    } catch (err) {
+      // A 409 (UndoConflictError) keeps this row unchanged. The message is the server's.
+      setError(err instanceof UndoConflictError ? err.message : messageOf(err));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const rows = list?.rows ?? [];
+  return (
+    <section className="space-y-3">
+      <Callout id="archive-changes">
+        Undo puts the records back as they were before a change. A change can only be undone after the later changes to the same records.
+      </Callout>
+      {done && <Notice tone="success">{done}</Notice>}
+      {error && <Notice tone="warning">{error}</Notice>}
+      {list === null ? (
+        error ? null : <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-zinc-400">No changes yet.</p>
+      ) : (
+        <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+          {rows.map((r) => (
+            <li key={r.id} className="space-y-1 p-2.5 text-sm">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className={r.undoneAt ? 'text-zinc-500 line-through' : 'text-zinc-100'}>{r.summary}</span>
+                <span className="text-[11px] text-zinc-400">{when(r.time)}</span>
+                {r.undoneAt ? (
+                  <span className="text-[11px] text-zinc-400">Undone {when(r.undoneAt)}</span>
+                ) : (
+                  <span className="ml-auto">
+                    <Button onClick={() => void undo(r)} disabled={busyId !== null}>
+                      {busyId === r.id && <Loader2 className="h-4 w-4 animate-spin" />} Undo
+                    </Button>
+                  </span>
+                )}
+              </div>
+              <p className={`text-xs ${r.undoneAt ? 'text-zinc-500 line-through' : 'text-zinc-400'}`}>
+                {r.before} → {r.after}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+      {list?.hasMore && (
+        <div>
+          <Button onClick={() => void loadMore()} disabled={loadingMore}>
+            {loadingMore && <Loader2 className="h-4 w-4 animate-spin" />} Load more
+          </Button>
+        </div>
+      )}
+    </section>
   );
 };
 
