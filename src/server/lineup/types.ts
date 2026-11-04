@@ -253,6 +253,8 @@ export interface Edition {
   performances: EditionPerformance[];
   confirmedAt?: string;
   updatedAt: string;
+  // Admin-curated fact provenance (migration 0034): the owner's note for name, dates, venue, city.
+  factSourceNote?: string;
 }
 
 export interface SourceStat {
