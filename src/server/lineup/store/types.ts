@@ -17,7 +17,7 @@ import type { ActivityEntry } from '../../events/activityLog';
 import type { LineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
-import { ArtistEditionRow, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
+import { ArtistEditionRow, CANONICAL_OPERATIONS, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import type { ShareLink } from '../../share/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CachedResponse } from '../responseCache';
@@ -65,6 +65,99 @@ export function canonicalEditionPage<T extends CanonicalEditionListRow>(
   const limit = Math.max(0, Math.min(200, Math.floor(options.limit)));
   const editions = matching.slice(0, limit);
   return { editions, total: matching.length, hasMore: matching.length > editions.length };
+}
+
+// Canonical history feed (slice 8.9): only canonical operations, newest first, paged by a keyset cursor on
+// (createdAt, id) descending. The operation filter runs in the store query before the limit, never after it.
+export const CANONICAL_HISTORY_DEFAULT_LIMIT = 50;
+export const CANONICAL_HISTORY_MAX_LIMIT = 100;
+
+export type CanonicalOperation = (typeof CANONICAL_OPERATIONS)[number];
+
+export function isCanonicalOperation(op: string): op is CanonicalOperation {
+  return (CANONICAL_OPERATIONS as readonly string[]).includes(op);
+}
+
+export interface CanonicalHistoryPageOptions {
+  // Default 50. Out-of-range values are clamped to 1..100. Non-integers (NaN, 1.5) are rejected with a RangeError.
+  limit?: number;
+  // The nextCursor from the previous page. Undefined or null starts at the newest entry.
+  cursor?: string | null;
+}
+
+export interface CanonicalHistoryEntry {
+  id: string;
+  operation: CanonicalOperation;
+  createdAt: string;
+  // Set once the change was undone. Taken from the undone_at column in Supabase, or the stored undoneAt in FileStore.
+  undoneAt?: string;
+  // The stored manifest as written by the change (a canonical plan entry for the apply path). Narrow it before use.
+  manifest: unknown;
+}
+
+export interface CanonicalHistoryPage {
+  entries: CanonicalHistoryEntry[];
+  // Opaque cursor for the next (older) page. Null when there are no older canonical entries.
+  nextCursor: string | null;
+}
+
+export class CanonicalHistoryCursorError extends Error {
+  readonly code = 'invalid_cursor' as const;
+  constructor(message = 'The history cursor is malformed.') {
+    super(message);
+    this.name = 'CanonicalHistoryCursorError';
+  }
+}
+
+interface HistoryKey {
+  createdAt: string;
+  id: string;
+}
+
+// Timestamps as Postgres (timestamptz) or JS (toISOString) prints them. Ids as uuids or simple tokens.
+// The fixed character sets keep commas, parentheses and dots out of the cursor, so it is safe in a PostgREST filter.
+const KEY_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+const KEY_ID = /^[A-Za-z0-9_-]{1,128}$/;
+const CURSOR_HEX = /^(?:[0-9a-f]{2}){1,1024}$/;
+
+export function normalizeCanonicalHistoryLimit(limit: number | undefined): number {
+  if (limit === undefined) return CANONICAL_HISTORY_DEFAULT_LIMIT;
+  if (!Number.isInteger(limit)) throw new RangeError('limit must be a whole number.');
+  return Math.min(CANONICAL_HISTORY_MAX_LIMIT, Math.max(1, limit));
+}
+
+// Hex-encoded JSON of {c, i}. Hex keeps it to plain characters, so no Buffer or base64 is needed.
+export function encodeCanonicalHistoryCursor(key: HistoryKey): string {
+  if (!KEY_TIME.test(key.createdAt) || !KEY_ID.test(key.id)) {
+    throw new CanonicalHistoryCursorError('This history entry has an id or timestamp that cannot be paged.');
+  }
+  const bytes = new TextEncoder().encode(JSON.stringify({ c: key.createdAt, i: key.id }));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+export function decodeCanonicalHistoryCursor(cursor: string): HistoryKey {
+  const bad = () => new CanonicalHistoryCursorError();
+  if (typeof cursor !== 'string' || !CURSOR_HEX.test(cursor)) throw bad();
+  const bytes = new Uint8Array(cursor.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(cursor.slice(2 * i, 2 * i + 2), 16);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes));
+  } catch {
+    throw bad();
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw bad();
+  const record = parsed as Record<string, unknown>;
+  if (Object.keys(record).sort().join(',') !== 'c,i') throw bad();
+  const { c, i } = record;
+  if (typeof c !== 'string' || typeof i !== 'string' || !KEY_TIME.test(c) || !KEY_ID.test(i) || Number.isNaN(Date.parse(c))) throw bad();
+  return { createdAt: c, id: i };
+}
+
+// True when an entry comes strictly after the cursor in the newest-first order, so it belongs on a later page.
+export function isOlderThanCursor(entry: HistoryKey, cursor: HistoryKey): boolean {
+  if (entry.createdAt !== cursor.createdAt) return entry.createdAt < cursor.createdAt;
+  return entry.id < cursor.id;
 }
 
 // Failures of the canonical artist apply and Undo (migration 0037 codes, mapped the same way in both stores):
@@ -252,6 +345,8 @@ export interface LineupStore {
   getEntityHistory(id: string): Promise<HistoryEntry | null>;
   // Newest first.
   listEntityHistory(limit: number): Promise<HistoryEntry[]>;
+  // Canonical operations only, newest first, one page (slice 8.9). Owner only. Does not change listEntityHistory.
+  listCanonicalHistoryPage(options?: CanonicalHistoryPageOptions): Promise<CanonicalHistoryPage>;
 
   // Share page links (0015, src/server/share/). Optional: only the share
   // page needs the table.
