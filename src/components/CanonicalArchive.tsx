@@ -8,8 +8,12 @@ import { LineupReview } from './LineupReview';
 import { Button } from './ui/Button';
 import { Pill } from './ui/Pill';
 
-// Global Archive (owner only, spec Phase 4): ingest a lineup, browse editions and
-// the artist catalog. Counts only; no member names. Never writes a personal log.
+// Global Archive (owner only, spec Phase 4). Each section is one body rendered by ManageView:
+// Artists, Editions & Lineups, Lookups. Counts only; no member names. Never writes a personal log.
+// The search box and the edition status filter live in ManageView and arrive as props.
+
+export type ArchiveSection = 'artists' | 'editions' | 'lookups';
+export type EditionStatus = 'all' | 'confirmed' | 'draft';
 
 const ORIGIN_LABEL: Record<CanonicalArtistSummary['origins'][number], string> = {
   from_me: 'From me',
@@ -43,11 +47,138 @@ const messageOf = (err: unknown) => (err instanceof Error ? err.message : String
 
 const field = 'rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-violet-500 focus:outline-none';
 
-export const CanonicalArchive: React.FC<{ artistQuery?: string }> = ({ artistQuery = '' }) => {
+export const CanonicalArchive: React.FC<{ section: ArchiveSection; query: string; status: EditionStatus }> = ({ section, query, status }) => {
+  if (section === 'lookups') return <ArchiveLookups />;
+  if (section === 'editions') return <ArchiveEditions query={query} status={status} />;
+  return <ArchiveArtists query={query} />;
+};
+
+const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
   const [artists, setArtists] = useState<CanonicalArtistSummary[] | null>(null);
+  const [detail, setDetail] = useState<{ artist: CanonicalArtistSummary; appearances: ArtistAppearance[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    canonicalApi
+      .artists()
+      .then((r) => setArtists(r.artists))
+      .catch((err) => setError(messageOf(err)));
+  }, []);
+
+  const openArtist = async (key: string) => {
+    setError(null);
+    try {
+      const r = await canonicalApi.artist(key);
+      setDetail({ artist: r.artist, appearances: r.appearances });
+    } catch (err) {
+      setError(messageOf(err));
+    }
+  };
+
+  if (detail) {
+    return (
+      <div className="space-y-4">
+        <button onClick={() => setDetail(null)} className="text-sm text-violet-300 hover:text-violet-200">← Back to artists</button>
+        <ArtistDetail artist={detail.artist} appearances={detail.appearances} />
+      </div>
+    );
+  }
+
+  const q = query.trim().toLowerCase();
+  const shown = (artists ?? []).filter((a) => !q || a.name.toLowerCase().includes(q) || a.key.includes(q));
+
+  return (
+    <section className="space-y-2">
+      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+      {artists === null ? (
+        <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+      ) : artists.length === 0 ? (
+        <p className="text-sm text-zinc-400">No artists yet.</p>
+      ) : shown.length === 0 ? (
+        <p className="text-sm text-zinc-400">No artist matches "{query}".</p>
+      ) : (
+        <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+          {shown.map((a) => (
+            <li key={a.key}>
+              <button onClick={() => void openArtist(a.key)} className="flex w-full flex-wrap items-center gap-2 p-2.5 text-left text-sm hover:bg-zinc-900/60">
+                <span className="text-zinc-100">{a.name}</span>
+                {a.origins.map((o) => (
+                  <span key={o} className="rounded-full border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300">{ORIGIN_LABEL[o]}</span>
+                ))}
+                <span className="ml-auto text-xs text-zinc-400">
+                  {a.editionsCount} billed {a.editionsCount === 1 ? 'edition' : 'editions'}
+                  {a.communityCount === null ? '' : ` · ${a.communityCount} community`}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+};
+
+const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ query, status }) => {
   const [editions, setEditions] = useState<CanonicalEditionSummary[] | null>(null);
-  const [query, setQuery] = useState('');
-  const [status, setStatus] = useState<'all' | 'confirmed' | 'draft'>('all');
+  const [detail, setDetail] = useState<Edition | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setEditions((await canonicalApi.editions(query, status)).editions);
+      setError(null);
+    } catch (err) {
+      setError(messageOf(err));
+    }
+  }, [query, status]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const openEdition = async (id: string) => {
+    setError(null);
+    try {
+      setDetail((await canonicalApi.edition(id)).edition);
+    } catch (err) {
+      setError(messageOf(err));
+    }
+  };
+
+  if (detail) {
+    return (
+      <div className="space-y-4">
+        <button onClick={() => setDetail(null)} className="text-sm text-violet-300 hover:text-violet-200">← Back to editions</button>
+        <EditionDetail edition={detail} />
+      </div>
+    );
+  }
+
+  return (
+    <section className="space-y-2">
+      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+      {editions === null ? (
+        <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+      ) : editions.length === 0 ? (
+        <p className="text-sm text-zinc-400">{query || status !== 'all' ? 'No editions match.' : 'No editions yet. Ingest one under Lookups.'}</p>
+      ) : (
+        <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+          {editions.map((e) => (
+            <li key={e.id}>
+              <button onClick={() => void openEdition(e.id)} className="flex w-full flex-wrap items-baseline gap-x-3 p-2.5 text-left text-sm hover:bg-zinc-900/60">
+                <span className="font-medium text-zinc-100">{e.name}</span>
+                <span className="text-xs text-zinc-400">{[e.startDate, e.venue, e.city].filter(Boolean).join(' · ') || 'Details missing'}</span>
+                <span className="ml-auto text-xs text-zinc-400">{e.performanceCount} billed · {e.status === 'confirmed' ? 'confirmed' : 'draft'}{e.hasSetTimes ? ' · set times' : ''}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+};
+
+const ArchiveLookups: React.FC = () => {
   const [name, setName] = useState('');
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [url, setUrl] = useState('');
@@ -56,48 +187,6 @@ export const CanonicalArchive: React.FC<{ artistQuery?: string }> = ({ artistQue
   const [lookups, setLookups] = useState<LookupJob[] | null>(null);
   const [reviewing, setReviewing] = useState<LookupJob | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
-  const [detail, setDetail] = useState<{ kind: 'edition'; edition: Edition } | { kind: 'artist'; artist: CanonicalArtistSummary; appearances: ArtistAppearance[] } | null>(null);
-
-  const openEdition = async (id: string) => {
-    setError(null);
-    try {
-      setDetail({ kind: 'edition', edition: (await canonicalApi.edition(id)).edition });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const openArtist = async (key: string) => {
-    setError(null);
-    try {
-      const r = await canonicalApi.artist(key);
-      setDetail({ kind: 'artist', artist: r.artist, appearances: r.appearances });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const q = artistQuery.trim().toLowerCase();
-  const shownArtists = (artists ?? []).filter((a) => !q || a.name.toLowerCase().includes(q) || a.key.includes(q));
-
-  const loadEditions = useCallback(async () => {
-    try {
-      setEditions((await canonicalApi.editions(query, status)).editions);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, [query, status]);
-
-  useEffect(() => {
-    void loadEditions();
-  }, [loadEditions]);
-
-  useEffect(() => {
-    canonicalApi
-      .artists()
-      .then((r) => setArtists(r.artists))
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
-  }, []);
 
   const loadLookups = useCallback(async () => {
     try {
@@ -160,25 +249,15 @@ export const CanonicalArchive: React.FC<{ artistQuery?: string }> = ({ artistQue
         onClose={() => setReviewing(null)}
         onSaved={() => {
           setReviewing(null);
-          void loadEditions();
           void loadLookups();
         }}
       />
     );
   }
 
-  if (detail) {
-    return (
-      <div className="space-y-4">
-        <button onClick={() => setDetail(null)} className="text-sm text-violet-300 hover:text-violet-200">← Back to the archive</button>
-        {detail.kind === 'edition' ? <EditionDetail edition={detail.edition} /> : <ArtistDetail artist={detail.artist} appearances={detail.appearances} />}
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
-      <section className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+    <div className="space-y-4">
+      <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
         <h3 className="text-sm font-semibold text-zinc-100">Ingest a canonical lineup</h3>
         <p className="text-xs text-zinc-400">Finds the lineup for an event you did not attend. Nothing is added to your log.</p>
         <div className="flex flex-wrap gap-2">
@@ -190,7 +269,7 @@ export const CanonicalArchive: React.FC<{ artistQuery?: string }> = ({ artistQue
           </button>
         </div>
         {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
-      </section>
+      </div>
 
       <section className="space-y-2" aria-labelledby="lookups-heading">
         <h3 id="lookups-heading" className="text-sm font-semibold text-zinc-100">Lookups</h3>
@@ -214,63 +293,6 @@ export const CanonicalArchive: React.FC<{ artistQuery?: string }> = ({ artistQue
                     </Button>
                   )}
                 </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="mr-auto text-sm font-semibold text-zinc-100">Editions</h3>
-          <input aria-label="Search editions" className={`${field} w-56`} placeholder="Search name, series or venue" value={query} onChange={(e) => setQuery(e.target.value)} />
-          <select aria-label="Edition status" className={field} value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
-            <option value="all">All</option>
-            <option value="confirmed">Confirmed</option>
-            <option value="draft">Drafts (owner only)</option>
-          </select>
-        </div>
-        {editions === null ? (
-          <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
-        ) : editions.length === 0 ? (
-          <p className="text-sm text-zinc-400">No editions yet. Ingest one above.</p>
-        ) : (
-          <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
-            {editions.map((e) => (
-              <li key={e.id}>
-                <button onClick={() => void openEdition(e.id)} className="flex w-full flex-wrap items-baseline gap-x-3 p-2.5 text-left text-sm hover:bg-zinc-900/60">
-                <span className="font-medium text-zinc-100">{e.name}</span>
-                <span className="text-xs text-zinc-400">{[e.startDate, e.venue, e.city].filter(Boolean).join(' · ') || 'Details missing'}</span>
-                <span className="ml-auto text-xs text-zinc-400">{e.performanceCount} billed · {e.status === 'confirmed' ? 'confirmed' : 'draft'}{e.hasSetTimes ? ' · set times' : ''}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="space-y-2">
-        <h3 className="text-sm font-semibold text-zinc-100">Artists in the archive</h3>
-        {artists === null ? (
-          <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
-        ) : artists.length === 0 ? (
-          <p className="text-sm text-zinc-400">No artists yet.</p>
-        ) : shownArtists.length === 0 ? (
-          <p className="text-sm text-zinc-400">No artist matches "{artistQuery}".</p>
-        ) : (
-          <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
-            {shownArtists.map((a) => (
-              <li key={a.key}>
-                <button onClick={() => void openArtist(a.key)} className="flex w-full flex-wrap items-center gap-2 p-2.5 text-left text-sm hover:bg-zinc-900/60">
-                <span className="text-zinc-100">{a.name}</span>
-                {a.origins.map((o) => (
-                  <span key={o} className="rounded-full border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300">{ORIGIN_LABEL[o]}</span>
-                ))}
-                <span className="ml-auto text-xs text-zinc-400">
-                  {a.editionsCount} billed {a.editionsCount === 1 ? 'edition' : 'editions'}
-                  {a.communityCount === null ? '' : ` · ${a.communityCount} community`}
-                </span>
-                </button>
               </li>
             ))}
           </ul>
