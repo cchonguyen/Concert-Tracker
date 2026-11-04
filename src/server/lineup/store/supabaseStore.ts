@@ -24,17 +24,24 @@ import type { ArtistGenres } from '../../events/genres';
 import {
   ArtistPerformanceRow,
   CanonicalApplyResult,
+  CanonicalHistoryEntry,
+  CanonicalHistoryPage,
+  CanonicalHistoryPageOptions,
   CanonicalStoreError,
   CanonicalUndoResult,
+  decodeCanonicalHistoryCursor,
+  encodeCanonicalHistoryCursor,
+  isCanonicalOperation,
   LineupStore,
   MAX_EXAMPLES_PER_DOMAIN,
+  normalizeCanonicalHistoryLimit,
   roundRobin,
   STALE_RUN_MS,
   type CanonicalEditionPageOptions,
   type UserScope,
 } from './types';
 import type { SqlCanonicalEntry } from '../../entities/canonicalManage';
-import { ArtistEditionRow, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
+import { ArtistEditionRow, CANONICAL_OPERATIONS, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import { checkLinks } from '../../entities/integrity';
 import { SHARE_EVENT_COLUMNS, type ShareLink } from '../../share/types';
 import type { CachedResponse } from '../responseCache';
@@ -1323,6 +1330,38 @@ export class SupabaseLineupStore implements LineupStore {
       'listEntityHistory',
     );
     return (rows ?? []).map((r: any) => r.manifest as HistoryEntry);
+  }
+
+  // Canonical operations only, newest first (slice 8.9). The operation filter and the keyset condition are
+  // part of the same query as the limit, so the page is filled from canonical rows only. Named columns only.
+  async listCanonicalHistoryPage(options: CanonicalHistoryPageOptions = {}): Promise<CanonicalHistoryPage> {
+    const limit = normalizeCanonicalHistoryLimit(options.limit);
+    const cursor = options.cursor == null ? null : decodeCanonicalHistoryCursor(options.cursor);
+    let query: any = this.mine(this.ent('entity_history').select('id, operation, created_at, undone_at, manifest'))
+      .in('operation', [...CANONICAL_OPERATIONS])
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false });
+    if (cursor) {
+      // Strictly older than (created_at, id): the cursor's values passed the fixed-character checks in decodeCanonicalHistoryCursor.
+      query = query.or(`created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`);
+    }
+    const rows = this.check(await query.limit(limit + 1), 'listCanonicalHistoryPage') ?? [];
+    const list = rows as Array<{ id: string; operation: string; created_at: string; undone_at: string | null; manifest: unknown }>;
+    const entries: CanonicalHistoryEntry[] = list.slice(0, limit).map((r) => {
+      if (!isCanonicalOperation(r.operation)) throw new Error(`Supabase listCanonicalHistoryPage returned a non-canonical operation: ${r.operation}`);
+      return {
+        id: r.id,
+        operation: r.operation,
+        createdAt: r.created_at,
+        ...(r.undone_at ? { undoneAt: r.undone_at } : {}),
+        manifest: r.manifest,
+      };
+    });
+    const last = entries[entries.length - 1];
+    return {
+      entries,
+      nextCursor: list.length > limit && last ? encodeCanonicalHistoryCursor({ createdAt: last.createdAt, id: last.id }) : null,
+    };
   }
 
   // source_response_cache (0019) is optional: without it nothing is cached.
