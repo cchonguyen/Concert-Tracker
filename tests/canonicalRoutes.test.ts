@@ -2,7 +2,7 @@ import { dispatch } from './helpers/testApp.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { entitiesRouter } from '../src/server/entities/routes.ts';
@@ -125,5 +125,215 @@ test('owner edition list reports the exact 200/201 boundary and can find older m
     assert.equal(olderBody.editions[0].id, 'edition-200');
     assert.equal(olderBody.editions[0].year, 2000);
     assert.equal(olderBody.hasMore, false);
+  });
+});
+
+// Slice 8.7: owner-only preview and apply for catalog artist changes. Both run the real planner over a
+// FileStore seeded with two artists sharing one edition, so a merge has a collision to count.
+const SEED_AT = '2026-11-03T00:00:00.000Z';
+const PREVIEW = '/api/manage/canonical/artists/old%20artist/preview';
+const APPLY = '/api/manage/canonical/artists/old%20artist/apply';
+const JSON_HEADERS = { 'content-type': 'application/json' };
+const STALE = 'Preview is out of date; review it again';
+
+async function seededLineup(): Promise<{ store: FileLineupStore; dir: string }> {
+  const dir = await mkdtemp(path.join(tmpdir(), 'slice87-'));
+  const performance = (artistKey: string, name: string, days: string[]) => ({ artistKey, name, days, stages: ['Main'], status: 'billed', confidence: 1, sources: [] });
+  const state = {
+    artists: {
+      'old artist': { key: 'old artist', name: 'Old Artist' },
+      'target artist': { key: 'target artist', name: 'Target Artist' },
+    },
+    editions: {
+      ed1: {
+        id: 'ed1',
+        key: 'fest/2025',
+        seriesSlug: 'fest',
+        year: 2025,
+        name: 'Fest 2025',
+        status: 'confirmed',
+        updatedAt: SEED_AT,
+        performances: [performance('old artist', 'Old Artist', ['Fri']), performance('target artist', 'Target Artist', ['Sat'])],
+      },
+    },
+    aliases: {},
+  };
+  await writeFile(path.join(dir, 'lineup-store.json'), JSON.stringify(state));
+  return { store: new FileLineupStore(dir), dir };
+}
+
+async function withSeededApp(member: { role: string; uid: string }, fn: (app: express.Express, store: FileLineupStore, dir: string) => Promise<void>) {
+  const { store, dir } = await seededLineup();
+  const linkedStore = withEntityLinks(store);
+  const app = express();
+  app.use(express.json());
+  app.use((_req, _res, next) => runAsMember(member as any, linkedStore as any, next));
+  app.use('/api', entitiesRouter({ store: linkedStore, now: () => new Date(SEED_AT) } as any));
+  await fn(app, store, dir);
+}
+
+const stateText = (dir: string) => readFile(path.join(dir, 'lineup-store.json'), 'utf8');
+const post = (url: string, body: unknown) => ({ url, method: 'POST', headers: JSON_HEADERS, body });
+
+test('members get 403 on preview and apply, before any planner or store call', async () => {
+  // The stub store throws on any call, so a 403 here also proves nothing was read or written.
+  await withApp({ role: 'member', uid: 'u1' }, async (app) => {
+    for (const url of [PREVIEW, APPLY]) {
+      const res = await dispatch(app, post(url, { op: 'rename', name: 'New Artist', previewFingerprint: 'x' }));
+      assert.equal(res.status, 403);
+      assert.match(((await res.json()) as { error: string }).error, /Only the owner/);
+    }
+  });
+});
+
+test('owner preview returns the operation, impact counts and a fingerprint, and writes nothing', async () => {
+  await withSeededApp({ role: 'owner', uid: 'u0' }, async (app, _store, dir) => {
+    const before = await stateText(dir);
+    const res = await dispatch(app, post(PREVIEW, { op: 'rename', name: 'New Artist' }));
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { operation: string; impact: Record<string, unknown>; previewFingerprint: string };
+    assert.deepEqual(Object.keys(body).sort(), ['impact', 'operation', 'previewFingerprint']);
+    assert.equal(body.operation, 'canonical-rename');
+    assert.deepEqual(body.impact, { editionsAffected: 1, performancesMoved: 1, ownerRecordsAffected: 0, communityNameKeysAffected: null });
+    assert.equal(typeof body.previewFingerprint, 'string');
+    assert.ok(body.previewFingerprint.length > 0);
+    assert.equal(await stateText(dir), before, 'preview writes nothing');
+  });
+});
+
+test('each operation previews with its own shape', async () => {
+  await withSeededApp({ role: 'owner', uid: 'u0' }, async (app) => {
+    const cases: Array<{ body: unknown; operation: string; performancesMoved: number }> = [
+      { body: { op: 'rename', name: 'New Artist' }, operation: 'canonical-rename', performancesMoved: 1 },
+      { body: { op: 'alias-add', name: 'Old AKA' }, operation: 'canonical-alias-add', performancesMoved: 0 },
+      { body: { op: 'merge', into: 'target artist' }, operation: 'canonical-merge', performancesMoved: 1 },
+    ];
+    for (const c of cases) {
+      const res = await dispatch(app, post(PREVIEW, c.body));
+      assert.equal(res.status, 200, JSON.stringify(c.body));
+      const body = (await res.json()) as { operation: string; impact: { performancesMoved: number; editionsAffected: number } };
+      assert.equal(body.operation, c.operation);
+      assert.equal(body.impact.performancesMoved, c.performancesMoved);
+    }
+  });
+});
+
+test('alias-remove previews once the alias exists', async () => {
+  await withSeededApp({ role: 'owner', uid: 'u0' }, async (app, store) => {
+    const add = (await (await dispatch(app, post(PREVIEW, { op: 'alias-add', name: 'Old AKA' }))).json()) as { previewFingerprint: string };
+    const applied = await dispatch(app, post(APPLY, { op: 'alias-add', name: 'Old AKA', previewFingerprint: add.previewFingerprint }));
+    assert.equal(applied.status, 200);
+    assert.notDeepEqual(await store.getAliases(), {}, 'the alias is stored');
+
+    const res = await dispatch(app, post(PREVIEW, { op: 'alias-remove', name: 'Old AKA' }));
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { operation: string; impact: { performancesMoved: number } };
+    assert.equal(body.operation, 'canonical-alias-remove');
+    assert.equal(body.impact.performancesMoved, 0);
+  });
+});
+
+test('invalid bodies get 400 on preview and apply', async () => {
+  await withSeededApp({ role: 'owner', uid: 'u0' }, async (app, _store, dir) => {
+    const before = await stateText(dir);
+    const bad: Array<{ url: string; body: unknown; message: RegExp }> = [
+      { url: PREVIEW, body: { op: 'delete', name: 'x' }, message: /Unknown operation/ },
+      { url: PREVIEW, body: { op: 'rename' }, message: /Missing name/ },
+      { url: PREVIEW, body: { op: 'merge' }, message: /Missing into/ },
+      { url: PREVIEW, body: { op: 'merge', name: 'target artist' }, message: /Unexpected field: name/ },
+      { url: PREVIEW, body: { op: 'rename', name: 'New', extra: true }, message: /Unexpected field: extra/ },
+      { url: PREVIEW, body: { op: 'rename', name: 'New', previewFingerprint: 'x' }, message: /Unexpected field: previewFingerprint/ },
+      { url: PREVIEW, body: [], message: /Send one operation/ },
+      { url: APPLY, body: { op: 'rename', name: 'New' }, message: /Missing previewFingerprint/ },
+      { url: APPLY, body: { op: 'rename', name: 'New', previewFingerprint: '' }, message: /Missing previewFingerprint/ },
+    ];
+    for (const c of bad) {
+      const res = await dispatch(app, post(c.url, c.body));
+      assert.equal(res.status, 400, JSON.stringify(c.body));
+      assert.match(((await res.json()) as { error: string }).error, c.message);
+    }
+    assert.equal(await stateText(dir), before, 'invalid bodies write nothing');
+  });
+});
+
+test('apply with a fresh fingerprint succeeds and returns the entry summary and community count', async () => {
+  await withSeededApp({ role: 'owner', uid: 'u0' }, async (app, store, dir) => {
+    const preview = (await (await dispatch(app, post(PREVIEW, { op: 'rename', name: 'New Artist' }))).json()) as { previewFingerprint: string };
+    const res = await dispatch(app, post(APPLY, { op: 'rename', name: 'New Artist', previewFingerprint: preview.previewFingerprint }));
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { entry: { id: string; operation: string; summary: string; at: string }; communityNameKeysAffected: number | null };
+    assert.equal(body.entry.operation, 'canonical-rename');
+    assert.ok(!Number.isNaN(Date.parse(body.entry.at)), 'entry carries the plan time');
+    assert.ok(body.entry.id.length > 0);
+    assert.equal(typeof body.entry.summary, 'string');
+    assert.equal(body.communityNameKeysAffected, null);
+    assert.equal(await store.getArtist('old artist'), null);
+    assert.deepEqual(await store.getArtist('new artist'), { key: 'new artist', name: 'New Artist' });
+    assert.match(await stateText(dir), /canonical-rename/);
+  });
+});
+
+test('apply with a stale fingerprint returns 409 with the exact message and writes nothing', async () => {
+  await withSeededApp({ role: 'owner', uid: 'u0' }, async (app, store, dir) => {
+    const preview = (await (await dispatch(app, post(PREVIEW, { op: 'rename', name: 'New Artist' }))).json()) as { previewFingerprint: string };
+    // Another owner edit changes a performance row the rename relies on.
+    await store.upsertEdition({
+      id: 'ed2',
+      key: 'fest/2024',
+      seriesSlug: 'fest',
+      year: 2024,
+      name: 'Fest 2024',
+      status: 'confirmed',
+      updatedAt: SEED_AT,
+      performances: [{ artistKey: 'old artist', name: 'Old Artist', days: ['Thu'], stages: ['Main'], status: 'billed', confidence: 1, sources: [] }],
+    } as Edition);
+    const before = await stateText(dir);
+
+    const res = await dispatch(app, post(APPLY, { op: 'rename', name: 'New Artist', previewFingerprint: preview.previewFingerprint }));
+    assert.equal(res.status, 409);
+    assert.deepEqual(await res.json(), { error: STALE });
+    assert.equal(await stateText(dir), before, 'stale apply writes nothing');
+    assert.deepEqual(await store.getArtist('old artist'), { key: 'old artist', name: 'Old Artist' });
+  });
+});
+
+test('apply of a merge with a fresh fingerprint collapses the source row', async () => {
+  await withSeededApp({ role: 'owner', uid: 'u0' }, async (app, store) => {
+    const preview = (await (await dispatch(app, post(PREVIEW, { op: 'merge', into: 'target artist' }))).json()) as { previewFingerprint: string };
+    const res = await dispatch(app, post(APPLY, { op: 'merge', into: 'target artist', previewFingerprint: preview.previewFingerprint }));
+    assert.equal(res.status, 200);
+    assert.equal(((await res.json()) as { entry: { operation: string } }).entry.operation, 'canonical-merge');
+    assert.equal(await store.getArtist('old artist'), null);
+    assert.ok(await store.getArtist('target artist'));
+  });
+});
+
+// No-op operations are refused by the planner, so preview and apply return its error and write nothing.
+test('an operation with no change is refused by the planner on preview and apply', async () => {
+  await withSeededApp({ role: 'owner', uid: 'u0' }, async (app, _store, dir) => {
+    const before = await stateText(dir);
+    const same = await dispatch(app, post(PREVIEW, { op: 'rename', name: 'Old Artist' }));
+    assert.equal(same.status, 400);
+    assert.match(((await same.json()) as { error: string }).error, /already called/);
+
+    const missing = await dispatch(app, post(PREVIEW, { op: 'alias-remove', name: 'Old AKA' }));
+    assert.equal(missing.status, 404);
+    assert.match(((await missing.json()) as { error: string }).error, /is not an AKA/);
+
+    const self = await dispatch(app, post(APPLY, { op: 'alias-add', name: 'Old Artist', previewFingerprint: 'anything' }));
+    assert.equal(self.status, 400);
+    assert.match(((await self.json()) as { error: string }).error, /already its name/);
+
+    assert.equal(await stateText(dir), before, 'no-op operations write nothing');
+  });
+});
+
+test('apply recomputes the plan on the server and ignores any plan sent by the client', async () => {
+  await withSeededApp({ role: 'owner', uid: 'u0' }, async (app, store) => {
+    const preview = (await (await dispatch(app, post(PREVIEW, { op: 'rename', name: 'New Artist' }))).json()) as { previewFingerprint: string };
+    // A client-built plan is an unknown field, so it is refused before the planner runs.
+    const res = await dispatch(app, post(APPLY, { op: 'rename', name: 'New Artist', previewFingerprint: preview.previewFingerprint, plan: { entry: {} } }));
+    assert.equal(res.status, 400);
+    assert.deepEqual(await store.getArtist('old artist'), { key: 'old artist', name: 'Old Artist' });
   });
 });

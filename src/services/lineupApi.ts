@@ -5,7 +5,7 @@ import { norm } from './listImport';
 import type { Entity, EntityAlias, EntityLink, HistoryEntry, LinkRole } from '../server/entities/types';
 import type { ConfirmRequest } from '../server/lineup/learning';
 import type { CanonicalConfirmInput, CanonicalDiff } from '../server/lineup/canonicalIngest';
-import type { ArtistAppearance, CanonicalArtistRecord, CanonicalEditionSummary } from '../server/entities/canonicalManage';
+import type { ArtistAppearance, ArtistChangeImpact, CanonicalArtistRecord, CanonicalEditionSummary, CanonicalOperation } from '../server/entities/canonicalManage';
 import type { DetailCandidate, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
 import type { EventPatch } from '../server/events/service';
 import type { ActivityEntry } from '../server/events/activityLog';
@@ -464,6 +464,34 @@ export const collaborationsApi = {
   remove: (alias: string) =>
     request<{ entry: HistoryEntry }>(`/api/collaborations/${encodeURIComponent(alias)}`, { method: 'DELETE' }),
 };
+
+// Catalog artist change (slice 8.7): one operation, discriminated by `op`. Same shape as the server body.
+export type CanonicalArtistOperation =
+  | { op: 'rename'; name: string }
+  | { op: 'alias-add'; name: string }
+  | { op: 'alias-remove'; name: string }
+  | { op: 'merge'; into: string };
+
+// Preview reply: the operation, aggregate impact counts and an opaque fingerprint. Nothing is written.
+export interface CanonicalArtistPreview {
+  operation: CanonicalOperation;
+  impact: ArtistChangeImpact;
+  previewFingerprint: string;
+}
+
+// Apply reply: the applied history entry summary and the community count recomputed at apply time.
+export interface CanonicalArtistApplied {
+  entry: { id: string; operation: CanonicalOperation; summary: string; at: string };
+  communityNameKeysAffected: number | null;
+}
+
+// Owner only. Returns counts and a fingerprint; writes nothing.
+export const previewCanonicalArtistChange = (key: string, body: CanonicalArtistOperation) =>
+  request<CanonicalArtistPreview>(`/api/manage/canonical/artists/${encodeURIComponent(key)}/preview`, post(body));
+
+// Owner only. The server recomputes the plan; previewFingerprint must match the current state or the reply is 409.
+export const applyCanonicalArtistChange = (key: string, body: CanonicalArtistOperation, previewFingerprint: string) =>
+  request<CanonicalArtistApplied>(`/api/manage/canonical/artists/${encodeURIComponent(key)}/apply`, post({ ...body, previewFingerprint }));
 
 // Global Archive (owner only): the shared catalog, not your log.
 export const canonicalApi = {
