@@ -180,6 +180,17 @@ test('readActName cleans concept prefixes and unmatched parentheses', () => {
   assert.deepEqual(dangling.parts, ['Solo', 'Artist B']);
 });
 
+test('layout junk around a name is trimmed, but not inside it', () => {
+  assert.deepEqual(readActName('[Artist]'), { parts: ['Artist'] });
+  assert.deepEqual(readActName('*Artist*'), { parts: ['Artist'] });
+  assert.deepEqual(readActName('[Artist A b2b Artist B]'), { parts: ['Artist A', 'Artist B'] });
+  assert.deepEqual(readActName('Artist*'), { parts: ['Artist'] });
+  assert.deepEqual(readActName('Ke$ha'), { parts: ['Ke$ha'] });
+  assert.deepEqual(readActName('!!!'), { parts: ['!!!'] });
+  assert.deepEqual(readActName('Art*ist'), { parts: ['Art*ist'] });
+  assert.deepEqual(readActName('Art[ist'), { parts: ['Art[ist'] });
+});
+
 test('mergeLineup drops non-music and silent disco claims', () => {
   const claim = (name: string): PerformerClaim => ({
     id: name,
