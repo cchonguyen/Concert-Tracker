@@ -1,9 +1,9 @@
+import { dispatch } from './helpers/testApp.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { AddressInfo } from 'node:net';
 import express from 'express';
 import { createGmail, GmailApi, GmailAuthError, GmailBusy, GmailMessage, GmailReadError, messageBodies, toMessage } from '../src/server/events/email/gmail.ts';
 import { mergeImports, READERS, readEmails } from '../src/server/events/email/imports.ts';
@@ -206,11 +206,7 @@ async function server(t: { after: (fn: () => void) => void }, gmail: GmailApi | 
   const app = express();
   app.use(express.json());
   app.use('/api', importsRouter(deps, gmail));
-  const listening = app.listen(0);
-  await new Promise((resolve) => listening.once('listening', resolve));
-  t.after(() => listening.close());
-  const base = `http://127.0.0.1:${(listening.address() as AddressInfo).port}/api`;
-  const call = (route: string, method = 'GET') => fetch(`${base}${route}`, { method, redirect: 'manual' });
+  const call = (route: string, method = 'GET') => dispatch(app, { method, url: `/api${route}` });
   return { store, call };
 }
 

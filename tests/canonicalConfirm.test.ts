@@ -1,3 +1,4 @@
+import { dispatch } from './helpers/testApp.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp } from 'node:fs/promises';
@@ -5,7 +6,6 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import express from 'express';
-import type { AddressInfo } from 'node:net';
 import { confirmCanonicalEdition, CanonicalInputError, parseCanonicalInput } from '../src/server/lineup/canonicalIngest.ts';
 import { entitiesRouter } from '../src/server/entities/routes.ts';
 import { reviewSubjectFromEdition, startRows } from '../src/services/reviewRows.ts';
@@ -185,28 +185,23 @@ test('reopening and reconfirming never writes to a personal log', async () => {
 });
 
 // The edition detail and the confirm preview are owner only (members get 403 before the store is read).
-async function withMember(role: string, fn: (url: string) => Promise<void>) {
+async function withMember(role: string, fn: (app: express.Express) => Promise<void>) {
   const store: any = new Proxy({}, { get: () => () => { throw new Error('store should not be reached for members'); } });
   const app = express();
   app.use(express.json());
   app.use((_req, _res, next) => runAsMember({ role, uid: 'u1' } as any, store, next));
   app.use('/api', entitiesRouter({ store } as any));
-  const server = app.listen(0);
-  try {
-    await fn(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
-  } finally {
-    server.close();
-  }
+  await fn(app);
 }
 
 test('member gets 403 on the edition detail and on the confirm preview', async () => {
-  await withMember('member', async (url) => {
-    const detail = await fetch(`${url}/api/manage/canonical/editions/abc`);
+  await withMember('member', async (app) => {
+    const detail = await dispatch(app, { url: '/api/manage/canonical/editions/abc' });
     assert.equal(detail.status, 403);
-    const confirm = await fetch(`${url}/api/manage/canonical/confirm`, {
+    const confirm = await dispatch(app, { url: '/api/manage/canonical/confirm',
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'X', year: 2024 }),
+      body: { name: 'X', year: 2024 },
     });
     assert.equal(confirm.status, 403);
   });

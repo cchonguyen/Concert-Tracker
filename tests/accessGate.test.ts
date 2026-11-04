@@ -1,8 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { AddressInfo } from 'node:net';
-import { request } from 'node:http';
 import express from 'express';
+import { dispatch } from './helpers/testApp.ts';
 import { accessConfigFromEnv, clearAccessKeys } from '../src/server/share/access.ts';
 import { accessGateFromEnv, localOwnerFromEnv, workerSettings } from '../src/server/auth/config.ts';
 import { ownerMiddleware } from '../src/server/auth/gate.ts';
@@ -39,12 +38,6 @@ async function accessFixture() {
   return { config, tokenFor, getJson: async () => ({ keys: [jwk] }) };
 }
 
-async function serve(app: express.Express, t: { after: (fn: () => void) => void }) {
-  const listening = app.listen(0);
-  await new Promise((resolve) => listening.once('listening', resolve));
-  t.after(() => listening.close());
-  return `http://127.0.0.1:${(listening.address() as AddressInfo).port}`;
-}
 
 const gateFor = (env: Record<string, string | undefined>) => accessGateFromEnv(env, noDirectory);
 
@@ -106,8 +99,7 @@ test('owner middleware: no token is 401, a friend is 403, the owner passes', asy
   const app = express();
   app.use('/api', ownerMiddleware({ access: config, ownerEmail: OWNER, getJson, now: () => NOW }));
   app.get('/api/events', (_req, res) => res.json({ rows: 'owner data' }));
-  const base = await serve(app, t);
-  const get = (token?: string) => fetch(`${base}/api/events`, { headers: token ? { 'Cf-Access-Jwt-Assertion': token } : {} });
+  const get = (token?: string) => dispatch(app, { url: '/api/events', headers: token ? { 'Cf-Access-Jwt-Assertion': token } : {} });
 
   assert.equal((await get()).status, 401);
   assert.equal((await get(await tokenFor(FRIEND))).status, 403);
@@ -124,25 +116,25 @@ const RUNNER = { kick: async () => {} };
 test('closed: every /api route is 503 for everyone, and health still answers with status only', async (t) => {
   const { tokenFor } = await accessFixture();
   t.mock.method(console, 'error', () => {});
-  const base = await serve(createApiApp(DEPS, RUNNER, { kind: 'closed', reason: 'test' }), t);
+  const app = createApiApp(DEPS, RUNNER, { kind: 'closed', reason: 'test' });
   for (const token of [undefined, await tokenFor(OWNER), await tokenFor(FRIEND)]) {
     const headers: Record<string, string> = token ? { 'Cf-Access-Jwt-Assertion': token } : {};
     for (const path of ['/api/events', '/api/members', '/api/me', '/api/gmail/status']) {
-      assert.equal((await fetch(`${base}${path}`, { headers })).status, 503, path);
+      assert.equal((await dispatch(app, { url: path, headers })).status, 503, path);
     }
   }
-  const health = await fetch(`${base}/api/health`);
+  const health = await dispatch(app, { url: '/api/health' });
   assert.equal(health.status, 200);
   assert.deepEqual(Object.keys(await health.json()).sort(), ['status', 'timestamp']);
 });
 
 test('owner gate: a friend gets 403 from /api, the owner gets past the check', async (t) => {
   const { config, tokenFor, getJson } = await accessFixture();
-  const base = await serve(createApiApp(DEPS, RUNNER, { kind: 'owner', access: config, ownerEmail: OWNER, getJson }), t);
-  assert.equal((await fetch(`${base}/api/events`)).status, 401);
-  const friend = await fetch(`${base}/api/events`, { headers: { 'Cf-Access-Jwt-Assertion': await tokenFor(FRIEND) } });
+  const app = createApiApp(DEPS, RUNNER, { kind: 'owner', access: config, ownerEmail: OWNER, getJson });
+  assert.equal((await dispatch(app, { url: '/api/events' })).status, 401);
+  const friend = await dispatch(app, { url: '/api/events', headers: { 'Cf-Access-Jwt-Assertion': await tokenFor(FRIEND) } });
   assert.equal(friend.status, 403);
-  const owner = await fetch(`${base}/api/events`, { headers: { 'Cf-Access-Jwt-Assertion': await tokenFor(OWNER) } });
+  const owner = await dispatch(app, { url: '/api/events', headers: { 'Cf-Access-Jwt-Assertion': await tokenFor(OWNER) } });
   assert.ok(![401, 403, 503].includes(owner.status), `owner was refused with ${owner.status}`);
 });
 
@@ -162,16 +154,12 @@ test('the Worker gate never returns the local mode, whatever is set', () => {
 
 test('local owner: loopback is let through; a forwarded or non-loopback request is refused', async (t) => {
   t.mock.method(console, 'error', () => {});
-  const base = await serve(createApiApp(DEPS, RUNNER, { kind: 'local' }), t);
-  assert.equal((await fetch(`${base}/api/me`)).status, 200);
-  assert.equal((await fetch(`${base}/api/me`, { headers: { 'X-Forwarded-For': '203.0.113.9' } })).status, 403);
-  assert.equal((await fetch(`${base}/api/me`, { headers: { 'Cf-Connecting-IP': '203.0.113.9' } })).status, 403);
-  // fetch does not let a script set Host, so this one goes over http.
-  const hostStatus = await new Promise<number>((resolve, reject) => {
-    const req = request(`${base}/api/me`, { headers: { Host: 'concert.example.com' } }, (res) => resolve(res.statusCode ?? 0));
-    req.on('error', reject);
-    req.end();
-  });
+  const app = createApiApp(DEPS, RUNNER, { kind: 'local' });
+  assert.equal((await dispatch(app, { url: '/api/me' })).status, 200);
+  assert.equal((await dispatch(app, { url: '/api/me', headers: { 'X-Forwarded-For': '203.0.113.9' } })).status, 403);
+  assert.equal((await dispatch(app, { url: '/api/me', headers: { 'Cf-Connecting-IP': '203.0.113.9' } })).status, 403);
+  // The Host header is set explicitly, as a raw HTTP client would.
+  const hostStatus = (await dispatch(app, { url: '/api/me', headers: { Host: 'concert.example.com' } })).status;
   assert.equal(hostStatus, 403);
-  assert.equal((await fetch(`${base}/api/health`)).status, 200);
+  assert.equal((await dispatch(app, { url: '/api/health' })).status, 200);
 });

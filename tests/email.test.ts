@@ -1,9 +1,9 @@
+import { dispatch } from './helpers/testApp.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { AddressInfo } from 'node:net';
 import express from 'express';
 import { readEmailDate, yearFromWeekday } from '../src/server/events/email/dates.ts';
 import { eventFromImport, findLogged, mergeImports, readEmails, reviewList } from '../src/server/events/email/imports.ts';
@@ -381,15 +381,12 @@ async function server(t: { after: (fn: () => void) => void }) {
   const app = express();
   app.use(express.json({ limit: '25mb' }));
   app.use('/api', importsRouter(deps));
-  const listening = app.listen(0);
-  await new Promise((resolve) => listening.once('listening', resolve));
-  t.after(() => listening.close());
-  const base = `http://127.0.0.1:${(listening.address() as AddressInfo).port}/api`;
   const call = (route: string, body?: unknown, token?: string) =>
-    fetch(`${base}${route}`, {
+    dispatch(app, {
       method: body === undefined ? 'GET' : 'POST',
+      url: `/api${route}`,
       headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body,
     });
   return { store, call };
 }

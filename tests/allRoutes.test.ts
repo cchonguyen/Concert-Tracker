@@ -1,6 +1,6 @@
+import { dispatch } from './helpers/testApp.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { AddressInfo } from 'node:net';
 import type express from 'express';
 import { clearAccessKeys } from '../src/server/share/access.ts';
 import { accessGateFromEnv, type MemberStores } from '../src/server/auth/config.ts';
@@ -86,9 +86,6 @@ test('every /api route refuses a stranger with not_invited, except the two reque
   assert.equal(gate.kind, 'multi');
 
   const app = createApiApp({ store: {} } as unknown as PipelineDeps, { kick: async () => {} } as any, gate);
-  const server = app.listen(0);
-  t.after(() => server.close());
-  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const token = await fixture.token(STRANGER);
 
   const routes = registeredRoutes(app);
@@ -97,12 +94,19 @@ test('every /api route refuses a stranger with not_invited, except the two reque
   for (const route of routes) {
     if (PUBLIC_ROUTES.has(route)) continue;
     const [method, path] = route.split(' ');
-    const res = await fetch(base + path, {
+    const res = await dispatch(app, {
       method,
+      url: path,
       headers: { 'Content-Type': 'application/json', 'Cf-Access-Jwt-Assertion': token },
       body: method === 'GET' || method === 'DELETE' ? undefined : '{}',
     });
-    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (() => {
+      try {
+        return res.json<Record<string, unknown>>();
+      } catch {
+        return {};
+      }
+    })();
     seen.push(route);
     if (ALLOWED.has(route)) {
       assert.equal(res.status, 200, route);

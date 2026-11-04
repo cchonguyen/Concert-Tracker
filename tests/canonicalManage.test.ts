@@ -1,3 +1,4 @@
+import { dispatch } from './helpers/testApp.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { appearancesOf, isOwner, listCanonicalEditions, summarizeEdition, unifyArtists } from '../src/server/entities/canonicalManage.ts';
@@ -110,7 +111,6 @@ test('unifyArtists: community counts fill in per key; without counts it stays nu
 // ---- Catalog artists as records (GA3) ----------------------------------------
 
 import express from 'express';
-import type { AddressInfo } from 'node:net';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -269,19 +269,13 @@ test('owner only: members cannot undo an artist change, and get 403 on the artis
   app.use(express.json());
   app.use((_req, _res, next) => runAsMember(MEMBER, store, next));
   app.use('/api', entitiesRouter({ store } as any));
-  const server = app.listen(0);
-  try {
-    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    const calls = [
-      fetch(`${base}/api/manage/canonical/artists/porter`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'P' }) }),
-      fetch(`${base}/api/manage/canonical/artists/porter/merge`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ into: 'porter robinson' }) }),
-      fetch(`${base}/api/manage/canonical/artists/porter/aliases`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'P' }) }),
-      fetch(`${base}/api/manage/canonical/artists/porter/aliases?name=P`, { method: 'DELETE' }),
-    ];
-    for (const res of await Promise.all(calls)) assert.equal(res.status, 403);
-  } finally {
-    server.close();
-  }
+  const calls = [
+    dispatch(app, { method: 'PATCH', url: '/api/manage/canonical/artists/porter', headers: { 'content-type': 'application/json' }, body: { name: 'P' } }),
+    dispatch(app, { method: 'POST', url: '/api/manage/canonical/artists/porter/merge', headers: { 'content-type': 'application/json' }, body: { into: 'porter robinson' } }),
+    dispatch(app, { method: 'POST', url: '/api/manage/canonical/artists/porter/aliases', headers: { 'content-type': 'application/json' }, body: { name: 'P' } }),
+    dispatch(app, { method: 'DELETE', url: '/api/manage/canonical/artists/porter/aliases?name=P' }),
+  ];
+  for (const res of await Promise.all(calls)) assert.equal(res.status, 403);
   assert.equal((await store.getArtist('joel zimmerman'))?.name, 'Joel Zimmerman', 'a refused call changes nothing');
 });
 
@@ -292,23 +286,18 @@ test('owner routes: rename over HTTP, with the AKAs on the detail', async () => 
   app.use(express.json());
   app.use((_req, _res, next) => runAsMember(OWNER, store, next));
   app.use('/api', entitiesRouter({ store } as any));
-  const server = app.listen(0);
-  try {
-    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    const renamed = await fetch(`${base}/api/manage/canonical/artists/deadmau5`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'Joel Zimmerman' }),
-    });
-    assert.equal(renamed.status, 200);
-    const { entry } = (await renamed.json()) as { entry: { operation: string } };
-    assert.equal(entry.operation, 'canonical-rename');
-    const detail = (await (await fetch(`${base}/api/manage/canonical/artists/joel%20zimmerman`)).json()) as { artist: { akas: string[]; name: string } };
-    assert.equal(detail.artist.name, 'Joel Zimmerman');
-    assert.deepEqual(detail.artist.akas, ['deadmau5']);
-  } finally {
-    server.close();
-  }
+  const renamed = await dispatch(app, {
+    method: 'PATCH',
+    url: '/api/manage/canonical/artists/deadmau5',
+    headers: { 'content-type': 'application/json' },
+    body: { name: 'Joel Zimmerman' },
+  });
+  assert.equal(renamed.status, 200);
+  const { entry } = renamed.json<{ entry: { operation: string } }>();
+  assert.equal(entry.operation, 'canonical-rename');
+  const detail = (await dispatch(app, { url: '/api/manage/canonical/artists/joel%20zimmerman' })).json<{ artist: { akas: string[]; name: string } }>();
+  assert.equal(detail.artist.name, 'Joel Zimmerman');
+  assert.deepEqual(detail.artist.akas, ['deadmau5']);
 });
 
 test('canonical edits never write logged_events or a member\'s seen text', async () => {

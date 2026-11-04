@@ -1,6 +1,6 @@
+import { dispatch } from './helpers/testApp.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { AddressInfo } from 'node:net';
 import express from 'express';
 import { accessConfigFromEnv, clearAccessKeys } from '../src/server/share/access.ts';
 import { memberMiddleware } from '../src/server/auth/requestScope.ts';
@@ -95,15 +95,13 @@ async function appFixture(rows: Record<string, { role: 'owner' | 'member'; block
   app.use('/api', memberMiddleware({ config, directory, base, now: () => NOW, getJson: access.getJson as any }));
   app.use('/api', membersRouter(directory, base, store));
   app.use('/api', accessRequestOwnerRouter(store));
-  const server = app.listen(0);
-  const { port } = server.address() as AddressInfo;
   const call = async (email: string | null, path: string, init: { method?: string; body?: unknown } = {}) => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (email) headers['Cf-Access-Jwt-Assertion'] = await access.token(email, `sub-${email}`);
-    const res = await fetch(`http://127.0.0.1:${port}${path}`, { method: init.method ?? 'GET', headers, body: init.body === undefined ? undefined : JSON.stringify(init.body) });
-    return { status: res.status, body: (await res.json().catch(() => ({}))) as any };
+    const res = await dispatch(app, { method: init.method ?? 'GET', url: path, headers, body: init.body });
+    return { status: res.status, body: (() => { try { return res.json() as any; } catch { return {}; } })() };
   };
-  return { call, calls, close: () => server.close() };
+  return { call, calls };
 }
 
 const OWNER = 'owner@example.com';
@@ -114,68 +112,52 @@ const ROWS = { [OWNER]: { role: 'owner' as const }, [FRIEND]: { role: 'member' a
 test('asking: a signed-in stranger asks with the token email, and sees only their own state', async () => {
   clearMemberCache();
   const f = await appFixture(ROWS, { submit: 'sent', view: 'none' });
-  try {
-    assert.equal((await f.call(null, '/api/access-requests', { method: 'POST' })).status, 401);
-    // The email in a body is ignored: the token's email is the identity.
-    const asked = await f.call(STRANGER, '/api/access-requests', { method: 'POST', body: { email: OWNER } });
-    assert.equal(asked.status, 200);
-    assert.deepEqual(asked.body, { state: 'sent' });
-    assert.deepEqual(f.calls[0], ['submit', STRANGER, `sub-${STRANGER}`]);
-    assert.deepEqual((await f.call(STRANGER, '/api/access-requests/mine')).body, { state: 'none' });
-  } finally {
-    f.close();
-  }
+  assert.equal((await f.call(null, '/api/access-requests', { method: 'POST' })).status, 401);
+  // The email in a body is ignored: the token's email is the identity.
+  const asked = await f.call(STRANGER, '/api/access-requests', { method: 'POST', body: { email: OWNER } });
+  assert.equal(asked.status, 200);
+  assert.deepEqual(asked.body, { state: 'sent' });
+  assert.deepEqual(f.calls[0], ['submit', STRANGER, `sub-${STRANGER}`]);
+  assert.deepEqual((await f.call(STRANGER, '/api/access-requests/mine')).body, { state: 'none' });
 });
 
 test('asking: the pause and the cap answer closed, and a member goes on to the app (never asks)', async () => {
   clearMemberCache();
   const f = await appFixture(ROWS, { submit: 'closed' });
-  try {
-    assert.deepEqual((await f.call(STRANGER, '/api/access-requests', { method: 'POST' })).body, { state: 'closed' });
-    const member = await f.call(FRIEND, '/api/access-requests', { method: 'POST' });
-    assert.equal(member.status, 404);
-    assert.equal(f.calls.filter(([name]) => name === 'submit').length, 1);
-  } finally {
-    f.close();
-  }
+  assert.deepEqual((await f.call(STRANGER, '/api/access-requests', { method: 'POST' })).body, { state: 'closed' });
+  const member = await f.call(FRIEND, '/api/access-requests', { method: 'POST' });
+  assert.equal(member.status, 404);
+  assert.equal(f.calls.filter(([name]) => name === 'submit').length, 1);
 });
 
 test('refusals: a stranger gets code not_invited with their own email; owner-only refusals carry no code', async () => {
   clearMemberCache();
   const f = await appFixture(ROWS);
-  try {
-    const refused = await f.call(STRANGER, '/api/me');
-    assert.equal(refused.status, 403);
-    assert.equal(refused.body.code, 'not_invited');
-    assert.equal(refused.body.email, STRANGER);
-    const ownerOnly = await f.call(FRIEND, '/api/access-requests');
-    assert.equal(ownerOnly.status, 403);
-    assert.equal(ownerOnly.body.code, undefined);
-    assert.equal(ownerOnly.body.email, undefined);
-  } finally {
-    f.close();
-  }
+  const refused = await f.call(STRANGER, '/api/me');
+  assert.equal(refused.status, 403);
+  assert.equal(refused.body.code, 'not_invited');
+  assert.equal(refused.body.email, STRANGER);
+  const ownerOnly = await f.call(FRIEND, '/api/access-requests');
+  assert.equal(ownerOnly.status, 403);
+  assert.equal(ownerOnly.body.code, undefined);
+  assert.equal(ownerOnly.body.email, undefined);
 });
 
 test('the owner sees the history and the pending count; status changes are checked', async () => {
   clearMemberCache();
   const f = await appFixture(ROWS, { pending: 3 });
-  try {
-    const list = await f.call(OWNER, '/api/access-requests');
-    assert.equal(list.status, 200);
-    assert.equal(list.body.pending, 1);
-    assert.equal(list.body.requests[0].email, 'cy@example.com');
-    assert.equal((await f.call(OWNER, '/api/me')).body.pendingRequests, 3);
-    assert.equal((await f.call(FRIEND, '/api/me')).body.pendingRequests, 0);
-    assert.equal((await f.call(OWNER, '/api/access-requests/cy%40example.com', { method: 'PUT', body: { to: 'bogus' } })).status, 400);
-    assert.equal((await f.call(OWNER, '/api/access-requests/cy%40example.com', { method: 'PUT', body: { to: 'left' } })).status, 400);
-    assert.equal((await f.call(OWNER, '/api/access-requests/not-an-email', { method: 'PUT', body: { to: 'declined' } })).status, 400);
-    assert.equal((await f.call(FRIEND, '/api/access-requests/cy%40example.com', { method: 'PUT', body: { to: 'declined' } })).status, 403);
-    assert.equal((await f.call(OWNER, '/api/access-requests/Cy%40Example.com', { method: 'PUT', body: { to: 'accepted' } })).status, 200);
-    assert.deepEqual(f.calls.at(-1), ['setStatus', 'cy@example.com', 'accepted']);
-  } finally {
-    f.close();
-  }
+  const list = await f.call(OWNER, '/api/access-requests');
+  assert.equal(list.status, 200);
+  assert.equal(list.body.pending, 1);
+  assert.equal(list.body.requests[0].email, 'cy@example.com');
+  assert.equal((await f.call(OWNER, '/api/me')).body.pendingRequests, 3);
+  assert.equal((await f.call(FRIEND, '/api/me')).body.pendingRequests, 0);
+  assert.equal((await f.call(OWNER, '/api/access-requests/cy%40example.com', { method: 'PUT', body: { to: 'bogus' } })).status, 400);
+  assert.equal((await f.call(OWNER, '/api/access-requests/cy%40example.com', { method: 'PUT', body: { to: 'left' } })).status, 400);
+  assert.equal((await f.call(OWNER, '/api/access-requests/not-an-email', { method: 'PUT', body: { to: 'declined' } })).status, 400);
+  assert.equal((await f.call(FRIEND, '/api/access-requests/cy%40example.com', { method: 'PUT', body: { to: 'declined' } })).status, 403);
+  assert.equal((await f.call(OWNER, '/api/access-requests/Cy%40Example.com', { method: 'PUT', body: { to: 'accepted' } })).status, 200);
+  assert.deepEqual(f.calls.at(-1), ['setStatus', 'cy@example.com', 'accepted']);
 });
 
 test('settings: pause is on or off, the cap is a whole number from 1 to 100', async () => {
@@ -187,30 +169,22 @@ test('settings: pause is on or off, the cap is a whole number from 1 to 100', as
   assert.throws(() => cleanSettingsPatch({ cap: '20' }), /1 to 100/);
   assert.throws(() => cleanSettingsPatch({ paused: 'yes' }), /on or off/);
   const f = await appFixture(ROWS);
-  try {
-    assert.equal((await f.call(OWNER, '/api/access-requests/settings', { method: 'PUT', body: { cap: 500 } })).status, 400);
-    const saved = await f.call(OWNER, '/api/access-requests/settings', { method: 'PUT', body: { cap: 5, paused: true } });
-    assert.deepEqual(saved.body.settings, { paused: true, cap: 5 });
-  } finally {
-    f.close();
-  }
+  assert.equal((await f.call(OWNER, '/api/access-requests/settings', { method: 'PUT', body: { cap: 500 } })).status, 400);
+  const saved = await f.call(OWNER, '/api/access-requests/settings', { method: 'PUT', body: { cap: 5, paused: true } });
+  assert.deepEqual(saved.body.settings, { paused: true, cap: 5 });
 });
 
 test('a blocked member is refused at once, even with a cached entry on this instance', async () => {
   clearMemberCache();
   const rows: Record<string, { role: 'owner' | 'member'; blocked?: boolean }> = { ...ROWS };
   const f = await appFixture(rows);
-  try {
-    assert.equal((await f.call(FRIEND, '/api/me')).status, 200);
-    rows[FRIEND] = { role: 'member', blocked: true };
-    // The owner's block clears this instance's cache; other instances catch up within 15 seconds.
-    assert.equal((await f.call(OWNER, `/api/access-requests/${encodeURIComponent(FRIEND)}`, { method: 'PUT', body: { to: 'declined' } })).status, 200);
-    const refused = await f.call(FRIEND, '/api/me');
-    assert.equal(refused.status, 403);
-    assert.equal(refused.body.code, 'not_invited');
-  } finally {
-    f.close();
-  }
+  assert.equal((await f.call(FRIEND, '/api/me')).status, 200);
+  rows[FRIEND] = { role: 'member', blocked: true };
+  // The owner's block clears this instance's cache; other instances catch up within 15 seconds.
+  assert.equal((await f.call(OWNER, `/api/access-requests/${encodeURIComponent(FRIEND)}`, { method: 'PUT', body: { to: 'declined' } })).status, 200);
+  const refused = await f.call(FRIEND, '/api/me');
+  assert.equal(refused.status, 403);
+  assert.equal(refused.body.code, 'not_invited');
 });
 
 test('a blocked member\'s lookup job is parked, with no outside call', async () => {
