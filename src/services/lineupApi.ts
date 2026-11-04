@@ -471,7 +471,9 @@ export const canonicalApi = {
   // The ingest queue: jobs with no saved event, newest first.
   lookups: () => request<{ jobs: LookupJob[] }>('/api/manage/canonical/lookups').then((r) => r.jobs),
   editions: (query: string, status: 'all' | 'confirmed' | 'draft') =>
-    request<{ editions: CanonicalEditionSummary[] }>(`/api/manage/canonical/editions?${new URLSearchParams({ query, status }).toString()}`),
+    request<{ editions: CanonicalEditionSummary[]; total: number; hasMore: boolean }>(
+      `/api/manage/canonical/editions?${new URLSearchParams({ query, status }).toString()}`,
+    ),
   edition: (id: string) => request<{ edition: Edition }>(`/api/manage/canonical/editions/${encodeURIComponent(id)}`),
   // Edition facts with a required source note; blank facts are sent as null and stay blank.
   editFacts: (id: string, facts: { name: string; startDate: string | null; endDate: string | null; venue: string | null; city: string | null; sourceNote: string }) =>

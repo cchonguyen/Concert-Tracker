@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { ArtistIdentity, Edition } from '../lineup/types';
+import type { ArtistIdentity, Edition, EditionPerformance } from '../lineup/types';
 import { normalizeName } from '../lineup/text';
 import type { LineupStore } from '../lineup/store/types';
 import { currentMember } from '../auth/requestScope';
-import { ArtistAliasRow, ArtistEditionRow, CanonicalChange, Entity, HistoryEntry } from './types';
-import { cleanName, ManageError, mergeEntity, renameEntity, undoEntry, UndoResult } from './manage';
+import { ArtistAliasRow, ArtistEditionRow, CANONICAL_OPERATIONS, CanonicalChange, Entity, EntityAlias, EntityLink, HistoryEntry } from './types';
+import { applyEntityChangePlan, cleanName, EntityChangePlan, ManageError, planEntityMerge, planEntityRename, undoEntry, UndoResult } from './manage';
 
 // Canonical editions for the owner's Global Archive (spec Phase 1).
 // Only shared facts: no personal attendance, prices, notes or companions.
@@ -158,7 +158,7 @@ export function appearancesOf(editions: Edition[], artistKey: string): ArtistApp
 // ---- Catalog artists as records (Global archive, GA3) ----------------------
 // Edits to canonical_artists, artist_aliases and performances (the edition
 // links). Never a member's logged_events or seen text. The owner's own record
-// of the artist follows only through the existing entity operations (manage.ts),
+// of the artist follows only through the existing entity operations (manage.ts; its seen-text rewrites are the only event writes),
 // and each such step is undone with its change. Every change writes a history
 // entry first (entity_history, with a `canonical` manifest), so undo can put back
 // exactly what it changed.
@@ -219,13 +219,17 @@ const scopeKeys = (list: ArtistIdentity[]) => [...new Set(list.map((a) => a.key)
 
 // Writes `target` over `current`, in an order the foreign keys allow: artists
 // first (an MBID is freed before it is set again), then performances, then AKAs,
-// then the artists that are gone.
+// then the artists that are gone. Only rows that differ are written.
 async function writeScope(store: LineupStore, current: Scope, target: Scope): Promise<void> {
   for (const c of current.artists) {
     if (c.mbid && !target.artists.some((t) => t.key === c.key && t.mbid === c.mbid)) await store.upsertArtist({ ...c, mbid: undefined });
   }
-  for (const a of target.artists) await store.upsertArtist(a);
-  await store.putArtistPerformances(target.performances);
+  for (const t of target.artists) {
+    if (!current.artists.some((c) => stable(c) === stable(t))) await store.upsertArtist(t);
+  }
+  await store.putArtistPerformances(
+    target.performances.filter((t) => !current.performances.some((c) => perfKey(c) === perfKey(t) && stable(c) === stable(t))),
+  );
   const gone = current.performances.filter((c) => !target.performances.some((t) => perfKey(t) === perfKey(c)));
   await store.deleteArtistPerformances(gone.map(({ editionId, artistKey }) => ({ editionId, artistKey })));
   const put: Record<string, string> = {};
@@ -287,40 +291,293 @@ async function assertFree(store: LineupStore, aliases: Record<string, string>, k
   }
 }
 
-// The owner's own artist record with this key, when there is one to follow.
-async function personalArtist(store: LineupStore, key: string): Promise<Entity | undefined> {
-  return (await store.listEntities()).find((e) => e.kind === 'artist' && !e.mergedIntoId && !e.nameEncrypted && e.nameNormalized === key);
+// ---- Planner (spec "owner planner") ------------------------------------------
+// One read-only planner for every catalog artist change. Preview and apply both
+// call planArtistChange over the same snapshot; applyArtistChangePlan writes only
+// what the plan holds and recomputes nothing. Planning writes nothing.
+//
+// The planner is NOT an authorization boundary. The owner-only routes and the
+// store RPC (canonical_assert_owner in migration 0037) decide who may plan or apply.
+//
+// No fingerprint here: canonical_artist_fingerprint (migration 0037) computes it in
+// SQL, so there is one algorithm. The store slice calls it on `entry`.
+
+export type CanonicalOperation = (typeof CANONICAL_OPERATIONS)[number];
+
+export type ArtistChangeInput =
+  | { op: 'rename'; name: unknown }
+  | { op: 'alias-add'; name: unknown }
+  | { op: 'alias-remove'; name: unknown }
+  | { op: 'merge'; into: string };
+
+export interface ArtistChangeImpact {
+  // Distinct editions with at least one performance row changed (a collapsed merge row counts).
+  editionsAffected: number;
+  // Existing performance rows whose artist key moves (merge collisions: the collapsed source row counts).
+  performancesMoved: number;
+  // The owner's artist records the operation changes: 0, 1 or 2. No details.
+  ownerRecordsAffected: number;
+  // Name keys in the aggregate community map whose canonical resolution changes. Null when unavailable.
+  communityNameKeysAffected: number | null;
 }
 
-function entryFor(operation: HistoryEntry['operation'], summary: string, key: string, change: CanonicalChange, at: string): HistoryEntry {
-  return {
-    id: randomUUID(),
-    operation,
-    summary,
-    sourceEntityId: key,
-    entities: { before: [], after: [] },
-    touched: [],
-    aliases: { before: [], after: [] },
-    links: { before: [], after: [] },
-    events: [],
-    createdAt: at,
-    canonical: change,
+// The SQL contract's row images (migration 0037): snake_case, the columns the function compares.
+export interface SqlArtistImage {
+  key: string;
+  name: string;
+  mbid: string | null;
+  resolved_at: string | null;
+}
+
+export interface SqlPerformanceImage {
+  id: string | null; // null when the store did not supply the row id (see ArtistChangePlan.sqlReady)
+  edition_id: string;
+  artist_key: string;
+  name: string;
+  days: string[];
+  stages: string[];
+  status: EditionPerformance['status'];
+  billing: string | null;
+  confidence: number;
+  sources: unknown[];
+  slot_id: string | null;
+  alias: string | null;
+  b2b: string[] | null;
+  set: string | null;
+}
+
+export interface SqlEntityImage {
+  id: string;
+  kind: string;
+  name: string;
+  name_normalized: string;
+  attrs: Record<string, unknown>;
+  merged_into_id: string | null;
+}
+
+// An owner alias row (entity_aliases, or companion_token in user_entity_aliases) of a touched owner record.
+export interface SqlOwnerAliasImage {
+  entity_id: string;
+  kind: string;
+  alias: string;
+}
+
+// An owner link row (entity_links, or user_entity_links) of a touched owner record.
+export interface SqlOwnerLinkImage {
+  from_id: string;
+  to_id: string;
+  role: string;
+  created_at: string | null;
+}
+
+// The seen text of one event row the rewrite changes (logged_events.seen).
+export interface SqlEventSeenImage {
+  id: string;
+  seen: unknown;
+}
+
+// One activity_log row for a seen-text change: the same row the TypeScript store writes (diffEvent, activityLog.ts).
+export interface SqlActivityRow {
+  event_id: string;
+  action: 'update';
+  field: 'seen';
+  before: unknown;
+  after: unknown;
+  sensitive: boolean;
+}
+
+// The plan as the SQL function takes it (migration 0037, header comment).
+export interface SqlCanonicalEntry {
+  id: string;
+  operation: CanonicalOperation;
+  summary: string;
+  createdAt: string;
+  canonical: {
+    key: string;
+    artists: { before: SqlArtistImage[]; after: SqlArtistImage[] };
+    performances: { before: SqlPerformanceImage[]; after: SqlPerformanceImage[] };
+    aliases: { before: ArtistAliasRow[]; after: ArtistAliasRow[] };
+    owner: { before: SqlEntityImage[]; after: SqlEntityImage[] };
+    // Owner-side writes of the personal record change (migration 0037): applied in the same transaction.
+    ownerTouched: string[];
+    ownerAliases: { before: SqlOwnerAliasImage[]; after: SqlOwnerAliasImage[] };
+    ownerLinks: { before: SqlOwnerLinkImage[]; after: SqlOwnerLinkImage[] };
+    events: { before: SqlEventSeenImage[]; after: SqlEventSeenImage[] };
+    // One row per changed seen text, written to activity_log by the SQL apply (migration 0037).
+    activity: SqlActivityRow[];
   };
 }
 
-// History first, then the writes: the entry holds what undo needs.
-async function applyArtistChange(store: LineupStore, entry: HistoryEntry): Promise<HistoryEntry> {
-  await store.putEntityHistory(entry);
-  await writeScope(store, sides(entry.canonical!).before, sides(entry.canonical!).after);
-  return entry;
+export interface ArtistChangePlan {
+  id: string;
+  at: string;
+  key: string;
+  operation: CanonicalOperation;
+  summary: string;
+  impact: ArtistChangeImpact;
+  // The change as the TypeScript apply writes it (camelCase, full before and after).
+  change: CanonicalChange;
+  // The owner's own record change (manage.ts), planned read-only and applied by applyArtistChangePlan.
+  personal?: EntityChangePlan;
+  // The same change as the SQL contract's history entry. Input for canonical_artist_fingerprint and
+  // canonical_apply_artist_change in the store slice. It includes the owner-side images (aliases, links, event seen text).
+  entry: SqlCanonicalEntry;
+  // False when a performance row has no id, or an owner event change is not seen text only, so `entry` cannot be applied by SQL yet.
+  sqlReady: boolean;
 }
 
-export async function renameArtist(store: LineupStore, key: string, newName: unknown, at = now()): Promise<HistoryEntry> {
-  const artist = await loadArtist(store, key);
+type PlanRow = ArtistEditionRow & { id?: string };
+
+// What one operation decides: the before and after of every side, and the owner's record change.
+interface Draft {
+  operation: CanonicalOperation;
+  summary: string;
+  // Artist keys the change reads and writes (the SQL function's key set).
+  keys: string[];
+  artists: { before: ArtistIdentity[]; after: ArtistIdentity[] };
+  performances: { before: PlanRow[]; after: PlanRow[] };
+  aliases: { before: ArtistAliasRow[]; after: ArtistAliasRow[] };
+  nextAliases: Record<string, string>;
+  // The artist key a performance row moves away from (rename or merge).
+  movedFrom?: string;
+  personal?: EntityChangePlan;
+  ownerRecords: number;
+}
+
+const resolvesTo = (aliases: Record<string, string>, k: string) => (aliases[k] !== undefined ? normalizeName(aliases[k]) : k);
+
+// Editions with at least one performance row that differs between the two sides.
+const editionsChanged = (before: PlanRow[], after: PlanRow[]): Set<string> => {
+  const out = new Set<string>();
+  const afterBy = new Map(after.map((r) => [perfKey(r), r]));
+  const beforeKeys = new Set(before.map(perfKey));
+  for (const b of before) {
+    const a = afterBy.get(perfKey(b));
+    if (!a || stable(a) !== stable(b)) out.add(b.editionId);
+  }
+  for (const a of after) if (!beforeKeys.has(perfKey(a))) out.add(a.editionId);
+  return out;
+};
+
+function countChangedResolutions(counts: Map<string, number>, before: Record<string, string>, after: Record<string, string>): number {
+  let n = 0;
+  for (const k of counts.keys()) if (resolvesTo(before, k) !== resolvesTo(after, k)) n += 1;
+  return n;
+}
+
+// The owner's own artist record with this key, when there is one to follow.
+const personalIn = (entities: Entity[], key: string): Entity | undefined =>
+  entities.find((e) => e.kind === 'artist' && !e.mergedIntoId && !e.nameEncrypted && e.nameNormalized === key);
+
+const artistImage = (a: ArtistIdentity): SqlArtistImage => ({
+  key: a.key,
+  name: a.name,
+  mbid: a.mbid ?? null,
+  resolved_at: a.resolvedAt ?? null,
+});
+
+const performanceImage = (r: PlanRow): SqlPerformanceImage => ({
+  id: r.id ?? null,
+  edition_id: r.editionId,
+  artist_key: r.artistKey,
+  name: r.name,
+  days: r.days,
+  stages: r.stages,
+  status: r.status,
+  billing: r.billing ?? null,
+  confidence: r.confidence,
+  sources: r.sources,
+  slot_id: r.slotId ?? null,
+  alias: r.alias ?? null,
+  b2b: r.b2b ?? null,
+  set: r.set ?? null,
+});
+
+const entityImage = (e: Entity): SqlEntityImage => ({
+  id: e.id,
+  kind: e.kind,
+  name: e.name,
+  name_normalized: e.nameNormalized,
+  attrs: e.attrs,
+  merged_into_id: e.mergedIntoId ?? null,
+});
+
+const ownerAliasImage = (a: EntityAlias): SqlOwnerAliasImage => ({ entity_id: a.entityId, kind: a.kind, alias: a.aliasNormalized });
+
+const ownerLinkImage = (l: EntityLink): SqlOwnerLinkImage => ({
+  from_id: l.fromId,
+  to_id: l.toId,
+  role: l.role,
+  created_at: l.createdAt ?? null,
+});
+
+// Owner-side images for the SQL apply (migration 0037): the personal record's aliases, links and event seen text.
+// Read from the same snapshot the personal plan was built on. Pure: nothing is written.
+interface OwnerSideImages {
+  touched: string[];
+  aliases: { before: SqlOwnerAliasImage[]; after: SqlOwnerAliasImage[] };
+  links: { before: SqlOwnerLinkImage[]; after: SqlOwnerLinkImage[] };
+  events: { before: SqlEventSeenImage[]; after: SqlEventSeenImage[] };
+  // One activity row per event whose seen text changes (what the TypeScript store logs for the same save).
+  activity: SqlActivityRow[];
+  // False when an event change rewrites a field other than seen text (the SQL contract covers seen text only).
+  supported: boolean;
+}
+
+function ownerSideImages(personal: EntityChangePlan | undefined): OwnerSideImages {
+  if (!personal) {
+    return {
+      touched: [],
+      aliases: { before: [], after: [] },
+      links: { before: [], after: [] },
+      events: { before: [], after: [] },
+      activity: [],
+      supported: true,
+    };
+  }
+  const { world, plan } = personal;
+  const touched = new Set(plan.touched);
+  return {
+    touched: [...touched],
+    aliases: {
+      before: world.aliases.filter((a) => touched.has(a.entityId)).map(ownerAliasImage),
+      after: plan.aliases.map(ownerAliasImage),
+    },
+    links: {
+      before: world.links.filter((l) => touched.has(l.fromId) || touched.has(l.toId)).map(ownerLinkImage),
+      after: plan.links.map(ownerLinkImage),
+    },
+    events: {
+      before: plan.events.map((c) => ({ id: c.id, seen: c.before.seen ?? null })),
+      after: plan.events.map((c) => ({ id: c.id, seen: c.after.seen ?? null })),
+    },
+    // Same rule as diffEvent: only a changed field makes a row, and the values are the stored values (no blanking: seen is not sensitive).
+    activity: plan.events
+      .filter((c) => JSON.stringify(c.before.seen ?? null) !== JSON.stringify(c.after.seen ?? null))
+      .map((c) => ({
+        event_id: c.id,
+        action: 'update' as const,
+        field: 'seen' as const,
+        before: c.before.seen ?? null,
+        after: c.after.seen ?? null,
+        sensitive: false,
+      })),
+    supported: plan.events.every((c) => Object.keys(c.after).every((k) => k === 'seen')),
+  };
+}
+
+async function draftRename(
+  store: LineupStore,
+  key: string,
+  artist: ArtistIdentity,
+  newName: unknown,
+  aliases: Record<string, string>,
+  entities: Entity[],
+  at: string,
+): Promise<Draft> {
   const name = cleanName(newName);
   if (name === artist.name) throw new ManageError(`It is already called "${name}".`, 400);
   const newKey = normalizeName(name);
-  const aliases = await store.getAliases();
   if (newKey !== key) await assertFree(store, aliases, newKey, key);
   // The old name is kept as an AKA; AKAs that named this artist now name the new one.
   const next = { ...aliases };
@@ -333,34 +590,38 @@ export async function renameArtist(store: LineupStore, key: string, newName: unk
   }
   if (aliases[newKey] !== undefined && normalizeName(aliases[newKey]) === key) delete next[newKey];
   if (newKey !== key) next[key] = name;
-  const performances = await store.artistPerformances([key]);
-
-  const mine = await personalArtist(store, key);
-  let personalId: string | undefined;
-  if (mine && mine.name !== name) personalId = (await renameEntity(store, mine.id, name, at)).id;
-
-  const renamed: ArtistIdentity = { ...artist, key: newKey, name };
-  const change: CanonicalChange = {
-    key,
-    artists: { before: [artist], after: [renamed] },
+  const performances: PlanRow[] = await store.artistPerformances([key]);
+  const mine = personalIn(entities, key);
+  const personal = mine && mine.name !== name ? await planEntityRename(store, mine.id, name, at) : undefined;
+  const kept = newKey !== key ? ` (“${artist.name}” kept as an AKA)` : '';
+  return {
+    operation: 'canonical-rename',
+    summary: `Renamed artist "${artist.name}" to "${name}"${kept}${personal ? ', and your own record' : ''}`,
+    keys: [...new Set([key, newKey])],
+    artists: { before: [artist], after: [{ ...artist, key: newKey, name }] },
     performances: { before: performances, after: performances.map((p) => ({ ...p, artistKey: newKey })) },
     aliases: aliasDiff(aliases, next, touched),
-    personalHistoryId: personalId,
+    nextAliases: next,
+    movedFrom: newKey !== key ? key : undefined,
+    personal,
+    ownerRecords: personal ? 1 : 0,
   };
-  const kept = newKey !== key ? ` (“${artist.name}” kept as an AKA)` : '';
-  const own = personalId ? ', and your own record' : '';
-  return applyArtistChange(store, entryFor('canonical-rename', `Renamed artist "${artist.name}" to "${name}"${kept}${own}`, key, change, at));
 }
 
 // Merges `sourceKey` into `targetKey`: the target keeps its name, takes the source's
 // MBID when it has none (else keeps its own), and the source's name and AKAs become
 // AKAs of the target. Performances move to the target; where both have an edition,
 // the target's row keeps its fields and takes the source's billing and sources.
-export async function mergeArtists(store: LineupStore, sourceKey: string, targetKey: string, at = now()): Promise<HistoryEntry> {
-  if (sourceKey === targetKey) throw new ManageError('An artist cannot be merged into itself.', 400);
-  const source = await loadArtist(store, sourceKey);
+async function draftMerge(
+  store: LineupStore,
+  sourceKey: string,
+  source: ArtistIdentity,
+  targetKey: string,
+  aliases: Record<string, string>,
+  entities: Entity[],
+  at: string,
+): Promise<Draft> {
   const target = await loadArtist(store, targetKey);
-  const aliases = await store.getAliases();
   const sourceHeld = aliases[sourceKey];
   if (sourceHeld !== undefined && normalizeName(sourceHeld) !== sourceKey && normalizeName(sourceHeld) !== targetKey) {
     throw new ManageError(`"${sourceHeld}" is already an AKA of another artist. Merge them instead.`, 409, { id: normalizeName(sourceHeld), name: sourceHeld });
@@ -373,15 +634,15 @@ export async function mergeArtists(store: LineupStore, sourceKey: string, target
   const merged: ArtistIdentity = { ...target, mbid: target.mbid ?? source.mbid };
   if (merged.mbid === undefined) delete merged.mbid;
 
-  const rows = await store.artistPerformances([sourceKey, targetKey]);
-  const byEdition = new Map<string, { source?: ArtistEditionRow; target?: ArtistEditionRow }>();
+  const rows: PlanRow[] = await store.artistPerformances([sourceKey, targetKey]);
+  const byEdition = new Map<string, { source?: PlanRow; target?: PlanRow }>();
   for (const r of rows) {
     const slot = byEdition.get(r.editionId) ?? {};
     if (r.artistKey === sourceKey) slot.source = r;
     else slot.target = r;
     byEdition.set(r.editionId, slot);
   }
-  const after: ArtistEditionRow[] = [];
+  const after: PlanRow[] = [];
   for (const { source: s, target: t } of byEdition.values()) {
     if (t && s) {
       const sources = [...t.sources, ...s.sources.filter((x) => !t.sources.some((y) => stable(y) === stable(x)))];
@@ -405,31 +666,44 @@ export async function mergeArtists(store: LineupStore, sourceKey: string, target
   touched.add(targetKey);
 
   // The owner's own records follow: both present, merge them; only the source's, it takes the target's name.
-  const mineSource = await personalArtist(store, sourceKey);
-  const mineTarget = await personalArtist(store, targetKey);
-  let personalId: string | undefined;
-  if (mineSource && mineTarget) personalId = (await mergeEntity(store, mineSource.id, mineTarget.id, at)).id;
-  else if (mineSource && mineSource.name !== target.name) personalId = (await renameEntity(store, mineSource.id, target.name, at)).id;
-
-  const change: CanonicalChange = {
-    key: sourceKey,
+  const mineSource = personalIn(entities, sourceKey);
+  const mineTarget = personalIn(entities, targetKey);
+  let personal: EntityChangePlan | undefined;
+  let ownerRecords = 0;
+  if (mineSource && mineTarget) {
+    personal = await planEntityMerge(store, mineSource.id, mineTarget.id, at);
+    ownerRecords = 2;
+  } else if (mineSource && mineSource.name !== target.name) {
+    personal = await planEntityRename(store, mineSource.id, target.name, at);
+    ownerRecords = 1;
+  }
+  const own = personal ? ', and your own record' : '';
+  return {
+    operation: 'canonical-merge',
+    summary: `Merged artist "${source.name}" into "${target.name}" (${plural(byEdition.size, 'edition')})${own}`,
+    keys: [sourceKey, targetKey],
     artists: { before: [source, target], after: [merged] },
     performances: { before: rows, after },
     aliases: aliasDiff(aliases, next, touched),
-    personalHistoryId: personalId,
+    nextAliases: next,
+    movedFrom: sourceKey,
+    personal,
+    ownerRecords,
   };
-  const own = personalId ? ', and your own record' : '';
-  const summary = `Merged artist "${source.name}" into "${target.name}" (${plural(byEdition.size, 'edition')})${own}`;
-  return applyArtistChange(store, entryFor('canonical-merge', summary, sourceKey, change, at));
 }
 
 // Adds or removes an AKA (an alias of the artist's normalized name).
-async function planAka(store: LineupStore, key: string, alias: unknown, add: boolean, at: string): Promise<HistoryEntry> {
-  const artist = await loadArtist(store, key);
+async function draftAka(
+  store: LineupStore,
+  key: string,
+  artist: ArtistIdentity,
+  alias: unknown,
+  add: boolean,
+  aliases: Record<string, string>,
+): Promise<Draft> {
   const raw = typeof alias === 'string' ? alias.trim() : '';
   const aka = normalizeName(raw);
   if (!aka) throw new ManageError('An AKA needs at least one letter or digit.', 400);
-  const aliases = await store.getAliases();
   const held = aliases[aka];
   const next = { ...aliases };
   if (add) {
@@ -443,18 +717,136 @@ async function planAka(store: LineupStore, key: string, alias: unknown, add: boo
     if (held === undefined || normalizeName(held) !== key) throw new ManageError(`"${raw}" is not an AKA of "${artist.name}".`, 404);
     delete next[aka];
   }
-  const change: CanonicalChange = {
-    key,
-    artists: { before: [], after: [] },
-    performances: { before: [], after: [] },
+  // An AKA change leaves the artist and its editions as they are. The plan still holds them, so the state check is exact.
+  const performances: PlanRow[] = await store.artistPerformances([key]);
+  return {
+    operation: add ? 'canonical-alias-add' : 'canonical-alias-remove',
+    summary: `${add ? 'Added' : 'Removed'} AKA "${aka}" ${add ? 'to' : 'from'} "${artist.name}"`,
+    keys: [key],
+    artists: { before: [artist], after: [artist] },
+    performances: { before: performances, after: [...performances] },
     aliases: aliasDiff(aliases, next, [aka]),
+    nextAliases: next,
+    ownerRecords: 0,
   };
-  const summary = `${add ? 'Added' : 'Removed'} AKA "${aka}" ${add ? 'to' : 'from'} "${artist.name}"`;
-  return applyArtistChange(store, entryFor(add ? 'canonical-alias-add' : 'canonical-alias-remove', summary, key, change, at));
 }
 
-export const addArtistAka = (store: LineupStore, key: string, alias: unknown, at = now()) => planAka(store, key, alias, true, at);
-export const removeArtistAka = (store: LineupStore, key: string, alias: unknown, at = now()) => planAka(store, key, alias, false, at);
+// Plans one catalog artist change. Read-only: it reads the store and returns the
+// plan; nothing is written. `at` is the change time. `opts.communityCounts: false`
+// skips the cross-member aggregate (communityNameKeysAffected is then null).
+export async function planArtistChange(
+  store: LineupStore,
+  key: string,
+  input: ArtistChangeInput,
+  at = now(),
+  opts: { communityCounts?: boolean } = {},
+): Promise<ArtistChangePlan> {
+  if (input.op === 'merge' && input.into === key) throw new ManageError('An artist cannot be merged into itself.', 400);
+  const artist = await loadArtist(store, key);
+  const aliases = await store.getAliases();
+  const entities = await store.listEntities();
+  const draft =
+    input.op === 'rename'
+      ? await draftRename(store, key, artist, input.name, aliases, entities, at)
+      : input.op === 'merge'
+        ? await draftMerge(store, key, artist, input.into, aliases, entities, at)
+        : await draftAka(store, key, artist, input.name, input.op === 'alias-add', aliases);
+  const counts = opts.communityCounts === false ? null : await store.communityCounts();
+
+  const id = randomUUID();
+  const { before, after } = draft.performances;
+  const impact: ArtistChangeImpact = {
+    editionsAffected: editionsChanged(before, after).size,
+    performancesMoved: draft.movedFrom ? before.filter((r) => r.artistKey === draft.movedFrom).length : 0,
+    ownerRecordsAffected: draft.ownerRecords,
+    communityNameKeysAffected: counts ? countChangedResolutions(counts, aliases, draft.nextAliases) : null,
+  };
+
+  // Owner rows the SQL function compares: every artist record with a touched name key, plus the records the plan changes.
+  const personalIds = new Set((draft.personal?.plan.entities.before ?? []).map((e) => e.id));
+  const afterById = new Map((draft.personal?.plan.entities.after ?? []).map((e) => [e.id, e] as const));
+  const keySet = new Set(draft.keys);
+  const ownerBefore = entities.filter((e) => e.kind === 'artist' && (keySet.has(e.nameNormalized) || personalIds.has(e.id)));
+  const ownerAfter = ownerBefore.map((e) => afterById.get(e.id) ?? e);
+
+  const owner = ownerSideImages(draft.personal);
+  const entry: SqlCanonicalEntry = {
+    id,
+    operation: draft.operation,
+    summary: draft.summary,
+    createdAt: at,
+    canonical: {
+      key,
+      artists: { before: draft.artists.before.map(artistImage), after: draft.artists.after.map(artistImage) },
+      performances: { before: before.map(performanceImage), after: after.map(performanceImage) },
+      aliases: draft.aliases,
+      owner: { before: ownerBefore.map(entityImage), after: ownerAfter.map(entityImage) },
+      ownerTouched: owner.touched,
+      ownerAliases: owner.aliases,
+      ownerLinks: owner.links,
+      events: owner.events,
+      activity: owner.activity,
+    },
+  };
+  return {
+    id,
+    at,
+    key,
+    operation: draft.operation,
+    summary: draft.summary,
+    impact,
+    change: { key, artists: draft.artists, performances: draft.performances, aliases: draft.aliases },
+    personal: draft.personal,
+    entry,
+    sqlReady: [...before, ...after].every((r) => typeof r.id === 'string') && owner.supported,
+  };
+}
+
+// Writes a plan: the owner's record change (manage.ts) first, then the history entry, then the catalog writes.
+export async function applyArtistChangePlan(store: LineupStore, plan: ArtistChangePlan): Promise<HistoryEntry> {
+  const personalHistoryId = plan.personal ? (await applyEntityChangePlan(store, plan.personal)).id : undefined;
+  return applyArtistChange(store, {
+    id: plan.id,
+    operation: plan.operation,
+    summary: plan.summary,
+    sourceEntityId: plan.key,
+    entities: { before: [], after: [] },
+    touched: [],
+    aliases: { before: [], after: [] },
+    links: { before: [], after: [] },
+    events: [],
+    createdAt: plan.at,
+    canonical: { ...plan.change, personalHistoryId },
+  });
+}
+
+// History first, then the writes: the entry holds what undo needs.
+async function applyArtistChange(store: LineupStore, entry: HistoryEntry): Promise<HistoryEntry> {
+  await store.putEntityHistory(entry);
+  await writeScope(store, sides(entry.canonical!).before, sides(entry.canonical!).after);
+  return entry;
+}
+
+// The four operations the routes call: plan (no community aggregate) and apply.
+const planAndApply = async (store: LineupStore, key: string, input: ArtistChangeInput, at: string) =>
+  applyArtistChangePlan(store, await planArtistChange(store, key, input, at, { communityCounts: false }));
+
+export async function renameArtist(store: LineupStore, key: string, newName: unknown, at = now()): Promise<HistoryEntry> {
+  return planAndApply(store, key, { op: 'rename', name: newName }, at);
+}
+
+// Merges `sourceKey` into `targetKey` (see draftMerge).
+export async function mergeArtists(store: LineupStore, sourceKey: string, targetKey: string, at = now()): Promise<HistoryEntry> {
+  return planAndApply(store, sourceKey, { op: 'merge', into: targetKey }, at);
+}
+
+export async function addArtistAka(store: LineupStore, key: string, alias: unknown, at = now()): Promise<HistoryEntry> {
+  return planAndApply(store, key, { op: 'alias-add', name: alias }, at);
+}
+
+export async function removeArtistAka(store: LineupStore, key: string, alias: unknown, at = now()): Promise<HistoryEntry> {
+  return planAndApply(store, key, { op: 'alias-remove', name: alias }, at);
+}
 
 // Puts back a catalog artist change. Refused when its records changed since (undo
 // the later change first). An owner's own record changed by the same step is undone first.
@@ -481,4 +873,3 @@ export async function undoHistory(store: LineupStore, id: string, at = now()): P
   if (entry?.canonical) return undoArtistChange(store, entry, at);
   return undoEntry(store, id, at);
 }
-

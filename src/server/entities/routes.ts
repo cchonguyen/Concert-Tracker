@@ -171,8 +171,12 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     ownerOnly as any,
     manage(async (req) => {
       const status = ['all', 'confirmed', 'draft'].includes(req.query.status) ? (req.query.status as EditionStatusFilter) : 'all';
-      const editions = await store.listEditions(CANONICAL_EDITION_LIMIT);
-      return { editions: listCanonicalEditions(editions, { query: typeof req.query.query === 'string' ? req.query.query : '', status }) };
+      const page = await store.listCanonicalEditionsPage({
+        query: typeof req.query.query === 'string' ? req.query.query : '',
+        status,
+        limit: CANONICAL_EDITION_LIMIT,
+      });
+      return { editions: listCanonicalEditions(page.editions), total: page.total, hasMore: page.hasMore };
     }),
   );
 

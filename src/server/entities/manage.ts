@@ -202,6 +202,14 @@ type Plan = Omit<HistoryEntry, 'id' | 'createdAt' | 'aliases' | 'links'> & {
   links: EntityLink[]; // after
 };
 
+/** A read-only entity change plan. It captures the same snapshot used by the
+ * planner and is only persisted by applyEntityChangePlan. */
+export interface EntityChangePlan {
+  readonly world: World;
+  readonly plan: Plan;
+  readonly at: string;
+}
+
 const aliasesOf = (world: World, ids: string[]) => world.aliases.filter((a) => ids.includes(a.entityId));
 const linksOf = (world: World, ids: string[]) => world.links.filter((l) => ids.includes(l.fromId) || ids.includes(l.toId));
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
@@ -503,11 +511,24 @@ async function apply(store: LineupStore, world: World, plan: Plan, at: string): 
   return entry;
 }
 
+export async function planEntityRename(store: LineupStore, id: string, name: unknown, at = now()): Promise<EntityChangePlan> {
+  const world = await load(store);
+  return { world, plan: planRename(world, id, name, at), at };
+}
+
+export async function planEntityMerge(store: LineupStore, sourceId: string, intoId: string, at = now()): Promise<EntityChangePlan> {
+  const world = await load(store);
+  return { world, plan: planMerge(world, sourceId, intoId, at), at };
+}
+
+export async function applyEntityChangePlan(store: LineupStore, planned: EntityChangePlan): Promise<HistoryEntry> {
+  return apply(store, planned.world, planned.plan, planned.at);
+}
+
 const now = () => new Date().toISOString();
 
 export async function renameEntity(store: LineupStore, id: string, name: unknown, at = now()): Promise<HistoryEntry> {
-  const world = await load(store);
-  return apply(store, world, planRename(world, id, name, at), at);
+  return applyEntityChangePlan(store, await planEntityRename(store, id, name, at));
 }
 
 export async function updatePerson(store: LineupStore, id: string, details: PersonDetails, at = now()): Promise<HistoryEntry> {
@@ -521,8 +542,7 @@ export async function updateAttrs(store: LineupStore, id: string, values: Record
 }
 
 export async function mergeEntity(store: LineupStore, sourceId: string, intoId: string, at = now()): Promise<HistoryEntry> {
-  const world = await load(store);
-  return apply(store, world, planMerge(world, sourceId, intoId, at), at);
+  return applyEntityChangePlan(store, await planEntityMerge(store, sourceId, intoId, at));
 }
 
 export async function addAlias(store: LineupStore, id: string, alias: unknown, at = now()): Promise<HistoryEntry> {

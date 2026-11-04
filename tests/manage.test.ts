@@ -10,9 +10,12 @@ import { entityIdFor } from '../src/server/entities/link.ts';
 import {
   addAlias,
   addLink,
+  applyEntityChangePlan,
   createEntity,
   ManageError,
   mergeEntity,
+  planEntityMerge,
+  planEntityRename,
   removeAlias,
   removeLink,
   renameEntity,
@@ -89,6 +92,56 @@ test('rename rewrites the name on every event and keeps the old one as an AKA', 
   // A new event typed with the old name finds the same record.
   await store.putEvent(event('d', { venue: 'LA Historic Park' }));
   assert.equal((await get(store, 'd')).refs?.venueId, venue);
+});
+
+test('entity rename planning is read-only and apply consumes that exact plan', async () => {
+  const store = await setup([event('a', { venue: 'Old Hall' })]);
+  const venue = id('venue', 'old hall');
+  const beforeEvents = await store.listEvents();
+  const beforeEntities = await store.listEntities();
+  const planned = await planEntityRename(store, venue, 'New Hall', LATER);
+  assert.deepEqual(await store.listEvents(), beforeEvents);
+  assert.deepEqual(await store.listEntities(), beforeEntities);
+  assert.equal(planned.plan.events.length, 1);
+  const applied = await applyEntityChangePlan(store, planned);
+  assert.equal(applied.operation, 'rename');
+  assert.equal((await get(store, 'a')).venue, 'New Hall');
+});
+
+test('entity merge planning is read-only and apply consumes that exact plan', async () => {
+  const store = await setup([
+    event('source-event', { venue: 'Old Hall' }),
+    event('target-event', { venue: 'New Hall' }),
+  ]);
+  const source = id('venue', 'old hall');
+  const target = id('venue', 'new hall');
+  const beforeEvents = await store.listEvents();
+  const beforeEntities = await store.listEntities();
+  const beforeAliases = await store.listEntityAliases();
+  const beforeLinks = await store.listEntityLinks();
+  const beforeHistory = await store.listEntityHistory(100);
+
+  const planned = await planEntityMerge(store, source, target, LATER);
+
+  assert.deepEqual(await store.listEvents(), beforeEvents);
+  assert.deepEqual(await store.listEntities(), beforeEntities);
+  assert.deepEqual(await store.listEntityAliases(), beforeAliases);
+  assert.deepEqual(await store.listEntityLinks(), beforeLinks);
+  assert.deepEqual(await store.listEntityHistory(100), beforeHistory);
+  assert.equal(planned.plan.operation, 'merge');
+  assert.equal(planned.plan.events.length, 1);
+  assert.equal(planned.plan.events[0].id, 'source-event');
+
+  const applied = await applyEntityChangePlan(store, planned);
+
+  assert.equal(applied.operation, 'merge');
+  assert.equal(applied.createdAt, LATER);
+  assert.equal(applied.events.length, 1);
+  assert.equal(applied.events[0].id, 'source-event');
+  assert.equal((await get(store, 'source-event')).venue, 'New Hall');
+  assert.equal((await get(store, 'source-event')).refs?.venueId, target);
+  assert.equal((await store.listEntities()).find((entity) => entity.id === source)?.mergedIntoId, target);
+  assert.equal((await store.listEntityHistory(100)).length, beforeHistory.length + 1);
 });
 
 test('rename to a name another record has is refused with that record to merge into', async () => {
