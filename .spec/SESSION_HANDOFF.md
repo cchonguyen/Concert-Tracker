@@ -5,7 +5,7 @@
 - **Done this session:**
   - Audit of memory, instructions, docs and the shared folder. Plan: `/mnt/project-files/audit-2026-11-04/plan.md`. Approved by Charlie 2026-11-04.
   - Hub PR #50: Card Catalog block points at `.spec/ATLAS.md`; harness rules header v3.2, Python-only checks removed.
-- **Verification Status:** Verified via finish-slice.mjs (Slice 8.13)
+- **Verification Status:** Verified via finish-slice.mjs (Slice 8.12)
 - **Open gaps:**
   - ARCHITECTURE.md split into `docs/architecture/` (plan step 3). Not started.
   - `.spec/PROGRESS.md` still holds finished slices; move them to `.spec/archive/HISTORY.md` (plan step 2 follow-up).
