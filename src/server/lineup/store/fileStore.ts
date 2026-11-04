@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import {
   ArtistIdentity,
@@ -22,12 +23,34 @@ import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
 import { diffEvent, type ActivityDraft, type ActivityEntry } from '../../events/activityLog';
 import { isCiphertext } from '../../auth/vault';
-import { ArtistEditionRow, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
+import { ArtistAliasRow, ArtistEditionRow, CANONICAL_OPERATIONS, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
+import type {
+  SqlActivityRow,
+  SqlArtistImage,
+  SqlCanonicalEntry,
+  SqlEntityImage,
+  SqlEventSeenImage,
+  SqlOwnerAliasImage,
+  SqlOwnerLinkImage,
+  SqlPerformanceImage,
+} from '../../entities/canonicalManage';
 import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../entities/integrity';
 import type { ShareLink } from '../../share/types';
 import { shareEventOnly } from '../../share/types';
 import type { CachedResponse } from '../responseCache';
-import { canonicalEditionPage, isStaleRun, LineupStore, MAX_EXAMPLES_PER_DOMAIN, roundRobin, STALE_RUN_MS, type CanonicalEditionPageOptions, type UserScope } from './types';
+import {
+  canonicalEditionPage,
+  CanonicalApplyResult,
+  CanonicalStoreError,
+  CanonicalUndoResult,
+  isStaleRun,
+  LineupStore,
+  MAX_EXAMPLES_PER_DOMAIN,
+  roundRobin,
+  STALE_RUN_MS,
+  type CanonicalEditionPageOptions,
+  type UserScope,
+} from './types';
 
 type DocumentMeta = Omit<SourceDocument, 'body'>;
 
@@ -62,6 +85,9 @@ interface FileState {
   responseCache?: Record<string, CachedResponse>;
   owners?: Record<string, string>;
   userSettings?: Record<string, Record<string, unknown>>;
+  // Canonical artist changes applied through applyCanonicalArtistChange, by history ID: the plan entry
+  // (the SQL manifest) kept for Undo, and when it was undone.
+  canonicalChanges?: Record<string, { entry: SqlCanonicalEntry; undoneAt?: string }>;
 }
 
 function emptyState(): FileState {
@@ -91,6 +117,8 @@ export class FileLineupStore implements LineupStore {
   readonly kind = 'file' as const;
   private state: FileState | null = null;
   private writeChain: Promise<void> = Promise.resolve();
+  // Canonical apply and Undo run one after another on this instance (see serializeCanonical).
+  private canonicalChain: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly dir: string) {}
 
@@ -577,6 +605,75 @@ export class FileLineupStore implements LineupStore {
     await this.save();
   }
 
+  // Canonical artist change, migration 0037 in the file store. Same checks as the SQL functions: the current
+  // rows must equal the plan's "before" side (apply) or "after" side (Undo), and the fingerprint must match.
+  // Every check runs before the first write. Owner only (scopedFileStore refuses other members).
+  async canonicalArtistFingerprint(entry: SqlCanonicalEntry): Promise<string> {
+    assertCanonicalEntry(entry);
+    return fingerprintOf(currentImages(await this.load(), entry));
+  }
+
+  async applyCanonicalArtistChange(entry: SqlCanonicalEntry, fingerprint: string): Promise<CanonicalApplyResult> {
+    assertCanonicalEntry(entry);
+    return this.serializeCanonical(async () => {
+      const state = await this.load();
+      const current = currentImages(state, entry);
+      if (keyOf(current) !== keyOf(planImages(entry, 'before')) || fingerprintOf(current) !== fingerprint) {
+        throw new CanonicalStoreError('stale', 'Preview is out of date; review it again');
+      }
+      if (lookup(state.canonicalChanges, entry.id)) throw new CanonicalStoreError('generic', 'That change is already recorded.');
+      const c = entry.canonical;
+      await this.mutateCanonical(state, () => {
+        checkWritable(state, c, 'after');
+        writeSide(state, c, 'before', 'after', entry.createdAt);
+        pushActivity(state, c.activity, entry.createdAt);
+        state.canonicalChanges = { ...state.canonicalChanges, [entry.id]: { entry: clone(entry) } };
+      });
+      return { id: entry.id, operation: entry.operation };
+    });
+  }
+
+  async undoCanonicalArtistChange(historyId: string): Promise<CanonicalUndoResult> {
+    return this.serializeCanonical(async () => {
+      const state = await this.load();
+      const stored = lookup(state.canonicalChanges, historyId);
+      if (!stored) throw new CanonicalStoreError('generic', 'No such change.');
+      if (stored.undoneAt) throw new CanonicalStoreError('stale', 'That change was already undone.');
+      const entry = stored.entry;
+      const c = entry.canonical;
+      if (keyOf(currentImages(state, entry)) !== keyOf(planImages(entry, 'after'))) {
+        throw new CanonicalStoreError('stale', 'Those records changed after this. Undo the later change first.');
+      }
+      const now = new Date().toISOString();
+      await this.mutateCanonical(state, () => {
+        checkWritable(state, c, 'before');
+        writeSide(state, c, 'after', 'before', now);
+        pushActivity(state, undoActivity(c), now);
+        stored.undoneAt = now;
+      });
+      return { id: historyId, undone: true };
+    });
+  }
+
+  // One canonical call at a time per store instance: each waits for the one before it to finish.
+  private serializeCanonical<T>(run: () => Promise<T>): Promise<T> {
+    const next = this.canonicalChain.then(run);
+    this.canonicalChain = next.catch(() => undefined);
+    return next;
+  }
+
+  // Runs the writes on the in-memory state and saves once. If anything throws, the state from before the call is put back.
+  private async mutateCanonical(state: FileState, run: () => void): Promise<void> {
+    const snapshot = clone(state);
+    try {
+      run();
+      await this.save();
+    } catch (err) {
+      this.state = snapshot;
+      throw err;
+    }
+  }
+
   // The file store is the single-user dev store: no cross-member counts.
   async communityCounts(): Promise<Map<string, number> | null> {
     return null;
@@ -845,6 +942,274 @@ export class FileLineupStore implements LineupStore {
 
 type Table = 'job' | 'event' | 'import' | 'share';
 
+// ---------------------------------------------------------------------------
+// Canonical artist change helpers (migration 0037, file store). "Images" are the same rows the SQL functions
+// compare: normalized so that the planner's images and the stored rows line up. Performance rows have no ID
+// here (EditionPerformance has none), so they match by edition and artist key, and no ID is made up.
+// ---------------------------------------------------------------------------
+
+type Side = 'before' | 'after';
+type ImageSection = 'artists' | 'performances' | 'aliases' | 'owner' | 'ownerAliases' | 'ownerLinks' | 'events';
+type Images = Record<ImageSection, unknown[]>;
+type Canonical = SqlCanonicalEntry['canonical'];
+
+const OPERATIONS: readonly string[] = CANONICAL_OPERATIONS;
+
+function assertCanonicalEntry(entry: SqlCanonicalEntry): void {
+  const c = entry?.canonical;
+  const sides = c ? [c.artists, c.performances, c.aliases, c.owner, c.ownerAliases, c.ownerLinks, c.events] : [];
+  const ok =
+    Boolean(entry?.id) &&
+    OPERATIONS.includes(entry.operation) &&
+    Boolean(c) &&
+    typeof c.key === 'string' &&
+    Array.isArray(c.ownerTouched) &&
+    Array.isArray(c.activity) &&
+    sides.every((s) => Array.isArray(s.before) && Array.isArray(s.after));
+  if (!ok) throw new CanonicalStoreError('generic', 'The change has no id, a known operation, or a canonical block.');
+}
+
+function ownerOnly(scope: UserScope): void {
+  if (scope.role !== 'owner') throw new CanonicalStoreError('forbidden', 'Only the owner can do this.');
+}
+
+const has = (map: object, key: string): boolean => Object.prototype.hasOwnProperty.call(map, key);
+const lookup = <T>(map: Record<string, T> | undefined, key: string): T | undefined => (map && has(map, key) ? map[key] : undefined);
+
+// Stable JSON: keys sorted, undefined read as null, so equal rows give equal text.
+function stableJson(value: unknown): string {
+  return JSON.stringify(sortKeys(value));
+}
+
+function sortKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortKeys);
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    return Object.fromEntries(Object.keys(obj).sort().map((k) => [k, sortKeys(obj[k])]));
+  }
+  return value === undefined ? null : value;
+}
+
+const nArtist = (a: SqlArtistImage) => ({ key: a.key, name: a.name, mbid: a.mbid ?? null, resolved_at: a.resolved_at ?? null });
+const nPerf = (p: SqlPerformanceImage) => ({
+  id: p.id ?? null,
+  edition_id: p.edition_id,
+  artist_key: p.artist_key,
+  name: p.name,
+  days: p.days ?? [],
+  stages: p.stages ?? [],
+  status: p.status,
+  billing: p.billing ?? null,
+  confidence: Number(p.confidence),
+  sources: p.sources ?? [],
+  slot_id: p.slot_id ?? null,
+  alias: p.alias ?? null,
+  b2b: p.b2b?.length ? p.b2b : null,
+  set: p.set ?? null,
+});
+const nAlias = (a: ArtistAliasRow) => ({ alias: a.alias, name: a.name });
+const nEntity = (e: SqlEntityImage) => ({
+  id: e.id,
+  kind: e.kind,
+  name: e.name,
+  name_normalized: e.name_normalized,
+  attrs: e.attrs ?? {},
+  merged_into_id: e.merged_into_id ?? null,
+});
+const nOwnerAlias = (a: SqlOwnerAliasImage) => ({ entity_id: a.entity_id, kind: a.kind, alias: a.alias });
+// created_at is left out, as in the SQL state comparison.
+const nOwnerLink = (l: SqlOwnerLinkImage) => ({ from_id: l.from_id, to_id: l.to_id, role: l.role });
+const nEvent = (e: SqlEventSeenImage) => ({ id: e.id, seen: e.seen ?? null });
+
+function planImages(entry: SqlCanonicalEntry, side: Side): Images {
+  const c = entry.canonical;
+  return {
+    artists: c.artists[side].map(nArtist),
+    performances: c.performances[side].map(nPerf),
+    aliases: c.aliases[side].map(nAlias),
+    owner: c.owner[side].map(nEntity),
+    ownerAliases: c.ownerAliases[side].map(nOwnerAlias),
+    ownerLinks: c.ownerLinks[side].map(nOwnerLink),
+    events: c.events[side].map(nEvent),
+  };
+}
+
+// The current rows of everything the change touches (the SQL "db" state).
+function currentImages(state: FileState, entry: SqlCanonicalEntry): Images {
+  const c = entry.canonical;
+  const keys = new Set<string>([c.key, ...c.artists.before.map((a) => a.key), ...c.artists.after.map((a) => a.key)]);
+  const ownerIds = new Set<string>([...c.owner.before, ...c.owner.after].map((e) => e.id));
+  const touched = new Set<string>(c.ownerTouched);
+  const aliasKeys = [...c.aliases.before, ...c.aliases.after].map((a) => a.alias);
+  const eventIds = [...c.events.before, ...c.events.after].map((e) => e.id);
+  const editions = Object.values(state.editions);
+  return {
+    artists: Object.values(state.artists)
+      .filter((a) => keys.has(a.key))
+      .map((a) => nArtist({ key: a.key, name: a.name, mbid: a.mbid ?? null, resolved_at: a.resolvedAt ?? null })),
+    performances: editions.flatMap((ed) =>
+      ed.performances.filter((p) => keys.has(p.artistKey)).map((p) => nPerf(performanceImage(ed.id, p))),
+    ),
+    aliases: aliasKeys.flatMap((alias) => (has(state.aliases, alias) ? [nAlias({ alias, name: state.aliases[alias] })] : [])),
+    owner: Object.values(state.entities ?? {})
+      .filter((e) => e.kind === 'artist' && (ownerIds.has(e.id) || keys.has(e.nameNormalized)))
+      .map((e) => nEntity(entityImage(e))),
+    ownerAliases: (state.entityAliases ?? [])
+      .filter((a) => touched.has(a.entityId))
+      .map((a) => nOwnerAlias({ entity_id: a.entityId, kind: a.kind, alias: a.aliasNormalized })),
+    ownerLinks: (state.entityLinks ?? [])
+      .filter((l) => touched.has(l.fromId) || touched.has(l.toId))
+      .map((l) => nOwnerLink({ from_id: l.fromId, to_id: l.toId, role: l.role, created_at: l.createdAt })),
+    events: eventIds.flatMap((id) => (lookup(state.events, id) ? [nEvent({ id, seen: state.events[id].seen })] : [])),
+  };
+}
+
+// The comparison text: each section as sorted row texts, so row order does not matter.
+function keyOf(images: Images): string {
+  return stableJson(Object.fromEntries(Object.entries(images).map(([section, rows]) => [section, (rows as unknown[]).map(stableJson).sort()])));
+}
+
+function fingerprintOf(images: Images): string {
+  return createHash('md5').update(keyOf(images)).digest('hex');
+}
+
+function performanceImage(editionId: string, p: EditionPerformance): SqlPerformanceImage {
+  return {
+    id: null,
+    edition_id: editionId,
+    artist_key: p.artistKey,
+    name: p.name,
+    days: p.days,
+    stages: p.stages,
+    status: p.status,
+    billing: p.billing ?? null,
+    confidence: p.confidence,
+    sources: p.sources,
+    slot_id: p.slotId ?? null,
+    alias: p.alias ?? null,
+    b2b: p.b2b ?? null,
+    set: p.set ?? null,
+  };
+}
+
+function entityImage(e: Entity): SqlEntityImage {
+  return { id: e.id, kind: e.kind, name: e.name, name_normalized: e.nameNormalized, attrs: e.attrs, merged_into_id: e.mergedIntoId ?? null };
+}
+
+// Refuses the write before anything changes: the "to" side must point at rows that exist.
+function checkWritable(state: FileState, c: Canonical, to: Side): void {
+  if (c.owner[to].some((e) => !lookup(state.entities, e.id)) || c.events[to].some((e) => !lookup(state.events, e.id))) {
+    throw new CanonicalStoreError('stale', 'Preview is out of date; review it again');
+  }
+  if (c.performances[to].some((p) => !lookup(state.editions, p.edition_id))) {
+    throw new CanonicalStoreError('generic', 'A performance points at an edition that does not exist.');
+  }
+}
+
+// Writes the "to" side over the "from" side, in the SQL order: remove the from rows, insert the to rows,
+// update owner records in place, replace the touched owner aliases and links, then rewrite the seen text.
+function writeSide(state: FileState, c: Canonical, from: Side, to: Side, at: string): void {
+  for (const a of c.artists[from]) delete state.artists[a.key];
+  for (const a of c.artists[to]) {
+    state.artists[a.key] = {
+      key: a.key,
+      name: a.name,
+      ...(a.mbid != null ? { mbid: a.mbid } : {}),
+      ...(a.resolved_at != null ? { resolvedAt: a.resolved_at } : {}),
+    };
+  }
+
+  // A row keeps the fields the image does not carry (mbid, oneAct) when a row in the same edition is replaced.
+  const removed: Array<{ editionId: string; row: EditionPerformance; used: boolean }> = [];
+  for (const p of c.performances[from]) {
+    const edition = lookup(state.editions, p.edition_id);
+    const at = edition ? edition.performances.findIndex((x) => x.artistKey === p.artist_key) : -1;
+    if (edition && at >= 0) removed.push({ editionId: p.edition_id, row: edition.performances.splice(at, 1)[0], used: false });
+  }
+  for (const p of c.performances[to]) {
+    const pick =
+      removed.find((r) => !r.used && r.editionId === p.edition_id && r.row.artistKey === p.artist_key) ??
+      removed.find((r) => !r.used && r.editionId === p.edition_id);
+    if (pick) pick.used = true;
+    state.editions[p.edition_id].performances.push({ ...(pick?.row ?? {}), ...performanceOf(p) } as EditionPerformance);
+  }
+
+  for (const a of c.aliases[from]) delete state.aliases[a.alias];
+  for (const a of c.aliases[to]) state.aliases[a.alias] = a.name;
+
+  for (const e of c.owner[to]) {
+    const cur = state.entities![e.id];
+    cur.kind = e.kind as Entity['kind'];
+    cur.name = e.name;
+    cur.nameNormalized = e.name_normalized;
+    cur.attrs = e.attrs;
+    if (e.merged_into_id) cur.mergedIntoId = e.merged_into_id;
+    else delete cur.mergedIntoId;
+  }
+
+  const touched = new Set<string>(c.ownerTouched);
+  state.entityAliases = [
+    ...(state.entityAliases ?? []).filter((a) => !touched.has(a.entityId)),
+    ...c.ownerAliases[to].map((a) => ({ entityId: a.entity_id, kind: a.kind as EntityAlias['kind'], aliasNormalized: a.alias })),
+  ];
+  state.entityLinks = [
+    ...(state.entityLinks ?? []).filter((l) => !touched.has(l.fromId) && !touched.has(l.toId)),
+    ...c.ownerLinks[to].map((l) => ({
+      fromId: l.from_id,
+      toId: l.to_id,
+      role: l.role as EntityLink['role'],
+      createdAt: l.created_at ?? at,
+    })),
+  ];
+
+  for (const ev of c.events[to]) state.events[ev.id].seen = ev.seen as LoggedEvent['seen'];
+}
+
+function performanceOf(p: SqlPerformanceImage): EditionPerformance {
+  return {
+    artistKey: p.artist_key,
+    name: p.name,
+    days: p.days,
+    stages: p.stages,
+    status: p.status,
+    billing: (p.billing ?? undefined) as EditionPerformance['billing'],
+    confidence: p.confidence,
+    sources: p.sources as EditionPerformance['sources'],
+    slotId: p.slot_id ?? undefined,
+    alias: p.alias ?? undefined,
+    b2b: p.b2b?.length ? p.b2b : undefined,
+    set: p.set ?? undefined,
+  };
+}
+
+// Seen-text activity for an Undo: the text before the Undo ("after" side) and the restored text, per changed event.
+function undoActivity(c: Canonical): SqlActivityRow[] {
+  const before = new Map(c.events.before.map((e) => [e.id, e.seen] as const));
+  return c.events.after.flatMap((a) => {
+    if (!before.has(a.id)) return [];
+    const restored = before.get(a.id);
+    if (stableJson(a.seen) === stableJson(restored)) return [];
+    return [{ event_id: a.id, action: 'update' as const, field: 'seen', before: a.seen, after: restored, sensitive: false }];
+  });
+}
+
+function pushActivity(state: FileState, rows: SqlActivityRow[], at: string): void {
+  const log = (state.activity ??= []);
+  rows.forEach((row, i) =>
+    log.push({
+      id: `${at}-${log.length}-${i}`,
+      eventId: row.event_id,
+      action: row.action,
+      field: row.field,
+      before: row.before,
+      after: row.after,
+      sensitive: row.sensitive,
+      at,
+      userId: null,
+    }),
+  );
+}
+
 // One member's view of the file store, behaving like the Supabase store
 // with row level security: other members' rows are invisible, and writing
 // over one is refused (an upsert that hits another member's id fails).
@@ -871,6 +1236,19 @@ function scopedFileStore(base: FileLineupStore, scope: UserScope): LineupStore {
     return out;
   };
   const overrides: Partial<LineupStore> = {
+    // Canonical artist changes are owner only (migration 0037 checks the owner inside each function).
+    async canonicalArtistFingerprint(entry) {
+      ownerOnly(scope);
+      return base.canonicalArtistFingerprint(entry);
+    },
+    async applyCanonicalArtistChange(entry, fingerprint) {
+      ownerOnly(scope);
+      return base.applyCanonicalArtistChange(entry, fingerprint);
+    },
+    async undoCanonicalArtistChange(historyId) {
+      ownerOnly(scope);
+      return base.undoCanonicalArtistChange(historyId);
+    },
     async createJob(job) {
       await claim('job', [job.id]);
       await base.createJob({ ...job, userId: scope.userId });

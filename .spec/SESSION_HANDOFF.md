@@ -5,7 +5,7 @@
 - **Done this session:**
   - TECH-04 (slice 3): `tests/helpers/testApp.ts` `dispatch()` in memory, 18 test files moved off `listen(0)`. Merged as #229.
   - FETCH-01 (slice 4): `src/server/lineup/budget.ts` per-invocation subrequest budget (limit 50, `SUBREQUEST_LIMIT` override, reserve 4). Fetcher uses manual redirects (max 3 hops, public-URL check per hop) and a 3 MB body cap with `truncated`. Budgets start in the queue handler, the cron run and an `/api` middleware. Merged as #233.
-- **Verification Status:**
+- **Verification Status:** Verified via finish-slice.mjs (Slice 8.6)
   - TECH-04: `git grep "listen(0" -- tests` empty; `npm test` 733 pass; lint exit 0.
   - FETCH-01 (on commit 8d11a07): `npm test` 743 pass, 0 fail; `npm run lint` exit 0.
   - FETCH-01 `pr-check` (CI) was red on 8d11a07. Cause: `pr-scope-check.mjs --strict` flags `src/server/auth/requestScope.ts` as a Red tripwire (auth file). Lint and tests were green. PR #233 was merged while the check was still red. Not resolved.
