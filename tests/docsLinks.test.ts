@@ -69,3 +69,17 @@ test('every top-level doc in docs/ is listed in docs/README.md', () => {
     .filter((name) => !index.includes(name));
   assert.deepEqual(missing, []);
 });
+
+test('every closed ticket carries a Closed verdict line', () => {
+  const text = readFileSync(path.join(docsDir, 'archive', 'engineering-ticket-bank-closed.md'), 'utf8');
+  const matches = [...text.matchAll(/^### \[([A-Z0-9-]+)\]/gm)];
+  const missing: string[] = [];
+  matches.forEach((match, i) => {
+    const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
+    const section = text.slice(match.index, end);
+    if (!section.includes('- **Closed**:')) missing.push(match[1]);
+  });
+  const count = matches.length;
+  assert.deepEqual(missing, []);
+  assert.ok(count > 0);
+});
