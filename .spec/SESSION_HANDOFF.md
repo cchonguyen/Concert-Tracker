@@ -1,15 +1,16 @@
 # Session Handoff
 
 - **Last Active Platform:** Claude Code (cloud session)
-- **Active Branch / State:** `claude/project-thread-ppz8rs`, cut from origin/main 5c64a98 (PR #246). Docs hygiene slice AUDIT-01 in progress. Hub PR cchonguyen/claude-harness-hub#50 open (harness block and rules).
+- **Active Branch / State:** `claude/architecture-split` (PR #252, open), cut from main. Main includes PR #248 (docs links), PR #250 (RLS migrations 0025 and 0026, merged by Charlie) and the Slice 8.12 test. Hub PR cchonguyen/claude-harness-hub#50 is merged.
 - **Done this session:**
-  - Audit of memory, instructions, docs and the shared folder. Plan: `/mnt/project-files/audit-2026-11-04/plan.md`. Approved by Charlie 2026-11-04.
-  - Hub PR #50: Card Catalog block points at `.spec/ATLAS.md`; harness rules header v3.2, Python-only checks removed.
-- **Verification Status:** Verified via finish-slice.mjs (Slice 8.15)
+  - Audit plan approved 2026-11-04: `/mnt/project-files/audit-2026-11-04/plan.md`.
+  - Hub harness block and rules (hub PR #50, merged).
+  - Docs hygiene: dead links, docs index, status docs, Atlas coordinates (PR #248, merged).
+  - RLS migrations 0025 and 0026 committed as applied; 0036 left empty by Charlie's decision (PR #250, merged).
+  - ARCHITECTURE.md split into `docs/architecture/` (Slice 8.13, PR #252). Two tests now read the section files.
+- **Verification Status:** Verified via finish-slice.mjs (Slice 8.14)
 - **Open gaps:**
-  - ARCHITECTURE.md split into `docs/architecture/` (plan step 3). Not started.
-  - `.spec/PROGRESS.md` still holds finished slices; move them to `.spec/archive/HISTORY.md` (plan step 2 follow-up).
+  - Archive finished slices from `.spec/PROGRESS.md` to `.spec/archive/HISTORY.md`.
   - Shared-folder archive (plan step 4) and memory cleanup (plan step 5) not started.
-  - Migration numbering: 0025 and 0026 are not in the repo; 0036 is absent and 0037 is the highest. Charlie's decision.
   - Verify on GitHub: friendliness PR #129 or #130, multi-user PR #87, PRs #126 and #169.
-- **Immediate Next Step:** Finish AUDIT-01 checks, commit, open the Concert-Tracker PR, then start the ARCHITECTURE split as its own slice.
+- **Immediate Next Step:** Get the slice gate and pr-check green on #252 (slice 8.14), then Charlie decides on the merge.
