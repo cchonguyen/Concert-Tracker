@@ -61,7 +61,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [SEC-01] Single-Promise Worker Server Bootstrap
 - **Classification**: Hardening / Cleanup (not a live bug; see [tier2-ticket-review.md](tier2-ticket-review.md#sec-01-cold-start-concurrency-race-in-ensureserver))
 - **Priority**: P3 (Low)
-- **Files**: [`worker/index.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/worker/index.ts)
+- **Files**: [`worker/index.ts`](../worker/index.ts)
 - **Problem**:
   The concurrent-`listen` race this ticket first described can't happen. `ensureServer` checks `listening` again after `await getDeps(env)`, and between that check and `listening = true` nothing yields (`createApiApp` and `app.listen` are synchronous). An isolate runs on one thread, so two cold requests can't both call `app.listen`.
   What is still loose:
@@ -83,7 +83,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [SEC-02] Cache Web Crypto `CryptoKey` in Access Token Verification
 - **Classification**: Performance / Security Optimization
 - **Priority**: P2 (Medium)
-- **Files**: [`src/server/share/access.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/share/access.ts)
+- **Files**: [`src/server/share/access.ts`](../src/server/share/access.ts)
 - **Problem**:
   In `readAccessClaims`, JWK objects fetched from `${config.teamDomain}/cdn-cgi/access/certs` are cached in `keyCache`. However, on every single incoming authenticated request, `crypto.subtle.importKey('jwk', jwk, ...)` is called. Importing RSA public keys repeatedly consumes CPU cycles and creates garbage collection pressure in Cloudflare V8 isolates.
 - **Implementation Strategy**:
@@ -104,7 +104,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [SEC-03] Enforce RLS on Legacy & Base Tables (`0002_source_first_lineups.sql`)
 - **Classification**: Security Hardening / Database Hygiene
 - **Priority**: P1 (High)
-- **Files**: [`supabase/migrations/`](file:///Users/charliechonguyen/Projects/Concert-Tracker/supabase/migrations/)
+- **Files**: [`supabase/migrations/`](../supabase/migrations/)
 - **Problem**:
   Tables defined in `0002_source_first_lineups.sql` (`canonical_artists`, `performances`, `source_documents`, `performer_claims`, `quota_ledger`, `source_stats`, `corrections`, `extraction_examples`, `attendance`, `seen_sets`) do not have `ALTER TABLE ... ENABLE ROW LEVEL SECURITY;`.
   Specifically, `attendance` and `seen_sets` are legacy tables from pre-0003 single-step flow that may still retain personal fields (`notes`, `companions`, `rating`, `ticket_price`) if an older installation was migrated.
@@ -121,7 +121,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [SEC-04] Add IP & Member Rate Limiting on Mutation Endpoints
 - **Classification**: Security / Abuse Prevention
 - **Priority**: P2 (Medium)
-- **Files**: [`src/server/auth/gate.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/auth/gate.ts), [`src/server/app.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/app.ts)
+- **Files**: [`src/server/auth/gate.ts`](../src/server/auth/gate.ts), [`src/server/app.ts`](../src/server/app.ts)
 - **Problem**:
   Gemini quota is meticulously tracked via `quota_ledger`, but unmetered API endpoints such as `POST /api/events` (bulk additions), `POST /api/access-requests`, and `POST /api/events/:id/details` (triggering external HTTP requests) have no per-IP or per-member rate limiter. An automated client could trigger upstream provider throttling or exhaust Workers CPU limits.
 - **Implementation Strategy**:
@@ -137,7 +137,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [PERF-01] Scoped, Paged `listSeenArtistNames` for Spelling Resolution in `stageMerge`
 - **Classification**: Performance Optimization (revised after [tier2-ticket-review.md](tier2-ticket-review.md))
 - **Priority**: P1 (High)
-- **Files**: [`src/server/lineup/pipeline.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/pipeline.ts), [`src/server/lineup/store/types.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/store/types.ts), [`src/server/lineup/store/supabaseStore.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/store/supabaseStore.ts), [`src/server/lineup/store/fileStore.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/store/fileStore.ts)
+- **Files**: [`src/server/lineup/pipeline.ts`](../src/server/lineup/pipeline.ts), [`src/server/lineup/store/types.ts`](../src/server/lineup/store/types.ts), [`src/server/lineup/store/supabaseStore.ts`](../src/server/lineup/store/supabaseStore.ts), [`src/server/lineup/store/fileStore.ts`](../src/server/lineup/store/fileStore.ts)
 - **Problem**:
   In `stageMerge` (line 369 of `pipeline.ts`):
   ```ts
@@ -163,7 +163,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [PERF-02] Per-Host Cache Policy for the Open-Meteo Archive
 - **Classification**: Performance / Caching (revised after [tier2-ticket-review.md](tier2-ticket-review.md); low value, can be deferred)
 - **Priority**: P3 (Low)
-- **Files**: [`src/server/lineup/responseCache.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/responseCache.ts), [`src/server/lineup/service.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/service.ts), [`ARCHITECTURE.md`](../ARCHITECTURE.md)
+- **Files**: [`src/server/lineup/responseCache.ts`](../src/server/lineup/responseCache.ts), [`src/server/lineup/service.ts`](../src/server/lineup/service.ts), [`ARCHITECTURE.md`](../ARCHITECTURE.md)
 - **Problem**:
   `POST /api/events/:id/weather` always calls Open-Meteo. In practice weather is asked for once per event and stored on the event with its `sourceUrl`, so a repeat request means a refresh or a changed city. The hit rate will be low. Open-Meteo archive data is also **not** final: preliminary ERA5T values are replaced by final ERA5 values about 2–3 months later.
   The existing `cachingFetcher` can't take a second host as-is: it hard-codes `sourceType: 'ticketmaster'` and one global 24 h TTL, and it stores any status-200 body, including an archive answer that is all nulls.
@@ -185,7 +185,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [PERF-03] Worker Subrequest Budgeting Guard in Stage 1 Research
 - **Classification**: Reliability / Resource Management
 - **Priority**: P2 (Medium)
-- **Files**: [`src/server/events/details.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/events/details.ts), [`src/server/events/service.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/events/service.ts)
+- **Files**: [`src/server/events/details.ts`](../src/server/events/details.ts), [`src/server/events/service.ts`](../src/server/events/service.ts)
 - **Problem**:
   On Cloudflare Workers Free plan, a request is restricted to 50 subrequests. During Stage 1 research (`researchEvent`), setlist.fm, Ticketmaster, Brave Search, and multiple web result pages are fetched. If an event has complex date queries or web search matches multiple pages, the execution can approach or exceed 50 subrequests, causing Worker runtime termination.
 - **Implementation Strategy**:
@@ -200,7 +200,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [REL-01] Per-Message Queue Error Handling & Dead-Letter Visibility
 - **Classification**: Reliability / Observability (revised after [tier2-ticket-review.md](tier2-ticket-review.md))
 - **Priority**: P2 (Medium)
-- **Files**: [`worker/index.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/worker/index.ts), [`wrangler.jsonc`](../wrangler.jsonc), [`ARCHITECTURE.md`](../ARCHITECTURE.md)
+- **Files**: [`worker/index.ts`](../worker/index.ts), [`wrangler.jsonc`](../wrangler.jsonc), [`ARCHITECTURE.md`](../ARCHITECTURE.md)
 - **Problem**:
   `runJob` already catches every stage error: errors other than quota errors increment `attempts`, back off `2^n` minutes, and set `failed` after `MAX_ATTEMPTS = 3` (`pipeline.ts` 420–454). So the only errors that reach `queue()` are:
   1. `getDeps` failing (Supabase or config unreachable);
@@ -224,7 +224,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [REL-02] Extraction Prompt & Model Regression Test Runner
 - **Classification**: Developer Tooling / Quality Assurance
 - **Priority**: P2 (Medium)
-- **Files**: [`scripts/regression-extract.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/scripts/), [`ARCHITECTURE.md`](file:///Users/charliechonguyen/Projects/Concert-Tracker/ARCHITECTURE.md)
+- **Files**: [`scripts/regression-extract.ts`](../scripts/), [`ARCHITECTURE.md`](../ARCHITECTURE.md)
 - **Problem**:
   ARCHITECTURE.md Roadmap specifies: *"A regression command that re-runs extraction over stored documents and compares against confirmed lineups when the model or prompt changes."*
   Currently, changing `EXTRACTION_PROMPT_VERSION` or upgrading Gemini model versions requires manual testing without a regression benchmark over historical `source_documents`.
@@ -244,7 +244,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [REF-01] Resolve `MenuButton` Naming Collision with Shared Design System
 - **Classification**: Refactor / Design System
 - **Priority**: P1 (High)
-- **Files**: [`src/components/MenuButton.tsx`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/components/MenuButton.tsx), [`src/components/ui/MenuButton.tsx`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/components/ui/MenuButton.tsx), [`src/App.tsx`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/App.tsx)
+- **Files**: [`src/components/MenuButton.tsx`](../src/components/MenuButton.tsx), [`src/components/ui/MenuButton.tsx`](../src/components/ui/MenuButton.tsx), [`src/App.tsx`](../src/App.tsx)
 - **Problem**:
   There are two conflicting `MenuButton.tsx` files in the codebase:
   1. `src/components/MenuButton.tsx`: The application header menu (Theme, Import/Export, Sheets, Share, Members, Logout).
@@ -262,7 +262,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [REF-02] Decompose Monolithic `EventDetail.tsx` (1,552 LOC)
 - **Classification**: Refactor / Maintainability
 - **Priority**: P2 (Medium/Large)
-- **Files**: [`src/components/EventDetail.tsx`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/components/EventDetail.tsx), `src/components/event-detail/*`
+- **Files**: [`src/components/EventDetail.tsx`](../src/components/EventDetail.tsx), `src/components/event-detail/*`
 - **Problem**:
   `EventDetail.tsx` has grown to 1,552 lines of code. It bundles together:
   - Form field debouncing and flashing (`Field`)
@@ -289,7 +289,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [REF-03] Migrate Inline Status Badges to Shared `Pill` Component
 - **Classification**: Refactor / Design System
 - **Priority**: P2 (Medium)
-- **Files**: [`src/components/TableView.tsx`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/components/TableView.tsx), [`src/components/ui/Pill.tsx`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/components/ui/Pill.tsx)
+- **Files**: [`src/components/TableView.tsx`](../src/components/TableView.tsx), [`src/components/ui/Pill.tsx`](../src/components/ui/Pill.tsx)
 - **Problem**:
   `TableView.tsx` contains multiple inline `<span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 ...">` implementations for attendance status, kind (Concert/Festival), and series tags. AGENTS.md explicitly mandates: *"The design-system approach is wanted: when you touch a component that has its own inline copy of one of these patterns... move it onto the shared component in the same change."*
 - **Implementation Strategy**:
@@ -304,7 +304,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [REF-04] Align `package.json` Naming and Project Metadata
 - **Classification**: Project Hygiene
 - **Priority**: P3 (Low)
-- **Files**: [`package.json`](file:///Users/charliechonguyen/Projects/Concert-Tracker/package.json)
+- **Files**: [`package.json`](../package.json)
 - **Problem**:
   `package.json` still has `"name": "react-example"` from the initial template scaffolding.
 - **Implementation Strategy**:
@@ -320,7 +320,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [A11Y-01] Fix Mobile Unlabelled Button in `CaptureBar`
 - **Classification**: Accessibility (a11y)
 - **Priority**: P1 (High)
-- **Files**: [`src/components/CaptureBar.tsx`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/components/CaptureBar.tsx)
+- **Files**: [`src/components/CaptureBar.tsx`](../src/components/CaptureBar.tsx)
 - **Problem**:
   In `CaptureBar.tsx`:
   ```tsx
@@ -342,7 +342,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [A11Y-02] Standardize `NoticeModal` on Shared `Dialog` Focus Management
 - **Classification**: Accessibility (a11y)
 - **Priority**: P2 (Medium)
-- **Files**: [`src/components/NoticeModal.tsx`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/components/NoticeModal.tsx), [`src/components/ui/Dialog.tsx`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/components/ui/Dialog.tsx)
+- **Files**: [`src/components/NoticeModal.tsx`](../src/components/NoticeModal.tsx), [`src/components/ui/Dialog.tsx`](../src/components/ui/Dialog.tsx)
 - **Problem**:
   `NoticeModal.tsx` currently renders an ad-hoc backdrop and container (`<div className="fixed inset-0 z-[100] ...">`) without focus trapping, initial focus placement, or background scroll locking. In contrast, `src/components/ui/Dialog.tsx` implements strict focus containment, Tab cycling, Escape handling, and scroll locking.
 - **Implementation Strategy**:
@@ -359,7 +359,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [A11Y-03] Arrow-Key Row Navigation & Fewer Tab Stops in Table View
 - **Classification**: Accessibility & Power UX (revised after [tier2-ticket-review.md](tier2-ticket-review.md))
 - **Priority**: P2 (Medium)
-- **Files**: [`src/components/TableView.tsx`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/components/TableView.tsx)
+- **Files**: [`src/components/TableView.tsx`](../src/components/TableView.tsx)
 - **Problem**:
   Desktop rows already have `tabIndex={0}` and open on Enter (`TableView.tsx` ~622). What's missing: every row is its own tab stop, inner controls (such as the series button in `DetailsCell`) add more, and there's no arrow-key movement. With 100+ events, the table costs hundreds of Tab presses to get past.
 - **Implementation Strategy**:
@@ -380,7 +380,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [FEAT-01] Dedicated Artist Profile & Lifetime History View
 - **Classification**: Feature (Roadmap Delight #1)
 - **Priority**: P1 (High)
-- **Files**: `src/components/artist-profile/*`, [`src/components/ArtistsView.tsx`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/components/ArtistsView.tsx), [`src/services/artists.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/services/artists.ts)
+- **Files**: `src/components/artist-profile/*`, [`src/components/ArtistsView.tsx`](../src/components/ArtistsView.tsx), [`src/services/artists.ts`](../src/services/artists.ts)
 - **Spec Reference**: REQUIREMENTS.md Section 13 #1: *"Artist pages: every time you saw someone, with the venues and who you were with."*
 - **Problem**:
   Currently, `ArtistsView.tsx` shows an aggregate list with expandable 3-event previews. There is no comprehensive artist profile that presents a user's full journey with an artist: first show, most recent show, all venues visited, companion breakdown, set types (DJ vs Live vs B2B), and personal ratings.
@@ -400,7 +400,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [FEAT-02] Bulk Fast Back-Fill Mode (Multi-Line Batch Capture)
 - **Classification**: Feature (Roadmap Delight #2)
 - **Priority**: P2 (Medium)
-- **Files**: `src/components/BackfillModal.tsx`, [`src/server/events/routes.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/events/routes.ts)
+- **Files**: `src/components/BackfillModal.tsx`, [`src/server/events/routes.ts`](../src/server/events/routes.ts)
 - **Spec Reference**: REQUIREMENTS.md Section 13 #2: *"Back-fill mode: type one line per event in a box (a whole year at once) and stage 1 handles each."*
 - **Problem**:
   Adding past years of concert history one by one via `CaptureBar` requires repetitive typing and clicking. Users migrating from notes or personal logs want to paste 10-50 lines at once.
@@ -417,7 +417,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [FEAT-03] Single-Artist Performance Setlist Linking (setlist.fm)
 - **Classification**: Feature (Roadmap Delight #3)
 - **Priority**: P2 (Medium)
-- **Files**: [`src/server/events/details.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/events/details.ts), [`src/components/EventDetail.tsx`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/components/EventDetail.tsx)
+- **Files**: [`src/server/events/details.ts`](../src/server/events/details.ts), [`src/components/EventDetail.tsx`](../src/components/EventDetail.tsx)
 - **Spec Reference**: REQUIREMENTS.md Section 13 #3: *"Setlists: for a seen act at a single-artist show, link the setlist.fm setlist for that night."*
 - **Status**: **BLOCKED** (see [tier2-ticket-review.md](tier2-ticket-review.md)). Unblock by: (a) updating REQUIREMENTS.md and ARCHITECTURE.md to move this from an idea to a requirement; (b) removing the made-up fallback URLs, `s.url ?? 'https://www.setlist.fm'` in `details.ts` and `s.url ?? doc.url` (a search URL) in `adapters/setlistfm.ts`, so neither can ever be stored as a setlist link.
 - **Required constraints once unblocked**:
@@ -461,7 +461,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [LINEUP-01] Decouple Web Discovery from Zero Claims ("Starvation Bug")
 - **Classification**: Bug / Pipeline Robustness
 - **Priority**: P1 (High)
-- **Files**: [`src/server/lineup/pipeline.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/pipeline.ts)
+- **Files**: [`src/server/lineup/pipeline.ts`](../src/server/lineup/pipeline.ts)
 - **Problem**:
   In `stageExtract`, transition to `stageDiscover` only triggers if `claims.length === 0`. If Ticketmaster returns a stub listing with only 1 or 2 headliners for a 100-act festival, `claims.length > 0`, so web search and promoter discovery never run. The festival is merged with an incomplete 2-artist lineup.
 - **Implementation Strategy**:
@@ -481,7 +481,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [LINEUP-02] Clashfinder Weekend & Date-Window Matching Disambiguation
 - **Classification**: Matching Correctness
 - **Priority**: P1 (High)
-- **Files**: [`src/server/lineup/adapters/clashfinder.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/adapters/clashfinder.ts)
+- **Files**: [`src/server/lineup/adapters/clashfinder.ts`](../src/server/lineup/adapters/clashfinder.ts)
 - **Problem**:
   `matchEdition` selects candidate clashes based on edit count without verifying weekend or specific event dates. For festivals with multiple weekends (e.g. Coachella W1 vs W2, Tomorrowland), Weekend 2 attendees are silently given Weekend 1 timetables. Additionally, strict word matching (`wanted.every(...)`) rejects valid clashes if the user's event title includes extraneous descriptor tokens like "Festival" or "Weekend 1".
 - **Implementation Strategy**:
@@ -500,7 +500,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [LINEUP-03] Content-Aware Lineup Windowing & Navigation Stripping
 - **Classification**: Extraction Reliability
 - **Priority**: P2 (Medium)
-- **Files**: [`src/server/lineup/text.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/text.ts), [`src/server/lineup/gemini.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/gemini.ts)
+- **Files**: [`src/server/lineup/text.ts`](../src/server/lineup/text.ts), [`src/server/lineup/gemini.ts`](../src/server/lineup/gemini.ts)
 - **Problem**:
   `lineupWindow` searches for `/line[- ]?up|artists|performers/i` and takes a 40,000 character substring. In practice, site navigation headers trigger this match within the first 200 characters, taking the top 40,000 characters of hero copy, ticket tiers, and FAQs, while silently truncating alphabetical lineups at the bottom of the page.
 - **Implementation Strategy**:
@@ -516,7 +516,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [LINEUP-04] Tighten Setlist.fm Venue Matching Against Concurrent Shows
 - **Classification**: Correctness / False Positives
 - **Priority**: P2 (Medium)
-- **Files**: [`src/server/lineup/adapters/setlistfm.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/adapters/setlistfm.ts)
+- **Files**: [`src/server/lineup/adapters/setlistfm.ts`](../src/server/lineup/adapters/setlistfm.ts)
 - **Problem**:
   In `belongsToEvent`, a setlist is accepted if `venue` matches, with zero validation against the event or artist name:
   ```typescript
@@ -534,7 +534,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [LINEUP-05] Canonical Edition Re-Sync / Freshness Protocol
 - **Classification**: Architecture / Cache Evolution
 - **Priority**: P2 (Medium)
-- **Files**: [`src/server/lineup/pipeline.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/pipeline.ts), [`src/server/lineup/service.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/service.ts)
+- **Files**: [`src/server/lineup/pipeline.ts`](../src/server/lineup/pipeline.ts), [`src/server/lineup/service.ts`](../src/server/lineup/service.ts)
 - **Status**: **BLOCKED / REQUIRES ARCHITECTURAL ALIGNMENT**
 - **Problem**:
   Invariant 5 mandates: *"Resolve once, reuse forever."* If an edition is resolved early (e.g. Phase 1), later lookups reuse the cached edition with zero network calls, preventing users from seeing final timetables.
@@ -549,7 +549,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [PERF-04] Clashfinder `all.json` Worker Caching & Memory Guard
 - **Classification**: Performance & Worker Stability
 - **Priority**: P2 (Medium)
-- **Files**: [`src/server/lineup/adapters/clashfinder.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/adapters/clashfinder.ts), [`src/server/lineup/http.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/http.ts)
+- **Files**: [`src/server/lineup/adapters/clashfinder.ts`](../src/server/lineup/adapters/clashfinder.ts), [`src/server/lineup/http.ts`](../src/server/lineup/http.ts)
 - **Problem**:
   When a festival slug is unknown, the adapter fetches `https://clashfinder.com/data/events/all.json`. This endpoint contains the full history of all Clashfinder events. Repeatedly parsing this multi-megabyte payload in a Cloudflare Worker risks exceeding the isolate memory and CPU execution limits.
 - **Implementation Strategy**:
@@ -563,7 +563,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [PERF-05] Client Bundle Code-Splitting for Heavy Sub-Views
 - **Classification**: Performance & Mobile Optimization
 - **Priority**: P2 (Medium)
-- **Files**: [`src/App.tsx`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/App.tsx), [`vite.config.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/vite.config.ts)
+- **Files**: [`src/App.tsx`](../src/App.tsx), [`vite.config.ts`](../vite.config.ts)
 - **Problem**:
   `npm run build` generates a single monolithic client bundle of 883 kB (`app-*.js`), triggering Vite's chunk size warning. All views—including `MapView` (which pulls in Leaflet), `TimelineTab` (River, Month, Heatmap, Agenda), and `ManageView`—are loaded synchronously on the initial visit. For mobile phone users capturing events on cellular connections, this hurts time-to-interactive.
 - **Implementation Strategy**:
@@ -582,7 +582,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [TECH-01] Safe HTML-to-Text Parser (Eliminate Catastrophic Regex Backtracking)
 - **Classification**: Performance & Reliability
 - **Priority**: P2 (Medium)
-- **Files**: [`src/server/lineup/text.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/text.ts)
+- **Files**: [`src/server/lineup/text.ts`](../src/server/lineup/text.ts)
 - **Problem**:
   `htmlToText` executes global regexes with greedy dot-matching across raw HTML bodies (`replace(/<script[\s\S]*?<\/script>/gi, ' ')`). On malformed or unclosed tags in large scraped documents (1–3 MB), `[\s\S]*?` causes catastrophic backtracking in V8, locking the Worker thread and throwing CPU limit exceptions.
 - **Implementation Strategy**:
@@ -595,7 +595,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [TECH-02] Strict Typing for Source Adapters (Eliminate `any` in Parsers)
 - **Classification**: Type Safety & Tech Debt
 - **Priority**: P3 (Low)
-- **Files**: [`src/server/lineup/adapters/clashfinder.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/adapters/clashfinder.ts), [`src/server/events/details.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/events/details.ts)
+- **Files**: [`src/server/lineup/adapters/clashfinder.ts`](../src/server/lineup/adapters/clashfinder.ts), [`src/server/events/details.ts`](../src/server/events/details.ts)
 - **Problem**:
   Multiple adapter entry points use `any` for parsed payloads (e.g., `parseEventData(json: any)` in `clashfinder.ts:126`, `parseJson<any>(res)` in `details.ts:135`, and `read(slug: unknown, v: any)` in `clashfinder.ts:62`). This disables TypeScript strict checks across raw external JSON contracts.
 - **Implementation Strategy**:
@@ -608,7 +608,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [TECH-03] Subrequest Budget Guard for Worker Pipeline Runs
 - **Classification**: Cloudflare Worker Hardening
 - **Priority**: P2 (Medium)
-- **Files**: [`src/server/lineup/pipeline.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/pipeline.ts), [`src/server/lineup/http.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/src/server/lineup/http.ts)
+- **Files**: [`src/server/lineup/pipeline.ts`](../src/server/lineup/pipeline.ts), [`src/server/lineup/http.ts`](../src/server/lineup/http.ts)
 - **Problem**:
   Cloudflare Workers have a hard ceiling of 50 subrequests (external `fetch` or Supabase REST queries) per invocation. A single lookup run that triggers first-wave adapters (Clashfinder, Ticketmaster, Wayback checks, redirects) + Gemini extraction + search discovery can hit the 50-call limit, crashing the queue worker unhandled.
 - **Implementation Strategy**:
@@ -634,12 +634,12 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [TECH-05] Modernize Vite Config to Native Mode
 - **Classification**: Cleanup / Build Tooling
 - **Priority**: P3 (Low)
-- **Files**: [`vite.config.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/vite.config.ts)
+- **Files**: [`vite.config.ts`](../vite.config.ts)
 - **Problem**:
   Vite 8 logs a deprecation warning on every build:
   `Your Vite config uses features that are unsupported by configLoader: 'native'... __dirname (vite.config.ts:8:65). Use import.meta.dirname instead.`
 - **Implementation Strategy**:
-  Replace `__dirname` with `import.meta.dirname` in [`vite.config.ts`](file:///Users/charliechonguyen/Projects/Concert-Tracker/vite.config.ts#L8).
+  Replace `__dirname` with `import.meta.dirname` in [`vite.config.ts`](../vite.config.ts#L8).
 - **Test Plan**: Run `npm run build`; assert zero deprecation warnings.
 
 ---
