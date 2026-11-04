@@ -34,6 +34,7 @@ export interface CanonicalConfirmInput {
   country?: string;
   performers: CanonicalPerformerInput[];
   apply?: boolean; // false (default) returns the diff only; true writes it
+  jobId?: string; // the lookup being reviewed; a successful apply marks it confirmed
 }
 
 export interface CanonicalDiff {
@@ -67,6 +68,7 @@ export function parseCanonicalInput(body: unknown): CanonicalConfirmInput {
   const b = body as Record<string, unknown>;
   const name = str(b.name, 'name');
   if (!name) throw new CanonicalInputError('An edition needs a name.');
+  const jobId = str(b.jobId, 'jobId', 100);
   if (typeof b.year !== 'number' || !Number.isInteger(b.year) || b.year < 1900 || b.year > 2100) {
     throw new CanonicalInputError('year must be a whole number from 1900 to 2100.');
   }
@@ -108,6 +110,7 @@ export function parseCanonicalInput(body: unknown): CanonicalConfirmInput {
     country: str(b.country, 'country', 80),
     performers,
     apply: b.apply === true,
+    jobId,
   };
 }
 
@@ -218,6 +221,19 @@ export async function confirmCanonicalEdition(store: LineupStore, input: Canonic
   await store.ensureArtists(edition.performances.map((p) => ({ key: p.artistKey, name: p.name })));
   if (!(await store.getSeries(slug))) await store.upsertSeries({ slug, name: edition.name });
   await store.upsertEdition(edition);
+
+  // Close the lookup that fed this edition, so its line leaves "Review". Only a catalog
+  // lookup (no saved event) is touched; a personal lookup is closed by its own confirm.
+  if (input.jobId) {
+    const job = await store.getJob(input.jobId);
+    if (job && !job.eventId && job.status === 'needs_review') {
+      job.status = 'confirmed';
+      job.editionId = edition.id;
+      job.updatedAt = now;
+      job.log = [...job.log, { at: now, message: `Confirmed ${edition.performances.length} act(s) into the shared catalog.` }];
+      await store.updateJob(job);
+    }
+  }
   return { applied: true, diff, edition };
 }
 
