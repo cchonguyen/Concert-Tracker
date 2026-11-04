@@ -1,15 +1,15 @@
 # Session Handoff
 
 - **Last Active Platform:** Claude Code (cloud session)
-- **Active Branch / State:** `claude/tier3-fetch-01-handoff` (cut from origin/main 4aee37b). Docs only. PR open, not merged. Main includes TECH-04 (PR #229, merged by Charlie) and FETCH-01 (PR #233, merged by Charlie).
+- **Active Branch / State:** `claude/project-thread-ppz8rs`, cut from origin/main 5c64a98 (PR #246). Docs hygiene slice AUDIT-01 in progress. Hub PR cchonguyen/claude-harness-hub#50 open (harness block and rules).
 - **Done this session:**
-  - TECH-04 (slice 3): `tests/helpers/testApp.ts` `dispatch()` in memory, 18 test files moved off `listen(0)`. Merged as #229.
-  - FETCH-01 (slice 4): `src/server/lineup/budget.ts` per-invocation subrequest budget (limit 50, `SUBREQUEST_LIMIT` override, reserve 4). Fetcher uses manual redirects (max 3 hops, public-URL check per hop) and a 3 MB body cap with `truncated`. Budgets start in the queue handler, the cron run and an `/api` middleware. Merged as #233.
-- **Verification Status:** Verified via finish-slice.mjs (Slice 8.10)
-  - TECH-04: `git grep "listen(0" -- tests` empty; `npm test` 733 pass; lint exit 0.
-  - FETCH-01 (on commit 8d11a07): `npm test` 743 pass, 0 fail; `npm run lint` exit 0.
-  - FETCH-01 `pr-check` (CI) was red on 8d11a07. Cause: `pr-scope-check.mjs --strict` flags `src/server/auth/requestScope.ts` as a Red tripwire (auth file). Lint and tests were green. PR #233 was merged while the check was still red. Not resolved.
+  - Audit of memory, instructions, docs and the shared folder. Plan: `/mnt/project-files/audit-2026-11-04/plan.md`. Approved by Charlie 2026-11-04.
+  - Hub PR #50: Card Catalog block points at `.spec/ATLAS.md`; harness rules header v3.2, Python-only checks removed.
+- **Verification Status:** Verified via finish-slice.mjs (Slice 8.11)
 - **Open gaps:**
-  - FETCH-01: cold-start store probes in `getDeps` (once per isolate) run before the per-message budgets, so they are not counted against the budget. Fixing that changes the handler shape.
-  - FETCH-01: the Red tripwire on `src/server/auth/requestScope.ts` on main needs Charlie's decision: accept it, or move the Supabase `countingFetch` wiring out of that file.
-- **Immediate Next Step:** Charlie decides on the `requestScope.ts` tripwire and picks the next slice from `docs/tier3-specs.md` build order (TECH-03 needs migration 0031, which Charlie applies; REL-02A has no dependencies). Do not start a slice until he picks one.
+  - ARCHITECTURE.md split into `docs/architecture/` (plan step 3). Not started.
+  - `.spec/PROGRESS.md` still holds finished slices; move them to `.spec/archive/HISTORY.md` (plan step 2 follow-up).
+  - Shared-folder archive (plan step 4) and memory cleanup (plan step 5) not started.
+  - Migration numbering: 0025 and 0026 are not in the repo; 0036 is absent and 0037 is the highest. Charlie's decision.
+  - Verify on GitHub: friendliness PR #129 or #130, multi-user PR #87, PRs #126 and #169.
+- **Immediate Next Step:** Finish AUDIT-01 checks, commit, open the Concert-Tracker PR, then start the ARCHITECTURE split as its own slice.

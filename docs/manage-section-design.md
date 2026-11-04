@@ -134,4 +134,4 @@ Genres and music-story are left out for now.
 
 ## Revised after the Gemini audit (2026-10-28)
 
-The verdict was approved with revisions. The binding contracts (alias uniqueness per kind, merge flattening, no hard delete, dual-write of the old text columns, undo manifests, venue provenance, list import rules) are in [SYSTEM_SPEC.md](../SYSTEM_SPEC.md) section 3. The build slices M1a to M6 are in [PROGRESS.md](../PROGRESS.md). In the MVP a person has a single name; first and last name come in slice M4.
+The verdict was approved with revisions. The binding contracts (alias uniqueness per kind, merge flattening, no hard delete, dual-write of the old text columns, undo manifests, venue provenance, list import rules) are in [SYSTEM_SPEC.md](../.spec/SYSTEM_SPEC.md) section 3. The build slices M1a to M6 are in [PROGRESS.md](../.spec/PROGRESS.md). In the MVP a person has a single name; first and last name come in slice M4.

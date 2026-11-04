@@ -27,7 +27,7 @@ Nothing else is needed. Agents do not scan the repo to find context.
 
 ## Size rule
 
-Each Atlas file has a soft line cap in `.harness/config/thresholds.json` under `line_budgets.soft_caps`. `npm run lint` runs `navigator.mjs --check`, which reports any file over its cap and any broken coordinate or link.
+Each Atlas file has a soft line cap in `.harness/config/thresholds.json` under `line_budgets.soft_caps`. The line-cap and coordinate check is `navigator.mjs --check` in the harness. It is not part of `npm run lint`, which only runs `tsc`.
 
 Files without a cap, such as `SYSTEM_SPEC.md` and `DECISIONS.md`, have no line check.
 

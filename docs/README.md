@@ -14,3 +14,7 @@ Feature specs, designs and backlogs for LiveArchive. Agent rules are in [AGENTS.
 | [tier3-specs.md](tier3-specs.md) | Agent-ready specs for Tier 3 tickets |
 | [CONTEXT_ATLAS.md](CONTEXT_ATLAS.md) | Harness definition of the Context Atlas |
 | [archive/collab-aliases-manage-design.md](archive/collab-aliases-manage-design.md) | Superseded by the B3B and collaboration aliases spec (its Manage UX notes are kept here) |
+| [canonical-curation-and-unified-artists-spec.md](canonical-curation-and-unified-artists-spec.md) | Built in Slices 1 to 8.x (canonical catalog, Manage) |
+| [canonical-archive-ux-spec.md](canonical-archive-ux-spec.md) | Superseded for the Global archive by [global-archive-rework-spec.md](global-archive-rework-spec.md) (kept for its catalog rules) |
+| [global-archive-rework-spec.md](global-archive-rework-spec.md) | Approved 2026-11-03; current Global archive spec, built as Slices 8.1 to 8.10 |
+| [social-features-spec.md](social-features-spec.md) | Preliminary draft, discussion only |
