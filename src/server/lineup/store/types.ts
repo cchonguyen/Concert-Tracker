@@ -21,6 +21,7 @@ import { ArtistEditionRow, Entity, EntityAlias, EntityLink, HistoryEntry } from 
 import type { ShareLink } from '../../share/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CachedResponse } from '../responseCache';
+import type { SqlCanonicalEntry } from '../../entities/canonicalManage';
 
 // One member's view of the store (multi-user mode). Personal rows (events,
 // email imports, lookup jobs, share links, settings) are that member's only.
@@ -64,6 +65,36 @@ export function canonicalEditionPage<T extends CanonicalEditionListRow>(
   const limit = Math.max(0, Math.min(200, Math.floor(options.limit)));
   const editions = matching.slice(0, limit);
   return { editions, total: matching.length, hasMore: matching.length > editions.length };
+}
+
+// Failures of the canonical artist apply and Undo (migration 0037 codes, mapped the same way in both stores):
+// 'stale' = P0409 (preview out of date, or the change already undone), 'forbidden' = 42501 (not the owner),
+// 'generic' = anything else.
+export type CanonicalStoreErrorCode = 'stale' | 'forbidden' | 'generic';
+
+export class CanonicalStoreError extends Error {
+  constructor(
+    readonly code: CanonicalStoreErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'CanonicalStoreError';
+  }
+}
+
+// A performance row as the store reads it. `id` is the performances row ID (Supabase); FileStore has no
+// performance IDs, so it leaves `id` out. Never invent one: the planner marks such a plan not SQL-ready.
+export type ArtistPerformanceRow = ArtistEditionRow & { id?: string };
+
+// Result of the canonical RPCs (the jsonb they return).
+export interface CanonicalApplyResult {
+  id: string;
+  operation: string;
+}
+
+export interface CanonicalUndoResult {
+  id: string;
+  undone: true;
 }
 
 // Persistence boundary for the lineup pipeline. Two implementations:
@@ -171,12 +202,19 @@ export interface LineupStore {
   // Adds the artists not stored yet; existing ones are left as they are.
   ensureArtists(artists: ArtistIdentity[]): Promise<void>;
   listUnresolvedArtists(limit: number): Promise<ArtistIdentity[]>;
+  // Canonical artist apply and Undo (migration 0037). Both take only the server-built plan entry
+  // (planArtistChange().entry), never a client-built plan. Serialized per store instance; owner only.
+  // The fingerprint is computed from the current state of the rows the change touches.
+  canonicalArtistFingerprint(entry: SqlCanonicalEntry): Promise<string>;
+  applyCanonicalArtistChange(entry: SqlCanonicalEntry, fingerprint: string): Promise<CanonicalApplyResult>;
+  // Restores the stored "before" side of a history entry, after checking its current "after" side.
+  undoCanonicalArtistChange(historyId: string): Promise<CanonicalUndoResult>;
   // Every canonical artist (canonical_artists), for the owner's Global Archive.
   listArtists(): Promise<ArtistIdentity[]>;
   // Removes canonical artists (a merged-away one). Only after its performances moved.
   deleteArtists(keys: string[]): Promise<void>;
   // Performances (edition links) of these artists, each with its edition ID.
-  artistPerformances(keys: string[]): Promise<ArtistEditionRow[]>;
+  artistPerformances(keys: string[]): Promise<ArtistPerformanceRow[]>;
   // Writes performances as given, keyed by edition and artist (upsert).
   putArtistPerformances(rows: ArtistEditionRow[]): Promise<void>;
   deleteArtistPerformances(rows: Array<{ editionId: string; artistKey: string }>): Promise<void>;
