@@ -6,17 +6,20 @@ import { EntityIntegrityError } from './integrity';
 import {
   addArtistAka,
   appearancesOf,
+  ArtistChangeInput,
   CANONICAL_EDITION_LIMIT,
   EditionStatusFilter,
   isOwner,
   listCanonicalEditions,
   mergeArtists,
+  planArtistChange,
   removeArtistAka,
   renameArtist,
   undoHistory,
   unifyArtists,
   withAkas,
 } from './canonicalManage';
+import { CanonicalStoreError } from '../lineup/store/types';
 import { currentMember } from '../auth/requestScope';
 import {
   CanonicalInputError,
@@ -40,6 +43,30 @@ import {
   updatePerson,
   venuePlaceConflicts,
 } from './manage';
+
+// Canonical artist preview and apply (slice 8.7). The body is one operation. Unknown ops, missing
+// name/into and extra fields are refused with 400. The apply body also takes previewFingerprint.
+const ARTIST_OPS = ['rename', 'alias-add', 'alias-remove', 'merge'] as const;
+const PREVIEW_STALE = 'Preview is out of date; review it again';
+
+function artistChangeBody(body: unknown, withFingerprint: boolean): { input: ArtistChangeInput; previewFingerprint?: string } {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new ManageError('Send one operation: rename, alias-add, alias-remove or merge.', 400);
+  const fields = body as Record<string, unknown>;
+  const op = fields.op;
+  if (typeof op !== 'string' || !(ARTIST_OPS as readonly string[]).includes(op)) throw new ManageError('Unknown operation.', 400);
+  const field = op === 'merge' ? 'into' : 'name';
+  const allowed = ['op', field, ...(withFingerprint ? ['previewFingerprint'] : [])];
+  const extra = Object.keys(fields).find((k) => !allowed.includes(k));
+  if (extra !== undefined) throw new ManageError(`Unexpected field: ${extra}.`, 400);
+  const value = fields[field];
+  if (typeof value !== 'string' || value.trim() === '') throw new ManageError(`Missing ${field}.`, 400);
+  const previewFingerprint = fields.previewFingerprint;
+  if (withFingerprint && (typeof previewFingerprint !== 'string' || previewFingerprint === '')) {
+    throw new ManageError('Missing previewFingerprint.', 400);
+  }
+  const input: ArtistChangeInput = op === 'merge' ? { op, into: value } : { op: op as 'rename' | 'alias-add' | 'alias-remove', name: value };
+  return withFingerprint ? { input, previewFingerprint: previewFingerprint as string } : { input };
+}
 
 // /api/entities: the records behind your events' names (0014).
 export function entitiesRouter(deps: PipelineDeps): Router {
@@ -151,6 +178,38 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     '/manage/canonical/artists/:key/aliases',
     ownerOnly as any,
     manage(async (req) => ({ entry: await removeArtistAka(store, String(req.params.key), req.body?.name ?? req.query.name) })),
+  );
+  // Preview (writes nothing): the plan's operation, impact counts and an opaque fingerprint of the rows it relies on.
+  router.post(
+    '/manage/canonical/artists/:key/preview',
+    ownerOnly as any,
+    manage(async (req) => {
+      const { input } = artistChangeBody(req.body, false);
+      const plan = await planArtistChange(store, String(req.params.key), input);
+      const previewFingerprint = await store.canonicalArtistFingerprint(plan.entry);
+      return { operation: plan.operation, impact: plan.impact, previewFingerprint };
+    }),
+  );
+  // Apply: the plan is recomputed here from the body (never taken from the client). The store checks the
+  // fingerprint in the same transaction as the write; a mismatch is a 409 and writes nothing.
+  router.post(
+    '/manage/canonical/artists/:key/apply',
+    ownerOnly as any,
+    manage(async (req) => {
+      const { input, previewFingerprint } = artistChangeBody(req.body, true);
+      const plan = await planArtistChange(store, String(req.params.key), input);
+      try {
+        const applied = await store.applyCanonicalArtistChange(plan.entry, previewFingerprint as string);
+        return {
+          entry: { id: applied.id, operation: applied.operation, summary: plan.summary, at: plan.at },
+          communityNameKeysAffected: plan.impact.communityNameKeysAffected,
+        };
+      } catch (err) {
+        if (err instanceof CanonicalStoreError && err.code === 'stale') throw new ManageError(PREVIEW_STALE, 409);
+        if (err instanceof CanonicalStoreError && err.code === 'forbidden') throw new ManageError('Only the owner can do this.', 403);
+        throw err;
+      }
+    }),
   );
   router.get(
     '/manage/canonical/artists',
