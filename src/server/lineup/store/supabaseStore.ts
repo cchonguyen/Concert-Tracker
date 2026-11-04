@@ -21,7 +21,19 @@ import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
-import { LineupStore, MAX_EXAMPLES_PER_DOMAIN, roundRobin, STALE_RUN_MS, type CanonicalEditionPageOptions, type UserScope } from './types';
+import {
+  ArtistPerformanceRow,
+  CanonicalApplyResult,
+  CanonicalStoreError,
+  CanonicalUndoResult,
+  LineupStore,
+  MAX_EXAMPLES_PER_DOMAIN,
+  roundRobin,
+  STALE_RUN_MS,
+  type CanonicalEditionPageOptions,
+  type UserScope,
+} from './types';
+import type { SqlCanonicalEntry } from '../../entities/canonicalManage';
 import { ArtistEditionRow, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import { checkLinks } from '../../entities/integrity';
 import { SHARE_EVENT_COLUMNS, type ShareLink } from '../../share/types';
@@ -979,16 +991,63 @@ export class SupabaseLineupStore implements LineupStore {
     if (keys.length) this.check(await this.db.from('canonical_artists').delete().in('key', keys), 'deleteArtists');
   }
 
-  async artistPerformances(keys: string[]): Promise<ArtistEditionRow[]> {
-    const out: ArtistEditionRow[] = [];
+  async artistPerformances(keys: string[]): Promise<ArtistPerformanceRow[]> {
+    const out: ArtistPerformanceRow[] = [];
     for (let i = 0; i < keys.length; i += 200) {
       const rows = this.check(
         await this.db.from('performances').select('*').in('artist_key', keys.slice(i, i + 200)),
         'artistPerformances',
       );
-      for (const r of (rows ?? []) as any[]) out.push({ editionId: r.edition_id, ...this.toPerformance(r) });
+      for (const r of (rows ?? []) as any[]) out.push({ id: r.id, editionId: r.edition_id, ...this.toPerformance(r) });
     }
     return out;
+  }
+
+  // Canonical artist apply and Undo (migration 0037). The RPCs check the owner, the fingerprint and the
+  // current state themselves, under row locks. This side sends named parameters and maps the error codes.
+  // A member scope is refused here too, because a service-role call skips the SQL owner check.
+  private canonicalClient(): SupabaseClient {
+    if (this.scope && this.scope.role !== 'owner') throw new CanonicalStoreError('forbidden', 'Only the owner can do this.');
+    return this.scope?.db ?? this.db;
+  }
+
+  private canonicalUserId(): string | null {
+    return this.scope ? this.scope.userId : null;
+  }
+
+  private canonicalRpcError(error: { code?: string; message: string }, what: string): CanonicalStoreError {
+    if (error.code === 'P0409') return new CanonicalStoreError('stale', error.message);
+    if (error.code === '42501') return new CanonicalStoreError('forbidden', error.message);
+    return new CanonicalStoreError('generic', `Supabase ${what} failed: ${error.message}`);
+  }
+
+  async canonicalArtistFingerprint(entry: SqlCanonicalEntry): Promise<string> {
+    const { data, error } = await this.canonicalClient().rpc('canonical_artist_fingerprint', {
+      p_entry: entry,
+      p_user_id: this.canonicalUserId(),
+    });
+    if (error) throw this.canonicalRpcError(error, 'canonical_artist_fingerprint');
+    if (typeof data !== 'string') throw new CanonicalStoreError('generic', 'Supabase canonical_artist_fingerprint returned no fingerprint.');
+    return data;
+  }
+
+  async applyCanonicalArtistChange(entry: SqlCanonicalEntry, fingerprint: string): Promise<CanonicalApplyResult> {
+    const { data, error } = await this.canonicalClient().rpc('canonical_apply_artist_change', {
+      p_fingerprint: fingerprint,
+      p_entry: entry,
+      p_user_id: this.canonicalUserId(),
+    });
+    if (error) throw this.canonicalRpcError(error, 'canonical_apply_artist_change');
+    return data as CanonicalApplyResult;
+  }
+
+  async undoCanonicalArtistChange(historyId: string): Promise<CanonicalUndoResult> {
+    const { data, error } = await this.canonicalClient().rpc('canonical_undo_artist_change', {
+      p_history_id: historyId,
+      p_user_id: this.canonicalUserId(),
+    });
+    if (error) throw this.canonicalRpcError(error, 'canonical_undo_artist_change');
+    return data as CanonicalUndoResult;
   }
 
   // performances is keyed by `id` (migration 0029 replaced the (edition_id, artist_key) key), so there is no
