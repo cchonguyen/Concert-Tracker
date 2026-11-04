@@ -473,6 +473,9 @@ export const canonicalApi = {
   editions: (query: string, status: 'all' | 'confirmed' | 'draft') =>
     request<{ editions: CanonicalEditionSummary[] }>(`/api/manage/canonical/editions?${new URLSearchParams({ query, status }).toString()}`),
   edition: (id: string) => request<{ edition: Edition }>(`/api/manage/canonical/editions/${encodeURIComponent(id)}`),
+  // Edition facts with a required source note; blank facts are sent as null and stay blank.
+  editFacts: (id: string, facts: { name: string; startDate: string | null; endDate: string | null; venue: string | null; city: string | null; sourceNote: string }) =>
+    request<{ edition: Edition }>(`/api/manage/canonical/editions/${encodeURIComponent(id)}/facts`, { method: 'PATCH', body: JSON.stringify(facts) }).then((r) => r.edition),
   artist: (key: string) =>
     request<{ artist: CanonicalArtistRecord; appearances: ArtistAppearance[] }>(`/api/manage/canonical/artists/${encodeURIComponent(key)}`),
   // Catalog artists as records (GA3). Each returns the history entry, which Undo (entitiesApi.undo) reverses.

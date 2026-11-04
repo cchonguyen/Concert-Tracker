@@ -387,6 +387,7 @@ export class SupabaseLineupStore implements LineupStore {
       status: row.status,
       confirmedAt: row.confirmed_at ?? undefined,
       updatedAt: row.updated_at,
+      factSourceNote: row.fact_source_note ?? undefined,
       performances: perfs.map((p: any) => this.toPerformance(p)),
     };
   }
@@ -439,6 +440,7 @@ export class SupabaseLineupStore implements LineupStore {
         country: e.country ?? null,
         status: e.status,
         confirmed_at: e.confirmedAt ?? null,
+        fact_source_note: e.factSourceNote ?? null,
         updated_at: e.updatedAt,
       }),
       'upsertEdition',

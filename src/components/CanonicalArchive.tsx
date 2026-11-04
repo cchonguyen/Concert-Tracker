@@ -220,7 +220,7 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
         >
           ← Back to editions
         </button>
-        <EditionDetail edition={detail} onEditLineup={() => setEditing(true)} />
+        <EditionDetail edition={detail} onEditLineup={() => setEditing(true)} onFactsSaved={setDetail} />
       </div>
     );
   }
@@ -378,7 +378,8 @@ const BILLING_WORDS: Record<string, string> = { headliner: 'Headliner', support:
 // One edition as a record (owner only). Missing data reads "Not known"; nothing is filled in.
 // Each act shows its billing role, B2B partners, set, day, stage and set times, and each source
 // shows its quote, or the "Admin curated" badge for the owner's own curation.
-const EditionDetail: React.FC<{ edition: Edition; onEditLineup: () => void }> = ({ edition, onEditLineup }) => {
+const EditionDetail: React.FC<{ edition: Edition; onEditLineup: () => void; onFactsSaved: (edition: Edition) => void }> = ({ edition, onEditLineup, onFactsSaved }) => {
+  const [editingFacts, setEditingFacts] = useState(false);
   const names = new Map(edition.performances.map((p) => [p.artistKey, p.name]));
   const dates = [edition.startDate, edition.endDate && edition.endDate !== edition.startDate ? `to ${edition.endDate}` : null].filter(Boolean).join(' ');
   const facts: Array<[string, string | undefined]> = [
@@ -397,16 +398,35 @@ const EditionDetail: React.FC<{ edition: Edition; onEditLineup: () => void }> = 
           <h3 className="text-lg font-semibold text-zinc-50">{edition.name}</h3>
           <p className="text-xs text-zinc-500">Catalog record. Your personal log is not changed.</p>
         </div>
-        <Button onClick={onEditLineup}>Edit lineup</Button>
+        <div className="flex flex-wrap gap-2">
+          {!editingFacts && <Button onClick={() => setEditingFacts(true)}>Edit facts</Button>}
+          <Button onClick={onEditLineup}>Edit lineup</Button>
+        </div>
       </div>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-        {facts.map(([label, value]) => (
-          <div key={label}>
-            <dt className="text-[11px] uppercase text-zinc-500">{label}</dt>
-            <dd className={value ? 'text-zinc-100' : 'italic text-zinc-500'}>{value ?? 'Not known'}</dd>
-          </div>
-        ))}
-      </dl>
+      {editingFacts ? (
+        <EditionFactsForm
+          edition={edition}
+          onCancel={() => setEditingFacts(false)}
+          onSaved={(saved) => {
+            setEditingFacts(false);
+            onFactsSaved(saved);
+          }}
+        />
+      ) : (
+        <>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+            {facts.map(([label, value]) => (
+              <div key={label}>
+                <dt className="text-[11px] uppercase text-zinc-500">{label}</dt>
+                <dd className={value ? 'text-zinc-100' : 'italic text-zinc-500'}>{value ?? 'Not known'}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="text-xs text-zinc-400">
+            Facts source: {edition.factSourceNote ? <span className="text-zinc-200">{edition.factSourceNote}</span> : <span className="italic text-zinc-500">No source note for these facts yet.</span>}
+          </p>
+        </>
+      )}
       {edition.performances.length === 0 ? (
         <p className="text-sm text-zinc-400">No acts recorded for this edition.</p>
       ) : (
@@ -417,6 +437,109 @@ const EditionDetail: React.FC<{ edition: Edition; onEditLineup: () => void }> = 
         </ul>
       )}
     </div>
+  );
+};
+
+// Edition facts (GA4, owner only). Name, dates, venue and city are edited with a required source note.
+// The diff (old to new) is shown before Save, which stays disabled until a fact changes and a note is given.
+// A blank fact is sent as blank (null) and reads "Not known"; nothing is defaulted.
+const FACT_FIELDS: Array<{ key: 'name' | 'startDate' | 'endDate' | 'venue' | 'city'; label: string; type?: string }> = [
+  { key: 'name', label: 'Name' },
+  { key: 'startDate', label: 'Start date', type: 'date' },
+  { key: 'endDate', label: 'End date', type: 'date' },
+  { key: 'venue', label: 'Venue' },
+  { key: 'city', label: 'City' },
+];
+
+const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSaved: (edition: Edition) => void }> = ({ edition, onCancel, onSaved }) => {
+  const stored = (key: (typeof FACT_FIELDS)[number]['key']): string => (edition[key] ?? '') as string;
+  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(FACT_FIELDS.map((f) => [f.key, stored(f.key)])));
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const trimmed = (key: string) => (values[key] ?? '').trim();
+  const changes = FACT_FIELDS.filter((f) => trimmed(f.key) !== stored(f.key).trim());
+  const nameBlank = trimmed('name') === '';
+  const canSave = !saving && !nameBlank && note.trim() !== '' && changes.length > 0;
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await canonicalApi.editFacts(edition.id, {
+        name: trimmed('name'),
+        startDate: trimmed('startDate') || null,
+        endDate: trimmed('endDate') || null,
+        venue: trimmed('venue') || null,
+        city: trimmed('city') || null,
+        sourceNote: note.trim(),
+      });
+      onSaved(saved);
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form
+      className="space-y-3 rounded-lg border border-zinc-800 p-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (canSave) void save();
+      }}
+    >
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {FACT_FIELDS.map((f) => (
+          <label key={f.key} className="space-y-1 text-xs text-zinc-400">
+            <span className="block text-[11px] uppercase text-zinc-500">{f.label}</span>
+            <input
+              type={f.type ?? 'text'}
+              aria-label={f.label}
+              className={`${field} w-full`}
+              placeholder={f.type ? undefined : 'Not known'}
+              value={values[f.key] ?? ''}
+              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+            />
+          </label>
+        ))}
+      </div>
+      {nameBlank && <p className="text-xs text-rose-300">An edition needs a name.</p>}
+      <label className="block space-y-1 text-xs text-zinc-400">
+        <span className="block text-[11px] uppercase text-zinc-500">Source note (required)</span>
+        <textarea
+          aria-label="Source note"
+          rows={2}
+          className={`${field} w-full`}
+          placeholder="Where these facts came from, e.g. the festival's site, with a link if you have one"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+      </label>
+      <div className="space-y-1 text-xs text-zinc-300">
+        {changes.length === 0 ? (
+          <p className="text-zinc-500">No fact has changed yet.</p>
+        ) : (
+          <>
+            <p className="text-[11px] uppercase text-zinc-500">Changes to save</p>
+            <ul className="space-y-0.5">
+              {changes.map((f) => (
+                <li key={f.key}>
+                  {f.label}: <span className="text-zinc-500">{stored(f.key) || 'Not known'}</span> → <span className="text-zinc-100">{trimmed(f.key) || 'Not known (cleared)'}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" variant="primary" disabled={!canSave}>{saving ? 'Saving…' : 'Save facts'}</Button>
+        <Button variant="ghost" onClick={onCancel} disabled={saving}>Cancel</Button>
+      </div>
+    </form>
   );
 };
 
