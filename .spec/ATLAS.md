@@ -6,6 +6,9 @@ The single entry point and registry for this repo's `.spec/` artifacts. Definiti
 - `000` [CLAUDE.md](../CLAUDE.md) — pointer to agent instructions
 - `010` [AGENTS.md](../AGENTS.md) — rules for every agent
 - `020` [docs/CONTEXT_ATLAS.md](../docs/CONTEXT_ATLAS.md) — Atlas definition & rules
+- `050` [REQUIREMENTS.md](../REQUIREMENTS.md) — What the app is for and its principles
+- `060` [ARCHITECTURE.md](../ARCHITECTURE.md) — How capture, lookup, storage and review work
+- `070` [docs/README.md](../docs/README.md) — Index of feature specs, designs and backlogs
 
 ## Sector 100 Work Dispatch
 - `110` [.spec/PROGRESS.md](PROGRESS.md) — Active slice queue & lock
