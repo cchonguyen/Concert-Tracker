@@ -1,0 +1,21 @@
+# Hosting
+
+Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
+
+
+The `/api` routes live in `src/server/app.ts` and take a `JobRunner` that starts a job without waiting for it. Two hosts wire them up:
+
+| | Node (`server.ts`, `npm run dev`) | Cloudflare Worker (`worker/index.ts`, `wrangler.jsonc`) |
+| --- | --- | --- |
+| Frontend | Vite middleware in dev, `dist/` in production (pages: the marketing page, the app and the demo, see Public pages) | Workers static assets from `dist/`, unknown addresses get `404.html`; the Worker runs for `/`, the app page, `/demo`, `/robots.txt`, `/sitemap.xml`, `/api/*` and the share page (`/s`, `/s/*`, `/S`, `/S/*`), and hands the pages it lets through to the static assets (`ASSETS`)
+| API | Express | The same Express app, through `handleAsNodeRequest` from `cloudflare:node` (`nodejs_compat`) |
+| Starting a job | `LookupWorker.kick` runs it in-process | A message on the `concert-tracker-lookups` Queue |
+| Due and parked jobs | `setInterval` every 20 s | Cron Trigger every minute sends due jobs to the Queue |
+| Store | Supabase, or the file store | Supabase only |
+| Config | `.env` | `vars` in `wrangler.jsonc` plus `wrangler secret put` |
+
+Workers Builds (the GitHub-connected build) deploys pull requests with `wrangler preview`, which reads the `previews` block in `wrangler.jsonc`. Previews get the plain settings but no secrets, so their API answers "not configured" and they never touch the Supabase data or start jobs.
+
+The queue consumer runs one message at a time (`max_concurrency: 1`), so the per-host spacing in `http.ts` still holds; the spacing lives in memory, so it is per isolate rather than global. Each queue message runs one step of a job (`runJob` with `oneStep`: one stage, or one page of extraction), saves it back to `queued` and sends the next message, so one invocation stays within the subrequest and CPU limits; running a whole lookup in one invocation went past 50 subrequests after three pages. Duplicate queue messages are harmless because `runJob` skips a job that is no longer `queued` or `waiting_quota`. If an unhandled failure occurs during queue message processing, the queue consumer catches it per-message, logs the redacted error (`redactSecrets`), and retries with a backoff delay (`message.retry({ delaySeconds: 60 })`) without marking the job failed, preserving `runJob`'s 3-attempt backoff. A run cut off anyway leaves the job `running`; after 10 minutes without a save (`STALE_RUN_MS`, `isStaleRun` in `store/types.ts` — intentionally longer than a single stage's subrequest limit to ensure slow external responses or retry delays are not prematurely reaped) `dueJobs` returns it and it resumes from its last saved step, without repeating pages already read. MusicBrainz artist resolution handles 20 artists per run for the same reason. While a job is between steps the UI still shows it as looking through sources. The event panel's lineup card (`LineupProgress`) draws the five steps (Find sources, Read pages, Search for more, Merge and cite, Your review) with `Stepper`, from `lineupSteps` in `src/services/lineupProgress.ts`: each step is done, running, paused (a quota wait, with "Continues on its own after …" and Try now), failed, ready for you, or not started, and each state is also written out in words. A polite live region announces the step. The card says you can close it; the job keeps going.
+
+Each Worker request may make at most 50 subrequests on Workers Free, and every Supabase call is one. So a request never makes store calls in proportion to a lineup's or a list's size: confirming a lineup gathers its corrections, source stats, blocklist entries, aliases and artists and saves each kind in one call (`addCorrections`, `bumpSourceStats`, `bumpBlocklist`, `putAliases`, `ensureArtists`; a stats or blocklist bump is one read and one write), `upsertEdition` adds missing artists in one upsert, adding email imports saves the events with one `putEvents`, bulk name suggestions read editions with `getEditions`, and `POST /api/events/lineups` takes 5 events per request (Fill gaps sends 50 in chunks). `tests/pipeline.test.ts` checks that confirming 150 acts makes as many store calls as confirming 5.
