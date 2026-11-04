@@ -18,6 +18,8 @@ Contracts: SYSTEM_SPEC.md section 3. `[CORE / DATA]` slices need passing unit te
 
 ## Audit follow-up (plan approved 2026-11-04: /mnt/project-files/audit-2026-11-04/plan.md)
 
+- [ ] **Slice 8.18** `[CORE / DATA]` [IN_PROGRESS]: Check every relative Markdown link in the root and docs/ against the repo, fix the dead ones, and add a test that fails on a dead link. Target files: `docs/engineering-ticket-bank.md`, `tests/docsLinks.test.ts`, `.spec/PROGRESS.md` | Verify: `npm test --silent && npm run lint --silent`
+
 
 
 
