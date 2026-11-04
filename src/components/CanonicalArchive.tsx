@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { canonicalApi, lineupApi, LookupJob } from '../services/lineupApi';
+import { canonicalApi, entitiesApi, lineupApi, LookupJob } from '../services/lineupApi';
+import type { HistoryEntry } from '../server/entities/types';
 import type { Edition } from '../server/lineup/types';
-import type { ArtistAppearance } from '../server/entities/canonicalManage';
-import type { CanonicalArtistSummary, CanonicalEditionSummary } from '../server/entities/canonicalManage';
+import type { ArtistAppearance, CanonicalArtistRecord, CanonicalEditionSummary } from '../server/entities/canonicalManage';
+import { CanonicalArtistEntry, ORIGIN_LABEL } from './CanonicalArtistEntry';
 import { LineupReview } from './LineupReview';
 import { Button } from './ui/Button';
 import { Pill } from './ui/Pill';
@@ -14,12 +15,6 @@ import { Pill } from './ui/Pill';
 
 export type ArchiveSection = 'artists' | 'editions' | 'lookups';
 export type EditionStatus = 'all' | 'confirmed' | 'draft';
-
-const ORIGIN_LABEL: Record<CanonicalArtistSummary['origins'][number], string> = {
-  from_me: 'From me',
-  unmanaged_fetch: 'Unmanaged fetch',
-  community_import: 'Community import',
-};
 
 // The ingest queue's status, in words (the Pill tone adds color; the words carry the meaning).
 const STATUS_WORDS: Record<LookupJob['status'], string> = {
@@ -54,16 +49,24 @@ export const CanonicalArchive: React.FC<{ section: ArchiveSection; query: string
 };
 
 const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
-  const [artists, setArtists] = useState<CanonicalArtistSummary[] | null>(null);
-  const [detail, setDetail] = useState<{ artist: CanonicalArtistSummary; appearances: ArtistAppearance[] } | null>(null);
+  const [artists, setArtists] = useState<CanonicalArtistRecord[] | null>(null);
+  const [detail, setDetail] = useState<{ artist: CanonicalArtistRecord; appearances: ArtistAppearance[] } | null>(null);
+  // The last saved change, with its Undo (the history entry's id).
+  const [notice, setNotice] = useState<{ text: string; undo?: string } | null>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const loadList = useCallback(
+    () =>
+      canonicalApi
+        .artists()
+        .then((r) => setArtists(r.artists))
+        .catch((err) => setError(messageOf(err))),
+    [],
+  );
   useEffect(() => {
-    canonicalApi
-      .artists()
-      .then((r) => setArtists(r.artists))
-      .catch((err) => setError(messageOf(err)));
-  }, []);
+    void loadList();
+  }, [loadList]);
 
   const openArtist = async (key: string) => {
     setError(null);
@@ -75,20 +78,60 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
     }
   };
 
+  // A saved change: show it with Undo, then the artist where it now is (the list after a merge).
+  const changed = async (entry: HistoryEntry, key: string | null) => {
+    setNotice({ text: `${entry.summary}.`, undo: entry.id });
+    await loadList();
+    if (key === null) setDetail(null);
+    else await openArtist(key);
+  };
+
+  const undo = async (id: string) => {
+    setBusy(true);
+    try {
+      const r = await entitiesApi.undo(id);
+      setNotice({ text: `Undid: ${r.entry.summary}.` });
+      setDetail(null);
+      await loadList();
+    } catch (err) {
+      setNotice({ text: messageOf(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const noticeLine = notice && (
+    <p role="status" className="flex flex-wrap items-center gap-2 text-sm text-zinc-300">
+      {notice.text}
+      {notice.undo && (
+        <button onClick={() => void undo(notice.undo!)} disabled={busy} className="text-violet-300 hover:text-violet-200 disabled:opacity-40">
+          Undo
+        </button>
+      )}
+    </p>
+  );
+
   if (detail) {
     return (
       <div className="space-y-4">
-        <button onClick={() => setDetail(null)} className="text-sm text-violet-300 hover:text-violet-200">← Back to artists</button>
-        <ArtistDetail artist={detail.artist} appearances={detail.appearances} />
+        {noticeLine}
+        <CanonicalArtistEntry
+          artist={detail.artist}
+          appearances={detail.appearances}
+          artists={artists ?? []}
+          onBack={() => setDetail(null)}
+          onChanged={(entry, key) => void changed(entry, key)}
+        />
       </div>
     );
   }
 
   const q = query.trim().toLowerCase();
-  const shown = (artists ?? []).filter((a) => !q || a.name.toLowerCase().includes(q) || a.key.includes(q));
+  const shown = (artists ?? []).filter((a) => !q || a.name.toLowerCase().includes(q) || a.key.includes(q) || a.akas.some((k) => k.includes(q)));
 
   return (
     <section className="space-y-2">
+      {noticeLine}
       {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
       {artists === null ? (
         <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
@@ -103,8 +146,10 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
               <button onClick={() => void openArtist(a.key)} className="flex w-full flex-wrap items-center gap-2 p-2.5 text-left text-sm hover:bg-zinc-900/60">
                 <span className="text-zinc-100">{a.name}</span>
                 {a.origins.map((o) => (
-                  <span key={o} className="rounded-full border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300">{ORIGIN_LABEL[o]}</span>
+                  <Pill key={o} tone="neutral">{ORIGIN_LABEL[o]}</Pill>
                 ))}
+                <span className="text-[11px] text-zinc-500">{a.mbid ? 'MusicBrainz' : 'No MusicBrainz id'}</span>
+                {a.akas.length > 0 && <span className="basis-full text-xs text-zinc-500">Also known as {a.akas.join(', ')}</span>}
                 <span className="ml-auto text-xs text-zinc-400">
                   {a.editionsCount} billed {a.editionsCount === 1 ? 'edition' : 'editions'}
                   {a.communityCount === null ? '' : ` · ${a.communityCount} community`}
@@ -332,32 +377,6 @@ const EditionDetail: React.FC<{ edition: Edition }> = ({ edition }) => (
           ))}
         </tbody>
       </table>
-    )}
-  </div>
-);
-
-const ArtistDetail: React.FC<{ artist: CanonicalArtistSummary; appearances: ArtistAppearance[] }> = ({ artist, appearances }) => (
-  <div className="space-y-3">
-    <div>
-      <h3 className="text-lg font-semibold text-zinc-50">{artist.name}</h3>
-      <div className="mt-1 flex flex-wrap gap-2">
-        {artist.origins.map((o) => (
-          <span key={o} className="rounded-full border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300">{ORIGIN_LABEL[o]}</span>
-        ))}
-      </div>
-      <p className="mt-1 text-xs text-zinc-500">{artist.mbid ? `MusicBrainz ${artist.mbid}` : 'No MusicBrainz id yet'}</p>
-    </div>
-    {appearances.length === 0 ? (
-      <p className="text-sm text-zinc-400">Not in any edition in the archive yet.</p>
-    ) : (
-      <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
-        {appearances.map((a) => (
-          <li key={`${a.editionId}-${a.billing ?? ''}-${a.set ?? ''}`} className="p-2.5 text-sm">
-            <span className="text-zinc-100">{a.editionName}</span>
-            <span className="ml-2 text-xs text-zinc-400">{[a.billing ?? 'Artist', a.set, a.startDate, a.venue].filter(Boolean).join(' · ')}</span>
-          </li>
-        ))}
-      </ul>
     )}
   </div>
 );
