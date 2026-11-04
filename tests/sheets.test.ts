@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { AddressInfo } from 'node:net';
 import express from 'express';
+import { dispatch } from './helpers/testApp.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import { PipelineDeps } from '../src/server/lineup/pipeline.ts';
 import { EventPatch } from '../src/server/events/service.ts';
@@ -204,16 +204,12 @@ async function server(t: { after: (fn: () => void) => void }, sheets: SheetsApi 
   app.use(express.json());
   app.use('/api', sheetsRouter(deps, sheets));
   app.use('/api', importsRouter(deps, null));
-  const listening = app.listen(0);
-  await new Promise((resolve) => listening.once('listening', resolve));
-  t.after(() => listening.close());
-  const base = `http://127.0.0.1:${(listening.address() as AddressInfo).port}/api`;
   const call = (route: string, method = 'GET', body?: unknown) =>
-    fetch(`${base}${route}`, {
+    dispatch(app, {
       method,
-      redirect: 'manual',
+      url: `/api${route}`,
       headers: { 'content-type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body,
     });
   return { store, call };
 }
@@ -267,7 +263,7 @@ test('sheets routes: sign in through the shared callback, link a tab, and refuse
 
   const fresh = await (await call('/sheets/values')).json();
   const ok = await call('/sheets/values', 'PUT', { rows: [['Event', 'ID'], ['Robyn', 'e1'], ['Bicep', null]], version: fresh.version });
-  assert.equal(ok.status, 200, await ok.clone().text());
+  assert.equal(ok.status, 200, ok.text());
   assert.equal((await ok.json()).sheet.syncedAt, NOW.toISOString());
   assert.deepEqual(fake.state.writes[0], [['Event', 'ID'], ['Robyn', 'e1'], ['Bicep', null]]);
   // What was written is the base for the next sync.
