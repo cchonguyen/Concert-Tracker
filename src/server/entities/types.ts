@@ -2,6 +2,11 @@
 // has a permanent ID; events point at them. Contracts: .spec/SYSTEM_SPEC.md
 // section 3.
 
+import type { ArtistIdentity, EditionPerformance } from '../lineup/types';
+
+// One performance row: the edition it is in, with the act's fields.
+export type ArtistEditionRow = EditionPerformance & { editionId: string };
+
 export type EntityKind = 'artist' | 'person' | 'venue' | 'place' | 'series' | 'organization' | 'label';
 
 export const ENTITY_KINDS: EntityKind[] = ['artist', 'person', 'venue', 'place', 'series', 'organization', 'label'];
@@ -53,9 +58,27 @@ export const ALLOWED_LINKS: Array<{ from: EntityKind; role: LinkRole; to: Entity
 // One rename, merge, alias or link change, with everything needed to undo
 // it exactly (entity_history). Lists hold the full before and after state of
 // what the change touched; events hold only the fields it changed.
+// A catalog artist change (Global archive, canonical_artists). Its own
+// before and after, so undo can put back exactly what it changed.
+export interface ArtistAliasRow {
+  alias: string; // normalized AKA (artist_aliases)
+  name: string; // the canonical name it points to
+}
+export interface CanonicalChange {
+  // The artist key the change started from.
+  key: string;
+  artists: { before: ArtistIdentity[]; after: ArtistIdentity[] };
+  performances: { before: ArtistEditionRow[]; after: ArtistEditionRow[] };
+  aliases: { before: ArtistAliasRow[]; after: ArtistAliasRow[] };
+  // The owner's own record changed by the same step (an existing user_entities change). Undone first.
+  personalHistoryId?: string;
+}
+
+export const CANONICAL_OPERATIONS = ['canonical-rename', 'canonical-merge', 'canonical-alias-add', 'canonical-alias-remove'] as const;
+
 export interface HistoryEntry {
   id: string;
-  operation: 'rename' | 'merge' | 'alias-add' | 'alias-remove' | 'link-add' | 'link-remove' | 'details' | 'create';
+  operation: 'rename' | 'merge' | 'alias-add' | 'alias-remove' | 'link-add' | 'link-remove' | 'details' | 'create' | (typeof CANONICAL_OPERATIONS)[number];
   summary: string;
   sourceEntityId: string;
   targetEntityId?: string;
@@ -70,4 +93,6 @@ export interface HistoryEntry {
   // Made in the browser for a change the server cannot read (a person in the
   // vault): it has no stored entry to undo, and its events changed.
   eventsChanged?: boolean;
+  // Set on a catalog artist change (CANONICAL_OPERATIONS); its records are not entities.
+  canonical?: CanonicalChange;
 }

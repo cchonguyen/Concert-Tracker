@@ -17,7 +17,7 @@ import type { ActivityEntry } from '../../events/activityLog';
 import type { LineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
-import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
+import { ArtistEditionRow, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import type { ShareLink } from '../../share/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CachedResponse } from '../responseCache';
@@ -137,6 +137,13 @@ export interface LineupStore {
   listUnresolvedArtists(limit: number): Promise<ArtistIdentity[]>;
   // Every canonical artist (canonical_artists), for the owner's Global Archive.
   listArtists(): Promise<ArtistIdentity[]>;
+  // Removes canonical artists (a merged-away one). Only after its performances moved.
+  deleteArtists(keys: string[]): Promise<void>;
+  // Performances (edition links) of these artists, each with its edition ID.
+  artistPerformances(keys: string[]): Promise<ArtistEditionRow[]>;
+  // Writes performances as given, keyed by edition and artist (upsert).
+  putArtistPerformances(rows: ArtistEditionRow[]): Promise<void>;
+  deleteArtistPerformances(rows: Array<{ editionId: string; artistKey: string }>): Promise<void>;
   // Owner view only: artist name key -> members who have it on a live event. Null where the store cannot count across members.
   communityCounts(): Promise<Map<string, number> | null>;
 

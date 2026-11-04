@@ -5,6 +5,7 @@ import {
   BlocklistEntry,
   Correction,
   Edition,
+  EditionPerformance,
   ExtractionExample,
   LookupJob,
   PerformerClaim,
@@ -21,7 +22,7 @@ import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
 import { diffEvent, type ActivityDraft, type ActivityEntry } from '../../events/activityLog';
 import { isCiphertext } from '../../auth/vault';
-import { Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
+import { ArtistEditionRow, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../entities/integrity';
 import type { ShareLink } from '../../share/types';
 import { shareEventOnly } from '../../share/types';
@@ -532,6 +533,43 @@ export class FileLineupStore implements LineupStore {
 
   async listArtists() {
     return clone(Object.values((await this.load()).artists));
+  }
+
+  async deleteArtists(keys: string[]) {
+    const state = await this.load();
+    for (const k of keys) delete state.artists[k];
+    await this.save();
+  }
+
+  // Performances live inside their edition here.
+  async artistPerformances(keys: string[]) {
+    const out: ArtistEditionRow[] = [];
+    for (const e of Object.values((await this.load()).editions)) {
+      for (const p of e.performances) if (keys.includes(p.artistKey)) out.push(clone({ ...p, editionId: e.id }));
+    }
+    return out;
+  }
+
+  async putArtistPerformances(rows: ArtistEditionRow[]) {
+    const state = await this.load();
+    for (const { editionId, ...row } of rows) {
+      const edition = state.editions[editionId];
+      if (!edition) continue;
+      const perf = clone(row) as EditionPerformance;
+      const at = edition.performances.findIndex((p) => p.artistKey === perf.artistKey);
+      if (at >= 0) edition.performances[at] = perf;
+      else edition.performances.push(perf);
+    }
+    await this.save();
+  }
+
+  async deleteArtistPerformances(rows: Array<{ editionId: string; artistKey: string }>) {
+    const state = await this.load();
+    for (const { editionId, artistKey } of rows) {
+      const edition = state.editions[editionId];
+      if (edition) edition.performances = edition.performances.filter((p) => p.artistKey !== artistKey);
+    }
+    await this.save();
   }
 
   // The file store is the single-user dev store: no cross-member counts.
