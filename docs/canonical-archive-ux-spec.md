@@ -69,7 +69,7 @@ Depends on UX1's preview/apply and edition-count contracts.
 
 ## Do not build
 
-- No member-visible archive, member names, or edits to members' `logged_events` or seen text.
+- No member-visible archive, member names, or edits to members' `logged_events` or seen text. Owner-side writes are the exception: owner-side writes, including the seen-text rewrite of the owner's own `logged_events` rows made by a canonical rename or merge, are part of the same atomic apply and Undo as the canonical change (owner decision, 2026-11-03; this supersedes the earlier rule that canonical edits never write `logged_events`). A failed apply or Undo writes none of them.
 - No deletes; no demote-to-draft.
 - No change to the shared History list or its 50-entry limit.
 - No new migration without asking first.

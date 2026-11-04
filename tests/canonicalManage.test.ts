@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { appearancesOf, isOwner, listCanonicalEditions, summarizeEdition, unifyArtists } from '../src/server/entities/canonicalManage.ts';
 import { currentMember, runAsMember } from '../src/server/auth/requestScope.ts';
+import { diffEvent } from '../src/server/events/activityLog.ts';
 import type { Edition, EditionPerformance } from '../src/server/lineup/types.ts';
 
 const AT = '2026-11-03T00:00:00.000Z';
@@ -117,7 +118,15 @@ import path from 'node:path';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import { withEntityLinks } from '../src/server/entities/linkingStore.ts';
 import { entitiesRouter } from '../src/server/entities/routes.ts';
-import { addArtistAka, mergeArtists, removeArtistAka, renameArtist, undoHistory } from '../src/server/entities/canonicalManage.ts';
+import {
+  addArtistAka,
+  applyArtistChangePlan,
+  mergeArtists,
+  planArtistChange,
+  removeArtistAka,
+  renameArtist,
+  undoHistory,
+} from '../src/server/entities/canonicalManage.ts';
 import { ManageError } from '../src/server/entities/manage.ts';
 
 const OWNER = { role: 'owner', uid: 'u0' } as any;
@@ -158,7 +167,7 @@ async function seeded(store: any) {
   );
 }
 
-// Logged events of members, as the store holds them. Canonical edits must leave them alone.
+// Logged events, as the store holds them. Canonical edits leave them alone unless the owner's own record follows the change (planner tests, migration 0037).
 const LOGGED = { id: 'ev1', name: 'X 2024', year: 2024, startDate: '2024-06-01', companions: [], seen: [{ key: 'deadmau5', name: 'deadmau5', from: 'you' }], updatedAt: AT };
 
 test('rename moves the artist and its editions, keeps the old name as an AKA, and writes a history entry', async () => {
@@ -300,7 +309,7 @@ test('owner routes: rename over HTTP, with the AKAs on the detail', async () => 
   assert.deepEqual(detail.artist.akas, ['deadmau5']);
 });
 
-test('canonical edits never write logged_events or a member\'s seen text', async () => {
+test('canonical edits leave logged_events alone when no owner record follows them (owner-side seen rewrites are covered by the planner and migration tests)', async () => {
   // The raw store, not the linked view: linking shows canonical names at read time, and stores nothing.
   const base = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'ga3-raw-')));
   const store: any = withEntityLinks(base);
@@ -322,4 +331,219 @@ test('the owner\'s own artist record follows a rename, and undo puts it back', a
   assert.equal((await store.listEntities()).find((e: any) => e.id === 'ent-1')?.name, 'Joel Zimmerman');
   await asOwner(store, () => undoHistory(store, entry.id, AT));
   assert.equal((await store.listEntities()).find((e: any) => e.id === 'ent-1')?.name, 'deadmau5');
+});
+
+// ---- Planner (8.4): read-only, one calculation for preview and apply -------------
+
+// The owner's own artist records for the fixture (seeded artists have the same names).
+async function ownRecords(store: any) {
+  await store.addEntities([
+    { id: 'own-deadmau5', kind: 'artist', name: 'deadmau5', nameNormalized: 'deadmau5', attrs: {}, createdAt: AT, updatedAt: AT },
+    { id: 'own-porter', kind: 'artist', name: 'Porter', nameNormalized: 'porter', attrs: {}, createdAt: AT, updatedAt: AT },
+    { id: 'own-pr', kind: 'artist', name: 'Porter Robinson', nameNormalized: 'porter robinson', attrs: {}, createdAt: AT, updatedAt: AT },
+  ]);
+}
+
+// A store view whose community aggregate is fixed (the FileStore reports none).
+const withCounts = (store: any, counts: Map<string, number> | null) =>
+  new Proxy(store, {
+    get(t, p) {
+      if (p === 'communityCounts') return async () => counts;
+      const v = Reflect.get(t, p, t);
+      return typeof v === 'function' ? v.bind(t) : v;
+    },
+  });
+
+// The store view with performance ids, as a store that exposes them would return.
+const withPerformanceIds = (store: any) =>
+  new Proxy(store, {
+    get(t, p) {
+      if (p === 'artistPerformances') return async (keys: string[]) => (await t.artistPerformances(keys)).map((r: any) => ({ ...r, id: `${r.editionId}:${r.artistKey}` }));
+      const v = Reflect.get(t, p, t);
+      return typeof v === 'function' ? v.bind(t) : v;
+    },
+  });
+
+// Everything a planner could write, as one comparable string.
+async function snapshot(store: any) {
+  return JSON.stringify([
+    await store.listArtists(),
+    await store.getAliases(),
+    await store.listEntities(),
+    await store.listEntityHistory(100),
+    await store.listEvents(),
+    await store.listEditions(1000),
+    await store.artistPerformances(['deadmau5', 'porter', 'porter robinson', 'joel zimmerman', 'dead mau5']),
+  ]);
+}
+
+test('planner: each preview operation returns the fixture counts, and planning writes nothing', async () => {
+  const store: any = await freshStore();
+  await seeded(store);
+  await ownRecords(store);
+  const view = withCounts(store, new Map([['deadmau5', 3], ['porter', 2], ['p robinson', 1], ['dead mau5', 1], ['porter robinson', 4]]));
+  const before = await snapshot(store);
+
+  const rename = await planArtistChange(view, 'deadmau5', { op: 'rename', name: 'Joel Zimmerman' }, AT);
+  assert.deepEqual(rename.impact, { editionsAffected: 1, performancesMoved: 1, ownerRecordsAffected: 1, communityNameKeysAffected: 1 });
+
+  const add = await planArtistChange(view, 'deadmau5', { op: 'alias-add', name: 'Dead Mau5' }, AT);
+  assert.deepEqual(add.impact, { editionsAffected: 0, performancesMoved: 0, ownerRecordsAffected: 0, communityNameKeysAffected: 1 });
+
+  const remove = await planArtistChange(view, 'porter', { op: 'alias-remove', name: 'p robinson' }, AT);
+  assert.deepEqual(remove.impact, { editionsAffected: 0, performancesMoved: 0, ownerRecordsAffected: 0, communityNameKeysAffected: 1 });
+
+  // Porter's two rows: the e2 row collides with the target's, so it collapses. Both source rows are counted, the target row is not.
+  const merge = await planArtistChange(view, 'porter', { op: 'merge', into: 'porter robinson' }, AT);
+  assert.deepEqual(merge.impact, { editionsAffected: 2, performancesMoved: 2, ownerRecordsAffected: 2, communityNameKeysAffected: 2 });
+
+  assert.equal(await snapshot(store), before, 'planning wrote nothing');
+  assert.equal((await store.getArtist('deadmau5'))?.name, 'deadmau5');
+});
+
+test('planner: a merge without a collision moves the rows and counts one owner record', async () => {
+  const store: any = await freshStore();
+  await seeded(store);
+  await ownRecords(store);
+  // deadmau5 is only in e1 and the target only in e2: nothing collides.
+  const plan = await planArtistChange(withCounts(store, null), 'deadmau5', { op: 'merge', into: 'porter robinson' }, AT);
+  assert.deepEqual(plan.impact, { editionsAffected: 1, performancesMoved: 1, ownerRecordsAffected: 2, communityNameKeysAffected: null });
+  // Both sides hold the rows of both keys: the target's e2 row is unchanged, the moved e1 row now sits on the target.
+  assert.equal(plan.entry.canonical.performances.before.length, 2);
+  assert.deepEqual(plan.entry.canonical.performances.after.map((r) => r.artist_key).sort(), ['porter robinson', 'porter robinson']);
+});
+
+test('planner: an unavailable community aggregate is null, never zero', async () => {
+  const store: any = await freshStore();
+  await seeded(store);
+  const plan = await planArtistChange(store, 'deadmau5', { op: 'alias-add', name: 'Dead Mau5' }, AT);
+  assert.equal(plan.impact.communityNameKeysAffected, null);
+});
+
+test('planner: the plan holds full before and after images, including the unchanged rows', async () => {
+  const store: any = await freshStore();
+  await seeded(store);
+  await ownRecords(store);
+  const plan = await planArtistChange(withPerformanceIds(store), 'porter', { op: 'merge', into: 'porter robinson' }, AT);
+  const { canonical } = plan.entry;
+
+  assert.equal(plan.entry.operation, 'canonical-merge');
+  assert.equal(canonical.key, 'porter');
+  assert.deepEqual(canonical.artists.before.map((a) => a.key).sort(), ['porter', 'porter robinson']);
+  assert.deepEqual(canonical.artists.after.map((a) => a.key), ['porter robinson']);
+  assert.deepEqual(Object.keys(canonical.artists.before[0]).sort(), ['key', 'mbid', 'name', 'resolved_at']);
+
+  // Every performance row the keys touch, on both sides; the collapsed source row exists only before.
+  assert.equal(canonical.performances.before.length, 3);
+  assert.equal(canonical.performances.after.length, 2);
+  const PERF_KEYS = ['id', 'edition_id', 'artist_key', 'name', 'days', 'stages', 'status', 'billing', 'confidence', 'sources', 'slot_id', 'alias', 'b2b', 'set'];
+  for (const row of [...canonical.performances.before, ...canonical.performances.after]) {
+    assert.deepEqual(Object.keys(row).sort(), [...PERF_KEYS].sort());
+    assert.notEqual(row.id, null, 'ids come from the store');
+  }
+  assert.equal(plan.sqlReady, true);
+
+  // Owner records: both artist records on both sides, the source one now merged into the target.
+  assert.deepEqual(canonical.owner.before.map((e) => e.id).sort(), ['own-porter', 'own-pr']);
+  assert.equal(canonical.owner.after.find((e) => e.id === 'own-porter')?.merged_into_id, 'own-pr');
+  assert.deepEqual(Object.keys(canonical.owner.before[0]).sort(), ['attrs', 'id', 'kind', 'merged_into_id', 'name', 'name_normalized']);
+  assert.equal(canonical.owner.after.find((e) => e.id === 'own-pr')?.name, 'Porter Robinson');
+});
+
+test('planner: an AKA change still carries the artist and its editions, unchanged', async () => {
+  const store: any = await freshStore();
+  await seeded(store);
+  const plan = await planArtistChange(withPerformanceIds(store), 'deadmau5', { op: 'alias-add', name: 'Dead Mau5' }, AT);
+  const { canonical } = plan.entry;
+  assert.deepEqual(canonical.artists.before, canonical.artists.after);
+  assert.equal(canonical.artists.before.length, 1);
+  assert.deepEqual(canonical.performances.before, canonical.performances.after);
+  assert.equal(canonical.performances.before.length, 1);
+  assert.deepEqual(canonical.aliases.after, [{ alias: 'dead mau5', name: 'deadmau5' }]);
+  assert.deepEqual(canonical.aliases.before, []);
+  assert.equal(plan.sqlReady, true);
+});
+
+test('planner: without ids the plan says it is not SQL-ready, and it carries no fingerprint', async () => {
+  const store: any = await freshStore();
+  await seeded(store);
+  const plan = await planArtistChange(store, 'deadmau5', { op: 'rename', name: 'Joel Zimmerman' }, AT);
+  assert.equal(plan.sqlReady, false);
+  assert.equal(plan.entry.canonical.performances.before[0].id, null);
+  assert.equal(Object.keys(plan).includes('previewFingerprint'), false);
+});
+
+test('planner: applying a plan writes what the plan holds, once', async () => {
+  const store: any = await freshStore();
+  await seeded(store);
+  await ownRecords(store);
+  const plan = await planArtistChange(store, 'deadmau5', { op: 'rename', name: 'Joel Zimmerman' }, AT, { communityCounts: false });
+  const entry = await asOwner(store, () => applyArtistChangePlan(store, plan));
+  assert.equal(entry.id, plan.id);
+  assert.equal((await store.getArtist('joel zimmerman'))?.mbid, 'MB-DEADMAU5');
+  assert.equal((await store.listEntities()).find((e: any) => e.id === 'own-deadmau5')?.name, 'Joel Zimmerman');
+});
+
+test('planner: the SQL entry carries the owner-side images (record, aliases, links, events) for a rename', async () => {
+  const store: any = await freshStore();
+  await seeded(store);
+  await ownRecords(store);
+  const plan = await planArtistChange(store, 'deadmau5', { op: 'rename', name: 'Joel Zimmerman' }, AT, { communityCounts: false });
+  const { canonical } = plan.entry;
+  assert.deepEqual(canonical.ownerTouched, ['own-deadmau5']);
+  assert.equal(canonical.owner.before.find((e) => e.id === 'own-deadmau5')?.name, 'deadmau5');
+  assert.equal(canonical.owner.after.find((e) => e.id === 'own-deadmau5')?.name, 'Joel Zimmerman');
+  // The old name is kept as an AKA of the record: the after side holds it, the before side does not.
+  assert.ok(!canonical.ownerAliases.before.some((a) => a.alias === 'deadmau5'));
+  assert.deepEqual(canonical.ownerAliases.after.filter((a) => a.alias === 'deadmau5'), [{ entity_id: 'own-deadmau5', kind: 'artist', alias: 'deadmau5' }]);
+  assert.ok(Array.isArray(canonical.ownerLinks.before) && Array.isArray(canonical.ownerLinks.after));
+  assert.ok(Array.isArray(canonical.events.before) && canonical.events.before.length === canonical.events.after.length);
+  // This fixture's performance rows carry no ids, so the plan is not SQL-ready for that reason alone; the owner side adds no blocker.
+  const perfIds = [...canonical.performances.before, ...canonical.performances.after].every((r) => typeof r.id === 'string');
+  assert.equal(plan.sqlReady, perfIds);
+});
+
+test('planner: a seen-text rewrite plans one activity row per changed event, the same row the TypeScript store logs', async () => {
+  const base = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'ga3-activity-')));
+  const store: any = withEntityLinks(base);
+  await seeded(store);
+  await ownRecords(store);
+  await base.putEvents([LOGGED as any]);
+  const plan = await planArtistChange(store, 'deadmau5', { op: 'rename', name: 'Joel Zimmerman' }, AT, { communityCounts: false });
+  const { canonical } = plan.entry;
+  assert.equal(canonical.events.before.length, 1, 'the owner record rename rewrites the one logged event');
+  assert.equal(canonical.activity.length, 1);
+  const [row] = canonical.activity;
+  assert.deepEqual(Object.keys(row).sort(), ['action', 'after', 'before', 'event_id', 'field', 'sensitive']);
+  assert.equal(row.event_id, 'ev1');
+  assert.equal(row.action, 'update');
+  assert.equal(row.field, 'seen');
+  assert.equal(row.sensitive, false);
+  assert.deepEqual(row.before, canonical.events.before[0].seen);
+  assert.deepEqual(row.after, canonical.events.after[0].seen);
+  // The TypeScript store logs a save through diffEvent: the seen field's row must match it exactly.
+  const logged = diffEvent({ ...LOGGED, seen: row.before } as any, { ...LOGGED, seen: row.after } as any)
+    .filter((d) => d.field === 'seen')
+    .map((d) => ({ event_id: d.eventId, action: d.action, field: d.field, before: d.before, after: d.after, sensitive: d.sensitive }));
+  assert.deepEqual(canonical.activity, logged);
+  // Planning writes nothing: the activity list is part of the plan, not a write.
+  assert.equal((await base.listEvents()).length, 1);
+});
+
+test('planner: a canonical-only change carries no owner-side images', async () => {
+  const store: any = await freshStore();
+  await seeded(store);
+  const plan = await planArtistChange(store, 'porter', { op: 'alias-add', name: 'PR' }, AT, { communityCounts: false });
+  const { canonical } = plan.entry;
+  assert.deepEqual(canonical.ownerTouched, []);
+  assert.deepEqual(canonical.ownerAliases, { before: [], after: [] });
+  assert.deepEqual(canonical.ownerLinks, { before: [], after: [] });
+  assert.deepEqual(canonical.events, { before: [], after: [] });
+});
+
+test('planner: a merge into itself and an empty AKA are refused', async () => {
+  const store: any = await freshStore();
+  await seeded(store);
+  await assert.rejects(planArtistChange(store, 'porter', { op: 'merge', into: 'porter' }, AT), (e: any) => e.status === 400);
+  await assert.rejects(planArtistChange(store, 'porter', { op: 'alias-add', name: '  ' }, AT), (e: any) => e.status === 400);
 });
