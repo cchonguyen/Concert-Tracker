@@ -6,12 +6,23 @@ import path from 'node:path';
 const root = path.resolve(import.meta.dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
 
+// The root ARCHITECTURE.md plus every docs/architecture/*.md section, joined.
+function architectureDoc(): string {
+  const dir = path.join(root, 'docs/architecture');
+  const parts = fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith('.md'))
+    .sort()
+    .map((f) => read(path.join('docs/architecture', f)));
+  return [read('ARCHITECTURE.md'), ...parts].join('\n');
+}
+
 function releaseSection(): string {
-  const doc = read('ARCHITECTURE.md');
-  const start = doc.indexOf('## Release checks (S4)');
-  assert.ok(start >= 0, 'ARCHITECTURE.md has a Release checks (S4) section');
+  const doc = architectureDoc();
+  const start = doc.indexOf('# Release checks (S4)');
+  assert.ok(start >= 0, 'ARCHITECTURE docs have a Release checks (S4) section');
   const rest = doc.slice(start + 1);
-  const next = rest.search(/\n## /);
+  const next = rest.search(/\n#{1,2} /);
   return next < 0 ? doc.slice(start) : doc.slice(start, start + 1 + next);
 }
 
