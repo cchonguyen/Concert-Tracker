@@ -139,6 +139,10 @@ const sameAct = (a: EditionPerformance, b: EditionPerformance) =>
   JSON.stringify(a.days) === JSON.stringify(b.days) &&
   JSON.stringify(a.stages) === JSON.stringify(b.stages);
 
+// Stored sources stay with the act; the owner's curation source is added only if the act has none yet.
+const keepSources = (prev: EditionPerformance, act: EditionPerformance) =>
+  prev.sources.some((s) => s.extractor === 'admin_curation') ? prev.sources : [...prev.sources, ...act.sources];
+
 // Merges the request into the stored edition. Stored acts are kept unless the
 // request names them; changed acts take the request's values on apply.
 // Blank facts are filled; differing facts are reported, never overwritten.
@@ -157,7 +161,9 @@ export async function confirmCanonicalEdition(store: LineupStore, input: Canonic
     if (!prev) diff.added.push(p.name);
     else if (sameAct(prev, act)) diff.unchanged.push(p.name);
     else diff.changed.push(p.name);
-    if (!prev || !sameAct(prev, act)) byKey.set(act.artistKey, act);
+    // A changed act keeps the sources it was stored with (its quotes); the owner's source is added once.
+    if (!prev) byKey.set(act.artistKey, act);
+    else if (!sameAct(prev, act)) byKey.set(act.artistKey, { ...act, sources: keepSources(prev, act) });
   }
 
   const facts: Record<'name' | 'startDate' | 'endDate' | 'venue' | 'city' | 'country', string | undefined> = {
