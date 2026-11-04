@@ -5,6 +5,8 @@ import type { Edition } from '../server/lineup/types';
 import type { ArtistAppearance } from '../server/entities/canonicalManage';
 import type { CanonicalArtistSummary, CanonicalEditionSummary } from '../server/entities/canonicalManage';
 import { LineupReview } from './LineupReview';
+import { Button } from './ui/Button';
+import { Pill } from './ui/Pill';
 
 // Global Archive (owner only, spec Phase 4): ingest a lineup, browse editions and
 // the artist catalog. Counts only; no member names. Never writes a personal log.
@@ -14,6 +16,30 @@ const ORIGIN_LABEL: Record<CanonicalArtistSummary['origins'][number], string> = 
   unmanaged_fetch: 'Unmanaged fetch',
   community_import: 'Community import',
 };
+
+// The ingest queue's status, in words (the Pill tone adds color; the words carry the meaning).
+const STATUS_WORDS: Record<LookupJob['status'], string> = {
+  queued: 'Queued',
+  running: 'Fetching',
+  waiting_quota: 'Waiting for quota',
+  needs_review: 'Ready to review',
+  no_data: 'No lineup found',
+  confirmed: 'Saved to the archive',
+  failed: 'Failed',
+};
+const STATUS_TONE: Record<LookupJob['status'], 'neutral' | 'accent' | 'warn' | 'good'> = {
+  queued: 'neutral',
+  running: 'neutral',
+  waiting_quota: 'warn',
+  needs_review: 'accent',
+  no_data: 'warn',
+  confirmed: 'good',
+  failed: 'warn',
+};
+const isActive = (j: LookupJob) => j.status === 'queued' || j.status === 'running' || j.status === 'waiting_quota';
+// Retry runs the job again now (POST /api/lookups/:id/run).
+const canRetry = (j: LookupJob) => j.status === 'waiting_quota' || j.status === 'no_data' || j.status === 'failed';
+const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 const field = 'rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-violet-500 focus:outline-none';
 
@@ -27,7 +53,9 @@ export const CanonicalArchive: React.FC<{ artistQuery?: string }> = ({ artistQue
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [job, setJob] = useState<LookupJob | null>(null);
+  const [lookups, setLookups] = useState<LookupJob[] | null>(null);
+  const [reviewing, setReviewing] = useState<LookupJob | null>(null);
+  const [retrying, setRetrying] = useState<string | null>(null);
   const [detail, setDetail] = useState<{ kind: 'edition'; edition: Edition } | { kind: 'artist'; artist: CanonicalArtistSummary; appearances: ArtistAppearance[] } | null>(null);
 
   const openEdition = async (id: string) => {
@@ -71,6 +99,26 @@ export const CanonicalArchive: React.FC<{ artistQuery?: string }> = ({ artistQue
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, []);
 
+  const loadLookups = useCallback(async () => {
+    try {
+      setLookups(await canonicalApi.lookups());
+    } catch (err) {
+      setError(messageOf(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadLookups();
+  }, [loadLookups]);
+
+  // While any lookup is queued, running or waiting for quota, the list checks again every 20 seconds.
+  const anyActive = (lookups ?? []).some(isActive);
+  useEffect(() => {
+    if (!anyActive) return;
+    const timer = window.setInterval(() => void loadLookups(), 20_000);
+    return () => window.clearInterval(timer);
+  }, [anyActive, loadLookups]);
+
   const ingest = async () => {
     setError(null);
     const y = Number(year);
@@ -79,50 +127,43 @@ export const CanonicalArchive: React.FC<{ artistQuery?: string }> = ({ artistQue
     setBusy(true);
     try {
       const started = await canonicalApi.ingest({ name: name.trim(), year: y, lineupUrl: url.trim() || undefined });
-      setJob(started);
+      // Show the new job at once, at the top of the list, without waiting for the next poll.
+      setLookups((prev) => [started, ...(prev ?? []).filter((j) => j.id !== started.id)]);
+      setName('');
+      setUrl('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(messageOf(err));
     } finally {
       setBusy(false);
     }
   };
 
-  // A queued or waiting lookup advances on the server's minute cron, so poll it
-  // until it reaches review or a final state. Stops when the panel closes.
-  const jobId = job?.id;
-  const jobStatus = job?.status;
-  useEffect(() => {
-    if (!jobId || (jobStatus !== 'queued' && jobStatus !== 'running' && jobStatus !== 'waiting_quota')) return;
-    const timer = window.setInterval(() => {
-      lineupApi
-        .job(jobId)
-        .then((latest) => setJob(latest))
-        .catch(() => undefined);
-    }, 20_000);
-    return () => window.clearInterval(timer);
-  }, [jobId, jobStatus]);
-
-  const refreshAfterSave = () => {
-    setJob(null);
-    setName('');
-    setUrl('');
-    void loadEditions();
+  const retry = async (id: string) => {
+    setError(null);
+    setRetrying(id);
+    try {
+      const latest = await lineupApi.retry(id);
+      setLookups((prev) => (prev ?? []).map((j) => (j.id === id ? latest : j)));
+      void loadLookups();
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setRetrying(null);
+    }
   };
 
-  if (job) {
-    if (job.status === 'needs_review') {
-      return <LineupReview job={job} mode="canonical" onClose={() => setJob(null)} onSaved={refreshAfterSave} />;
-    }
+  if (reviewing) {
     return (
-      <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/60 p-4 text-sm text-zinc-300">
-        <p>
-          The lookup for {job.input.eventName} {job.input.year} is {job.status.replace(/_/g, ' ')}.
-          {job.status === 'waiting_quota' ? ' It waits for the AI quota to reset and then continues on its own.' : ''}
-          {job.status === 'queued' || job.status === 'running' ? ' This page checks again every 20 seconds and opens the review when it is ready.' : ''}
-          {job.status === 'no_data' || job.status === 'failed' ? ' No lineup was found for this event.' : ''}
-        </p>
-        <button onClick={() => setJob(null)} className="text-violet-300 hover:text-violet-200">Back to the archive</button>
-      </div>
+      <LineupReview
+        job={reviewing}
+        mode="canonical"
+        onClose={() => setReviewing(null)}
+        onSaved={() => {
+          setReviewing(null);
+          void loadEditions();
+          void loadLookups();
+        }}
+      />
     );
   }
 
@@ -148,7 +189,35 @@ export const CanonicalArchive: React.FC<{ artistQuery?: string }> = ({ artistQue
             {busy && <Loader2 className="h-4 w-4 animate-spin" />} Ingest
           </button>
         </div>
-        {error && <p className="text-sm text-rose-300">{error}</p>}
+        {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+      </section>
+
+      <section className="space-y-2" aria-labelledby="lookups-heading">
+        <h3 id="lookups-heading" className="text-sm font-semibold text-zinc-100">Lookups</h3>
+        {lookups === null ? (
+          <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+        ) : lookups.length === 0 ? (
+          <p className="text-sm text-zinc-400">No lookups yet. An ingest shows here at once.</p>
+        ) : (
+          <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+            {lookups.map((j) => (
+              <li key={j.id} className="flex flex-wrap items-center gap-2 p-2.5 text-sm">
+                <span className="font-medium text-zinc-100">{j.input.eventName}</span>
+                <span className="text-xs text-zinc-400">{j.input.year}</span>
+                <Pill tone={STATUS_TONE[j.status]}>{STATUS_WORDS[j.status]}</Pill>
+                {j.status === 'failed' && j.lastError && <span className="basis-full text-xs text-rose-300">{j.lastError}</span>}
+                <span className="ml-auto flex gap-2">
+                  {j.status === 'needs_review' && <Button variant="primary" onClick={() => setReviewing(j)}>Review</Button>}
+                  {canRetry(j) && (
+                    <Button onClick={() => void retry(j.id)} disabled={retrying === j.id}>
+                      {retrying === j.id && <Loader2 className="h-4 w-4 animate-spin" />} Retry
+                    </Button>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="space-y-2">

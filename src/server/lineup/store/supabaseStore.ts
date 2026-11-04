@@ -151,6 +151,14 @@ export class SupabaseLineupStore implements LineupStore {
     return (data ?? []).map((r) => this.rowToJob(r));
   }
 
+  async listCanonicalJobs(limit: number) {
+    const data = this.check(
+      await this.mine(this.own('lookup_jobs').select('*').is('event_id', null)).order('created_at', { ascending: false }).limit(limit),
+      'listCanonicalJobs',
+    );
+    return (data ?? []).map((r) => this.rowToJob(r));
+  }
+
   async getJobs(ids: string[]) {
     if (!ids.length) return [];
     const data = this.check(await this.mine(this.own('lookup_jobs').select('*').in('id', ids)), 'getJobs');

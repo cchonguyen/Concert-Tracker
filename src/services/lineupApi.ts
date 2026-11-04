@@ -468,13 +468,19 @@ export const collaborationsApi = {
 // Global Archive (owner only): the shared catalog, not your log.
 export const canonicalApi = {
   artists: () => request<{ artists: CanonicalArtistSummary[] }>('/api/manage/canonical/artists'),
+  // The ingest queue: jobs with no saved event, newest first.
+  lookups: () => request<{ jobs: LookupJob[] }>('/api/manage/canonical/lookups').then((r) => r.jobs),
   editions: (query: string, status: 'all' | 'confirmed' | 'draft') =>
     request<{ editions: CanonicalEditionSummary[] }>(`/api/manage/canonical/editions?${new URLSearchParams({ query, status }).toString()}`),
   edition: (id: string) => request<{ edition: Edition }>(`/api/manage/canonical/editions/${encodeURIComponent(id)}`),
   artist: (key: string) =>
     request<{ artist: CanonicalArtistSummary; appearances: ArtistAppearance[] }>(`/api/manage/canonical/artists/${encodeURIComponent(key)}`),
   ingest: (body: { name: string; year: number; startDate?: string; endDate?: string; venue?: string; city?: string; country?: string; lineupUrl?: string }) =>
-    request<{ job: LookupJob }>('/api/manage/canonical/ingest', post(body)).then((r) => r.job),
+    request<{ job: LookupJob }>('/api/manage/canonical/ingest', post(body)).then((r) => {
+      // A reply without a job must not look like success: the caller shows an error.
+      if (!r?.job) throw new Error('The lookup was not started. Try again.');
+      return r.job;
+    }),
 };
 
 export const lineupApi = {
