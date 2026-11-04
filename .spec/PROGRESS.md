@@ -18,6 +18,8 @@ Contracts: SYSTEM_SPEC.md section 3. `[CORE / DATA]` slices need passing unit te
 
 ## Audit follow-up (plan approved 2026-11-04: /mnt/project-files/audit-2026-11-04/plan.md)
 
+- [ ] **Slice 8.23** `[CORE / DATA]` [IN_PROGRESS]: In the open ticket bank, mark each file path that a ticket names but the repo does not have as "(planned, not yet created)", so a reader can tell planned files from dead links. Change no ticket meaning. Target files: `docs/engineering-ticket-bank.md`, `tests/docsLinks.test.ts`, `.spec/PROGRESS.md` | Verify: `npm test --silent && npm run lint --silent`
+
 - [x] **Slice 8.18** `[CORE / DATA]` : Check every relative Markdown link in the root and docs/ against the repo, fix the dead ones, and add a test that fails on a dead link. Target files: `docs/engineering-ticket-bank.md`, `tests/docsLinks.test.ts`, `.spec/PROGRESS.md` | Verify: `npm test --silent && npm run lint --silent`
 - [x] **Slice 8.22** `[CORE / DATA]` : Delete bun.lock (lockfile v2, unreadable by the bun 1.2.15 that Cloudflare Workers Builds uses), keep package-lock.json as the only lockfile, and add a test that fails if bun.lock comes back. Target files: `bun.lock`, `tests/lockfile.test.ts` [NEW], `.spec/PROGRESS.md` | Verify: `npm test --silent && npm run lint --silent`
 - [x] **Slice 8.21** `[CORE / DATA]` : Add a test that every ticket in the closed archive carries a Closed line, so a moved ticket cannot lose its verdict. Target files: `tests/docsLinks.test.ts`, `.spec/PROGRESS.md` | Verify: `npm test --silent && npm run lint --silent`
