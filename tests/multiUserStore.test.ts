@@ -1,10 +1,10 @@
+import { dispatch } from './helpers/testApp.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import express from 'express';
-import type { AddressInfo } from 'node:net';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import { LoggedEvent } from '../src/server/events/types.ts';
 import { createShareLink } from '../src/server/share/links.ts';
@@ -154,73 +154,59 @@ async function apiFixture() {
       res.status(500).json({ error: String(err) });
     }
   });
-  const server = app.listen(0);
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const call = async (email: string | null, route: string, init: RequestInit = {}) => {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     if (email) headers['cf-access-jwt-assertion'] = await tokenFor(email);
-    const r = await fetch(`${url}${route}`, { ...init, headers });
-    return { status: r.status, body: await r.json() as any };
+    const r = await dispatch(app, { ...init, url: route, headers, body: init.body });
+    return { status: r.status, body: r.json() as any };
   };
-  return { call, close: () => server.close() };
+  return { call };
 }
 
 test('API: no token is 401, a stranger 403, a member sees only their rows, members cannot use owner-only routes', async () => {
-  const { call, close } = await apiFixture();
-  try {
-    assert.equal((await call(null, '/api/events')).status, 401);
-    // The first-sign-in notice: pending until this member accepts, and only theirs.
-    assert.equal((await call('ann@example.com', '/api/me')).body.noticeAccepted, false);
-    assert.equal((await call('ann@example.com', '/api/me/notice', { method: 'POST', body: '{}' })).status, 200);
-    assert.equal((await call('ann@example.com', '/api/me')).body.noticeAccepted, true);
-    assert.equal((await call('bob@example.com', '/api/me')).body.noticeAccepted, false);
-    assert.equal((await call('stranger@example.com', '/api/events')).status, 403);
-    assert.equal((await call('ann@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'a1' }) })).status, 200);
-    assert.equal((await call('bob@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'b1' }) })).status, 200);
-    const ann = await call('ann@example.com', '/api/events');
-    assert.deepEqual(ann.body, { me: 'ann@example.com', events: ['a1'] });
-    assert.deepEqual((await call('bob@example.com', '/api/events')).body.events, ['b1']);
-    assert.deepEqual((await call('owner@example.com', '/api/events')).body.events, []);
-    assert.equal((await call('ann@example.com', '/api/gmail/connect')).status, 403);
-    assert.equal((await call('ann@example.com', '/api/entities')).status, 200);
-    assert.equal((await call('owner@example.com', '/api/entities')).status, 200);
-  } finally {
-    close();
-  }
+  const { call } = await apiFixture();
+  assert.equal((await call(null, '/api/events')).status, 401);
+  // The first-sign-in notice: pending until this member accepts, and only theirs.
+  assert.equal((await call('ann@example.com', '/api/me')).body.noticeAccepted, false);
+  assert.equal((await call('ann@example.com', '/api/me/notice', { method: 'POST', body: '{}' })).status, 200);
+  assert.equal((await call('ann@example.com', '/api/me')).body.noticeAccepted, true);
+  assert.equal((await call('bob@example.com', '/api/me')).body.noticeAccepted, false);
+  assert.equal((await call('stranger@example.com', '/api/events')).status, 403);
+  assert.equal((await call('ann@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'a1' }) })).status, 200);
+  assert.equal((await call('bob@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'b1' }) })).status, 200);
+  const ann = await call('ann@example.com', '/api/events');
+  assert.deepEqual(ann.body, { me: 'ann@example.com', events: ['a1'] });
+  assert.deepEqual((await call('bob@example.com', '/api/events')).body.events, ['b1']);
+  assert.deepEqual((await call('owner@example.com', '/api/events')).body.events, []);
+  assert.equal((await call('ann@example.com', '/api/gmail/connect')).status, 403);
+  assert.equal((await call('ann@example.com', '/api/entities')).status, 200);
+  assert.equal((await call('owner@example.com', '/api/entities')).status, 200);
 });
 
 test('API: concurrent requests from two members never see each other\'s rows', async () => {
-  const { call, close } = await apiFixture();
-  try {
-    await call('ann@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'a1' }) });
-    await call('bob@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'b1' }) });
-    const results = await Promise.all(Array.from({ length: 20 }, (_, i) => call(i % 2 ? 'ann@example.com' : 'bob@example.com', '/api/events')));
-    results.forEach((r, i) => assert.deepEqual(r.body.events, [i % 2 ? 'a1' : 'b1']));
-  } finally {
-    close();
-  }
+  const { call } = await apiFixture();
+  await call('ann@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'a1' }) });
+  await call('bob@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'b1' }) });
+  const results = await Promise.all(Array.from({ length: 20 }, (_, i) => call(i % 2 ? 'ann@example.com' : 'bob@example.com', '/api/events')));
+  results.forEach((r, i) => assert.deepEqual(r.body.events, [i % 2 ? 'a1' : 'b1']));
 });
 
 test('API: /me says who you are; only the owner lists, invites and removes members', async () => {
-  const { call, close } = await apiFixture();
-  try {
-    assert.deepEqual((await call('ann@example.com', '/api/me')).body, { multiUser: true, role: 'member', email: 'ann@example.com', noticeAccepted: false, pendingRequests: 0 });
-    assert.equal((await call('owner@example.com', '/api/me')).body.role, 'owner');
-    assert.equal((await call('ann@example.com', '/api/members')).status, 403);
-    assert.equal((await call('ann@example.com', '/api/members', { method: 'POST', body: JSON.stringify({ email: 'cy@example.com' }) })).status, 403);
-    const invite = (email: unknown) => call('owner@example.com', '/api/members', { method: 'POST', body: JSON.stringify({ email }) });
-    assert.equal((await invite('not an email')).status, 400);
-    assert.equal((await invite('Cy@Example.com')).status, 201);
-    assert.equal((await invite('cy@example.com')).status, 400);
-    const list = (await call('owner@example.com', '/api/members')).body.members;
-    assert.deepEqual(list.find((m: any) => m.email === 'cy@example.com'), { email: 'cy@example.com', role: 'member', joined: false, invitedAt: list.find((m: any) => m.email === 'cy@example.com').invitedAt });
-    assert.equal((await call('owner@example.com', '/api/members/owner%40example.com', { method: 'DELETE', body: JSON.stringify({ confirm: 'owner@example.com' }) })).status, 400);
-    assert.equal((await call('owner@example.com', '/api/members/cy%40example.com', { method: 'DELETE' })).status, 400);
-    assert.equal((await call('owner@example.com', '/api/members/cy%40example.com', { method: 'DELETE', body: JSON.stringify({ confirm: 'cy@example.com' }) })).status, 200);
-    assert.equal((await call('cy@example.com', '/api/events')).status, 403);
-  } finally {
-    close();
-  }
+  const { call } = await apiFixture();
+  assert.deepEqual((await call('ann@example.com', '/api/me')).body, { multiUser: true, role: 'member', email: 'ann@example.com', noticeAccepted: false, pendingRequests: 0 });
+  assert.equal((await call('owner@example.com', '/api/me')).body.role, 'owner');
+  assert.equal((await call('ann@example.com', '/api/members')).status, 403);
+  assert.equal((await call('ann@example.com', '/api/members', { method: 'POST', body: JSON.stringify({ email: 'cy@example.com' }) })).status, 403);
+  const invite = (email: unknown) => call('owner@example.com', '/api/members', { method: 'POST', body: JSON.stringify({ email }) });
+  assert.equal((await invite('not an email')).status, 400);
+  assert.equal((await invite('Cy@Example.com')).status, 201);
+  assert.equal((await invite('cy@example.com')).status, 400);
+  const list = (await call('owner@example.com', '/api/members')).body.members;
+  assert.deepEqual(list.find((m: any) => m.email === 'cy@example.com'), { email: 'cy@example.com', role: 'member', joined: false, invitedAt: list.find((m: any) => m.email === 'cy@example.com').invitedAt });
+  assert.equal((await call('owner@example.com', '/api/members/owner%40example.com', { method: 'DELETE', body: JSON.stringify({ confirm: 'owner@example.com' }) })).status, 400);
+  assert.equal((await call('owner@example.com', '/api/members/cy%40example.com', { method: 'DELETE' })).status, 400);
+  assert.equal((await call('owner@example.com', '/api/members/cy%40example.com', { method: 'DELETE', body: JSON.stringify({ confirm: 'cy@example.com' }) })).status, 200);
+  assert.equal((await call('cy@example.com', '/api/events')).status, 403);
 });
 
 test('member lineup review: ticks go to the member\'s own event only; nothing shared is written', async () => {
@@ -279,57 +265,49 @@ const MATERIAL = {
 const CIPHERTEXT = 'v1:aXZpdml2aXZpdml2:c2VjcmV0bm90ZQ==';
 
 test('vault: key material is per member; once on, plaintext notes are refused and ciphertext is kept', async () => {
-  const { call, close } = await apiFixture();
-  try {
-    const save = (email: string, id: string, notes?: string) => call(email, '/api/events', { method: 'POST', body: JSON.stringify({ id, notes }) });
-    assert.deepEqual((await call('ann@example.com', '/api/vault')).body, { state: 'plaintext', material: null });
-    assert.equal((await save('ann@example.com', 'a0', 'plain note before the vault')).status, 200);
-    assert.equal((await call('ann@example.com', '/api/vault', { method: 'PUT', body: JSON.stringify({ material: { ...MATERIAL, pbkdf2Iterations: 5 } }) })).status, 400);
-    assert.equal((await call('ann@example.com', '/api/vault', { method: 'PUT', body: JSON.stringify({ material: { ...MATERIAL, wrappedByPassphrase: 'not wrapped' } }) })).status, 400);
-    assert.equal((await call('ann@example.com', '/api/vault', { method: 'PUT', body: JSON.stringify({ material: MATERIAL }) })).status, 200);
-    assert.equal((await call('ann@example.com', '/api/vault', { method: 'PUT', body: JSON.stringify({ material: MATERIAL }) })).status, 409);
-    assert.deepEqual((await call('ann@example.com', '/api/vault')).body, { state: 'encrypted', material: MATERIAL });
-    // Ann's plaintext is refused; ciphertext, no note, and an empty note are fine.
-    const refused = await save('ann@example.com', 'a1', 'a plaintext note');
-    assert.equal(refused.status, 400);
-    assert.match(refused.body.error, /encrypted in the browser/);
-    assert.equal((await save('ann@example.com', 'a2', CIPHERTEXT)).status, 200);
-    assert.equal((await save('ann@example.com', 'a3')).status, 200);
-    assert.equal((await save('ann@example.com', 'a4', 'v1:forged plaintext')).status, 400);
-    // Nothing was stored for the refused saves.
-    assert.deepEqual((await call('ann@example.com', '/api/events')).body.events.sort(), ['a0', 'a2', 'a3']);
-    // Bob has no vault, and cannot see Ann's.
-    assert.deepEqual((await call('bob@example.com', '/api/vault')).body, { state: 'plaintext', material: null });
-    assert.equal((await save('bob@example.com', 'b1', 'bob plaintext is fine')).status, 200);
-    // A passphrase change may only replace the passphrase wrapping.
-    const rewrap = (m: object) => call('ann@example.com', '/api/vault/rewrap', { method: 'POST', body: JSON.stringify({ material: m }) });
-    assert.equal((await rewrap({ ...MATERIAL, wrappedByPassphrase: 'w1:bmV3aXZuZXdpdg==:bmV3d3JhcHBlZA==', passphraseSalt: 'bmV3c2FsdG5ld3NhbHQ=' })).status, 200);
-    assert.equal((await rewrap({ ...MATERIAL, wrappedByRecovery: 'w1:eHh4eHh4eHg=:eXl5eXl5' })).status, 400);
-    assert.equal((await call('bob@example.com', '/api/vault/rewrap', { method: 'POST', body: JSON.stringify({ material: MATERIAL }) })).status, 404);
-  } finally {
-    close();
-  }
+  const { call } = await apiFixture();
+  const save = (email: string, id: string, notes?: string) => call(email, '/api/events', { method: 'POST', body: JSON.stringify({ id, notes }) });
+  assert.deepEqual((await call('ann@example.com', '/api/vault')).body, { state: 'plaintext', material: null });
+  assert.equal((await save('ann@example.com', 'a0', 'plain note before the vault')).status, 200);
+  assert.equal((await call('ann@example.com', '/api/vault', { method: 'PUT', body: JSON.stringify({ material: { ...MATERIAL, pbkdf2Iterations: 5 } }) })).status, 400);
+  assert.equal((await call('ann@example.com', '/api/vault', { method: 'PUT', body: JSON.stringify({ material: { ...MATERIAL, wrappedByPassphrase: 'not wrapped' } }) })).status, 400);
+  assert.equal((await call('ann@example.com', '/api/vault', { method: 'PUT', body: JSON.stringify({ material: MATERIAL }) })).status, 200);
+  assert.equal((await call('ann@example.com', '/api/vault', { method: 'PUT', body: JSON.stringify({ material: MATERIAL }) })).status, 409);
+  assert.deepEqual((await call('ann@example.com', '/api/vault')).body, { state: 'encrypted', material: MATERIAL });
+  // Ann's plaintext is refused; ciphertext, no note, and an empty note are fine.
+  const refused = await save('ann@example.com', 'a1', 'a plaintext note');
+  assert.equal(refused.status, 400);
+  assert.match(refused.body.error, /encrypted in the browser/);
+  assert.equal((await save('ann@example.com', 'a2', CIPHERTEXT)).status, 200);
+  assert.equal((await save('ann@example.com', 'a3')).status, 200);
+  assert.equal((await save('ann@example.com', 'a4', 'v1:forged plaintext')).status, 400);
+  // Nothing was stored for the refused saves.
+  assert.deepEqual((await call('ann@example.com', '/api/events')).body.events.sort(), ['a0', 'a2', 'a3']);
+  // Bob has no vault, and cannot see Ann's.
+  assert.deepEqual((await call('bob@example.com', '/api/vault')).body, { state: 'plaintext', material: null });
+  assert.equal((await save('bob@example.com', 'b1', 'bob plaintext is fine')).status, 200);
+  // A passphrase change may only replace the passphrase wrapping.
+  const rewrap = (m: object) => call('ann@example.com', '/api/vault/rewrap', { method: 'POST', body: JSON.stringify({ material: m }) });
+  assert.equal((await rewrap({ ...MATERIAL, wrappedByPassphrase: 'w1:bmV3aXZuZXdpdg==:bmV3d3JhcHBlZA==', passphraseSalt: 'bmV3c2FsdG5ld3NhbHQ=' })).status, 200);
+  assert.equal((await rewrap({ ...MATERIAL, wrappedByRecovery: 'w1:eHh4eHh4eHg=:eXl5eXl5' })).status, 400);
+  assert.equal((await call('bob@example.com', '/api/vault/rewrap', { method: 'POST', body: JSON.stringify({ material: MATERIAL }) })).status, 404);
 });
 
 test('account: export is your rows only; deletion needs your email, removes you, and is refused for the owner', async () => {
-  const { call, close } = await apiFixture();
-  try {
-    await call('ann@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'a1' }) });
-    await call('bob@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'b1' }) });
-    const exp = (await call('ann@example.com', '/api/account/export')).body;
-    assert.deepEqual(exp.events.map((e: any) => e.id), ['a1']);
-    assert.deepEqual(exp.account, { email: 'ann@example.com', role: 'member' });
-    assert.ok(!JSON.stringify(exp).includes('b1'));
-    const del = (email: string, confirm?: string) => call(email, '/api/account', { method: 'DELETE', body: JSON.stringify({ confirm }) });
-    assert.equal((await del('ann@example.com')).status, 400);
-    assert.equal((await del('ann@example.com', 'bob@example.com')).status, 400);
-    assert.equal((await del('owner@example.com', 'owner@example.com')).status, 403);
-    assert.equal((await del('ann@example.com', 'Ann@Example.com')).status, 200);
-    assert.equal((await call('ann@example.com', '/api/events')).status, 403);
-    assert.deepEqual((await call('bob@example.com', '/api/events')).body.events, ['b1']);
-  } finally {
-    close();
-  }
+  const { call } = await apiFixture();
+  await call('ann@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'a1' }) });
+  await call('bob@example.com', '/api/events', { method: 'POST', body: JSON.stringify({ id: 'b1' }) });
+  const exp = (await call('ann@example.com', '/api/account/export')).body;
+  assert.deepEqual(exp.events.map((e: any) => e.id), ['a1']);
+  assert.deepEqual(exp.account, { email: 'ann@example.com', role: 'member' });
+  assert.ok(!JSON.stringify(exp).includes('b1'));
+  const del = (email: string, confirm?: string) => call(email, '/api/account', { method: 'DELETE', body: JSON.stringify({ confirm }) });
+  assert.equal((await del('ann@example.com')).status, 400);
+  assert.equal((await del('ann@example.com', 'bob@example.com')).status, 400);
+  assert.equal((await del('owner@example.com', 'owner@example.com')).status, 403);
+  assert.equal((await del('ann@example.com', 'Ann@Example.com')).status, 200);
+  assert.equal((await call('ann@example.com', '/api/events')).status, 403);
+  assert.deepEqual((await call('bob@example.com', '/api/events')).body.events, ['b1']);
 });
 
 // ---- Per-member records (0020) and people in the vault -----------------------
@@ -360,43 +338,39 @@ const CIPHER = (tag: string) => `v1:${Buffer.from(`iv-${tag}`).toString('base64'
 const TOKEN = (c: string) => c.repeat(64);
 
 test('people: names are only ever stored encrypted; merge repoints events; plain names are converted then erased', async () => {
-  const { call, close } = await apiFixture();
+  const { call } = await apiFixture();
   const post = (email: string, route: string, body: unknown, method = 'POST') => call(email, route, { method, body: JSON.stringify(body) });
-  try {
-    const a = 'ann@example.com';
-    // Before the vault, a person is a plain name linked from the event.
-    // (Linking runs in the store; here the event is saved through the fixture's store directly.)
-    assert.equal((await post(a, '/api/people/20000000-0000-4000-8000-000000000001', { nameEncrypted: CIPHER('jen'), tokens: [] }, 'PUT')).status, 409); // vault not on yet
-    assert.equal((await post(a, '/api/vault', { material: MATERIAL }, 'PUT')).status, 200);
-    const J = '20000000-0000-4000-8000-000000000001';
-    const K = '20000000-0000-4000-8000-000000000002';
-    // Plaintext names, odd tokens and details are refused.
-    assert.equal((await post(a, `/api/people/${J}`, { nameEncrypted: 'Jen', tokens: [] }, 'PUT')).status, 400);
-    assert.equal((await post(a, `/api/people/${J}`, { nameEncrypted: CIPHER('jen'), tokens: ['jen'] }, 'PUT')).status, 400);
-    assert.equal((await post(a, `/api/people/${J}`, { nameEncrypted: CIPHER('jen'), tokens: [TOKEN('a')], enc: 'first: Jen' }, 'PUT')).status, 400);
-    assert.equal((await post(a, `/api/people/${J}`, { nameEncrypted: CIPHER('jen'), tokens: [TOKEN('a')] }, 'PUT')).status, 200);
-    assert.equal((await post(a, `/api/people/${K}`, { nameEncrypted: CIPHER('jenny'), tokens: [TOKEN('b')] }, 'PUT')).status, 200);
-    // One token leads to one person.
-    assert.equal((await post(a, `/api/people/${K}`, { nameEncrypted: CIPHER('jenny'), tokens: [TOKEN('a')] }, 'PUT')).status, 409);
-    const listed = (await call(a, '/api/people')).body;
-    assert.deepEqual(listed.people.map((p: any) => [p.id, p.tokens]).sort(), [[J, [TOKEN('a')]], [K, [TOKEN('b')]]]);
-    assert.ok(!JSON.stringify(listed).includes('Jen'));
-    // Bob cannot see Ann's people.
-    assert.deepEqual((await call('bob@example.com', '/api/people')).body.people, []);
+  const a = 'ann@example.com';
+  // Before the vault, a person is a plain name linked from the event.
+  // (Linking runs in the store; here the event is saved through the fixture's store directly.)
+  assert.equal((await post(a, '/api/people/20000000-0000-4000-8000-000000000001', { nameEncrypted: CIPHER('jen'), tokens: [] }, 'PUT')).status, 409); // vault not on yet
+  assert.equal((await post(a, '/api/vault', { material: MATERIAL }, 'PUT')).status, 200);
+  const J = '20000000-0000-4000-8000-000000000001';
+  const K = '20000000-0000-4000-8000-000000000002';
+  // Plaintext names, odd tokens and details are refused.
+  assert.equal((await post(a, `/api/people/${J}`, { nameEncrypted: 'Jen', tokens: [] }, 'PUT')).status, 400);
+  assert.equal((await post(a, `/api/people/${J}`, { nameEncrypted: CIPHER('jen'), tokens: ['jen'] }, 'PUT')).status, 400);
+  assert.equal((await post(a, `/api/people/${J}`, { nameEncrypted: CIPHER('jen'), tokens: [TOKEN('a')], enc: 'first: Jen' }, 'PUT')).status, 400);
+  assert.equal((await post(a, `/api/people/${J}`, { nameEncrypted: CIPHER('jen'), tokens: [TOKEN('a')] }, 'PUT')).status, 200);
+  assert.equal((await post(a, `/api/people/${K}`, { nameEncrypted: CIPHER('jenny'), tokens: [TOKEN('b')] }, 'PUT')).status, 200);
+  // One token leads to one person.
+  assert.equal((await post(a, `/api/people/${K}`, { nameEncrypted: CIPHER('jenny'), tokens: [TOKEN('a')] }, 'PUT')).status, 409);
+  const listed = (await call(a, '/api/people')).body;
+  assert.deepEqual(listed.people.map((p: any) => [p.id, p.tokens]).sort(), [[J, [TOKEN('a')]], [K, [TOKEN('b')]]]);
+  assert.ok(!JSON.stringify(listed).includes('Jen'));
+  // Bob cannot see Ann's people.
+  assert.deepEqual((await call('bob@example.com', '/api/people')).body.people, []);
 
-    // Events list people by id; plaintext companions are refused now.
-    await post(a, '/api/events', { id: 'e1' });
-    assert.equal((await post(a, '/api/events/e1', { personIds: [J, K, 'not-a-uuid'] }, 'PATCH')).status, 200);
-    assert.equal((await post(a, '/api/events/e1', { companions: ['Jen'] }, 'PATCH')).status, 400);
-    assert.equal((await post(a, '/api/events/e1', { personIds: ['20000000-0000-4000-8000-0000000000ff'] }, 'PATCH')).status, 500); // not one of your people
-    // Merging K into J repoints the event and moves the token.
-    assert.equal((await post(a, `/api/people/${K}/merge`, { into: J })).body.events, 1);
-    const after = (await call(a, '/api/people')).body.people;
-    assert.deepEqual(after.find((p: any) => p.id === J).tokens.sort(), [TOKEN('a'), TOKEN('b')]);
-    assert.equal(after.find((p: any) => p.id === K).mergedIntoId, J);
-  } finally {
-    close();
-  }
+  // Events list people by id; plaintext companions are refused now.
+  await post(a, '/api/events', { id: 'e1' });
+  assert.equal((await post(a, '/api/events/e1', { personIds: [J, K, 'not-a-uuid'] }, 'PATCH')).status, 200);
+  assert.equal((await post(a, '/api/events/e1', { companions: ['Jen'] }, 'PATCH')).status, 400);
+  assert.equal((await post(a, '/api/events/e1', { personIds: ['20000000-0000-4000-8000-0000000000ff'] }, 'PATCH')).status, 500); // not one of your people
+  // Merging K into J repoints the event and moves the token.
+  assert.equal((await post(a, `/api/people/${K}/merge`, { into: J })).body.events, 1);
+  const after = (await call(a, '/api/people')).body.people;
+  assert.deepEqual(after.find((p: any) => p.id === J).tokens.sort(), [TOKEN('a'), TOKEN('b')]);
+  assert.equal(after.find((p: any) => p.id === K).mergedIntoId, J);
 });
 
 test('people: turning the vault on converts plain people, moves their events and links, and leaves no readable name', async () => {
@@ -413,28 +387,23 @@ test('people: turning the vault on converts plain people, moves their events and
   app.use(express.json());
   const { peopleRouter: people } = await import('../src/server/entities/people.ts');
   app.use('/api', people(ann));
-  const server = app.listen(0);
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
-  const send = async (route: string, body: unknown, method = 'POST') => (await fetch(url + route, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json() as Promise<any>;
-  try {
-    const J = '30000000-0000-4000-8000-000000000001';
-    const S = '30000000-0000-4000-8000-000000000002';
-    await send(`/people/${J}`, { nameEncrypted: CIPHER('jennifer'), tokens: [TOKEN('1')] }, 'PUT');
-    await send(`/people/${S}`, { nameEncrypted: CIPHER('sam'), tokens: [TOKEN('2')] }, 'PUT');
-    assert.match((await send('/people/finish', {})).error, /still have their names/);
-    await send(`/people/${jen.id}/convert`, { to: J });
-    await send(`/people/${plain.find((p) => p.name === 'Sam')!.id}/convert`, { to: S });
-    assert.deepEqual((await send('/people/finish', {})).erased, 0);
-    const events = await ann.listEvents();
-    assert.deepEqual(events.map((e) => [e.id, e.companions, e.refs?.companionIds, e.personIds]).sort(), [
-      ['e1', [], [], [J, S]],
-      ['e2', [], [], [J]],
-    ]);
-    const stored = JSON.stringify([await ann.listEntities(), await ann.listEntityAliases(), await ann.listEntityHistory(100), events]);
-    for (const name of ['Jen', 'Jennifer', 'Sam']) assert.ok(!stored.includes(name), `${name} is still readable`);
-  } finally {
-    server.close();
-  }
+  const send = async (route: string, body: unknown, method = 'POST') =>
+    (await dispatch(app, { method, url: `/api${route}`, headers: { 'content-type': 'application/json' }, body })).json<any>();
+  const J = '30000000-0000-4000-8000-000000000001';
+  const S = '30000000-0000-4000-8000-000000000002';
+  await send(`/people/${J}`, { nameEncrypted: CIPHER('jennifer'), tokens: [TOKEN('1')] }, 'PUT');
+  await send(`/people/${S}`, { nameEncrypted: CIPHER('sam'), tokens: [TOKEN('2')] }, 'PUT');
+  assert.match((await send('/people/finish', {})).error, /still have their names/);
+  await send(`/people/${jen.id}/convert`, { to: J });
+  await send(`/people/${plain.find((p) => p.name === 'Sam')!.id}/convert`, { to: S });
+  assert.deepEqual((await send('/people/finish', {})).erased, 0);
+  const events = await ann.listEvents();
+  assert.deepEqual(events.map((e) => [e.id, e.companions, e.refs?.companionIds, e.personIds]).sort(), [
+    ['e1', [], [], [J, S]],
+    ['e2', [], [], [J]],
+  ]);
+  const stored = JSON.stringify([await ann.listEntities(), await ann.listEntityAliases(), await ann.listEntityHistory(100), events]);
+  for (const name of ['Jen', 'Jennifer', 'Sam']) assert.ok(!stored.includes(name), `${name} is still readable`);
 });
 
 test('genres: a member keeps only the genres they set; the owner\'s shared ones stay the owner\'s', async () => {

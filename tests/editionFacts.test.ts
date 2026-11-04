@@ -1,10 +1,10 @@
+import { dispatch } from './helpers/testApp.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import express from 'express';
-import type { AddressInfo } from 'node:net';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import {
   confirmCanonicalEdition,
@@ -99,21 +99,16 @@ test('a fact edit never writes to a personal log', async () => {
 });
 
 // The route is owner only and refuses a fact edit without a note with 400.
-async function withRole(role: string, s: any, fn: (url: string) => Promise<void>) {
+async function withRole(role: string, s: any, fn: (app: express.Express) => Promise<void>) {
   const app = express();
   app.use(express.json());
   app.use((_req, _res, next) => runAsMember({ role, uid: 'u1' } as any, s, next));
   app.use('/api', entitiesRouter({ store: s } as any));
-  const server = app.listen(0);
-  try {
-    await fn(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
-  } finally {
-    server.close();
-  }
+  await fn(app);
 }
 
-const patch = (url: string, body: unknown) =>
-  fetch(url, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+const patch = (app: express.Express, path: string, body: unknown) =>
+  dispatch(app, { method: 'PATCH', url: path, headers: { 'content-type': 'application/json' }, body });
 
 test('member gets 403 on a fact edit and the catalog is not written', async () => {
   const s = await store();
@@ -121,8 +116,8 @@ test('member gets 403 on a fact edit and the catalog is not written', async () =
   const edition = (await s.getEditionByKey(SAVED))!;
   const before = JSON.stringify(await s.getEdition(edition.id));
   const sentinel: any = new Proxy({}, { get: () => () => { throw new Error('store should not be reached for members'); } });
-  await withRole('member', sentinel, async (url) => {
-    const res = await patch(`${url}/api/manage/canonical/editions/${edition.id}/facts`, facts());
+  await withRole('member', sentinel, async (app) => {
+    const res = await patch(app, `/api/manage/canonical/editions/${edition.id}/facts`, facts());
     assert.equal(res.status, 403);
   });
   assert.equal(JSON.stringify(await s.getEdition(edition.id)), before);
@@ -132,12 +127,12 @@ test('owner route: 400 without a note, 200 with one, and no personal log write',
   const s = await store();
   await confirmCanonicalEdition(s, parseCanonicalInput({ ...base, apply: true }));
   const edition = (await s.getEditionByKey(SAVED))!;
-  await withRole('owner', s, async (url) => {
-    const refused = await patch(`${url}/api/manage/canonical/editions/${edition.id}/facts`, facts({ sourceNote: '' }));
+  await withRole('owner', s, async (app) => {
+    const refused = await patch(app, `/api/manage/canonical/editions/${edition.id}/facts`, facts({ sourceNote: '' }));
     assert.equal(refused.status, 400);
-    const missing = await patch(`${url}/api/manage/canonical/editions/nope/facts`, facts());
+    const missing = await patch(app, `/api/manage/canonical/editions/nope/facts`, facts());
     assert.equal(missing.status, 404);
-    const ok = await patch(`${url}/api/manage/canonical/editions/${edition.id}/facts`, facts());
+    const ok = await patch(app, `/api/manage/canonical/editions/${edition.id}/facts`, facts());
     assert.equal(ok.status, 200);
     const body = (await ok.json()) as { edition: { factSourceNote?: string; venue?: string } };
     assert.equal(body.edition.factSourceNote, 'Festival site, FAQ page');

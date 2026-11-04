@@ -1,9 +1,9 @@
+import { dispatch } from './helpers/testApp.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { AddressInfo } from 'node:net';
 import express from 'express';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import { PipelineDeps } from '../src/server/lineup/pipeline.ts';
@@ -60,12 +60,8 @@ async function memberServer(t: { after: (fn: () => void) => void }) {
   app.use(express.json());
   app.use((_req, _res, next) => runAsMember(ANN, store, next));
   app.use('/api', sheetsRouter(deps, api));
-  const listening = app.listen(0);
-  await new Promise((r) => listening.once('listening', r));
-  t.after(() => listening.close());
-  const url = `http://127.0.0.1:${(listening.address() as AddressInfo).port}/api`;
   const call = (route: string, method = 'GET', body?: unknown) =>
-    fetch(`${url}${route}`, { method, redirect: 'manual', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    dispatch(app, { method, url: `/api${route}`, headers: { 'content-type': 'application/json' }, body });
   return { store, call, written, scopes };
 }
 
