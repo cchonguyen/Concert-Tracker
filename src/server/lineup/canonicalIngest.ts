@@ -21,6 +21,7 @@ export interface CanonicalPerformerInput {
   days?: string[];
   stages?: string[];
   set?: string;
+  oneAct?: boolean; // kept whole by the owner: not split on B2B marks
   sourceUrl?: string; // optional weblink
 }
 
@@ -97,6 +98,7 @@ export function parseCanonicalInput(body: unknown): CanonicalConfirmInput {
       days: list(p.days, `performers[${i}].days`),
       stages: list(p.stages, `performers[${i}].stages`),
       set: str(p.set, `performers[${i}].set`, 60),
+      oneAct: p.oneAct === true ? true : undefined,
       sourceUrl: str(p.sourceUrl, `performers[${i}].sourceUrl`, 2000),
     };
   });
@@ -122,6 +124,7 @@ const actFromInput = (p: CanonicalPerformerInput): EditionPerformance => ({
   set: p.set,
   status: 'billed',
   billing: p.billing,
+  ...(p.oneAct ? { oneAct: true } : {}),
   // Owner-reviewed: no computed score yet, so 1 marks "reviewed by the owner".
   confidence: 1,
   sources: [
@@ -137,6 +140,7 @@ const actFromInput = (p: CanonicalPerformerInput): EditionPerformance => ({
 
 const sameAct = (a: EditionPerformance, b: EditionPerformance) =>
   a.name === b.name &&
+  Boolean(a.oneAct) === Boolean(b.oneAct) &&
   a.billing === b.billing &&
   a.set === b.set &&
   JSON.stringify(a.days) === JSON.stringify(b.days) &&

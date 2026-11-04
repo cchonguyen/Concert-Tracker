@@ -4,7 +4,7 @@ import type { RejectReason } from '../server/lineup/learning';
 import { lineupApi, collaborationsApi, type CollaborationItem, LoggedEvent, LookupJob, SOURCE_LABELS } from '../services/lineupApi';
 import { EventTitle } from './EventTitle';
 import { filterOptions, groupReviewSlots, startRows, type ReviewSubject } from '../services/reviewRows';
-import { readActName } from '../server/lineup/actName';
+import { hasUnambiguousB2bMark, readActName } from '../server/lineup/actName';
 import { normalizeName } from '../server/lineup/text';
 import { normalizeSet } from '../server/events/seen';
 import type { Edition } from '../server/lineup/types';
@@ -30,6 +30,7 @@ interface Row {
   alias?: string;
   b2b?: string[];
   name: string;
+  oneAct?: boolean; // you kept this name as one act: never split on blur or save
   originalName?: string;
   accepted: boolean;
   rejectReason: RejectReason;
@@ -78,6 +79,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
         alias: r.alias,
         b2b: r.b2b,
         name: r.name,
+        oneAct: r.oneAct,
         originalName: r.candidate?.name,
         accepted: r.accepted,
         rejectReason: r.cancelled ? 'cancelled' : 'not_an_act',
@@ -162,6 +164,14 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
     });
   };
 
+  // Typing a name into a row with no B2B partners keeps it as one act unless the
+  // text carries an unambiguous B2B mark ("b2b", "vs"); \" X \" alone stays one act.
+  const typeName = (index: number, value: string) => {
+    const row = rows[index];
+    const keepWhole = !row?.b2b?.length && !hasUnambiguousB2bMark(value);
+    update(index, { name: value, oneAct: keepWhole ? true : undefined });
+  };
+
   const splitRowIfB2b = (index: number) => {
     const row = rows[index];
     if (!row) return;
@@ -196,6 +206,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
       return;
     }
     if (read.parts.length <= 1) return;
+    if (row.oneAct) return; // kept whole by you: the set suffix above still applies
     const allKeys = read.parts.map(normalizeName).filter(Boolean);
     if (allKeys.length <= 1) return;
     const slotId = row.slotId || crypto.randomUUID();
@@ -301,7 +312,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
   // The acts as the review leaves them, with brackets expanded for B2B names.
   const expandRows = () =>
     rows.flatMap((r) => {
-      if (r.b2b?.length) return [r];
+      if (r.b2b?.length || r.oneAct) return [r];
       const read = readActName(r.name);
       if (read.parts.length <= 1) return [r];
       const allKeys = read.parts.map(normalizeName).filter(Boolean);
@@ -331,6 +342,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
     country: job.input.country,
     performers: expandRows().map((r) => ({
       name: r.name,
+      ...(r.oneAct ? { oneAct: true } : {}),
       accepted: r.accepted,
       billing: (r.billing || undefined) as 'headliner' | 'support' | undefined,
       days: r.days,
@@ -380,6 +392,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
           alias: r.alias,
           b2b: r.b2b,
           name: r.name,
+          ...(r.oneAct ? { oneAct: true } : {}),
           accepted: r.accepted,
           rejectReason: r.accepted ? undefined : r.rejectReason,
           seen: r.accepted && r.seen,
@@ -509,7 +522,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                             <input
                               className={input}
                               value={slot.items[0].item.name}
-                              onChange={(e) => update(slot.items[0].index, { name: e.target.value })}
+                              onChange={(e) => typeName(slot.items[0].index, e.target.value)}
                               onBlur={() => splitRowIfB2b(slot.items[0].index)}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
@@ -572,7 +585,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                                   <input
                                     className="bg-transparent text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none max-w-[120px]"
                                     value={it.item.name}
-                                    onChange={(e) => update(it.index, { name: e.target.value })}
+                                    onChange={(e) => typeName(it.index, e.target.value)}
                                     onBlur={() => splitRowIfB2b(it.index)}
                                     placeholder="Artist name"
                                     title={`Edit name for ${it.item.name}`}

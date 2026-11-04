@@ -4,6 +4,7 @@ import {
   isNonMusicProgramming,
   isSilentDiscoSlot,
   preferredSpelling,
+  hasUnambiguousB2bMark,
   readActName,
   yourSpellings,
 } from '../src/server/lineup/actName.ts';
@@ -178,6 +179,13 @@ test('readActName cleans concept prefixes and unmatched parentheses', () => {
 
   const dangling = readActName('Artist A (Solo b2b Artist B)');
   assert.deepEqual(dangling.parts, ['Solo', 'Artist B']);
+});
+
+test('only unambiguous B2B marks count as typed B2Bs; X does not', () => {
+  assert.equal(hasUnambiguousB2bMark('Niiko X Swae'), false);
+  assert.equal(hasUnambiguousB2bMark('Sasha b2b John Digweed'), true);
+  assert.equal(hasUnambiguousB2bMark('Cirez D vs Adam Beyer'), true);
+  assert.equal(hasUnambiguousB2bMark('Artist A back to back Artist B'), true);
 });
 
 test('layout junk around a name is trimmed, but not inside it', () => {

@@ -28,6 +28,8 @@ export interface ReviewedPerformer {
   alias?: string;
   b2b?: string[];
   name: string;
+  // You kept this name as one act (no B2B split). Stored on the edition.
+  oneAct?: boolean;
   accepted: boolean;
   rejectReason?: RejectReason;
   seen: boolean;
@@ -257,6 +259,7 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
     if (reviewed.slotId) perf.slotId = reviewed.slotId;
     if (reviewed.alias) perf.alias = reviewed.alias;
     if (reviewed.b2b?.length) perf.b2b = reviewed.b2b;
+    if (reviewed.oneAct && !perf.b2b?.length) perf.oneAct = true;
     if (reviewed.billing !== undefined) perf.billing = isBilling(reviewed.billing) ? reviewed.billing : undefined;
     if (reviewed.seen) {
       perf.status = 'performed'; // you were there
