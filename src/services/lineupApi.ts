@@ -95,6 +95,7 @@ async function request<T>(url: string, rawInit?: RequestInit): Promise<T> {
   // `not_invited` (403): the signed-in email has no tracker here; sample mode shows it in the request banner (SampleBanner.tsx).
   if (!res.ok) {
     throw Object.assign(new Error(data.error || `Request failed with HTTP ${res.status}`), {
+      status: res.status,
       retry: data.retry === true,
       conflict: data.conflict,
       code: data.code,
@@ -493,6 +494,39 @@ export const previewCanonicalArtistChange = (key: string, body: CanonicalArtistO
 export const applyCanonicalArtistChange = (key: string, body: CanonicalArtistOperation, previewFingerprint: string) =>
   request<CanonicalArtistApplied>(`/api/manage/canonical/artists/${encodeURIComponent(key)}/apply`, post({ ...body, previewFingerprint }));
 
+// The Changes list (slice 8.10): canonical operations, newest first, one page per call.
+export interface CanonicalChangeRow {
+  id: string;
+  operation: CanonicalOperation;
+  summary: string;
+  time: string;
+  before: string;
+  after: string;
+  undoneAt: string | null;
+}
+export interface CanonicalChangesPage {
+  changes: CanonicalChangeRow[];
+  // Pass as `cursor` to get the next (older) page. Null on the last page.
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+// The server's reply to an Undo. An entity-history entry comes back as `entry`; a file-store canonical change as `id` and `undoneAt`.
+export interface HistoryUndoBody {
+  entry?: { id?: string; undoneAt?: string };
+  id?: string;
+  undone?: boolean;
+  undoneAt?: string;
+  restored?: number;
+  skipped?: Array<{ id: string; name: string }>;
+}
+// An Undo refused with 409 (the records changed after the change, or it was already undone). The message is the server's.
+export class UndoConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UndoConflictError';
+  }
+}
+
 // Global Archive (owner only): the shared catalog, not your log.
 export const canonicalApi = {
   artists: () => request<{ artists: CanonicalArtistRecord[] }>('/api/manage/canonical/artists'),
@@ -525,6 +559,15 @@ export const canonicalApi = {
       // A reply without a job must not look like success: the caller shows an error.
       if (!r?.job) throw new Error('The lookup was not started. Try again.');
       return r.job;
+    }),
+  // Owner only. One page of the Changes list; pass the previous nextCursor to get the next page.
+  changes: (cursor?: string) =>
+    request<CanonicalChangesPage>(`/api/manage/canonical/changes${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
+  // Undo one history entry (entity history or a file-store canonical change). A 409 throws UndoConflictError with the server's message.
+  undoChange: (id: string) =>
+    request<HistoryUndoBody>(`/api/entities/history/${encodeURIComponent(id)}/undo`, post()).catch((err: unknown) => {
+      if ((err as { status?: number }).status === 409) throw new UndoConflictError(err instanceof Error ? err.message : 'Undo refused.');
+      throw err;
     }),
 };
 

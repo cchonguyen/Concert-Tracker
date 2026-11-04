@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Building2, CalendarDays, HeartPulse, History, Layers, ListChecks, Loader2, MapPin, Mic2, Plus, Search, Tag, Undo2, Users } from 'lucide-react';
+import { Building2, HeartPulse, History, Layers, Loader2, MapPin, Mic2, Plus, Search, Tag, Undo2, Users } from 'lucide-react';
 import { canonicalApi, entitiesApi, LoggedEvent } from '../services/lineupApi';
 import type { ArtistOrigin, CanonicalArtistSummary } from '../server/entities/canonicalManage';
 import { normalizeName } from '../server/lineup/normalizeName';
@@ -69,11 +69,12 @@ const SECTION_OPTIONS: MenuOption<Section>[] = [
   { value: 'history' as const, label: 'History', icon: History },
 ];
 
-// The Global archive scope's menu: only the sections with a catalog meaning.
-const ARCHIVE_OPTIONS: MenuOption<Section>[] = [
-  { value: 'artists', label: 'Artists', icon: Mic2 },
-  { value: 'editions', label: 'Editions & Lineups', icon: CalendarDays },
-  { value: 'lookups', label: 'Lookups', icon: ListChecks },
+// The Global archive's sections, as header tabs (a row that scrolls sideways on narrow screens).
+const ARCHIVE_TABS: Array<{ value: ArchiveSection; label: string }> = [
+  { value: 'artists', label: 'Artists' },
+  { value: 'editions', label: 'Editions & Lineups' },
+  { value: 'lookups', label: 'Lookups' },
+  { value: 'changes', label: 'Changes' },
 ];
 
 const SCOPE_OPTIONS: SegmentedOption<'mine' | 'archive'>[] = [
@@ -263,9 +264,9 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   const archive = scope === 'archive' && isOwner;
   // The search box belongs to a record list: not on Data health, History or an open record.
   // In the archive it filters the artists or editions; Lookups has no list to search.
-  const showSearch = archive
-    ? archiveSection !== 'lookups'
-    : kind !== 'history' && kind !== 'health' && !(open && open.kind === kind);
+  // Only the artists and editions lists in the archive have anything to filter.
+  const archiveFilters = archive && (archiveSection === 'artists' || archiveSection === 'editions');
+  const showSearch = archive ? archiveFilters : kind !== 'history' && kind !== 'health' && !(open && open.kind === kind);
   const searchPlaceholder = archive
     ? archiveSection === 'artists'
       ? 'Find artists in the archive by name or AKA'
@@ -297,36 +298,66 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
         />
       )}
 
-      {/* One menu for the section, on the row with the search box (on the right). */}
-      <div className="flex items-center gap-2">
-        {showSearch && (
-          <label className="relative block min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-zinc-400" />
-            <input
-              className={`${control} pl-8`}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={searchPlaceholder}
-              aria-label="Find"
+      {/* The archive's sections are header tabs. Arrow keys are not wired: each tab is a button, reached with Tab. */}
+      {archive && (
+        <div role="tablist" aria-label="Global archive sections" className="flex gap-1 overflow-x-auto border-b border-zinc-800">
+          {ARCHIVE_TABS.map((t) => {
+            const selected = archiveSection === t.value;
+            return (
+              <button
+                key={t.value}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => {
+                  setArchiveSection(t.value);
+                  setOpenId(null);
+                  setQuery('');
+                }}
+                className={`shrink-0 whitespace-nowrap rounded-t-md border-b-2 px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
+                  selected ? 'border-violet-400 text-zinc-50' : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* The search box, the edition filter and (in My records) the section menu share one row. */}
+      {(!archive || archiveFilters) && (
+        <div className="flex items-center gap-2">
+          {showSearch && (
+            <label className="relative block min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-zinc-400" />
+              <input
+                className={`${control} pl-8`}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={searchPlaceholder}
+                aria-label="Find"
+              />
+            </label>
+          )}
+          {archive && archiveSection === 'editions' && (
+            <MenuButton label="Edition status" value={editionStatus} options={EDITION_STATUS_OPTIONS} onChange={setEditionStatus} />
+          )}
+          {!archive && (
+            <MenuButton
+              label="Manage section"
+              value={kind}
+              options={SECTION_OPTIONS}
+              onChange={(s) => {
+                setKind(s as ManageKind | 'history' | 'health');
+                setOpenId(null);
+                setQuery('');
+              }}
+              className={showSearch ? '' : 'ml-auto'}
             />
-          </label>
-        )}
-        {archive && archiveSection === 'editions' && (
-          <MenuButton label="Edition status" value={editionStatus} options={EDITION_STATUS_OPTIONS} onChange={setEditionStatus} />
-        )}
-        <MenuButton
-          label="Manage section"
-          value={archive ? archiveSection : kind}
-          options={archive ? ARCHIVE_OPTIONS : SECTION_OPTIONS}
-          onChange={(s) => {
-            if (archive) setArchiveSection(s as ArchiveSection);
-            else setKind(s as ManageKind | 'history' | 'health');
-            setOpenId(null);
-            setQuery('');
-          }}
-          className={showSearch ? '' : 'ml-auto'}
-        />
-      </div>
+          )}
+        </div>
+      )}
 
       {notice && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5 text-sm text-zinc-200">
