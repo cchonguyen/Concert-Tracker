@@ -4,6 +4,7 @@
 > **Status**: Planning & Backlog. Ready for independent assignment across parallel engineering agents or contributors.
 > **Guiding Documents**: [REQUIREMENTS.md](../REQUIREMENTS.md), [ARCHITECTURE.md](../ARCHITECTURE.md), and [AGENTS.md](../AGENTS.md).
 > **Revised 2026-11-02**: SEC-01, PERF-01, PERF-02, REL-01, A11Y-02, A11Y-03 and FEAT-03 were rewritten after a code-checked peer review ([tier2-ticket-review.md](tier2-ticket-review.md)). FEAT-03 is blocked.
+> **Checked 2026-11-04**: six closed tickets (SEC-01, SEC-02, REF-01, REF-04, LINEUP-01, TECH-05) moved to [docs/archive/engineering-ticket-bank-closed.md](archive/engineering-ticket-bank-closed.md). Other statuses were not re-checked.
 
 ---
 
@@ -13,7 +14,7 @@ LiveArchive is an exceptionally well-architected, invariant-driven personal conc
 
 However, as the system has expanded across 28 Supabase migrations and added multi-user capabilities, Cloudflare Access gating, email notifications, client-side encryption vaults, and timeline analytics, several architectural gaps, security hardening opportunities, component scaling bottlenecks, and UX polishes have emerged.
 
-This backlog organizes **20 granular, self-contained engineering tickets** across 5 distinct tracks designed for concurrent multi-threaded execution.
+This backlog organizes **26 granular, self-contained engineering tickets** across 5 distinct tracks designed for concurrent multi-threaded execution.
 
 ---
 
@@ -21,8 +22,6 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 
 | ID | Track | Title | Priority | Complexity | Target Area |
 |---|---|---|---|---|---|
-| **SEC-01** | Hardening | Single-Promise Worker Server Bootstrap (cleanup, not a live bug) | P3 | Small | `worker/index.ts` |
-| **SEC-02** | Security | Cache Web Crypto `CryptoKey` in Access Token Verification | P2 | Small | `src/server/share/access.ts` |
 | **SEC-03** | Security | Enforce RLS on Legacy & Base Tables (`0002_source_first_lineups.sql`) | P1 | Medium | `supabase/migrations/` |
 | **SEC-04** | Security | Add IP & Member Rate Limiting on Mutation Endpoints | P2 | Medium | `src/server/auth/`, `worker/` |
 | **PERF-01** | Optimization | Scoped, Paged `listSeenArtistNames` for Spelling Resolution in `stageMerge` | P1 | Small | `src/server/lineup/pipeline.ts`, `store/*` |
@@ -30,10 +29,8 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 | **PERF-03** | Optimization | Worker Subrequest Budgeting Guard in Stage 1 Research | P2 | Medium | `src/server/events/details.ts` |
 | **REL-01** | Reliability | Per-Message Queue Error Handling & Dead-Letter Visibility | P2 | Small | `worker/index.ts`, `wrangler.jsonc` |
 | **REL-02** | Reliability | Extraction Prompt & Model Regression Test Runner | P2 | Medium | `scripts/`, `src/server/lineup/` |
-| **REF-01** | Refactoring | Resolve `MenuButton` Naming Collision with Shared Design System | P1 | Small | `src/components/`, `src/App.tsx` |
 | **REF-02** | Refactoring | Decompose Monolithic `EventDetail.tsx` (1,552 LOC) | P2 | Large | `src/components/EventDetail.tsx` |
 | **REF-03** | Refactoring | Migrate Inline Status Badges to Shared `Pill` Component | P2 | Small | `src/components/TableView.tsx` |
-| **REF-04** | Refactoring | Align `package.json` Naming and Project Metadata | P3 | Trivial | `package.json` |
 | **A11Y-01** | Accessibility | Fix Mobile Unlabelled Button in `CaptureBar` | P1 | Trivial | `src/components/CaptureBar.tsx` |
 | **A11Y-02** | Accessibility | Standardize `NoticeModal` on Shared `Dialog` Focus Management | P2 | Small | `src/components/NoticeModal.tsx` |
 | **A11Y-03** | Accessibility | Arrow-Key Row Navigation & Fewer Tab Stops in Table View | P2 | Medium | `src/components/TableView.tsx` |
@@ -41,7 +38,6 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 | **FEAT-02** | Feature | Bulk Fast Back-Fill Mode (Multi-Line Batch Capture) | P2 | Medium | `src/components/`, `src/server/` |
 | **FEAT-03** | Feature | Single-Artist Performance Setlist Linking (setlist.fm) — **blocked** | P2 | Medium | `src/server/events/`, `src/components/` |
 | **FEAT-04** | Feature | Client-Side Shareable Poster & Year-in-Review Image Export | P2 | Medium | `src/components/`, `src/services/` |
-| **LINEUP-01** | Lineup | Decouple Web Discovery from Zero Claims ("Starvation Bug") | P1 | Small | `src/server/lineup/pipeline.ts` |
 | **LINEUP-02** | Lineup | Clashfinder Weekend & Date-Window Matching Disambiguation | P1 | Medium | `src/server/lineup/adapters/clashfinder.ts` |
 | **LINEUP-03** | Lineup | Content-Aware Lineup Windowing & Navigation Stripping | P2 | Medium | `src/server/lineup/text.ts` |
 | **LINEUP-04** | Lineup | Tighten Setlist.fm Venue Matching Against Concurrent Shows | P2 | Small | `src/server/lineup/adapters/setlistfm.ts` |
@@ -52,54 +48,10 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 | **TECH-02** | Tech Debt | Strict Typing for Source Adapters (Eliminate `any`) | P3 | Small | `src/server/lineup/adapters/` |
 | **TECH-03** | Reliability | Subrequest Budget Guard for Worker Pipeline Runs | P2 | Medium | `src/server/lineup/pipeline.ts` |
 | **TECH-04** | Tooling | In-Memory Express Request Dispatcher for Integration Tests | P2 | Medium | `tests/helpers/testApp.ts` |
-| **TECH-05** | Tooling | Modernize Vite Config to Native Mode (`import.meta.dirname`) | P3 | Trivial | `vite.config.ts` |
 
 ---
 
 ## Track 1: Security & Defense-in-Depth
-
-### [SEC-01] Single-Promise Worker Server Bootstrap
-- **Classification**: Hardening / Cleanup (not a live bug; see [tier2-ticket-review.md](tier2-ticket-review.md#sec-01-cold-start-concurrency-race-in-ensureserver))
-- **Priority**: P3 (Low)
-- **Files**: [`worker/index.ts`](../worker/index.ts)
-- **Problem**:
-  The concurrent-`listen` race this ticket first described can't happen. `ensureServer` checks `listening` again after `await getDeps(env)`, and between that check and `listening = true` nothing yields (`createApiApp` and `app.listen` are synchronous). An isolate runs on one thread, so two cold requests can't both call `app.listen`.
-  What is still loose:
-  - `listening = true` is set even if `listen` later reports a failure through an asynchronous `'error'` event (for example `EADDRINUSE`). Every later request would then be sent to a port nothing is listening on.
-  - The double-check idiom is easy to break in an edit. One `await` added between the second check and the assignment would bring the race back.
-- **Implementation Strategy**:
-  1. Replace `let listening = false` with `let serverPromise: Promise<void> | null = null`, the same pattern `getDeps` already uses.
-  2. Build the app inside `serverPromise ??= (async () => { ... })().catch((err) => { serverPromise = null; throw err; })`.
-  3. Wrap `listen` so it resolves on `'listening'` and rejects on `'error'`. A failed bind then resets `serverPromise`, and the next request tries again.
-  4. Move the bootstrap into a small factory that takes `createApp` and `getDeps` as parameters, so it can be tested without workerd.
-- **Invariants**: A failed startup is retried on the next request; `/api/health` still answers without starting the server; startup errors still return 503.
-- **Test Plan**:
-  - 5 `ensureServer` calls at once → `listen` called exactly once, and all 5 resolve.
-  - First `getDeps` rejects → the second call retries and succeeds, and `listen` is called once.
-  - `listen` emits `'error'` → the call rejects and the next call retries.
-
----
-
-### [SEC-02] Cache Web Crypto `CryptoKey` in Access Token Verification
-- **Classification**: Performance / Security Optimization
-- **Priority**: P2 (Medium)
-- **Files**: [`src/server/share/access.ts`](../src/server/share/access.ts)
-- **Problem**:
-  In `readAccessClaims`, JWK objects fetched from `${config.teamDomain}/cdn-cgi/access/certs` are cached in `keyCache`. However, on every single incoming authenticated request, `crypto.subtle.importKey('jwk', jwk, ...)` is called. Importing RSA public keys repeatedly consumes CPU cycles and creates garbage collection pressure in Cloudflare V8 isolates.
-- **Implementation Strategy**:
-  1. Expand the cached type to hold both the JWK and the imported `CryptoKey`:
-     ```ts
-     interface CachedKey {
-       jwk: Jwk;
-       cryptoKey?: CryptoKey;
-     }
-     ```
-  2. Lazily import or eagerly import `CryptoKey` once upon caching JWKs.
-  3. Reuse `cached.cryptoKey` directly in `crypto.subtle.verify`.
-- **Invariants**: Cache TTL (1 hour) and forced refresh when unknown `kid` is encountered must remain identical.
-- **Test Plan**: Run `tests/shareRoute.test.ts` and `tests/accessRequests.test.ts`; verify verification passes with zero regressions.
-
----
 
 ### [SEC-03] Enforce RLS on Legacy & Base Tables (`0002_source_first_lineups.sql`)
 - **Classification**: Security Hardening / Database Hygiene
@@ -241,24 +193,6 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 
 ## Track 3: Code Architecture & Modular Refactoring
 
-### [REF-01] Resolve `MenuButton` Naming Collision with Shared Design System
-- **Classification**: Refactor / Design System
-- **Priority**: P1 (High)
-- **Files**: [`src/components/MenuButton.tsx`](../src/components/MenuButton.tsx), [`src/components/ui/MenuButton.tsx`](../src/components/ui/MenuButton.tsx), [`src/App.tsx`](../src/App.tsx)
-- **Problem**:
-  There are two conflicting `MenuButton.tsx` files in the codebase:
-  1. `src/components/MenuButton.tsx`: The application header menu (Theme, Import/Export, Sheets, Share, Members, Logout).
-  2. `src/components/ui/MenuButton.tsx`: The generic design-system dropdown selector component (`<MenuButton<T> ... />`).
-  In `src/App.tsx`, `import { MenuButton } from './components/MenuButton'` imports the app header menu. This creates naming collisions, breaks IDE auto-imports, and violates the rule that shared UI components live in `src/components/ui/`.
-- **Implementation Strategy**:
-  1. Rename `src/components/MenuButton.tsx` to `src/components/AppHeaderMenu.tsx` (exporting `AppHeaderMenu`).
-  2. Update `src/App.tsx` and all call sites to import `AppHeaderMenu`.
-  3. Ensure `src/components/ui/MenuButton.tsx` remains the authoritative generic dropdown component.
-- **Invariants**: Visual look and mobile bottom-sheet behavior must remain 100% identical.
-- **Test Plan**: `npm run lint` and `npm test` pass; verify header dropdown opens properly on desktop and mobile.
-
----
-
 ### [REF-02] Decompose Monolithic `EventDetail.tsx` (1,552 LOC)
 - **Classification**: Refactor / Maintainability
 - **Priority**: P2 (Medium/Large)
@@ -298,20 +232,6 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
   3. Ensure series chips, attendance tags (Upcoming, Missed), and type chips render through `Pill`.
 - **Invariants**: Good and warn states must always carry text (never rely on color alone).
 - **Test Plan**: Visual inspection across light and dark themes; `npm run lint`.
-
----
-
-### [REF-04] Align `package.json` Naming and Project Metadata
-- **Classification**: Project Hygiene
-- **Priority**: P3 (Low)
-- **Files**: [`package.json`](../package.json)
-- **Problem**:
-  `package.json` still has `"name": "react-example"` from the initial template scaffolding.
-- **Implementation Strategy**:
-  1. Update `package.json` `"name"` to `"livearchive"`.
-  2. Add description `"Personal concert tracking and lineup archive"`.
-- **Invariants**: No dependency version changes.
-- **Test Plan**: `npm run build` and `npm test` execute cleanly.
 
 ---
 
@@ -457,26 +377,6 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ---
 
 ## Track 7: Lineup Discovery & Robustness
-
-### [LINEUP-01] Decouple Web Discovery from Zero Claims ("Starvation Bug")
-- **Classification**: Bug / Pipeline Robustness
-- **Priority**: P1 (High)
-- **Files**: [`src/server/lineup/pipeline.ts`](../src/server/lineup/pipeline.ts)
-- **Problem**:
-  In `stageExtract`, transition to `stageDiscover` only triggers if `claims.length === 0`. If Ticketmaster returns a stub listing with only 1 or 2 headliners for a 100-act festival, `claims.length > 0`, so web search and promoter discovery never run. The festival is merged with an incomplete 2-artist lineup.
-- **Implementation Strategy**:
-  1. Define a stub lineup heuristic: an event is considered a stub if `claims.length === 0`, OR if `claims.length < 5` and the event is a multi-day festival (e.g., `job.input.endDate && job.input.endDate !== job.input.startDate`).
-  2. In `stageExtract`, allow transitioning to `discover` when claims are sparse:
-     ```typescript
-     const isSparseFestival = (job.input.endDate && job.input.endDate !== job.input.startDate) && claims.length < 5;
-     const needsDiscovery = (claims.length === 0 || isSparseFestival) && canDiscover;
-     job.stage = needsDiscovery ? 'discover' : 'merge';
-     ```
-  3. Ensure existing claims from the first wave are preserved and merged alongside newly discovered claims in `stageMerge`.
-- **Invariants**: Discovered claims still require verbatim verification; snippets are never claims.
-- **Test Plan**: Unit test in `tests/pipeline.test.ts` where Ticketmaster returns 1 performer for a 3-day festival → assert `job.stage === 'discover'` and search is invoked.
-
----
 
 ### [LINEUP-02] Clashfinder Weekend & Date-Window Matching Disambiguation
 - **Classification**: Matching Correctness
@@ -628,19 +528,6 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
   1. Create a lightweight test helper `dispatch(app, requestInit)` that passes a `Request` through Express middleware in memory via Node's `http.IncomingMessage` / `http.ServerResponse` mocks without opening real OS network sockets.
   2. Migrate `tests/shareApi.test.ts` and `tests/sheets.test.ts` onto this in-memory caller.
 - **Test Plan**: Run all migrated test files in a restricted sandbox without loopback permissions → assert 100% pass rate in < 200 ms.
-
----
-
-### [TECH-05] Modernize Vite Config to Native Mode
-- **Classification**: Cleanup / Build Tooling
-- **Priority**: P3 (Low)
-- **Files**: [`vite.config.ts`](../vite.config.ts)
-- **Problem**:
-  Vite 8 logs a deprecation warning on every build:
-  `Your Vite config uses features that are unsupported by configLoader: 'native'... __dirname (vite.config.ts:8:65). Use import.meta.dirname instead.`
-- **Implementation Strategy**:
-  Replace `__dirname` with `import.meta.dirname` in [`vite.config.ts`](../vite.config.ts#L8).
-- **Test Plan**: Run `npm run build`; assert zero deprecation warnings.
 
 ---
 
