@@ -244,7 +244,7 @@ This backlog organizes **20 granular, self-contained engineering tickets** acros
 ### [REF-01] Resolve `MenuButton` Naming Collision with Shared Design System
 - **Classification**: Refactor / Design System
 - **Priority**: P1 (High)
-- **Files**: [`src/components/MenuButton.tsx`](../src/components/MenuButton.tsx), [`src/components/ui/MenuButton.tsx`](../src/components/ui/MenuButton.tsx), [`src/App.tsx`](../src/App.tsx)
+- **Files**: `src/components/MenuButton.tsx` (removed; the shared one is below), [`src/components/ui/MenuButton.tsx`](../src/components/ui/MenuButton.tsx), [`src/App.tsx`](../src/App.tsx)
 - **Problem**:
   There are two conflicting `MenuButton.tsx` files in the codebase:
   1. `src/components/MenuButton.tsx`: The application header menu (Theme, Import/Export, Sheets, Share, Members, Logout).
