@@ -1,12 +1,15 @@
 # Session Handoff
 
 - **Last Active Platform:** Claude Code (cloud session)
-- **Active Branch / State:** `claude/tier3-tech-04-test-dispatcher` (cut from origin/main 9762eb2). Slice T1 (TECH-04) built and verified. Not committed, not pushed, no PR. Waiting on Charlie to review before commit.
-- **Done this session:** Added `tests/helpers/testApp.ts` (`dispatch()`, in-memory, no socket) and `tests/testApp.test.ts` (8 tests). Migrated all 18 test files that called `listen(0)`. The spec named 12; grep found 18, and the acceptance check needs zero, so all 18 moved. No production code changed.
-- **Verification Status (run this session, after final edit):**
-  - `git grep -n "listen(0" -- tests`: no output.
-  - `npm test --silent`: 733 pass, 0 fail (baseline 725 + 8 new).
-  - `npm run lint --silent` (tsc for app and worker): exit 0.
-  - Typecheck is the same tsc run as lint; no separate typecheck script exists.
-- **Harness note:** `.spec/PROGRESS.md` slice T1 is `[IN_PROGRESS]`. Mark `[x]` and commit via `finish-slice.mjs` only after Charlie approves.
-- **Immediate Next Step:** Charlie reviews the diff. On approval, commit, open the PR, then start FETCH-01 as a new slice.
+- **Active Branch / State:** `claude/tier3-fetch-01-handoff` (cut from origin/main 4aee37b). Docs only. PR open, not merged. Main includes TECH-04 (PR #229, merged by Charlie) and FETCH-01 (PR #233, merged by Charlie).
+- **Done this session:**
+  - TECH-04 (slice 3): `tests/helpers/testApp.ts` `dispatch()` in memory, 18 test files moved off `listen(0)`. Merged as #229.
+  - FETCH-01 (slice 4): `src/server/lineup/budget.ts` per-invocation subrequest budget (limit 50, `SUBREQUEST_LIMIT` override, reserve 4). Fetcher uses manual redirects (max 3 hops, public-URL check per hop) and a 3 MB body cap with `truncated`. Budgets start in the queue handler, the cron run and an `/api` middleware. Merged as #233.
+- **Verification Status:**
+  - TECH-04: `git grep "listen(0" -- tests` empty; `npm test` 733 pass; lint exit 0.
+  - FETCH-01 (on commit 8d11a07): `npm test` 743 pass, 0 fail; `npm run lint` exit 0.
+  - FETCH-01 `pr-check` (CI) was red on 8d11a07. Cause: `pr-scope-check.mjs --strict` flags `src/server/auth/requestScope.ts` as a Red tripwire (auth file). Lint and tests were green. PR #233 was merged while the check was still red. Not resolved.
+- **Open gaps:**
+  - FETCH-01: cold-start store probes in `getDeps` (once per isolate) run before the per-message budgets, so they are not counted against the budget. Fixing that changes the handler shape.
+  - FETCH-01: the Red tripwire on `src/server/auth/requestScope.ts` on main needs Charlie's decision: accept it, or move the Supabase `countingFetch` wiring out of that file.
+- **Immediate Next Step:** Charlie decides on the `requestScope.ts` tripwire and picks the next slice from `docs/tier3-specs.md` build order (TECH-03 needs migration 0031, which Charlie applies; REL-02A has no dependencies). Do not start a slice until he picks one.
