@@ -963,12 +963,25 @@ export class SupabaseLineupStore implements LineupStore {
     return out;
   }
 
+  // performances is keyed by `id` (migration 0029 replaced the (edition_id, artist_key) key), so there is no
+  // unique constraint for an ON CONFLICT upsert. Replace each artist's rows in the given editions instead:
+  // delete per artist key and chunk of editions, then insert the full rows.
   async putArtistPerformances(rows: ArtistEditionRow[]) {
-    if (rows.length) {
-      this.check(
-        await this.db.from('performances').upsert(rows.map((r) => this.performanceRow(r.editionId, r)), { onConflict: 'edition_id,artist_key' }),
-        'putArtistPerformances',
-      );
+    if (!rows.length) return;
+    const byKey = new Map<string, ArtistEditionRow[]>();
+    for (const r of rows) byKey.set(r.artistKey, [...(byKey.get(r.artistKey) ?? []), r]);
+    for (const [artistKey, group] of byKey) {
+      const editionIds = [...new Set(group.map((r) => r.editionId))];
+      for (let i = 0; i < editionIds.length; i += 200) {
+        this.check(
+          await this.db.from('performances').delete().eq('artist_key', artistKey).in('edition_id', editionIds.slice(i, i + 200)),
+          'putArtistPerformances clear',
+        );
+      }
+      const inserts = group.map((r) => this.performanceRow(r.editionId, r));
+      for (let i = 0; i < inserts.length; i += 200) {
+        this.check(await this.db.from('performances').insert(inserts.slice(i, i + 200)), 'putArtistPerformances');
+      }
     }
   }
 
