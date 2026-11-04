@@ -4,7 +4,7 @@ import type { NameIndex } from '../server/entities/link';
 import { norm } from './listImport';
 import type { Entity, EntityAlias, EntityLink, HistoryEntry, LinkRole } from '../server/entities/types';
 import type { ConfirmRequest } from '../server/lineup/learning';
-import type { CanonicalConfirmInput } from '../server/lineup/canonicalIngest';
+import type { CanonicalConfirmInput, CanonicalDiff } from '../server/lineup/canonicalIngest';
 import type { ArtistAppearance, CanonicalArtistRecord, CanonicalEditionSummary } from '../server/entities/canonicalManage';
 import type { DetailCandidate, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
 import type { EventPatch } from '../server/events/service';
@@ -498,7 +498,7 @@ export const canonicalApi = {
 export const lineupApi = {
   // Canonical curation (owner only): confirm an edition into the shared catalog.
   canonicalConfirm: (body: CanonicalConfirmInput) =>
-    request<{ applied: boolean; diff: unknown; edition?: unknown }>('/api/manage/canonical/confirm', post(body)),
+    request<{ applied: boolean; diff: CanonicalDiff; edition?: unknown }>('/api/manage/canonical/confirm', post(body)),
   status: () => request<LineupStatus>('/api/lineup/status'),
   retry: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}/run`, post()).then((r) => r.job),
   job: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}`).then((r) => r.job),
