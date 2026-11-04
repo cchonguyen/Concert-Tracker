@@ -21,6 +21,7 @@ import { isBilling, quoteBacksBilling } from './billing';
 import { makeDocument } from './adapters/common';
 import { resolveArtist } from './musicbrainz';
 import { redactSecrets } from './http';
+import { currentBudget } from './budget';
 import { isEventDomain, LineupSearch, pageMentionsEvent } from './search';
 
 export interface PipelineDeps {
@@ -464,6 +465,8 @@ export async function runJob(
     }
   }
   job.updatedAt = deps.now().toISOString();
+  // The final save may use the budget's reserve, so a spent budget cannot lose the job's state.
+  currentBudget()?.take(1, { reserved: true });
   await deps.store.updateJob(job);
   return job;
 }

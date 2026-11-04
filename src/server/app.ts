@@ -1,5 +1,6 @@
 import express from 'express';
 import { PipelineDeps } from './lineup/pipeline';
+import { makeBudget, runWithBudget } from './lineup/budget';
 import { JobRunner } from './lineup/service';
 import { lineupRouter } from './lineup/routes';
 import { eventsRouter } from './events/routes';
@@ -38,6 +39,12 @@ export function createApiApp(
   emailNotifier?: EmailNotifier,
 ): express.Express {
   const app = express();
+  // Every /api request has its own subrequest budget (src/server/lineup/budget.ts).
+  app.use('/api', (_req, _res, next) => {
+    void runWithBudget(makeBudget(), async () => {
+      next();
+    });
+  });
   const lineupDeps: PipelineDeps = gate.kind === 'multi' ? { ...baseDeps, store: requestScopedStore(baseDeps.store) } : baseDeps;
   // Ticket emails arrive in batches with their HTML, larger than other requests.
   app.use('/api/imports/email', express.json({ limit: '25mb' }));

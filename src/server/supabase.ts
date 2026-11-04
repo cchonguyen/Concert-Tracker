@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { countingFetch } from './lineup/budget';
 
 let cachedClient: SupabaseClient | null = null;
 
@@ -16,6 +17,7 @@ export function getSupabaseClient(): SupabaseClient | null {
         persistSession: false,
         autoRefreshToken: false,
       },
+      global: { fetch: countingFetch },
     });
   }
 
