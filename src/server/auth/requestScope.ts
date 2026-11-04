@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { NextFunction, Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import type { LineupStore } from '../lineup/store/types';
+import { countingFetch } from '../lineup/budget';
 import { readAccessClaims } from '../share/access';
 import type { MultiUserConfig } from './config';
 import { NotInvitedError, resolveMember, type MemberDirectory, type SignedInMember } from './members';
@@ -88,7 +89,7 @@ export function memberMiddleware(deps: MemberMiddlewareDeps) {
       const token = await mintSupabaseToken(member, deps.config.jwtSecret, now);
       const db = createClient(deps.config.supabaseUrl, deps.config.anonKey, {
         auth: { persistSession: false, autoRefreshToken: false },
-        global: { headers: { Authorization: `Bearer ${token}` } },
+        global: { headers: { Authorization: `Bearer ${token}` }, fetch: countingFetch },
       });
       const store = deps.base.forUser({ userId: member.userId, role: member.role, db: deps.base.kind === 'supabase' ? db : undefined });
       context.run({ member, store }, next);
