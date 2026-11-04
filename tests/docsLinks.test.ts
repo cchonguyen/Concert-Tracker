@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 
@@ -21,6 +21,44 @@ test('docs do not link to machine-specific file:// paths', () => {
     .filter((file) => readFileSync(file, 'utf8').includes('file:///'))
     .map((file) => path.relative(root, file));
   assert.deepEqual(offenders, []);
+});
+
+// Relative links in root and docs/ must point at files that exist. Code spans
+// are skipped, anchors and query strings are ignored, external links and
+// mailto: are not checked.
+test('every relative Markdown link in root and docs/ resolves', () => {
+  const rootDocs = readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+    .map((entry) => path.join(root, entry.name));
+  const linkPattern = /\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+  const dead: string[] = [];
+  for (const file of [...rootDocs, ...markdownFiles(docsDir)]) {
+    const text = readFileSync(file, 'utf8').replace(/`[^`\n]*`/g, '');
+    const targets = [...text.matchAll(linkPattern)].map((match) => match[1]);
+    for (const raw of targets) {
+      if (/^(https?:|mailto:|#)/.test(raw)) continue;
+      const target = raw.split(/[#?]/)[0];
+      if (!target) continue;
+      const resolved = target.startsWith('/')
+        ? path.join(root, target)
+        : path.resolve(path.dirname(file), target);
+      if (!existsSync(resolved)) dead.push(`${path.relative(root, file)} -> ${target}`);
+    }
+  }
+  assert.deepEqual(dead, []);
+});
+
+test('closed tickets are not also in the open ticket bank', () => {
+  const ticketId = /^### \[([A-Z0-9-]+)\]/gm;
+  const openIds = [
+    ...readFileSync(path.join(docsDir, 'engineering-ticket-bank.md'), 'utf8').matchAll(ticketId),
+  ].map((match) => match[1]);
+  const closedIds = [
+    ...readFileSync(path.join(docsDir, 'archive', 'engineering-ticket-bank-closed.md'), 'utf8').matchAll(ticketId),
+  ].map((match) => match[1]);
+  assert.ok(closedIds.length > 0);
+  const overlap = closedIds.filter((id) => openIds.includes(id));
+  assert.deepEqual(overlap, []);
 });
 
 test('every top-level doc in docs/ is listed in docs/README.md', () => {
