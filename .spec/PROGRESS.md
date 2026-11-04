@@ -19,6 +19,7 @@ Contracts: SYSTEM_SPEC.md section 3. `[CORE / DATA]` slices need passing unit te
 ## Audit follow-up (plan approved 2026-11-04: /mnt/project-files/audit-2026-11-04/plan.md)
 
 - [x] **Slice 8.18** `[CORE / DATA]` : Check every relative Markdown link in the root and docs/ against the repo, fix the dead ones, and add a test that fails on a dead link. Target files: `docs/engineering-ticket-bank.md`, `tests/docsLinks.test.ts`, `.spec/PROGRESS.md` | Verify: `npm test --silent && npm run lint --silent`
+- [ ] **Slice 8.19** `[CORE / DATA]` [IN_PROGRESS]: Move the six tickets verified DONE or OBSOLETE (SEC-01, SEC-02, REF-01, REF-04, LINEUP-01, TECH-05) to docs/archive/engineering-ticket-bank-closed.md, keep every other ticket in the open file, and add a test that the two files share no ticket ID. Target files: `docs/engineering-ticket-bank.md`, `docs/archive/engineering-ticket-bank-closed.md` [NEW], `tests/docsLinks.test.ts`, `.spec/PROGRESS.md` | Verify: `npm test --silent && npm run lint --silent`
 
 
 
