@@ -115,3 +115,66 @@ Moved from docs/engineering-ticket-bank.md. Each ticket was checked against the 
 - **Test Plan**: Run `npm run build`; assert zero deprecation warnings.
 
 ---
+
+### [REL-01] Per-Message Queue Error Handling & Dead-Letter Visibility
+- **Closed**: DONE (verified 2026-11-04 by code audit; the ticket's tests were not re-run).
+- **Classification**: Reliability / Observability (revised after [tier2-ticket-review.md](../tier2-ticket-review.md))
+- **Priority**: P2 (Medium)
+- **Files**: [`worker/index.ts`](../../worker/index.ts), [`wrangler.jsonc`](../../wrangler.jsonc), [`ARCHITECTURE.md`](../../ARCHITECTURE.md)
+- **Problem**:
+  `runJob` already catches every stage error: errors other than quota errors increment `attempts`, back off `2^n` minutes, and set `failed` after `MAX_ATTEMPTS = 3` (`pipeline.ts` 420–454). So the only errors that reach `queue()` are:
+  1. `getDeps` failing (Supabase or config unreachable);
+  2. `getJob`, the `updateJob` that sets `running`, or the final `updateJob` failing;
+  3. `LOOKUP_QUEUE.send` failing after a stage finished;
+  4. errors no catch block can see (CPU or wall-clock limit, isolate eviction).
+  In cases 1–2 the store is down, so writing `status: 'failed'` would fail too. Marking `failed` on the first error would also throw away `runJob`'s backoff and make a temporary outage permanent. Case 4 can only be recovered by the stale-run reaper, by design. Cloudflare's retries (`max_retries: 3`) are already harmless: `runJob` sees `running` (not yet stale) and does nothing. The real gaps are that a whole batch is retried together and that failures after the retries vanish without a trace.
+- **Implementation Strategy**:
+  1. Wrap each message in try/catch. On error, log `jobId` and `redactSecrets(message)`, then call `message.retry({ delaySeconds: 60 })`. **Don't** `ack()` and **don't** write `failed`.
+  2. Leave the success path as it is (`send` the next stage, then `ack()`).
+  3. Add a `dead_letter_queue` to the consumer in `wrangler.jsonc`. Give it no consumer, or one that only logs, so there's never a second path that runs a job.
+  4. Keep the stale-run reaper (`STALE_RUN_MS`) as the authority on stuck `running` rows. Document in ARCHITECTURE.md why it's longer than one stage's realistic run time.
+- **Invariants**: A job's status changes only inside `runJob`; quota errors still park the job (no retry with another model); one stage per invocation; `max_concurrency: 1` is unchanged.
+- **Test Plan**:
+  - `getJob` throws → `message.retry` called, not `ack`, and the job row is unchanged.
+  - The `send` after a stage throws → the job is left `queued` and `dueJobs` picks it up on the next cron.
+  - A stage throws → `attempts` goes up, `nextAttemptAt` is set, and the job is **not** `failed` on the first error.
+
+---
+
+### [LINEUP-02] Clashfinder Weekend & Date-Window Matching Disambiguation
+- **Closed**: DONE (verified 2026-11-04 by code audit; the ticket's tests were not re-run).
+- **Classification**: Matching Correctness
+- **Priority**: P1 (High)
+- **Files**: [`src/server/lineup/adapters/clashfinder.ts`](../../src/server/lineup/adapters/clashfinder.ts)
+- **Problem**:
+  `matchEdition` selects candidate clashes based on edit count without verifying weekend or specific event dates. For festivals with multiple weekends (e.g. Coachella W1 vs W2, Tomorrowland), Weekend 2 attendees are silently given Weekend 1 timetables. Additionally, strict word matching (`wanted.every(...)`) rejects valid clashes if the user's event title includes extraneous descriptor tokens like "Festival" or "Weekend 1".
+- **Implementation Strategy**:
+  1. Extract weekend tokens from event names (e.g. `w1`, `w2`, `weekend 1`, `wknd 2`) via `weekendFromName`.
+  2. When candidate entries have `startDate`:
+     - Compare entry `startDate` with `ctx.input.startDate`. A clash whose start date matches the event's start date within ±2 days receives a heavy score bonus (`+500,000`).
+     - If the event specifies Weekend N, penalize clashes that explicitly declare a different weekend in their title or slug.
+  3. Relax title matching: strip generic festival stop-words (`music`, `festival`, `arts`, `annual`) from the comparison so `"Portola Music Festival"` matches a Clashfinder entry titled `"Portola 2023"`.
+- **Invariants**: Speculative and fantasy clashes remain rejected (`SPECULATIVE.test(name)`).
+- **Test Plan**:
+  - Add test in `tests/adapters.test.ts` with mock editions for `coachella2024w1` (900 edits, April 12) and `coachella2024w2` (300 edits, April 19).
+  - Searching for Coachella with `startDate: '2024-04-19'` must pick `coachella2024w2`.
+
+---
+
+### [LINEUP-03] Content-Aware Lineup Windowing & Navigation Stripping
+- **Closed**: DONE (verified 2026-11-04 by code audit; the ticket's tests were not re-run).
+- **Audit note**: the code uses 2–40 characters for the artist-like line window; this ticket says 2–35.
+- **Classification**: Extraction Reliability
+- **Priority**: P2 (Medium)
+- **Files**: [`src/server/lineup/text.ts`](../../src/server/lineup/text.ts), [`src/server/lineup/gemini.ts`](../../src/server/lineup/gemini.ts)
+- **Problem**:
+  `lineupWindow` searches for `/line[- ]?up|artists|performers/i` and takes a 40,000 character substring. In practice, site navigation headers trigger this match within the first 200 characters, taking the top 40,000 characters of hero copy, ticket tiers, and FAQs, while silently truncating alphabetical lineups at the bottom of the page.
+- **Implementation Strategy**:
+  1. Improve boilerplate reduction in `htmlToText`: strip `<nav>`, `<header>`, `<footer>`, `<dialog>`, and inline SVG blocks before plain-text extraction.
+  2. Implement block-density windowing:
+     - Search for clusters where line length is short and artist-like (e.g. blocks of lines with 2–35 characters).
+     - If the document exceeds `MAX_DOC_CHARS` (40k), start the window at the highest-density roster block rather than the first keyword occurrence.
+- **Invariants**: `isVerbatim` check must still pass against the raw stored document.
+- **Test Plan**: Test against a synthetic HTML page with a 10kb navigation/FAQ header and a 50kb roster → verify names from the end of the alphabet (e.g. "Zedd") are preserved in the extraction window.
+
+---

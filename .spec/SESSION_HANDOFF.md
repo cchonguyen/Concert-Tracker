@@ -8,7 +8,7 @@
   - Docs hygiene: dead links, docs index, status docs, Atlas coordinates (PR #248, merged).
   - RLS migrations 0025 and 0026 committed as applied; 0036 left empty by Charlie's decision (PR #250, merged).
   - ARCHITECTURE.md split into `docs/architecture/` (Slice 8.13, PR #252). Two tests now read the section files.
-- **Verification Status:** Verified via finish-slice.mjs (Slice 8.19)
+- **Verification Status:** Verified via finish-slice.mjs (Slice 8.20)
 - **Open gaps:**
   - Archive finished slices from `.spec/PROGRESS.md` to `.spec/archive/HISTORY.md`.
   - Shared-folder archive (plan step 4) and memory cleanup (plan step 5) not started.
