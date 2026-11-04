@@ -5,7 +5,7 @@ import { norm } from './listImport';
 import type { Entity, EntityAlias, EntityLink, HistoryEntry, LinkRole } from '../server/entities/types';
 import type { ConfirmRequest } from '../server/lineup/learning';
 import type { CanonicalConfirmInput } from '../server/lineup/canonicalIngest';
-import type { ArtistAppearance, CanonicalArtistSummary, CanonicalEditionSummary } from '../server/entities/canonicalManage';
+import type { ArtistAppearance, CanonicalArtistRecord, CanonicalEditionSummary } from '../server/entities/canonicalManage';
 import type { DetailCandidate, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
 import type { EventPatch } from '../server/events/service';
 import type { ActivityEntry } from '../server/events/activityLog';
@@ -467,14 +467,26 @@ export const collaborationsApi = {
 
 // Global Archive (owner only): the shared catalog, not your log.
 export const canonicalApi = {
-  artists: () => request<{ artists: CanonicalArtistSummary[] }>('/api/manage/canonical/artists'),
+  artists: () => request<{ artists: CanonicalArtistRecord[] }>('/api/manage/canonical/artists'),
   // The ingest queue: jobs with no saved event, newest first.
   lookups: () => request<{ jobs: LookupJob[] }>('/api/manage/canonical/lookups').then((r) => r.jobs),
   editions: (query: string, status: 'all' | 'confirmed' | 'draft') =>
     request<{ editions: CanonicalEditionSummary[] }>(`/api/manage/canonical/editions?${new URLSearchParams({ query, status }).toString()}`),
   edition: (id: string) => request<{ edition: Edition }>(`/api/manage/canonical/editions/${encodeURIComponent(id)}`),
   artist: (key: string) =>
-    request<{ artist: CanonicalArtistSummary; appearances: ArtistAppearance[] }>(`/api/manage/canonical/artists/${encodeURIComponent(key)}`),
+    request<{ artist: CanonicalArtistRecord; appearances: ArtistAppearance[] }>(`/api/manage/canonical/artists/${encodeURIComponent(key)}`),
+  // Catalog artists as records (GA3). Each returns the history entry, which Undo (entitiesApi.undo) reverses.
+  renameArtist: (key: string, name: string) =>
+    request<{ entry: HistoryEntry }>(`/api/manage/canonical/artists/${encodeURIComponent(key)}`, { method: 'PATCH', body: JSON.stringify({ name }) }).then((r) => r.entry),
+  mergeArtist: (key: string, into: string) =>
+    request<{ entry: HistoryEntry }>(`/api/manage/canonical/artists/${encodeURIComponent(key)}/merge`, post({ into })).then((r) => r.entry),
+  addArtistAka: (key: string, name: string) =>
+    request<{ entry: HistoryEntry }>(`/api/manage/canonical/artists/${encodeURIComponent(key)}/aliases`, post({ name })).then((r) => r.entry),
+  removeArtistAka: (key: string, name: string) =>
+    request<{ entry: HistoryEntry }>(
+      `/api/manage/canonical/artists/${encodeURIComponent(key)}/aliases?name=${encodeURIComponent(name)}`,
+      { method: 'DELETE' },
+    ).then((r) => r.entry),
   ingest: (body: { name: string; year: number; startDate?: string; endDate?: string; venue?: string; city?: string; country?: string; lineupUrl?: string }) =>
     request<{ job: LookupJob }>('/api/manage/canonical/ingest', post(body)).then((r) => {
       // A reply without a job must not look like success: the caller shows an error.

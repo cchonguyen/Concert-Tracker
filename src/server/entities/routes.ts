@@ -3,7 +3,20 @@ import { PipelineDeps } from '../lineup/pipeline';
 import { isLinking } from './linkingStore';
 import { nameIndex, possibleDuplicates } from './link';
 import { EntityIntegrityError } from './integrity';
-import { appearancesOf, CANONICAL_EDITION_LIMIT, EditionStatusFilter, isOwner, listCanonicalEditions, unifyArtists } from './canonicalManage';
+import {
+  addArtistAka,
+  appearancesOf,
+  CANONICAL_EDITION_LIMIT,
+  EditionStatusFilter,
+  isOwner,
+  listCanonicalEditions,
+  mergeArtists,
+  removeArtistAka,
+  renameArtist,
+  undoHistory,
+  unifyArtists,
+  withAkas,
+} from './canonicalManage';
 import { currentMember } from '../auth/requestScope';
 import { CanonicalInputError, confirmCanonicalEdition, parseCanonicalInput } from '../lineup/canonicalIngest';
 import {
@@ -18,7 +31,6 @@ import {
   renameEntity,
   updateAttrs,
   updatePerson,
-  undoEntry,
   venuePlaceConflicts,
 } from './manage';
 
@@ -86,28 +98,52 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     ownerOnly as any,
     manage(async (req) => {
       const key = String(req.params.key);
-      const [canonical, editions, ownerNames, communityCounts] = await Promise.all([
+      const [canonical, editions, ownerNames, communityCounts, aliases] = await Promise.all([
         store.listArtists(),
         store.listEditions(CANONICAL_EDITION_LIMIT),
         store.listSeenArtistNames(),
         store.communityCounts(),
+        store.getAliases(),
       ]);
-      const row = unifyArtists({ canonical, ownerNames, editions, communityCounts }).find((a) => a.key === key);
+      const row = withAkas(unifyArtists({ canonical, ownerNames, editions, communityCounts }), aliases).find((a) => a.key === key);
       if (!row) throw new ManageError('No such artist.', 404);
       return { artist: row, appearances: appearancesOf(editions, key) };
     }),
+  );
+  // Catalog artists as records (GA3): rename, merge, AKAs. Each one writes a history entry, so Undo works.
+  router.patch(
+    '/manage/canonical/artists/:key',
+    ownerOnly as any,
+    manage(async (req) => ({ entry: await renameArtist(store, String(req.params.key), req.body?.name) })),
+  );
+  router.post(
+    '/manage/canonical/artists/:key/merge',
+    ownerOnly as any,
+    manage(async (req) => ({ entry: await mergeArtists(store, String(req.params.key), String(req.body?.into ?? '')) })),
+  );
+  router.post(
+    '/manage/canonical/artists/:key/aliases',
+    ownerOnly as any,
+    manage(async (req) => ({ entry: await addArtistAka(store, String(req.params.key), req.body?.name) })),
+  );
+  // The AKA in the body, or in ?name= for clients that cannot send a body with DELETE.
+  router.delete(
+    '/manage/canonical/artists/:key/aliases',
+    ownerOnly as any,
+    manage(async (req) => ({ entry: await removeArtistAka(store, String(req.params.key), req.body?.name ?? req.query.name) })),
   );
   router.get(
     '/manage/canonical/artists',
     ownerOnly as any,
     manage(async () => {
-      const [canonical, editions, ownerNames, communityCounts] = await Promise.all([
+      const [canonical, editions, ownerNames, communityCounts, aliases] = await Promise.all([
         store.listArtists(),
         store.listEditions(CANONICAL_EDITION_LIMIT),
         store.listSeenArtistNames(),
         store.communityCounts(),
+        store.getAliases(),
       ]);
-      return { artists: unifyArtists({ canonical, ownerNames, editions, communityCounts }) };
+      return { artists: withAkas(unifyArtists({ canonical, ownerNames, editions, communityCounts }), aliases) };
     }),
   );
   router.get(
@@ -137,7 +173,8 @@ export function entitiesRouter(deps: PipelineDeps): Router {
   );
   router.post('/entities/venues/places', manage(async () => ({ entry: await linkVenuePlaces(store) })));
   router.get('/entities/history', manage(async () => ({ history: await store.listEntityHistory(50) })));
-  router.post('/entities/history/:id/undo', manage((req) => undoEntry(store, req.params.id)));
+  // Undoes a Manage change or a catalog artist change (canonicalManage.ts).
+  router.post('/entities/history/:id/undo', manage((req) => undoHistory(store, req.params.id)));
   router.post('/entities', manage((req) => createEntity(store, req.body?.kind, req.body?.name, undefined, req.body?.group)));
   router.patch('/entities/:id', manage(async (req) => ({ entry: await renameEntity(store, req.params.id, req.body?.name) })));
   router.patch('/entities/:id/person', manage(async (req) => ({ entry: await updatePerson(store, req.params.id, req.body ?? {}) })));
