@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Building2, HeartPulse, History, Layers, Loader2, MapPin, Mic2, Plus, Search, Tag, Undo2, Users } from 'lucide-react';
+import { Building2, CalendarDays, HeartPulse, History, Layers, ListChecks, Loader2, MapPin, Mic2, Plus, Search, Tag, Undo2, Users } from 'lucide-react';
 import { canonicalApi, entitiesApi, LoggedEvent } from '../services/lineupApi';
 import type { ArtistOrigin, CanonicalArtistSummary } from '../server/entities/canonicalManage';
 import { normalizeName } from '../server/lineup/normalizeName';
@@ -10,7 +10,8 @@ import { ManageEntry } from './ManageEntry';
 import { SeriesPanel } from './SeriesPanel';
 import { CollaborationsCard } from './CollaborationsCard';
 import { MenuButton, type MenuOption } from './ui/MenuButton';
-import { CanonicalArchive } from './CanonicalArchive';
+import { Segmented, type SegmentedOption } from './ui/Segmented';
+import { CanonicalArchive, type ArchiveSection, type EditionStatus } from './CanonicalArchive';
 import { useIsOwner } from './MeContext';
 
 const ORIGIN_BADGE: Record<ArtistOrigin, string> = {
@@ -59,11 +60,31 @@ export const KINDS: Array<{ kind: ManageKind; label: string; one: string; icon: 
   { kind: 'label', label: 'Labels', one: 'label', icon: Tag },
 ];
 
-// Every section, in the Manage menu: the record kinds, then Data health and History.
-const SECTION_OPTIONS: MenuOption<ManageKind | 'history' | 'health'>[] = [
+type Section = ManageKind | 'history' | 'health' | ArchiveSection;
+
+// Every section, in the My records menu: the record kinds, then Data health and History.
+const SECTION_OPTIONS: MenuOption<Section>[] = [
   ...KINDS.map(({ kind, label, icon }) => ({ value: kind, label, icon })),
   { value: 'health' as const, label: 'Data health', icon: HeartPulse },
   { value: 'history' as const, label: 'History', icon: History },
+];
+
+// The Global archive scope's menu: only the sections with a catalog meaning.
+const ARCHIVE_OPTIONS: MenuOption<Section>[] = [
+  { value: 'artists', label: 'Artists', icon: Mic2 },
+  { value: 'editions', label: 'Editions & Lineups', icon: CalendarDays },
+  { value: 'lookups', label: 'Lookups', icon: ListChecks },
+];
+
+const SCOPE_OPTIONS: SegmentedOption<'mine' | 'archive'>[] = [
+  { value: 'mine', label: 'My records' },
+  { value: 'archive', label: 'Global archive' },
+];
+
+const EDITION_STATUS_OPTIONS: MenuOption<EditionStatus>[] = [
+  { value: 'all', label: 'All' },
+  { value: 'confirmed', label: 'Confirmed' },
+  { value: 'draft', label: 'Drafts (owner only)' },
 ];
 
 // "Los Angeles, CA, United States" for a place; the name for the rest.
@@ -109,6 +130,8 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
       .catch(() => setOrigins(new Map()));
   }, [isOwner]);
   const [scope, setScope] = useState<'mine' | 'archive'>('mine');
+  const [archiveSection, setArchiveSection] = useState<ArchiveSection>('artists');
+  const [editionStatus, setEditionStatus] = useState<EditionStatus>('all');
   const [openId, setOpenId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [history, setHistory] = useState<HistoryEntry[] | null>(null);
@@ -137,6 +160,8 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   // Open what another tab asked for, once the records are here.
   useEffect(() => {
     if (!target || !data) return;
+    // A record lives in My records, so opening one leaves the archive scope.
+    setScope('mine');
     setKind(target.kind);
     setQuery('');
     let id = target.id && byId.has(target.id) ? target.id : null;
@@ -235,40 +260,67 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
     .filter(matches)
     .sort((a, b) => (counts.get(b.id)?.length ?? 0) - (counts.get(a.id)?.length ?? 0) || entityLabel(a).localeCompare(entityLabel(b)));
   const meta = KINDS.find((k) => k.kind === kind);
+  const archive = scope === 'archive' && isOwner;
   // The search box belongs to a record list: not on Data health, History or an open record.
-  const showSearch = kind !== 'history' && kind !== 'health' && !(open && open.kind === kind);
-  // In the Global archive the Find box filters the archive's artist list, so it stays shown.
+  // In the archive it filters the artists or editions; Lookups has no list to search.
+  const showSearch = archive
+    ? archiveSection !== 'lookups'
+    : kind !== 'history' && kind !== 'health' && !(open && open.kind === kind);
+  const searchPlaceholder = archive
+    ? archiveSection === 'artists'
+      ? 'Find artists in the archive by name or AKA'
+      : 'Search name, series or venue'
+    : `Find ${meta?.label.toLowerCase()} by name or AKA`;
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-lg font-bold text-zinc-50">Manage</h1>
         <p className="text-xs text-zinc-400">
-          The names on your events, one record each. Rename one to change it on every event, merge two that are the same, and keep other
-          spellings as AKAs. Every change can be undone from History.
+          {archive
+            ? 'The shared catalog: lineups you ingest, the editions they make up, and the artists in them. Nothing here is added to your log.'
+            : 'The names on your events, one record each. Rename one to change it on every event, merge two that are the same, and keep other spellings as AKAs. Every change can be undone from History.'}
         </p>
       </div>
 
+      {/* The scope sits above the section menu; it changes what the menu, search and filters act on. */}
+      {isOwner && (
+        <Segmented
+          label="Manage scope"
+          options={SCOPE_OPTIONS}
+          value={scope}
+          onChange={(s) => {
+            setScope(s);
+            setOpenId(null);
+            setQuery('');
+          }}
+        />
+      )}
+
       {/* One menu for the section, on the row with the search box (on the right). */}
       <div className="flex items-center gap-2">
-        {(showSearch || (scope === 'archive' && isOwner)) && (
+        {showSearch && (
           <label className="relative block min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-zinc-400" />
             <input
               className={`${control} pl-8`}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Find ${meta?.label.toLowerCase()} by name or AKA`}
+              placeholder={searchPlaceholder}
               aria-label="Find"
             />
           </label>
         )}
+        {archive && archiveSection === 'editions' && (
+          <MenuButton label="Edition status" value={editionStatus} options={EDITION_STATUS_OPTIONS} onChange={setEditionStatus} />
+        )}
         <MenuButton
           label="Manage section"
-          value={kind}
-          options={SECTION_OPTIONS}
-          onChange={(k) => {
-            setKind(k);
+          value={archive ? archiveSection : kind}
+          options={archive ? ARCHIVE_OPTIONS : SECTION_OPTIONS}
+          onChange={(s) => {
+            if (archive) setArchiveSection(s as ArchiveSection);
+            else setKind(s as ManageKind | 'history' | 'health');
             setOpenId(null);
             setQuery('');
           }}
@@ -294,15 +346,8 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
         </div>
       )}
 
-      {isOwner && (
-        <div role="tablist" aria-label="Manage scope" className="flex gap-2 text-sm">
-          <button role="tab" aria-selected={scope === 'mine'} onClick={() => setScope('mine')} className={scope === 'mine' ? 'rounded-lg bg-zinc-800 px-3 py-1.5 text-zinc-50' : 'rounded-lg px-3 py-1.5 text-zinc-400 hover:text-zinc-200'}>My records</button>
-          <button role="tab" aria-selected={scope === 'archive'} onClick={() => setScope('archive')} className={scope === 'archive' ? 'rounded-lg bg-zinc-800 px-3 py-1.5 text-zinc-50' : 'rounded-lg px-3 py-1.5 text-zinc-400 hover:text-zinc-200'}>Global archive</button>
-        </div>
-      )}
-
-      {scope === 'archive' && isOwner ? (
-        <CanonicalArchive artistQuery={query} />
+      {archive ? (
+        <CanonicalArchive section={archiveSection} query={query} status={editionStatus} />
       ) : kind === 'health' ? (
         <DataHealth
           data={data}
