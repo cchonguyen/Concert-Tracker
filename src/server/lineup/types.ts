@@ -108,10 +108,14 @@ export interface FetchResponse {
   status: number;
   headers: Record<string, string>;
   body: string;
+  truncated?: boolean; // the body was cut at maxBytes
 }
 
 export interface Fetcher {
-  get(url: string, init?: { headers?: Record<string, string>; timeoutMs?: number; maxRetries?: number }): Promise<FetchResponse>;
+  get(
+    url: string,
+    init?: { headers?: Record<string, string>; timeoutMs?: number; maxRetries?: number; maxBytes?: number },
+  ): Promise<FetchResponse>;
 }
 
 export type JobStatus =
