@@ -32,8 +32,17 @@ export function isSilentDiscoSlot(name: string): boolean {
   return SILENT_DISCO.test(name);
 }
 
+// Layout junk a lineup prints around a name ("[Artist]", "*Artist*"). Only the
+// ends of a part are trimmed; anything inside the name is left alone, so "!!!",
+// "$uicideboy$"-style trailing marks and "Ke$ha" survive (! and $ are not junk here).
+const JUNK_EDGE = /^[\s[\]{}*_~|<>•·]+|[\s[\]{}*_~|<>•·]+$/g;
+
+function stripJunkEdges(s: string): string {
+  return s.replace(JUNK_EDGE, '');
+}
+
 function cleanPart(s: string): string {
-  let out = s.trim();
+  let out = stripJunkEdges(s.trim());
   // Strip unmatched leading parenthesis
   if (out.startsWith('(') && !out.includes(')')) {
     out = out.slice(1).trim();
