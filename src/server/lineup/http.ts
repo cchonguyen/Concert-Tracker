@@ -1,4 +1,5 @@
 import { Fetcher, FetchResponse } from './types';
+import { currentBudget } from './budget';
 
 // Minimum spacing between requests per host. MusicBrainz bans clients that
 // exceed 1 req/s; the others are kept polite.
@@ -100,6 +101,61 @@ export function assertPublicHttpUrl(raw: string): URL {
   return url;
 }
 
+const DEFAULT_MAX_BYTES = 3145728;
+const MAX_REDIRECTS = 3;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+// Follows redirects by hand, so each hop is checked as a public address and
+// charged to the budget. A fourth redirect is refused.
+async function fetchFollowingRedirects(
+  start: string,
+  host: string,
+  init: RequestInit,
+): Promise<{ res: Response; url: string }> {
+  let target = start;
+  for (let hops = 0; ; hops++) {
+    currentBudget()?.take();
+    const res = await fetch(target, { ...init, redirect: 'manual' }).catch((err) => {
+      const cause = (err as { cause?: { code?: string } })?.cause?.code;
+      throw new Error(`Could not reach ${host}${cause ? ` (${cause})` : ''}: ${err instanceof Error ? err.message : String(err)}`);
+    });
+    const location = res.headers.get('location');
+    if (!REDIRECT_STATUSES.has(res.status) || !location) return { res, url: target };
+    if (hops >= MAX_REDIRECTS) throw new Error(`Too many redirects for ${host}`);
+    await res.body?.cancel().catch(() => undefined);
+    target = assertPublicHttpUrl(new URL(location, target).toString()).toString();
+  }
+}
+
+// Reads at most maxBytes. The rest of the stream is cancelled, not read.
+async function readCapped(res: Response, maxBytes: number): Promise<{ body: string; truncated: boolean }> {
+  if (!res.body) return { body: '', truncated: false };
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let truncated = false;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (total + value.byteLength > maxBytes) {
+      chunks.push(value.subarray(0, maxBytes - total));
+      total = maxBytes;
+      truncated = true;
+      await reader.cancel().catch(() => undefined);
+      break;
+    }
+    chunks.push(value);
+    total += value.byteLength;
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { body: new TextDecoder().decode(bytes), truncated };
+}
+
 export function createRateLimitedFetcher(): Fetcher {
   const nextSlot = new Map<string, number>();
 
@@ -120,18 +176,26 @@ export function createRateLimitedFetcher(): Fetcher {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), init.timeoutMs ?? 15000);
         try {
-          const res = await fetch(url, {
+          const { res, url: finalUrl } = await fetchFollowingRedirects(url, host, {
             signal: controller.signal,
-            redirect: 'follow',
             headers: { 'User-Agent': userAgent(), ...init.headers },
-          }).catch((err) => {
-            const cause = (err as { cause?: { code?: string } })?.cause?.code;
-            throw new Error(`Could not reach ${host}${cause ? ` (${cause})` : ''}: ${err instanceof Error ? err.message : String(err)}`);
           });
+          const maxBytes = init.maxBytes ?? DEFAULT_MAX_BYTES;
+          const declared = res.headers.get('content-length');
+          if (declared !== null && Number(declared) > maxBytes) {
+            await res.body?.cancel().catch(() => undefined);
+            throw new Error(`Response from ${host} is larger than ${maxBytes} bytes`);
+          }
           const headers: Record<string, string> = {};
           res.headers.forEach((v, k) => (headers[k] = v));
-          const body = await res.text();
-          const response: FetchResponse = { url: res.url || url, status: res.status, headers, body };
+          const { body, truncated } = await readCapped(res, maxBytes);
+          const response: FetchResponse = {
+            url: finalUrl,
+            status: res.status,
+            headers,
+            body,
+            ...(truncated ? { truncated } : {}),
+          };
 
           if ((res.status === 503 || res.status === 429) && attempt < maxRetries) {
             const retryHeader = headers['retry-after'];

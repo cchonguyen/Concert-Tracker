@@ -14,6 +14,7 @@ import { resendFromEnv } from '../src/server/email/sender';
 import { supabaseEmailPreferences } from '../src/server/email/store';
 import { unsubscribeSecretFromEnv } from '../src/server/email/unsubscribe';
 import { redactSecrets } from '../src/server/lineup/http';
+import { makeBudget, runWithBudget } from '../src/server/lineup/budget';
 
 // Cloudflare Worker entry. Static files are served from ./dist by Workers
 // static assets (wrangler.jsonc); only /api/*, the share page (/s/*) and the
@@ -102,6 +103,61 @@ function ensureServer(env: Env): Promise<void> {
   return serverPromise;
 }
 
+// The Cron Trigger's work (scheduled below), run inside one subrequest budget.
+async function runCron(env: Env): Promise<void> {
+  const deps = await getDeps(env);
+  // Once, after 0014: point events saved before it at their records. Not with
+  // multi-user on: each member's saves link into their own records, and this
+  // global pass would link everyone's events into the old shared tables.
+  try {
+    if (!multiUserFromEnv(workerSettings(env as unknown as Record<string, unknown>, process.env))) {
+      const done = await backfillEntities(deps.store);
+      if (done) console.log(`Entity backfill: ${done.events} events, ${done.entities} records, ${done.aliases} aliases.`);
+      // The next minute: venues whose events share one city are put in it.
+      else {
+        const venues = await backfillVenuePlaces(deps.store);
+        if (venues) console.log(`Venue places: ${venues.venues} venues, ${venues.events} events.`);
+      }
+    }
+  } catch (err) {
+    console.error('Entity backfill failed:', err instanceof Error ? err.message : String(err));
+  }
+  // Once a day, at 03:00 UTC: erase trash past 90 days and Log rows past a year.
+  const now = deps.now();
+  if (isRetentionTime(now)) {
+    try {
+      const purged = await runRetention(deps.store, now);
+      console.log(`Retention: ${purged.events} deleted shows, ${purged.activity} log rows erased.`);
+    } catch (err) {
+      console.error('Retention failed:', err instanceof Error ? err.message : String(err));
+    }
+  }
+  // Once a day, at 16:00 UTC (8:00 AM PST): send at most 1 digest email of new access requests to the owner.
+  const settings = workerSettings(env as unknown as Record<string, unknown>, process.env);
+  if (isDigestTime(now) && multiUserFromEnv(settings)) {
+    try {
+      const db = getSupabaseClient();
+      if (db) {
+        const stores = supabaseMemberStores(db);
+        const notifier = createEmailNotifier({
+          sender: resendFromEnv(settings),
+          prefs: stores,
+          requests: stores,
+          ownerEmail: settings.OWNER_EMAIL ?? null,
+          secret: unsubscribeSecretFromEnv(settings),
+          now: () => now,
+        });
+        const digest = await notifier.runDigest(now);
+        if (digest.sent) console.log(`Request digest: sent (${digest.count} new requests).`);
+      }
+    } catch (err) {
+      console.error('Request digest failed:', err instanceof Error ? err.message : String(err));
+    }
+  }
+  const due = await deps.store.dueJobs(deps.now(), 5);
+  if (due.length) await env.LOOKUP_QUEUE.sendBatch(due.map((job) => ({ body: { jobId: job.id } })));
+}
+
 export default {
   async fetch(request, env, ctx) {
     const settings = workerSettings(env as unknown as Record<string, unknown>, process.env);
@@ -149,57 +205,8 @@ export default {
   },
 
   async scheduled(_controller, env) {
-    const deps = await getDeps(env);
-    // Once, after 0014: point events saved before it at their records. Not with
-    // multi-user on: each member's saves link into their own records, and this
-    // global pass would link everyone's events into the old shared tables.
-    try {
-      if (!multiUserFromEnv(workerSettings(env as unknown as Record<string, unknown>, process.env))) {
-        const done = await backfillEntities(deps.store);
-        if (done) console.log(`Entity backfill: ${done.events} events, ${done.entities} records, ${done.aliases} aliases.`);
-        // The next minute: venues whose events share one city are put in it.
-        else {
-          const venues = await backfillVenuePlaces(deps.store);
-          if (venues) console.log(`Venue places: ${venues.venues} venues, ${venues.events} events.`);
-        }
-      }
-    } catch (err) {
-      console.error('Entity backfill failed:', err instanceof Error ? err.message : String(err));
-    }
-    // Once a day, at 03:00 UTC: erase trash past 90 days and Log rows past a year.
-    const now = deps.now();
-    if (isRetentionTime(now)) {
-      try {
-        const purged = await runRetention(deps.store, now);
-        console.log(`Retention: ${purged.events} deleted shows, ${purged.activity} log rows erased.`);
-      } catch (err) {
-        console.error('Retention failed:', err instanceof Error ? err.message : String(err));
-      }
-    }
-    // Once a day, at 16:00 UTC (8:00 AM PST): send at most 1 digest email of new access requests to the owner.
-    const settings = workerSettings(env as unknown as Record<string, unknown>, process.env);
-    if (isDigestTime(now) && multiUserFromEnv(settings)) {
-      try {
-        const db = getSupabaseClient();
-        if (db) {
-          const stores = supabaseMemberStores(db);
-          const notifier = createEmailNotifier({
-            sender: resendFromEnv(settings),
-            prefs: stores,
-            requests: stores,
-            ownerEmail: settings.OWNER_EMAIL ?? null,
-            secret: unsubscribeSecretFromEnv(settings),
-            now: () => now,
-          });
-          const digest = await notifier.runDigest(now);
-          if (digest.sent) console.log(`Request digest: sent (${digest.count} new requests).`);
-        }
-      } catch (err) {
-        console.error('Request digest failed:', err instanceof Error ? err.message : String(err));
-      }
-    }
-    const due = await deps.store.dueJobs(deps.now(), 5);
-    if (due.length) await env.LOOKUP_QUEUE.sendBatch(due.map((job) => ({ body: { jobId: job.id } })));
+    // One subrequest budget for the whole cron run (src/server/lineup/budget.ts).
+    await runWithBudget(makeBudget(), () => runCron(env));
   },
 
   // max_concurrency 1 and max_batch_size 1 keep jobs one at a time, which the
@@ -208,42 +215,50 @@ export default {
     const deps = await getDeps(env);
     for (const message of batch.messages) {
       const { jobId, force } = message.body;
-      try {
-        // One stage (or one page) per message: a whole lookup in one
-        // invocation went past the 50-subrequest limit and was left "running".
-        const job = await runJob(deps, jobId, { force, oneStep: true });
-        if (job?.status === 'queued' && !job.nextAttemptAt) await env.LOOKUP_QUEUE.send({ jobId, force });
-        message.ack();
-      } catch (err) {
-        const messageText = redactSecrets(err instanceof Error ? err.message : String(err));
-        console.error(`Queue job ${jobId} unhandled failure (attempt ${message.attempts}):`, messageText);
+      // Each message has its own subrequest budget (src/server/lineup/budget.ts).
+      const budget = makeBudget();
+      await runWithBudget(budget, async () => {
         try {
-          const current = await deps.store.getJob(jobId);
-          if (current && current.status === 'running') {
-            // attempts starts at 1; with max_retries = 3, attempt >= 4 is the final delivery attempt
-            if (message.attempts >= 4) {
-              await deps.store.updateJob({
-                ...current,
-                status: 'failed',
-                lastError: `Queue delivery failed after ${message.attempts} attempts: ${messageText}`,
-                updatedAt: deps.now().toISOString(),
-              });
-            } else {
-              await deps.store.updateJob({
-                ...current,
-                status: 'queued',
-                nextAttemptAt: new Date(deps.now().getTime() + 60_000).toISOString(),
-                updatedAt: deps.now().toISOString(),
-              });
+          // One stage (or one page) per message: a whole lookup in one
+          // invocation went past the 50-subrequest limit and was left "running".
+          const job = await runJob(deps, jobId, { force, oneStep: true });
+          if (job?.status === 'queued' && !job.nextAttemptAt) await env.LOOKUP_QUEUE.send({ jobId, force });
+          message.ack();
+        } catch (err) {
+          const messageText = redactSecrets(err instanceof Error ? err.message : String(err));
+          console.error(`Queue job ${jobId} unhandled failure (attempt ${message.attempts}):`, messageText);
+          try {
+            // The error path may use the budget's reserve, so the job's state can still be saved.
+            budget.take(1, { reserved: true });
+            const current = await deps.store.getJob(jobId);
+            if (current && current.status === 'running') {
+              // attempts starts at 1; with max_retries = 3, attempt >= 4 is the final delivery attempt
+              if (message.attempts >= 4) {
+                budget.take(1, { reserved: true });
+                await deps.store.updateJob({
+                  ...current,
+                  status: 'failed',
+                  lastError: `Queue delivery failed after ${message.attempts} attempts: ${messageText}`,
+                  updatedAt: deps.now().toISOString(),
+                });
+              } else {
+                budget.take(1, { reserved: true });
+                await deps.store.updateJob({
+                  ...current,
+                  status: 'queued',
+                  nextAttemptAt: new Date(deps.now().getTime() + 60_000).toISOString(),
+                  updatedAt: deps.now().toISOString(),
+                });
+              }
             }
+          } catch (storeErr) {
+            console.error(`Failed to update job ${jobId} state after queue error:`, storeErr);
           }
-        } catch (storeErr) {
-          console.error(`Failed to update job ${jobId} state after queue error:`, storeErr);
+          // Retry with backoff. Once max_retries (3) is exceeded, Cloudflare Queues automatically
+          // routes the message to the configured dead-letter queue (concert-tracker-lookups-dlq).
+          message.retry({ delaySeconds: 60 });
         }
-        // Retry with backoff. Once max_retries (3) is exceeded, Cloudflare Queues automatically
-        // routes the message to the configured dead-letter queue (concert-tracker-lookups-dlq).
-        message.retry({ delaySeconds: 60 });
-      }
+      });
     }
   },
 } satisfies ExportedHandler<Env, LookupMessage>;
