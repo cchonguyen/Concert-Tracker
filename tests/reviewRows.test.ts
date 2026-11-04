@@ -210,3 +210,28 @@ test('reopening B2B performances does not swap partners via sameSource', () => {
   assert.equal(rows[1].candidate?.name, 'Layla Benitez');
   assert.equal(rows[1].seenKey, 'layla benitez');
 });
+
+test('an act you kept whole stays whole on reopen, even when the lookup still says "A X B"', () => {
+  const performers = [cand('Niiko X Swae', { key: 'niiko x swae' })];
+  const edition = {
+    performances: [
+      { artistKey: 'niiko x swae', name: 'Niiko X Swae', oneAct: true, days: [], stages: [], status: 'billed', confidence: 1, sources: [src('Niiko X Swae')] },
+    ],
+  } as any;
+
+  const rows = startRows(performers, edition);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].name, 'Niiko X Swae');
+  assert.equal(rows[0].oneAct, true);
+  assert.equal(rows[0].b2b, undefined);
+});
+
+test('a saved act you did not keep whole is still split on reopen (legacy behaviour)', () => {
+  const edition = {
+    performances: [
+      { artistKey: 'niiko x swae', name: 'Niiko X Swae', days: [], stages: [], status: 'billed', confidence: 1, sources: [src('Niiko X Swae')] },
+    ],
+  } as any;
+  const rows = startRows([], edition);
+  assert.deepEqual(rows.map((r) => r.name), ['Niiko', 'Swae']);
+});
