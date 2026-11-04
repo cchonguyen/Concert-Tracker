@@ -20,4 +20,3 @@ Contracts: SYSTEM_SPEC.md section 3. `[CORE / DATA]` slices need passing unit te
 
 
 
-- [x] **Slice 8.15** `[CORE / DATA]`: Move finished slices from PROGRESS.md to archive/HISTORY.md with the navigator, keeping the work lock file short. Target files: `.spec/PROGRESS.md`, `.spec/archive/HISTORY.md`, `tests/progressArchive.test.ts` | Verify: `npm test --silent && npm run lint --silent`

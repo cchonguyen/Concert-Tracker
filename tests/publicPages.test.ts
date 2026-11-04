@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { test } from 'node:test';
 import { frontDoor } from '../src/server/share/door.ts';
 import { PUBLIC_EXACT_PATHS, PUBLIC_PREFIXES, SITE_ORIGIN, isPublicPath, oldAppLink, robotsTxt, sitemapXml } from '../src/server/site/publicPaths.ts';
@@ -11,7 +11,12 @@ const config: AccessConfig = { teamDomain: 'https://team.cloudflareaccess.com', 
 const door = (url: string) => frontDoor(new Request(`${ORIGIN}${url}`), { store: async () => ({}) as never, access: config });
 
 test('the public allowlist is exactly the paths the document lists', () => {
-  const doc = readFileSync(new URL('../ARCHITECTURE.md', import.meta.url), 'utf8');
+  const archDir = new URL('../docs/architecture/', import.meta.url);
+  const parts = readdirSync(archDir)
+    .filter((f) => f.endsWith('.md'))
+    .sort()
+    .map((f) => readFileSync(new URL(f, archDir), 'utf8'));
+  const doc = [readFileSync(new URL('../ARCHITECTURE.md', import.meta.url), 'utf8'), ...parts].join('\n');
   const section = doc.slice(doc.indexOf('Public allowlist.'), doc.indexOf("The site's one address"));
   const listed = [...section.matchAll(/`(\/[^`]*)`/g)].map((m) => m[1]);
   const expected = [...PUBLIC_EXACT_PATHS, ...PUBLIC_PREFIXES.map((p) => `${p}*`)];
