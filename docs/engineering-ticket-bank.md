@@ -4,7 +4,7 @@
 > **Status**: Planning & Backlog. Ready for independent assignment across parallel engineering agents or contributors.
 > **Guiding Documents**: [REQUIREMENTS.md](../REQUIREMENTS.md), [ARCHITECTURE.md](../ARCHITECTURE.md), and [AGENTS.md](../AGENTS.md).
 > **Revised 2026-11-02**: SEC-01, PERF-01, PERF-02, REL-01, A11Y-02, A11Y-03 and FEAT-03 were rewritten after a code-checked peer review ([tier2-ticket-review.md](tier2-ticket-review.md)). FEAT-03 is blocked.
-> **Checked 2026-11-04**: six closed tickets (SEC-01, SEC-02, REF-01, REF-04, LINEUP-01, TECH-05) moved to [docs/archive/engineering-ticket-bank-closed.md](archive/engineering-ticket-bank-closed.md). Other statuses were not re-checked.
+> **Checked 2026-11-04**: six closed tickets from the first pass plus three from the second pass (REL-01, LINEUP-02, LINEUP-03) moved to [docs/archive/engineering-ticket-bank-closed.md](archive/engineering-ticket-bank-closed.md). Ten open tickets carry a verdict line from the 2026-11-04 code audit.
 
 ---
 
@@ -14,7 +14,7 @@ LiveArchive is an exceptionally well-architected, invariant-driven personal conc
 
 However, as the system has expanded across 28 Supabase migrations and added multi-user capabilities, Cloudflare Access gating, email notifications, client-side encryption vaults, and timeline analytics, several architectural gaps, security hardening opportunities, component scaling bottlenecks, and UX polishes have emerged.
 
-This backlog organizes **26 granular, self-contained engineering tickets** across 5 distinct tracks designed for concurrent multi-threaded execution.
+This backlog organizes **23 granular, self-contained engineering tickets** across 5 distinct tracks designed for concurrent multi-threaded execution.
 
 ---
 
@@ -27,7 +27,6 @@ This backlog organizes **26 granular, self-contained engineering tickets** acros
 | **PERF-01** | Optimization | Scoped, Paged `listSeenArtistNames` for Spelling Resolution in `stageMerge` | P1 | Small | `src/server/lineup/pipeline.ts`, `store/*` |
 | **PERF-02** | Optimization | Per-Host Cache Policy for the Open-Meteo Archive (deferrable) | P3 | Small | `src/server/lineup/responseCache.ts` |
 | **PERF-03** | Optimization | Worker Subrequest Budgeting Guard in Stage 1 Research | P2 | Medium | `src/server/events/details.ts` |
-| **REL-01** | Reliability | Per-Message Queue Error Handling & Dead-Letter Visibility | P2 | Small | `worker/index.ts`, `wrangler.jsonc` |
 | **REL-02** | Reliability | Extraction Prompt & Model Regression Test Runner | P2 | Medium | `scripts/`, `src/server/lineup/` |
 | **REF-02** | Refactoring | Decompose Monolithic `EventDetail.tsx` (1,552 LOC) | P2 | Large | `src/components/EventDetail.tsx` |
 | **REF-03** | Refactoring | Migrate Inline Status Badges to Shared `Pill` Component | P2 | Small | `src/components/TableView.tsx` |
@@ -38,8 +37,6 @@ This backlog organizes **26 granular, self-contained engineering tickets** acros
 | **FEAT-02** | Feature | Bulk Fast Back-Fill Mode (Multi-Line Batch Capture) | P2 | Medium | `src/components/`, `src/server/` |
 | **FEAT-03** | Feature | Single-Artist Performance Setlist Linking (setlist.fm) — **blocked** | P2 | Medium | `src/server/events/`, `src/components/` |
 | **FEAT-04** | Feature | Client-Side Shareable Poster & Year-in-Review Image Export | P2 | Medium | `src/components/`, `src/services/` |
-| **LINEUP-02** | Lineup | Clashfinder Weekend & Date-Window Matching Disambiguation | P1 | Medium | `src/server/lineup/adapters/clashfinder.ts` |
-| **LINEUP-03** | Lineup | Content-Aware Lineup Windowing & Navigation Stripping | P2 | Medium | `src/server/lineup/text.ts` |
 | **LINEUP-04** | Lineup | Tighten Setlist.fm Venue Matching Against Concurrent Shows | P2 | Small | `src/server/lineup/adapters/setlistfm.ts` |
 | **LINEUP-05** | Lineup | Canonical Edition Re-Sync / Freshness Protocol — **blocked** | P2 | Large | `src/server/lineup/` |
 | **PERF-04** | Optimization | Clashfinder `all.json` Worker Caching & Memory Guard | P2 | Small | `src/server/lineup/adapters/clashfinder.ts` |
@@ -54,6 +51,7 @@ This backlog organizes **26 granular, self-contained engineering tickets** acros
 ## Track 1: Security & Defense-in-Depth
 
 ### [SEC-03] Enforce RLS on Legacy & Base Tables (`0002_source_first_lineups.sql`)
+- **Audit 2026-11-04**: OPEN. 0029_enforce_rls_base_tables.sql does not exist; 0002 has no ENABLE ROW LEVEL SECURITY. Later migrations not checked.
 - **Classification**: Security Hardening / Database Hygiene
 - **Priority**: P1 (High)
 - **Files**: [`supabase/migrations/`](../supabase/migrations/)
@@ -135,6 +133,7 @@ This backlog organizes **26 granular, self-contained engineering tickets** acros
 ---
 
 ### [PERF-03] Worker Subrequest Budgeting Guard in Stage 1 Research
+- **Audit 2026-11-04**: OPEN. researchEvent in src/server/events/details.ts has no Stage 1 fetch cap; the per-invocation budget in src/server/lineup/budget.ts is only a partial guard.
 - **Classification**: Reliability / Resource Management
 - **Priority**: P2 (Medium)
 - **Files**: [`src/server/events/details.ts`](../src/server/events/details.ts), [`src/server/events/service.ts`](../src/server/events/service.ts)
@@ -146,30 +145,6 @@ This backlog organizes **26 granular, self-contained engineering tickets** acros
   3. Prioritize primary structured finders (Ticketmaster, setlist.fm) and cap secondary web page fetches.
 - **Invariants**: Stage 1 must complete within a single request; empty/partial result is always valid.
 - **Test Plan**: Run simulated Stage 1 research with mock finders asserting subrequest count <= 15.
-
----
-
-### [REL-01] Per-Message Queue Error Handling & Dead-Letter Visibility
-- **Classification**: Reliability / Observability (revised after [tier2-ticket-review.md](tier2-ticket-review.md))
-- **Priority**: P2 (Medium)
-- **Files**: [`worker/index.ts`](../worker/index.ts), [`wrangler.jsonc`](../wrangler.jsonc), [`ARCHITECTURE.md`](../ARCHITECTURE.md)
-- **Problem**:
-  `runJob` already catches every stage error: errors other than quota errors increment `attempts`, back off `2^n` minutes, and set `failed` after `MAX_ATTEMPTS = 3` (`pipeline.ts` 420–454). So the only errors that reach `queue()` are:
-  1. `getDeps` failing (Supabase or config unreachable);
-  2. `getJob`, the `updateJob` that sets `running`, or the final `updateJob` failing;
-  3. `LOOKUP_QUEUE.send` failing after a stage finished;
-  4. errors no catch block can see (CPU or wall-clock limit, isolate eviction).
-  In cases 1–2 the store is down, so writing `status: 'failed'` would fail too. Marking `failed` on the first error would also throw away `runJob`'s backoff and make a temporary outage permanent. Case 4 can only be recovered by the stale-run reaper, by design. Cloudflare's retries (`max_retries: 3`) are already harmless: `runJob` sees `running` (not yet stale) and does nothing. The real gaps are that a whole batch is retried together and that failures after the retries vanish without a trace.
-- **Implementation Strategy**:
-  1. Wrap each message in try/catch. On error, log `jobId` and `redactSecrets(message)`, then call `message.retry({ delaySeconds: 60 })`. **Don't** `ack()` and **don't** write `failed`.
-  2. Leave the success path as it is (`send` the next stage, then `ack()`).
-  3. Add a `dead_letter_queue` to the consumer in `wrangler.jsonc`. Give it no consumer, or one that only logs, so there's never a second path that runs a job.
-  4. Keep the stale-run reaper (`STALE_RUN_MS`) as the authority on stuck `running` rows. Document in ARCHITECTURE.md why it's longer than one stage's realistic run time.
-- **Invariants**: A job's status changes only inside `runJob`; quota errors still park the job (no retry with another model); one stage per invocation; `max_concurrency: 1` is unchanged.
-- **Test Plan**:
-  - `getJob` throws → `message.retry` called, not `ack`, and the job row is unchanged.
-  - The `send` after a stage throws → the job is left `queued` and `dueJobs` picks it up on the next cron.
-  - A stage throws → `attempts` goes up, `nextAttemptAt` is set, and the job is **not** `failed` on the first error.
 
 ---
 
@@ -221,6 +196,7 @@ This backlog organizes **26 granular, self-contained engineering tickets** acros
 ---
 
 ### [REF-03] Migrate Inline Status Badges to Shared `Pill` Component
+- **Audit 2026-11-04**: OPEN. TableView.tsx uses Pill, but KindBadge (around line 170) keeps its own span; Pill has no matching tone.
 - **Classification**: Refactor / Design System
 - **Priority**: P2 (Medium)
 - **Files**: [`src/components/TableView.tsx`](../src/components/TableView.tsx), [`src/components/ui/Pill.tsx`](../src/components/ui/Pill.tsx)
@@ -277,6 +253,7 @@ This backlog organizes **26 granular, self-contained engineering tickets** acros
 ---
 
 ### [A11Y-03] Arrow-Key Row Navigation & Fewer Tab Stops in Table View
+- **Audit 2026-11-04**: OPEN. nextRowId and arrow keys exist; rows still have tabIndex 0 each, no roving tabindex, no scrollIntoView.
 - **Classification**: Accessibility & Power UX (revised after [tier2-ticket-review.md](tier2-ticket-review.md))
 - **Priority**: P2 (Medium)
 - **Files**: [`src/components/TableView.tsx`](../src/components/TableView.tsx)
@@ -378,42 +355,8 @@ This backlog organizes **26 granular, self-contained engineering tickets** acros
 
 ## Track 7: Lineup Discovery & Robustness
 
-### [LINEUP-02] Clashfinder Weekend & Date-Window Matching Disambiguation
-- **Classification**: Matching Correctness
-- **Priority**: P1 (High)
-- **Files**: [`src/server/lineup/adapters/clashfinder.ts`](../src/server/lineup/adapters/clashfinder.ts)
-- **Problem**:
-  `matchEdition` selects candidate clashes based on edit count without verifying weekend or specific event dates. For festivals with multiple weekends (e.g. Coachella W1 vs W2, Tomorrowland), Weekend 2 attendees are silently given Weekend 1 timetables. Additionally, strict word matching (`wanted.every(...)`) rejects valid clashes if the user's event title includes extraneous descriptor tokens like "Festival" or "Weekend 1".
-- **Implementation Strategy**:
-  1. Extract weekend tokens from event names (e.g. `w1`, `w2`, `weekend 1`, `wknd 2`) via `weekendFromName`.
-  2. When candidate entries have `startDate`:
-     - Compare entry `startDate` with `ctx.input.startDate`. A clash whose start date matches the event's start date within ±2 days receives a heavy score bonus (`+500,000`).
-     - If the event specifies Weekend N, penalize clashes that explicitly declare a different weekend in their title or slug.
-  3. Relax title matching: strip generic festival stop-words (`music`, `festival`, `arts`, `annual`) from the comparison so `"Portola Music Festival"` matches a Clashfinder entry titled `"Portola 2023"`.
-- **Invariants**: Speculative and fantasy clashes remain rejected (`SPECULATIVE.test(name)`).
-- **Test Plan**:
-  - Add test in `tests/adapters.test.ts` with mock editions for `coachella2024w1` (900 edits, April 12) and `coachella2024w2` (300 edits, April 19).
-  - Searching for Coachella with `startDate: '2024-04-19'` must pick `coachella2024w2`.
-
----
-
-### [LINEUP-03] Content-Aware Lineup Windowing & Navigation Stripping
-- **Classification**: Extraction Reliability
-- **Priority**: P2 (Medium)
-- **Files**: [`src/server/lineup/text.ts`](../src/server/lineup/text.ts), [`src/server/lineup/gemini.ts`](../src/server/lineup/gemini.ts)
-- **Problem**:
-  `lineupWindow` searches for `/line[- ]?up|artists|performers/i` and takes a 40,000 character substring. In practice, site navigation headers trigger this match within the first 200 characters, taking the top 40,000 characters of hero copy, ticket tiers, and FAQs, while silently truncating alphabetical lineups at the bottom of the page.
-- **Implementation Strategy**:
-  1. Improve boilerplate reduction in `htmlToText`: strip `<nav>`, `<header>`, `<footer>`, `<dialog>`, and inline SVG blocks before plain-text extraction.
-  2. Implement block-density windowing:
-     - Search for clusters where line length is short and artist-like (e.g. blocks of lines with 2–35 characters).
-     - If the document exceeds `MAX_DOC_CHARS` (40k), start the window at the highest-density roster block rather than the first keyword occurrence.
-- **Invariants**: `isVerbatim` check must still pass against the raw stored document.
-- **Test Plan**: Test against a synthetic HTML page with a 10kb navigation/FAQ header and a 50kb roster → verify names from the end of the alphabet (e.g. "Zedd") are preserved in the extraction window.
-
----
-
 ### [LINEUP-04] Tighten Setlist.fm Venue Matching Against Concurrent Shows
+- **Audit 2026-11-04**: OPEN. belongsToEvent in setlistfm.ts no longer accepts venue-only matches; the festival rule is still missing.
 - **Classification**: Correctness / False Positives
 - **Priority**: P2 (Medium)
 - **Files**: [`src/server/lineup/adapters/setlistfm.ts`](../src/server/lineup/adapters/setlistfm.ts)
@@ -447,6 +390,7 @@ This backlog organizes **26 granular, self-contained engineering tickets** acros
 ## Track 8: Engineering Excellence, Performance & Tech Debt
 
 ### [PERF-04] Clashfinder `all.json` Worker Caching & Memory Guard
+- **Audit 2026-11-04**: OPEN. clashfinder.ts fetches all.json with no cache and no size guard.
 - **Classification**: Performance & Worker Stability
 - **Priority**: P2 (Medium)
 - **Files**: [`src/server/lineup/adapters/clashfinder.ts`](../src/server/lineup/adapters/clashfinder.ts), [`src/server/lineup/http.ts`](../src/server/lineup/http.ts)
@@ -480,6 +424,7 @@ This backlog organizes **26 granular, self-contained engineering tickets** acros
 ---
 
 ### [TECH-01] Safe HTML-to-Text Parser (Eliminate Catastrophic Regex Backtracking)
+- **Audit 2026-11-04**: OPEN. htmlToText in text.ts still uses the regex strip chain and has no input size cap.
 - **Classification**: Performance & Reliability
 - **Priority**: P2 (Medium)
 - **Files**: [`src/server/lineup/text.ts`](../src/server/lineup/text.ts)
@@ -493,6 +438,7 @@ This backlog organizes **26 granular, self-contained engineering tickets** acros
 ---
 
 ### [TECH-02] Strict Typing for Source Adapters (Eliminate `any` in Parsers)
+- **Audit 2026-11-04**: OPEN. any remains in clashfinder.ts (read) and details.ts:135-137; parseEventData was renamed parseEventList.
 - **Classification**: Type Safety & Tech Debt
 - **Priority**: P3 (Low)
 - **Files**: [`src/server/lineup/adapters/clashfinder.ts`](../src/server/lineup/adapters/clashfinder.ts), [`src/server/events/details.ts`](../src/server/events/details.ts)
@@ -506,6 +452,7 @@ This backlog organizes **26 granular, self-contained engineering tickets** acros
 ---
 
 ### [TECH-03] Subrequest Budget Guard for Worker Pipeline Runs
+- **Audit 2026-11-04**: OPEN (partial). src/server/lineup/budget.ts guards at 46 calls; the ticket's pause-and-requeue at about 40 was not found.
 - **Classification**: Cloudflare Worker Hardening
 - **Priority**: P2 (Medium)
 - **Files**: [`src/server/lineup/pipeline.ts`](../src/server/lineup/pipeline.ts), [`src/server/lineup/http.ts`](../src/server/lineup/http.ts)
@@ -519,6 +466,7 @@ This backlog organizes **26 granular, self-contained engineering tickets** acros
 ---
 
 ### [TECH-04] In-Memory Express Request Dispatcher for Integration Tests
+- **Audit 2026-11-04**: OPEN (partial). tests/helpers/testApp.ts exists and dispatches in memory; migrating tests/shareApi.test.ts and tests/sheets.test.ts is not confirmed.
 - **Classification**: Engineering Excellence & Test Speed
 - **Priority**: P2 (Medium)
 - **Files**: `tests/helpers/testApp.ts`, integration test files
