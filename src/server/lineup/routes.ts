@@ -48,6 +48,18 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
     }
   });
 
+  // The owner's canonical ingest queue: recent jobs with no saved event, newest first.
+  // Owner only; members never see the archive.
+  router.get('/manage/canonical/lookups', async (_req, res) => {
+    if (!isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
+    try {
+      const jobs = await deps.store.listCanonicalJobs(30);
+      res.json({ jobs: jobs.map(safeJob) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
   // Canonical ingest (Phase 2b): a lookup for an edition with no saved event.
   // Owner only. The job has no eventId, so confirming it writes only the shared
   // catalog (POST /api/manage/canonical/confirm), never a personal log.

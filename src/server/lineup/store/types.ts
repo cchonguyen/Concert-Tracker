@@ -53,6 +53,8 @@ export interface LineupStore {
   getJob(id: string): Promise<LookupJob | null>;
   updateJob(job: LookupJob): Promise<void>;
   listJobs(limit: number): Promise<LookupJob[]>;
+  // Jobs with no saved event (the owner's canonical ingest), newest first.
+  listCanonicalJobs(limit: number): Promise<LookupJob[]>;
   getJobs(ids: string[]): Promise<LookupJob[]>;
   // Queued or waiting jobs whose nextAttemptAt (if any) has passed.
   dueJobs(now: Date, limit: number): Promise<LookupJob[]>;
