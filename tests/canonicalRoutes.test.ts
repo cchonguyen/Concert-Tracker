@@ -6,10 +6,12 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { entitiesRouter } from '../src/server/entities/routes.ts';
+import { withEntityLinks } from '../src/server/entities/linkingStore.ts';
 import { lineupRouter } from '../src/server/lineup/routes.ts';
 import { createLookup } from '../src/server/lineup/pipeline.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import { runAsMember } from '../src/server/auth/requestScope.ts';
+import type { Edition } from '../src/server/lineup/types.ts';
 
 // The guard runs before the store is touched, so a stub store is enough for
 // the 403 path. Each request runs as the given member (via the request scope).
@@ -38,13 +40,15 @@ async function withLineupApp(
   fn: (app: express.Express, store: FileLineupStore) => Promise<void>,
 ) {
   const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'canon-routes-')));
+  const linkedStore = withEntityLinks(store);
   let tick = 0;
-  const deps = { store, now: () => new Date(Date.UTC(2026, 10, 3, 12, 0, tick++)) } as any;
+  const deps = { store: linkedStore, now: () => new Date(Date.UTC(2026, 10, 3, 12, 0, tick++)) } as any;
   const runner = { kick: async () => undefined } as any;
   const app = express();
   app.use(express.json());
-  app.use((_req, _res, next) => runAsMember(member as any, store as any, next));
+  app.use((_req, _res, next) => runAsMember(member as any, linkedStore as any, next));
   app.use('/api', lineupRouter(deps, runner));
+  app.use('/api', entitiesRouter(deps));
   await fn(app, store);
   return deps;
 }
@@ -85,5 +89,41 @@ test('an ingest error reaches the caller with its message and creates no job', a
     assert.equal(res.status, 400);
     assert.equal(((await res.json()) as { error: string }).error, 'Event name is required.');
     assert.deepEqual(await store.listCanonicalJobs(10), []);
+  });
+});
+
+test('owner edition list reports the exact 200/201 boundary and can find older matches', async () => {
+  await withLineupApp({ role: 'owner', uid: 'u0' }, async (app, store) => {
+    for (let i = 0; i < 201; i++) {
+      const edition: Edition = {
+        id: `edition-${i}`,
+        key: `festival-${2200 - i}`,
+        seriesSlug: 'festival',
+        year: 2200 - i,
+        name: `Festival ${i}`,
+        status: 'confirmed',
+        performances: [],
+        updatedAt: `2026-01-${String((i % 28) + 1).padStart(2, '0')}T00:00:00.000Z`,
+      };
+      await store.upsertEdition(edition);
+    }
+
+    const page = await dispatch(app, { url: '/api/manage/canonical/editions?query=festival&status=confirmed' });
+    assert.equal(page.status, 200);
+    const body = (await page.json()) as { editions: Array<{ id: string; year: number }>; total: number; hasMore: boolean };
+    assert.equal(body.total, 201);
+    assert.equal(body.editions.length, 200);
+    assert.equal(body.hasMore, true);
+    assert.equal(body.editions[0].year, 2200);
+    assert.equal(body.editions.at(-1)?.year, 2001);
+
+    const older = await dispatch(app, { url: '/api/manage/canonical/editions?query=festival+200&status=confirmed' });
+    assert.equal(older.status, 200);
+    const olderBody = (await older.json()) as { editions: Array<{ id: string; year: number }>; total: number; hasMore: boolean };
+    assert.equal(olderBody.total, 1);
+    assert.equal(olderBody.editions.length, 1);
+    assert.equal(olderBody.editions[0].id, 'edition-200');
+    assert.equal(olderBody.editions[0].year, 2000);
+    assert.equal(olderBody.hasMore, false);
   });
 });

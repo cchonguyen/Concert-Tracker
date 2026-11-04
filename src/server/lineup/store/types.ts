@@ -33,6 +33,39 @@ export interface UserScope {
   db?: SupabaseClient;
 }
 
+export type CanonicalEditionStatusFilter = 'all' | Edition['status'];
+
+export interface CanonicalEditionPageOptions {
+  query?: string;
+  status?: CanonicalEditionStatusFilter;
+  limit: number;
+}
+
+export interface CanonicalEditionPage<T = Edition> {
+  editions: T[];
+  total: number;
+  hasMore: boolean;
+}
+
+export type CanonicalEditionListRow = Pick<Edition, 'id' | 'seriesSlug' | 'year' | 'name' | 'venue' | 'status'>;
+
+// Keep filtering and the visible order identical in both stores. Filter the
+// full catalog before slicing so an older matching edition remains findable.
+export function canonicalEditionPage<T extends CanonicalEditionListRow>(
+  rows: T[],
+  options: CanonicalEditionPageOptions,
+): CanonicalEditionPage<T> {
+  const query = (options.query ?? '').trim().toLowerCase();
+  const status = options.status ?? 'all';
+  const matching = rows
+    .filter((edition) => status === 'all' || edition.status === status)
+    .filter((edition) => !query || [edition.name, edition.seriesSlug, edition.venue ?? ''].some((value) => value.toLowerCase().includes(query)))
+    .sort((a, b) => b.year - a.year || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  const limit = Math.max(0, Math.min(200, Math.floor(options.limit)));
+  const editions = matching.slice(0, limit);
+  return { editions, total: matching.length, hasMore: matching.length > editions.length };
+}
+
 // Persistence boundary for the lineup pipeline. Two implementations:
 // fileStore (local dev, no setup) and supabaseStore (durable, used when
 // SUPABASE_URL is configured). Both must behave identically.
@@ -77,6 +110,9 @@ export interface LineupStore {
   getEditions(ids: string[]): Promise<Edition[]>;
   upsertEdition(edition: Edition): Promise<void>;
   listEditions(limit: number): Promise<Edition[]>;
+  // The Global Archive: filters and counts the full catalog before returning
+  // at most 200 editions in year-descending/name-ascending order.
+  listCanonicalEditionsPage(options: CanonicalEditionPageOptions): Promise<CanonicalEditionPage>;
   // Size of each confirmed lineup, by edition id, for Concert or Festival.
   editionLineupFacts(ids: string[]): Promise<Record<string, LineupFacts>>;
 
