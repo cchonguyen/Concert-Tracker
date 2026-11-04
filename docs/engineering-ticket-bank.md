@@ -75,7 +75,7 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
 - **Problem**:
   Gemini quota is meticulously tracked via `quota_ledger`, but unmetered API endpoints such as `POST /api/events` (bulk additions), `POST /api/access-requests`, and `POST /api/events/:id/details` (triggering external HTTP requests) have no per-IP or per-member rate limiter. An automated client could trigger upstream provider throttling or exhaust Workers CPU limits.
 - **Implementation Strategy**:
-  1. Add an in-memory sliding window or token bucket rate limiter in `src/server/auth/rateLimit.ts` for isolate-level protection (e.g. max 60 mutation requests per minute per member/IP).
+  1. Add an in-memory sliding window or token bucket rate limiter in `src/server/auth/rateLimit.ts` (planned, not yet created) for isolate-level protection (e.g. max 60 mutation requests per minute per member/IP).
   2. Return standard HTTP 429 with `Retry-After` header when threshold is breached.
 - **Invariants**: Must not affect single-owner local dev; must not block background queue operations.
 - **Test Plan**: Integration test sending bursts of requests; assert 429 response on burst exceedance.
@@ -151,12 +151,12 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
 ### [REL-02] Extraction Prompt & Model Regression Test Runner
 - **Classification**: Developer Tooling / Quality Assurance
 - **Priority**: P2 (Medium)
-- **Files**: [`scripts/regression-extract.ts`](../scripts/), [`ARCHITECTURE.md`](../ARCHITECTURE.md)
+- **Files**: [`scripts/regression-extract.ts`](../scripts/) (planned, not yet created), [`ARCHITECTURE.md`](../ARCHITECTURE.md)
 - **Problem**:
   ARCHITECTURE.md Roadmap specifies: *"A regression command that re-runs extraction over stored documents and compares against confirmed lineups when the model or prompt changes."*
   Currently, changing `EXTRACTION_PROMPT_VERSION` or upgrading Gemini model versions requires manual testing without a regression benchmark over historical `source_documents`.
 - **Implementation Strategy**:
-  1. Create `scripts/regression-extract.ts` runnable via `npm run test:regression`.
+  1. Create `scripts/regression-extract.ts` (planned, not yet created) runnable via `npm run test:regression`.
   2. Load historical editions from DB/fixtures that have confirmed lineups and stored `source_documents`.
   3. Re-run Gemini extraction on dry-run mode against those stored HTML/text documents.
   4. Compare extracted names against the confirmed lineup; calculate recall, precision, and flag any hallucinated/unquoted names (`isVerbatim`).
@@ -171,7 +171,7 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
 ### [REF-02] Decompose Monolithic `EventDetail.tsx` (1,552 LOC)
 - **Classification**: Refactor / Maintainability
 - **Priority**: P2 (Medium/Large)
-- **Files**: [`src/components/EventDetail.tsx`](../src/components/EventDetail.tsx), `src/components/event-detail/*`
+- **Files**: [`src/components/EventDetail.tsx`](../src/components/EventDetail.tsx), `src/components/event-detail/*` (planned, not yet created)
 - **Problem**:
   `EventDetail.tsx` has grown to 1,552 lines of code. It bundles together:
   - Form field debouncing and flashing (`Field`)
@@ -182,7 +182,7 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
   - Weather presentation, set times, and rating stars
   This makes regression testing difficult and hinders concurrent development.
 - **Implementation Strategy**:
-  1. Create directory `src/components/event-detail/`.
+  1. Create directory `src/components/event-detail/` (planned, not yet created).
   2. Extract distinct subcomponents:
      - `NotesCard.tsx`: Encrypted notes field, lock/unlock indicators.
      - `WhenWhereCard.tsx`: Dates, days attended, venue, city, region, weather badge.
@@ -277,7 +277,7 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
 ### [FEAT-01] Dedicated Artist Profile & Lifetime History View
 - **Classification**: Feature (Roadmap Delight #1)
 - **Priority**: P1 (High)
-- **Files**: `src/components/artist-profile/*`, [`src/components/ArtistsView.tsx`](../src/components/ArtistsView.tsx), [`src/services/artists.ts`](../src/services/artists.ts)
+- **Files**: `src/components/artist-profile/*` (planned, not yet created), [`src/components/ArtistsView.tsx`](../src/components/ArtistsView.tsx), [`src/services/artists.ts`](../src/services/artists.ts)
 - **Spec Reference**: REQUIREMENTS.md Section 13 #1: *"Artist pages: every time you saw someone, with the venues and who you were with."*
 - **Problem**:
   Currently, `ArtistsView.tsx` shows an aggregate list with expandable 3-event previews. There is no comprehensive artist profile that presents a user's full journey with an artist: first show, most recent show, all venues visited, companion breakdown, set types (DJ vs Live vs B2B), and personal ratings.
@@ -297,7 +297,7 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
 ### [FEAT-02] Bulk Fast Back-Fill Mode (Multi-Line Batch Capture)
 - **Classification**: Feature (Roadmap Delight #2)
 - **Priority**: P2 (Medium)
-- **Files**: `src/components/BackfillModal.tsx`, [`src/server/events/routes.ts`](../src/server/events/routes.ts)
+- **Files**: `src/components/BackfillModal.tsx` (planned, not yet created), [`src/server/events/routes.ts`](../src/server/events/routes.ts)
 - **Spec Reference**: REQUIREMENTS.md Section 13 #2: *"Back-fill mode: type one line per event in a box (a whole year at once) and stage 1 handles each."*
 - **Problem**:
   Adding past years of concert history one by one via `CaptureBar` requires repetitive typing and clicking. Users migrating from notes or personal logs want to paste 10-50 lines at once.
@@ -337,12 +337,12 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
 ### [FEAT-04] Client-Side Shareable Poster & Year-in-Review Image Export
 - **Classification**: Feature (Roadmap Delight #4)
 - **Priority**: P2 (Medium)
-- **Files**: `src/services/posterExport.ts`, `src/components/SharePosterModal.tsx`
+- **Files**: `src/services/posterExport.ts` (planned, not yet created), `src/components/SharePosterModal.tsx` (planned, not yet created)
 - **Spec Reference**: REQUIREMENTS.md Section 13 #4: *"Share card: an image of one event or one year, generated from your own data."*
 - **Problem**:
   Users want to share a visual summary of an event or a festival year on social media or with friends without sharing an interactive web link.
 - **Implementation Strategy**:
-  1. Create a pure client-side SVG/Canvas generator (`src/services/posterExport.ts`).
+  1. Create a pure client-side SVG/Canvas generator (`src/services/posterExport.ts` (planned, not yet created)).
   2. Render an elegant festival-style poster or typography card:
      - Event title, year, venue, city.
      - Billed artist names grouped by headliner and support.
