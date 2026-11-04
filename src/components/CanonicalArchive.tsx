@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { canonicalApi, entitiesApi, lineupApi, LookupJob } from '../services/lineupApi';
+import { canonicalApi, entitiesApi, lineupApi, LookupJob, SOURCE_LABELS } from '../services/lineupApi';
+import { reviewSubjectFromEdition } from '../services/reviewRows';
 import type { HistoryEntry } from '../server/entities/types';
-import type { Edition } from '../server/lineup/types';
+import type { Edition, EditionPerformance } from '../server/lineup/types';
 import type { ArtistAppearance, CanonicalArtistRecord, CanonicalEditionSummary } from '../server/entities/canonicalManage';
 import { CanonicalArtistEntry, ORIGIN_LABEL } from './CanonicalArtistEntry';
 import { LineupReview } from './LineupReview';
@@ -166,6 +167,8 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
 const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ query, status }) => {
   const [editions, setEditions] = useState<CanonicalEditionSummary[] | null>(null);
   const [detail, setDetail] = useState<Edition | null>(null);
+  // Edit lineup: the review screen, seeded from the saved edition (canonical mode).
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -190,11 +193,34 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
     }
   };
 
+  if (detail && editing) {
+    return (
+      <LineupReview
+        job={reviewSubjectFromEdition(detail)}
+        mode="canonical"
+        edition={detail}
+        onClose={() => setEditing(false)}
+        onSaved={() => {
+          setEditing(false);
+          void openEdition(detail.id);
+        }}
+      />
+    );
+  }
+
   if (detail) {
     return (
       <div className="space-y-4">
-        <button onClick={() => setDetail(null)} className="text-sm text-violet-300 hover:text-violet-200">← Back to editions</button>
-        <EditionDetail edition={detail} />
+        <button
+          onClick={() => {
+            setDetail(null);
+            void load();
+          }}
+          className="text-sm text-violet-300 hover:text-violet-200"
+        >
+          ← Back to editions
+        </button>
+        <EditionDetail edition={detail} onEditLineup={() => setEditing(true)} onFactsSaved={setDetail} />
       </div>
     );
   }
@@ -347,36 +373,211 @@ const ArchiveLookups: React.FC = () => {
   );
 };
 
-const EditionDetail: React.FC<{ edition: Edition }> = ({ edition }) => (
-  <div className="space-y-3">
-    <div>
-      <h3 className="text-lg font-semibold text-zinc-50">{edition.name}</h3>
-      <p className="text-sm text-zinc-400">
-        {[edition.startDate, edition.endDate && edition.endDate !== edition.startDate ? `to ${edition.endDate}` : null, edition.venue, edition.city].filter(Boolean).join(' · ') || 'Dates and place not known'}
-      </p>
-      <p className="text-xs text-zinc-500">{edition.status === 'confirmed' ? 'Confirmed' : 'Draft (owner only)'}</p>
-    </div>
-    {edition.performances.length === 0 ? (
-      <p className="text-sm text-zinc-400">No acts recorded for this edition.</p>
-    ) : (
-      <table className="w-full text-left text-sm">
-        <thead className="text-[11px] uppercase text-zinc-400">
-          <tr><th className="p-2">Act</th><th className="p-2">Billing</th><th className="p-2">Set</th><th className="p-2">Day / stage</th><th className="p-2">Source</th></tr>
-        </thead>
-        <tbody className="divide-y divide-zinc-800">
+const BILLING_WORDS: Record<string, string> = { headliner: 'Headliner', support: 'Support' };
+
+// One edition as a record (owner only). Missing data reads "Not known"; nothing is filled in.
+// Each act shows its billing role, B2B partners, set, day, stage and set times, and each source
+// shows its quote, or the "Admin curated" badge for the owner's own curation.
+const EditionDetail: React.FC<{ edition: Edition; onEditLineup: () => void; onFactsSaved: (edition: Edition) => void }> = ({ edition, onEditLineup, onFactsSaved }) => {
+  const [editingFacts, setEditingFacts] = useState(false);
+  const names = new Map(edition.performances.map((p) => [p.artistKey, p.name]));
+  const dates = [edition.startDate, edition.endDate && edition.endDate !== edition.startDate ? `to ${edition.endDate}` : null].filter(Boolean).join(' ');
+  const facts: Array<[string, string | undefined]> = [
+    ['Series', edition.seriesSlug],
+    ['Year', String(edition.year)],
+    ['Dates', dates || undefined],
+    ['Venue', edition.venue],
+    ['City', edition.city],
+    ['Country', edition.country],
+    ['Status', edition.status === 'confirmed' ? 'Confirmed' : 'Draft (owner only)'],
+  ];
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-zinc-50">{edition.name}</h3>
+          <p className="text-xs text-zinc-500">Catalog record. Your personal log is not changed.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {!editingFacts && <Button onClick={() => setEditingFacts(true)}>Edit facts</Button>}
+          <Button onClick={onEditLineup}>Edit lineup</Button>
+        </div>
+      </div>
+      {editingFacts ? (
+        <EditionFactsForm
+          edition={edition}
+          onCancel={() => setEditingFacts(false)}
+          onSaved={(saved) => {
+            setEditingFacts(false);
+            onFactsSaved(saved);
+          }}
+        />
+      ) : (
+        <>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+            {facts.map(([label, value]) => (
+              <div key={label}>
+                <dt className="text-[11px] uppercase text-zinc-500">{label}</dt>
+                <dd className={value ? 'text-zinc-100' : 'italic text-zinc-500'}>{value ?? 'Not known'}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="text-xs text-zinc-400">
+            Facts source: {edition.factSourceNote ? <span className="text-zinc-200">{edition.factSourceNote}</span> : <span className="italic text-zinc-500">No source note for these facts yet.</span>}
+          </p>
+        </>
+      )}
+      {edition.performances.length === 0 ? (
+        <p className="text-sm text-zinc-400">No acts recorded for this edition.</p>
+      ) : (
+        <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
           {edition.performances.map((p) => (
-            <tr key={p.artistKey}>
-              <td className="p-2 text-zinc-100">{p.name}</td>
-              <td className="p-2 text-zinc-300">{p.billing ?? 'Artist'}</td>
-              <td className="p-2 text-zinc-300">{p.set ?? 'Not known'}</td>
-              <td className="p-2 text-xs text-zinc-400">{[...p.days, ...p.stages].join(', ') || 'Not timed'}</td>
-              <td className="p-2 text-xs text-zinc-400">
-                {p.sources.map((s, i) => (s.sourceUrl ? <a key={i} href={s.sourceUrl} target="_blank" rel="noreferrer" className="block text-violet-300 hover:underline">{s.extractor === 'admin_curation' ? 'Owner curated' : s.sourceType}</a> : <span key={i} className="block">{s.extractor === 'admin_curation' ? 'Owner curated, no link' : s.sourceType}</span>))}
-              </td>
-            </tr>
+            <ActRecord key={p.artistKey} act={p} partners={(p.b2b ?? []).map((k) => names.get(k) ?? k)} />
           ))}
-        </tbody>
-      </table>
-    )}
-  </div>
+        </ul>
+      )}
+    </div>
+  );
+};
+
+// Edition facts (GA4, owner only). Name, dates, venue and city are edited with a required source note.
+// The diff (old to new) is shown before Save, which stays disabled until a fact changes and a note is given.
+// A blank fact is sent as blank (null) and reads "Not known"; nothing is defaulted.
+const FACT_FIELDS: Array<{ key: 'name' | 'startDate' | 'endDate' | 'venue' | 'city'; label: string; type?: string }> = [
+  { key: 'name', label: 'Name' },
+  { key: 'startDate', label: 'Start date', type: 'date' },
+  { key: 'endDate', label: 'End date', type: 'date' },
+  { key: 'venue', label: 'Venue' },
+  { key: 'city', label: 'City' },
+];
+
+const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSaved: (edition: Edition) => void }> = ({ edition, onCancel, onSaved }) => {
+  const stored = (key: (typeof FACT_FIELDS)[number]['key']): string => (edition[key] ?? '') as string;
+  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(FACT_FIELDS.map((f) => [f.key, stored(f.key)])));
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const trimmed = (key: string) => (values[key] ?? '').trim();
+  const changes = FACT_FIELDS.filter((f) => trimmed(f.key) !== stored(f.key).trim());
+  const nameBlank = trimmed('name') === '';
+  const canSave = !saving && !nameBlank && note.trim() !== '' && changes.length > 0;
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await canonicalApi.editFacts(edition.id, {
+        name: trimmed('name'),
+        startDate: trimmed('startDate') || null,
+        endDate: trimmed('endDate') || null,
+        venue: trimmed('venue') || null,
+        city: trimmed('city') || null,
+        sourceNote: note.trim(),
+      });
+      onSaved(saved);
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form
+      className="space-y-3 rounded-lg border border-zinc-800 p-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (canSave) void save();
+      }}
+    >
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {FACT_FIELDS.map((f) => (
+          <label key={f.key} className="space-y-1 text-xs text-zinc-400">
+            <span className="block text-[11px] uppercase text-zinc-500">{f.label}</span>
+            <input
+              type={f.type ?? 'text'}
+              aria-label={f.label}
+              className={`${field} w-full`}
+              placeholder={f.type ? undefined : 'Not known'}
+              value={values[f.key] ?? ''}
+              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+            />
+          </label>
+        ))}
+      </div>
+      {nameBlank && <p className="text-xs text-rose-300">An edition needs a name.</p>}
+      <label className="block space-y-1 text-xs text-zinc-400">
+        <span className="block text-[11px] uppercase text-zinc-500">Source note (required)</span>
+        <textarea
+          aria-label="Source note"
+          rows={2}
+          className={`${field} w-full`}
+          placeholder="Where these facts came from, e.g. the festival's site, with a link if you have one"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+      </label>
+      <div className="space-y-1 text-xs text-zinc-300">
+        {changes.length === 0 ? (
+          <p className="text-zinc-500">No fact has changed yet.</p>
+        ) : (
+          <>
+            <p className="text-[11px] uppercase text-zinc-500">Changes to save</p>
+            <ul className="space-y-0.5">
+              {changes.map((f) => (
+                <li key={f.key}>
+                  {f.label}: <span className="text-zinc-500">{stored(f.key) || 'Not known'}</span> → <span className="text-zinc-100">{trimmed(f.key) || 'Not known (cleared)'}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" variant="primary" disabled={!canSave}>{saving ? 'Saving…' : 'Save facts'}</Button>
+        <Button variant="ghost" onClick={onCancel} disabled={saving}>Cancel</Button>
+      </div>
+    </form>
+  );
+};
+
+const ActRecord: React.FC<{ act: EditionPerformance; partners: string[] }> = ({ act, partners }) => (
+  <li className="space-y-2 p-3 text-sm">
+    <div className="flex flex-wrap items-baseline gap-2">
+      <span className="font-medium text-zinc-100">{act.name}</span>
+      <Pill tone="neutral">{BILLING_WORDS[act.billing ?? ''] ?? 'Artist'}</Pill>
+      {partners.length > 0 && <span className="text-xs text-zinc-400">B2B with {partners.join(', ')}</span>}
+    </div>
+    <p className="text-xs text-zinc-400">
+      Set: {act.set ?? 'Not known'} · Day: {act.days.join(', ') || 'Not known'} · Stage: {act.stages.join(', ') || 'Not known'}
+    </p>
+    {act.sources.length === 0 && <p className="text-xs text-rose-300">No source stored for this act.</p>}
+    {act.sources.map((s, i) => {
+      const curated = s.extractor === 'admin_curation';
+      return (
+        <div key={i} className="space-y-1 border-l-2 border-zinc-800 pl-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            {curated ? <Pill tone="accent">Admin curated</Pill> : <span className="text-zinc-300">{SOURCE_LABELS[s.sourceType] ?? s.sourceType}</span>}
+            {s.sourceUrl ? (
+              <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="text-violet-300 hover:underline">Source link</a>
+            ) : (
+              <span className="text-zinc-500">No link</span>
+            )}
+          </div>
+          {s.quotedSpan ? <blockquote className="text-zinc-300">“{s.quotedSpan}”</blockquote> : <p className="text-zinc-500">{curated ? 'Curated by you, no quote.' : 'No quote stored.'}</p>}
+          {s.sets && s.sets.length > 0 ? (
+            s.sets.map((t, j) => (
+              <p key={j} className="text-zinc-300">
+                Set time: {[t.day, t.stage, t.start && t.end ? `${t.start} to ${t.end}` : t.start ?? t.end].filter(Boolean).join(' · ') || 'Not known'}
+              </p>
+            ))
+          ) : (
+            <p className="text-zinc-500">Set times: not timed by this source.</p>
+          )}
+        </div>
+      );
+    })}
+  </li>
 );

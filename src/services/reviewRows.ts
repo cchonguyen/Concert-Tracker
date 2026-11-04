@@ -3,7 +3,7 @@
 // so earlier keeps, rejections, renames and hand-added acts carry over.
 import { readActName } from '../server/lineup/actName';
 import { normalizeName } from '../server/lineup/text';
-import type { CandidatePerformer, Edition, EditionPerformance } from '../server/lineup/types';
+import type { CandidatePerformer, Edition, EditionPerformance, LookupJob } from '../server/lineup/types';
 
 export interface StartRow {
   key?: string;
@@ -310,4 +310,53 @@ export function filterOptions(rows: Array<{ days: string[]; stages: string[] }>)
     r.stages.forEach((s) => stages.add(s));
   }
   return { days: [...days].sort(), stages: [...stages].sort((a, b) => a.localeCompare(b)) };
+}
+
+// The review screen's starting point for a saved edition (Edit lineup). Its own acts are the
+// candidate, so reopening starts from what is stored: nothing is added, defaulted or looked up.
+export type ReviewSubject = Pick<LookupJob, 'id' | 'input' | 'candidate'>;
+
+export function reviewSubjectFromEdition(edition: Edition): ReviewSubject {
+  return {
+    id: edition.id,
+    input: {
+      eventName: edition.name,
+      year: edition.year,
+      startDate: edition.startDate,
+      endDate: edition.endDate,
+      venue: edition.venue,
+      city: edition.city,
+      country: edition.country,
+    },
+    candidate: {
+      editionKey: edition.key,
+      cached: true,
+      facts: {
+        name: edition.name,
+        startDate: edition.startDate,
+        endDate: edition.endDate,
+        venue: edition.venue,
+        city: edition.city,
+        country: edition.country,
+        sources: {},
+      },
+      droppedCount: 0,
+      performers: edition.performances.map((p) => ({
+        key: p.artistKey,
+        slotId: p.slotId,
+        alias: p.alias,
+        name: p.name,
+        mbid: p.mbid,
+        days: p.days,
+        stages: p.stages,
+        status: p.status === 'performed' ? 'performed' : 'billed',
+        billing: p.billing,
+        confidence: p.confidence,
+        flagged: false,
+        set: p.set,
+        b2b: p.b2b,
+        sources: p.sources,
+      })),
+    },
+  };
 }

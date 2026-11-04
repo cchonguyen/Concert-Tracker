@@ -18,7 +18,14 @@ import {
   withAkas,
 } from './canonicalManage';
 import { currentMember } from '../auth/requestScope';
-import { CanonicalInputError, confirmCanonicalEdition, parseCanonicalInput } from '../lineup/canonicalIngest';
+import {
+  CanonicalInputError,
+  EditionNotFoundError,
+  confirmCanonicalEdition,
+  editEditionFacts,
+  parseCanonicalInput,
+  parseEditionFacts,
+} from '../lineup/canonicalIngest';
 import {
   addAlias,
   addLink,
@@ -78,6 +85,19 @@ export function entitiesRouter(deps: PipelineDeps): Router {
       res.json(await confirmCanonicalEdition(store, input));
     } catch (err) {
       if (err instanceof CanonicalInputError) return res.status(400).json({ error: err.message });
+      if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Edition facts (GA4): name, dates, venue, city with a required source note. Owner only; catalog only.
+  router.patch('/manage/canonical/editions/:id/facts', ownerOnly as any, async (req, res) => {
+    try {
+      const input = parseEditionFacts(req.body);
+      res.json({ edition: await editEditionFacts(store, String(req.params.id), input) });
+    } catch (err) {
+      if (err instanceof CanonicalInputError) return res.status(400).json({ error: err.message });
+      if (err instanceof EditionNotFoundError) return res.status(404).json({ error: err.message });
       if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }

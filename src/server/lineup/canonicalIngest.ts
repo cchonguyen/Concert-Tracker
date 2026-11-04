@@ -139,6 +139,10 @@ const sameAct = (a: EditionPerformance, b: EditionPerformance) =>
   JSON.stringify(a.days) === JSON.stringify(b.days) &&
   JSON.stringify(a.stages) === JSON.stringify(b.stages);
 
+// Stored sources stay with the act; the owner's curation source is added only if the act has none yet.
+const keepSources = (prev: EditionPerformance, act: EditionPerformance) =>
+  prev.sources.some((s) => s.extractor === 'admin_curation') ? prev.sources : [...prev.sources, ...act.sources];
+
 // Merges the request into the stored edition. Stored acts are kept unless the
 // request names them; changed acts take the request's values on apply.
 // Blank facts are filled; differing facts are reported, never overwritten.
@@ -157,7 +161,9 @@ export async function confirmCanonicalEdition(store: LineupStore, input: Canonic
     if (!prev) diff.added.push(p.name);
     else if (sameAct(prev, act)) diff.unchanged.push(p.name);
     else diff.changed.push(p.name);
-    if (!prev || !sameAct(prev, act)) byKey.set(act.artistKey, act);
+    // A changed act keeps the sources it was stored with (its quotes); the owner's source is added once.
+    if (!prev) byKey.set(act.artistKey, act);
+    else if (!sameAct(prev, act)) byKey.set(act.artistKey, { ...act, sources: keepSources(prev, act) });
   }
 
   const facts: Record<'name' | 'startDate' | 'endDate' | 'venue' | 'city' | 'country', string | undefined> = {
@@ -203,6 +209,8 @@ export async function confirmCanonicalEdition(store: LineupStore, input: Canonic
     performances: [...byKey.values()],
     confirmedAt: now,
     updatedAt: now,
+    // A re-confirm keeps the owner's fact source note; it is not part of the lineup.
+    factSourceNote: existing?.factSourceNote,
   };
 
   if (!input.apply) return { applied: false, diff };
@@ -211,4 +219,58 @@ export async function confirmCanonicalEdition(store: LineupStore, input: Canonic
   if (!(await store.getSeries(slug))) await store.upsertSeries({ slug, name: edition.name });
   await store.upsertEdition(edition);
   return { applied: true, diff, edition };
+}
+
+// Edition facts (GA4). The owner edits name, dates, venue and city with a source note.
+// The form sends all four facts: a blank one is stored as blank (null), never defaulted.
+// The note is required and stored on the edition. Acts, the key and status do not change here.
+export interface EditionFactsInput {
+  name: string;
+  startDate: string | null;
+  endDate: string | null;
+  venue: string | null;
+  city: string | null;
+  sourceNote: string;
+}
+
+export class EditionNotFoundError extends Error {}
+
+export function parseEditionFacts(body: unknown): EditionFactsInput {
+  if (!body || typeof body !== 'object') throw new CanonicalInputError('Send a JSON body.');
+  const b = body as Record<string, unknown>;
+  const name = str(b.name, 'name');
+  if (!name) throw new CanonicalInputError('An edition needs a name. Leave the name as it was rather than blank.');
+  for (const f of ['startDate', 'endDate'] as const) {
+    if (b[f] !== undefined && b[f] !== null && b[f] !== '' && (typeof b[f] !== 'string' || !DATE.test(b[f] as string))) {
+      throw new CanonicalInputError(`${f} must be YYYY-MM-DD.`);
+    }
+  }
+  const sourceNote = str(b.sourceNote, 'sourceNote', 500);
+  if (!sourceNote) throw new CanonicalInputError('An edit to an edition fact needs a source note saying where it came from.');
+  return {
+    name,
+    startDate: str(b.startDate, 'startDate') ?? null,
+    endDate: str(b.endDate, 'endDate') ?? null,
+    venue: str(b.venue, 'venue') ?? null,
+    city: str(b.city, 'city') ?? null,
+    sourceNote,
+  };
+}
+
+// Writes the facts to the catalog edition only (event_editions). Never touches logged_events or seen.
+export async function editEditionFacts(store: LineupStore, editionId: string, input: EditionFactsInput, now = new Date().toISOString()): Promise<Edition> {
+  const existing = await store.getEdition(editionId);
+  if (!existing) throw new EditionNotFoundError('No such edition.');
+  const edition: Edition = {
+    ...existing,
+    name: input.name,
+    startDate: input.startDate ?? undefined,
+    endDate: input.endDate ?? undefined,
+    venue: input.venue ?? undefined,
+    city: input.city ?? undefined,
+    factSourceNote: input.sourceNote,
+    updatedAt: now,
+  };
+  await store.upsertEdition(edition);
+  return edition;
 }
