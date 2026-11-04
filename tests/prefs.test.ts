@@ -1,9 +1,9 @@
+import { dispatch } from './helpers/testApp.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { AddressInfo } from 'node:net';
 import express from 'express';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import { cleanMilestone, cleanTips, prefsRouter, PrefsError } from '../src/server/auth/prefs.ts';
@@ -35,15 +35,12 @@ async function setup(t: { after: (fn: () => void) => void }) {
   const app = express();
   app.use(express.json());
   app.use('/api', prefsRouter(store));
-  const listening = app.listen(0);
-  await new Promise((resolve) => listening.once('listening', resolve));
-  t.after(() => listening.close());
-  const base = `http://127.0.0.1:${(listening.address() as AddressInfo).port}/api/me/prefs`;
   const call = async (method: string, body?: unknown) => {
-    const res = await fetch(base, {
+    const res = await dispatch(app, {
       method,
+      url: '/api/me/prefs',
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
+      body,
     });
     return { status: res.status, body: (await res.json()) as any };
   };

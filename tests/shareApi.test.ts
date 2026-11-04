@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { AddressInfo } from 'node:net';
 import express from 'express';
+import { dispatch } from './helpers/testApp.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import type { PipelineDeps } from '../src/server/lineup/pipeline.ts';
 import { shareRouter } from '../src/server/share/routes.ts';
@@ -35,17 +35,9 @@ async function setup(t: { after: (fn: () => void) => void }) {
   const app = express();
   app.use(express.json());
   app.use('/api', shareRouter({ store, now: () => NOW } as unknown as PipelineDeps));
-  const listening = app.listen(0);
-  await new Promise((resolve) => listening.once('listening', resolve));
-  t.after(() => listening.close());
-  const base = `http://127.0.0.1:${(listening.address() as AddressInfo).port}/api`;
   const call = async (method: string, route: string, body?: unknown) => {
-    const res = await fetch(`${base}${route}`, {
-      method,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    return { status: res.status, headers: res.headers, text: await res.text() };
+    const res = await dispatch(app, { method, url: `/api${route}`, body });
+    return { status: res.status, headers: res.headers, text: res.body };
   };
   const open = async (code: string) =>
     (await frontDoor(new Request(`https://concert.example.com/s/${code}`), { store: async () => store, access: null, now: () => NOW }))!.status;

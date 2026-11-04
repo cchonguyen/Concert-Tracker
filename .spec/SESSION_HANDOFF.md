@@ -1,7 +1,12 @@
 # Session Handoff
 
 - **Last Active Platform:** Claude Code (cloud session)
-- **Active Branch / State:** `claude/project-thread-edhlfs`, docs restructure for the Context Atlas. PR open against `main`.
-- **Done this session:** Moved the Manage design to `docs/manage-section-design.md`, archived the superseded collaboration-alias design under `docs/archive/`, added `docs/tier3-specs.md`, `docs/CONTEXT_ATLAS.md` and `docs/README.md`, added the Atlas index `.spec/ATLAS.md`, and added the missing boundary, contract and archive files.
-- **Verification Status:** Verified via finish-slice.mjs (Slice 2)
-- **Immediate Next Step:** Merge the docs PR and the hub PR, then run `/sync-harness` to pick up the new cap.
+- **Active Branch / State:** `claude/tier3-tech-04-test-dispatcher` (cut from origin/main 9762eb2). Slice T1 (TECH-04) built and verified. Not committed, not pushed, no PR. Waiting on Charlie to review before commit.
+- **Done this session:** Added `tests/helpers/testApp.ts` (`dispatch()`, in-memory, no socket) and `tests/testApp.test.ts` (8 tests). Migrated all 18 test files that called `listen(0)`. The spec named 12; grep found 18, and the acceptance check needs zero, so all 18 moved. No production code changed.
+- **Verification Status (run this session, after final edit):**
+  - `git grep -n "listen(0" -- tests`: no output.
+  - `npm test --silent`: 733 pass, 0 fail (baseline 725 + 8 new).
+  - `npm run lint --silent` (tsc for app and worker): exit 0.
+  - Typecheck is the same tsc run as lint; no separate typecheck script exists.
+- **Harness note:** `.spec/PROGRESS.md` slice T1 is `[IN_PROGRESS]`. Mark `[x]` and commit via `finish-slice.mjs` only after Charlie approves.
+- **Immediate Next Step:** Charlie reviews the diff. On approval, commit, open the PR, then start FETCH-01 as a new slice.
