@@ -41,11 +41,19 @@ import type { CachedResponse } from '../responseCache';
 import {
   canonicalEditionPage,
   CanonicalApplyResult,
+  CanonicalHistoryEntry,
+  CanonicalHistoryPage,
+  CanonicalHistoryPageOptions,
   CanonicalStoreError,
   CanonicalUndoResult,
+  decodeCanonicalHistoryCursor,
+  encodeCanonicalHistoryCursor,
+  isCanonicalOperation,
+  isOlderThanCursor,
   isStaleRun,
   LineupStore,
   MAX_EXAMPLES_PER_DOMAIN,
+  normalizeCanonicalHistoryLimit,
   roundRobin,
   STALE_RUN_MS,
   type CanonicalEditionPageOptions,
@@ -852,6 +860,45 @@ export class FileLineupStore implements LineupStore {
     return clone(all.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit));
   }
 
+  // Owner's canonical history (slice 8.9). Two sources, merged by id: entityHistory rows with a canonical operation,
+  // and canonicalChanges, where applyCanonicalArtistChange (the 8.6 apply path) keeps its changes. The filter
+  // runs on the full set before the cursor and the limit, so an older canonical entry is never skipped.
+  async listCanonicalHistoryPage(options: CanonicalHistoryPageOptions = {}): Promise<CanonicalHistoryPage> {
+    const limit = normalizeCanonicalHistoryLimit(options.limit);
+    const cursor = options.cursor == null ? null : decodeCanonicalHistoryCursor(options.cursor);
+    const state = await this.load();
+    const byId = new Map<string, CanonicalHistoryEntry>();
+    for (const h of Object.values(this.holder(state, undefined).entityHistory ?? {})) {
+      if (!isCanonicalOperation(h.operation)) continue;
+      byId.set(h.id, {
+        id: h.id,
+        operation: h.operation,
+        createdAt: h.createdAt,
+        ...(h.undoneAt ? { undoneAt: h.undoneAt } : {}),
+        manifest: clone(h),
+      });
+    }
+    for (const [id, stored] of Object.entries(state.canonicalChanges ?? {})) {
+      const entry = stored.entry;
+      byId.set(id, {
+        id,
+        operation: entry.operation,
+        createdAt: entry.createdAt,
+        ...(stored.undoneAt ? { undoneAt: stored.undoneAt } : {}),
+        manifest: clone(entry),
+      });
+    }
+    const rows = [...byId.values()]
+      .filter((e) => cursor === null || isOlderThanCursor(e, cursor))
+      .sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? 1 : a.id > b.id ? -1 : 0) : a.createdAt < b.createdAt ? 1 : -1));
+    const entries = rows.slice(0, limit);
+    const last = entries[entries.length - 1];
+    return {
+      entries,
+      nextCursor: rows.length > limit && last ? encodeCanonicalHistoryCursor(last) : null,
+    };
+  }
+
   async listEntities() {
     return this.listEntitiesFor(undefined);
   }
@@ -1248,6 +1295,10 @@ function scopedFileStore(base: FileLineupStore, scope: UserScope): LineupStore {
     async undoCanonicalArtistChange(historyId) {
       ownerOnly(scope);
       return base.undoCanonicalArtistChange(historyId);
+    },
+    async listCanonicalHistoryPage(options) {
+      ownerOnly(scope);
+      return base.listCanonicalHistoryPage(options);
     },
     async createJob(job) {
       await claim('job', [job.id]);
