@@ -48,6 +48,19 @@ test('every relative Markdown link in root and docs/ resolves', () => {
   assert.deepEqual(dead, []);
 });
 
+test('closed tickets are not also in the open ticket bank', () => {
+  const ticketId = /^### \[([A-Z0-9-]+)\]/gm;
+  const openIds = [
+    ...readFileSync(path.join(docsDir, 'engineering-ticket-bank.md'), 'utf8').matchAll(ticketId),
+  ].map((match) => match[1]);
+  const closedIds = [
+    ...readFileSync(path.join(docsDir, 'archive', 'engineering-ticket-bank-closed.md'), 'utf8').matchAll(ticketId),
+  ].map((match) => match[1]);
+  assert.ok(closedIds.length > 0);
+  const overlap = closedIds.filter((id) => openIds.includes(id));
+  assert.deepEqual(overlap, []);
+});
+
 test('every top-level doc in docs/ is listed in docs/README.md', () => {
   const index = readFileSync(path.join(docsDir, 'README.md'), 'utf8');
   const missing = readdirSync(docsDir, { withFileTypes: true })
