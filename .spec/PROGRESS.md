@@ -21,4 +21,4 @@ Contracts: SYSTEM_SPEC.md section 3. `[CORE / DATA]` slices need passing unit te
 
 
 
-- [x] **Slice 8.16** `[CORE / DATA]`: Record the archive state and the open PR list in the session handoff, and check the handoff fields with a test. Target files: `.spec/SESSION_HANDOFF.md`, `.spec/PROGRESS.md`, `tests/sessionHandoff.test.ts` | Verify: `npm test --silent && npm run lint --silent`
+- [x] **Slice 8.16** `[CORE / DATA]`: Record the archive state and the open PR list in the session handoff, and check the handoff fields with a test. Target files: `.spec/SESSION_HANDOFF.md`, `.spec/PROGRESS.md`, `tests/sessionHandoff.test.ts`, `tests/progressArchive.test.ts` | Verify: `npm test --silent && npm run lint --silent`
