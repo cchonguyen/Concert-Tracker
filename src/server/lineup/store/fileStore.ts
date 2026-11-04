@@ -27,7 +27,7 @@ import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../e
 import type { ShareLink } from '../../share/types';
 import { shareEventOnly } from '../../share/types';
 import type { CachedResponse } from '../responseCache';
-import { isStaleRun, LineupStore, MAX_EXAMPLES_PER_DOMAIN, roundRobin, STALE_RUN_MS, type UserScope } from './types';
+import { canonicalEditionPage, isStaleRun, LineupStore, MAX_EXAMPLES_PER_DOMAIN, roundRobin, STALE_RUN_MS, type CanonicalEditionPageOptions, type UserScope } from './types';
 
 type DocumentMeta = Omit<SourceDocument, 'body'>;
 
@@ -266,6 +266,11 @@ export class FileLineupStore implements LineupStore {
   async listEditions(limit: number) {
     const eds = Object.values((await this.load()).editions);
     return clone(eds.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, limit));
+  }
+
+  async listCanonicalEditionsPage(options: CanonicalEditionPageOptions) {
+    const eds = Object.values((await this.load()).editions);
+    return clone(canonicalEditionPage(eds, options));
   }
 
   async getQuota(key: string) {

@@ -21,7 +21,7 @@ import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
-import { LineupStore, MAX_EXAMPLES_PER_DOMAIN, roundRobin, STALE_RUN_MS, type UserScope } from './types';
+import { LineupStore, MAX_EXAMPLES_PER_DOMAIN, roundRobin, STALE_RUN_MS, type CanonicalEditionPageOptions, type UserScope } from './types';
 import { ArtistEditionRow, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import { checkLinks } from '../../entities/integrity';
 import { SHARE_EVENT_COLUMNS, type ShareLink } from '../../share/types';
@@ -481,6 +481,34 @@ export class SupabaseLineupStore implements LineupStore {
     const ids = (rows ?? []).map((r: any) => r.id as string);
     const loaded = new Map((await this.getEditions(ids)).map((e) => [e.id, e]));
     return ids.map((id) => loaded.get(id)).filter((e): e is Edition => Boolean(e));
+  }
+
+  async listCanonicalEditionsPage(options: CanonicalEditionPageOptions) {
+    const queryText = (options.query ?? '').trim();
+    const limit = Math.max(0, Math.min(200, Math.floor(options.limit)));
+    let query = this.db
+      .from('event_editions')
+      .select('id, series_slug, year, name, venue, status', { count: 'exact' });
+    if (options.status && options.status !== 'all') query = query.eq('status', options.status);
+    if (queryText) {
+      const escaped = queryText.replace(/[\\%_*]/g, '\\$&').replace(/"/g, '\\"');
+      const pattern = `"%${escaped}%"`;
+      query = query.or(`name.ilike.${pattern},series_slug.ilike.${pattern},venue.ilike.${pattern}`);
+    }
+    const result = await query
+      .order('year', { ascending: false })
+      .order('name', { ascending: true })
+      .order('id', { ascending: true })
+      .limit(limit);
+    const rows = this.check(result, 'listCanonicalEditionsPage') ?? [];
+    if (result.count === null) throw new Error('Supabase listCanonicalEditionsPage did not return an exact count.');
+    const ids = rows.map((row: any) => row.id as string);
+    const loaded = new Map((await this.getEditions(ids)).map((edition) => [edition.id, edition]));
+    return {
+      editions: ids.map((id) => loaded.get(id)).filter((edition): edition is Edition => Boolean(edition)),
+      total: result.count,
+      hasMore: result.count > rows.length,
+    };
   }
 
   // Quota -----------------------------------------------------------------
