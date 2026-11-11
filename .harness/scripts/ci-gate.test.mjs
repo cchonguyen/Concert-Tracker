@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { parseRefereeTrailers, hasRefereeTrailer, addedSliceLines, checkPullRequest, commitsMissingTrailer } from './ci-gate.mjs';
 
 const TREE = 'a'.repeat(40);
@@ -64,16 +64,26 @@ test('checkPullRequest passes for a slice commit with a matching verdict', () =>
   fs.writeFileSync(path.join(dir, '.spec', 'PROGRESS.md'), '- [x] **Slice 1.1: First**\n');
   fs.writeFileSync(path.join(dir, 'app.txt'), 'v2\n');
   commitWithTrailers(dir, 'Finish Slice 1.1');
-  assert.deepEqual(checkPullRequest({ base: 'main', head: 'feature', cwd: dir }), []);
+  assert.deepEqual(checkPullRequest({ base: 'main', head: 'feature', cwd: dir }), { problems: [], warnings: [] });
 });
 
-test('checkPullRequest fails when the PR adds no slice', () => {
+test('checkPullRequest warns, not fails, when the PR adds no slice', () => {
   const dir = makeRepo();
   fs.writeFileSync(path.join(dir, 'app.txt'), 'v2\n');
   commitWithTrailers(dir, 'Quick fix');
-  const problems = checkPullRequest({ base: 'main', head: 'feature', cwd: dir });
-  assert.equal(problems.length, 1);
-  assert.match(problems[0], /No slice/);
+  const { problems, warnings } = checkPullRequest({ base: 'main', head: 'feature', cwd: dir });
+  assert.equal(problems.some((p) => /No slice|Not in a slice/.test(p)), false);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /Not in a slice/);
+});
+
+test('checkPullRequest passes with one warning when the PR has no slice line but a valid Referee trailer', () => {
+  const dir = makeRepo();
+  fs.writeFileSync(path.join(dir, 'app.txt'), 'v2\n');
+  commitWithTrailers(dir, 'Quick fix');
+  const { problems, warnings } = checkPullRequest({ base: 'main', head: 'feature', cwd: dir });
+  assert.equal(problems.length, 0);
+  assert.equal(warnings.length, 1);
 });
 
 test('checkPullRequest fails when the head commit has no Referee trailer', () => {
@@ -81,16 +91,15 @@ test('checkPullRequest fails when the head commit has no Referee trailer', () =>
   fs.writeFileSync(path.join(dir, '.spec', 'PROGRESS.md'), '- [x] **Slice 1.1: First**\n');
   sh(dir, ['add', '-A']);
   sh(dir, ['commit', '-q', '-m', 'Hand edit']);
-  const problems = checkPullRequest({ base: 'main', head: 'feature', cwd: dir });
-  assert.equal(problems.length, 1);
-  assert.match(problems[0], /No Referee trailer/);
+  const { problems } = checkPullRequest({ base: 'main', head: 'feature', cwd: dir });
+  assert.ok(problems.some((p) => /No Referee trailer/.test(p)));
 });
 
 test('checkPullRequest fails when the commit changed after its verdict', () => {
   const dir = makeRepo();
   fs.writeFileSync(path.join(dir, '.spec', 'PROGRESS.md'), '- [x] **Slice 1.1: First**\n');
   commitWithTrailers(dir, 'Finish Slice 1.1', { tree: 'b'.repeat(40) });
-  const problems = checkPullRequest({ base: 'main', head: 'feature', cwd: dir });
+  const { problems } = checkPullRequest({ base: 'main', head: 'feature', cwd: dir });
   assert.equal(problems.length, 1);
   assert.match(problems[0], /Stale verdict/);
 });
@@ -114,4 +123,11 @@ test('commitsMissingTrailer on a new branch checks only the tip commit', () => {
   const after = sh(dir, ['rev-parse', 'HEAD']);
   const missing = commitsMissingTrailer({ before: '0'.repeat(40), after, cwd: dir });
   assert.equal(missing.length, 1);
+});
+
+test('push mode exits 2, not 1, when git cannot scan the range', () => {
+  const dir = makeRepo();
+  const res = spawnSync(process.execPath, [path.join(import.meta.dirname, 'ci-gate.mjs'), 'push', 'f'.repeat(40), sh(dir, ['rev-parse', 'HEAD'])], { cwd: dir, encoding: 'utf8' });
+  assert.equal(res.status, 2);
+  assert.match(res.stdout, /could not run/);
 });
