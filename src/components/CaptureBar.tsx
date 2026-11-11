@@ -71,11 +71,22 @@ export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured, compact, lab
   const rows = listOpen && !saving ? editions.slice(0, MAX_ROWS) : [];
   const rowId = (i: number) => `capture-edition-${i}`;
 
-  const pickEdition = (s: EditionSuggestion) => {
-    setText(editionText(s));
+  // A picked edition saves at once, copied from the edition (stage 1, no research).
+  const pickEdition = async (s: EditionSuggestion) => {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
     setListOpen(false);
     setActive(-1);
-    inputRef.current?.focus();
+    try {
+      onCaptured(await eventsApi.create(editionText(s), s.id));
+      setText('');
+      setEditions([]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
