@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createLookup, InputError, PipelineDeps } from '../lineup/pipeline';
-import { LookupJob } from '../lineup/types';
+import { Edition, LookupJob } from '../lineup/types';
 import { normalizeName } from '../lineup/text';
 import { parseEventInput } from './parse';
 import { isBilling } from '../lineup/billing';
@@ -38,6 +38,40 @@ export function newEvent(line: string, now: Date): LoggedEvent {
     createdAt: iso,
     updatedAt: iso,
   });
+}
+
+// Stage 1 from a confirmed canonical edition, when you tap its suggestion.
+// Starts from newEvent, then copies only the edition's known facts, each sourced
+// 'edition' and linked by editionId. Missing facts stay missing. Nothing personal
+// is copied: seen, companions, rating, price, notes, format, series and kind stay empty.
+const EDITION_FIELDS = ['startDate', 'endDate', 'venue', 'city', 'country'] as const;
+
+export function newEventFromEdition(line: string, edition: Edition, now: Date): LoggedEvent {
+  const base = newEvent(line, now);
+  const sources: LoggedEvent['sources'] = { ...base.sources };
+  const next: LoggedEvent = {
+    ...base,
+    name: edition.name,
+    year: edition.year,
+    sources,
+    editionId: edition.id,
+    details: { status: 'matched', candidates: [], notes: [] },
+  };
+  if (edition.startDate) {
+    next.startDate = edition.startDate;
+    next.month = undefined;
+  }
+  for (const f of EDITION_FIELDS) {
+    const value = edition[f];
+    if (!value) continue;
+    next[f] = value;
+    sources[f] = { sourceType: 'edition', editionId: edition.id };
+  }
+  // Same planned rule as newEvent: a date still ahead waits for you to say you went.
+  const { attendance: _previous, ...rest } = next;
+  const today = now.toISOString().slice(0, 10);
+  const dated = isAhead(rest, today) ? { ...rest, attendance: 'planned' as const } : rest;
+  return splitEventCity(dated);
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
