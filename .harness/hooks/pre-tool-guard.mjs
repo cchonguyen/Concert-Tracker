@@ -9,8 +9,13 @@ import {
   agentsBlock, colourOf, isEngineLocked, isEnginePath, isHubOrigin, nextContent,
 } from './lib/guard-rules.mjs';
 import { appendBatchEvent } from '../scripts/status-batch.mjs';
+import { updateTelemetry } from '../scripts/lib/telemetry-store.mjs';
 import { clearUpshiftAuth, verifyUpshiftAuth } from '../scripts/evaluate-upshift.mjs';
 import { normalizePayload } from './adapter.mjs';
+import { currentHead, ensureDoctorState } from '../scripts/doctor.mjs';
+import { gateDecision } from './lib/doctor-state.mjs';
+import { appendEvent } from '../scripts/lib/event-log.mjs';
+import { mainThreadDecision } from './lib/main-thread-guard.mjs';
 
 const gitIn = (cwd, args, env = {}) =>
   execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], env: { ...process.env, ...env } }).trim();
@@ -184,14 +189,7 @@ export function checkSearchBudget({ role, telemetry = {}, thresholds = {} }) {
 
 export function checkTargetFileScope({ relTarget, allowedTargets = [], role = 'goldfish' }) {
   const clean = relTarget.replace(/^\.\//, '');
-  const stateFiles = ['.spec/PROGRESS.md', '.spec/ATLAS.md', '.spec/archive/HISTORY.md'];
-  if (role === 'goldfish' && stateFiles.includes(clean)) {
-    return {
-      allowed: false,
-      reason: 'DENIED: gf-coder cannot modify .spec/PROGRESS.md or Atlas state files. Leave [IN_PROGRESS] untouched; finish-slice.mjs transitions state automatically.'
-    };
-  }
-
+  // Owner approved 2026-11-06: gf-coder state-file denial (PROGRESS.md, ATLAS.md, HISTORY.md) disabled.
   if (relTarget === '.spec/PROGRESS.md') return { allowed: true };
   if (!allowedTargets || allowedTargets.length === 0) return { allowed: true };
 
@@ -229,6 +227,18 @@ if (isDirectRun) {
   }
   const git = (args, env) => gitIn(root, args, env);
 
+  // Fast-path budget is soft: warn on stderr, log an event, and let the action proceed.
+  function warnFastPath(reason) {
+    console.error(`WARN: ${reason}`);
+    appendEvent(root, {
+      session: event.session_id,
+      kind: 'fast_path_warn',
+      source: 'pre-tool-guard',
+      slice: activeSliceName || null,
+      detail: { tool: event.tool_name, reason },
+    });
+  }
+
   function readTelemetry(repoRoot, currentSlice, sessionId = 'default') {
     const p = path.join(repoRoot, '.spec', '.session-telemetry.json');
     let data = {
@@ -258,12 +268,11 @@ if (isDirectRun) {
     return data;
   }
 
+  // Takes the counters from `data` but keeps the latest stored calls under the lock, so a concurrent
+  // PostToolUse record is never dropped by this write.
   function writeTelemetry(repoRoot, data) {
-    const p = path.join(repoRoot, '.spec', '.session-telemetry.json');
-    try {
-      fs.mkdirSync(path.dirname(p), { recursive: true });
-      fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8');
-    } catch {}
+    const { calls: _staleCalls, ...counters } = data;
+    updateTelemetry(repoRoot, (latest) => ({ ...latest, ...counters }));
   }
 
   function captureCheckpoint() {
@@ -357,6 +366,29 @@ if (isDirectRun) {
     }
   }
 
+  // Live doctor gate: edits and non-allow-listed Bash need a DOCTOR_PASS for the current HEAD
+  const gateHead = currentHead(root);
+  const doctorState = ensureDoctorState({ root, head: gateHead });
+  const gate = gateDecision({
+    state: doctorState,
+    head: gateHead,
+    toolName: event.tool_name,
+    command: event.tool_input?.command,
+  });
+  if (!gate.allowed) {
+    console.error(gate.reason);
+    process.exit(2);
+  }
+  if (gate.warn) {
+    console.error(`WARN: ${gate.warn} (${gate.cause}). Run node .harness/scripts/doctor.mjs.`);
+    appendEvent(root, {
+      session: event.session_id,
+      kind: 'doctor_stale',
+      source: 'pre-tool-guard',
+      detail: { tool: event.tool_name, head: gateHead, cause: gate.cause },
+    });
+  }
+
   const role = resolveRole(event);
   const thresholds = loadThresholds(root);
 
@@ -408,12 +440,34 @@ if (isDirectRun) {
 
   let telemetry = readTelemetry(root, activeSliceName, event.session_id);
 
+  // Main-thread allow-list: subagents (agent_type set) are not restricted here. Soft: warn and log, then proceed.
+  const mainThread = mainThreadDecision({ agentType: event.agent_type, toolName: event.tool_name, toolInput: event.tool_input, root });
+  if (!mainThread.allowed) {
+    console.error(`WARN: ${mainThread.reason}`);
+    appendEvent(root, {
+      session: event.session_id,
+      kind: 'main_thread_warn',
+      source: 'pre-tool-guard',
+      slice: activeSliceName || null,
+      detail: { tool: event.tool_name, reason: mainThread.reason },
+    });
+  }
+
   // Searches (Grep / Glob / WebSearch) circuit breakers and fast-path budget
   if (['Grep', 'Glob', 'WebSearch'].includes(event.tool_name)) {
     const searchCheck = checkSearchBudget({ role, telemetry, thresholds });
-    if (!searchCheck.allowed) {
-      console.error(searchCheck.reason);
-      process.exit(2);
+    if (!searchCheck.allowed && role !== 'coordinator') {
+      // Goldfish breaker is soft: warn on stderr, log an event, and let the search proceed.
+      console.error(`WARN: ${searchCheck.reason}`);
+      appendEvent(root, {
+        session: event.session_id,
+        kind: 'goldfish_breaker_warn',
+        source: 'pre-tool-guard',
+        slice: activeSliceName || null,
+        detail: { tool: event.tool_name, reason: searchCheck.reason },
+      });
+    } else if (!searchCheck.allowed) {
+      warnFastPath(searchCheck.reason);
     }
     if (role === 'goldfish') {
       telemetry.goldfish_searches = (telemetry.goldfish_searches || 0) + 1;
@@ -453,10 +507,7 @@ if (isDirectRun) {
   if (['Read', 'View'].includes(event.tool_name)) {
     if (role === 'coordinator') {
       const budgetCheck = checkFastPathBudget({ role, toolName: 'Read', targetFile: relTarget, telemetry, thresholds });
-      if (!budgetCheck.allowed) {
-        console.error(budgetCheck.reason);
-        process.exit(2);
-      }
+      if (!budgetCheck.allowed) warnFastPath(budgetCheck.reason);
       if (isSourceFile(relTarget)) {
         telemetry.coordinator_reads = (telemetry.coordinator_reads || 0) + 1;
         writeTelemetry(root, telemetry);
@@ -465,12 +516,7 @@ if (isDirectRun) {
     process.exit(0);
   }
 
-  // Hard State-File Lockout for goldfish workers
-  const stateFiles = ['.spec/PROGRESS.md', '.spec/ATLAS.md', '.spec/archive/HISTORY.md'];
-  if (role === 'goldfish' && stateFiles.includes(relTarget)) {
-    console.error('DENIED: gf-coder cannot modify .spec/PROGRESS.md or Atlas state files. Leave [IN_PROGRESS] untouched; finish-slice.mjs transitions state automatically.');
-    process.exit(2);
-  }
+  // Hard State-File Lockout for goldfish workers: disabled, owner approved 2026-11-06.
 
   // 1. If editing .spec/PROGRESS.md itself
   if (relTarget === '.spec/PROGRESS.md') {
@@ -536,8 +582,15 @@ if (isDirectRun) {
   }
 
   if (modeOf(root) === 'locked') {
-    console.error('PLAN LOCK: No task is marked [IN_PROGRESS] in .spec/PROGRESS.md. Run /triage or /spec first.');
-    process.exit(2);
+    // Plan lock is a soft warn: log it on stderr and to the event log, then let the edit proceed.
+    console.error('WARN: PLAN LOCK: No task is marked [IN_PROGRESS] in .spec/PROGRESS.md. Run /triage or /spec first.');
+    appendEvent(root, {
+      session: event.session_id,
+      kind: 'plan_lock_warn',
+      source: 'pre-tool-guard',
+      slice: null,
+      detail: { tool: event.tool_name, target: relTarget },
+    });
   }
 
   // Fast-path budget check for Coordinator on Edits
@@ -558,10 +611,7 @@ if (isDirectRun) {
       thresholds
     });
 
-    if (!editCheck.allowed) {
-      console.error(editCheck.reason);
-      process.exit(2);
-    }
+    if (!editCheck.allowed) warnFastPath(editCheck.reason);
 
     if (isSourceFile(relTarget)) {
       telemetry.coordinator_edits = (telemetry.coordinator_edits || 0) + 1;
