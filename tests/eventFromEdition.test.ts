@@ -31,11 +31,24 @@ const edition = (extra: Partial<Edition> = {}): Edition => ({
   ...extra,
 });
 
-async function withDeps(fn: (deps: PipelineDeps, store: FileLineupStore, calls: string[]) => Promise<void>) {
+const GEO = 'https://geocoding-api.open-meteo.com/';
+const ARCHIVE = 'https://archive-api.open-meteo.com/';
+const LA = { name: 'Los Angeles', admin1: 'California', country_code: 'US', country: 'United States', feature_code: 'PPLA2', latitude: 34.05, longitude: -118.24 };
+const LA_TWIN = { ...LA, admin1: 'Other State', latitude: 40.1, longitude: -90.2 };
+const archiveDays = { daily: { time: ['2024-10-05', '2024-10-06'], temperature_2m_max: [24.1, 22.0], temperature_2m_min: [15.2, 14.8], precipitation_sum: [0, 2.1], weather_code: [1, 61] } };
+const cityRoutes = (results: unknown[]) => ({
+  [GEO]: { body: { results } },
+  [ARCHIVE]: { body: archiveDays },
+});
+
+async function withDeps(
+  fn: (deps: PipelineDeps, store: FileLineupStore, calls: string[]) => Promise<void>,
+  routes: Record<string, { status?: number; body: unknown }> = {},
+) {
   const dir = await mkdtemp(path.join(tmpdir(), 'edition-event-'));
   try {
     const store = new FileLineupStore(dir);
-    const { fetcher, calls } = fakeFetcher({});
+    const { fetcher, calls } = fakeFetcher(routes);
     const deps: PipelineDeps = {
       store,
       fetcher,
@@ -150,8 +163,80 @@ test('POST /events with editionId saves, links the lineup as needs_review, and m
     assert.equal(body.job.eventId, body.event.id);
     const saved = await store.getEvent(body.event.id);
     assert.equal(saved?.lineupJobId, body.job.id);
-    assert.deepEqual(calls, []);
+    // No research or lineup fetches: the only calls allowed are the weather lookup on Open-Meteo.
+    assert.ok(calls.every((url) => url.startsWith(GEO) || url.startsWith(ARCHIVE)), calls.join('\n'));
   });
+});
+
+test('an edition save with one matching city stores weather once, with its source URL', async () => {
+  await withDeps(async (deps, store, calls) => {
+    await store.upsertEdition(edition());
+    const res = await dispatch(appFor(deps), { method: 'POST', url: '/api/events', body: { text: 'Porter Robinson at the Greek', editionId: 'ed1' } });
+    assert.equal(res.status, 201);
+    const body = res.json<{ event: any; job: any }>();
+    assert.equal(body.event.weather?.place, 'Los Angeles, CA');
+    assert.ok(body.event.weather.sourceUrl.startsWith(ARCHIVE));
+    assert.equal(body.event.weather.days.length, 2);
+    const saved = await store.getEvent(body.event.id);
+    assert.ok(saved?.weather?.sourceUrl);
+    assert.equal(saved?.weather?.days[0].date, '2024-10-05');
+    assert.equal(body.job.status, 'needs_review');
+    assert.equal(calls.filter((url) => url.startsWith(GEO)).length, 1);
+    assert.ok(calls.every((url) => url.startsWith(GEO) || url.startsWith(ARCHIVE)), calls.join('\n'));
+  }, cityRoutes([LA]));
+});
+
+test('an ambiguous city stores no weather and the save is still 201', async () => {
+  await withDeps(async (deps, store) => {
+    await store.upsertEdition(edition());
+    const res = await dispatch(appFor(deps), { method: 'POST', url: '/api/events', body: { text: 'Porter Robinson', editionId: 'ed1' } });
+    assert.equal(res.status, 201);
+    const body = res.json<{ event: any; job: any }>();
+    assert.equal(body.event.weather, undefined);
+    assert.equal(body.job.status, 'needs_review');
+    const saved = await store.getEvent(body.event.id);
+    assert.equal(saved?.weather, undefined);
+  }, cityRoutes([LA, LA_TWIN]));
+});
+
+test('a failing weather lookup never fails the save', async () => {
+  await withDeps(async (deps, store) => {
+    await store.upsertEdition(edition());
+    const res = await dispatch(appFor(deps), { method: 'POST', url: '/api/events', body: { text: 'Porter Robinson', editionId: 'ed1' } });
+    assert.equal(res.status, 201);
+    const body = res.json<{ event: any; job: any }>();
+    assert.equal(body.event.weather, undefined);
+    assert.equal(body.job.status, 'needs_review');
+    assert.equal((await store.getEvent(body.event.id))?.weather, undefined);
+  }, {
+    [GEO]: { body: { results: [LA] } },
+    [ARCHIVE]: { status: 500, body: '' },
+  });
+});
+
+test('a thrown weather fetch never fails the save', async () => {
+  await withDeps(async (deps, store) => {
+    await store.upsertEdition(edition());
+    deps.fetcher = {
+      async get(url: string) {
+        if (url.startsWith(GEO)) throw new Error('network down');
+        return { url, status: 404, headers: {}, body: '' };
+      },
+    };
+    const res = await dispatch(appFor(deps), { method: 'POST', url: '/api/events', body: { text: 'Porter Robinson', editionId: 'ed1' } });
+    assert.equal(res.status, 201);
+    const body = res.json<{ event: any; job: any }>();
+    assert.equal(body.event.weather, undefined);
+    assert.equal((await store.getEvent(body.event.id))?.weather, undefined);
+  });
+});
+
+test('a plain save without editionId makes no weather call', async () => {
+  await withDeps(async (deps, store, calls) => {
+    const res = await dispatch(appFor(deps), { method: 'POST', url: '/api/events', body: { text: 'Kaskade, Los Angeles, Oct 5 2024' } });
+    assert.equal(res.status, 201);
+    assert.equal(calls.some((url) => url.startsWith(GEO) || url.startsWith(ARCHIVE)), false);
+  }, cityRoutes([LA]));
 });
 
 test('POST /events without editionId is unchanged', async () => {
