@@ -6,6 +6,7 @@ import type { Entity, EntityAlias, EntityLink, HistoryEntry, LinkRole } from '..
 import type { ConfirmRequest } from '../server/lineup/learning';
 import type { CanonicalConfirmInput, CanonicalDiff } from '../server/lineup/canonicalIngest';
 import type { ArtistAppearance, ArtistChangeImpact, CanonicalArtistRecord, CanonicalEditionSummary, CanonicalOperation } from '../server/entities/canonicalManage';
+import type { EditionSuggestion } from '../server/lineup/store/types';
 import type { DetailCandidate, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
 import type { EventPatch } from '../server/events/service';
 import type { ActivityEntry } from '../server/events/activityLog';
@@ -19,6 +20,7 @@ import { dehydrateBody, hydrateEvent, type PeopleBook, type PeopleServer } from 
 import { allowedInSample, reportBlockedWrite, sampleSource, SAMPLE_WRITE_MESSAGE, SampleRefused, type SampleSource } from './sampleMode';
 
 export type {
+  EditionSuggestion,
   LookupJob,
   Edition,
   ConfirmRequest,
@@ -147,6 +149,10 @@ export const eventsApi = {
       `/api/places/point?city=${encodeURIComponent(city)}${country ? `&country=${encodeURIComponent(country)}` : ''}`,
     ).then((r) => r.point),
 };
+
+// Canonical editions matching the capture line's name (slice 9.1 route). Read-only; the caller handles errors.
+export const suggestEditions = (q: string) =>
+  request<{ editions: EditionSuggestion[] }>(`/api/editions/suggest?q=${encodeURIComponent(q)}`).then((r) => r.editions);
 
 // "Check email": whether Gmail is connected and how far your mail was read.
 export interface EmailScanStatus {
