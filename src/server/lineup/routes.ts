@@ -6,6 +6,7 @@ import { isOwner } from '../entities/canonicalManage';
 import { configuredSources, JobRunner } from './service';
 import { redactSecrets } from './http';
 import { LookupJob } from './types';
+import { isEditionSuggestQuery } from './store/types';
 
 // Older log entries were written before redaction existed.
 const safeJob = (job: LookupJob): LookupJob => ({
@@ -127,6 +128,20 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
   router.get('/editions', async (_req, res) => {
     try {
       res.json({ editions: await deps.store.listEditions(100) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Canonical edition suggestions for the capture bar (slice 9.1). Any signed-in member. Editions linked to
+  // the caller's live events are left out; deleted events are not in listEvents(), so they do not hide one.
+  router.get('/editions/suggest', async (req, res) => {
+    try {
+      const q = typeof req.query.q === 'string' ? req.query.q : '';
+      if (!isEditionSuggestQuery(q)) return res.json({ editions: [] });
+      const live = await deps.store.listEvents();
+      const excludeIds = [...new Set(live.map((e) => e.editionId).filter((id): id is string => Boolean(id)))];
+      res.json({ editions: await deps.store.suggestEditions(q, { excludeIds, limit: 5 }) });
     } catch (err) {
       fail(res, err);
     }

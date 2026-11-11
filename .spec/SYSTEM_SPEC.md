@@ -7,6 +7,24 @@ The full spec already lives in the project docs. This file holds only what `/tri
 - Hard rules for every change: [AGENTS.md](../AGENTS.md)
 
 ## 1. Core Scope & MVP Boundaries
+Feature: **"What did you go to?" past-event suggestion** (triaged 2026-11-11, discovery brief, not yet approved).
+
+- **Core user problem (revised 2026-11-11 by Charlie):** when someone types a line for an event that already exists as a canonical edition, the bar should offer that edition, so a friend who adds it after Charlie gets the same canonical details. Searching only your own log is not enough.
+- **Proposed behavior:** as you type, the parsed line (name, venue, city via `parseEventInput`) is matched against canonical editions (`event_editions`, migration 0002). A match shows an "Is it this one?" offer under the bar. A tap links the new event to that edition (`logged_events.edition_id`, migration 0003), which brings its confirmed lineup and details. Nothing is saved or merged without a tap. Save stays first and never waits on the match.
+- **Privacy:** the search returns only canonical edition facts (name, date, place, confirmed lineup). It never reveals who else logged an event or anything from another user's personal log.
+- **Matching (proposed):** normalized exact match on series name (case, punctuation, leading "the") plus date or year. No fuzzy scoring.
+- **Architecture (proposed):** a new server search route over `event_editions` (read-only, owner-scoped auth as today), called as the user types, debounced. The client renders the offer with `SuggestInput` or a small list, and reuses `matchNames` and `suggestionsFor` (`src/services/format.ts`). No migration is expected, because `event_editions` and `logged_events.edition_id` already exist. A new route is a new API contract, so this is a contract change.
+- **Files-Touched (estimate):** about 6 to 8 (`CaptureBar.tsx`, a server search route, a store query, a pure matcher, a client hook, tests). Contract-Change: yes. Cross-Module: yes (client, server, database).
+- **Decisions (Charlie, 2026-11-11):**
+  1. A tap pre-fills the new event's fields from the canonical edition. Each filled field is sourced as the edition's source, not "you".
+  2. The same series name in a different year can match, but every suggestion shows its year.
+  3. A name alone is enough to match. Each suggestion shows its date.
+  4. Events in Recently deleted never match.
+- **R1.9 relevance:** venue and city already suggest what you have entered before, and city suggests real places as you type. Venue-to-place links apply to edition matches. Applies to typed fields only, so the suggestion feature stays separate from R1.9.
+  5. A pre-fill copies everything canonical: date, location, venue, lineup, weather.
+- **Plan:** `/mnt/project-files/canonical-autocomplete/plan.md` (stages A to C, slices A1 to B3). Open: lineup vs who you saw (AGENTS.md tap rule), weather source, members creating editions.
+
+## Prev 1. Manage section (shipped, kept for reference)
 Feature: **Manage section** (triaged 2026-10-28). Full design: [../docs/manage-section-design.md](../docs/manage-section-design.md).
 
 - **Core user problem:** artists, people, venues, places and series are free text copied onto each event, so fixing a spelling means editing events one by one, and the copies drift apart. Charlie wants one place to rename, merge and describe each of them once.
@@ -18,6 +36,17 @@ Feature: **Manage section** (triaged 2026-10-28). Full design: [../docs/manage-s
 - **Blocking questions:** None. Assumed reading of "Sheets and CSV pull from the app": Sheet sync stops reading sheet edits back; "Import a list" stays for adding new events only.
 
 ## 2. Strictly Out of Scope ("Do NOT Build" List)
+Past-event suggestion:
+- No fuzzy, similarity or model matching. It would be guessing (AGENTS.md: never infer; principle 1).
+- No auto-merge, auto-fill or auto-add. Every change needs a tap (AGENTS.md: one-tap offers).
+- No waiting on the match before save (AGENTS.md: stage 1 never waits).
+- No model call or second parser. `parse.ts` stays code (AGENTS.md).
+- No new field on capture. The line stays one line.
+- No hardcoded venue or artist lists.
+- No writes to canonical lineup data from this feature. The personal log and canonical data stay separate.
+- No writes from sample mode.
+
+## Prev 2. Manage section Do NOT Build (shipped, kept for reference)
 - Anything AGENTS.md forbids (guessed data, hardcoded festival/venue/artist lists, model calls in parsing or saving, demo data, AXS scraping).
 - Manage section:
   - Venue location lookup (finding a venue's address or city from a source). It is a separate, later requirement.
@@ -64,3 +93,14 @@ Feature: **Manage section** (triaged 2026-10-28). Full design: [../docs/manage-s
 **Sheets, CSV and list import**
 - Sheet sync is one-way: the app writes the sheet, and nothing is read back from it.
 - In `src/services/listImport.ts`, a row that matches an event by the app's ID column uses `fillPatch` only (empty fields, plus acts or people not already there). `editPatch` and its three-way merge are retired. Acts and people are matched by resolved entity ID through aliases, so a different spelling of someone already on the event is not added twice.
+
+**Canonical edition suggestions** (plan: `/mnt/project-files/canonical-autocomplete/plan.md`; slices 9.1 to 9.5; no migration)
+
+- `GET /api/editions/suggest?q=<text>`, any signed-in member (mounted in `src/server/lineup/routes.ts`; not under `/manage/canonical`, which is owner-only). Response: `{ editions: EditionSuggestion[] }` with `EditionSuggestion = { id: string; name: string; year?: number; startDate?: string; endDate?: string; venue?: string; city?: string; country?: string; actCount: number }`. Canonical facts only; never who else logged it, and nothing from another member's log. Missing facts are omitted, never defaulted.
+- Rules: confirmed editions only (never `draft`); `q` under 2 letters returns `[]`; editions linked to the caller's live events (`listEvents()`, which already skips deleted) are excluded, so the caller's Recently deleted events are ignored and do not hide an edition; limit 5 to 8 (default 5); match on normalized words of the edition name and series, each typed word a word prefix (case, punctuation and leading "the" normalized as elsewhere); year is not matched on, only used to rank (a typed year ranks equal-year first, then newest); no fuzzy, similarity or model matching.
+- Store method on `LineupStore` (`src/server/lineup/store/types.ts`), implemented in `fileStore.ts` and `supabaseStore.ts`: `suggestEditions(query: string, opts: { excludeIds: string[]; limit: number }): Promise<EditionSuggestion[]>`. Supabase narrows with `ilike` on name or series, then applies the word-prefix test in code so both stores agree; tests run against the file store.
+- `POST /api/events { text: string; editionId?: string }`. Without `editionId`: unchanged (`newEvent`). With it: 404 if the edition is missing or not `confirmed`. Otherwise `newEventFromEdition(edition, text, now)` in `src/server/events/service.ts` copies name, year, startDate, endDate, venue, city, country (only those the edition has), each sourced `{ sourceType: 'edition', editionId }`; sets `editionId` (the link); sets `details.status = 'matched'` so no stage 1 research runs; the lookup job is created through the existing `createLookup`, which finds the confirmed edition by key and goes to review with no network calls. The venue's place still fills city, region and country on save as today (`venuePlace.ts`). Personal fields are never copied: seen stays empty, companions, rating, price, notes, format, own series name, Concert or Festival choice. The lineup shows through the edition link only.
+- New `FieldSource` type in `src/server/events/types.ts`: `sourceType: SourceType | 'venue' | 'edition'`, plus optional `editionId?: string`. The UI label reads "from the canonical edition".
+- Weather (B3, option 2a): after a pre-filled save, `lookupWeather` runs once, server-side, for the saved event, only when it has a city and a start date. It stores the result with its URL only when Open-Meteo places the city exactly; otherwise it stores nothing and returns the usual note. Never re-run automatically; never copied from another member's event. A failure never fails the save.
+- "I saw everyone" (B2): a button in `LineupReview.tsx` that, on tap, adds the edition's billed acts to the event's `seen`. It is never automatic, never run on save, and only ever follows a person's tap. It writes through the existing seen-patch path, so the rules for set type and billing role are unchanged.
+- No suggestions and no writes in sample mode. No writes to `event_editions` or `performances`.
