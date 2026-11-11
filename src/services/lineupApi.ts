@@ -115,7 +115,8 @@ export const eventsApi = {
     request<{ events: LoggedEvent[]; lineups: Record<string, LineupSummary>; editions: Record<string, LineupFacts> }>('/api/events'),
   get: (id: string) =>
     request<{ event: LoggedEvent; job: LookupJob | null; edition: Edition | null; suggestions: ArtistSuggestion[] }>(`/api/events/${id}`),
-  create: (text: string) => request<{ event: LoggedEvent }>('/api/events', post({ text })).then((r) => r.event),
+  create: (text: string, editionId?: string) =>
+    request<{ event: LoggedEvent }>('/api/events', post(editionId ? { text, editionId } : { text })).then((r) => r.event),
   update: (id: string, patch: EventPatch) =>
     request<{ event: LoggedEvent }>(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }).then((r) => r.event),
   remove: (id: string) => request<unknown>(`/api/events/${id}`, { method: 'DELETE' }),
