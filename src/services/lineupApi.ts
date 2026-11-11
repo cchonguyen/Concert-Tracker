@@ -600,8 +600,13 @@ export const SOURCE_LABELS: Record<SourceType, string> = {
   user: 'You',
 };
 
-// Where an event field came from, which also covers the event's venue.
-export const FIELD_SOURCE_LABELS: Record<SourceType | 'venue', string> = { ...SOURCE_LABELS, venue: 'its venue' };
+// Where an event field came from, which also covers the event's venue and a
+// canonical edition (a field copied when you tapped an edition suggestion).
+export const FIELD_SOURCE_LABELS: Record<SourceType | 'venue' | 'edition', string> = {
+  ...SOURCE_LABELS,
+  venue: 'its venue',
+  edition: 'the canonical edition',
+};
 
 export function isActive(status: LookupJob['status'] | undefined): boolean {
   return status === 'queued' || status === 'running';

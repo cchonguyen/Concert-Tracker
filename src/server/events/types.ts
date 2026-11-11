@@ -23,10 +23,13 @@ export interface EventFacts {
 
 // Where a field's value came from: you, a cited source, or (city, state and
 // country) the place of the event's venue (src/server/entities/venuePlace.ts).
+// 'edition': copied from a confirmed canonical edition (editionId), when you
+// tapped its suggestion. Shown as "from the canonical edition".
 export interface FieldSource {
-  sourceType: SourceType | 'venue';
+  sourceType: SourceType | 'venue' | 'edition';
   sourceUrl?: string;
   quote?: string; // the words it was read from (an email, say)
+  editionId?: string;
 }
 
 // A suggestion from a structured source during stage 1 research.
