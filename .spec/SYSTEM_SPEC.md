@@ -45,6 +45,7 @@ Past-event suggestion:
 - No hardcoded venue or artist lists.
 - No writes to canonical lineup data from this feature. The personal log and canonical data stay separate.
 - No writes from sample mode.
+- No "I saw everyone" or other bulk tick of seen acts (Charlie, 2026-11-11). It invites ticking acts you did not see; each seen act is one tap.
 
 ## Prev 2. Manage section Do NOT Build (shipped, kept for reference)
 - Anything AGENTS.md forbids (guessed data, hardcoded festival/venue/artist lists, model calls in parsing or saving, demo data, AXS scraping).
@@ -102,5 +103,5 @@ Past-event suggestion:
 - `POST /api/events { text: string; editionId?: string }`. Without `editionId`: unchanged (`newEvent`). With it: 404 if the edition is missing or not `confirmed`. Otherwise `newEventFromEdition(edition, text, now)` in `src/server/events/service.ts` copies name, year, startDate, endDate, venue, city, country (only those the edition has), each sourced `{ sourceType: 'edition', editionId }`; sets `editionId` (the link); sets `details.status = 'matched'` so no stage 1 research runs; the lookup job is created through the existing `createLookup`, which finds the confirmed edition by key and goes to review with no network calls. The venue's place still fills city, region and country on save as today (`venuePlace.ts`). Personal fields are never copied: seen stays empty, companions, rating, price, notes, format, own series name, Concert or Festival choice. The lineup shows through the edition link only.
 - New `FieldSource` type in `src/server/events/types.ts`: `sourceType: SourceType | 'venue' | 'edition'`, plus optional `editionId?: string`. The UI label reads "from the canonical edition".
 - Weather (B3, option 2a): after a pre-filled save, `lookupWeather` runs once, server-side, for the saved event, only when it has a city and a start date. It stores the result with its URL only when Open-Meteo places the city exactly; otherwise it stores nothing and returns the usual note. Never re-run automatically; never copied from another member's event. A failure never fails the save.
-- "I saw everyone" (B2): a button in `LineupReview.tsx` that, on tap, adds the edition's billed acts to the event's `seen`. It is never automatic, never run on save, and only ever follows a person's tap. It writes through the existing seen-patch path, so the rules for set type and billing role are unchanged.
+- No "I saw everyone" button (Charlie, 2026-11-11): each seen act is its own tap, so people curate who they actually saw. A bulk tick is on the Do NOT Build list.
 - No suggestions and no writes in sample mode. No writes to `event_editions` or `performances`.
