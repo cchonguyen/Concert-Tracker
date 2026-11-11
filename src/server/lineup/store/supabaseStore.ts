@@ -37,9 +37,12 @@ import {
   normalizeCanonicalHistoryLimit,
   roundRobin,
   STALE_RUN_MS,
+  isEditionSuggestQuery,
+  suggestEditionMatches,
   type CanonicalEditionPageOptions,
   type UserScope,
 } from './types';
+import { normalizeName } from '../normalizeName';
 import type { SqlCanonicalEntry } from '../../entities/canonicalManage';
 import { ArtistEditionRow, CANONICAL_OPERATIONS, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import { checkLinks } from '../../entities/integrity';
@@ -500,6 +503,29 @@ export class SupabaseLineupStore implements LineupStore {
     const ids = (rows ?? []).map((r: any) => r.id as string);
     const loaded = new Map((await this.getEditions(ids)).map((e) => [e.id, e]));
     return ids.map((id) => loaded.get(id)).filter((e): e is Edition => Boolean(e));
+  }
+
+  // Narrows in the database with ilike on the longest typed word (a superset of the word-prefix match), then
+  // applies suggestEditionMatches in code so both stores return the same editions.
+  async suggestEditions(query: string, opts: { excludeIds: string[]; limit: number }) {
+    if (!isEditionSuggestQuery(query)) return [];
+    const words = normalizeName(query).split(' ').filter((t) => t && !/^\d{4}$/.test(t));
+    if (words.length === 0) return [];
+    const longest = words.reduce((a, b) => (b.length > a.length ? b : a));
+    const pattern = `"%${longest}%"`;
+    const rows = this.check(
+      await this.db
+        .from('event_editions')
+        .select('id')
+        .eq('status', 'confirmed')
+        .or(`name.ilike.${pattern},series_slug.ilike.${pattern}`)
+        // Bound the editions loaded per keystroke; newest first so recent editions are kept.
+        .order('start_date', { ascending: false, nullsFirst: false })
+        .limit(200),
+      'suggestEditions',
+    );
+    const ids = (rows ?? []).map((row: any) => row.id as string);
+    return suggestEditionMatches(await this.getEditions(ids), query, opts);
   }
 
   async listCanonicalEditionsPage(options: CanonicalEditionPageOptions) {

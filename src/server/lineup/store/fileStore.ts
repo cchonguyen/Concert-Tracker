@@ -40,6 +40,7 @@ import { shareEventOnly } from '../../share/types';
 import type { CachedResponse } from '../responseCache';
 import {
   canonicalEditionPage,
+  suggestEditionMatches,
   CanonicalApplyResult,
   CanonicalHistoryEntry,
   CanonicalHistoryPage,
@@ -302,6 +303,10 @@ export class FileLineupStore implements LineupStore {
   async listEditions(limit: number) {
     const eds = Object.values((await this.load()).editions);
     return clone(eds.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, limit));
+  }
+
+  async suggestEditions(query: string, opts: { excludeIds: string[]; limit: number }) {
+    return suggestEditionMatches(Object.values((await this.load()).editions), query, opts);
   }
 
   async listCanonicalEditionsPage(options: CanonicalEditionPageOptions) {

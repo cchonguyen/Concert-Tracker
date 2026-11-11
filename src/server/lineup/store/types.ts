@@ -13,6 +13,7 @@ import {
   SourceType,
 } from '../types';
 import { LoggedEvent } from '../../events/types';
+import { normalizeName } from '../normalizeName';
 import type { ActivityEntry } from '../../events/activityLog';
 import type { LineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
@@ -65,6 +66,79 @@ export function canonicalEditionPage<T extends CanonicalEditionListRow>(
   const limit = Math.max(0, Math.min(200, Math.floor(options.limit)));
   const editions = matching.slice(0, limit);
   return { editions, total: matching.length, hasMore: matching.length > editions.length };
+}
+
+// Canonical edition suggestions (slice 9.1). Confirmed editions only. Each typed word must be a word prefix of a
+// word in the edition name or series slug. Years typed in the query are not matched; they only rank equal-year
+// editions first. Both stores call this so their results agree.
+export const EDITION_SUGGEST_MAX_LIMIT = 8;
+
+export interface EditionSuggestion {
+  id: string;
+  name: string;
+  year?: number;
+  startDate?: string;
+  endDate?: string;
+  venue?: string;
+  city?: string;
+  country?: string;
+  actCount: number;
+}
+
+// Fewer than two letters in the query returns no suggestions.
+export function isEditionSuggestQuery(query: string): boolean {
+  return (query.match(/\p{L}/gu) ?? []).length >= 2;
+}
+
+const YEAR_WORD = /^\d{4}$/;
+
+// Newest start date first; an edition with no start date sorts after one that has one.
+function startDateDesc(a: string | undefined, b: string | undefined): number {
+  if (a && b) return b.localeCompare(a);
+  if (a) return -1;
+  if (b) return 1;
+  return 0;
+}
+
+function toEditionSuggestion(e: Edition): EditionSuggestion {
+  const out: EditionSuggestion = { id: e.id, name: e.name, year: e.year, actCount: e.performances.length };
+  if (e.startDate) out.startDate = e.startDate;
+  if (e.endDate) out.endDate = e.endDate;
+  if (e.venue) out.venue = e.venue;
+  if (e.city) out.city = e.city;
+  if (e.country) out.country = e.country;
+  return out;
+}
+
+export function suggestEditionMatches(
+  editions: Edition[],
+  query: string,
+  opts: { excludeIds: string[]; limit: number },
+): EditionSuggestion[] {
+  if (!isEditionSuggestQuery(query)) return [];
+  const tokens = normalizeName(query).split(' ').filter(Boolean);
+  const years = new Set(tokens.filter((t) => YEAR_WORD.test(t)).map(Number));
+  const words = tokens.filter((t) => !YEAR_WORD.test(t));
+  // A query of only years has nothing to match on.
+  if (words.length === 0) return [];
+  const excluded = new Set(opts.excludeIds);
+  const limit = Math.max(0, Math.min(EDITION_SUGGEST_MAX_LIMIT, Math.floor(opts.limit)));
+  return editions
+    .filter((e) => e.status === 'confirmed' && !excluded.has(e.id))
+    .filter((e) => {
+      const haystack = normalizeName(`${e.name} ${e.seriesSlug}`).split(' ');
+      return words.every((w) => haystack.some((h) => h.startsWith(w)));
+    })
+    .sort(
+      (a, b) =>
+        Number(years.has(b.year)) - Number(years.has(a.year)) ||
+        startDateDesc(a.startDate, b.startDate) ||
+        b.year - a.year ||
+        a.name.localeCompare(b.name) ||
+        a.id.localeCompare(b.id),
+    )
+    .slice(0, limit)
+    .map(toEditionSuggestion);
 }
 
 // Canonical history feed (slice 8.9): only canonical operations, newest first, paged by a keyset cursor on
@@ -237,6 +311,8 @@ export interface LineupStore {
   // The Global Archive: filters and counts the full catalog before returning
   // at most 200 editions in year-descending/name-ascending order.
   listCanonicalEditionsPage(options: CanonicalEditionPageOptions): Promise<CanonicalEditionPage>;
+  // Confirmed editions matching the typed words (slice 9.1); see suggestEditionMatches. Never drafts.
+  suggestEditions(query: string, opts: { excludeIds: string[]; limit: number }): Promise<EditionSuggestion[]>;
   // Size of each confirmed lineup, by edition id, for Concert or Festival.
   editionLineupFacts(ids: string[]): Promise<Record<string, LineupFacts>>;
 
