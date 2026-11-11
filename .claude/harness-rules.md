@@ -1,4 +1,4 @@
-# Claude Code Harness Contract (v3.1)
+# Claude Code Harness Contract (v3.2)
 
 ## Core Communication & Silent Batching Rules
 - **Substantive Inception:** Start immediately with output or action. Zero pleasantries, apologies, or filler.
@@ -25,7 +25,7 @@
 - **Main-red stop:** While origin has the tag `harness-main-red`, do not start a slice or a quick fix. Fixing main is the only work.
 
 ## Execution & Guardrail Rules
-- **Verification in Vibe Mode:** Run the project's quick check from `CLAUDE.md` (`Project-Specific Commands`) **once per turn, after the final edit**, with quiet flags (`pytest -q --tb=short`, `ruff check --quiet`, `vitest run --reporter=dot`). Do not re-run it after every single file edit.
+- **Verification in Vibe Mode:** Run the project's quick check from `CLAUDE.md` (`Project-Specific Commands`) **once per turn, after the final edit**, using the project's quiet flags. Do not re-run it after every single file edit.
 - **Risk-Based Verification (Slice Mode):**
   - `[UI / VISUAL]` tasks: Run quiet typecheck only. Zero unit tests required.
   - `[CORE / DATA]` tasks: Write and pass automated unit tests before marking complete.
@@ -55,3 +55,4 @@
 - Always preserve plain-English auditability in `.spec/OVERVIEW.md` at major feature milestones.
 - When giving the operator steps to run in Terminal, always use labelled, one-per-stage fenced code blocks with full absolute paths and the expected result after each block. Every command must be complete and paste-ready: never a partial snippet, never "run the same as before", and never a path the operator has not confirmed. Before writing Terminal steps, confirm the project folder with a directory listing.
 - **Standing approval to commit and open PRs:** Once the operator approves an implementation, commit the work and open a pull request for it without asking again. Do not merge, deploy, force-push, delete branches, close or reopen pull requests, or change repository visibility without the operator's explicit yes for that specific action. Merging stays an operator step.
+- **Merger lookup before asking:** Before asking the operator who merged a pull request, check the merge record on GitHub (merger and merge time). Ask only when the record does not show it. Never ask about a merge the operator has already made.
