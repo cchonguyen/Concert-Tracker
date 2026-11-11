@@ -4,7 +4,7 @@ import { JobRunner } from '../lineup/service';
 import { DetailFinder, defaultFinders, pickCandidate, researchEvent } from './details';
 import { geminiReader } from './detailsGemini';
 import { cityPoint, citySuggestions, placeGuess } from './place';
-import { applyPatch, EventPatch, lineupSummary, newEvent, sortEvents, startBulkLookups, startLineupLookup } from './service';
+import { applyPatch, EventPatch, lineupSummary, newEvent, newEventFromEdition, sortEvents, startBulkLookups, startLineupLookup } from './service';
 import { LineupSummary } from './types';
 import { artistSuggestions, eventPerformers, nameArtistSuggestions, pastArtists, MAX_BULK_SUGGESTIONS, storedNameSuggestions } from './artists';
 import type { LineupFacts } from './scale';
@@ -41,12 +41,29 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
     }
   });
 
-  // Saves at once; the client then asks for details research.
+  // Saves at once; the client then asks for details research. With { editionId }
+  // (you tapped a canonical edition), the event is copied from that confirmed
+  // edition and its lineup is linked, with no research and no network calls.
   router.post('/events', async (req, res) => {
     try {
-      const event = newEvent(String(req.body?.text ?? ''), deps.now());
+      const text = String(req.body?.text ?? '');
+      if (typeof req.body?.editionId !== 'string') {
+        const event = newEvent(text, deps.now());
+        await deps.store.putEvent(event);
+        return res.status(201).json({ event });
+      }
+      const edition = await deps.store.getEdition(req.body.editionId);
+      if (!edition || edition.status !== 'confirmed') return res.status(404).json({ error: 'Edition not found.' });
+      const event = newEventFromEdition(text, edition, deps.now());
       await deps.store.putEvent(event);
-      res.status(201).json({ event });
+      // The lineup lookup finds the confirmed edition and goes straight to review.
+      // A failure here never fails the save.
+      try {
+        const { event: linked, job } = await startLineupLookup(deps, event);
+        return res.status(201).json({ event: linked, job });
+      } catch {
+        return res.status(201).json({ event });
+      }
     } catch (err) {
       fail(res, err);
     }

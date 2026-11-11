@@ -6,7 +6,8 @@ Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
 | Method and path | Purpose |
 | --- | --- |
 | `GET /api/events` | Your events, newest first, plus a summary of each one's lineup lookup and the size of each confirmed lineup (`editions`) |
-| `POST /api/events` | Save one typed line as an event (`{ text }`) |
+| `POST /api/events` | Save one typed line as an event (`{ text }`). With `editionId` (a confirmed canonical edition you tapped), the event is copied from that edition and linked to its lineup; 404 if the edition is missing or not confirmed. Runs no research |
+| `GET /api/editions/suggest?q=` | Up to 5 confirmed editions whose name matches the typed words (`{ editions: EditionSuggestion[] }`, `q` under 2 letters gives `[]`), for the capture bar; editions already logged are left out |
 | `GET /api/events/:id` | The event with its lineup job, confirmed edition and acts suggested from its name |
 | `PATCH /api/events/:id`, `DELETE /api/events/:id` | Edit or delete an event |
 | `POST /api/events/:id/details` | Run stage 1 research; `{ useGemini: true }` also has Gemini read the pages found (Check details, then "Read with Gemini") |
