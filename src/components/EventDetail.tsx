@@ -188,7 +188,10 @@ const Field: React.FC<{
           {label}
           {flash && <Check className="h-3 w-3 text-emerald-300" aria-label="Saved" />}
         </span>
-        {source && source.sourceType !== 'user' && (
+        {source && source.sourceType === 'edition' && (
+          <span className="font-normal text-zinc-400">from {FIELD_SOURCE_LABELS.edition}</span>
+        )}
+        {source && source.sourceType !== 'user' && source.sourceType !== 'edition' && (
           <a
             href={source.sourceUrl}
             target="_blank"

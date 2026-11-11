@@ -199,6 +199,12 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   const handleCaptured = async (event: LoggedEvent) => {
     upsert(event);
     setJustAdded((ids) => [event.id, ...ids.filter((id) => id !== event.id)]);
+    // Saved from a canonical edition: its facts are already matched, so no research runs. Open it with its lineup.
+    if (event.editionId && event.details.status === 'matched') {
+      openEvent(event.id);
+      void refresh();
+      return;
+    }
     setResearching((s) => new Set(s).add(event.id));
     try {
       upsert(await eventsApi.research(event.id));
