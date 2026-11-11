@@ -413,7 +413,6 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
   const previewed = canonical && preview !== null && preview.key === JSON.stringify(canonicalRequest());
 
   const seenCount = rows.filter((r) => r.accepted && r.seen).length;
-  const unseenCount = rows.filter((r) => r.accepted && !r.seen).length;
 
   return (
     // Rendered inside the event panel's backdrop, whose click closes the panel:
@@ -762,12 +761,6 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
         {canonical && preview && <CanonicalDiffPanel diff={preview.diff} stale={!previewed} />}
         <div className="flex items-center justify-end gap-3">
           {error && <p className="mr-auto text-sm text-rose-300">{error}</p>}
-          {!canonical && unseenCount > 0 && (
-            // One tap ticks every act; it only changes this review, and saving still needs the save button.
-            <Button variant="secondary" onClick={() => setRows((rs) => rs.map((r) => (r.accepted && !r.seen ? { ...r, seen: true } : r)))}>
-              I saw everyone
-            </Button>
-          )}
           <button onClick={onClose} className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200">Cancel</button>
           <button
             onClick={save}
