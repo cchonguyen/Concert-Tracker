@@ -7,6 +7,15 @@ The full spec already lives in the project docs. This file holds only what `/tri
 - Hard rules for every change: [AGENTS.md](../AGENTS.md)
 
 ## 1. Core Scope & MVP Boundaries
+Feature: **Design system export for onboarding new Claude Code apps** (triaged 2026-11-12, discovery brief, not yet approved).
+
+- **Core user problem:** Charlie wants a new app built with Claude Code to start with LiveArchive's design language and philosophy, without re-explaining it.
+- **What exists:** shared components in `src/components/ui/`; theme in `src/services/theme.ts` and `src/index.css` (Tailwind v4 CSS-first, accent scales, light remap, radius tokens); `docs/architecture/15-shared-ui.md` (component inventory, touch targets, reduced motion, breakpoints); AGENTS.md "Design system" section; REQUIREMENTS.md ranked principles. No token file or export exists. No typography, spacing or motion tokens exist. No voice or copy guide exists.
+- **Proposed export (docs only):** `docs/design-system/` holding a token file (JSON) and a short Markdown guide. Categories: philosophy (ranked principles), tokens (colour, accents, light/dark, radius, breakpoints), components (purpose, props, states, a11y contract), patterns (detail shell, save status, popover vs menu), accessibility rules, voice and copy (warm, inviting, never cloying; to be written), AI-agent rules (the AGENTS.md design rules, generalised), and onboarding steps for a new Claude Code repo.
+- **Files-Touched (estimate):** 2 to 4 new docs, optional AGENTS.md link. Contract-Change: no. Cross-Module: no.
+- **Open questions:** copy-by-hand or shared package later; write the voice section now; describe only what exists or also the intended direction.
+
+## Prev 1. Past-event suggestion (triaged 2026-11-11, awaiting approval)
 Feature: **"What did you go to?" past-event suggestion** (triaged 2026-11-11, discovery brief, not yet approved).
 
 - **Core user problem (revised 2026-11-11 by Charlie):** when someone types a line for an event that already exists as a canonical edition, the bar should offer that edition, so a friend who adds it after Charlie gets the same canonical details. Searching only your own log is not enough.
@@ -36,7 +45,15 @@ Feature: **Manage section** (triaged 2026-10-28). Full design: [../docs/manage-s
 - **Blocking questions:** None. Assumed reading of "Sheets and CSV pull from the app": Sheet sync stops reading sheet edits back; "Import a list" stays for adding new events only.
 
 ## 2. Strictly Out of Scope ("Do NOT Build" List)
-Past-event suggestion:
+Design system export:
+- No generator, build step or Style Dictionary pipeline. The export is a document.
+- No components that the app does not use yet (AGENTS.md: add only when needed).
+- No Storybook or docs site.
+- No published package or cross-repo sync. The harness engine stays hub-only.
+- No invented typography or motion tokens. Describe only what the app does.
+- No change to app code or runtime behavior.
+
+## Prev 2a. Past-event suggestion Do NOT Build (awaiting approval)
 - No fuzzy, similarity or model matching. It would be guessing (AGENTS.md: never infer; principle 1).
 - No auto-merge, auto-fill or auto-add. Every change needs a tap (AGENTS.md: one-tap offers).
 - No waiting on the match before save (AGENTS.md: stage 1 never waits).
