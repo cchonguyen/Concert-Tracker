@@ -58,12 +58,27 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
       await deps.store.putEvent(event);
       // The lineup lookup finds the confirmed edition and goes straight to review.
       // A failure here never fails the save.
+      let current = event;
+      let job: Awaited<ReturnType<typeof startLineupLookup>>['job'] | undefined;
       try {
-        const { event: linked, job } = await startLineupLookup(deps, event);
-        return res.status(201).json({ event: linked, job });
+        const linked = await startLineupLookup(deps, event);
+        current = linked.event;
+        job = linked.job;
       } catch {
-        return res.status(201).json({ event });
+        // The plain saved event stands.
       }
+      // Weather is looked up once on a save from an edition (Charlie's choice),
+      // never re-run, and a failure never fails the save.
+      try {
+        const { weather } = await lookupWeather(current, deps.fetcher, deps.now());
+        if (weather) {
+          current = { ...current, weather, updatedAt: deps.now().toISOString() };
+          await deps.store.putEvent(current);
+        }
+      } catch {
+        // No weather is stored.
+      }
+      return res.status(201).json(job ? { event: current, job } : { event: current });
     } catch (err) {
       fail(res, err);
     }
