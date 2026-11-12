@@ -12,6 +12,7 @@ Feature specs, designs and backlogs for LiveArchive. Agent rules are in [AGENTS.
 | [engineering-ticket-bank.md](engineering-ticket-bank.md) | Backlog |
 | [tier2-ticket-review.md](tier2-ticket-review.md) | Review of Tier 2 tickets in the bank |
 | [tier3-specs.md](tier3-specs.md) | Agent-ready specs for Tier 3 tickets |
+| [design-system/README.md](design-system/README.md) | Design system export for new Claude Code apps (tokens, components, voice, agent rules) |
 | [CONTEXT_ATLAS.md](CONTEXT_ATLAS.md) | Harness definition of the Context Atlas |
 | [archive/collab-aliases-manage-design.md](archive/collab-aliases-manage-design.md) | Superseded by the B3B and collaboration aliases spec (its Manage UX notes are kept here) |
 | [canonical-curation-and-unified-artists-spec.md](canonical-curation-and-unified-artists-spec.md) | Built in Slices 1 to 8.x (canonical catalog, Manage) |
