@@ -1,0 +1,644 @@
+{
+  "name": "LiveArchive design system export",
+  "version": "2026-11-12",
+  "describes": "What the app does today. Sources: src/index.css, src/services/theme.ts, src/components/ui/, REQUIREMENTS.md section 3, docs/architecture/15-shared-ui.md.",
+  "stack": {
+    "framework": "React + TypeScript",
+    "css": "Tailwind CSS v4, CSS-first (@import \"tailwindcss\", @theme)",
+    "icons": "lucide-react"
+  },
+  "principles": [
+    {
+      "id": "never-guess",
+      "rank": 1,
+      "rule": "Missing data stays missing and the UI says so. No defaults, no inference.",
+      "ui": "Label gaps (\"Not known yet\", \"No date yet\"); empty is a valid answer."
+    },
+    {
+      "id": "capture-first",
+      "rank": 2,
+      "rule": "Saving never waits on research, quota or a network call.",
+      "ui": "A name alone saves. Slow work runs after save."
+    },
+    {
+      "id": "separate-stages",
+      "rank": 3,
+      "rule": "Later, costly stages run only when asked for, on saved data.",
+      "ui": "An explicit button starts them; a failure there never touches what was saved."
+    },
+    {
+      "id": "every-fact-has-a-source",
+      "rank": 4,
+      "rule": "Each value records where it came from: you, or a cited source.",
+      "ui": "Values can show their source and quote."
+    },
+    {
+      "id": "your-word-wins",
+      "rank": 5,
+      "rule": "The app suggests; it never overwrites what you typed.",
+      "ui": "One-tap offers; a worked-out value is lit with a marker until you pick."
+    },
+    {
+      "id": "simple-in-structured-out",
+      "rank": 6,
+      "rule": "One line of text in; structured fields out.",
+      "ui": "New fields go on the detail view, never the entry line."
+    },
+    {
+      "id": "world-and-you-separate",
+      "rank": 7,
+      "rule": "Shared facts are stored apart from your personal log.",
+      "ui": "Shown and edited apart."
+    },
+    {
+      "id": "spend-capacity-where-it-pays",
+      "rank": 8,
+      "rule": "Scarce calls run only where they pay; on quota the job waits.",
+      "ui": "Costly actions are explicit presses."
+    },
+    {
+      "id": "no-hardcoded-knowledge",
+      "rank": 9,
+      "rule": "No lists of real-world names in code.",
+      "ui": "Suggestions come from your data or sources."
+    },
+    {
+      "id": "small-reliable-delight",
+      "rank": 10,
+      "rule": "Delight comes from small, reliable moments, not more screens.",
+      "ui": "A one-tap \"Is it one of these?\", milestones, a brief burst."
+    }
+  ],
+  "color": {
+    "model": "UI is written in Tailwind zinc (surfaces, text) and violet (accent) classes. A theme only redefines those variables.",
+    "accentAttribute": "data-accent on <html>; --accent-* scales are mapped onto --color-violet-*",
+    "accents": {
+      "violet": {
+        "50": "oklch(96.9% 0.016 293.756)",
+        "100": "oklch(94.3% 0.029 294.588)",
+        "200": "oklch(89.4% 0.057 293.283)",
+        "300": "oklch(81.1% 0.111 293.571)",
+        "400": "oklch(70.2% 0.183 293.541)",
+        "500": "oklch(60.6% 0.25 292.717)",
+        "600": "oklch(54.1% 0.281 293.009)",
+        "700": "oklch(49.1% 0.27 292.581)",
+        "800": "oklch(43.2% 0.232 292.759)",
+        "900": "oklch(38% 0.189 293.745)",
+        "950": "oklch(28.3% 0.141 291.089)"
+      },
+      "indigo": {
+        "50": "oklch(96.2% 0.018 272.314)",
+        "100": "oklch(93% 0.034 272.788)",
+        "200": "oklch(87% 0.065 274.039)",
+        "300": "oklch(78.5% 0.115 274.713)",
+        "400": "oklch(67.3% 0.182 276.935)",
+        "500": "oklch(58.5% 0.233 277.117)",
+        "600": "oklch(51.1% 0.262 276.966)",
+        "700": "oklch(45.7% 0.24 277.023)",
+        "800": "oklch(39.8% 0.195 277.366)",
+        "900": "oklch(35.9% 0.144 278.697)",
+        "950": "oklch(25.7% 0.09 281.288)"
+      },
+      "pink": {
+        "50": "oklch(97.1% 0.014 343.198)",
+        "100": "oklch(94.8% 0.028 342.258)",
+        "200": "oklch(89.9% 0.061 343.231)",
+        "300": "oklch(82.3% 0.12 346.018)",
+        "400": "oklch(71.8% 0.202 349.761)",
+        "500": "oklch(65.6% 0.241 354.308)",
+        "600": "oklch(59.2% 0.249 0.584)",
+        "700": "oklch(52.5% 0.223 3.958)",
+        "800": "oklch(45.9% 0.187 3.815)",
+        "900": "oklch(40.8% 0.153 2.432)",
+        "950": "oklch(28.4% 0.109 3.907)"
+      },
+      "teal": {
+        "50": "oklch(98.4% 0.014 180.72)",
+        "100": "oklch(95.3% 0.051 180.801)",
+        "200": "oklch(91% 0.096 180.426)",
+        "300": "oklch(85.5% 0.138 181.071)",
+        "400": "oklch(77.7% 0.152 181.912)",
+        "500": "oklch(70.4% 0.14 182.503)",
+        "600": "oklch(60% 0.118 184.704)",
+        "700": "oklch(51.1% 0.096 186.391)",
+        "800": "oklch(43.7% 0.078 188.216)",
+        "900": "oklch(38.6% 0.063 188.416)",
+        "950": "oklch(27.7% 0.046 192.524)"
+      },
+      "orange": {
+        "50": "oklch(98% 0.016 73.684)",
+        "100": "oklch(95.4% 0.038 75.164)",
+        "200": "oklch(90.1% 0.076 70.697)",
+        "300": "oklch(83.7% 0.128 66.29)",
+        "400": "oklch(75% 0.183 55.934)",
+        "500": "oklch(70.5% 0.213 47.604)",
+        "600": "oklch(64.6% 0.222 41.116)",
+        "700": "oklch(55.3% 0.195 38.402)",
+        "800": "oklch(47% 0.157 37.304)",
+        "900": "oklch(40.8% 0.123 38.172)",
+        "950": "oklch(26.6% 0.079 36.259)"
+      }
+    },
+    "defaultAccent": "violet",
+    "semanticHues": {
+      "emerald": "good, saved, success",
+      "amber": "warning, gaps",
+      "rose": "failed, error",
+      "sky": "info (how a set was played)",
+      "red": "danger button"
+    },
+    "browserBar": {
+      "dark": "#022c22",
+      "light": "#fafafa"
+    },
+    "posterBase": {
+      "dark": "#111114",
+      "light": "var(--color-zinc-950)"
+    }
+  },
+  "themes": {
+    "attribute": "data-theme on <html>: \"dark\" or \"light\"",
+    "modes": [
+      "dark",
+      "light",
+      "system"
+    ],
+    "defaultMode": "dark",
+    "dark": "Tailwind defaults for zinc and every hue; violet = accent at the same step.",
+    "lightRemap": {
+      "rule": "Mirror zinc and the light and dark ends of each coloured scale (300 text becomes 700, 950 tints become 50). Steps 500 to 700 of the accent stay, so white text on accent buttons keeps working.",
+      "zinc": {
+        "50": "oklch(14.1% 0.005 285.823)",
+        "100": "oklch(21% 0.006 285.885)",
+        "200": "oklch(27.4% 0.006 286.033)",
+        "300": "oklch(37% 0.013 285.805)",
+        "400": "oklch(44.2% 0.017 285.786)",
+        "500": "oklch(55.2% 0.016 285.938)",
+        "600": "oklch(70.5% 0.015 286.067)",
+        "700": "oklch(87.1% 0.006 286.286)",
+        "800": "oklch(92% 0.004 286.32)",
+        "900": "oklch(96.7% 0.001 286.375)",
+        "950": "oklch(98.5% 0 none)"
+      },
+      "violetToAccent": {
+        "50": "accent-950",
+        "100": "accent-900",
+        "200": "accent-800",
+        "300": "accent-700",
+        "400": "accent-600",
+        "500": "accent-500",
+        "600": "accent-600",
+        "700": "accent-700",
+        "800": "accent-200",
+        "900": "accent-100",
+        "950": "accent-50"
+      },
+      "semanticScalesRemapped": {
+        "amber": [
+          50,
+          100,
+          200,
+          300,
+          400,
+          800,
+          900,
+          950
+        ],
+        "rose": [
+          50,
+          100,
+          200,
+          300,
+          400,
+          800,
+          900,
+          950
+        ],
+        "emerald": [
+          50,
+          100,
+          200,
+          300,
+          400,
+          800,
+          900,
+          950
+        ],
+        "sky": [
+          50,
+          100,
+          200,
+          300,
+          400,
+          800,
+          900,
+          950
+        ],
+        "fuchsia": [
+          50,
+          100,
+          200,
+          300,
+          400,
+          800,
+          900,
+          950
+        ],
+        "cyan": [
+          50,
+          100,
+          200,
+          300,
+          400,
+          800,
+          900,
+          950
+        ]
+      },
+      "semanticValues": "See :root[data-theme='light'] in LiveArchive src/index.css"
+    },
+    "storage": {
+      "modeKey": "livearchive.themeMode.v1",
+      "accentKey": "livearchive.accent.v1",
+      "where": "localStorage, per device, read in try/catch",
+      "prePaint": "Inline script in app.html sets data-theme and data-accent before the app draws; keep it in step with src/services/theme.ts"
+    }
+  },
+  "radius": {
+    "control": {
+      "value": "0.5rem",
+      "class": "rounded-control",
+      "use": "buttons, inputs, icon buttons"
+    },
+    "card": {
+      "value": "0.75rem",
+      "class": "rounded-card",
+      "use": "cards, panels, notices"
+    },
+    "note": "Pills use rounded-full; menus, popovers and toasts still use rounded-xl, sheets rounded-2xl."
+  },
+  "breakpoints": {
+    "sm": {
+      "px": 640,
+      "source": "Tailwind default",
+      "use": "touch targets shrink from 44 to 36 px"
+    },
+    "slideOver": {
+      "px": 768,
+      "use": "DetailShell slide-over (92% width); below it a bottom sheet (92% height)"
+    },
+    "split": {
+      "px": 1100,
+      "use": "DetailShell split view with a 240 px list"
+    },
+    "splitWide": {
+      "px": 1440,
+      "use": "split list widens to 280 px"
+    },
+    "detailTwoColumn": {
+      "px": 760,
+      "kind": "container query @[760px]",
+      "use": "event detail body goes to two columns"
+    }
+  },
+  "touchTargets": {
+    "iconButtonPhone": "44px (h-11)",
+    "iconButtonFromSm": "36px (sm:h-9)",
+    "iconButtonChip": "22px",
+    "dismissButton": "40px (h-10)",
+    "switchAndSegmentedPhone": "44px min height (min-h-11)",
+    "switchAndSegmentedFromSm": "32px min height (sm:min-h-8)"
+  },
+  "motion": {
+    "reducedMotion": [
+      "Confetti (celebrate) and Burst do not run at all under prefers-reduced-motion: reduce.",
+      "Transitions on Switch, the save flash and the app header use motion-reduce:transition-none.",
+      "Home cards drop hover lift and scale (motion-reduce:transform-none).",
+      "Stepper spinner stops (motion-reduce:animate-none)."
+    ],
+    "used": {
+      "fieldSaveDebounceMs": 500,
+      "saveFlashMs": "about 1000",
+      "burstMs": 1000,
+      "confettiMs": 2000,
+      "confettiPieces": 120,
+      "tooltipTouchMs": 1500,
+      "toastLifetimeMs": 6000,
+      "toastMaxShown": 3,
+      "saveStatusAgeRefreshMs": 30000,
+      "hoverTransition": "duration-200"
+    },
+    "knownGaps": [
+      "BackToTop scrolls with behavior \"smooth\" without a reduced-motion check.",
+      "SaveStatus spinner has no motion-reduce class."
+    ]
+  },
+  "notDefinedYet": [
+    "typography tokens or type scale (Tailwind default sans and sizes)",
+    "spacing tokens (Tailwind default scale)",
+    "motion duration and easing tokens",
+    "shadow and z-index scales"
+  ],
+  "components": [
+    {
+      "name": "Button",
+      "purpose": "The one text button.",
+      "props": {
+        "variant": "primary | secondary (default) | ghost | danger",
+        "...button attributes": ""
+      },
+      "states": [
+        "default",
+        "hover",
+        "focus-visible",
+        "disabled (40% opacity)"
+      ],
+      "a11y": "Defaults to type=\"button\"; violet-400 focus outline."
+    },
+    {
+      "name": "IconButton",
+      "purpose": "Icon-only button.",
+      "props": {
+        "icon": "LucideIcon",
+        "label": "string, required",
+        "size": "default | chip"
+      },
+      "states": [
+        "default",
+        "hover",
+        "focus-visible"
+      ],
+      "a11y": "label is the aria-label and the Tooltip; 44 px on phones, 36 px from sm."
+    },
+    {
+      "name": "Tooltip",
+      "purpose": "Short name on hover or focus.",
+      "props": {
+        "label": "string",
+        "children": "node"
+      },
+      "states": [
+        "hidden",
+        "shown on hover/focus",
+        "shown 1.5 s after a touch"
+      ],
+      "a11y": "Bubble is aria-hidden; the wrapped control keeps its own name."
+    },
+    {
+      "name": "Pill",
+      "purpose": "Small rounded label for a short fact.",
+      "props": {
+        "tone": "neutral | accent | good | warn | info | highlight"
+      },
+      "states": [
+        "static"
+      ],
+      "a11y": "Good and warn always carry words, never colour alone."
+    },
+    {
+      "name": "Popover",
+      "purpose": "Anchored panel for help text.",
+      "props": {
+        "content": "node",
+        "label": "string",
+        "children": "trigger"
+      },
+      "states": [
+        "closed",
+        "open on hover (fine pointer)",
+        "pinned on tap or Enter/Space"
+      ],
+      "a11y": "Trigger is role=button with aria-expanded; panel role=dialog; closes on outside tap or Escape."
+    },
+    {
+      "name": "MenuButton",
+      "purpose": "Shows the current choice and opens a list.",
+      "props": {
+        "label": "string",
+        "value": "T",
+        "options": "MenuOption[] {value,label,icon?,hint?}",
+        "onChange": "(T) => void"
+      },
+      "states": [
+        "closed",
+        "open"
+      ],
+      "a11y": "aria-haspopup=listbox, options role=option with aria-selected; arrows, Home, End; focus on current when opened; closes on pick, outside tap, Escape."
+    },
+    {
+      "name": "Segmented",
+      "purpose": "Exactly one of a few options.",
+      "props": {
+        "label": "string",
+        "options": "{value,label,disabled?}[]",
+        "value": "T",
+        "onChange": "(T) => void"
+      },
+      "states": [
+        "chosen (tick + tint)",
+        "unchosen",
+        "disabled"
+      ],
+      "a11y": "role=radiogroup/radio; roving tabindex; arrows move and choose."
+    },
+    {
+      "name": "Switch",
+      "purpose": "On/off setting.",
+      "props": {
+        "checked": "boolean",
+        "onChange": "(boolean) => void",
+        "label": "string",
+        "helper": "string?",
+        "disabled": "boolean?"
+      },
+      "states": [
+        "on",
+        "off",
+        "disabled"
+      ],
+      "a11y": "role=switch, aria-checked; state written as \"On\"/\"Off\"."
+    },
+    {
+      "name": "Notice",
+      "purpose": "Visible message for a result, caveat or warning.",
+      "props": {
+        "tone": "info | success | warning"
+      },
+      "states": [
+        "info",
+        "success",
+        "warning"
+      ],
+      "a11y": "warning is role=alert; others role=status."
+    },
+    {
+      "name": "Callout",
+      "purpose": "Dismissible page tip.",
+      "props": {
+        "id": "string",
+        "tone": "NoticeTone"
+      },
+      "states": [
+        "shown",
+        "dismissed (remembered per browser)"
+      ],
+      "a11y": "aside \"Tip\"; 40 px dismiss button \"Dismiss this tip\"; storage in try/catch."
+    },
+    {
+      "name": "Toast",
+      "purpose": "Brief confirmation, optionally with Undo.",
+      "props": {
+        "message": "string",
+        "action": "{label,onClick}?"
+      },
+      "states": [
+        "shown up to 6 s",
+        "max 3 at once"
+      ],
+      "a11y": "Polite live region."
+    },
+    {
+      "name": "Confirm",
+      "purpose": "Only for irreversible actions.",
+      "props": {
+        "title": "string",
+        "message": "string",
+        "confirmLabel": "names the action, never \"OK\"",
+        "typedMatch": "string?"
+      },
+      "states": [
+        "ready",
+        "disabled until typed match"
+      ],
+      "a11y": "Built on Dialog."
+    },
+    {
+      "name": "Dialog",
+      "purpose": "Modal shell: side panel or centred card.",
+      "props": {
+        "title": "string",
+        "placement": "side | center",
+        "dismissible": "boolean",
+        "layer": "normal | top"
+      },
+      "states": [
+        "open"
+      ],
+      "a11y": "aria-modal; focus moves in, Tab trapped, Escape and outside press close, scroll locked, focus returns; blurs the active field first so its save runs."
+    },
+    {
+      "name": "Sheet",
+      "purpose": "Bottom sheet on phones, card from sm.",
+      "props": {
+        "open": "boolean",
+        "title": "string",
+        "onClose": "() => void"
+      },
+      "states": [
+        "open",
+        "closed"
+      ],
+      "a11y": "aria-modal; Escape and backdrop close; focus returns to opener."
+    },
+    {
+      "name": "DetailShell",
+      "purpose": "Record detail in three widths: split, slide-over, sheet.",
+      "props": {
+        "title": "string",
+        "rows": "DetailRow[]",
+        "openId": "string",
+        "status": "node",
+        "hero": "node"
+      },
+      "states": [
+        "split >= 1100",
+        "slide >= 768",
+        "sheet"
+      ],
+      "a11y": "J/K or arrows move, N next with gap, Escape closes; keys ignored while typing or in a choice group."
+    },
+    {
+      "name": "SaveStatus",
+      "purpose": "Whether edits are saved.",
+      "props": {
+        "track": "SaveTrack",
+        "onRetry": "() => void",
+        "hint": "boolean?"
+      },
+      "states": [
+        "Saving…",
+        "Saved · just now (ages)",
+        "Couldn't save · Try again"
+      ],
+      "a11y": "Polite live region; retry is a button."
+    },
+    {
+      "name": "Stepper",
+      "purpose": "Vertical list of job steps.",
+      "props": {
+        "steps": "step[]",
+        "label": "string"
+      },
+      "states": [
+        "done",
+        "running",
+        "paused",
+        "failed",
+        "needs you",
+        "not started"
+      ],
+      "a11y": "Each state has an icon and a word."
+    },
+    {
+      "name": "BackToTop",
+      "purpose": "Text pill after about one screen of scroll.",
+      "props": {},
+      "states": [
+        "hidden",
+        "shown"
+      ],
+      "a11y": "aria-label \"Back to top\"; sits above the phone + button."
+    },
+    {
+      "name": "FilterControls",
+      "purpose": "Filters button, panel, select pills and yes/no toggle.",
+      "props": {
+        "FilterSelect": "name,value,options",
+        "FilterToggle": "name,yes,no,value",
+        "FilterButton": "open,count"
+      },
+      "states": [
+        "unset",
+        "set (highlighted)",
+        "yes",
+        "no"
+      ],
+      "a11y": "Select has aria-label; button has aria-expanded."
+    },
+    {
+      "name": "Burst",
+      "purpose": "Small ring of marks on a celebrated tap.",
+      "props": {
+        "icon": "LucideIcon",
+        "trigger": "number"
+      },
+      "states": [
+        "idle",
+        "bursting 1 s"
+      ],
+      "a11y": "aria-hidden; never runs under reduced motion."
+    },
+    {
+      "name": "celebrate (confetti.ts)",
+      "purpose": "Confetti for milestones.",
+      "props": {},
+      "states": [
+        "2 s burst"
+      ],
+      "a11y": "Canvas aria-hidden; skipped under reduced motion."
+    }
+  ],
+  "appSpecific": [
+    "DemoPrompt (sample-mode explainer) is LiveArchive-only and not part of the export."
+  ]
+}

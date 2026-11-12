@@ -14,4 +14,5 @@
   - Plan Stage C nice-to-haves (C1 to C8) in /mnt/project-files/canonical-autocomplete/plan.md are not started.
   - Hub sync gaps (ci-gate files and the AGENTS.md block flagged by pr-check; hub-only telemetry-wiring test) were offered but not requested.
   - Charlie's Mac checkout is on docs/canonical-archive-ux-spec with uncommitted edits. Deploys run from a temporary worktree of main.
-- **Immediate Next Step:** None queued for this feature. Next is Charlie's pick.
+- **Design system export (2026-11-12, branch claude/project-thread-ad7gr8):** docs only under `docs/design-system/` (README, design-system.json, philosophy-and-voice, agent-rules), linked from docs/README.md and docs/architecture/15-shared-ui.md. Built by Opus at Charlie's request. Lint pass, 856 of 856 tests pass. Known gaps recorded in the export: BackToTop smooth scroll and the SaveStatus spinner ignore reduced motion. Awaiting Charlie's review and merge.
+- **Immediate Next Step:** Charlie reviews the design system export PR. Otherwise his pick.
