@@ -1,17 +1,17 @@
 # Session Handoff
 
 - **Last Active Platform:** Claude Code (cloud session)
-- **Active Branch / State:** `claude/architecture-split` (PR #252, open), cut from main. Main includes PR #248 (docs links), PR #250 (RLS migrations 0025 and 0026, merged by Charlie) and the Slice 8.12 test. Hub PR cchonguyen/claude-harness-hub#50 is merged.
-- **Done this session:**
-  - Audit plan approved 2026-11-04: `/mnt/project-files/audit-2026-11-04/plan.md`.
-  - Hub harness block and rules (hub PR #50, merged).
-  - Docs hygiene: dead links, docs index, status docs, Atlas coordinates (PR #248, merged).
-  - RLS migrations 0025 and 0026 committed as applied; 0036 left empty by Charlie's decision (PR #250, merged).
-  - ARCHITECTURE.md split into `docs/architecture/` (Slice 8.13, PR #252). Two tests now read the section files.
-- **Verification Status:** Verified via finish-slice.mjs (Slice 9.5)
+- **Active Branch / State:** main at 7cf4437 (PR #272 merged), deployed live as version 6621e79a (2026-11-12).
+- **Done this session (canonical autocomplete, slices 9.1 to 9.5):**
+  - 9.1 `GET /api/editions/suggest`: confirmed editions only, word-prefix match, your own live events excluded (PR #262).
+  - 9.2 Capture bar suggestions, up to 5 rows (PR #264, with harness sync v3.2.0).
+  - 9.3.1 `POST /api/events { editionId }` copies the canonical fields, sourced 'edition' (PR #268).
+  - 9.4 Tapping a suggestion saves from the edition and opens it. 9.4.1 removed "I saw everyone": no bulk tick of seen acts, which is on the Do NOT Build list (PR #270).
+  - 9.5 Weather is looked up once, server-side, on a save from an edition. AGENTS.md weather rule and R3.8 updated (PR #272).
+- **Verification Status:** Verified via finish-slice.mjs (Slice 9.5). 868 of 868 tests passed on main before the deploy.
 - **Open gaps:**
-  - Archive finished slices from `.spec/PROGRESS.md` to `.spec/archive/HISTORY.md`.
-  - Shared-folder archive (plan step 4) and memory cleanup (plan step 5) not started.
-  - Verify on GitHub: friendliness PR #129 or #130, multi-user PR #87, PRs #126 and #169.
-- **Immediate Next Step:** Get the slice gate and pr-check green on #252 (slice 8.14), then Charlie decides on the merge.
-- **Archive state:** Slice 8.15 moved 30 finished slices to `.spec/archive/HISTORY.md`. PR #254 (`claude/archive-progress`) merges main and is pending the harness checks on its head, which Slice 8.16 covers.
+  - Member-created editions: deferred (Charlie: "friends first").
+  - Plan Stage C nice-to-haves (C1 to C8) in /mnt/project-files/canonical-autocomplete/plan.md are not started.
+  - Hub sync gaps (ci-gate files and the AGENTS.md block flagged by pr-check; hub-only telemetry-wiring test) were offered but not requested.
+  - Charlie's Mac checkout is on docs/canonical-archive-ux-spec with uncommitted edits. Deploys run from a temporary worktree of main.
+- **Immediate Next Step:** None queued for this feature. Next is Charlie's pick.
