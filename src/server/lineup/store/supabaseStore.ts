@@ -1,5 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import type { AiCallRow } from './types';
+import type { AiCallRow, MergeSummary } from './types';
+import type { CanonicalVenue, EditionChange, ReviewQueueItem, ReviewQueueKind } from '../types';
+import { assertNoPersonalFields, ExternalIdConflictError, venueIdFor } from './types';
 import {
   ArtistIdentity,
   BlocklistEntry,
@@ -1500,7 +1502,136 @@ export class SupabaseLineupStore implements LineupStore {
     this.check(res, 'deleteAiCallsBefore (apply 0038_ai_calls.sql)');
     return res.count ?? 0;
   }
+
+  // Shared occurrences (0041, 0042). Service client only, like the AI call log: members never write these tables.
+  async upsertVenue(v: { name: string; city?: string; region?: string; country?: string }): Promise<CanonicalVenue> {
+    const id = venueIdFor(v, normalizeName);
+    this.check(
+      await this.db.from('canonical_venues').upsert(
+        { id, name: v.name, city: v.city ?? null, region: v.region ?? null, country: v.country ?? null },
+        { onConflict: 'id', ignoreDuplicates: true },
+      ),
+      'upsertVenue (apply 0041_shared_occurrences.sql)',
+    );
+    const row = this.check(await this.db.from('canonical_venues').select('*').eq('id', id).maybeSingle(), 'upsertVenue');
+    if (!row) throw new Error('Supabase upsertVenue failed: venue not found after insert');
+    await this.addVenueAlias(id, normalizeName(v.name));
+    return rowToVenue(row);
+  }
+
+  async findVenueByAlias(aliasNormalized: string): Promise<CanonicalVenue | null> {
+    const hits = this.check(await this.db.from('venue_aliases').select('venue_id').eq('alias_normalized', aliasNormalized), 'findVenueByAlias (apply 0041_shared_occurrences.sql)') as any[] | null;
+    const ids = [...new Set((hits ?? []).map((r) => r.venue_id as string))];
+    if (ids.length !== 1) return null;
+    const row = this.check(await this.db.from('canonical_venues').select('*').eq('id', ids[0]).maybeSingle(), 'findVenueByAlias');
+    return row ? rowToVenue(row) : null;
+  }
+
+  async addVenueAlias(venueId: string, aliasNormalized: string, source?: string, externalId?: string): Promise<void> {
+    if (source && externalId) {
+      const held = this.check(await this.db.from('venue_aliases').select('venue_id').eq('source', source).eq('external_id', externalId).maybeSingle(), 'addVenueAlias') as any;
+      if (held && held.venue_id !== venueId) throw new ExternalIdConflictError(source, externalId, held.venue_id);
+    }
+    this.check(
+      await this.db.from('venue_aliases').upsert(
+        { venue_id: venueId, alias_normalized: aliasNormalized, source: source ?? null, external_id: externalId ?? null },
+        { onConflict: 'alias_normalized,venue_id', ignoreDuplicates: true },
+      ),
+      'addVenueAlias (apply 0041_shared_occurrences.sql)',
+    );
+  }
+
+  async findEditionByExternalId(source: string, externalId: string): Promise<Edition | null> {
+    const hit = this.check(await this.db.from('edition_external_ids').select('edition_id').eq('source', source).eq('external_id', externalId).maybeSingle(), 'findEditionByExternalId (apply 0041_shared_occurrences.sql)') as any;
+    return hit ? this.getEdition(hit.edition_id) : null;
+  }
+
+  async addEditionExternalId(editionId: string, source: string, externalId: string): Promise<'added' | 'exists'> {
+    const held = this.check(await this.db.from('edition_external_ids').select('edition_id').eq('source', source).eq('external_id', externalId).maybeSingle(), 'addEditionExternalId (apply 0041_shared_occurrences.sql)') as any;
+    if (held) {
+      if (held.edition_id !== editionId) throw new ExternalIdConflictError(source, externalId, held.edition_id);
+      return 'exists';
+    }
+    this.check(await this.db.from('edition_external_ids').insert({ edition_id: editionId, source, external_id: externalId }), 'addEditionExternalId');
+    return 'added';
+  }
+
+  async recordEditionChange(c: { editionId: string; actor: string; reason?: string; before?: Record<string, unknown>; after?: Record<string, unknown> }): Promise<EditionChange> {
+    assertNoPersonalFields(c.before);
+    assertNoPersonalFields(c.after);
+    const row: EditionChange = { id: crypto.randomUUID(), editionId: c.editionId, at: new Date().toISOString(), actor: c.actor || 'system', reason: c.reason, before: c.before, after: c.after };
+    this.check(
+      await this.db.from('edition_changes').insert({
+        id: row.id, edition_id: row.editionId, at: row.at, actor: row.actor, reason: row.reason ?? null, before: row.before ?? null, after: row.after ?? null,
+      }),
+      'recordEditionChange (apply 0041_shared_occurrences.sql)',
+    );
+    return row;
+  }
+
+  async listEditionChanges(editionId: string): Promise<EditionChange[]> {
+    const rows = this.check(await this.db.from('edition_changes').select('*').eq('edition_id', editionId).order('at', { ascending: false }), 'listEditionChanges (apply 0041_shared_occurrences.sql)') as any[] | null;
+    return (rows ?? []).map((r) => ({
+      id: r.id, editionId: r.edition_id, at: r.at, actor: r.actor,
+      reason: r.reason ?? undefined, before: r.before ?? undefined, after: r.after ?? undefined, undoneAt: r.undone_at ?? undefined,
+    }));
+  }
+
+  async markChangeUndone(changeId: string): Promise<boolean> {
+    const rows = this.check(
+      await this.db.from('edition_changes').update({ undone_at: new Date().toISOString() }).eq('id', changeId).is('undone_at', null).select('id'),
+      'markChangeUndone (apply 0041_shared_occurrences.sql)',
+    ) as any[] | null;
+    return (rows ?? []).length > 0;
+  }
+
+  async addReviewItem(i: { kind: ReviewQueueKind; editionId?: string; eventId?: string; payload: Record<string, unknown> }): Promise<ReviewQueueItem> {
+    assertNoPersonalFields(i.payload);
+    const row: ReviewQueueItem = { id: crypto.randomUUID(), kind: i.kind, editionId: i.editionId, eventId: i.eventId, payload: i.payload, status: 'open', createdAt: new Date().toISOString() };
+    this.check(
+      await this.db.from('review_queue').insert({
+        id: row.id, kind: row.kind, edition_id: row.editionId ?? null, event_id: row.eventId ?? null, payload: row.payload, status: 'open', created_at: row.createdAt,
+      }),
+      'addReviewItem (apply 0041_shared_occurrences.sql)',
+    );
+    return row;
+  }
+
+  async listReviewItems(q: { status?: string; kind?: ReviewQueueKind } = {}): Promise<ReviewQueueItem[]> {
+    let query = this.db.from('review_queue').select('*');
+    if (q.status) query = query.eq('status', q.status);
+    if (q.kind) query = query.eq('kind', q.kind);
+    const rows = this.check(await query.order('created_at', { ascending: true }), 'listReviewItems (apply 0041_shared_occurrences.sql)') as any[] | null;
+    return (rows ?? []).map((r) => ({
+      id: r.id, kind: r.kind, editionId: r.edition_id ?? undefined, eventId: r.event_id ?? undefined, payload: r.payload ?? {},
+      status: r.status, createdAt: r.created_at, resolvedAt: r.resolved_at ?? undefined, resolvedBy: r.resolved_by ?? undefined,
+    }));
+  }
+
+  async resolveReviewItem(id: string, resolvedBy: string, status: string): Promise<boolean> {
+    const rows = this.check(
+      await this.db.from('review_queue').update({ status, resolved_by: resolvedBy, resolved_at: new Date().toISOString() }).eq('id', id).eq('status', 'open').select('id'),
+      'resolveReviewItem (apply 0041_shared_occurrences.sql)',
+    ) as any[] | null;
+    return (rows ?? []).length > 0;
+  }
+
+  // One atomic call (0042_merge_editions.sql). Param names are the SQL's own: keep_id, drop_id, p_actor, p_reason.
+  async mergeEditions(keepId: string, dropId: string, actor: string, reason?: string): Promise<MergeSummary> {
+    const { data, error } = await this.db.rpc('merge_editions', { keep_id: keepId, drop_id: dropId, p_actor: actor, p_reason: reason ?? null });
+    if (error) throw new Error(`mergeEditions (apply 0042_merge_editions.sql): ${error.message}`);
+    return (data ?? {}) as MergeSummary;
+  }
 }
+
+const rowToVenue = (r: any): CanonicalVenue => ({
+  id: r.id,
+  name: r.name,
+  city: r.city ?? undefined,
+  region: r.region ?? undefined,
+  country: r.country ?? undefined,
+  createdAt: r.created_at,
+});
 
 const rowToAiCall = (r: any): AiCallRow => ({
   id: r.id,
