@@ -40,8 +40,10 @@ Input (one of):
 Options:
   --limit <n>           Pages to test (default 8: newest first, largest always included, one per edition)
   --window <chars>      Characters of page text shown to the model (default 180000)
-  --max-calls <n>       Abort after this many model calls (default 40)
+  --max-calls <n>       Abort after this many model calls, retries included (default 40)
+                        Gemini 503/UNAVAILABLE and Workers AI 5xx/timeouts retry up to 3 times; quota errors never retry.
   --max-usd <n>         Abort before a call that could pass this estimated spend (default 2)
+  --max-output-tokens <n>  Output-token cap for every model (default 8192, same as production)
   --models <a,b>        Only these model ids
   --out-json <path>     Write the JSON result (default recall-result.json)
   --out-md <path>       Write the Markdown result (default recall-result.md)
@@ -100,6 +102,7 @@ function geminiCaller(apiKey: string, model: string): BenchCaller {
     return {
       text: res.text,
       truncated: res.finishReason === 'MAX_TOKENS',
+      finishReason: res.finishReason ?? null,
       inputTokens: res.promptTokens,
       outputTokens: res.candidatesTokens === null && res.thoughtsTokens === null ? null : (res.candidatesTokens ?? 0) + (res.thoughtsTokens ?? 0),
       thinkingTokens: res.thoughtsTokens,
@@ -120,7 +123,7 @@ function workersAiCaller(accountId: string, token: string, model: string): Bench
       chat_template_kwargs: { enable_thinking: false },
       response_format: { type: 'json_schema', json_schema: toJsonSchema(SCHEMA) },
     };
-    const res = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const res = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(180000) });
     const raw = await res.text();
     let json: unknown = null;
     try {
@@ -177,6 +180,7 @@ async function main() {
     window: args.window,
     maxCalls: args.maxCalls,
     maxUsd: args.maxUsd,
+    maxOutputTokens: args.maxOutputTokens,
     secrets: secrets.filter((s): s is string => Boolean(s)),
     log: (line) => console.log(redact(line, secrets)),
   });
@@ -184,14 +188,17 @@ async function main() {
   console.log('');
   for (const r of reportsFor(result, pages)) {
     const v = passVerdict(r);
+    const p = (x: number | null) => (x === null ? 'n/a' : (x * 100).toFixed(1) + '%');
     console.log(
-      `${r.provider}:${r.model}  recall ${r.overallRecall === null ? 'n/a' : (r.overallRecall * 100).toFixed(1) + '%'}  ` +
+      `${r.provider}:${r.model}  recall ${p(r.overallRecall)}  on page ${p(r.overallRecallOnPage)}  ` +
+        `calls retried ${r.retriedCalls}  pages truncated ${r.truncatedPages}/${r.pageCount}  ` +
         `cost ${r.costUsd === null ? 'n/a' : '$' + r.costUsd.toFixed(4)}  ${v.pass ? 'PASS' : 'FAIL'}`,
     );
   }
+  console.log('Names missing from the page text are a ground-truth issue, not a model miss; the verdict uses recall on page.');
   for (const m of result.models) if (m.stopped) console.log(`${m.model} stopped (${m.stopped.kind}): ${m.stopped.message}`);
   if (result.aborted) console.log(`ABORTED: ${result.aborted}`);
-  console.log(`Window used: ${args.window} characters. Calls: ${result.calls}. Estimated spend: $${result.spentUsd.toFixed(4)}.`);
+  console.log(`Window used: ${args.window} characters. Max output tokens: ${result.maxOutputTokens}. Calls (retries included): ${result.calls}. Estimated spend: $${result.spentUsd.toFixed(4)}.`);
 
   const json = redact(JSON.stringify(benchJson(result, pages), null, 2), secrets);
   const md = redact(renderBenchMarkdown(result, pages), secrets);
