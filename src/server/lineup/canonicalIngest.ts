@@ -3,6 +3,7 @@ import { LineupStore } from './store/types';
 import { Edition, EditionPerformance } from './types';
 import { isBilling, Billing } from './billing';
 import { normalizeName, seriesSlugFor } from './text';
+import { writeEdition } from '../canon/editions';
 
 // Canonical confirm (spec Phase 2a). The owner curates an edition directly.
 // It writes only the shared catalog (event_editions, performances,
@@ -224,7 +225,7 @@ export async function confirmCanonicalEdition(store: LineupStore, input: Canonic
 
   await store.ensureArtists(edition.performances.map((p) => ({ key: p.artistKey, name: p.name })));
   if (!(await store.getSeries(slug))) await store.upsertSeries({ slug, name: edition.name });
-  await store.upsertEdition(edition);
+  await writeEdition(store, { edition, actor: 'system:ingest', reason: 'canonical ingest' });
 
   // Close the lookup that fed this edition, so its line leaves "Review". Only a catalog
   // lookup (no saved event) is touched; a personal lookup is closed by its own confirm.
@@ -291,6 +292,6 @@ export async function editEditionFacts(store: LineupStore, editionId: string, in
     factSourceNote: input.sourceNote,
     updatedAt: now,
   };
-  await store.upsertEdition(edition);
+  await writeEdition(store, { edition, actor: 'owner', reason: 'edition facts edited' });
   return edition;
 }
