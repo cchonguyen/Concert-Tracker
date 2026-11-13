@@ -34,3 +34,7 @@ export type ThinkingLevel = 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH' | 'OFF';
 
 // QuotaExhaustedError lives in ../lineup/quota (existing); re-exported for reader code.
 export { QuotaExhaustedError } from '../lineup/quota';
+
+// How a guarded call ended, as reported to recordOutcome.
+// 'quota' is a provider 402/429 quota error; 'busy' is ReaderBusyError.
+export type ReaderOutcome = 'success' | 'error' | 'invalid_json' | 'busy' | 'quota';
