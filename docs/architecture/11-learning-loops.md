@@ -13,7 +13,7 @@ Review is where the system improves (`src/server/lineup/learning.ts`). Nothing r
 | Reject as "cancelled" | Performance kept with status `cancelled` | Sources are not penalized for billing it |
 | Accept | `source_stats` accepted count per source, per series and globally | Reliability rises; confidence uses measured accuracy (Beta prior, weight 10) |
 | Add a missed act | `added` correction | Shows which sources miss acts |
-| Confirm a Gemini-read page | `extraction_examples`: an excerpt plus the confirmed names, up to 3 per site | The next read of that site includes a worked example |
+| Confirm a reader-read page | `extraction_examples`: an excerpt plus the confirmed names, up to 3 per site | The next read of that site includes a worked example |
 | Confirm with a lineup URL, or with an accepted promoter page | `event_series.lineup_url` | Next year's lookup knows where to look |
 
-Cached editions are not counted again in source stats. Every claim records its extractor and version (`gemini:<model>` plus `extract@5`; every page, the event's own site included, is told to keep only acts billed for that event and year and leave out other events, dates, cities and editions it lists), so claims from a bad model or prompt version can be found and re-checked later from the stored documents.
+Cached editions are not counted again in source stats. Every claim records its extractor and version (`gemini:<model>` or `workers-ai:<model>` plus `extract@5`; `isReaderExtractor` in `learning.ts` accepts either prefix, so examples and source stats count pages read by any reader; every page, the event's own site included, is told to keep only acts billed for that event and year and leave out other events, dates, cities and editions it lists), so claims from a bad model or prompt version can be found and re-checked later from the stored documents.
