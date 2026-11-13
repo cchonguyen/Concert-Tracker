@@ -41,3 +41,45 @@ export function checkedLabel(checkedAt: string | undefined, now: number): string
   if (days < 1) return 'Checked today';
   return days === 1 ? 'Checked 1 day ago' : `Checked ${days} days ago`;
 }
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// Shows only what the date says: a full date gets its weekday (worked out from that date alone), a month or a year
+// shows as given with no weekday, anything else is missing.
+export function candidateDateLabel(date: string | undefined): string | null {
+  const m = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/.exec(date?.trim() ?? '');
+  if (!m) return null;
+  const year = Number(m[1]);
+  if (!m[2]) return String(year);
+  const month = Number(m[2]);
+  if (month < 1 || month > 12) return null;
+  if (!m[3]) return `${MONTHS[month - 1]} ${year}`;
+  const day = Number(m[3]);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null;
+  return `${WEEKDAYS[d.getUTCDay()]} ${day} ${MONTHS[month - 1]} ${year}`;
+}
+
+export interface CandidateRowParts {
+  name: string;
+  date: string;
+  venue: string;
+  place: string;
+  sourceCount: number;
+  sourceText: string;
+}
+
+// The words for one picker row. Missing fields are named as missing, never guessed. Sources that agree are counted by page.
+export function candidateRowParts(c: DetailCandidate): CandidateRowParts {
+  const place = [c.city, c.region].map((p) => p?.trim()).filter((p): p is string => Boolean(p));
+  const sourceCount = new Set(c.sources.map((s) => s.sourceUrl || s.sourceType)).size;
+  return {
+    name: c.name?.trim() || 'No name given',
+    date: candidateDateLabel(c.startDate) ?? 'no date yet',
+    venue: c.venue?.trim() || 'no venue yet',
+    place: place.length ? place.join(', ') : 'no city yet',
+    sourceCount,
+    sourceText: sourceCount === 1 ? '1 source' : `${sourceCount} sources`,
+  };
+}
