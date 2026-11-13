@@ -43,10 +43,10 @@ const crowdSource: SourceAdapter = {
   id: 'clashfinder',
   enabled: () => true,
   async collect() {
-    const doc = makeDocument('https://clashfinder.com/s/fest25/', 'clashfinder', '{"acts":["Kaskade","Main Stage"]}', 'json');
+    const doc = makeDocument('https://clashfinder.com/s/fest25/', 'clashfinder', '{"acts":["Kaskade"]}', 'json');
     return {
       documents: [doc],
-      performers: ['Kaskade', 'Main Stage'].map((name) => ({
+      performers: ['Kaskade'].map((name) => ({
         documentId: doc.id,
         sourceType: 'clashfinder' as const,
         sourceUrl: doc.url,
@@ -125,7 +125,7 @@ test('quota exhaustion parks the job with sources intact, then resumes', async (
   assert.equal(parked?.nextAttemptAt, '2030-01-01T00:00:00.000Z');
   assert.equal(parked?.pendingExtraction.length, 1);
   assert.equal(parked?.candidate, undefined); // nothing guessed
-  assert.equal((await store.listPerformerClaims(job.id)).length, 2); // crowd source kept
+  assert.equal((await store.listPerformerClaims(job.id)).length, 1); // crowd source kept
 
   // A provider quota error opens the shared breaker until the retry time; "retry now" does not bypass it.
   state.quotaOut = false;
@@ -174,8 +174,8 @@ test('review teaches aliases, the blocklist, source scores and the cache', async
   assert.equal(result.event?.seen.find((s) => s.key === 'kaskade')?.from, 'lineup');
   assert.equal((await store.getEvent(logged.id))?.editionId, result.edition.id);
   const stats = await store.getSourceStats();
-  assert.ok(stats.some((s) => s.sourceType === 'clashfinder' && s.scope === 'fest' && s.rejected === 1));
-  assert.equal((await store.getBlocklist(['clashfinder.com']))[0]?.normalized, 'main stage');
+  assert.ok(stats.some((s) => s.sourceType === 'promoter' && s.scope === 'fest' && s.rejected === 1));
+  assert.equal((await store.getBlocklist(['fest.example']))[0]?.normalized, 'main stage');
   assert.equal((await store.getExamples('fest.example')).length, 1);
   assert.equal((await store.getSeries('fest'))?.lineupUrl, 'https://fest.example/lineup');
 
@@ -190,13 +190,11 @@ test('review teaches aliases, the blocklist, source scores and the cache', async
 
 test('a blocklisted string is dropped once rejected twice on that site', async () => {
   const { store, deps } = await setup();
-  await store.bumpBlocklist([{ domain: 'clashfinder.com', normalized: 'main stage' }]);
   await store.bumpBlocklist([{ domain: 'fest.example', normalized: 'main stage' }]);
   await store.bumpBlocklist([{ domain: 'fest.example', normalized: 'main stage' }]);
-  await store.bumpBlocklist([{ domain: 'clashfinder.com', normalized: 'main stage' }]);
   const job = (await runJob(deps, (await createLookup(deps, { eventName: 'Fest', year: 2026 })).id))!;
   assert.ok(!job.candidate!.performers.some((p) => p.name === 'Main Stage'));
-  assert.equal(job.candidate!.droppedCount, 2);
+  assert.equal(job.candidate!.droppedCount, 1);
 });
 
 test('input validation requires a name and year', async () => {
@@ -435,4 +433,80 @@ test('a second lookup of the same edition reuses the page reading instead of cal
   // The same page for a different edition is read again.
   await runJob(deps, (await createLookup(deps, { eventName: 'Fest', year: 2024 })).id);
   assert.equal(state.calls, 2);
+});
+
+function crowdWith(n: number, id: 'clashfinder' | 'ticketmaster' = 'clashfinder'): SourceAdapter {
+  return {
+    id,
+    enabled: () => true,
+    async collect() {
+      const names = Array.from({ length: n }, (_, i) => `Crowd Act ${i + 1}`);
+      const doc = makeDocument(`https://${id}.example/s/fest25/`, id, JSON.stringify({ acts: names }), 'json');
+      return {
+        documents: [doc],
+        performers: names.map((name) => ({
+          documentId: doc.id,
+          sourceType: id,
+          sourceUrl: doc.url,
+          name,
+          quotedSpan: name,
+          evidence: 'crowd' as const,
+          extractor: id,
+          extractorVersion: 'test',
+        })),
+        facts: {},
+        extractionQueue: [],
+        notes: [],
+      };
+    },
+  };
+}
+
+test('gate: Clashfinder with 5 or more acts sends no promoter page to the AI', async () => {
+  const { state, deps } = await setup();
+  deps.adapters = [crowdWith(5), promoterSource];
+  const done = await runJob(deps, (await createLookup(deps, { eventName: 'Fest', year: 2025 })).id);
+  assert.equal(state.calls, 0);
+  assert.equal(done?.status, 'needs_review');
+  assert.ok(done!.log.some((l) => l.message.includes('skipped: clashfinder_enough')));
+});
+
+test('gate: Clashfinder with 4 acts and fewer than 2 structured acts overall still reads', async () => {
+  const { state, deps } = await setup();
+  // 4 Clashfinder acts are 4 structured acts, so the structured gate would skip; use 1 act to stay under 2.
+  deps.adapters = [crowdWith(1), promoterSource];
+  await runJob(deps, (await createLookup(deps, { eventName: 'Fest', year: 2025 })).id);
+  assert.equal(state.calls, 1);
+});
+
+test('gate: Clashfinder with 4 acts is not the 5-act gate (the 2-act gate decides)', async () => {
+  const { deps } = await setup();
+  deps.adapters = [crowdWith(4), promoterSource];
+  const done = await runJob(deps, (await createLookup(deps, { eventName: 'Fest', year: 2025 })).id);
+  const note = done!.log.find((l) => l.message.includes('skipped:'))?.message ?? '';
+  assert.ok(note.includes('structured_enough') && !note.includes('clashfinder_enough'));
+});
+
+test('gate: 2 or more structured acts skip the AI read, with a note', async () => {
+  const { state, deps } = await setup();
+  deps.adapters = [crowdWith(2, 'ticketmaster'), promoterSource];
+  const done = await runJob(deps, (await createLookup(deps, { eventName: 'Fest', year: 2025 })).id);
+  assert.equal(state.calls, 0);
+  assert.ok(done!.log.some((l) => l.message.includes('skipped: structured_enough')));
+});
+
+test('gate: a page over the reader input ceiling is skipped with a note, never cut up', async () => {
+  const { state, deps } = await setup();
+  const big: SourceAdapter = {
+    id: 'promoter',
+    enabled: () => true,
+    async collect() {
+      const doc = makeDocument('https://fest.example/big', 'promoter', `Kaskade\n${'x'.repeat(30001)}`, 'text');
+      return { documents: [doc], performers: [], facts: {}, extractionQueue: [doc.id], notes: [] };
+    },
+  };
+  deps.adapters = [big];
+  const done = await runJob(deps, (await createLookup(deps, { eventName: 'Fest', year: 2025 })).id);
+  assert.equal(state.calls, 0);
+  assert.ok(done!.log.some((l) => l.message.includes('input_too_large')));
 });
