@@ -132,8 +132,10 @@ test('list import on a linked event writes overrides, not the edition value', ()
 
 test('from an edition: the shown value and captured stay apart', () => {
   const ev = ensureCaptured(newEventFromEdition('Porter at the Greek', edition(), NOW));
-  assert.equal(ev.captured?.venue, 'The Greek Theatre');
-  assert.deepEqual(capturedFrom(ev).country, 'United States');
+  // Slice 11.13: captured is what was typed, not the edition's facts.
+  assert.equal(ev.captured?.venue, 'the Greek');
+  assert.equal(ev.captured?.country, null);
+  assert.equal(resolveEvent(ev, edition()).venue, 'The Greek Theatre');
 });
 
 test('review rows hold only ids, field and public values; the store refuses personal fields', async () => {

@@ -44,34 +44,35 @@ export function newEvent(line: string, now: Date): LoggedEvent {
 // Starts from newEvent, then copies only the edition's known facts, each sourced
 // 'edition' and linked by editionId. Missing facts stay missing. Nothing personal
 // is copied: seen, companions, rating, price, notes, format, series and kind stay empty.
-const EDITION_FIELDS = ['startDate', 'endDate', 'venue', 'city', 'country'] as const;
-
+// Slice 11.13: the event is linked (editionId) and keeps only what was typed, in its own columns and in
+// `captured` (written once). The edition's facts are not copied; they show through inheritance on read
+// (inherit.ts resolveEvent), so a later edition correction reaches this event.
 export function newEventFromEdition(line: string, edition: Edition, now: Date): LoggedEvent {
-  const base = newEvent(line, now);
-  const sources: LoggedEvent['sources'] = { ...base.sources };
+  const typed = newEvent(line, now);
+  const { attendance: _previous, ...rest } = typed;
   const next: LoggedEvent = {
-    ...base,
-    name: edition.name,
-    year: edition.year,
-    sources,
+    ...rest,
     editionId: edition.id,
+    overrides: {},
     details: { status: 'matched', candidates: [], notes: [] },
   };
-  if (edition.startDate) {
-    next.startDate = edition.startDate;
-    next.month = undefined;
-  }
-  for (const f of EDITION_FIELDS) {
-    const value = edition[f];
-    if (!value) continue;
-    next[f] = value;
-    sources[f] = { sourceType: 'edition', editionId: edition.id };
-  }
-  // Same planned rule as newEvent: a date still ahead waits for you to say you went.
-  const { attendance: _previous, ...rest } = next;
+  // What was typed, kept once (same shape as inherit.ts capturedFrom; not imported to avoid a cycle).
+  next.captured = {
+    name: next.name,
+    year: next.year ?? null,
+    month: next.month ?? null,
+    start_date: next.startDate ?? null,
+    end_date: next.endDate ?? null,
+    venue: next.venue ?? null,
+    city: next.city ?? null,
+    region: next.region ?? null,
+    country: next.country ?? null,
+  };
+  // Same planned rule as newEvent, judged on what the person will see: a date still ahead waits for you
+  // to say you went.
+  const seen = { ...next, ...(edition.startDate ? { startDate: edition.startDate, month: undefined } : {}), year: edition.year ?? next.year };
   const today = now.toISOString().slice(0, 10);
-  const dated = isAhead(rest, today) ? { ...rest, attendance: 'planned' as const } : rest;
-  return splitEventCity(dated);
+  return isAhead(seen, today) ? { ...next, attendance: 'planned' as const } : next;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
