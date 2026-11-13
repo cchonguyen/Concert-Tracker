@@ -1,22 +1,24 @@
 # Session Handoff
 
 - **Last Active Platform:** Claude Code (cloud session)
-- **Active Branch / State:** main at 7cf4437 (PR #272 merged), deployed live as version 6621e79a (2026-11-12).
-- **Done this session (canonical autocomplete, slices 9.1 to 9.5):**
-  - 9.1 `GET /api/editions/suggest`: confirmed editions only, word-prefix match, your own live events excluded (PR #262).
-  - 9.2 Capture bar suggestions, up to 5 rows (PR #264, with harness sync v3.2.0).
-  - 9.3.1 `POST /api/events { editionId }` copies the canonical fields, sourced 'edition' (PR #268).
-  - 9.4 Tapping a suggestion saves from the edition and opens it. 9.4.1 removed "I saw everyone": no bulk tick of seen acts, which is on the Do NOT Build list (PR #270).
-  - 9.5 Weather is looked up once, server-side, on a save from an edition. AGENTS.md weather rule and R3.8 updated (PR #272).
-- **Verification Status:** Verified via finish-slice.mjs (Slice 11.22)
-- **Open gaps:**
-  - Member-created editions: deferred (Charlie: "friends first").
-  - Plan Stage C nice-to-haves (C1 to C8) in /mnt/project-files/canonical-autocomplete/plan.md are not started.
-  - Hub sync gaps (ci-gate files and the AGENTS.md block flagged by pr-check; hub-only telemetry-wiring test) were offered but not requested.
-  - Charlie's Mac checkout is on docs/canonical-archive-ux-spec with uncommitted edits. Deploys run from a temporary worktree of main.
-- **Design system export (2026-11-12, branch claude/project-thread-ad7gr8):** docs only under `docs/design-system/` (README, design-system.json, philosophy-and-voice, agent-rules), linked from docs/README.md and docs/architecture/15-shared-ui.md. Built by Opus at Charlie's request. Lint pass, 856 of 856 tests pass. Known gaps recorded in the export: BackToTop smooth scroll and the SaveStatus spinner ignore reduced motion. Awaiting Charlie's review and merge.
-- **AI reader two-way test (2026-11-12, branch claude/project-thread-wuqcts, spec only, no source changed):** Charlie confirmed the scope: Workers AI and paid Gemini behind one reader interface, an AI call log (`ai_calls`, migration 0038), spend guards that fail closed, and a recall test on hand-confirmed pages (90% pass mark, 70% page floor). Spec: `docs/ai-reader-spec.md`. Contract: SYSTEM_SPEC.md section 3 "AI reader". ADR-003 in DECISIONS.md. Slices 10.1 to 10.19 in PROGRESS.md, none started, no issues opened yet (open each slice's issue before starting it). Research: /mnt/project-files/ai-provider/Gemini free tier replacement options.md. Lint pass, 856 of 856 tests pass.
-  - Build rules from Charlie: Sonnet subagents implement (`/implement sonnet`), one slice at a time, in a separate thread. No Opus.
-  - Nothing changes live until `READER_PROVIDER` is set. Slice 10.3 needs migration 0038 applied by Charlie. The Gemini half of the test needs $5 of prepaid billing in Google AI Studio, auto top-up off.
-  - Known finding: the old 40,000-character lineup window cut the largest pages (about 172,000 characters). The revised spec (ADR-004, 2026-11-13) raises the window to 180,000 and the input cap to 200,000. Slices were revised the same day: the in-app recall test became a local CLI script (`scripts/recall-test.ts`), and the Workers AI production adapter is gated on its result. Slices are now 10.1 to 10.20, none started.
-- **Immediate Next Step:** Start Slice 10.1 in the implementing thread after the spec pull request merges. Otherwise Charlie's pick.
+- **Active Branch / State:** main at 816cc86 (PR #353 merged, 2026-11-13). The ingest and self-healing canon plan (docs/ingest-canon-plan.md, Slices 11.0 to 11.22) is fully built and merged.
+- **Done this session (ingest canon, PRs #308 to #353):**
+  - Phase 0 and 1 (11.0 to 11.10): rules, source terms, parser, picker rows, reader RPCs and config, stage 2 gates, MusicBrainz retry, migrations 0040 to 0042, store methods, `writeEdition` and undo.
+  - 11.11 to 11.14: `match.ts` and `upsertOccurrence`, inheritance on read (`captured`, `overrides`), suggestion tap links the edition, backfill of editions from the owner's events and email imports (also fixed `supabaseStore` not saving `venue_id`, `subject_key`, `has_lineup`).
+  - Phase 2 (11.15 to 11.19): save enqueues a `research` message on `LOOKUP_QUEUE`; rung 1 catalog lookup and rung 2 owner-only occurrence persistence; rung 4 reader in its own `research_reader` messages; picker grouping; cron research backfill and the Confirm dates list.
+  - Phase 3 (11.20 to 11.22): `ingest_traces` and the trace writer (migration 0043 written), owner review-queue routes, owner inbox in the Global archive.
+- **Verification Status:** lint clean, 1105 of 1105 tests pass at PR #353.
+- **Open items for Charlie:**
+  - Apply migration 0043 (`supabase/migrations/0043_ingest_traces.sql`). Until then traces are skipped quietly and the inbox shows "Activity appears once the traces table is set up".
+  - Approve the new member notice text. Provisional editions from a member's own entry are NOT built: rung 2 persistence runs only for the owner or single-user mode (`researchCatalogFor`). Phase 2 for members waits on this.
+  - `SUBREQUEST_LIMIT` defaults to 50, so the edition backfill and the research backfill run about 1 to 2 items a minute; raising it (about 130 to 340) speeds them up.
+  - `.env.example` comments still say 200000/180000 for the reader limits (now 30000); left on purpose because of the env-file tripwire.
+- **Known follow-ups:**
+  - Code that reads venue, date or city of a linked event straight from the store (stats, export, map, email scan, import) gets only what was typed; audit them to use `resolveEvent`.
+  - The picker (11.18) and the owner inbox (11.22) were not seen in a browser.
+  - Matching needs a stored `subjectKey`; editions get one from the backfill.
+  - A later step converts legacy `confirmed` editions to `verified` (commented block at the bottom of 0041).
+  - Brave monthly counter (`takeBrave`, cap 200) is built but nothing calls it yet.
+  - Personal-field encryption stays on hold (docs/ingest-canon-plan.md section 4).
+- **Older items still open:** the design system export (branch claude/project-thread-ad7gr8, docs only) awaited Charlie's review; member-created editions were deferred ("friends first").
+- **Immediate Next Step:** Charlie's pick. The AI reader two-way test slices 10.1 to 10.20 (docs/ai-reader-spec.md) are separate and not started.
