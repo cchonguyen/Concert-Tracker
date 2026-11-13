@@ -2,9 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BenchHttpError,
+  benchJson,
   classifyFailure,
+  invalidReason,
   parseBenchArgs,
   parseWorkersAiEnvelope,
+  passVerdict,
+  renderBenchMarkdown,
   reportsFor,
   runBenchmark,
   selectPages,
@@ -115,6 +119,98 @@ test('an unavailable model is reported, not fatal; invalid JSON counts against r
   const rep = reportsFor(r, [page('p1')])[1];
   assert.equal(rep.invalidJsonPages, 1);
   assert.equal(rep.overallRecall, 0);
+});
+
+const noSleep = async () => {};
+const opts = { window: 1000, maxCalls: 10, maxUsd: 10, sleep: noSleep };
+
+test('parseBenchArgs reads --max-output-tokens, default 8192', () => {
+  assert.equal(parseBenchArgs([]).maxOutputTokens, 8192);
+  assert.equal(parseBenchArgs(['--max-output-tokens', '16000']).maxOutputTokens, 16000);
+  assert.throws(() => parseBenchArgs(['--max-output-tokens', '0']));
+});
+
+test('503 is retried and then succeeds; retries count as calls', async () => {
+  let n = 0;
+  const sleeps: number[] = [];
+  const r = await runBenchmark(
+    [spec('m1', async () => {
+      n++;
+      if (n < 3) throw new BenchHttpError(503, '{"error":{"code":503,"status":"UNAVAILABLE","message":"high demand"}}');
+      return good;
+    })],
+    [page('p1')],
+    { ...opts, sleep: async (ms) => void sleeps.push(ms) },
+  );
+  assert.equal(n, 3);
+  assert.equal(r.calls, 3);
+  assert.equal(sleeps.length, 2);
+  assert.equal(r.models[0].stopped, null);
+  assert.equal(r.models[0].errorsByPage.length, 0);
+  const rep = reportsFor(r, [page('p1')])[0];
+  assert.equal(rep.retriedCalls, 2);
+  assert.equal(rep.overallRecall, 1);
+});
+
+test('retries are exhausted after 3 and the page is an error, not a stop', async () => {
+  let n = 0;
+  const r = await runBenchmark([spec('m1', async () => { n++; throw new BenchHttpError(503, 'UNAVAILABLE'); })], [page('p1'), page('p2')], opts);
+  assert.equal(n, 8); // 4 attempts per page
+  assert.equal(r.models[0].stopped, null);
+  assert.equal(r.models[0].errorsByPage.length, 2);
+  assert.equal(reportsFor(r, [page('p1'), page('p2')])[0].retriedCalls, 6);
+});
+
+test('Workers AI 5xx and timeouts retry; a Gemini 500 does not', async () => {
+  let w = 0;
+  await runBenchmark([{ provider: 'workers-ai', model: 'w', call: async () => { w++; if (w === 1) throw new BenchHttpError(502, 'bad gateway'); if (w === 2) throw Object.assign(new Error('timed out'), { name: 'TimeoutError' }); return good; } }], [page('p1')], opts);
+  assert.equal(w, 3);
+  let g = 0;
+  await runBenchmark([spec('g', async () => { g++; throw new BenchHttpError(500, 'boom'); })], [page('p1')], opts);
+  assert.equal(g, 1);
+});
+
+test('quota errors are not retried and never go to another model', async () => {
+  let n = 0;
+  const r = await runBenchmark([spec('m1', async () => { n++; throw new BenchHttpError(429, 'Your prepayment credits are depleted'); })], [page('p1')], opts);
+  assert.equal(n, 1);
+  assert.equal(r.models[0].stopped?.kind, 'quota');
+  assert.equal(r.calls, 1);
+});
+
+test('retries stop at --max-calls', async () => {
+  let n = 0;
+  const r = await runBenchmark([spec('m1', async () => { n++; throw new BenchHttpError(503, 'UNAVAILABLE'); })], [page('p1')], { ...opts, maxCalls: 2 });
+  assert.equal(n, 2);
+  assert.match(r.aborted ?? '', /--max-calls 2/);
+});
+
+test('truncation is flagged with finish reason and reported; max output tokens is passed and shown', async () => {
+  let seen = 0;
+  const r = await runBenchmark(
+    [spec('m1', async (_p, a) => { seen = a.maxOutputTokens; return { ...good, text: '{"performers":[{"name":"Al', truncated: true, finishReason: 'MAX_TOKENS' }; })],
+    [page('p1')],
+    { ...opts, maxOutputTokens: 4096 },
+  );
+  assert.equal(seen, 4096);
+  assert.equal(r.maxOutputTokens, 4096);
+  const rep = reportsFor(r, [page('p1')])[0];
+  assert.equal(rep.truncatedPages, 1);
+  assert.equal(rep.pages[0].finishReason, 'MAX_TOKENS');
+  assert.equal(invalidReason(rep.pages[0], rep.maxOutputTokens ?? undefined), 'truncated at 4096 output tokens');
+  assert.match(renderBenchMarkdown(r, [page('p1')]), /invalid \(truncated at 4096 output tokens\)/);
+  assert.equal(benchJson(r, [page('p1')]).maxOutputTokens, 4096);
+});
+
+test('expected names not on the page: counted per page, recallOnPage drives the verdict', async () => {
+  const p: BenchPage = { ...page('p1'), expectedNames: ['Alpha', 'Beta', 'Missing One', 'Missing Two'] };
+  const r = await runBenchmark([spec('m1', async () => good)], [p], opts);
+  const rep = reportsFor(r, [p])[0];
+  assert.equal(rep.pages[0].score.notOnPage, 2);
+  assert.deepEqual(rep.pages[0].score.notOnPageNames, ['Missing One', 'Missing Two']);
+  assert.equal(rep.overallRecall, 0.5);
+  assert.equal(rep.overallRecallOnPage, 1);
+  assert.equal(passVerdict(rep).pass, true);
 });
 
 test('classifyFailure', () => {
