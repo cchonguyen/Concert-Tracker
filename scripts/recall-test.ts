@@ -29,8 +29,8 @@ function printHelp() {
 Usage: npx tsx scripts/recall-test.ts [options]
 
 Local recall benchmark. Read only: never writes to lineups or any database.
-Runs gemini-3.5-flash-lite, gemini-4-hydrogen, @cf/zai-org/glm-4.7-flash and
-@cf/google/gemma-4-26b-a4b-it at LOW reasoning over confirmed editions' stored source pages.
+Runs gemini-3.5-flash-lite, gemini-4-hydrogen, gemini-flash-lite-latest (production, fallback price),
+@cf/zai-org/glm-4.7-flash and @cf/google/gemma-4-26b-a4b-it at LOW reasoning over confirmed editions' stored source pages.
 
 Input (one of):
   --fixture <path>      JSON: { "editions": BenchEdition[] } (see src/server/reader/recall.ts)
@@ -45,7 +45,9 @@ Options:
   --max-usd <n>         Abort before a call that could pass this estimated spend (default 2)
   --max-output-tokens <n>  Output-token cap for every model (default 8192, same as production)
   --models <a,b>        Only these model ids
-  --out-json <path>     Write the JSON result (default recall-result.json)
+  --out-json <path>     Write the JSON result (default recall-result.json). It holds page-derived text:
+                        each page's raw model reply (cut at 20000 chars, flagged), finishReason and thinking tokens.
+                        The Markdown never holds raw replies. API keys are redacted from both.
   --out-md <path>       Write the Markdown result (default recall-result.md)
 
 Env: GEMINI_API_KEY (Gemini models); CF_ACCOUNT_ID and CLOUDFLARE_API_TOKEN (Workers AI models);
@@ -192,7 +194,7 @@ async function main() {
     console.log(
       `${r.provider}:${r.model}  recall ${p(r.overallRecall)}  on page ${p(r.overallRecallOnPage)}  ` +
         `calls retried ${r.retriedCalls}  pages truncated ${r.truncatedPages}/${r.pageCount}  ` +
-        `cost ${r.costUsd === null ? 'n/a' : '$' + r.costUsd.toFixed(4)}  ${v.pass ? 'PASS' : 'FAIL'}`,
+        `cost ${r.costUsd === null ? 'n/a' : '$' + r.costUsd.toFixed(4)}${r.priceIsFallback ? ' (fallback price)' : ''}  ${v.pass ? 'PASS' : 'FAIL'}`,
     );
   }
   console.log('Names missing from the page text are a ground-truth issue, not a model miss; the verdict uses recall on page.');
