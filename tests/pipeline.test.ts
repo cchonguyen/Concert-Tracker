@@ -11,7 +11,31 @@ import { GeminiClient } from '../src/server/lineup/gemini.ts';
 import { QuotaExhaustedError, QuotaLedger } from '../src/server/lineup/quota.ts';
 import { makeDocument } from '../src/server/lineup/adapters/common.ts';
 import { SourceAdapter } from '../src/server/lineup/types.ts';
+import { createGuardedReader } from '../src/server/reader/guardedReader.ts';
+import { BREAKER_KEY } from '../src/server/reader/guard.ts';
+import { readReaderConfig } from '../src/server/reader/config.ts';
 import { fakeFetcher } from './fakes.ts';
+
+// Wraps a fake GeminiClient as a guarded reader (the pipeline holds only a reader).
+function readerFor(gemini: GeminiClient, store: FileLineupStore, quota: QuotaLedger, now: () => Date) {
+  const usage = { provider: 'gemini' as const, model: gemini.model, inputTokens: 10, outputTokens: 10, durationMs: 1 };
+  return createGuardedReader({
+    client: {
+      provider: 'gemini',
+      model: gemini.model,
+      async extractPerformers(a) {
+        return { ok: true, value: await gemini.extractPerformers(a), usage };
+      },
+      async extractEventDetails() {
+        return { ok: true, value: {}, usage };
+      },
+    },
+    store,
+    quota,
+    config: readReaderConfig({}),
+    now,
+  });
+}
 
 const PAGE = 'LINEUP\nFRIDAY\nKaskade\nMain Stage\nDom Dolla\nSATURDAY\nEric Prydz\nTickets';
 
@@ -74,15 +98,19 @@ function fakeGemini(state: { quotaOut: boolean; calls: number }): GeminiClient {
 async function setup() {
   const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'pipeline-')));
   const state = { quotaOut: false, calls: 0 };
+  const gemini = fakeGemini(state);
+  const quota = new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 });
+  const now = () => new Date('2025-06-01T12:00:00Z');
   const deps: PipelineDeps = {
     store,
     fetcher: fakeFetcher({}).fetcher,
     adapters: [crowdSource, promoterSource],
     lateAdapters: [],
-    gemini: fakeGemini(state),
-    quota: new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 }),
+    gemini,
+    quota,
+    reader: readerFor(gemini, store, quota, now),
     search: null,
-    now: () => new Date('2025-06-01T12:00:00Z'),
+    now,
   };
   return { store, state, deps };
 }
@@ -99,9 +127,14 @@ test('quota exhaustion parks the job with sources intact, then resumes', async (
   assert.equal(parked?.candidate, undefined); // nothing guessed
   assert.equal((await store.listPerformerClaims(job.id)).length, 2); // crowd source kept
 
+  // A provider quota error opens the shared breaker until the retry time; "retry now" does not bypass it.
   state.quotaOut = false;
-  const stillParked = await runJob(deps, job.id); // worker run respects the pause
+  const stillParked = await runJob(deps, job.id);
   assert.equal(stillParked?.status, 'waiting_quota');
+  const blocked = await runJob(deps, job.id, { force: true });
+  assert.equal(blocked?.status, 'waiting_quota');
+  assert.equal(state.calls, 1, 'no second provider call while the breaker is open');
+  await store.setQuota({ key: BREAKER_KEY, used: 0 }); // the cool-down has passed
   const done = await runJob(deps, job.id, { force: true }); // person pressed retry
 
   assert.equal(done?.status, 'needs_review');
@@ -198,13 +231,16 @@ test('web search only reads pages that name the event and year, and keeps only q
       throw new Error('grounded search must not be used when another provider is set');
     },
   };
+  const searchQuota = new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 });
+  const searchNow = () => new Date('2026-10-01T12:00:00Z');
   const deps: PipelineDeps = {
     store,
     fetcher,
     adapters: [],
     lateAdapters: [],
     gemini,
-    quota: new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 }),
+    quota: searchQuota,
+    reader: readerFor(gemini, store, searchQuota, searchNow),
     search: {
       id: 'brave',
       usesGeminiQuota: false,
@@ -247,13 +283,16 @@ test('web search reads the event site first, as a promoter page, even if stored 
     },
   };
   const urls = Array.from({ length: 7 }, (_, i) => `https://other${i}.example/x`).concat('https://sunsoaked.promoter.example/');
+  const searchQuota = new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 });
+  const searchNow = () => new Date('2026-10-01T12:00:00Z');
   const deps: PipelineDeps = {
     store,
     fetcher,
     adapters: [],
     lateAdapters: [],
     gemini,
-    quota: new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 }),
+    quota: searchQuota,
+    reader: readerFor(gemini, store, searchQuota, searchNow),
     search: { id: 'brave', usesGeminiQuota: false, findLineupUrls: async () => urls },
     now: () => new Date('2026-10-01T12:00:00Z'),
   };

@@ -6,6 +6,8 @@ import { isOwner } from '../entities/canonicalManage';
 import { configuredSources, JobRunner } from './service';
 import { redactSecrets } from './http';
 import { LookupJob } from './types';
+import { readReaderConfig } from '../reader/config';
+import { BREAKER_KEY, callsMonthKey, dayKey, monthKey } from '../reader/guard';
 import { isEditionSuggestQuery } from './store/types';
 
 // Older log entries were written before redaction existed.
@@ -15,6 +17,71 @@ const safeJob = (job: LookupJob): LookupJob => ({
   log: job.log.map((e) => ({ ...e, message: redactSecrets(e.message) })),
 });
 
+// Owner view of the reader (docs/ai-reader-spec.md "Owner view"). Counts, sizes and codes only:
+// never page text, prompts, quotes or names. Members get the summary without spend, caps, log or recent.
+export async function readerStatus(deps: PipelineDeps, owner: boolean, env: Record<string, unknown> = process.env) {
+  const reader = deps.reader;
+  if (!reader) return null;
+  const now = deps.now();
+  const config = readReaderConfig(env);
+  const used = async (key: string): Promise<number> => {
+    try {
+      return (await deps.store.getQuota(key))?.used ?? 0;
+    } catch {
+      return 0;
+    }
+  };
+  let breaker: { open: boolean; until?: string; failures: number } = { open: false, failures: 0 };
+  try {
+    const b = await deps.store.getQuota(BREAKER_KEY);
+    const open = Boolean(b?.exhaustedUntil && new Date(b.exhaustedUntil) > now);
+    breaker = { open, ...(open ? { until: b!.exhaustedUntil } : {}), failures: b?.used ?? 0 };
+  } catch {
+    // unreadable: report closed
+  }
+  const callsToday = deps.quota ? (await deps.quota.status(now).catch(() => null))?.used ?? 0 : 0;
+  const base = {
+    provider: reader.provider,
+    model: reader.model,
+    thinkingLevel: config.thinkingLevel,
+    enabled: config.enabled,
+    breaker,
+    callsToday,
+    callsMonth: await used(callsMonthKey(now)),
+  };
+  if (!owner) return base;
+  let recent: Array<Record<string, unknown>> = [];
+  try {
+    recent = (await deps.store.listAiCalls(20)).map((r) => ({
+      createdAt: r.createdAt,
+      feature: r.feature,
+      provider: r.provider,
+      model: r.model,
+      outcome: r.outcome,
+      reason: r.guardReason ?? r.errorCode ?? null,
+      inputTokens: r.inputTokens,
+      outputTokens: r.outputTokens,
+      estCostUsd: r.estCostUsd,
+    }));
+  } catch {
+    // the log table may be missing; the guards do not depend on it
+  }
+  return {
+    ...base,
+    spendTodayUsd: (await used(dayKey(now))) / 1_000_000,
+    spendMonthUsd: (await used(monthKey(now))) / 1_000_000,
+    caps: {
+      dayUsd: config.maxSpendDayUsd,
+      monthUsd: config.maxSpendMonthUsd,
+      perJob: config.maxCallsPerJob,
+      inputChars: config.maxInputChars,
+      outputTokens: config.maxOutputTokens,
+    },
+    logWriteFailuresToday: await used(`reader:logfail:${now.toISOString().slice(0, 10)}`),
+    recent,
+  };
+}
+
 export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
   const router = Router();
   const fail = (res: any, err: unknown, status = 500) =>
@@ -22,7 +89,8 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
 
   router.get('/lineup/status', async (_req, res) => {
     try {
-      res.json({ ...configuredSources(deps), quota: deps.quota ? await deps.quota.status() : null });
+      const reader = await readerStatus(deps, isOwner(currentMember()));
+      res.json({ ...configuredSources(deps), quota: deps.quota ? await deps.quota.status() : null, ...(reader ? { reader } : {}) });
     } catch (err) {
       fail(res, err);
     }

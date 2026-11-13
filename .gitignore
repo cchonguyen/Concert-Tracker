@@ -34,3 +34,4 @@ audit-dossier.md
 .spec/.vibe-checkpoint.json
 .harness-backup/
 # <<< harness <<<
+recall-result.*

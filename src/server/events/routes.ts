@@ -188,8 +188,8 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
       if (!event) return;
       let reader;
       if (req.body?.useGemini === true) {
-        if (!deps.gemini || !deps.quota) throw new InputError('Gemini is not set up on this server.');
-        reader = geminiReader(deps.gemini, deps.quota, deps.now);
+        if (!deps.reader) throw new InputError('Gemini is not set up on this server.');
+        reader = geminiReader(deps.reader, event.id, deps.now);
       }
       const updated = await researchEvent(event, finders, deps.fetcher, deps.now(), reader);
       await deps.store.putEvent(updated);

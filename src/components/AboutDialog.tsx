@@ -1,9 +1,12 @@
 import { Dialog } from './ui/Dialog';
 import { copy } from '../services/copy';
 import { LineupStatus, SOURCE_LABELS } from '../services/lineupApi';
+import { useIsOwner } from './MeContext';
+import { readerLine } from './ReaderPanel';
 
 // What the app is, where your data lives, and what leaves your browser. Every claim here must match the code.
 export function AboutDialog({ status, onClose, onShowTips }: { status: LineupStatus | null; onClose: () => void; onShowTips: () => void }) {
+  const owner = useIsOwner();
   return (
     <Dialog title={`About ${copy.appName}`} onClose={onClose} panelClassName="h-full w-full max-w-xl space-y-6 overflow-y-auto border-l border-zinc-900 bg-zinc-950 p-5 shadow-2xl">
       <div className="flex items-start justify-between gap-3">
@@ -51,6 +54,7 @@ export function AboutDialog({ status, onClose, onShowTips }: { status: LineupSta
             Sources: {status.sources.map((s) => `${SOURCE_LABELS[s.id]}${s.enabled ? '' : ' (off)'}`).join(' · ')}
           </p>
           <p>Gemini {status.gemini ? `${status.quota?.used ?? 0}/${status.quota?.limit ?? '?'} today` : '(off)'}</p>
+          {owner && status.reader && <p className="break-words">Reader: {readerLine(status.reader)}</p>}
         </section>
       )}
 

@@ -35,11 +35,40 @@ export type {
   PlaceGuess,
 };
 
+export interface ReaderCallSummary {
+  createdAt: string;
+  feature: string;
+  provider: string;
+  model: string;
+  outcome: string;
+  reason: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  estCostUsd: number | null;
+}
+
+// Present only when a reader is configured. Spend, caps, log failures and recent are owner only.
+export interface ReaderStatus {
+  provider: string;
+  model: string;
+  thinkingLevel: string;
+  enabled: boolean;
+  breaker: { open: boolean; until?: string; failures: number };
+  callsToday: number;
+  callsMonth: number;
+  spendTodayUsd?: number;
+  spendMonthUsd?: number;
+  caps?: { dayUsd: number; monthUsd: number; perJob: number; inputChars: number; outputTokens: number };
+  logWriteFailuresToday?: number;
+  recent?: ReaderCallSummary[];
+}
+
 export interface LineupStatus {
   store: 'file' | 'supabase';
   sources: Array<{ id: SourceType; enabled: boolean }>;
   gemini: { model: string; discovery: boolean } | null;
   quota: { used: number; limit: number; exhaustedUntil?: string } | null;
+  reader?: ReaderStatus;
 }
 
 // With a vault on, the people who went travel as encrypted records. While the

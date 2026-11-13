@@ -39,7 +39,7 @@ Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
 | `POST /api/artist-genres/music-story` | Upload music-story's `artist_genres.json` (up to 25 MB): keeps its genre map and the genres of acts you saw; returns `{ matched, seen, inFile, mapTags }` |
 | `PUT /api/artist-genres/:key` | Your own genres for a seen act (`{ styles }`, up to 10, 60 characters each), or `{ reset: true }` to drop them; returns `{ row }` |
 | `POST /api/artist-genres/musicbrainz` | MusicBrainz genres for up to 5 seen acts (`{ keys }`), read through the genre map; returns `{ genres }` (400 before a genre map is uploaded) |
-| `GET /api/lineup/status` | Store kind, which sources are configured, Gemini model and today's usage |
+| `GET /api/lineup/status` | Store kind, which sources are configured, the call quota and a `reader` block (omitted when no reader is configured). Everyone gets `provider`, `model`, `thinkingLevel`, `enabled`, `breaker` (`open`, `until`, `failures`), `callsToday` and `callsMonth`. The owner also gets `spendTodayUsd`, `spendMonthUsd`, `caps` (day and month dollars, calls per job, input chars, output tokens), `logWriteFailuresToday` and `recent` (the last 20 `ai_calls` rows, with no page text). There are no recall routes: recall is a local CLI that never runs in the app |
 | `POST /api/lookups` | Start a lookup without an event (kept for scripts); returns the job (already `needs_review` on a cache hit) |
 | `GET /api/lookups`, `GET /api/lookups/:id` | Job list and detail with log and candidate lineup |
 | `GET /api/manage/canonical/lookups` | Owner only. Recent jobs with no saved event, newest first (the Global archive's Lookups list) |
