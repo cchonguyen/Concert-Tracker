@@ -96,7 +96,7 @@ Numbers follow Charlie's audit. Number 4 is unused: the unknown-price guard was 
 | 1 | Kill switch | `READER_ENABLED` (`on`; any other value blocks) | `kill_switch` | none | park, global |
 | 2 | Circuit breaker open | `READER_BREAKER_FAILURES` (5), `READER_BREAKER_COOLDOWN_MIN` (30) | `breaker_open` | `reader:breaker` | park, global |
 | 3 | Unpinned model (only when `READER_PROVIDER` is set explicitly; refuses `-latest` aliases; any other model string is allowed) | none | `unpinned_model` | none | park, global |
-| 5 | Input size | `READER_MAX_INPUT_CHARS` (200000) | `input_too_large` | none | returns `{ ok: false, reason: 'input_too_large', usage: zeroUsage }`: no throw, breaker untouched. The pipeline logs the skip in `ai_calls`, drops only that page and moves to the next candidate |
+| 5 | Input size | `READER_MAX_INPUT_CHARS` (30000) | `input_too_large` | none | returns `{ ok: false, reason: 'input_too_large', usage: zeroUsage }`: no throw, breaker untouched. The pipeline logs the skip in `ai_calls`, drops only that page and moves to the next candidate |
 | 6 | Calls per job | `READER_MAX_CALLS_PER_JOB` (6) | `job_cap` | `reader:job:<jobId>` | `QuotaExhaustedError` with `scope: 'job'`: parks only that job, breaker untouched |
 | 7 | Spend per day (Pacific day) | `READER_MAX_SPEND_DAY_USD` (0.50) | `spend_day` | `reader:spend:day:<YYYY-MM-DD>` | park, global, opens breaker |
 | 8 | Spend per month (UTC month) | `READER_MAX_SPEND_MONTH_USD` (5) | `spend_month` | `reader:spend:month:<YYYY-MM>` | park, global, opens breaker |
@@ -108,7 +108,7 @@ Notes:
 - Post-call (`recordOutcome`): write once, adding `realCostMicroUsd` to `used`. Use `worstCaseMicroUsd` only when the call succeeded with null usage metadata. A failed call with no usage adds 0.
 - Race: the queue runs one consumer (`max_concurrency: 1`), so the in-memory pre-check is race-free for queue jobs. Non-queue callers (the details button, discovery) can race: two requests may read the same `used`. The error is at most one call. This is accepted and noted.
 - Workers AI on the Free plan has no money cost. Its estimate (`FALLBACK_PRICES`) still counts toward the day and month caps, as a safe over-estimate, and is shown for comparison.
-- Guard 5 input is the text actually sent (after `lineupWindow`). Over-size is refused and logged, never silently cut. `lineupWindow` is the only windowing; it becomes `READER_WINDOW_CHARS` (default 180000, was 40,000). `gemini.ts` keeps its 40,000 constant until slice 10.8 passes the config value, so live behavior does not change before the switch. There is no chunk loop in v1.
+- Guard 5 input is the text actually sent (after `lineupWindow`). Over-size is refused and logged, never silently cut: the pipeline sends the whole page and guard 5 skips any page over `READER_MAX_INPUT_CHARS` (default 30,000, Slice 11.5). `READER_WINDOW_CHARS` also defaults to 30,000, so the adapter's window never shortens an accepted page. There is no chunk loop.
 - Guard 9 is last so call counters only advance for calls that will be made. `force` only bypasses the pause an earlier 429 set. `force` never bypasses guards 1 to 8.
 - Output cap: `READER_MAX_OUTPUT_TOKENS` (8192) for performer lists, `READER_MAX_OUTPUT_TOKENS_DETAILS` (1024) for details.
 - Circuit breaker: `reader:breaker` keeps the consecutive failure count in `used` and the open-until time in `exhausted_until`. A failure is outcome `error`, `invalid_json` or `busy`. A success resets the count. The breaker opens ONLY on: `READER_BREAKER_FAILURES` consecutive provider failures; a provider 402 or 429 quota error; a global day or month cap breach (guards 7, 8, 9). It never opens on guard 5 (one oversized page) or guard 6 (one job over its cap), so one big page cannot stop every other job. While open, every call is refused with `breaker_open` and `retryAt` is the open-until time, so parked jobs do not wake early. Every Worker instance reads it from the database.
@@ -192,7 +192,7 @@ A one-off comparison does not get permanent routes, columns or a React runner. `
 - Output to the terminal, JSON and a Markdown table: per model, recall %, minimum page recall, JSON validity %, input, output and thinking tokens, estimated USD cost, latency. Per page detail too. It never writes to lineups or the database.
 - Pass mark: 90% overall (sum matched over sum expected), no page under 70%, at most 1 page in 10 with invalid JSON. Charlie confirms.
 - Cost guard inside the script: `--max-calls` and `--max-usd` per run; when reached it aborts and prints why. On a quota or 402 error it stops that model, reports it and does not try another model for the same page.
-- The 43,000-token page is about 170,000 characters. The old 40,000-character window cut it. The new default window (180000) reads it whole, at higher input cost (see the worst-case numbers). The report states the window used.
+- The 43,000-token page is about 170,000 characters. Under the 30,000-character ceiling (Slice 11.5) it is skipped with a note, not cut. The report states the window used.
 - The CLI never switches the live provider. Charlie flips the dashboard variables himself.
 
 ## Owner view
@@ -251,6 +251,6 @@ Do not assume these. Check once, write the result in the PR description, adjust 
 2. Add $5 prepaid billing in Google AI Studio with auto top-up off (steps above).
 3. Confirm the pass mark (90% overall, 70% page floor), or change it.
 4. Provide a local fixture JSON or a service key for the CLI, and read its result before slices 10.15 and 10.16 are built.
-5. Confirm the default caps ($0.50 a day, $5 a month, 6 calls per job, 200,000 input characters, 180,000 window, 8,192 output tokens, thinking `LOW`, breaker at 5 failures and a 30 minute cool-down). The $0.50 day cap allows only about 6 to 7 of the largest pages a day.
+5. Confirm the default caps ($0.50 a day, $5 a month, 6 calls per job, 30,000 input characters, 30,000 window, 8,192 output tokens, thinking `LOW`, breaker at 5 failures and a 30 minute cool-down). The $0.50 day cap allows only about 6 to 7 of the largest pages a day.
 6. Confirm the Gemini model id (`gemini-4-hydrogen`) once the implementer lists the live models, and decide whether the model var lives in `wrangler.jsonc` or only in the dashboard.
 7. After the CLI result, decide the live provider and flip `READER_PROVIDER` in the Cloudflare dashboard. Then a follow-up slice renames buttons and the `gemini` status field.
