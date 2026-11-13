@@ -47,6 +47,7 @@ import { normalizeName } from '../normalizeName';
 import type { SqlCanonicalEntry } from '../../entities/canonicalManage';
 import { ArtistEditionRow, CANONICAL_OPERATIONS, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import { checkLinks } from '../../entities/integrity';
+import type { PreflightReply } from '../../reader/guard';
 import { SHARE_EVENT_COLUMNS, type ShareLink } from '../../share/types';
 import type { CachedResponse } from '../responseCache';
 
@@ -1471,6 +1472,19 @@ export class SupabaseLineupStore implements LineupStore {
       }),
       'addAiCall (apply 0038_ai_calls.sql)',
     );
+  }
+
+  // Guard and settle in one database call each (0040_reader_rpcs.sql). Service client only, never the member's.
+  // Errors throw; src/server/reader/guard.ts turns them into a parked job (guard_unavailable), never a fallback.
+  async readerPreflight(args: Record<string, unknown>): Promise<PreflightReply> {
+    const { data, error } = await this.db.rpc('reader_preflight', { p_args: args });
+    if (error) throw new Error(`readerPreflight (apply 0040_reader_rpcs.sql): ${error.message}`);
+    return data as PreflightReply;
+  }
+
+  async readerSettle(args: Record<string, unknown>): Promise<void> {
+    const { error } = await this.db.rpc('reader_settle', { p_args: args });
+    if (error) throw new Error(`readerSettle (apply 0040_reader_rpcs.sql): ${error.message}`);
   }
 
   async listAiCalls(limit: number): Promise<AiCallRow[]> {

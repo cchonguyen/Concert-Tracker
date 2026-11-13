@@ -24,6 +24,35 @@ export function nextUtcMonthStart(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 }
 
+// Subrequest count (Workers limit): a guarded AI call on the Supabase store used about 16 requests (one per
+// ledger read, ledger write and log insert). With reader_preflight and reader_settle (migration 0040) it is 3:
+// preflight, the provider call, settle. The file store keeps the per-key logic below (tests run without Supabase).
+// The RPC path makes the same decisions in the same order, with the same reasons; no guard is dropped.
+export type PreflightReply =
+  | { ok: true }
+  | { ok: false; kind: 'input_too_large' }
+  | { ok: false; kind: 'refuse'; reason: string; retry_at: string; scope: 'global' | 'user' | 'job' };
+
+export interface ReaderRpcStore {
+  readerPreflight(args: Record<string, unknown>): Promise<PreflightReply>;
+  readerSettle(args: Record<string, unknown>): Promise<void>;
+}
+
+export function hasReaderRpc(store: unknown): store is ReaderRpcStore {
+  const s = store as Partial<ReaderRpcStore> | null;
+  return typeof s?.readerPreflight === 'function' && typeof s?.readerSettle === 'function';
+}
+
+// recordOutcome (RPC path) parks its ledger payload here, keyed by the call's `now`; logCall adds the single
+// ai_calls row and sends both to reader_settle in one request. Keyed by the Date instance guardedReader passes
+// to both, so concurrent calls never mix.
+const pendingSettle = new WeakMap<Date, Record<string, unknown>>();
+export function takePendingSettle(now: Date): Record<string, unknown> | undefined {
+  const p = pendingSettle.get(now);
+  pendingSettle.delete(now);
+  return p;
+}
+
 export interface GuardArgs {
   store: LineupStore;
   config: ReaderConfig;
@@ -66,10 +95,80 @@ async function refuseAndOpen(args: GuardArgs, now: Date, until: Date, reason: st
   throw new QuotaExhaustedError(until, reason);
 }
 
+// The per-minute window lives in the Worker's memory (QuotaLedger.recent), so it is read here, not in SQL.
+// Private members are reached by index on purpose: quota.ts is outside this slice.
+function quotaPayload(args: GuardArgs, now: Date): Record<string, unknown> | null {
+  const quota = args.quota;
+  if (!quota) return null;
+  const qc = quota['config'];
+  const key: string = quota['key'](now);
+  const userId = args.quotaOptions?.userId;
+  const lane = args.quotaOptions?.lane ?? 'interactive';
+  const recent: number[] = quota['recent'].filter((t: number) => t > now.getTime() - 60_000);
+  const userDaily = lane === 'backfill' ? (qc.userBackfillDaily ?? 0) : (qc.userDaily ?? 0);
+  return {
+    key,
+    daily_limit: qc.dailyLimit,
+    ignore_pause: args.force ?? args.quotaOptions?.ignorePause ?? false,
+    user_id: userId ?? null,
+    user_key: userId ? (lane === 'backfill' ? `${key}:user:${userId}:backfill` : `${key}:user:${userId}`) : null,
+    user_daily: userDaily,
+    owner_reserve: qc.ownerReserve ?? 0,
+    minute_blocked_until: recent.length >= qc.perMinute ? new Date(recent[0] + 61_000).toISOString() : null,
+  };
+}
+
+async function checkGuardsRpc(args: GuardArgs & { store: LineupStore & ReaderRpcStore }, now: Date): Promise<GuardResult> {
+  const { store, config, provider, model } = args;
+  const { micro } = worstCaseMicroUsd(provider, model, args.inputChars, args.maxOutputTokens);
+  let reply: PreflightReply;
+  try {
+    reply = await store.readerPreflight({
+      now: now.toISOString(),
+      enabled: config.enabled,
+      provider_explicit: config.providerExplicit,
+      model,
+      input_chars: args.inputChars,
+      max_input_chars: config.maxInputChars,
+      max_calls_per_job: config.maxCallsPerJob,
+      job_key: args.jobKey,
+      worst_micro: micro,
+      max_spend_day_micro: config.maxSpendDayUsd * 1_000_000,
+      max_spend_month_micro: config.maxSpendMonthUsd * 1_000_000,
+      day_key: dayKey(now),
+      month_key: monthKey(now),
+      next_midnight: nextPacificMidnight(now).toISOString(),
+      next_month: nextUtcMonthStart(now).toISOString(),
+      cooldown_until: new Date(now.getTime() + config.breakerCooldownMin * 60_000).toISOString(),
+      breaker_key: BREAKER_KEY,
+      quota: quotaPayload(args, now),
+    });
+  } catch {
+    // Fail closed: park the job, never fall back to another model or to heuristics.
+    throw new QuotaExhaustedError(new Date(now.getTime() + UNAVAILABLE_RETRY_MS), 'guard_unavailable');
+  }
+  if (reply.ok) {
+    if (args.quota) args.quota['recent'].push(now.getTime());
+    return { ok: true, worstCaseMicroUsd: micro };
+  }
+  if (reply.kind === 'input_too_large') return { ok: false, reason: 'input_too_large', usage: zeroUsage(provider, model) };
+  const lane = args.quotaOptions?.lane ?? 'interactive';
+  let reason = reply.reason;
+  if (reason === 'user_daily') {
+    const n = lane === 'backfill' ? (args.quota?.['config'].userBackfillDaily ?? 0) : (args.quota?.['config'].userDaily ?? 0);
+    reason = `Your daily limit of ${n} ${lane === 'backfill' ? 'background ' : ''}Gemini calls is used; retrying after the midnight Pacific reset.`;
+  } else if (reason === 'owner_reserve') {
+    reason = `The shared Gemini budget is down to the owner's reserve; retrying after the midnight Pacific reset.`;
+  }
+  throw new QuotaExhaustedError(new Date(reply.retry_at), reason, reply.scope);
+}
+
 export async function checkGuards(args: GuardArgs): Promise<GuardResult> {
   const { store, config, provider, model } = args;
   const now = args.now ?? new Date();
   const cooldownUntil = new Date(now.getTime() + config.breakerCooldownMin * 60_000);
+
+  if (hasReaderRpc(store)) return checkGuardsRpc({ ...args, store }, now);
 
   // 1 kill switch
   if (!config.enabled) throw new QuotaExhaustedError(cooldownUntil, 'kill_switch');
@@ -151,6 +250,26 @@ export async function recordOutcome(args: OutcomeArgs): Promise<void> {
   const { store, config } = args;
   const now = args.now ?? new Date();
   const cost = realCostMicroUsd(args);
+  if (hasReaderRpc(store)) {
+    const payload = {
+      record_ledger: true,
+      now: now.toISOString(),
+      outcome: args.outcome,
+      cost_micro: cost,
+      calls_month_key: callsMonthKey(now),
+      day_key: dayKey(now),
+      month_key: monthKey(now),
+      breaker_key: BREAKER_KEY,
+      breaker_failures: config.breakerFailures,
+      breaker_until: (args.retryAt ?? new Date(now.getTime() + config.breakerCooldownMin * 60_000)).toISOString(),
+    };
+    if (args.now) {
+      pendingSettle.set(args.now, payload); // flushed with the call-log row by logCall
+      return;
+    }
+    await ledger(now, () => store.readerSettle(payload)); // no key to pair it with: ledger-only settle
+    return;
+  }
   await ledger(now, async () => {
     // Owner view: calls made this UTC month (every provider call, whatever its outcome).
     const calls = (await store.getQuota(callsMonthKey(now))) ?? { key: callsMonthKey(now), used: 0 };
