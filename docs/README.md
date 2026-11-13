@@ -19,4 +19,5 @@ Feature specs, designs and backlogs for LiveArchive. Agent rules are in [AGENTS.
 | [canonical-archive-ux-spec.md](canonical-archive-ux-spec.md) | Superseded for the Global archive by [global-archive-rework-spec.md](global-archive-rework-spec.md) (kept for its catalog rules) |
 | [global-archive-rework-spec.md](global-archive-rework-spec.md) | Approved 2026-11-03; current Global archive spec, built as Slices 8.1 to 8.10 |
 | [ai-reader-spec.md](ai-reader-spec.md) | Scope confirmed 2026-11-12; two-way reader test (Workers AI and paid Gemini), AI call log and spend guards, Slices 10.1 to 10.19 |
+| [ingest-canon-plan.md](ingest-canon-plan.md) | Approved 2026-11-13; event ingest ladder, shared occurrences with history and inheritance, owner review queue and traces, Slices 11.0 to 11.22 (personal-field privacy held) |
 | [social-features-spec.md](social-features-spec.md) | Preliminary draft, discussion only |
