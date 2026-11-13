@@ -255,7 +255,12 @@ export interface Edition {
   venue?: string;
   city?: string;
   country?: string;
-  status: 'draft' | 'confirmed';
+  // 'confirmed' means 'verified'. Migration 0041 accepts both and converts nothing; a later step converts the
+  // rows. It stays in the union so code written before slice 11.9 compiles; read it as 'verified'.
+  status: EditionStatus | 'confirmed';
+  venueId?: string; // canonical_venues.id (0041)
+  subjectKey?: string; // shared artist key for a headline show, series slug for a festival (0041)
+  hasLineup?: boolean; // 0041
   performances: EditionPerformance[];
   confirmedAt?: string;
   updatedAt: string;
@@ -305,4 +310,79 @@ export interface ArtistIdentity {
   name: string;
   mbid?: string;
   resolvedAt?: string;
+}
+
+// Shared occurrences (migrations 0041 and 0042; not used by code yet) ----------------------------------
+
+export type EditionStatus = 'draft' | 'provisional' | 'verified';
+
+export interface CanonicalVenue {
+  id: string;
+  name: string;
+  city?: string;
+  region?: string;
+  country?: string;
+  createdAt: string;
+}
+
+export interface VenueAlias {
+  venueId: string;
+  aliasNormalized: string;
+  source?: string;
+  externalId?: string;
+}
+
+export interface EditionExternalId {
+  editionId: string;
+  source: string;
+  externalId: string;
+}
+
+// One recorded change to a shared edition; append-only, only undoneAt is ever set later.
+export interface EditionChange {
+  id: string;
+  editionId: string;
+  at: string;
+  actor: string;
+  reason?: string;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+  undoneAt?: string;
+}
+
+export type ReviewQueueKind = 'override' | 'merge_suggestion' | 'provisional' | 'formatting' | 'failed_lookup';
+
+// Payloads hold edition facts and field names only, never personal fields.
+export interface ReviewQueueItem {
+  id: string;
+  kind: ReviewQueueKind;
+  editionId?: string;
+  eventId?: string;
+  payload: Record<string, unknown>;
+  status: string; // 'open' by default
+  createdAt: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+}
+
+// logged_events.captured: the shared-fact fields as first typed or imported. Written once.
+export interface CapturedFields {
+  name?: string;
+  year?: number | null;
+  month?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  venue?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+}
+
+// logged_events.overrides: the fields the person changed while linked to an edition.
+export type EventOverrides = Partial<CapturedFields>;
+
+// Optional extra columns of logged_events (0041), for the stores in slice 11.9 onward.
+export interface LoggedEventInheritance {
+  captured?: CapturedFields | null;
+  overrides?: EventOverrides;
 }
