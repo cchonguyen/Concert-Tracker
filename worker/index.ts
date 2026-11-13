@@ -17,6 +17,7 @@ import { unsubscribeSecretFromEnv } from '../src/server/email/unsubscribe';
 import { redactSecrets } from '../src/server/lineup/http';
 import type { EventsRunner } from '../src/server/events/routes';
 import { defaultFinders, researchCatalogFor, runQueuedResearch } from '../src/server/events/details';
+import { runResearchBackfill } from '../src/server/events/backfillResearch';
 import { rung4Urls, runReaderPage } from '../src/server/events/detailsGemini';
 import { makeBudget, runWithBudget } from '../src/server/lineup/budget';
 
@@ -182,6 +183,22 @@ async function runCron(env: Env): Promise<void> {
     if (backfill) console.log(`Canon backfill: ${JSON.stringify(backfill)}`);
   } catch (err) {
     console.error('Canon backfill failed:', err instanceof Error ? err.message : String(err));
+  }
+  // Slice 11.19: research up to 5 events still 'pending' (rungs 1 and 2, no Brave, no reader), owner only, as many
+  // as the subrequest budget allows (worst case 3 + 5 * 25 = 128; backfillResearch.ts).
+  try {
+    let store: typeof deps.store | null = deps.store;
+    let ownerId: string | undefined;
+    if (multiUserFromEnv(settings)) {
+      ownerId = (await deps.store.ownerUserId?.()) ?? undefined;
+      store = ownerId && deps.store.forUser ? deps.store.forUser({ userId: ownerId, role: 'owner' }) : null;
+    }
+    const researched = store
+      ? await runResearchBackfill(store, defaultFinders(), deps.fetcher, now, { role: ownerId ? 'owner' : undefined, userId: ownerId, catalogStore: deps.store })
+      : null;
+    if (researched?.researched) console.log(`Research backfill: ${JSON.stringify(researched)}`);
+  } catch (err) {
+    console.error('Research backfill failed:', redactSecrets(err instanceof Error ? err.message : String(err)));
   }
   const due = await deps.store.dueJobs(deps.now(), 5);
   if (due.length) await env.LOOKUP_QUEUE.sendBatch(due.map((job) => ({ body: { jobId: job.id } })));
