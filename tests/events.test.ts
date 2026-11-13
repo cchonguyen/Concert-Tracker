@@ -25,20 +25,19 @@ import { fakeFetcher } from './fakes.ts';
 const NOW = new Date('2026-10-20T12:00:00Z');
 
 test('parses name, date and place from one line, in your own words', () => {
-  assert.deepEqual(parseEventInput('Porter Robinson at the Greek Theatre, Los Angeles, Oct 5 2024'), {
+  const { text: _t, readings: _r, ...porter } = parseEventInput('Porter Robinson at the Greek Theatre, Los Angeles, Oct 5 2024');
+  assert.deepEqual(porter, {
     name: 'Porter Robinson',
     year: 2024,
     startDate: '2024-10-05',
     venue: 'the Greek Theatre',
     city: 'Los Angeles',
   });
-  assert.deepEqual(parseEventInput('EDC Las Vegas 2025'), { name: 'EDC Las Vegas', year: 2025 });
-  assert.deepEqual(parseEventInput('Fred again.. in Brooklyn October 2023'), {
-    name: 'Fred again..',
-    year: 2023,
-    month: 10,
-    city: 'Brooklyn',
-  });
+  const { text: _t2, readings: _r2, ...edc } = parseEventInput('EDC Las Vegas 2025');
+  assert.deepEqual(edc, { name: 'EDC Las Vegas', year: 2025 });
+  // " in " no longer splits a place on its own (it is only an alternative reading).
+  const { text: _t3, readings: _r3, ...fred } = parseEventInput('Fred again.. in Brooklyn October 2023');
+  assert.deepEqual(fred, { name: 'Fred again.. in Brooklyn', year: 2023, month: 10 });
   const fest = parseEventInput('Coachella May 16-18, 2025');
   assert.equal(fest.startDate, '2025-05-16');
   assert.equal(fest.endDate, '2025-05-18');
@@ -48,13 +47,45 @@ test('parses name, date and place from one line, in your own words', () => {
 });
 
 test('the parser never invents: no date stays no date, and band names keep their numbers', () => {
-  assert.deepEqual(parseEventInput('Kaskade'), { name: 'Kaskade' });
+  assert.deepEqual(parseEventInput('Kaskade'), { name: 'Kaskade', text: 'Kaskade', readings: [{ name: 'Kaskade' }] });
   const band = parseEventInput('The 1975 at the Forum 2023');
   assert.equal(band.name, 'The 1975');
   assert.equal(band.year, 2023);
   assert.equal(parseEventInput('Blink-182').name, 'Blink-182');
   assert.equal(parseEventInput('Blink-182').year, undefined);
   assert.equal(parseEventInput('Show Feb 30 2024').startDate, undefined, 'impossible dates are not dates');
+});
+
+test('the parser keeps the full text, never splits on " in ", and offers up to two readings', () => {
+  const full = 'Metallica in Concert Oct 5 2024';
+  const m = parseEventInput(full);
+  assert.equal(m.text, full, 'the full typed text is kept');
+  assert.equal(m.name, 'Metallica in Concert');
+  assert.equal(m.city, undefined);
+  assert.deepEqual(m.readings, [{ name: 'Metallica in Concert' }, { name: 'Metallica', city: 'Concert' }]);
+
+  const red = parseEventInput('Porter Robinson at Red Rocks, Morrison');
+  assert.equal(red.name, 'Porter Robinson');
+  assert.equal(red.venue, 'Red Rocks');
+  assert.equal(red.city, 'Morrison');
+  assert.deepEqual(red.readings, [
+    { name: 'Porter Robinson', venue: 'Red Rocks', city: 'Morrison' },
+    { name: 'Porter Robinson at Red Rocks, Morrison' },
+  ]);
+  assert.equal(parseEventInput('ODESZA @ Red Rocks').venue, 'Red Rocks');
+  assert.equal(parseEventInput('ODESZA@Red Rocks').venue, 'Red Rocks');
+  assert.equal(parseEventInput('Kaskade at Marquee, Las Vegas').city, 'Las Vegas');
+
+  const comma = parseEventInput('Earth, Wind & Fire');
+  assert.equal(comma.name, 'Earth, Wind & Fire', 'a bare comma does not split the name');
+  assert.deepEqual(comma.readings, [{ name: 'Earth, Wind & Fire' }, { name: 'Earth', city: 'Wind & Fire' }]);
+
+  for (const line of ['Kaskade', 'Metallica in Concert', 'A at B, C', 'X, Y, Z 2024']) {
+    const p = parseEventInput(line);
+    assert.ok(p.readings.length >= 1 && p.readings.length <= 2);
+    for (const r of p.readings) for (const v of [r.name, r.venue, r.city]) if (v) assert.ok(line.includes(v), `"${v}" is from the typed text`);
+  }
+  assert.deepEqual(parseEventInput('Kaskade').readings, [{ name: 'Kaskade' }], 'no place marker, one reading');
 });
 
 test('a new event stores what you typed, sourced to you, before any research', () => {
@@ -462,7 +493,7 @@ test('a renamed event that finds nothing is looked up again under the name you f
 });
 
 test('"Use this" takes one field from the confirmed suggestion and replaces what you typed', async () => {
-  const ev = newEvent('Head in the Clouds in Pasadena May 31 2025', NOW);
+  const ev = newEvent('Head in the Clouds @ , Pasadena May 31 2025', NOW);
   const out = await researchEvent(
     ev,
     [finder('discovered', [{ startDate: '2025-05-31', venue: 'Brookside at the Rose Bowl', city: 'Pasadena, CA', sources: src('discovered', ['startDate', 'venue', 'city']) }])],

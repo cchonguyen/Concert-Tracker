@@ -4,8 +4,20 @@
 // browser (live preview) and on the server (the saved result), so it must not
 // import Node modules.
 
+// One way research may read the line: words taken from what was typed, never
+// anything added.
+export interface Reading {
+  name: string;
+  venue?: string;
+  city?: string;
+}
+
 export interface ParsedInput {
   name: string;
+  /** The full text you typed (whitespace tidied), kept whole. */
+  text: string;
+  /** Up to 2 readings of the line for research to try; always at least one. */
+  readings: Reading[];
   year?: number;
   month?: number;
   startDate?: string;
@@ -130,27 +142,39 @@ export function parseEventInput(raw: string): ParsedInput {
   }
   if (dates.startDate) dates.year = +dates.startDate.slice(0, 4);
 
-  // Place: "<name> at|@ <venue>[, <city>]" or "<name> in <city>".
+  // Place: "<name> at|@ <venue>[, <city>]". Only " at ", "@" and a comma
+  // after them mark a place; " in " alone never splits (it is only offered as
+  // an alternative reading for research).
   let name = text;
   let venue: string | undefined;
   let city: string | undefined;
   const at = text.match(/^(.*?)\s(?:at|@)\s(.*)$/i) ?? text.match(/^(.*?)@(.*)$/);
+  const whole = tidy(text);
+  const readings: Reading[] = [];
+  const addReading = (r: Reading) => {
+    const clean: Reading = { name: r.name };
+    if (r.venue) clean.venue = r.venue;
+    if (r.city) clean.city = r.city;
+    if (!clean.name || readings.length >= 2) return;
+    if (readings.some((x) => x.name === clean.name && x.venue === clean.venue && x.city === clean.city)) return;
+    readings.push(clean);
+  };
   if (at && tidy(at[1])) {
     name = at[1];
-    const place = at[2];
-    const inCity = place.match(/^(.*?)\s+in\s+(.*)$/i);
-    const parts = inCity ? [inCity[1], inCity[2]] : place.split(',');
+    const parts = at[2].split(',');
     venue = tidy(parts[0]) || undefined;
     city = tidy(parts.slice(1).join(',')) || undefined;
+    addReading({ name: tidy(name), venue, city });
+    addReading({ name: whole });
   } else {
+    addReading({ name: whole });
     const inCity = text.match(/^(.*)\s+in\s+(.*)$/i);
-    if (inCity && tidy(inCity[1]) && tidy(inCity[2])) {
-      name = inCity[1];
-      city = tidy(inCity[2]);
-    }
+    const comma = text.match(/^(.*),(.*)$/);
+    const alt = inCity ?? comma;
+    if (alt && tidy(alt[1]) && tidy(alt[2])) addReading({ name: tidy(alt[1]), city: tidy(alt[2]) });
   }
 
-  const out: ParsedInput = { name: tidy(name), ...dates, venue, city };
+  const out: ParsedInput = { name: tidy(name), ...dates, venue, city, text: tidy(raw), readings };
   for (const k of Object.keys(out) as Array<keyof ParsedInput>) if (out[k] === undefined) delete out[k];
   return out;
 }
