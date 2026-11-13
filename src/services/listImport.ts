@@ -534,7 +534,7 @@ export async function runImport(
       if (choice.kind === 'skip') continue;
       if (choice.kind === 'new') {
         const event = await api.create(row.name);
-        await api.update(event.id, newEventPatch(row, leaveOut));
+        await api.update(event.id, { ...newEventPatch(row, leaveOut), import: true } as EventPatch);
         result.created++;
         continue;
       }
