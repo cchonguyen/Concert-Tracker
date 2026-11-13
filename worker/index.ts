@@ -16,7 +16,7 @@ import { supabaseEmailPreferences } from '../src/server/email/store';
 import { unsubscribeSecretFromEnv } from '../src/server/email/unsubscribe';
 import { redactSecrets } from '../src/server/lineup/http';
 import type { EventsRunner } from '../src/server/events/routes';
-import { defaultFinders, runQueuedResearch } from '../src/server/events/details';
+import { defaultFinders, researchCatalogFor, runQueuedResearch } from '../src/server/events/details';
 import { makeBudget, runWithBudget } from '../src/server/lineup/budget';
 
 // Cloudflare Worker entry. Static files are served from ./dist by Workers
@@ -242,11 +242,11 @@ export default {
     for (const message of batch.messages) {
       if (message.body.type === 'research') {
         const { eventId, userId, role } = message.body;
-        // One research message: at most 13 subrequests (details.ts, runQueuedResearch), in its own budget.
+        // One research message: at most 27 subrequests (13 + catalog rungs 1 and 2; 1 over the plan's 26; details.ts, runQueuedResearch), in its own budget.
         await runWithBudget(makeBudget(), async () => {
           try {
             const store = userId && deps.store.forUser ? deps.store.forUser({ userId, role: role ?? 'member' }) : deps.store;
-            await runQueuedResearch(store, eventId, defaultFinders(), deps.fetcher, deps.now());
+            await runQueuedResearch(store, eventId, defaultFinders(), deps.fetcher, deps.now(), researchCatalogFor(role, userId, deps.store));
           } catch (err) {
             // The event stays as typed and 'pending'; "Look again" can run it. No retry, no fallback.
             console.error(`Queue research ${eventId} failed:`, redactSecrets(err instanceof Error ? err.message : String(err)));
