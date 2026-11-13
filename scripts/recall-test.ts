@@ -29,6 +29,7 @@ function printHelp() {
 Usage: npx tsx scripts/recall-test.ts [options]
 
 Local recall benchmark. Read only: never writes to lineups or any database.
+Benchmark of a possible reading strategy only: production code and its one-call-per-page reading are unchanged.
 Runs gemini-3.5-flash-lite, gemini-4-hydrogen, gemini-flash-lite-latest (production, fallback price),
 @cf/zai-org/glm-4.7-flash and @cf/google/gemma-4-26b-a4b-it at LOW reasoning over confirmed editions' stored source pages.
 
@@ -40,8 +41,14 @@ Input (one of):
 Options:
   --limit <n>           Pages to test (default 8: newest first, largest always included, one per edition)
   --window <chars>      Characters of page text shown to the model (default 180000)
-  --max-calls <n>       Abort after this many model calls, retries included (default 40)
+  --max-calls <n>       Abort after this many model calls, retries included (default 150)
                         Gemini 503/UNAVAILABLE and Workers AI 5xx/timeouts retry up to 3 times; quota errors never retry.
+  --chunk-chars <n>     Opt-in (default off: one call per page). Split each page's text into pieces of about n
+                        characters at line breaks (a line is never cut unless one line is longer than n, then it is
+                        cut every n characters), call the model once per piece with the same prompt, merge the acts
+                        (de-duplicated by normalized name, first quote kept) and score the merge against the page.
+                        A failed piece is recorded and the others continue; a quota error stops that model.
+  --timeout-sec <n>     Timeout for Workers AI HTTP calls (default 180). Gemini calls are unchanged.
   --max-usd <n>         Abort before a call that could pass this estimated spend (default 2)
   --max-output-tokens <n>  Output-token cap for every model (default 8192, same as production)
   --models <a,b>        Only these model ids
@@ -112,7 +119,7 @@ function geminiCaller(apiKey: string, model: string): BenchCaller {
   };
 }
 
-function workersAiCaller(accountId: string, token: string, model: string): BenchCaller {
+function workersAiCaller(accountId: string, token: string, model: string, timeoutSec: number): BenchCaller {
   const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`;
   return async (page, { window, maxOutputTokens }): Promise<RawReply> => {
     const body = {
@@ -125,7 +132,7 @@ function workersAiCaller(accountId: string, token: string, model: string): Bench
       chat_template_kwargs: { enable_thinking: false },
       response_format: { type: 'json_schema', json_schema: toJsonSchema(SCHEMA) },
     };
-    const res = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(180000) });
+    const res = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutSec * 1000) });
     const raw = await res.text();
     let json: unknown = null;
     try {
@@ -173,7 +180,7 @@ async function main() {
       if (!geminiKey) skipped.push(`${m.model}: GEMINI_API_KEY is not set`);
       else specs.push({ ...m, call: geminiCaller(geminiKey, m.model) });
     } else if (!cfAccount || !cfToken) skipped.push(`${m.model}: CF_ACCOUNT_ID or CLOUDFLARE_API_TOKEN is not set`);
-    else specs.push({ ...m, call: workersAiCaller(cfAccount, cfToken, m.model) });
+    else specs.push({ ...m, call: workersAiCaller(cfAccount, cfToken, m.model, args.timeoutSec) });
   }
   for (const s of skipped) console.log(`Skipped ${s}`);
   if (specs.length === 0) throw new Error('No model can run: set GEMINI_API_KEY and/or CF_ACCOUNT_ID with CLOUDFLARE_API_TOKEN.');
@@ -183,6 +190,7 @@ async function main() {
     maxCalls: args.maxCalls,
     maxUsd: args.maxUsd,
     maxOutputTokens: args.maxOutputTokens,
+    chunkChars: args.chunkChars,
     secrets: secrets.filter((s): s is string => Boolean(s)),
     log: (line) => console.log(redact(line, secrets)),
   });
@@ -200,7 +208,7 @@ async function main() {
   console.log('Names missing from the page text are a ground-truth issue, not a model miss; the verdict uses recall on page.');
   for (const m of result.models) if (m.stopped) console.log(`${m.model} stopped (${m.stopped.kind}): ${m.stopped.message}`);
   if (result.aborted) console.log(`ABORTED: ${result.aborted}`);
-  console.log(`Window used: ${args.window} characters. Max output tokens: ${result.maxOutputTokens}. Calls (retries included): ${result.calls}. Estimated spend: $${result.spentUsd.toFixed(4)}.`);
+  console.log(`Window used: ${args.window} characters. Chunk size: ${args.chunkChars ? `${args.chunkChars} characters` : 'off (one call per page)'}. Max output tokens: ${result.maxOutputTokens}. Calls (retries included): ${result.calls}. Estimated spend: $${result.spentUsd.toFixed(4)}.`);
 
   const json = redact(JSON.stringify(benchJson(result, pages), null, 2), secrets);
   const md = redact(renderBenchMarkdown(result, pages), secrets);

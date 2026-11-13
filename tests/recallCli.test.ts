@@ -7,6 +7,9 @@ import {
   benchJson,
   classifyFailure,
   invalidReason,
+  mergeReturned,
+  splitIntoPieces,
+  DEFAULT_MAX_CALLS,
   parseBenchArgs,
   parseWorkersAiEnvelope,
   passVerdict,
@@ -267,4 +270,110 @@ test('gemini-flash-lite-latest is benchmarked and marked as fallback-priced', as
   assert.match(renderBenchMarkdown(r, [page('p1')]), /\(fallback price\)/);
   const known = await runBenchmark([spec('gemini-3.5-flash-lite', async () => good)], [page('p1')], opts);
   assert.equal(reportsFor(known, [page('p1')])[0].priceIsFallback, false);
+});
+
+const reply = (names: string[], extra: Partial<RawReply> = {}): RawReply => ({
+  text: JSON.stringify({ performers: names.map((n) => ({ name: n, quote: n })) }),
+  truncated: false,
+  inputTokens: 10,
+  outputTokens: 5,
+  thinkingTokens: 0,
+  ...extra,
+});
+const bigPage: BenchPage = { pageId: 'big', editionKey: 'big', eventName: 'big', year: 2025, text: 'Alpha\nBeta\nGamma\nDelta', expectedNames: ['Alpha', 'Beta', 'Gamma', 'Delta'] };
+
+test('splitIntoPieces splits at line breaks and cuts only an over-long line', () => {
+  assert.deepEqual(splitIntoPieces('a\nb', 100), ['a\nb']);
+  assert.deepEqual(splitIntoPieces('aaa\nbbb\nccc\n', 8), ['aaa\nbbb\n', 'ccc\n']);
+  const pieces = splitIntoPieces('ab\n' + 'x'.repeat(10) + '\ncd', 4);
+  assert.ok(pieces.every((p) => p.length <= 4));
+  assert.equal(pieces.join(''), 'ab\n' + 'x'.repeat(10) + '\ncd');
+  assert.ok(pieces[0] === 'ab\n');
+});
+
+test('mergeReturned de-duplicates by normalized name and keeps the first quote', () => {
+  const m = mergeReturned([[{ name: 'Alpha', quote: 'first' }], [{ name: ' ALPHA ', quote: 'second' }, { name: 'Beta', quote: 'b' }]]);
+  assert.deepEqual(m, [{ name: 'Alpha', quote: 'first' }, { name: 'Beta', quote: 'b' }]);
+});
+
+test('chunked run: one call per piece, merged and scored, sums reported', async () => {
+  const seen: string[] = [];
+  const r = await runBenchmark(
+    [spec('m1', async (p) => (seen.push(p.text), reply(p.text.split('\n').filter(Boolean).concat(['Alpha']))))],
+    [bigPage],
+    { ...opts, chunkChars: 12 },
+  );
+  assert.equal(seen.length, 2);
+  assert.equal(r.calls, 2);
+  assert.equal(r.chunkChars, 12);
+  const rep = reportsFor(r, [bigPage])[0];
+  assert.equal(rep.overallRecall, 1);
+  assert.equal(rep.pages[0].pieces, 2);
+  assert.equal(rep.inputTokens, 20);
+  assert.equal(rep.outputTokens, 10);
+  assert.match(renderBenchMarkdown(r, [bigPage]), /Chunk size: 12 characters/);
+  assert.equal(benchJson(r, [bigPage]).chunkChars, 12);
+});
+
+test('chunked run: a failed piece does not stop the others', async () => {
+  let n = 0;
+  const r = await runBenchmark(
+    [spec('m1', async (p) => {
+      n++;
+      if (n === 1) throw new BenchHttpError(400, 'bad request');
+      return reply(p.text.split('\n').filter(Boolean));
+    })],
+    [bigPage],
+    { ...opts, chunkChars: 12 },
+  );
+  assert.equal(n, 2);
+  assert.equal(r.models[0].stopped, null);
+  const rep = reportsFor(r, [bigPage])[0];
+  assert.equal(rep.pages[0].validJson, false);
+  assert.equal(rep.pages[0].failedPieces, 1);
+  assert.equal(rep.overallRecall, 0.5);
+  assert.equal(invalidReason(rep.pages[0]), '1 of 2 pieces failed');
+});
+
+test('chunked run: quota stops the model; retries and pieces count as calls', async () => {
+  let n = 0;
+  const r = await runBenchmark([spec('m1', async () => { n++; throw new BenchHttpError(402, 'payment required'); })], [bigPage], { ...opts, chunkChars: 12 });
+  assert.equal(n, 1);
+  assert.equal(r.models[0].stopped?.kind, 'quota');
+  let t = 0;
+  const r2 = await runBenchmark([spec('m1', async (p) => { t++; if (t === 1) throw new BenchHttpError(503, 'UNAVAILABLE'); return reply([p.text.trim().split('\n')[0]]); })], [bigPage], { ...opts, chunkChars: 12 });
+  assert.equal(r2.calls, 3); // 1 retry + 2 pieces
+  assert.equal(reportsFor(r2, [bigPage])[0].retriedCalls, 1);
+  const r3 = await runBenchmark([spec('m1', async () => good)], [bigPage], { ...opts, chunkChars: 12, maxCalls: 1 });
+  assert.match(r3.aborted ?? '', /--max-calls 1/);
+});
+
+test('chunked run: worst-case spend is checked before every piece', async () => {
+  let n = 0;
+  const r = await runBenchmark([spec('m1', async () => (n++, good))], [bigPage], { ...opts, chunkChars: 12, maxUsd: 0.0001 });
+  assert.equal(n, 0);
+  assert.match(r.aborted ?? '', /--max-usd/);
+});
+
+test('new defaults: max-calls 150, no chunking, 180 s timeout; flags parse', () => {
+  assert.equal(DEFAULT_MAX_CALLS, 150);
+  const d = parseBenchArgs([]);
+  assert.equal(d.maxCalls, 150);
+  assert.equal(d.chunkChars, null);
+  assert.equal(d.timeoutSec, 180);
+  const a = parseBenchArgs(['--chunk-chars', '20000', '--timeout-sec', '300']);
+  assert.equal(a.chunkChars, 20000);
+  assert.equal(a.timeoutSec, 300);
+  assert.throws(() => parseBenchArgs(['--chunk-chars', '0']));
+  assert.throws(() => parseBenchArgs(['--timeout-sec', 'x']));
+  assert.equal(parseBenchArgs([]).window, 180000);
+});
+
+test('without --chunk-chars a page is one call and shows no chunking', async () => {
+  let n = 0;
+  const r = await runBenchmark([spec('m1', async () => (n++, good))], [page('p1')], opts);
+  assert.equal(n, 1);
+  assert.equal(r.chunkChars, null);
+  assert.equal(r.models[0].run.pages[0].pieces, undefined);
+  assert.match(renderBenchMarkdown(r, [page('p1')]), /Chunk size: off/);
 });
