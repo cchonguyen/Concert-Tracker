@@ -56,6 +56,19 @@ import type { CachedResponse } from '../responseCache';
 // Postgres-backed store. Tables are defined in
 // supabase/migrations/0002_source_first_lineups.sql, 0003_event_log.sql and
 // 0004_email_imports.sql (optional: only email import needs it).
+// Thrown by upsertEdition when the occurrence unique index (start_date, venue_id, subject_key) is hit.
+export class EditionOccurrenceConflictError extends Error {
+  constructor(
+    public readonly editionId: string,
+    public readonly startDate?: string,
+    public readonly venueId?: string,
+    public readonly subjectKey?: string,
+  ) {
+    super(`Edition ${editionId} clashes with another edition on the same date, venue and subject.`);
+    this.name = 'EditionOccurrenceConflictError';
+  }
+}
+
 export class SupabaseLineupStore implements LineupStore {
   readonly kind = 'supabase' as const;
 
@@ -410,6 +423,9 @@ export class SupabaseLineupStore implements LineupStore {
       venue: row.venue ?? undefined,
       city: row.city ?? undefined,
       country: row.country ?? undefined,
+      ...(row.venue_id != null ? { venueId: row.venue_id } : {}),
+      ...(row.subject_key != null ? { subjectKey: row.subject_key } : {}),
+      ...(row.has_lineup != null ? { hasLineup: row.has_lineup } : {}),
       status: row.status,
       confirmedAt: row.confirmed_at ?? undefined,
       updatedAt: row.updated_at,
@@ -452,8 +468,7 @@ export class SupabaseLineupStore implements LineupStore {
   async upsertEdition(e: Edition) {
     const series = await this.getSeries(e.seriesSlug);
     if (!series) await this.upsertSeries({ slug: e.seriesSlug, name: e.name });
-    this.check(
-      await this.db.from('event_editions').upsert({
+    const written = await this.db.from('event_editions').upsert({
         id: e.id,
         key: e.key,
         series_slug: e.seriesSlug,
@@ -464,13 +479,20 @@ export class SupabaseLineupStore implements LineupStore {
         venue: e.venue ?? null,
         city: e.city ?? null,
         country: e.country ?? null,
+        venue_id: e.venueId ?? null,
+        subject_key: e.subjectKey ?? null,
+        has_lineup: e.hasLineup ?? null,
         status: e.status,
         confirmed_at: e.confirmedAt ?? null,
         fact_source_note: e.factSourceNote ?? null,
         updated_at: e.updatedAt,
-      }),
-      'upsertEdition',
-    );
+      });
+    // event_editions_occurrence_uidx: another edition already holds this date, venue and subject.
+    const err = written.error as { code?: string; message: string } | null;
+    if (err && (err.code === '23505' || /event_editions_occurrence_uidx/.test(err.message))) {
+      throw new EditionOccurrenceConflictError(e.id, e.startDate, e.venueId, e.subjectKey);
+    }
+    this.check(written, 'upsertEdition');
     await this.ensureArtists(e.performances.map((p) => ({ key: p.artistKey, name: p.name })));
     this.check(await this.db.from('performances').delete().eq('edition_id', e.id), 'upsertEdition clear');
     if (e.performances.length > 0) {
