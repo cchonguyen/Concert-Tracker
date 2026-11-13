@@ -12,6 +12,7 @@ import {
   lineupApi,
   LoggedEvent,
   meApi,
+  takeResearchOutcome,
 } from './services/lineupApi';
 import { CaptureBar } from './components/CaptureBar';
 import { EventsHome } from './components/EventsHome';
@@ -193,6 +194,27 @@ export default function App({ initialMe }: { initialMe?: Me }) {
     return () => clearTimeout(t);
   }, [lineups, refresh]);
 
+  // Queued research: poll while an event is still being looked up. An event whose details have left 'pending'
+  // is done. Gives up after about two minutes (the event stays as typed; "Look again" still works).
+  const [queued, setQueued] = useState<Set<string>>(new Set());
+  const pollTicks = useRef(0);
+  const stopQueued = useCallback((done: (id: string) => boolean) => {
+    const drop = (s: Set<string>) => (new Set([...s].filter((id) => !done(id))));
+    setQueued(drop);
+    setResearching(drop);
+  }, []);
+  useEffect(() => {
+    if (!queued.size) return;
+    const finished = (id: string) => events.find((e) => e.id === id)?.details.status !== 'pending';
+    if ([...queued].some(finished)) return stopQueued(finished);
+    if (pollTicks.current >= 40) return stopQueued(() => true);
+    const t = setTimeout(() => {
+      pollTicks.current += 1;
+      void refresh();
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [queued, events, refresh, stopQueued]);
+
   const upsert = (event: LoggedEvent) =>
     setEvents((list) => (list.some((e) => e.id === event.id) ? list.map((e) => (e.id === event.id ? event : e)) : [event, ...list]));
 
@@ -207,6 +229,22 @@ export default function App({ initialMe }: { initialMe?: Me }) {
       return;
     }
     setResearching((s) => new Set(s).add(event.id));
+    // The server queued research (Slice 11.15): show "Looking up details" and pick up the result by polling.
+    const outcome = takeResearchOutcome(event.id);
+    if (outcome === 'queued') {
+      pollTicks.current = 0;
+      setQueued((q) => new Set(q).add(event.id));
+      return;
+    }
+    // The queue could not be reached: the event stays as typed and pending; research can be run from the event.
+    if (outcome === 'pending') {
+      setResearching((s) => {
+        const next = new Set(s);
+        next.delete(event.id);
+        return next;
+      });
+      return;
+    }
     try {
       upsert(await eventsApi.research(event.id));
     } catch {

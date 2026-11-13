@@ -15,6 +15,8 @@ import { resendFromEnv } from '../src/server/email/sender';
 import { supabaseEmailPreferences } from '../src/server/email/store';
 import { unsubscribeSecretFromEnv } from '../src/server/email/unsubscribe';
 import { redactSecrets } from '../src/server/lineup/http';
+import type { EventsRunner } from '../src/server/events/routes';
+import { defaultFinders, runQueuedResearch } from '../src/server/events/details';
 import { makeBudget, runWithBudget } from '../src/server/lineup/budget';
 
 // Cloudflare Worker entry. Static files are served from ./dist by Workers
@@ -34,10 +36,10 @@ import { makeBudget, runWithBudget } from '../src/server/lineup/budget';
 // Each message runs one stage and sends the job back to the queue for the
 // next, so every invocation stays within the Workers subrequest limit.
 
-interface LookupMessage {
-  jobId: string;
-  force?: boolean;
-}
+// type is absent on messages queued before Slice 11.15: they are lookups.
+type LookupMessage =
+  | { type?: 'lookup'; jobId: string; force?: boolean }
+  | { type: 'research'; eventId: string; userId?: string; role?: 'owner' | 'member' };
 
 interface Env {
   LOOKUP_QUEUE: Queue<LookupMessage>;
@@ -75,15 +77,16 @@ function ensureServer(env: Env): Promise<void> {
     // missing from the other. Anything that cannot be read is closed, not open.
     const settings = workerSettings(env as unknown as Record<string, unknown>, process.env);
     const gate = accessGateFromEnv(settings, () => supabaseMemberStores(getSupabaseClient()!));
-    const app = createApiApp(
-      deps,
-      {
-        kick: async (jobId, force) => {
-          await env.LOOKUP_QUEUE.send({ jobId, force });
-        },
+    const runner: EventsRunner = {
+      kick: async (jobId, force) => {
+        await env.LOOKUP_QUEUE.send({ jobId, force });
       },
-      gate,
-    );
+      // Slice 11.15: stage 1 research for a saved event runs from the queue (rungs 1 to 3, no reader model).
+      kickResearch: async (eventId, actor) => {
+        await env.LOOKUP_QUEUE.send({ type: 'research', eventId, userId: actor?.userId, role: actor?.role });
+      },
+    };
+    const app = createApiApp(deps, runner, gate);
     await new Promise<void>((resolve, reject) => {
       let started = false;
       const server = app.listen(PORT, () => {
@@ -237,6 +240,21 @@ export default {
   async queue(batch, env) {
     const deps = await getDeps(env);
     for (const message of batch.messages) {
+      if (message.body.type === 'research') {
+        const { eventId, userId, role } = message.body;
+        // One research message: at most 13 subrequests (details.ts, runQueuedResearch), in its own budget.
+        await runWithBudget(makeBudget(), async () => {
+          try {
+            const store = userId && deps.store.forUser ? deps.store.forUser({ userId, role: role ?? 'member' }) : deps.store;
+            await runQueuedResearch(store, eventId, defaultFinders(), deps.fetcher, deps.now());
+          } catch (err) {
+            // The event stays as typed and 'pending'; "Look again" can run it. No retry, no fallback.
+            console.error(`Queue research ${eventId} failed:`, redactSecrets(err instanceof Error ? err.message : String(err)));
+          }
+          message.ack();
+        });
+        continue;
+      }
       const { jobId, force } = message.body;
       // Each message has its own subrequest budget (src/server/lineup/budget.ts).
       const budget = makeBudget();

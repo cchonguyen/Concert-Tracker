@@ -113,7 +113,7 @@ export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured, compact, lab
     setSaving(true);
     setError(null);
     try {
-      onCaptured(await eventsApi.create(text));
+      onCaptured(await eventsApi.create(text, undefined, true));
       setText('');
       setEditions([]);
       setListOpen(false);

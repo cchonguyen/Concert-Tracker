@@ -11,10 +11,20 @@ import { artistSuggestions, eventPerformers, nameArtistSuggestions, pastArtists,
 import type { LineupFacts } from './scale';
 import { lookupWeather } from './weather';
 import { undoActivity } from './undo';
+import { currentMember } from '../auth/requestScope';
+
+// Slice 11.15: a runner that can also run stage 1 research off the request (the Cloudflare queue).
+// The Node runner has no such method; the browser then asks for research itself, as before.
+// actor: the member who saved the event, so the consumer reads and writes that member's rows.
+export interface ResearchActor {
+  userId: string;
+  role: 'owner' | 'member';
+}
+export type EventsRunner = JobRunner & { kickResearch?(eventId: string, actor?: ResearchActor): void | Promise<void> };
 
 // /api/events: your event log. Stage 1 is capture plus details research;
 // stage 2 starts a lineup lookup from a saved event.
-export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: DetailFinder[] = defaultFinders()): Router {
+export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: DetailFinder[] = defaultFinders()): Router {
   const router = Router();
   const fail = (res: any, err: unknown) =>
     res.status(err instanceof InputError ? 400 : 500).json({ error: err instanceof Error ? err.message : String(err) });
@@ -54,7 +64,17 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
       if (typeof req.body?.editionId !== 'string') {
         const event = ensureCaptured(newEvent(text, deps.now()));
         await deps.store.putEvent(event);
-        return res.status(201).json({ event });
+        // Stage 1 never waits on research: the save is done, and research runs from the queue. If the
+        // send fails the event stays 'pending' and the save stands. Only when asked (research: true, the capture
+        // bar): list imports do not research. Without a queue, the browser asks.
+        if (req.body?.research !== true || !runner.kickResearch) return res.status(201).json({ event });
+        try {
+          const member = currentMember();
+          await runner.kickResearch(event.id, member ? { userId: member.userId, role: member.role === 'owner' ? 'owner' : 'member' } : undefined);
+          return res.status(201).json({ event, research: 'queued' });
+        } catch {
+          return res.status(201).json({ event, research: 'pending' });
+        }
       }
       const edition = await deps.store.getEdition(req.body.editionId);
       if (!edition || edition.status !== 'confirmed') return res.status(404).json({ error: 'Edition not found.' });
