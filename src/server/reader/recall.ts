@@ -18,7 +18,14 @@ export interface PageScore {
   missed: string[]; // expected names not matched
   extras: string[]; // verbatim returned names not in the expected set (for Charlie to judge)
   rejected: number; // returned names that failed isVerbatim
+  // Ground truth check: expected names that are not on the page text at all (a ground-truth issue, not a model miss).
+  expectedOnPage: number;
+  recallOnPage: number | null; // matched / expectedOnPage; null when no expected name is on the page
+  notOnPage: number; // expected names not found verbatim (alias table applied) in the page text
+  notOnPageNames: string[]; // up to NOT_ON_PAGE_LIST_MAX of them
 }
+
+export const NOT_ON_PAGE_LIST_MAX = 10;
 
 function keyOf(name: string, aliases: Record<string, string>): string {
   return normalizeName(canonicalName(name, aliases));
@@ -60,6 +67,19 @@ export function scorePage(
   }
   const extras = [...verbatim].filter(([key]) => !expected.has(key)).map(([, name]) => name);
 
+  // An expected name is on the page when the model matched it, or its own spelling or canonical spelling appears verbatim.
+  const notOnPageNames: string[] = [];
+  let notOnPage = 0;
+  for (const [key, name] of expected) {
+    const canon = canonicalName(name, aliases);
+    const onPage = verbatim.has(key) || isVerbatim(name, name, normalizedSource) || isVerbatim(canon, canon, normalizedSource);
+    if (!onPage) {
+      notOnPage++;
+      if (notOnPageNames.length < NOT_ON_PAGE_LIST_MAX) notOnPageNames.push(name);
+    }
+  }
+  const expectedOnPage = expected.size - notOnPage;
+
   return {
     expected: expected.size,
     matched,
@@ -67,6 +87,10 @@ export function scorePage(
     missed,
     extras,
     rejected: rejectedKeys.size,
+    expectedOnPage,
+    recallOnPage: expectedOnPage === 0 ? null : matched / expectedOnPage,
+    notOnPage,
+    notOnPageNames,
   };
 }
 
@@ -78,24 +102,45 @@ export interface PageRun {
   outputTokens: number | null; // includes thinking tokens, as ReaderUsage does
   thinkingTokens: number | null; // informational subset of outputTokens
   latencyMs: number;
+  finishReason: string | null; // Gemini finishReason or Workers AI finish_reason, when reported
+  truncated: boolean; // the reply hit the output-token cap
+  retries: number; // extra attempts made for this page after a transient error
+  callFailed?: boolean; // the call itself failed (no reply), as opposed to a reply that was not valid JSON
 }
 
 export interface ModelRun {
   provider: ReaderProvider;
   model: string;
   window: number; // characters of page text the model was shown
+  maxOutputTokens?: number; // output-token cap the calls used
+  retriedCalls?: number; // retries over the whole run, including pages that never completed
   pages: PageRun[];
+}
+
+// Why a page's reply is not valid JSON; null when it was valid.
+export function invalidReason(p: PageRun, maxOutputTokens?: number): string | null {
+  if (p.validJson) return null;
+  if (p.callFailed) return 'call failed';
+  if (p.truncated) return maxOutputTokens ? `truncated at ${maxOutputTokens} output tokens` : 'truncated at the output-token cap';
+  return 'unparseable';
 }
 
 export interface ModelReport {
   provider: ReaderProvider;
   model: string;
   window: number;
+  maxOutputTokens: number | null;
   pageCount: number;
   matched: number;
   expected: number;
+  expectedOnPage: number;
+  notOnPage: number;
   overallRecall: number | null; // sum matched / sum expected; null when nothing was expected
   minPageRecall: number | null; // lowest recall over pages that expected something
+  overallRecallOnPage: number | null; // sum matched / sum expectedOnPage; the pass verdict uses this
+  minPageRecallOnPage: number | null; // lowest recallOnPage over pages with an expected name on the page
+  truncatedPages: number;
+  retriedCalls: number;
   invalidJsonPages: number;
   jsonValidityPct: number | null;
   inputTokens: number | null; // null when any page did not report it
@@ -121,6 +166,8 @@ export function buildReport(run: ModelRun): ModelReport {
   const matched = pages.reduce((s, p) => s + p.score.matched, 0);
   const expected = pages.reduce((s, p) => s + p.score.expected, 0);
   const recalls = pages.map((p) => p.score.recall).filter((r): r is number => r !== null);
+  const onPageRecalls = pages.map((p) => p.score.recallOnPage).filter((r): r is number => r !== null);
+  const expectedOnPage = pages.reduce((s, p) => s + p.score.expectedOnPage, 0);
   const invalid = pages.filter((p) => !p.validJson).length;
   const costs = pages.map((p) =>
     estimateCostUsd(run.provider, run.model, { inputTokens: p.inputTokens, outputTokens: p.outputTokens }),
@@ -130,11 +177,18 @@ export function buildReport(run: ModelRun): ModelReport {
     provider: run.provider,
     model: run.model,
     window: run.window,
+    maxOutputTokens: run.maxOutputTokens ?? null,
     pageCount: pages.length,
     matched,
     expected,
+    expectedOnPage,
+    notOnPage: pages.reduce((s, p) => s + p.score.notOnPage, 0),
     overallRecall: expected === 0 ? null : matched / expected,
     minPageRecall: recalls.length === 0 ? null : Math.min(...recalls),
+    overallRecallOnPage: expectedOnPage === 0 ? null : matched / expectedOnPage,
+    minPageRecallOnPage: onPageRecalls.length === 0 ? null : Math.min(...onPageRecalls),
+    truncatedPages: pages.filter((p) => p.truncated).length,
+    retriedCalls: run.retriedCalls ?? pages.reduce((s, p) => s + p.retries, 0),
     invalidJsonPages: invalid,
     jsonValidityPct: pages.length === 0 ? null : ((pages.length - invalid) / pages.length) * 100,
     inputTokens: sumOrNull(pages.map((p) => p.inputTokens)),
@@ -157,19 +211,21 @@ export interface Verdict {
   maxInvalidPages: number;
 }
 
-// Pass mark: overall recall at least 90%, no page under 70%, and at most 1 invalid-JSON page in 10.
+// Pass mark: recall on page at least 90%, no page under 70%, and at most 1 invalid-JSON page in 10.
+// Recall on page counts only expected names that are on the page text; names missing from the page are a
+// ground-truth issue, not a model miss, so they do not count against the model.
 // The invalid allowance scales as floor(pages / 10): 10 pages allow 1, 20 allow 2, and fewer than 10 allow 0,
-// so the invalid rate never exceeds 10%. Pages that expected nothing do not count toward the floor.
-// With no expected names at all there is nothing to measure, so it cannot pass.
+// so the invalid rate never exceeds 10%. Pages with no expected name on them do not count toward the floor.
+// With no expected names on any page there is nothing to measure, so it cannot pass.
 export function passVerdict(report: ModelReport): Verdict {
   const reasons: string[] = [];
   const maxInvalidPages = Math.floor(report.pageCount * PASS_INVALID_JSON_RATE + 1e-9);
-  if (report.overallRecall === null) reasons.push('no expected names to score');
-  else if (report.overallRecall < PASS_OVERALL_RECALL - 1e-9) {
-    reasons.push(`overall recall ${pct(report.overallRecall)} is under 90%`);
+  if (report.overallRecallOnPage === null) reasons.push('no expected names on the pages to score');
+  else if (report.overallRecallOnPage < PASS_OVERALL_RECALL - 1e-9) {
+    reasons.push(`recall on page ${pct(report.overallRecallOnPage)} is under 90%`);
   }
-  if (report.minPageRecall !== null && report.minPageRecall < PASS_PAGE_FLOOR - 1e-9) {
-    reasons.push(`a page has recall ${pct(report.minPageRecall)}, under 70%`);
+  if (report.minPageRecallOnPage !== null && report.minPageRecallOnPage < PASS_PAGE_FLOOR - 1e-9) {
+    reasons.push(`a page has recall on page ${pct(report.minPageRecallOnPage)}, under 70%`);
   }
   if (report.invalidJsonPages > maxInvalidPages) {
     reasons.push(`${report.invalidJsonPages} invalid JSON pages, more than ${maxInvalidPages} allowed in ${report.pageCount}`);
@@ -197,33 +253,42 @@ export function renderMarkdown(reports: ModelReport | ModelReport[]): string {
   const list = Array.isArray(reports) ? reports : [reports];
   const lines: string[] = ['# Recall benchmark', ''];
   lines.push(
-    '| Model | Window | Recall | Min page | JSON valid | Input tokens | Output tokens | Thinking tokens | Cost (USD) | Latency (ms) | Verdict |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    'Recall is matched names over all expected names. Recall on page is matched names over only the expected names that are on the page text; the pass verdict uses it. Expected names missing from the page text are a ground-truth issue, not a model miss.',
+    '',
+    '| Model | Window | Recall | Recall on page | Min page (on page) | JSON valid | Truncated pages | Retried calls | Input tokens | Output tokens | Thinking tokens | Cost (USD) | Latency (ms) | Verdict |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   );
   for (const r of list) {
     const v = passVerdict(r);
     lines.push(
-      `| ${cell(`${r.provider}:${r.model}`)} | ${r.window} | ${pct(r.overallRecall)} | ${pct(r.minPageRecall)} | ${
+      `| ${cell(`${r.provider}:${r.model}`)} | ${r.window} | ${pct(r.overallRecall)} | ${pct(r.overallRecallOnPage)} | ${pct(r.minPageRecallOnPage)} | ${
         r.jsonValidityPct === null ? 'n/a' : `${r.jsonValidityPct.toFixed(0)}%`
-      } | ${num(r.inputTokens)} | ${num(r.outputTokens)} | ${num(r.thinkingTokens)} | ${usd(r.costUsd)} | ${
+      } | ${r.truncatedPages} | ${r.retriedCalls} | ${num(r.inputTokens)} | ${num(r.outputTokens)} | ${num(r.thinkingTokens)} | ${usd(r.costUsd)} | ${
         r.avgLatencyMs === null ? 'n/a' : Math.round(r.avgLatencyMs)
       } | ${v.pass ? 'PASS' : 'FAIL'} |`,
     );
   }
   for (const r of list) {
     const v = passVerdict(r);
-    lines.push('', `## ${r.provider}:${r.model}`, '', `Window used: ${r.window} characters.`);
+    lines.push(
+      '',
+      `## ${r.provider}:${r.model}`,
+      '',
+      `Window used: ${r.window} characters. Max output tokens: ${r.maxOutputTokens ?? 'n/a'}. Expected names not on the page text: ${r.notOnPage} of ${r.expected}.`,
+    );
     if (!v.pass) lines.push('', ...v.reasons.map((x) => `- ${x}`));
     lines.push(
       '',
-      '| Page | Matched | Expected | Recall | JSON | Extras | Rejected | Missed |',
-      '| --- | --- | --- | --- | --- | --- | --- | --- |',
+      '| Page | Matched | Expected | On page | Recall | Recall on page | JSON | Finish | Extras | Rejected | Missed | Not on page |',
+      '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
     );
     for (const p of r.pages) {
+      const why = invalidReason(p, r.maxOutputTokens ?? undefined);
+      const notOn = p.score.notOnPage === 0 ? '' : `${p.score.notOnPage}: ${p.score.notOnPageNames.join(', ')}${p.score.notOnPage > p.score.notOnPageNames.length ? ', ...' : ''}`;
       lines.push(
-        `| ${cell(p.pageId)} | ${p.score.matched} | ${p.score.expected} | ${pct(p.score.recall)} | ${
-          p.validJson ? 'valid' : 'invalid'
-        } | ${cell(p.score.extras.join(', '))} | ${p.score.rejected} | ${cell(p.score.missed.join(', '))} |`,
+        `| ${cell(p.pageId)} | ${p.score.matched} | ${p.score.expected} | ${p.score.expectedOnPage} | ${pct(p.score.recall)} | ${pct(p.score.recallOnPage)} | ${
+          why === null ? 'valid' : `invalid (${why})`
+        } | ${p.finishReason ?? 'n/a'} | ${cell(p.score.extras.join(', '))} | ${p.score.rejected} | ${cell(p.score.missed.join(', '))} | ${cell(notOn)} |`,
       );
     }
   }
@@ -254,6 +319,7 @@ export interface BenchArgs {
   window: number;
   maxCalls: number;
   maxUsd: number;
+  maxOutputTokens: number;
   models: string[] | null; // null: all four
   outJson: string | null;
   outMd: string | null;
@@ -267,6 +333,7 @@ export function parseBenchArgs(argv: string[]): BenchArgs {
     window: DEFAULT_WINDOW,
     maxCalls: DEFAULT_MAX_CALLS,
     maxUsd: DEFAULT_MAX_USD,
+    maxOutputTokens: BENCH_MAX_OUTPUT_TOKENS,
     models: null,
     outJson: null,
     outMd: null,
@@ -289,6 +356,7 @@ export function parseBenchArgs(argv: string[]): BenchArgs {
     else if (arg === '--window') a.window = Math.floor(positive(arg, argv[++i]));
     else if (arg === '--max-calls') a.maxCalls = Math.floor(positive(arg, argv[++i]));
     else if (arg === '--max-usd') a.maxUsd = positive(arg, argv[++i]);
+    else if (arg === '--max-output-tokens') a.maxOutputTokens = Math.floor(positive(arg, argv[++i]));
     else if (arg === '--models') a.models = text(arg, argv[++i]).split(',').map((s) => s.trim()).filter(Boolean);
     else if (arg === '--out-json') a.outJson = text(arg, argv[++i]);
     else if (arg === '--out-md') a.outMd = text(arg, argv[++i]);
@@ -350,6 +418,7 @@ export function selectPages(editions: BenchEdition[], limit: number = DEFAULT_PA
 export interface RawReply {
   text: string;
   truncated: boolean;
+  finishReason?: string | null; // Gemini finishReason or Workers AI finish_reason, when the provider gave one
   inputTokens: number | null;
   outputTokens: number | null; // includes thinking
   thinkingTokens: number | null;
@@ -375,13 +444,15 @@ export function parseWorkersAiEnvelope(body: unknown): RawReply {
     const content = res.choices?.[0]?.message?.content;
     text = typeof content === 'string' ? content : '';
   }
-  const truncated = res.finish_reason === 'length' || res.choices?.[0]?.finish_reason === 'length';
+  const finish = res.finish_reason ?? res.choices?.[0]?.finish_reason;
+  const truncated = finish === 'length';
   const input = res.usage?.prompt_tokens;
   const output = res.usage?.completion_tokens;
   const thinking = res.usage?.completion_tokens_details?.reasoning_tokens;
   return {
     text,
     truncated,
+    finishReason: typeof finish === 'string' ? finish : null,
     inputTokens: typeof input === 'number' ? input : null,
     outputTokens: typeof output === 'number' ? output : null,
     thinkingTokens: typeof thinking === 'number' ? thinking : null,
@@ -423,6 +494,20 @@ export function classifyFailure(err: unknown): FailureKind {
   if (e?.status === 429 || e?.code === 429) return /\b3040\b/.test(message) ? 'error' : 'quota';
   if (e?.status === 404 || e?.code === 404 || /not found|not available|no such model|not supported|unknown model|permission denied|\b403\b/i.test(message)) return 'unavailable';
   return 'error';
+}
+
+export const MAX_RETRIES = 3;
+export const RETRY_BACKOFF_MS = 1000;
+
+// CLI only, and never a quota error. Gemini: HTTP 503 / UNAVAILABLE. Workers AI: any 5xx, or a timeout.
+export function isTransient(provider: ReaderProvider, err: unknown): boolean {
+  if (classifyFailure(err) === 'quota') return false;
+  const e = err as { status?: number; code?: number | string; message?: string; name?: string };
+  const message = typeof e?.message === 'string' ? e.message : '';
+  const status = typeof e?.status === 'number' ? e.status : typeof e?.code === 'number' ? e.code : null;
+  if (provider === 'gemini') return status === 503 || /\bUNAVAILABLE\b|\b503\b/.test(message);
+  const timeout = e?.name === 'TimeoutError' || e?.name === 'AbortError' || e?.code === 'ETIMEDOUT' || /timed? ?out|ETIMEDOUT/i.test(message);
+  return (status !== null && status >= 500 && status < 600) || timeout;
 }
 
 // Strip secrets from anything that gets printed or written.
@@ -471,6 +556,7 @@ export interface ModelOutcome {
 
 export interface BenchResult {
   window: number;
+  maxOutputTokens: number;
   models: ModelOutcome[];
   calls: number;
   spentUsd: number; // estimated: actual usage when reported, else the worst case
@@ -486,6 +572,7 @@ export interface BenchOptions {
   now?: () => number;
   log?: (line: string) => void;
   secrets?: string[];
+  sleep?: (ms: number) => Promise<void>; // injectable so tests do not wait
 }
 
 // Models run one after another, pages one after another. A quota or unavailable error stops that model only,
@@ -494,49 +581,63 @@ export async function runBenchmark(specs: BenchModelSpec[], pages: BenchPage[], 
   const now = opts.now ?? Date.now;
   const log = opts.log ?? (() => {});
   const maxOutputTokens = opts.maxOutputTokens ?? BENCH_MAX_OUTPUT_TOKENS;
-  const result: BenchResult = { window: opts.window, models: [], calls: 0, spentUsd: 0, aborted: null };
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const result: BenchResult = { window: opts.window, maxOutputTokens, models: [], calls: 0, spentUsd: 0, aborted: null };
 
   for (const spec of specs) {
     const outcome: ModelOutcome = {
       provider: spec.provider,
       model: spec.model,
-      run: { provider: spec.provider, model: spec.model, window: opts.window, pages: [] },
+      run: { provider: spec.provider, model: spec.model, window: opts.window, maxOutputTokens, retriedCalls: 0, pages: [] },
       stopped: null,
       errorsByPage: [],
     };
     result.models.push(outcome);
     if (result.aborted) continue;
 
-    for (const page of pages) {
-      if (result.calls >= opts.maxCalls) {
-        result.aborted = `--max-calls ${opts.maxCalls} reached after ${result.calls} calls`;
-        break;
-      }
+    pageLoop: for (const page of pages) {
       const shown = Math.min(page.text.length, opts.window);
       const worst = worstCaseMicroUsd(spec.provider, spec.model, shown, maxOutputTokens).micro / 1_000_000;
-      if (result.spentUsd + worst > opts.maxUsd) {
-        result.aborted = `--max-usd ${opts.maxUsd} would be exceeded (spent about $${result.spentUsd.toFixed(4)}, next call could cost up to $${worst.toFixed(4)})`;
-        break;
-      }
-      result.calls += 1;
       const started = now();
-      let reply: RawReply;
-      try {
-        reply = await spec.call(page, { window: opts.window, maxOutputTokens });
-      } catch (err) {
-        result.spentUsd += worst; // unknown usage: count the worst case
-        const kind = classifyFailure(err);
-        const message = redact(err instanceof Error ? err.message : String(err), opts.secrets ?? []);
-        if (kind === 'error') {
-          outcome.errorsByPage.push({ pageId: page.pageId, message });
-          outcome.run.pages.push(failedPage(page.pageId, now() - started));
-          log(`  ${spec.model}: error on ${page.pageId}: ${message}`);
-          continue;
+      let reply: RawReply | null = null;
+      let retries = 0;
+      // Each attempt, retries included, counts toward --max-calls and --max-usd.
+      for (;;) {
+        if (result.calls >= opts.maxCalls) {
+          result.aborted = `--max-calls ${opts.maxCalls} reached after ${result.calls} calls`;
+          break pageLoop;
         }
-        outcome.stopped = { kind, message };
-        log(`  ${spec.model}: stopped (${kind}): ${message}`);
-        break;
+        if (result.spentUsd + worst > opts.maxUsd) {
+          result.aborted = `--max-usd ${opts.maxUsd} would be exceeded (spent about $${result.spentUsd.toFixed(4)}, next call could cost up to $${worst.toFixed(4)})`;
+          break pageLoop;
+        }
+        result.calls += 1;
+        try {
+          reply = await spec.call(page, { window: opts.window, maxOutputTokens });
+          break;
+        } catch (err) {
+          result.spentUsd += worst; // unknown usage: count the worst case
+          const kind = classifyFailure(err);
+          const message = redact(err instanceof Error ? err.message : String(err), opts.secrets ?? []);
+          if (kind === 'error' && retries < MAX_RETRIES && isTransient(spec.provider, err)) {
+            retries += 1;
+            outcome.run.retriedCalls = (outcome.run.retriedCalls ?? 0) + 1;
+            log(`  ${spec.model}: transient error on ${page.pageId}, retry ${retries} of ${MAX_RETRIES}: ${message}`);
+            await sleep(RETRY_BACKOFF_MS * 2 ** (retries - 1));
+            continue;
+          }
+          if (kind === 'error') {
+            outcome.errorsByPage.push({ pageId: page.pageId, message });
+            outcome.run.pages.push(failedPage(page.pageId, now() - started, retries));
+            log(`  ${spec.model}: error on ${page.pageId}${retries ? ` after ${retries} retries` : ''}: ${message}`);
+            continue pageLoop;
+          }
+          outcome.stopped = { kind, message };
+          log(`  ${spec.model}: stopped (${kind}): ${message}`);
+          break pageLoop;
+        }
       }
+      if (!reply) continue;
       const latencyMs = now() - started;
       const cost = estimateCostUsd(spec.provider, spec.model, { inputTokens: reply.inputTokens, outputTokens: reply.outputTokens });
       result.spentUsd += cost ?? worst;
@@ -550,13 +651,21 @@ export async function runBenchmark(specs: BenchModelSpec[], pages: BenchPage[], 
         outputTokens: reply.outputTokens,
         thinkingTokens: reply.thinkingTokens,
         latencyMs,
+        finishReason: reply.finishReason ?? null,
+        truncated: reply.truncated,
+        retries,
       });
-      log(`  ${spec.model}: ${page.pageId} recall ${pct(score.recall)}${returned === null ? ' (invalid JSON)' : ''}`);
+      const run = outcome.run.pages[outcome.run.pages.length - 1];
+      const why = invalidReason(run, maxOutputTokens);
+      log(
+        `  ${spec.model}: ${page.pageId} recall ${pct(score.recall)}, on page ${pct(score.recallOnPage)} (${score.notOnPage} expected not on page)` +
+          `${why ? ` (invalid JSON: ${why})` : ''}${run.finishReason ? ` [finish ${run.finishReason}]` : ''}`,
+      );
     }
   }
   return result;
 
-  function failedPage(pageId: string, latencyMs: number): PageRun {
+  function failedPage(pageId: string, latencyMs: number, retries: number): PageRun {
     return {
       pageId,
       validJson: false,
@@ -565,6 +674,10 @@ export async function runBenchmark(specs: BenchModelSpec[], pages: BenchPage[], 
       outputTokens: null,
       thinkingTokens: null,
       latencyMs,
+      finishReason: null,
+      truncated: false,
+      retries,
+      callFailed: true,
     };
   }
 }
@@ -576,7 +689,7 @@ export function reportsFor(result: BenchResult, pages: BenchPage[], aliases: Rec
       ...m.run,
       pages: m.run.pages.map((p) => {
         const page = pages.find((x) => x.pageId === p.pageId);
-        return p.validJson || !page || p.score.expected > 0 ? p : { ...p, score: scorePage(page.expectedNames, [], '', aliases) };
+        return p.validJson || !page || p.score.expected > 0 ? p : { ...p, score: scorePage(page.expectedNames, [], page.text, aliases) };
       }),
     };
     return buildReport(run);
@@ -590,7 +703,7 @@ export function renderBenchMarkdown(result: BenchResult, pages: BenchPage[], ali
     '',
     '## Run',
     '',
-    `Window used: ${result.window} characters per page. Pages: ${pages.length}. Calls: ${result.calls}. Estimated spend: $${result.spentUsd.toFixed(4)}.`,
+    `Window used: ${result.window} characters per page. Max output tokens: ${result.maxOutputTokens}. Pages: ${pages.length}. Calls (retries included): ${result.calls}. Estimated spend: $${result.spentUsd.toFixed(4)}.`,
   ];
   if (result.aborted) lines.push('', `Run aborted: ${result.aborted}.`);
   for (const m of result.models) {
@@ -603,12 +716,15 @@ export function renderBenchMarkdown(result: BenchResult, pages: BenchPage[], ali
 export function benchJson(result: BenchResult, pages: BenchPage[], aliases: Record<string, string> = {}) {
   return {
     window: result.window,
+    maxOutputTokens: result.maxOutputTokens,
+    note: 'Expected names missing from the page text are a ground-truth issue, not a model miss. recallOnPage ignores them and drives the verdict.',
     calls: result.calls,
     estimatedSpendUsd: result.spentUsd,
     aborted: result.aborted,
     pages: pages.map((p) => ({ pageId: p.pageId, expected: p.expectedNames.length })),
     models: reportsFor(result, pages, aliases).map((report, i) => ({
       ...report,
+      pages: report.pages.map((p) => ({ ...p, invalidReason: invalidReason(p, report.maxOutputTokens ?? undefined) })),
       verdict: passVerdict(report),
       stopped: result.models[i].stopped,
       errors: result.models[i].errorsByPage,
