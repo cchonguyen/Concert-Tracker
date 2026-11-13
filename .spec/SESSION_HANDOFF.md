@@ -8,12 +8,12 @@
   - Phase 2 (11.15 to 11.19): save enqueues a `research` message on `LOOKUP_QUEUE`; rung 1 catalog lookup and rung 2 owner-only occurrence persistence; rung 4 reader in its own `research_reader` messages; picker grouping; cron research backfill and the Confirm dates list.
   - Phase 3 (11.20 to 11.22): `ingest_traces` and the trace writer (migration 0043 written), owner review-queue routes, owner inbox in the Global archive.
 - **Verification Status:** lint clean, 1105 of 1105 tests pass at PR #353.
-- **Open items for Charlie:**
+- **Open gaps:** (items for Charlie first, then follow-ups)
   - Apply migration 0043 (`supabase/migrations/0043_ingest_traces.sql`). Until then traces are skipped quietly and the inbox shows "Activity appears once the traces table is set up".
   - Approve the new member notice text. Provisional editions from a member's own entry are NOT built: rung 2 persistence runs only for the owner or single-user mode (`researchCatalogFor`). Phase 2 for members waits on this.
   - `SUBREQUEST_LIMIT` defaults to 50, so the edition backfill and the research backfill run about 1 to 2 items a minute; raising it (about 130 to 340) speeds them up.
   - `.env.example` comments still say 200000/180000 for the reader limits (now 30000); left on purpose because of the env-file tripwire.
-- **Known follow-ups:**
+  - Follow-ups:
   - Code that reads venue, date or city of a linked event straight from the store (stats, export, map, email scan, import) gets only what was typed; audit them to use `resolveEvent`.
   - The picker (11.18) and the owner inbox (11.22) were not seen in a browser.
   - Matching needs a stored `subjectKey`; editions get one from the backfill.
