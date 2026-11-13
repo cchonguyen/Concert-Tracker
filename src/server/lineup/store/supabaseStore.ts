@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import type { AiCallRow } from './types';
 import {
   ArtistIdentity,
   BlocklistEntry,
@@ -1441,6 +1442,19 @@ export class SupabaseLineupStore implements LineupStore {
   async listShareEvents() {
     const rows = this.check(await this.mine(this.own('logged_events').select(SHARE_EVENT_COLUMNS.join(',')).is('deleted_at', null)), 'listShareEvents');
     return (rows ?? []).map((r: any) => this.rowToEvent(r));
+  }
+
+  // AI call log: slice 10.3 implements these once migration 0038 is applied.
+  async addAiCall(_row: AiCallRow): Promise<void> {
+    throw new Error('AI call log is not available: apply 0038');
+  }
+
+  async listAiCalls(_limit: number): Promise<AiCallRow[]> {
+    throw new Error('AI call log is not available: apply 0038');
+  }
+
+  async deleteAiCallsBefore(_cutoff: Date): Promise<number> {
+    throw new Error('AI call log is not available: apply 0038');
   }
 }
 
