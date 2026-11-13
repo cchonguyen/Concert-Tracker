@@ -8,11 +8,11 @@ Each source is an adapter in `src/server/lineup/adapters/` implementing `SourceA
 | Adapter | What it gives | Access | Evidence |
 | --- | --- | --- | --- |
 | `clashfinder` | Acts per edition with stage, day and set times; past years stay archived | Free account. Every call is signed with `authUsername` + `authPublicKey` (SHA-256 of username, private key and parameters) | `crowd` |
-| `promoter` | Official lineup page text (Insomniac, Goldenvoice, ...); for past editions the Wayback Machine snapshot closest to the event dates | Public pages; no key | `billed` (after Gemini extraction) |
+| `promoter` | Official lineup page text (Insomniac, Goldenvoice, ...); for past editions the Wayback Machine snapshot closest to the event dates | Public pages; no key | `billed` (after extraction by the reader model) |
 | `ticketmaster` | Canonical name, dates, venue and attractions for upcoming or recent events | Free Discovery API key, 5,000 calls/day | `billed` |
 | `setlistfm` | Post-show setlists that upgrade an act to "performed" | Free non-commercial key | `performed` |
 | MusicBrainz (`musicbrainz.ts`) | Stable artist IDs, resolved in the background after you confirm; artist genres only when you ask (Artist genres) | No key, 1 request/second | n/a |
-| Web search (`search.ts`) | Stage 2: candidate lineup URLs when every source came back empty (stage 1 date checks are in `events/details.ts`): Brave Search API when `BRAVE_SEARCH_API_KEY` is set, otherwise Gemini grounded search (needs a billed Gemini project) | Brave free plan, or Gemini quota | Pages are fetched and extracted like any other; snippets are never evidence |
+| Web search (`search.ts`) | Stage 2: candidate lineup URLs when every source came back empty (stage 1 date checks are in `events/details.ts`): Brave Search API when `BRAVE_SEARCH_API_KEY` is set, otherwise grounded search through the reader model (today Gemini; needs a billed Gemini project) | Brave free plan, or the reader model's quota | Pages are fetched and extracted like any other; snippets are never evidence |
 
 AXS is deliberately excluded as a lineup source: it has no public discovery API, and scraping it breaks its terms. Your own AXS ticket emails are read like any other seller's (stage 1 from email); nothing is fetched from AXS.
 
