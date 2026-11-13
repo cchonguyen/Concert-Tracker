@@ -7,6 +7,19 @@ The full spec already lives in the project docs. This file holds only what `/tri
 - Hard rules for every change: [AGENTS.md](../AGENTS.md)
 
 ## 1. Core Scope & MVP Boundaries
+Feature: **Two-way reader test: Cloudflare Workers AI and paid Gemini, with an AI call log and spend guards** (triaged 2026-11-12, scope confirmed by Charlie 2026-11-12). Full spec: [docs/ai-reader-spec.md](../docs/ai-reader-spec.md). Research: `/mnt/project-files/ai-provider/Gemini free tier replacement options.md`.
+
+- **Core problem:** the Gemini free tier refuses reads far below its stated limit (6 calls on 2026-11-02), so lineup reading and "Look again with Gemini" fail often. Volume is small: about 200 reads a month, peak 50 a day, typical page 2,000 tokens, largest 43,000.
+- **Confirmed scope (Charlie):**
+  1. One reader interface with two providers behind it: the existing Gemini client (billed key, model pinned by name) and a new Workers AI client (`ai` binding). One provider is live at a time, chosen by a setting. No automatic fallback between them (AGENTS.md).
+  2. An AI call log: every model call records when, why (feature and job), provider, model, tokens in and out, estimated cost, duration, outcome and error code, and extraction quality (names returned, names passing the verbatim check, JSON valid or not).
+  3. Spend guards that fail closed: caps per call (input size, max output tokens), per job, per day and per month, in calls and in estimated cost; a circuit breaker that stops all AI calls after repeated errors or a cap breach; every refusal is logged with its reason; the job parks and stops as on a quota error today. No retry loops.
+  4. A two-way recall test: both providers on 5 to 10 pages Charlie has confirmed by hand, at least one near 43,000 tokens; pass mark 90% of the confirmed acts; the result is recorded; the winner goes live only by Charlie's choice.
+  5. A plain owner view of the log and the guard state, and docs updated (AGENTS, REQUIREMENTS, ARCHITECTURE).
+- **Facts:** `src/server/lineup/gemini.ts` is the only SDK user. Call sites: pipeline.ts (stage 2), events/detailsGemini.ts (stage 1 button), search.ts geminiSearch (grounded discovery, off). No `ai` binding in wrangler.jsonc. `quota_ledger` key is text `provider:model:window`. Workers AI: 10,000 free neurons a day, error 3036 = allowance used, 3040 = busy (both HTTP 429), several models default `max_tokens` to 256, JSON schema not guaranteed. Gemini paid: HTTP 402 at zero balance. Workers Free: 50 subrequests per request, so the log is one write per call at most.
+- **Charlie applies migrations; threads only write them.** Next free number is 0038.
+
+## Prev 1b. Design system export (triaged 2026-11-12, kept for reference)
 Feature: **Design system export for onboarding new Claude Code apps** (triaged 2026-11-12, discovery brief, not yet approved).
 
 - **Core user problem:** Charlie wants a new app built with Claude Code to start with LiveArchive's design language and philosophy, without re-explaining it.
@@ -45,6 +58,15 @@ Feature: **Manage section** (triaged 2026-10-28). Full design: [../docs/manage-s
 - **Blocking questions:** None. Assumed reading of "Sheets and CSV pull from the app": Sheet sync stops reading sheet edits back; "Import a list" stays for adding new events only.
 
 ## 2. Strictly Out of Scope ("Do NOT Build" List)
+- Automatic fallback from one provider to the other, or any retry with another model.
+- A replacement for Gemini's grounded web search (stays off; Brave path unchanged).
+- A model picker in the UI, or per-user provider choice.
+- Any change to stage 1 capture, saving, the verbatim rule or the no-guessing rules.
+- Third providers (Haiku, OpenAI, Groq). Only if both fail the test, and only after Charlie says so.
+- Page text or prompts in the call log (sizes and counts only).
+- Removing the Gemini code or renaming the buttons before the test result is in.
+
+## Prev 2b. Design system export Do NOT Build (kept for reference)
 Design system export:
 - No generator, build step or Style Dictionary pipeline. The export is a document.
 - No components that the app does not use yet (AGENTS.md: add only when needed).
@@ -80,6 +102,16 @@ Design system export:
   - The "hidden complexity" ideas (discovery story, MusicBrainz home city, lineup source per series, timezones, sourced capacity/status) and the "Do next" ideas (home city distance, spend per organization, crew view, B2B network).
 
 ## 3. Data Models & Module Boundaries
+
+**AI reader** (full spec: [docs/ai-reader-spec.md](../docs/ai-reader-spec.md); slices 10.1 to 10.19)
+- Module `src/server/reader/` (`types.ts`, `schemas.ts`, `geminiAdapter.ts`, `workersAiAdapter.ts`, `config.ts`, `pricing.ts`, `guard.ts`, `callLog.ts`, `guardedReader.ts`, `recall.ts`). `src/server/lineup/gemini.ts` stays the only `@google/genai` user. Pipeline, details route, discovery and recall test hold only a `GuardedReader`.
+- `ReaderClient { provider, model, extractPerformers, extractEventDetails }` returns `ReaderResult<T>` = `{ ok: true, value, usage: { provider, model, inputTokens, outputTokens, durationMs } }` or `{ ok: false, reason: 'invalid_json', usage }`. Quota throws `QuotaExhaustedError` (park); Workers AI 3040 throws `ReaderBusyError` (the job's normal attempts path). No fallback between providers, no repair call.
+- Table `ai_calls` (migration 0038, owner-read RLS, service-role write): id, created_at, feature, job_id, event_id, user_id, provider, model, source_document_id, input_chars, input_tokens, output_tokens, est_cost_usd, duration_ms, outcome, error_code, guard_reason, names_returned, names_verbatim, names_rejected, plus recall columns run_id, names_expected, names_matched. No page text or prompts. One insert per call. Store methods `addAiCall`, `listAiCalls`, `listAiCallsByRun`, `deleteAiCallsBefore` on `LineupStore` (both stores).
+- Guards use `quota_ledger` keys only (`reader:breaker`, `reader:job:<id>`, `reader:spend:day:<d>`, `reader:spend:month:<m>`, `reader:calls:month:<m>`, `reader:logfail:<d>`, plus the existing `provider:model:day`), never `ai_calls`. Fail closed.
+- Env vars: `READER_PROVIDER` (`gemini` default, or `workers-ai`), `READER_ENABLED` (`on`), `WORKERS_AI_MODEL`, `WORKERS_AI_DAILY_LIMIT`, `WORKERS_AI_PER_MINUTE`, `READER_MAX_INPUT_CHARS` (60000), `READER_WINDOW_CHARS` (40000), `READER_MAX_OUTPUT_TOKENS` (8192), `READER_MAX_OUTPUT_TOKENS_DETAILS` (1024), `READER_MAX_CALLS_PER_JOB` (6), `READER_MAX_SPEND_DAY_USD` (0.50), `READER_MAX_SPEND_MONTH_USD` (5), `READER_BREAKER_FAILURES` (5), `READER_BREAKER_COOLDOWN_MIN` (30), `READER_RECALL_PASS` (0.9), `READER_RECALL_FLOOR` (0.7). Binding `AI` in `wrangler.jsonc`.
+- Routes (owner only): `GET /api/reader/recall-test/plan`, `POST /api/reader/recall-test/step`, `GET /api/reader/recall-test/report`. `GET /api/status` gains `reader`; `gemini` stays until the switch.
+- Other features' text below is unchanged.
+
 - See ARCHITECTURE.md. Feature contracts for the Manage section (from the Gemini audit, 2026-10-28; see DECISIONS.md ADR-002):
 
 **Entities and aliases**
