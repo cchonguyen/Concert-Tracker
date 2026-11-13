@@ -17,6 +17,9 @@ export function dayKey(now: Date): string {
 export function monthKey(now: Date): string {
   return `reader:spend:month:${now.toISOString().slice(0, 7)}`;
 }
+export function callsMonthKey(now: Date): string {
+  return `reader:calls:month:${now.toISOString().slice(0, 7)}`;
+}
 export function nextUtcMonthStart(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 }
@@ -149,6 +152,9 @@ export async function recordOutcome(args: OutcomeArgs): Promise<void> {
   const now = args.now ?? new Date();
   const cost = realCostMicroUsd(args);
   await ledger(now, async () => {
+    // Owner view: calls made this UTC month (every provider call, whatever its outcome).
+    const calls = (await store.getQuota(callsMonthKey(now))) ?? { key: callsMonthKey(now), used: 0 };
+    await store.setQuota({ ...calls, used: calls.used + 1 });
     if (cost > 0) {
       for (const key of [dayKey(now), monthKey(now)]) {
         const cur = (await store.getQuota(key)) ?? { key, used: 0 };
