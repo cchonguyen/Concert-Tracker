@@ -37,7 +37,7 @@ import type {
 import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../entities/integrity';
 import type { ShareLink } from '../../share/types';
 import { shareEventOnly } from '../../share/types';
-import type { AiCallRow, MergeSummary } from './types';
+import type { AiCallRow, IngestTraceRow, MergeSummary } from './types';
 import type { CanonicalVenue, EditionChange, ReviewQueueItem, ReviewQueueKind, VenueAlias, EditionExternalId } from '../types';
 import { assertNoPersonalFields, ExternalIdConflictError, venueIdFor } from './types';
 import { normalizeName } from '../normalizeName';
@@ -97,6 +97,7 @@ interface FileState {
   // the owner. Settings per member.
   responseCache?: Record<string, CachedResponse>;
   aiCalls?: AiCallRow[];
+  ingestTraces?: IngestTraceRow[];
   venues?: Record<string, CanonicalVenue>;
   venueAliases?: Array<VenueAlias>;
   editionExternalIds?: EditionExternalId[];
@@ -1009,6 +1010,17 @@ export class FileLineupStore implements LineupStore {
 
   async listAiCalls(limit: number) {
     const rows = [...((await this.load()).aiCalls ?? [])];
+    return clone(rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit));
+  }
+
+  async addIngestTrace(row: IngestTraceRow) {
+    const state = await this.load();
+    state.ingestTraces = [...(state.ingestTraces ?? []), clone(row)];
+    await this.save();
+  }
+
+  async listIngestTraces(limit: number) {
+    const rows = [...((await this.load()).ingestTraces ?? [])];
     return clone(rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit));
   }
 
