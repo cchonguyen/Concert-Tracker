@@ -9,6 +9,10 @@ import { matchingEvents } from '../lineup/adapters/ticketmaster';
 import { clashfinderAuthQuery, matchEdition, parseEventList } from '../lineup/adapters/clashfinder';
 import { cityLabel, placeFromPage } from './place';
 import { cityWithRegion, splitEventCity } from './regions';
+import type { Edition } from '../lineup/types';
+import type { LineupStore } from '../lineup/store/types';
+import { seriesSlugFor } from '../lineup/text';
+import { matchEdition as matchCatalog, upsertOccurrence } from '../canon/match';
 import { DetailCandidate, EventDetails, EventField, EVENT_FIELDS, LoggedEvent } from './types';
 
 // Stage 1 research: find and verify an event's date and place from structured
@@ -307,6 +311,87 @@ export interface DetailReader {
   read(q: DetailQuery, urls: string[], fetcher: Fetcher, notes: string[]): Promise<DetailCandidate[]>;
 }
 
+// The shared catalog (slice 11.16). Optional: callers without it behave exactly as before.
+// persist: rung 2 may write dated occurrences to shared editions. It is off unless the caller turns it on
+// (owner or system path), because a member's notice for shared editions is not approved yet.
+export interface ResearchCatalog {
+  store: LineupStore;
+  persist?: boolean;
+  actor?: string;
+}
+
+// Who may write shared editions from research: the owner, or single-user mode (no userId). A member never does
+// (the member notice for shared editions is not approved). Rung 1 is read-only and runs for everyone.
+export function researchCatalogFor(role: 'owner' | 'member' | undefined, userId: string | undefined, store: LineupStore): ResearchCatalog {
+  return { store, persist: !userId || role === 'owner', actor: 'system:research' };
+}
+
+const catalogDay = (e: Edition, date: string) => e.startDate === date || Boolean(e.startDate && e.endDate && e.startDate <= date && date <= e.endDate);
+
+// Rung 1: a verified catalog edition for this event. External IDs first (at most one lookup, from a source link
+// this event already holds), then date + venue + subject (matchEdition). Worst case 3 store calls.
+async function catalogHit(event: LoggedEvent, catalog: ResearchCatalog): Promise<Edition | null> {
+  const externalIds = Object.values(event.sources)
+    .filter((s): s is NonNullable<typeof s> => Boolean(s?.sourceUrl) && (s!.sourceType === 'ticketmaster' || s!.sourceType === 'clashfinder'))
+    .slice(0, 1)
+    .map((s) => ({ source: s.sourceType, externalId: s.sourceUrl! }));
+  if (!externalIds.length && !event.startDate) return null;
+  const m = await matchCatalog(catalog.store, {
+    name: event.name,
+    startDate: event.startDate,
+    venue: event.venue,
+    city: event.city,
+    subjectKey: seriesSlugFor(event.name),
+    externalIds,
+  });
+  if (m.kind !== 'same') return null; // ambiguous or suggested matches are never auto-used
+  const e = m.edition;
+  if (e.status !== 'verified' && e.status !== 'confirmed') return null;
+  if (event.year && e.year !== event.year) return null;
+  return e;
+}
+
+function editionCandidate(e: Edition): DetailCandidate {
+  const facts = { name: e.name, startDate: e.startDate, endDate: e.endDate, venue: e.venue, city: e.city, country: e.country };
+  const clean = Object.fromEntries(Object.entries(facts).filter(([, v]) => typeof v === 'string' && v.trim())) as Omit<DetailCandidate, 'id' | 'sources'>;
+  // The catalog edition is the source; SourceType has no 'edition', so the stored FieldSource is rewritten by the caller.
+  return { id: randomUUID(), ...clean, sources: [{ sourceType: 'promoter', sourceUrl: '', fields: EVENT_FIELDS.filter((f) => clean[f]) }] };
+}
+
+// Rung 2 persistence (docs/architecture/08-sources.md, Slice 11.1): only Ticketmaster and Clashfinder results,
+// only name, date, venue, city and the source link as external id, as `provisional`. Never setlist.fm, never
+// the member's typed values (the data comes from the candidate), never personal fields. At most ONE occurrence
+// per message: the first Ticketmaster/Clashfinder candidate covering the event's own date (used only to choose,
+// never stored from the event). Worst case 11 store calls: 3 match + venue + key check + 3 write + external id + 2 suggestion.
+const PERSISTABLE: SourceType[] = ['ticketmaster', 'clashfinder'];
+
+// Takes the finders' raw candidates (one source each), never merged ones, so a setlist.fm or web value can
+// not ride along in a merged candidate.
+async function persistOccurrence(event: LoggedEvent, raw: DetailCandidate[], catalog: ResearchCatalog, notes: string[]): Promise<void> {
+  if (!catalog.persist || !event.startDate) return;
+  const c = raw.find((m) => m.startDate && m.name && covers(m, event.startDate!) && m.sources.length === 1 && PERSISTABLE.includes(m.sources[0].sourceType));
+  if (!c) return;
+  const src = c.sources[0];
+  try {
+    const r = await upsertOccurrence(catalog.store, {
+      name: c.name!,
+      startDate: c.startDate,
+      endDate: c.endDate,
+      venue: c.venue,
+      city: c.city,
+      country: c.country,
+      subjectKey: seriesSlugFor(c.name!),
+      externalIds: src.sourceUrl ? [{ source: src.sourceType, externalId: src.sourceUrl }] : [],
+      trust: 'provisional',
+      actor: catalog.actor ?? 'system:research',
+      reason: `Dated occurrence from ${src.sourceType} during event research`,
+    });
+    notes.push(`catalog: ${r.action} a shared occurrence from ${src.sourceType}.`);
+  } catch (err) {
+    notes.push(`catalog write failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 // Runs every configured finder and decides what to do with the results.
 export async function researchEvent(
   event: LoggedEvent,
@@ -314,6 +399,7 @@ export async function researchEvent(
   fetcher: Fetcher,
   now: Date,
   reader?: DetailReader,
+  catalog?: ResearchCatalog,
 ): Promise<LoggedEvent> {
   const checkedAt = now.toISOString();
   const year = event.year ?? (event.startDate ? Number(event.startDate.slice(0, 4)) : undefined);
@@ -322,6 +408,33 @@ export async function researchEvent(
     details: { ...details, checkedAt },
     updatedAt: checkedAt,
   });
+  const found: DetailCandidate[] = [];
+  const notes: string[] = [];
+  if (catalog) {
+    try {
+      const hit = await catalogHit(event, catalog);
+      if (hit) {
+        const c = editionCandidate(hit);
+        const fromEdition = (ev: LoggedEvent): LoggedEvent => {
+          const sources = { ...ev.sources };
+          for (const f of EVENT_FIELDS) if (ev[f] !== event[f] && ev[f]) sources[f] = { sourceType: 'edition', editionId: hit.id };
+          return { ...ev, sources };
+        };
+        if (event.startDate && catalogDay(hit, event.startDate)) {
+          const filled = fromEdition(applyCandidate(event, c, false));
+          notes.push('catalog: a verified shared edition matches.');
+          if (filled.startDate && filled.venue && filled.city) {
+            return done({ status: 'matched', candidates: [c], notes }, filled);
+          }
+          event = filled; // gaps remain: ask the outside sources for the rest
+        } else {
+          notes.push('catalog: a verified shared edition was found, but not on the date you gave; not used.');
+        }
+      }
+    } catch (err) {
+      notes.push(`catalog lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
   const enabled = finders.filter((f) => f.enabled() && (year || f.withoutYear));
   if (!enabled.length && !reader) {
     return year
@@ -338,8 +451,6 @@ export async function researchEvent(
     venue: event.venue,
     city: cityWithRegion(event.city, event.region),
   };
-  const notes: string[] = [];
-  const found: DetailCandidate[] = [];
   const search = async (query: DetailQuery) => {
     const settled = await Promise.allSettled(enabled.map((f) => f.find(query, fetcher)));
     settled.forEach((r, i) => {
@@ -362,6 +473,7 @@ export async function researchEvent(
     found.push(...(await reader.read(q, [...new Set(urls)], fetcher, notes)));
   }
 
+  if (catalog) await persistOccurrence(event, found, catalog, notes);
   const merged = mergeCandidates(found).sort(
     (a, b) => b.sources.length - a.sources.length || (a.startDate ?? '9999').localeCompare(b.startDate ?? '9999'),
   );
@@ -393,17 +505,21 @@ export async function researchEvent(
 //
 // Worst-case subrequests of one message: 2 store calls (getEvent, putEvent) + finders 4 (Ticketmaster,
 // setlist.fm, Clashfinder, Brave) + 4 again when the first name finds nothing and the typed name differs
-// + 3 place pages (addPlaces) = 13. The queue consumer's own budget (50) holds with room to spare.
+// + 3 place pages (addPlaces) = 13 without a catalog.
+// Slice 11.16 with a catalog: + rung 1 (up to 3 store calls: one external-id lookup, listEditions, venue alias)
+// + rung 2 persistence of at most one occurrence (up to 11 store calls, see persistOccurrence) = 27 worst case
+// (the plan's figure is 26; 1 over, dropping the external-id lookup would meet it). Both are zero when no catalog is passed. The consumer's budget (50) holds.
 export async function runQueuedResearch(
   store: { getEvent(id: string): Promise<LoggedEvent | null>; putEvent(event: LoggedEvent): Promise<void> },
   eventId: string,
   finders: DetailFinder[],
   fetcher: Fetcher,
   now: Date,
+  catalog?: ResearchCatalog,
 ): Promise<LoggedEvent | null> {
   const event = await store.getEvent(eventId);
   if (!event || event.details.status !== 'pending') return null;
-  const updated = await researchEvent(event, finders, fetcher, now);
+  const updated = await researchEvent(event, finders, fetcher, now, undefined, catalog);
   await store.putEvent(updated);
   return updated;
 }
