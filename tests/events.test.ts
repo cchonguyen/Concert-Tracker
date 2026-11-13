@@ -583,5 +583,6 @@ test('research catalog: only the owner or single-user mode may persist; members 
   assert.equal(researchCatalogFor(undefined, undefined, store).persist, true);
   assert.equal(researchCatalogFor('member', 'u2', store).persist, false);
   assert.equal(researchCatalogFor(undefined, 'u2', store).persist, false);
+  assert.equal(researchCatalogFor('member', 'u2', store).persistOwn, true);
   assert.equal(researchCatalogFor('owner', 'u1', store).actor, 'system:research');
 });

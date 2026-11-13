@@ -17,7 +17,7 @@ export function singleOwnerMeRouter(): Router {
 }
 
 // Bump when the notice's wording changes, so members accept the new text.
-export const NOTICE_VERSION = 1;
+export const NOTICE_VERSION = 2;
 export const NOTICE_SETTING = 'notice_accepted';
 
 export function membersRouter(
