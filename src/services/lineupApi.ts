@@ -138,14 +138,31 @@ async function request<T>(url: string, rawInit?: RequestInit): Promise<T> {
 
 const post = (body?: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body ?? {}) });
 
+// What the server did about research for an event just created: 'queued' (it is looking), 'pending' (the
+// queue could not be reached; the event stays as typed). Absent: the server has no queue, so the browser asks.
+const researchOutcome = new Map<string, 'queued' | 'pending'>();
+export const takeResearchOutcome = (id: string): 'queued' | 'pending' | undefined => {
+  const v = researchOutcome.get(id);
+  researchOutcome.delete(id);
+  return v;
+};
+
 // Your event log: capture and details (stage 1), lineup lookups (stage 2).
 export const eventsApi = {
   list: () =>
     request<{ events: LoggedEvent[]; lineups: Record<string, LineupSummary>; editions: Record<string, LineupFacts> }>('/api/events'),
   get: (id: string) =>
     request<{ event: LoggedEvent; job: LookupJob | null; edition: Edition | null; suggestions: ArtistSuggestion[] }>(`/api/events/${id}`),
-  create: (text: string, editionId?: string) =>
-    request<{ event: LoggedEvent }>('/api/events', post(editionId ? { text, editionId } : { text })).then((r) => r.event),
+  // research: true (the capture bar) asks the server to research the new event from its queue. The answer is
+  // remembered by event id (takeQueuedResearch). Imports leave it off and are never researched.
+  create: (text: string, editionId?: string, research = false) =>
+    request<{ event: LoggedEvent; research?: 'queued' | 'pending' }>(
+      '/api/events',
+      post(editionId ? { text, editionId } : research ? { text, research: true } : { text }),
+    ).then((r) => {
+      if (r.research) researchOutcome.set(r.event.id, r.research);
+      return r.event;
+    }),
   update: (id: string, patch: EventPatch) =>
     request<{ event: LoggedEvent }>(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }).then((r) => r.event),
   remove: (id: string) => request<unknown>(`/api/events/${id}`, { method: 'DELETE' }),

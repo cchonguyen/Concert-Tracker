@@ -385,6 +385,29 @@ export async function researchEvent(
   return done({ status: 'choose', candidates: shown, notes });
 }
 
+// Slice 11.15: the queued research message for a freshly saved event (ladder rungs 1 to 3: structured APIs
+// and web search results read in code; never the reader model, which is rung 4).
+// It runs only while the event is still waiting ('pending'): "Look again" or Fill gaps may have finished it
+// first, and a second run must not overwrite that. Results follow researchEvent's rules (candidates; typed
+// fields are never overwritten). Returns the saved event, or null when there was nothing to do.
+//
+// Worst-case subrequests of one message: 2 store calls (getEvent, putEvent) + finders 4 (Ticketmaster,
+// setlist.fm, Clashfinder, Brave) + 4 again when the first name finds nothing and the typed name differs
+// + 3 place pages (addPlaces) = 13. The queue consumer's own budget (50) holds with room to spare.
+export async function runQueuedResearch(
+  store: { getEvent(id: string): Promise<LoggedEvent | null>; putEvent(event: LoggedEvent): Promise<void> },
+  eventId: string,
+  finders: DetailFinder[],
+  fetcher: Fetcher,
+  now: Date,
+): Promise<LoggedEvent | null> {
+  const event = await store.getEvent(eventId);
+  if (!event || event.details.status !== 'pending') return null;
+  const updated = await researchEvent(event, finders, fetcher, now);
+  await store.putEvent(updated);
+  return updated;
+}
+
 export function pickCandidate(event: LoggedEvent, candidateId: string | undefined, now: Date, fields?: EventField[]): LoggedEvent {
   const c = candidateId ? event.details.candidates.find((x) => x.id === candidateId) : undefined;
   if (candidateId && !c) throw new InputError('That suggestion is no longer available.');
