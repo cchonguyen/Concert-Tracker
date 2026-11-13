@@ -9,6 +9,7 @@ import { LookupJob } from './types';
 import { readReaderConfig } from '../reader/config';
 import { BREAKER_KEY, callsMonthKey, dayKey, monthKey } from '../reader/guard';
 import { isEditionSuggestQuery } from './store/types';
+import { canonReviewRouter } from '../canon/reviewRoutes';
 
 // Older log entries were written before redaction existed.
 const safeJob = (job: LookupJob): LookupJob => ({
@@ -226,6 +227,8 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
       fail(res, err);
     }
   });
+
+  router.use(canonReviewRouter(deps.store));
 
   return router;
 }
