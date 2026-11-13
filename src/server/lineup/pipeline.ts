@@ -17,7 +17,8 @@ import { GeminiClient, EXTRACTION_PROMPT_VERSION } from './gemini';
 import { QuotaExhaustedError, QuotaLedger } from './quota';
 import { appendFacts, mergeLineup } from './merge';
 import { domainOf, editionKeyFor, htmlToText, isVerbatim, normalizeName, seriesSlugFor } from './text';
-import { isBilling, quoteBacksBilling } from './billing';
+import { findVerifiedEdition } from '../canon/match';
+import { isBilling,quoteBacksBilling } from './billing';
 import { makeDocument } from './adapters/common';
 import { MusicBrainzUnavailableError, resolveArtist } from './musicbrainz';
 import { redactSecrets } from './http';
@@ -114,14 +115,9 @@ export function candidateFromEdition(edition: Edition): CandidateLineup {
   };
 }
 
-// An edition confirmed under the date, or under the year (older editions,
-// or a lookup without a date) when its confirmed start date is the same.
+// A verified edition for this event, found by the shared matcher (date and subject), not by key.
 async function findConfirmedEdition(deps: PipelineDeps, input: LookupInput): Promise<Edition | null> {
-  const byKey = await deps.store.getEditionByKey(editionKeyFor(input.eventName, input.year, input.startDate));
-  if (byKey?.status === 'confirmed') return byKey;
-  if (!input.startDate) return null;
-  const byYear = await deps.store.getEditionByKey(editionKeyFor(input.eventName, input.year));
-  return byYear?.status === 'confirmed' && byYear.startDate === input.startDate ? byYear : null;
+  return findVerifiedEdition(deps.store, input);
 }
 
 export async function createLookup(
