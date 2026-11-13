@@ -442,6 +442,10 @@ export interface LineupStore {
   listAiCalls(limit: number): Promise<AiCallRow[]>;
   // Returns how many rows were deleted.
   deleteAiCallsBefore(cutoff: Date): Promise<number>;
+  // Ingest traces (migration 0043; slice 11.20). One row per message. Counts, status words and ids only.
+  addIngestTrace(row: IngestTraceRow): Promise<void>;
+  // Newest first.
+  listIngestTraces(limit: number): Promise<IngestTraceRow[]>;
 
   // Shared occurrences (0041, 0042; slice 11.9). Service key only. Same behavior in both stores.
   // Returns the canonical venue for this name and place, creating it once; also records the normalized name as an alias.
@@ -509,6 +513,19 @@ export function assertNoPersonalFields(value: unknown): void {
 // Stable id for a canonical venue: same normalized name and place, same id, in both stores.
 export function venueIdFor(v: { name: string; city?: string; region?: string; country?: string }, normalize: (s: string) => string): string {
   return 'venue:' + [v.name, v.city, v.region, v.country].map((x) => normalize(x ?? '').replace(/ /g, '-')).join('|');
+}
+
+export type IngestTraceTrigger = 'save' | 'research' | 'research_reader' | 'backfill' | 'research_backfill' | 'lookup';
+export interface IngestTraceRow {
+  id: string;
+  trigger: IngestTraceTrigger;
+  eventId: string | null;
+  editionId: string | null;
+  jobId: string | null;
+  steps: Array<{ name: string; at: number; detail?: Record<string, string | number | boolean | null> }>;
+  subrequests: number | null;
+  aiCostMicros: number | null;
+  createdAt: string;
 }
 
 export type AiCallFeature = 'lineup_extract' | 'details_extract' | 'discovery';

@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import type { AiCallRow, MergeSummary } from './types';
+import type { AiCallRow, IngestTraceRow, MergeSummary } from './types';
 import type { CanonicalVenue, EditionChange, ReviewQueueItem, ReviewQueueKind } from '../types';
 import { assertNoPersonalFields, ExternalIdConflictError, venueIdFor } from './types';
 import {
@@ -1522,6 +1522,42 @@ export class SupabaseLineupStore implements LineupStore {
       'listAiCalls (apply 0038_ai_calls.sql)',
     );
     return (rows ?? []).map(rowToAiCall);
+  }
+
+  // Ingest traces (0043). Service client; one insert per message.
+  async addIngestTrace(r: IngestTraceRow): Promise<void> {
+    this.check(
+      await this.db.from('ingest_traces').insert({
+        id: r.id,
+        trigger: r.trigger,
+        event_id: r.eventId,
+        edition_id: r.editionId,
+        job_id: r.jobId,
+        steps: r.steps,
+        subrequests: r.subrequests,
+        ai_cost_micros: r.aiCostMicros,
+        created_at: r.createdAt,
+      }),
+      'addIngestTrace (apply 0043_ingest_traces.sql)',
+    );
+  }
+
+  async listIngestTraces(limit: number): Promise<IngestTraceRow[]> {
+    const rows = this.check(
+      await this.db.from('ingest_traces').select('*').order('created_at', { ascending: false }).limit(limit),
+      'listIngestTraces (apply 0043_ingest_traces.sql)',
+    );
+    return (rows ?? []).map((r: any) => ({
+      id: r.id,
+      trigger: r.trigger,
+      eventId: r.event_id ?? null,
+      editionId: r.edition_id ?? null,
+      jobId: r.job_id ?? null,
+      steps: r.steps ?? [],
+      subrequests: r.subrequests ?? null,
+      aiCostMicros: r.ai_cost_micros ?? null,
+      createdAt: r.created_at,
+    }));
   }
 
   async deleteAiCallsBefore(cutoff: Date): Promise<number> {

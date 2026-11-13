@@ -2,6 +2,7 @@ import { handleAsNodeRequest } from 'cloudflare:node';
 import { createApiApp, healthStatus } from '../src/server/app';
 import { PipelineDeps, isRequeueTime, requeueFailedResolveArtists, runJob } from '../src/server/lineup/pipeline';
 import { createDeps, createStore } from '../src/server/lineup/service';
+import { startTrace } from '../src/server/telemetry/trace';
 import { runCanonBackfill } from '../src/server/canon/backfill';
 import { backfillEntities, backfillVenuePlaces } from '../src/server/entities/linkingStore';
 import { frontDoor, isSignedIn } from '../src/server/share/door';
@@ -179,8 +180,13 @@ async function runCron(env: Env): Promise<void> {
       const ownerId = await deps.store.ownerUserId?.();
       store = ownerId && deps.store.forUser ? deps.store.forUser({ userId: ownerId, role: 'owner' }) : null;
     }
+    const trace = startTrace('backfill');
     const backfill = store ? await runCanonBackfill(store) : null;
-    if (backfill) console.log(`Canon backfill: ${JSON.stringify(backfill)}`);
+    if (backfill) {
+      console.log(`Canon backfill: ${JSON.stringify(backfill)}`);
+      trace.step('canon_backfill', Object.fromEntries(Object.entries(backfill).filter(([, v]) => typeof v === 'number')));
+      await trace.finish(deps.store); // +1 subrequest, only when the run did something
+    }
   } catch (err) {
     console.error('Canon backfill failed:', err instanceof Error ? err.message : String(err));
   }
@@ -196,7 +202,12 @@ async function runCron(env: Env): Promise<void> {
     const researched = store
       ? await runResearchBackfill(store, defaultFinders(), deps.fetcher, now, { role: ownerId ? 'owner' : undefined, userId: ownerId, catalogStore: deps.store })
       : null;
-    if (researched?.researched) console.log(`Research backfill: ${JSON.stringify(researched)}`);
+    if (researched?.researched) {
+      console.log(`Research backfill: ${JSON.stringify(researched)}`);
+      const trace = startTrace('research_backfill');
+      trace.step('research_backfill', { researched: researched.researched });
+      await trace.finish(deps.store); // +1 subrequest, only when the run researched something
+    }
   } catch (err) {
     console.error('Research backfill failed:', redactSecrets(err instanceof Error ? err.message : String(err)));
   }
@@ -263,18 +274,26 @@ export default {
       if (message.body.type === 'research') {
         const { eventId, userId, role } = message.body;
         // One research message: at most 27 subrequests (13 + catalog rungs 1 and 2; 1 over the plan's 26; details.ts, runQueuedResearch), in its own budget.
-        await runWithBudget(makeBudget(), async () => {
+        const budget = makeBudget();
+        await runWithBudget(budget, async () => {
+          const trace = startTrace('research', { eventId });
           try {
             const store = userId && deps.store.forUser ? deps.store.forUser({ userId, role: role ?? 'member' }) : deps.store;
             const done = await runQueuedResearch(store, eventId, defaultFinders(), deps.fetcher, deps.now(), researchCatalogFor(role, userId, deps.store));
             // Rung 4: only with the reader set up, a full date and a gap left; at most 2 pages, one message each (+2 sends).
+            trace.step('research_done', { ran: !!done });
             if (done && deps.reader) {
-              for (const url of rung4Urls(done)) await env.LOOKUP_QUEUE.send({ type: 'research_reader', eventId, url, userId, role });
+              const urls = rung4Urls(done);
+              trace.step('rung4_queued', { pages: urls.length });
+              for (const url of urls) await env.LOOKUP_QUEUE.send({ type: 'research_reader', eventId, url, userId, role });
             }
           } catch (err) {
+            trace.step('research_failed');
             // The event stays as typed and 'pending'; "Look again" can run it. No retry, no fallback.
             console.error(`Queue research ${eventId} failed:`, redactSecrets(err instanceof Error ? err.message : String(err)));
           }
+          trace.subrequests(budget.used);
+          await trace.finish(deps.store); // +1 subrequest (one trace row per message)
           message.ack();
         });
         continue;
@@ -283,15 +302,21 @@ export default {
         const { eventId, url, userId, role } = message.body;
         // One page per message. Worst case: getEvent 1 + page fetch 1 + one guarded model call (guard and ledger
         // store calls, ai_calls row, the model itself; about 8) + putEvent 1 = about 11 of 50. No retry, no fallback.
-        await runWithBudget(makeBudget(), async () => {
+        const budget = makeBudget();
+        await runWithBudget(budget, async () => {
+          const trace = startTrace('research_reader', { eventId });
           try {
             if (deps.reader) {
               const store = userId && deps.store.forUser ? deps.store.forUser({ userId, role: role ?? 'member' }) : deps.store;
               await runReaderPage(store, deps.reader, eventId, url, deps.fetcher, deps.now());
+              trace.step('reader_page_done');
             }
           } catch (err) {
+            trace.step('reader_failed');
             console.error(`Queue reader ${eventId} failed:`, redactSecrets(err instanceof Error ? err.message : String(err)));
           }
+          trace.subrequests(budget.used);
+          await trace.finish(deps.store); // +1 subrequest (one trace row per message)
           message.ack();
         });
         continue;
@@ -305,6 +330,10 @@ export default {
           // invocation went past the 50-subrequest limit and was left "running".
           const job = await runJob(deps, jobId, { force, oneStep: true });
           if (job?.status === 'queued' && !job.nextAttemptAt) await env.LOOKUP_QUEUE.send({ jobId, force });
+          const trace = startTrace('lookup', { jobId, eventId: job?.eventId });
+          trace.step('lookup_step', { status: job?.status ?? 'missing' });
+          trace.subrequests(budget.used);
+          await trace.finish(deps.store); // +1 subrequest (one trace row per message)
           message.ack();
         } catch (err) {
           const messageText = redactSecrets(err instanceof Error ? err.message : String(err));
