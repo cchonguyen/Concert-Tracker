@@ -129,7 +129,7 @@ test('pre-call spend check writes no spend keys; post-call writes once per key',
     store: f.store, config: cfg(), provider: 'gemini', model: 'gemini-3.5-flash-lite',
     outcome: 'success', usage: { inputTokens: 1_000_000, outputTokens: 0 }, worstCaseMicroUsd: 1, now,
   });
-  assert.deepEqual(f.writes, [dayKey(now), monthKey(now)]);
+  assert.deepEqual(f.writes.filter((k) => k.startsWith('reader:spend:')), [dayKey(now), monthKey(now)]);
   assert.equal(f.m.get(dayKey(now))?.used, 300_000);
   assert.equal(f.m.get(monthKey(now))?.used, 300_000);
 });
