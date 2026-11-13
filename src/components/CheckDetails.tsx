@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Check, ExternalLink, Loader2, RefreshCw, Search } from 'lucide-react';
 import type { DetailCandidate, DetailsStatus } from '../server/events/types';
 import type { LineupStatus } from '../services/lineupApi';
-import { checkedLabel, checkRows, type CheckRow } from '../services/checkDetails';
+import { candidateRowParts, checkedLabel, checkRows, type CheckRow } from '../services/checkDetails';
 import { Button } from './ui/Button';
+import { Pill } from './ui/Pill';
 import { SOURCE_LABELS } from '../services/lineupApi';
 
 export interface Suggestion {
@@ -91,7 +92,9 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
       {status === 'choose' && (
         <div className="space-y-2 rounded-lg border border-violet-500/30 bg-violet-950/20 p-2.5">
           <p className="text-sm text-violet-200">{candidates.length && status === 'choose' ? 'Sources give different dates. Is it one of these?' : 'Is it one of these?'}</p>
-          {candidates.map((c) => (
+          {candidates.map((c) => {
+            const row = candidateRowParts(c);
+            return (
             <button
               key={c.id}
               type="button"
@@ -99,14 +102,19 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
               className="flex w-full items-start justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-2.5 text-left hover:border-violet-500"
             >
               <span className="min-w-0">
-                <span className="block truncate text-sm text-zinc-100">{c.name}</span>
+                <span className="block truncate text-sm text-zinc-100">{row.name}</span>
+                <span className="block truncate text-xs text-zinc-300">{row.date} · {row.venue} · {row.place}</span>
                 <span className="block truncate text-[11px] text-zinc-400">
                   {[...new Set(c.sources.map((s) => SOURCE_LABELS[s.sourceType] + (s.readBy === 'gemini' ? ' (read by Gemini)' : '')))].join(', ')}
                 </span>
               </span>
-              <Check className="mt-0.5 h-4 w-4 shrink-0 text-violet-300" aria-hidden="true" />
+              <span className="flex shrink-0 items-center gap-2">
+                <Pill tone={row.sourceCount > 1 ? 'good' : 'neutral'}>{row.sourceText}</Pill>
+                <Check className="h-4 w-4 text-violet-300" aria-hidden="true" />
+              </span>
             </button>
-          ))}
+            );
+          })}
           <button type="button" onClick={onNone} className="text-xs text-zinc-400 hover:underline">
             None of these
           </button>
