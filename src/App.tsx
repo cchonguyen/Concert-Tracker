@@ -28,6 +28,7 @@ import { SharePanel } from './components/SharePanel';
 import { QuickAdd, QuickAddButton, QuickAddFab } from './components/QuickAdd';
 import { useToast } from './components/ui/Toast';
 import { AboutDialog } from './components/AboutDialog';
+import { ReaderPanel } from './components/ReaderPanel';
 import { DataPanel, exportCsv } from './components/DataActions';
 import { ListImport } from './components/ListImport';
 import { SheetSync } from './components/SheetSync';
@@ -571,6 +572,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
             onEventChanged={upsert}
           />
         )}
+        {shown === 'manage' && canManage && <ReaderPanel status={status} />}
       </main>
       </PeopleProvider>
 

@@ -11,11 +11,11 @@ You type one line about an event you went to. It is saved at once (stage 1), and
 These are enforced in code. A change that breaks one is a bug, even if the output looks more complete.
 
 1. **No claim without evidence.** Every act in a lineup carries at least one source URL and the text it was found in (`PerformerClaim.quotedSpan`). Facts (dates, venue) carry their source too.
-2. **Gemini is a reader, never a memory.** Gemini only extracts names from text the app fetched and stored. A name is kept only if its quoted span occurs in the stored page and the name occurs in the span (`isVerbatim` in `src/server/lineup/text.ts`).
+2. **The reader model is a reader, never a memory.** The reader model (Gemini today) only extracts names from text the app fetched and stored. A name is kept only if its quoted span occurs in the stored page and the name occurs in the span (`isVerbatim` in `src/server/lineup/text.ts`).
 3. **Confidence is computed, never asked for.** It comes from which sources agree and how often each source has been right in your reviews (`src/server/lineup/merge.ts`). No model is asked for a confidence score, a URL it did not find, or a date it was not shown.
 4. **Empty is a valid answer.** If no source lists a lineup, the lookup ends as `no_data` and you enter acts by hand. There are no default dates, cities, venues, stages, ratings or setlists anywhere.
 5. **Resolve once, reuse forever.** An edition (series plus date, or year when the date is unknown) is confirmed once; later lookups read it from the database with zero network calls.
-6. **Quota is a resource, not an error path.** The app tracks its own Gemini budget and parks a job with a retry time when capacity runs out. There is no fallback model cascade and no heuristic substitute.
+6. **Quota is a resource, not an error path.** Every model call passes the guarded reader (`src/server/reader/`), which tracks the call budget and a spend budget and parks a job with a retry time when capacity runs out (see [Quota and the queue](docs/architecture/10-quota-and-the-queue.md)). There is no fallback model cascade and no heuristic substitute.
 7. **The lineup is a fact about the world; what you saw is a fact about you.** Canonical editions and your event log are stored separately. "Artists" counts only acts you marked as seen.
 8. **No hardcoded knowledge.** No lists of festivals, venues or artists in code. Fix a data source or add an adapter instead.
 9. **Your word wins.** Stage 1 suggestions never overwrite a field you typed. Every event field records its source (`LoggedEvent.sources`): you, or a source URL.

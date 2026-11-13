@@ -7,7 +7,8 @@ export class QuotaExhaustedError extends Error {
     public readonly retryAt: Date,
     public readonly reason: string,
     // 'user': one member's own cap, which must not pause everyone else.
-    public readonly scope: 'global' | 'user' = 'global',
+    // 'job': one job over its own call cap; parks only that job.
+    public readonly scope: 'global' | 'user' | 'job' = 'global',
   ) {
     super(reason);
   }

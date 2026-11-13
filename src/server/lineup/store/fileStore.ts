@@ -37,6 +37,7 @@ import type {
 import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../entities/integrity';
 import type { ShareLink } from '../../share/types';
 import { shareEventOnly } from '../../share/types';
+import type { AiCallRow } from './types';
 import type { CachedResponse } from '../responseCache';
 import {
   canonicalEditionPage,
@@ -92,6 +93,7 @@ interface FileState {
   // with no entry is the owner's, as in Supabase where user_id defaults to
   // the owner. Settings per member.
   responseCache?: Record<string, CachedResponse>;
+  aiCalls?: AiCallRow[];
   owners?: Record<string, string>;
   userSettings?: Record<string, Record<string, unknown>>;
   // Canonical artist changes applied through applyCanonicalArtistChange, by history ID: the plan entry
@@ -989,6 +991,28 @@ export class FileLineupStore implements LineupStore {
 
   async listShareEvents() {
     return (await this.listEvents()).map(shareEventOnly);
+  }
+
+  async addAiCall(row: AiCallRow) {
+    const state = await this.load();
+    state.aiCalls = [...(state.aiCalls ?? []), clone(row)];
+    await this.save();
+  }
+
+  async listAiCalls(limit: number) {
+    const rows = [...((await this.load()).aiCalls ?? [])];
+    return clone(rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit));
+  }
+
+  async deleteAiCallsBefore(cutoff: Date) {
+    const state = await this.load();
+    const iso = cutoff.toISOString();
+    const before = state.aiCalls ?? [];
+    const kept = before.filter((r) => r.createdAt >= iso);
+    if (kept.length === before.length) return 0;
+    state.aiCalls = kept;
+    await this.save();
+    return before.length - kept.length;
   }
 }
 

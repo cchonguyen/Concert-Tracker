@@ -41,7 +41,7 @@ export interface ExtractedDetails {
 
 export const DETAILS_PROMPT_VERSION = 'details@1';
 
-const DETAILS_SYSTEM = `You copy where and when one event took place out of a web page. Rules:
+export const DETAILS_SYSTEM = `You copy where and when one event took place out of a web page. Rules:
 - Use only the PAGE TEXT provided. Never use outside knowledge and never guess.
 - The event is named below. Ignore other events, dates, cities or editions the page lists.
 - "dateQuote": an exact substring of the page text (up to 120 characters) that states the event's date or dates, written as on the page. Leave it out if the page does not state a full date for this event.
@@ -49,7 +49,7 @@ const DETAILS_SYSTEM = `You copy where and when one event took place out of a we
 - "placeQuote": an exact substring of the page text (up to 200 characters) that contains every place value you gave.
 - If the page is not about this event, return an empty object.`;
 
-const DETAILS_SCHEMA = {
+export const DETAILS_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     dateQuote: { type: Type.STRING },
@@ -64,7 +64,7 @@ const DETAILS_SCHEMA = {
 export const EXTRACTION_PROMPT_VERSION = 'extract@5';
 const MAX_DOC_CHARS = 40000;
 
-const SYSTEM = `You copy performer names out of a web page. Rules:
+export const SYSTEM = `You copy performer names out of a web page. Rules:
 - Use only the PAGE TEXT provided. Never use outside knowledge, never guess, never complete a partial lineup.
 - For every name, "quote" must be an exact substring of the page text (up to 200 characters) that contains the name.
 - Include only acts that perform (artists, DJs, bands, b2b pairings as written). Exclude stage names, day labels, sponsors, ticket tiers, menu items and navigation.
@@ -74,7 +74,7 @@ const SYSTEM = `You copy performer names out of a web page. Rules:
 - Set "billing" to "headliner" or "support" only when the page text itself bills the act that way (for example "Headliners:", "Support:", "special guest", "X with Y"), and then make "quote" include those words. Never infer it from order, size or fame.
 - If the page has no lineup, return an empty list.`;
 
-const SCHEMA = {
+export const SCHEMA = {
   type: Type.OBJECT,
   properties: {
     performers: {
@@ -95,15 +95,74 @@ const SCHEMA = {
   required: ['performers'],
 };
 
+export interface GeminiGenerateArgs {
+  contents: string;
+  systemInstruction: string;
+  schema: unknown;
+  maxOutputTokens: number;
+  thinkingConfig: { thinkingBudget: number } | { thinkingLevel: string };
+}
+
+export interface GeminiGenerateResult {
+  text: string;
+  finishReason?: string;
+  promptTokens: number | null;
+  candidatesTokens: number | null;
+  thoughtsTokens: number | null;
+}
+
+// Low-level call used by the reader adapter: no sampling parameters, usage reported.
+export interface GeminiGenerator {
+  readonly model: string;
+  generate(args: GeminiGenerateArgs): Promise<GeminiGenerateResult>;
+}
+
+export function buildExtractionContents(input: LookupInput, text: string, examples: ExtractionExample[], windowChars: number = MAX_DOC_CHARS): string {
+  const parts: string[] = [`EVENT: ${input.eventName} (${input.year})`];
+  for (const ex of examples.slice(0, 1)) {
+    parts.push(
+      `EXAMPLE from an earlier page on the same website, with the lineup a person confirmed:\nPAGE TEXT:\n${ex.excerpt}\nCONFIRMED NAMES: ${ex.names.join(' | ')}`,
+    );
+  }
+  parts.push(`PAGE TEXT:\n${lineupWindow(text, windowChars)}`);
+  return parts.join('\n\n');
+}
+
+export function buildDetailsContents(eventName: string, year: number | undefined, text: string, windowChars: number = MAX_DOC_CHARS): string {
+  return `EVENT: ${eventName}${year ? ` (${year})` : ''}\n\nPAGE TEXT:\n${text.slice(0, windowChars)}`;
+}
+
 function rethrowQuota(err: unknown): never {
   throw parseRateLimitError(err, new Date()) ?? err;
 }
 
-export function createGeminiClient(apiKey: string, model: string): GeminiClient {
+export function createGeminiClient(apiKey: string, model: string): GeminiClient & GeminiGenerator {
   const ai = new GoogleGenAI({ apiKey });
 
   return {
     model,
+
+    async generate({ contents, systemInstruction, schema, maxOutputTokens, thinkingConfig }) {
+      const response = await ai.models.generateContent({
+        model,
+        contents,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          responseSchema: schema as any,
+          maxOutputTokens,
+          thinkingConfig: thinkingConfig as any,
+        },
+      });
+      const u = response.usageMetadata;
+      return {
+        text: response.text ?? '',
+        finishReason: response.candidates?.[0]?.finishReason,
+        promptTokens: u?.promptTokenCount ?? null,
+        candidatesTokens: u?.candidatesTokenCount ?? null,
+        thoughtsTokens: u?.thoughtsTokenCount ?? null,
+      };
+    },
 
     async extractPerformers({ text, input, examples }) {
       const parts: string[] = [`EVENT: ${input.eventName} (${input.year})`];

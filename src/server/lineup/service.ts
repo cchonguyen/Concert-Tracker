@@ -14,6 +14,8 @@ import { ticketmasterAdapter } from './adapters/ticketmaster';
 import { setlistfmAdapter } from './adapters/setlistfm';
 import { PipelineDeps, runJob } from './pipeline';
 import { braveSearch, geminiSearch, LineupSearch } from './search';
+import { readReaderConfig } from '../reader/config';
+import { guardedFromGemini, type GuardedReader } from '../reader/guardedReader';
 
 // Wires the pipeline from environment variables. See .env.example.
 
@@ -52,6 +54,21 @@ export async function createStore(opts: { requireSupabase?: boolean } = {}): Pro
   return withEntityLinks(store);
 }
 
+// Builds the guarded reader from env read at call time, so a model or provider
+// swap in the dashboard applies without a redeploy. Null means no reader:
+// an unknown provider, workers-ai (its adapter does not exist yet), or no key.
+export function createReader(
+  store: LineupStore,
+  env: Record<string, unknown> = process.env,
+  quota?: QuotaLedger | null,
+): GuardedReader | null {
+  const config = readReaderConfig(env);
+  if (config.provider !== 'gemini') return null;
+  const apiKey = typeof env.GEMINI_API_KEY === 'string' ? env.GEMINI_API_KEY : undefined;
+  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') return null;
+  return guardedFromGemini(createGeminiClient(apiKey, config.geminiModel), store, quota ?? undefined, undefined, config);
+}
+
 export function createDeps(store: LineupStore): PipelineDeps {
   const apiKey = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_EXTRACTION_MODEL || 'gemini-flash-lite-latest';
@@ -65,25 +82,27 @@ export function createDeps(store: LineupStore): PipelineDeps {
   let search: LineupSearch | null = null;
   if (process.env.BRAVE_SEARCH_API_KEY) search = braveSearch(fetcher, process.env.BRAVE_SEARCH_API_KEY);
   else if (gemini && process.env.GEMINI_SEARCH_DISCOVERY !== 'off') search = geminiSearch(gemini);
+  const quotaLedger = geminiReady
+    ? new QuotaLedger(store, {
+        provider: 'gemini',
+        model,
+        dailyLimit: Number(process.env.GEMINI_DAILY_LIMIT || 50),
+        perMinute: Number(process.env.GEMINI_PER_MINUTE || 10),
+        // With MULTI_USER=on the recommended caps apply unless set: 20 calls
+        // kept for the owner, 5 interactive and 3 background calls per member.
+        ownerReserve: Number(process.env.GEMINI_OWNER_RESERVE || (multiUser ? 20 : 0)),
+        userDaily: Number(process.env.GEMINI_USER_DAILY || (multiUser ? 5 : 0)),
+        userBackfillDaily: Number(process.env.GEMINI_USER_BACKFILL_DAILY || (multiUser ? 3 : 0)),
+      })
+    : null;
   return {
     store,
     fetcher,
     adapters: [clashfinderAdapter, promoterAdapter, ticketmasterAdapter],
     lateAdapters: [setlistfmAdapter],
     gemini,
-    quota: geminiReady
-      ? new QuotaLedger(store, {
-          provider: 'gemini',
-          model,
-          dailyLimit: Number(process.env.GEMINI_DAILY_LIMIT || 50),
-          perMinute: Number(process.env.GEMINI_PER_MINUTE || 10),
-          // With MULTI_USER=on the recommended caps apply unless set: 20 calls
-          // kept for the owner, 5 interactive and 3 background calls per member.
-          ownerReserve: Number(process.env.GEMINI_OWNER_RESERVE || (multiUser ? 20 : 0)),
-          userDaily: Number(process.env.GEMINI_USER_DAILY || (multiUser ? 5 : 0)),
-          userBackfillDaily: Number(process.env.GEMINI_USER_BACKFILL_DAILY || (multiUser ? 3 : 0)),
-        })
-      : null,
+    quota: quotaLedger,
+    reader: createReader(store, process.env, quotaLedger),
     search,
     now: () => new Date(),
   };

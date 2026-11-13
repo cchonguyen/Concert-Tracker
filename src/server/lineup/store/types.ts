@@ -432,6 +432,39 @@ export interface LineupStore {
   // Your events with only the columns the share page reads
   // (SHARE_EVENT_COLUMNS); every other field comes back empty.
   listShareEvents(): Promise<LoggedEvent[]>;
+  // AI call log (migration 0038). Counts and sizes only: never page text, prompts, quotes or names.
+  addAiCall(row: AiCallRow): Promise<void>;
+  // Newest first.
+  listAiCalls(limit: number): Promise<AiCallRow[]>;
+  // Returns how many rows were deleted.
+  deleteAiCallsBefore(cutoff: Date): Promise<number>;
+}
+
+export type AiCallFeature = 'lineup_extract' | 'details_extract' | 'discovery';
+export type AiCallOutcome = 'ok' | 'invalid_json' | 'quota' | 'busy' | 'blocked_by_guard' | 'error';
+
+// One ai_calls row, camelCased. createdAt is an ISO string, as on other store rows.
+export interface AiCallRow {
+  id: string;
+  createdAt: string;
+  feature: AiCallFeature;
+  jobId: string | null;
+  eventId: string | null;
+  userId: string | null;
+  provider: string;
+  model: string;
+  sourceDocumentId: string | null;
+  inputChars: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  estCostUsd: number | null;
+  durationMs: number | null;
+  outcome: AiCallOutcome;
+  errorCode: string | null;
+  guardReason: string | null;
+  namesReturned: number | null;
+  namesVerbatim: number | null;
+  namesRejected: number | null;
 }
 
 export const MAX_EXAMPLES_PER_DOMAIN = 3;

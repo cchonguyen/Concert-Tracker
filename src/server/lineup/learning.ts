@@ -144,6 +144,11 @@ function findCandidate(
 
 const EXAMPLE_CHARS = 6000;
 
+// A model reader's extractor id is 'gemini:<model>' or 'workers-ai:<model>'.
+export function isReaderExtractor(extractor: string): boolean {
+  return extractor.startsWith('gemini:') || extractor.startsWith('workers-ai:');
+}
+
 // One review outcome per source type, for this series and overall.
 function statDeltas(types: SourceType[], slug: string, accepted: boolean): SourceStat[] {
   const out: SourceStat[] = [];
@@ -457,8 +462,8 @@ async function learnFromSources(
     if (series) await store.upsertSeries({ ...series, lineupUrl: url });
   }
 
-  const geminiDocs = new Set(claims.filter((c) => c.extractor.startsWith('gemini:')).map((c) => c.documentId));
-  for (const docId of geminiDocs) {
+  const readerDocs = new Set(claims.filter((c) => isReaderExtractor(c.extractor)).map((c) => c.documentId));
+  for (const docId of readerDocs) {
     const doc = await store.getDocument(docId);
     if (!doc) continue;
     const excerpt = lineupWindow(doc.body, EXAMPLE_CHARS);

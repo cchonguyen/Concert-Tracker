@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Fetcher } from '../lineup/types';
-import type { GeminiClient } from '../lineup/gemini';
-import { QuotaExhaustedError, QuotaLedger } from '../lineup/quota';
+import { QuotaExhaustedError } from '../lineup/quota';
+import type { GuardedReader } from '../reader/guardedReader';
 import { domainOf, htmlToText, isVerbatim, normalizeName } from '../lineup/text';
 import { eventWords } from '../lineup/search';
 import { findDates } from './parse';
@@ -27,7 +27,11 @@ function namesEvent(text: string, q: DetailQuery): boolean {
   return words.length > 0 && words.every((w) => page.includes(` ${w} `)) && (!q.year || page.includes(String(q.year)));
 }
 
-export function geminiReader(gemini: GeminiClient, quota: QuotaLedger, now: () => Date): DetailReader {
+// Calls go through the guarded reader (feature details_extract, one job per
+// event per day, one call per page read, at most MAX_GEMINI_PAGES a press).
+// Guard blocks and quota errors stop the press the same way: no fallback.
+export function geminiReader(reader: GuardedReader, eventId: string, now: () => Date): DetailReader {
+  const jobKey = () => `details:${eventId}:${now().toISOString().slice(0, 10)}`;
   return {
     async read(q, urls, fetcher: Fetcher, notes) {
       let pages = urls;
@@ -56,20 +60,20 @@ export function geminiReader(gemini: GeminiClient, quota: QuotaLedger, now: () =
           continue; // an unreachable page just gives nothing
         }
         if (!namesEvent(text, q)) continue;
-        try {
-          await quota.acquire(now());
-        } catch (err) {
-          if (!(err instanceof QuotaExhaustedError)) throw err;
-          notes.push(`gemini: stopped, ${err.reason}`);
-          break;
-        }
         read += 1;
         let got;
         try {
-          got = await gemini.extractEventDetails({ text, eventName: q.name, year: q.year });
+          const res = await reader.extractEventDetails(
+            { text, eventName: q.name, year: q.year },
+            { feature: 'details_extract', jobKey: jobKey(), eventId },
+          );
+          if (!res.ok) {
+            notes.push(`gemini: skipped ${url}, ${res.reason === 'input_too_large' ? 'the page is too large to read' : 'the reader gave an unusable answer'}.`);
+            continue;
+          }
+          got = res.value;
         } catch (err) {
           if (!(err instanceof QuotaExhaustedError)) throw err;
-          await quota.markExhausted(err.retryAt, now());
           notes.push(`gemini: stopped, ${err.reason}`);
           break;
         }
