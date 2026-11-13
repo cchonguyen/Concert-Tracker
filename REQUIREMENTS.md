@@ -34,7 +34,7 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 5. **Your word wins.** The app suggests; it never overwrites what you typed. A suggestion is applied when it exactly confirms what you entered, or when you pick it.
 6. **Simple in, structured out, room to grow.** Input is one line of plain text. Output is structured fields that can grow (companions, notes, days, seen acts) without making the first input any longer.
 7. **The world and you are separate.** The canonical lineup (a fact about the world, reusable across years and lookups) is stored apart from your log (what you attended and who you saw).
-8. **Spend scarce capacity only where it pays.** Stage 1 uses structured APIs and web search read in code, so it always works. Gemini quota is reserved for reading lineup pages in stage 2, and when it runs out the job waits. The one exception is yours to make: "Look again with Gemini" on an event spends a few Gemini calls reading the pages stage 1 found (R1.7a), only when you press it.
+8. **Spend scarce capacity only where it pays.** Stage 1 uses structured APIs and web search read in code, so it always works. Reader-model capacity is reserved for reading lineup pages in stage 2, and when it runs out the job waits. The one exception is yours to make: "Look again with Gemini" on an event spends a few reader calls reading the pages stage 1 found (R1.7a), only when you press it.
 9. **No hardcoded knowledge.** No lists of festivals, venues or artists in code. Improve a source adapter or add one.
 10. **Delight comes from small, reliable moments,** not from more screens: the app understanding a sloppy sentence, a one-tap "is this it?", a lineup that is already known, a running count of everyone you've seen.
 
@@ -82,14 +82,15 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 | R2.1 | Lineup lookup is started from a saved event ("Find who played") and can be started, retried or redone at any time. It needs a name and at least a year. |
 | R2.2 | The lookup uses the event's own name, dates and place as its search parameters, so better stage 1 data gives better lineups. |
 | R2.3 | An edition already confirmed (same name and date) is reused with zero network calls. |
-| R2.4 | Every proposed act cites a stored source document and a quoted span from it. Gemini only extracts from text the app fetched; names not found verbatim are dropped. |
+| R2.4 | Every proposed act cites a stored source document and a quoted span from it. The reader model only extracts from text the app fetched; names not found verbatim are dropped. |
 | R2.5 | Festivals and single-artist shows are different problems. Festivals: Clashfinder first, then the promoter's page (archived copy for past years), then web search. Single-artist shows: the headliner is usually known from the event name; openers and support come from ticketing listings, setlist.fm (on that date and venue) and the venue or promoter page. Stage 2 may grow separate strategies for each without touching stage 1. |
-| R2.6 | When Gemini quota runs out, the job waits with its progress kept and resumes on its own. No other model, no heuristic substitute. |
+| R2.6 | When the reader model's quota or spend cap runs out, the job waits with its progress kept and resumes on its own. No other model, no automatic switch of provider, no heuristic substitute. |
 | R2.7 | You review the lineup: accept, rename, reject with a reason, add a missing act, and tick who you saw. Review decisions teach future lookups (aliases, blocklist, source accuracy, lineup URLs). A confirmed lineup can be reopened from the event to edit it again, starting from what you saved, and the review can be filtered by day and stage. |
 | R2.7a | Confidence says how far to trust each act: sources that list it agree, each weighted by how often it has been right in your reviews (Clashfinder starts out above promoter pages); a source that gave the full lineup and leaves the act out counts against it, and the review says which. |
 | R2.7b | Lookups can be started for many events at once from the Table (at most 50 at a time). They are queued and run one at a time in the background. A found lineup can be accepted in one tap: every act with enough evidence is kept, low-evidence acts are left out (not rejected), and acts you had ticked stay ticked; "Open" gives the full review. |
 | R2.8 | Confirming writes the canonical edition and updates your event's seen acts. Acts you had already marked as seen stay ticked; acts you added by hand that the lineup lacks are kept. |
 | R2.9 | A billing role is stored only when a source's own words bill the act ("X with special guest Y", "supported by", "w/"), with a billed act named on each side of the marker, and those words are kept as the quote. A title without a marker, or with no act before it ("An Evening with X"), gives no role. Sources that disagree give no role. In review you can set any act's role; your choice is kept and passed to your seen acts. |
+| R2.10 | Every model call is guarded and logged. Before a call, code checks a kill switch, a circuit breaker, a pinned model, input size, calls per job, spend per day and per month, and calls per minute and per day; a refused call is never made and parks only what it must. After each call, one log row records provider, model, feature, outcome, token counts and cost, never page text. The caps are owner-set defaults ($0.50 a day, $5 a month, 6 calls per job) and the provider's own prepaid balance or free limit is the outer wall. |
 
 ## 7. Your details
 
@@ -128,7 +129,7 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 ## 9. Non-functional requirements
 
 - **Hosting**: a Cloudflare Worker at concert.charliechonguyen.com with Supabase as the only durable store; a Node server for local development. See ARCHITECTURE.md.
-- **Cost**: free tiers only (Gemini free tier, Ticketmaster, setlist.fm non-commercial, Clashfinder, Brave Search free plan, Resend free tier, Workers Free, Supabase free).
+- **Cost**: free tiers or a prepaid balance of $5 with auto top-up off, never an open bill (Gemini prepaid or free tier, Workers AI free allowance, Ticketmaster, setlist.fm non-commercial, Clashfinder, Brave Search free plan, Resend free tier, Workers Free, Supabase free).
 - **Respect sources**: all fetching through the shared rate-limited fetcher (MusicBrainz 1 request/second); AXS is never scraped; credentials are redacted from anything stored or shown.
 - **Responsiveness**: capture returns as soon as the row is stored. Stage 1 research completes within a single request. Stage 2 runs in the background and the UI polls.
 - **Privacy**: the site holds one person's history, or each invited member's own; put it behind Cloudflare Access. With multi-user on, members only reach their own rows, and notes, companions and people's names are meant to be encrypted in the browser (the vault, built but not yet used).
@@ -142,10 +143,10 @@ These decide trade-offs. They are ordered: when two conflict, the earlier one wi
 | Ticketmaster Discovery | 1, 2 | Name, dates, venue, city for upcoming and recent events; billed attractions | Most past events drop out; festival listings may name headliners only |
 | setlist.fm | 1, 2 | Past shows by artist and date (venue, city); confirms who actually performed | Needs a key; coverage depends on fans; not a full lineup |
 | Clashfinder | 1, 2 | Festival editions with start dates; full festival lineups with stages and times, archived for past years | Crowd-sourced; mostly festivals; fantasy clashes are ignored |
-| Promoter pages (and Wayback) | 2 | The official lineup, read by Gemini | Pages are overwritten each year, hence archived copies |
+| Promoter pages (and Wayback) | 2 | The official lineup, read by the reader model | Pages are overwritten each year, hence archived copies |
 | Brave web search | 1, 2 | Confirms dates from result titles and descriptions (and venue and city from the event markup on those pages); finds lineup pages when nothing else did | Results can mix in other editions or tour dates, so strict same-event filtering applies; free plan has a monthly cap |
 | Your ticket emails | 1 | Name, date, venue and city of shows you bought tickets for, from Ticketmaster, Live Nation, Tixr, DICE, Resident Advisor, Eventbrite, AXS, Front Gate and TicketWeb confirmations (and tickets friends transferred to you on AXS); refunds and cancellations | A ticket is not attendance; layouts change; many omit the year; other sellers' emails are listed as unreadable |
-| Gemini (free tier) | 2; 1 only when you ask | Reads fetched pages and extracts names verbatim (stage 2), or the words a page uses for an event's date and place ("Look again with Gemini") | Never answers from memory; ~50 calls/day budget |
+| Reader model (Gemini; Workers AI is an option, not built) | 2; 1 only when you ask | Reads fetched pages and extracts names verbatim (stage 2), or the words a page uses for an event's date and place ("Look again with Gemini") | Never answers from memory; ~50 calls/day budget and the spend caps in R2.10 |
 | Open-Meteo geocoding | capture, map | City suggestions as you type ("City, ST"); the point on the map for a city you stored; free, no key | Suggestions and map points only; never fills a field on its own |
 | Open-Meteo archive | event detail | Weather on the event's days, on request or once on a save from a canonical edition; free, no key | Only for a city the geocoder places exactly once; stored with its URL |
 | MusicBrainz | after 2, event view | Stable artist IDs; whether a name in your event's title is an artist (a one-tap suggestion) | Not a lineup source |
