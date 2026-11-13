@@ -117,19 +117,19 @@ export interface GeminiGenerator {
   generate(args: GeminiGenerateArgs): Promise<GeminiGenerateResult>;
 }
 
-export function buildExtractionContents(input: LookupInput, text: string, examples: ExtractionExample[]): string {
+export function buildExtractionContents(input: LookupInput, text: string, examples: ExtractionExample[], windowChars: number = MAX_DOC_CHARS): string {
   const parts: string[] = [`EVENT: ${input.eventName} (${input.year})`];
   for (const ex of examples.slice(0, 1)) {
     parts.push(
       `EXAMPLE from an earlier page on the same website, with the lineup a person confirmed:\nPAGE TEXT:\n${ex.excerpt}\nCONFIRMED NAMES: ${ex.names.join(' | ')}`,
     );
   }
-  parts.push(`PAGE TEXT:\n${lineupWindow(text, MAX_DOC_CHARS)}`);
+  parts.push(`PAGE TEXT:\n${lineupWindow(text, windowChars)}`);
   return parts.join('\n\n');
 }
 
-export function buildDetailsContents(eventName: string, year: number | undefined, text: string): string {
-  return `EVENT: ${eventName}${year ? ` (${year})` : ''}\n\nPAGE TEXT:\n${text.slice(0, MAX_DOC_CHARS)}`;
+export function buildDetailsContents(eventName: string, year: number | undefined, text: string, windowChars: number = MAX_DOC_CHARS): string {
+  return `EVENT: ${eventName}${year ? ` (${year})` : ''}\n\nPAGE TEXT:\n${text.slice(0, windowChars)}`;
 }
 
 function rethrowQuota(err: unknown): never {

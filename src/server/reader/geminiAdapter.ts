@@ -20,7 +20,7 @@ function mapError(err: unknown, now: Date): unknown {
   return parseRateLimitError(err, now) ?? err;
 }
 
-export function createGeminiReader(client: GeminiGenerator, thinkingLevel: ThinkingLevel = 'LOW', now: () => Date = () => new Date()): ReaderClient {
+export function createGeminiReader(client: GeminiGenerator, thinkingLevel: ThinkingLevel = 'LOW', now: () => Date = () => new Date(), windowChars?: number): ReaderClient {
   async function read<T>(
     args: { contents: string; systemInstruction: string; schema: unknown; maxOutputTokens: number },
     check: (parsed: unknown) => T | null,
@@ -56,7 +56,7 @@ export function createGeminiReader(client: GeminiGenerator, thinkingLevel: Think
 
     extractPerformers({ text, input, examples, maxOutputTokens }) {
       return read<ExtractedName[]>(
-        { contents: buildExtractionContents(input, text, examples), systemInstruction: SYSTEM, schema: SCHEMA, maxOutputTokens },
+        { contents: buildExtractionContents(input, text, examples, windowChars), systemInstruction: SYSTEM, schema: SCHEMA, maxOutputTokens },
         (p) => {
           const list = (p as { performers?: unknown } | null)?.performers;
           return Array.isArray(list) ? (list as ExtractedName[]) : null;
@@ -66,7 +66,7 @@ export function createGeminiReader(client: GeminiGenerator, thinkingLevel: Think
 
     extractEventDetails({ text, eventName, year, maxOutputTokens }) {
       return read<ExtractedDetails>(
-        { contents: buildDetailsContents(eventName, year, text), systemInstruction: DETAILS_SYSTEM, schema: DETAILS_SCHEMA, maxOutputTokens },
+        { contents: buildDetailsContents(eventName, year, text, windowChars), systemInstruction: DETAILS_SYSTEM, schema: DETAILS_SCHEMA, maxOutputTokens },
         (p) => {
           if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
           const out: Record<string, string> = {};

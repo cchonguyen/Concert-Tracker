@@ -16,7 +16,8 @@ import { isStaleRun, LineupStore } from './store/types';
 import { GeminiClient, EXTRACTION_PROMPT_VERSION } from './gemini';
 import { QuotaExhaustedError, QuotaLedger } from './quota';
 import { appendFacts, mergeLineup } from './merge';
-import { domainOf, editionKeyFor, htmlToText, isVerbatim, normalizeName, seriesSlugFor } from './text';
+import { domainOf, editionKeyFor, htmlToText, isVerbatim, lineupWindow, normalizeName, seriesSlugFor } from './text';
+import { readReaderConfig } from '../reader/config';
 import { isBilling, quoteBacksBilling } from './billing';
 import { makeDocument } from './adapters/common';
 import { resolveArtist } from './musicbrainz';
@@ -38,7 +39,7 @@ export interface PipelineDeps {
   // Web search for lineup pages, used only when every source came back empty.
   search: LineupSearch | null;
   now: () => Date;
-  // Guarded reader (src/server/reader). Nothing reads it yet.
+  // Guarded reader (src/server/reader): the only way the pipeline reads a page or searches with a model.
   reader?: GuardedReader | null;
   // Multi-user only: false for a member who is blocked or removed. Their jobs are parked, with no outside call.
   hasActiveUser?: (userId: string) => Promise<boolean>;
@@ -239,10 +240,11 @@ async function stageCollect(deps: PipelineDeps, job: LookupJob, now: Date): Prom
 }
 
 async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force: boolean): Promise<void> {
-  if (job.pendingExtraction.length > 0 && (!deps.gemini || !deps.quota)) {
-    log(job, `Gemini is not configured, so ${job.pendingExtraction.length} page(s) could not be read.`, now);
+  if (job.pendingExtraction.length > 0 && !deps.reader) {
+    log(job, `Reader not configured, so ${job.pendingExtraction.length} page(s) could not be read.`, now);
     job.pendingExtraction = [];
   }
+  const reader = deps.reader;
   // One page per call: runJob saves the job between pages, and a Worker runs
   // each page in its own invocation to stay under the subrequest limit.
   if (job.pendingExtraction.length > 0) {
@@ -253,7 +255,7 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
       // page first found by search is recognised by its domain here too.
       const official = doc.sourceType !== 'discovered' || isEventDomain(doc.url, job.input.eventName);
       const sourceType = official && doc.sourceType === 'discovered' ? 'promoter' : doc.sourceType;
-      const extractor = `gemini:${deps.gemini!.model}`;
+      const extractor = `${reader!.provider}:${reader!.model}`;
       // Extraction cache: the same page (same content hash) already read for
       // this edition with this model and prompt gives the same names, so reuse
       // them instead of spending Gemini quota. Each is checked on the page again.
@@ -274,10 +276,32 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
         job.pendingExtraction = job.pendingExtraction.slice(1);
         return;
       }
-      await deps.quota!.acquire(now, { ignorePause: force, userId: job.userId });
       const examples = await deps.store.getExamples(domainOf(doc.url));
-      const extracted = await deps.gemini!.extractPerformers({ text: doc.body, input: job.input, examples });
       const normalizedDoc = normalizeName(doc.body);
+      const text = lineupWindow(doc.body, readReaderConfig(process.env).windowChars);
+      const read = await reader!.extractPerformers(
+        { text, input: job.input, examples },
+        {
+          feature: 'lineup_extract',
+          jobKey: job.id,
+          jobId: job.id,
+          eventId: job.eventId,
+          userId: job.userId,
+          documentId: doc.id,
+          force,
+          afterRead: (list) => ({
+            returned: list.length,
+            verbatim: list.filter((e) => e?.name && e?.quote && isVerbatim(e.name, e.quote, normalizedDoc)).length,
+          }),
+        },
+      );
+      if (!read.ok) {
+        // A dropped page is not an error: logged, never retried, the next page is read.
+        log(job, `Skipped ${doc.url}: ${read.reason === 'input_too_large' ? 'the page is too large to read' : 'the reader gave an unusable answer'} (${read.reason}).`, now);
+        job.pendingExtraction = job.pendingExtraction.slice(1);
+        return;
+      }
+      const extracted = read.value;
       const kept: PerformerClaim[] = [];
       let rejected = 0;
       for (const e of extracted) {
@@ -310,7 +334,7 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
   }
 
   const claims = await deps.store.listPerformerClaims(job.id);
-  const canDiscover = deps.search && deps.gemini && deps.quota && !job.discoveryDone;
+  const canDiscover = deps.search && deps.reader && !job.discoveryDone;
   const isSparseFestival =
     Boolean(
       (job.input.endDate && job.input.endDate !== job.input.startDate) ||
@@ -326,14 +350,23 @@ const SEARCH_PAGES_TO_READ = 3;
 async function stageDiscover(deps: PipelineDeps, job: LookupJob, now: Date, force: boolean): Promise<void> {
   // Search may have been switched off while this job was parked. Extraction
   // still needs Gemini, so search without it would only fetch pages.
-  if (!deps.search || !deps.gemini || !deps.quota) {
+  if (!deps.search || !deps.reader) {
     job.discoveryDone = true;
     job.stage = 'merge';
-    log(job, 'Web search is off; skipped.', now);
+    log(job, deps.search ? 'Reader not configured; web search skipped.' : 'Web search is off; skipped.', now);
     return;
   }
-  if (deps.search.usesGeminiQuota) await deps.quota.acquire(now, { ignorePause: force, userId: job.userId });
-  const urls = await deps.search.findLineupUrls(job.input);
+  // Grounded Gemini search goes through the guarded reader (guards own quota); other providers do not spend it.
+  const urls = deps.search.usesGeminiQuota
+    ? await deps.reader.discoverLineupUrls(job.input, {
+        feature: 'discovery',
+        jobKey: job.id,
+        jobId: job.id,
+        eventId: job.eventId,
+        userId: job.userId,
+        force,
+      })
+    : await deps.search.findLineupUrls(job.input);
   job.discoveryDone = true;
   log(job, urls.length ? `Web search (${deps.search.id}) returned ${urls.length} result(s).` : `Web search (${deps.search.id}) found nothing.`, now);
   let read = 0;

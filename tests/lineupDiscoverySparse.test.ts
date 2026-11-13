@@ -9,7 +9,29 @@ import { GeminiClient } from '../src/server/lineup/gemini.ts';
 import { QuotaLedger } from '../src/server/lineup/quota.ts';
 import { makeDocument } from '../src/server/lineup/adapters/common.ts';
 import { SourceAdapter } from '../src/server/lineup/types.ts';
+import { createGuardedReader } from '../src/server/reader/guardedReader.ts';
+import { readReaderConfig } from '../src/server/reader/config.ts';
 import { fakeFetcher } from './fakes.ts';
+
+function readerFor(gemini: GeminiClient, store: FileLineupStore, quota: QuotaLedger, now: () => Date) {
+  const usage = { provider: 'gemini' as const, model: gemini.model, inputTokens: 10, outputTokens: 10, durationMs: 1 };
+  return createGuardedReader({
+    client: {
+      provider: 'gemini',
+      model: gemini.model,
+      async extractPerformers(a) {
+        return { ok: true, value: await gemini.extractPerformers(a), usage };
+      },
+      async extractEventDetails() {
+        return { ok: true, value: {}, usage };
+      },
+    },
+    store,
+    quota,
+    config: readReaderConfig({}),
+    now,
+  });
+}
 
 function makeStubAdapter(performers: string[], facts: Record<string, { value: string; sourceType: 'ticketmaster'; sourceUrl: string }[]> = {}): SourceAdapter {
   return {
@@ -73,15 +95,18 @@ test('sparse festival with 1 claim transitions to discover and keeps existing cl
 
   const stubAdapter = makeStubAdapter(['Headliner Act']);
 
+  const quota = new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 });
+  const now = () => new Date('2025-06-01T12:00:00Z');
   const deps: PipelineDeps = {
     store,
     fetcher,
     adapters: [stubAdapter],
     lateAdapters: [],
     gemini,
-    quota: new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 }),
+    quota,
+    reader: readerFor(gemini, store, quota, now),
     search,
-    now: () => new Date('2025-06-01T12:00:00Z'),
+    now,
   };
 
   // Multi-day festival via input dates:
@@ -151,15 +176,18 @@ test('multi-day festival detected from adapter facts transitions to discover whe
     endDate: [{ value: '2025-07-12', sourceType: 'ticketmaster', sourceUrl: 'https://ticketmaster.example/event' }],
   });
 
+  const quota = new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 });
+  const now = () => new Date('2025-06-01T12:00:00Z');
   const deps: PipelineDeps = {
     store,
     fetcher,
     adapters: [stubAdapter],
     lateAdapters: [],
     gemini,
-    quota: new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 }),
+    quota,
+    reader: readerFor(gemini, store, quota, now),
     search,
-    now: () => new Date('2025-06-01T12:00:00Z'),
+    now,
   };
 
   const job = await createLookup(deps, {
