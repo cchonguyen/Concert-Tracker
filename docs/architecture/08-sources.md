@@ -23,3 +23,50 @@ Promoters overwrite their lineup page for the next edition, so a past event neve
 Job logs and errors are shown in the UI and stored, so credentials are redacted from them (`redactSecrets` and `redactUrl` in `http.ts`).
 
 All HTTP goes through `createRateLimitedFetcher()` (`src/server/lineup/http.ts`), which spaces requests per host (MusicBrainz 1.5 s with retry/backoff on 503, Clashfinder 1 s, setlist.fm 0.6 s, Open-Meteo 0.2 s) and sends a User-Agent with `CONTACT_EMAIL`.
+
+## Source terms: what may be stored
+
+Read on 2026-11-13 from the official pages named below. Quotes are short extracts. Where a term could not be found the entry says so: treat that as not allowed to persist beyond what the terms clearly permit. This section is a reading of the terms by an AI agent, not legal advice; the persistence rows at the end are a recommendation for Charlie to confirm.
+
+### Ticketmaster Discovery API
+
+Terms: https://developer.ticketmaster.com/support/terms-of-use/ and https://developer.ticketmaster.com/products-and-docs/apis/getting-started/ (read 2026-11-13). The Partner API Terms of Use and General Terms of Use linked from those pages were not read.
+
+- What may be stored and for how long: the terms forbid you to "Cache or store any Event Content other than for reasonable periods in order to provide the service you are providing." "Reasonable periods" is not defined. Permanent copies of event content are not clearly permitted.
+- Removal: on request you must "Remove from your application within 24 hours any Event Content". The app must be able to delete Ticketmaster-derived content on that notice.
+- Caching limits: see above; short caching only.
+- Attribution or link-back: not found on the terms page. The rate-limit increase criteria mention compliance with "our branding guide" (design.ticketmaster.com), which was not read. Treat attribution as not found.
+- Rate limits: default quota of "5000 API calls per day" and "5 requests per second". Ticketmaster also "reserve[s] the right to rate limit or block applications that make a large number of calls".
+- Commercial or personal use: the licence is "non-exclusive, non-sublicenseable, non-transferable" and "All rights not expressly granted to you are reserved by Ticketmaster." A personal-use rule was not found.
+
+### setlist.fm API
+
+Terms: https://www.setlist.fm/help/terms (read 2026-11-13).
+
+- What may be stored and for how long: you may not "Retain any copies of the Setlist.fm data, except for the purposes of retaining cached information for short periods." You also may not store setlist.fm user data "in any data repository which enables any third party access", and "You must make direct server calls to the API for the Setlist.fm data". Permanent storage of setlist data is not permitted.
+- Caching limits: "short periods" only; the length is not defined.
+- Attribution or link-back: required. "you must display attribution on your website or client application wherever Setlist.fm data is used", "you must use the attribution link each API response contains", and link to the homepage of the site. The terms also forbid tagging links with nofollow.
+- Rate limits: "We reserve the right to limit the rate at which calls may be made to the API". Transactional pages must not be hit "more than once during any three-second interval" and the API must not put "an unreasonable or disproportionately large load" on the site. The adapter's 0.6 s spacing is a code setting, not a figure from the terms.
+- Commercial or personal use: "You are permitted to use the API solely for non-commercial purposes". "If the primary purpose of your application is to derive revenue, it is considered commercial." Competing products or services are forbidden. The API key must not be shared with any third party. setlist.fm may "implement a fee and payment terms for use of the API at any time" and may change or discontinue the API at any time.
+- Presentation: data must be provided to users "on an as is basis".
+
+### Clashfinder API
+
+Terms: https://clashfinder.com/pages/api/ (read 2026-11-13, by direct fetch; the page is the API manual). A search of clashfinder.com for terms of use found no terms page; /pages/terms, /pages/about and /pages/privacy returned 404, and the site footer links only to the API page and a cookies page (https://clashfinder.com/pages/cookies/, not read).
+
+- What may be stored and for how long: not found, treat as not allowed to persist beyond what the terms clearly permit.
+- Caching limits: not found.
+- Attribution or link-back: not found.
+- Rate limits: not found. The only access rule is that every call must carry `authUsername` and `authPublicKey` (an account is required; "API calls now require authentication"). The 1 s spacing in the fetcher is our own choice.
+- Commercial or personal use: not found. No licence for the data was found; the data is user-entered, so the contributors' rights are also unknown.
+- Note: Clashfinder offers free account-based API access, but access is not a licence to store or redistribute.
+
+### Recommendation: what Slices 11.14 and 11.16 may persist
+
+Recommendation only; Charlie to confirm before either slice is built.
+
+| Source | Slice 11.14 (backfill into shared editions) and Slice 11.16 (persist dated occurrences) may persist |
+| --- | --- |
+| Ticketmaster | Store: our own record of the Ticketmaster event id and URL (as a pointer), plus facts the person confirmed (date, venue name, city) as our own event fields with a link back. Do not store: the full API payload, images, descriptions or other "Event Content" as a durable copy. Re-fetch on demand, short-lived cache only, and delete Ticketmaster-derived content within 24 hours of a removal request. |
+| setlist.fm | Store: the setlist.fm setlist id and the attribution link as a pointer only. Do not store: setlist song lists or user data as a durable copy, and never in any shared or third-party-readable store (this matters for shared editions). Fetch directly at read time, short cache only, show attribution wherever shown. Personal, non-commercial use only. |
+| Clashfinder | Store: the clashfinder slug as a pointer, and only the minimum our adapter already keeps as a source document with a quoted span. Do not store: bulk copies of a clash (all acts, stages and times) into shared editions, because no storage permission was found. Ask the Clashfinder operator for permission before persisting more. |
