@@ -3,6 +3,7 @@ import { Check, ExternalLink, Loader2, RefreshCw, Search } from 'lucide-react';
 import type { DetailCandidate, DetailsStatus } from '../server/events/types';
 import type { LineupStatus } from '../services/lineupApi';
 import { candidateRowParts, checkedLabel, checkRows, type CheckRow } from '../services/checkDetails';
+import { buildPickerView, type PickerChip } from '../services/pickerGroups';
 import { Button } from './ui/Button';
 import { Pill } from './ui/Pill';
 import { SOURCE_LABELS } from '../services/lineupApi';
@@ -41,10 +42,56 @@ const ROW_TEXT: Record<CheckRow['state'], string> = {
   off: 'not set up',
 };
 
+// A wrapping row of filter chips. Tapping the chosen chip again clears it.
+function ChipRow({ label, chips, active, onPick }: { label: string; chips: PickerChip[]; active: string | null; onPick: (key: string | null) => void }) {
+  if (chips.length < 2) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={label}>
+      <span className="text-xs text-zinc-400">{label}</span>
+      {chips.map((c) => (
+        <button key={c.key || 'none'} type="button" aria-pressed={active === c.key} onClick={() => onPick(active === c.key ? null : c.key)} className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
+          <Pill tone={active === c.key ? 'accent' : 'neutral'}>
+            {c.label} ({c.count})
+          </Pill>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // Check details: searches the sources for this date and place. Nothing you typed changes. Suggestions are offered, never applied,
 // and Gemini is a separate, opt-in second step.
 export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, notes, lineupStatus, suggestions, onCheck, onGemini, onPick, onNone, inline = false }: Props) {
   const [used, setUsed] = useState<string[]>([]);
+  const [search, setSearch] = useState('');
+  const [city, setCity] = useState<string | null>(null);
+  const [month, setMonth] = useState<string | null>(null);
+  const view = buildPickerView(candidates, { city, month, search }, (c) =>
+    [...new Set(c.sources.map((s) => SOURCE_LABELS[s.sourceType] + (s.readBy === 'gemini' ? ' (read by Gemini)' : '')))].join(', '),
+  );
+  const renderCandidate = (c: DetailCandidate) => {
+    const row = candidateRowParts(c);
+    return (
+      <button
+        key={c.id}
+        type="button"
+        onClick={() => onPick(c.id)}
+        className="flex w-full items-start justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-2.5 text-left hover:border-violet-500"
+      >
+        <span className="min-w-0">
+          <span className="block truncate text-sm text-zinc-100">{row.name}</span>
+          <span className="block truncate text-xs text-zinc-300">{row.date} · {row.venue} · {row.place}</span>
+          <span className="block truncate text-[11px] text-zinc-400">
+            {[...new Set(c.sources.map((s) => SOURCE_LABELS[s.sourceType] + (s.readBy === 'gemini' ? ' (read by Gemini)' : '')))].join(', ')}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          <Pill tone={row.sourceCount > 1 ? 'good' : 'neutral'}>{row.sourceText}</Pill>
+          <Check className="h-4 w-4 text-violet-300" aria-hidden="true" />
+        </span>
+      </button>
+    );
+  };
   const left = lineupStatus?.quota ? Math.max(0, lineupStatus.quota.limit - lineupStatus.quota.used) : null;
   const rows = checkRows({
     busy,
@@ -92,29 +139,35 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
       {status === 'choose' && (
         <div className="space-y-2 rounded-lg border border-violet-500/30 bg-violet-950/20 p-2.5">
           <p className="text-sm text-violet-200">{candidates.length && status === 'choose' ? 'Sources give different dates. Is it one of these?' : 'Is it one of these?'}</p>
-          {candidates.map((c) => {
-            const row = candidateRowParts(c);
-            return (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => onPick(c.id)}
-              className="flex w-full items-start justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-2.5 text-left hover:border-violet-500"
-            >
-              <span className="min-w-0">
-                <span className="block truncate text-sm text-zinc-100">{row.name}</span>
-                <span className="block truncate text-xs text-zinc-300">{row.date} · {row.venue} · {row.place}</span>
-                <span className="block truncate text-[11px] text-zinc-400">
-                  {[...new Set(c.sources.map((s) => SOURCE_LABELS[s.sourceType] + (s.readBy === 'gemini' ? ' (read by Gemini)' : '')))].join(', ')}
-                </span>
-              </span>
-              <span className="flex shrink-0 items-center gap-2">
-                <Pill tone={row.sourceCount > 1 ? 'good' : 'neutral'}>{row.sourceText}</Pill>
-                <Check className="h-4 w-4 text-violet-300" aria-hidden="true" />
-              </span>
-            </button>
-            );
-          })}
+          {view.grouped && (
+            <div className="space-y-2">
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search these choices"
+                aria-label="Search these choices"
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-500"
+              />
+              <ChipRow label="City" chips={view.cityChips} active={city} onPick={setCity} />
+              <ChipRow label="Month" chips={view.monthChips} active={month} onPick={setMonth} />
+              <p role="status" aria-live="polite" className="text-xs text-zinc-400">
+                Showing {view.shown} of {view.total}
+                {view.shown === 0 && (
+                  <>
+                    . Nothing matches.{' '}
+                    <button type="button" className="underline" onClick={() => { setSearch(''); setCity(null); setMonth(null); }}>Clear filters</button>
+                  </>
+                )}
+              </p>
+            </div>
+          )}
+          {view.groups.map((g) => (
+            <div key={g.key} className="space-y-2">
+              {view.grouped && <p className="pt-1 text-xs font-semibold text-zinc-300">{g.label} ({g.items.length})</p>}
+              {g.items.map(renderCandidate)}
+            </div>
+          ))}
           <button type="button" onClick={onNone} className="text-xs text-zinc-400 hover:underline">
             None of these
           </button>
