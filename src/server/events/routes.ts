@@ -65,8 +65,11 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
       let current = event;
       let job: Awaited<ReturnType<typeof startLineupLookup>>['job'] | undefined;
       try {
-        const linked = await startLineupLookup(deps, event);
-        current = linked.event;
+        // The lookup reads the edition's facts through inheritance; the stored event keeps only what was typed.
+        const seen = resolveEvent(event, edition);
+        const linked = await startLineupLookup(deps, { ...seen, year: seen.year ?? edition.year });
+        current = { ...event, lineupJobId: linked.event.lineupJobId, updatedAt: linked.event.updatedAt };
+        await deps.store.putEvent(current);
         job = linked.job;
       } catch {
         // The plain saved event stands.
@@ -74,7 +77,7 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
       // Weather is looked up once on a save from an edition (Charlie's choice),
       // never re-run, and a failure never fails the save.
       try {
-        const { weather } = await lookupWeather(current, deps.fetcher, deps.now());
+        const { weather } = await lookupWeather(resolveEvent(current, edition), deps.fetcher, deps.now());
         if (weather) {
           current = { ...current, weather, updatedAt: deps.now().toISOString() };
           await deps.store.putEvent(current);
@@ -82,7 +85,8 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
       } catch {
         // No weather is stored.
       }
-      return res.status(201).json(job ? { event: current, job } : { event: current });
+      const shown = resolveEvent(current, edition);
+      return res.status(201).json(job ? { event: shown, job } : { event: shown });
     } catch (err) {
       fail(res, err);
     }
