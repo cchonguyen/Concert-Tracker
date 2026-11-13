@@ -1444,19 +1444,72 @@ export class SupabaseLineupStore implements LineupStore {
     return (rows ?? []).map((r: any) => this.rowToEvent(r));
   }
 
-  // AI call log: slice 10.3 implements these once migration 0038 is applied.
-  async addAiCall(_row: AiCallRow): Promise<void> {
-    throw new Error('AI call log is not available: apply 0038');
+  // AI call log (0038). Server-side only (service role), so the unscoped client is used. One insert per call.
+  async addAiCall(r: AiCallRow): Promise<void> {
+    this.check(
+      await this.db.from('ai_calls').insert({
+        id: r.id,
+        created_at: r.createdAt,
+        feature: r.feature,
+        job_id: r.jobId,
+        event_id: r.eventId,
+        user_id: r.userId,
+        provider: r.provider,
+        model: r.model,
+        source_document_id: r.sourceDocumentId,
+        input_chars: r.inputChars,
+        input_tokens: r.inputTokens,
+        output_tokens: r.outputTokens,
+        est_cost_usd: r.estCostUsd,
+        duration_ms: r.durationMs,
+        outcome: r.outcome,
+        error_code: r.errorCode,
+        guard_reason: r.guardReason,
+        names_returned: r.namesReturned,
+        names_verbatim: r.namesVerbatim,
+        names_rejected: r.namesRejected,
+      }),
+      'addAiCall (apply 0038_ai_calls.sql)',
+    );
   }
 
-  async listAiCalls(_limit: number): Promise<AiCallRow[]> {
-    throw new Error('AI call log is not available: apply 0038');
+  async listAiCalls(limit: number): Promise<AiCallRow[]> {
+    const rows = this.check(
+      await this.db.from('ai_calls').select('*').order('created_at', { ascending: false }).limit(limit),
+      'listAiCalls (apply 0038_ai_calls.sql)',
+    );
+    return (rows ?? []).map(rowToAiCall);
   }
 
-  async deleteAiCallsBefore(_cutoff: Date): Promise<number> {
-    throw new Error('AI call log is not available: apply 0038');
+  async deleteAiCallsBefore(cutoff: Date): Promise<number> {
+    const res: any = await this.db.from('ai_calls').delete({ count: 'exact' }).lt('created_at', cutoff.toISOString());
+    this.check(res, 'deleteAiCallsBefore (apply 0038_ai_calls.sql)');
+    return res.count ?? 0;
   }
 }
+
+const rowToAiCall = (r: any): AiCallRow => ({
+  id: r.id,
+  createdAt: r.created_at,
+  feature: r.feature,
+  jobId: r.job_id ?? null,
+  eventId: r.event_id ?? null,
+  userId: r.user_id ?? null,
+  provider: r.provider,
+  model: r.model,
+  sourceDocumentId: r.source_document_id ?? null,
+  inputChars: r.input_chars ?? null,
+  inputTokens: r.input_tokens ?? null,
+  outputTokens: r.output_tokens ?? null,
+  estCostUsd: r.est_cost_usd == null ? null : Number(r.est_cost_usd),
+  durationMs: r.duration_ms ?? null,
+  outcome: r.outcome,
+  errorCode: r.error_code ?? null,
+  guardReason: r.guard_reason ?? null,
+  namesReturned: r.names_returned ?? null,
+  namesVerbatim: r.names_verbatim ?? null,
+  namesRejected: r.names_rejected ?? null,
+});
 
 const rowToShareLink = (r: any): ShareLink => ({
   id: r.id,
