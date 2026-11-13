@@ -5,8 +5,8 @@ import type { GuardedReader } from '../reader/guardedReader';
 import { domainOf, htmlToText, isVerbatim, normalizeName } from '../lineup/text';
 import { eventWords } from '../lineup/search';
 import { findDates } from './parse';
-import { braveFinder, braveResults, DetailQuery, DetailReader, searchWindow } from './details';
-import { DetailCandidate, EventField } from './types';
+import { applyCandidate, braveFinder, braveResults, DetailQuery, DetailReader, mergeCandidates, searchWindow } from './details';
+import { DetailCandidate, EventField, LoggedEvent } from './types';
 
 // "Look again with Gemini": stage 1 research that you asked to spend Gemini
 // calls on. Gemini reads whole pages the search found, where a result's two
@@ -85,6 +85,91 @@ export function geminiReader(reader: GuardedReader, eventId: string, now: () => 
       return out;
     },
   };
+}
+
+// Rung 4 (Slice 11.17): the reader without a button press, after the save, in its own queue message per page.
+// - Runs only when the event has a full date and venue or city is still empty (rung4Wanted).
+// - At most RUNG4_MAX_PAGES pages (rung4Urls), taken from the pages rung 3 already found; no new search here.
+// - One message reads one page: it must be under RUNG4_MAX_CHARS characters, else it is skipped (never cut up).
+// - A candidate fills only empty fields, and only when its date is the full date you gave (covers).
+// - A guard block or quota error parks the work: a note, nothing else. No retry, no other model, no heuristics.
+export const RUNG4_MAX_PAGES = 2;
+export const RUNG4_MAX_CHARS = 30000;
+
+const dayCovered = (c: DetailCandidate, date: string) =>
+  c.startDate === date || Boolean(c.startDate && c.endDate && c.startDate <= date && date <= c.endDate);
+
+export function rung4Wanted(event: LoggedEvent): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(event.startDate ?? '') && (!event.venue || !event.city);
+}
+
+// The pages (at most RUNG4_MAX_PAGES) whose date already matched the full date you gave.
+export function rung4Urls(event: LoggedEvent): string[] {
+  if (!rung4Wanted(event)) return [];
+  const urls = event.details.candidates
+    .filter((c) => dayCovered(c, event.startDate!))
+    .flatMap((c) => c.sources.filter((s) => s.sourceType === 'discovered' && s.sourceUrl).map((s) => s.sourceUrl!))
+    .filter((u) => !isAxs(u));
+  return [...new Set(urls)].slice(0, RUNG4_MAX_PAGES);
+}
+
+export type Rung4Outcome = 'skipped' | 'applied' | 'nothing' | 'parked';
+
+// One rung 4 message: reads one page for one event. Never throws for quota or guard stops.
+export async function runReaderPage(
+  store: { getEvent(id: string): Promise<LoggedEvent | null>; putEvent(event: LoggedEvent): Promise<void> },
+  reader: GuardedReader,
+  eventId: string,
+  url: string,
+  fetcher: Fetcher,
+  now: Date,
+): Promise<Rung4Outcome> {
+  const event = await store.getEvent(eventId);
+  if (!event || !rung4Wanted(event) || isAxs(url)) return 'skipped';
+  const notes: string[] = [];
+  let outcome: Rung4Outcome = 'nothing';
+  const year = event.year ?? Number(event.startDate!.slice(0, 4));
+  const q: DetailQuery = { name: event.name, year, startDate: event.startDate, endDate: event.endDate };
+  let candidate: DetailCandidate | null = null;
+  let text: string | null = null;
+  try {
+    const res = await fetcher.get(url, { headers: { Accept: 'text/html' }, timeoutMs: 15000 });
+    if (res.status === 200) text = htmlToText(res.body);
+  } catch {
+    // An unreachable page gives nothing.
+  }
+  if (text === null) notes.push(`gemini (auto): could not fetch ${url}.`);
+  else if (text.length >= RUNG4_MAX_CHARS) notes.push(`gemini (auto): skipped ${url}, the page is 30,000 characters or more.`);
+  else if (!namesEvent(text, q)) notes.push(`gemini (auto): ${url} does not name this event; no Gemini call made.`);
+  else {
+    try {
+      const res = await reader.extractEventDetails(
+        { text, eventName: event.name, year },
+        { feature: 'details_extract', jobKey: `details:${eventId}:${now.toISOString().slice(0, 10)}`, eventId },
+      );
+      if (!res.ok) {
+        outcome = 'parked';
+        notes.push(`gemini (auto): stopped, ${res.reason === 'invalid_json' ? 'the reader gave an unusable answer' : (res.reason ?? 'blocked')}.`);
+      } else {
+        const c = checkedCandidate(q, url, text, res.value ?? {});
+        if (c && dayCovered(c, event.startDate!)) candidate = c;
+        notes.push(`gemini (auto): read ${url}${candidate ? `: ${candidate.sources[0].fields.join(', ')}` : ', no place for your date on the page'}.`);
+      }
+    } catch (err) {
+      if (!(err instanceof QuotaExhaustedError)) throw err;
+      outcome = 'parked';
+      notes.push(`gemini (auto): stopped, ${err.reason}`);
+    }
+  }
+  let next: LoggedEvent = event;
+  if (candidate) {
+    next = applyCandidate(event, candidate, false, ['venue', 'city', 'country']);
+    next.details = { ...event.details, candidates: mergeCandidates([...event.details.candidates, candidate]) };
+    outcome = next.venue !== event.venue || next.city !== event.city || next.country !== event.country ? 'applied' : 'nothing';
+  }
+  next = { ...next, details: { ...next.details, notes: [...(next.details.notes ?? []), ...notes] }, updatedAt: now.toISOString() };
+  await store.putEvent(next);
+  return outcome;
 }
 
 // Keeps only what the page itself says. Exported for tests.
