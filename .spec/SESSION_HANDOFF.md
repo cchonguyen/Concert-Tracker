@@ -8,7 +8,7 @@
   - 9.3.1 `POST /api/events { editionId }` copies the canonical fields, sourced 'edition' (PR #268).
   - 9.4 Tapping a suggestion saves from the edition and opens it. 9.4.1 removed "I saw everyone": no bulk tick of seen acts, which is on the Do NOT Build list (PR #270).
   - 9.5 Weather is looked up once, server-side, on a save from an edition. AGENTS.md weather rule and R3.8 updated (PR #272).
-- **Verification Status:** Verified via finish-slice.mjs (Slice 11.21)
+- **Verification Status:** Verified via finish-slice.mjs (Slice 11.22)
 - **Open gaps:**
   - Member-created editions: deferred (Charlie: "friends first").
   - Plan Stage C nice-to-haves (C1 to C8) in /mnt/project-files/canonical-autocomplete/plan.md are not started.
