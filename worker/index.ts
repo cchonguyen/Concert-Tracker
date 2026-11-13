@@ -1,6 +1,6 @@
 import { handleAsNodeRequest } from 'cloudflare:node';
 import { createApiApp, healthStatus } from '../src/server/app';
-import { PipelineDeps, runJob } from '../src/server/lineup/pipeline';
+import { PipelineDeps, isRequeueTime, requeueFailedResolveArtists, runJob } from '../src/server/lineup/pipeline';
 import { createDeps, createStore } from '../src/server/lineup/service';
 import { backfillEntities, backfillVenuePlaces } from '../src/server/entities/linkingStore';
 import { frontDoor, isSignedIn } from '../src/server/share/door';
@@ -152,6 +152,15 @@ async function runCron(env: Env): Promise<void> {
       }
     } catch (err) {
       console.error('Request digest failed:', err instanceof Error ? err.message : String(err));
+    }
+  }
+  // Hourly: put artist-resolution jobs that failed on a MusicBrainz 503 back to waiting. Idempotent (log marker).
+  if (isRequeueTime(now)) {
+    try {
+      const ids = await requeueFailedResolveArtists(deps);
+      if (ids.length) console.log(`Re-queued ${ids.length} artist-resolution job(s) that failed on a MusicBrainz 503.`);
+    } catch (err) {
+      console.error('Artist-resolution re-queue failed:', err instanceof Error ? err.message : String(err));
     }
   }
   const due = await deps.store.dueJobs(deps.now(), 5);
