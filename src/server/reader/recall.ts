@@ -118,6 +118,8 @@ export interface PageRun {
   retries: number; // extra attempts made for this page after a transient error
   rawReply?: string | null; // the model's reply text (page-derived), cut at RAW_REPLY_MAX; JSON output only
   rawReplyTruncated?: boolean; // rawReply was cut at RAW_REPLY_MAX
+  pieces?: number; // chunk mode only: pieces the page was split into
+  failedPieces?: number; // chunk mode only: pieces that failed or returned invalid JSON
   callFailed?: boolean; // the call itself failed (no reply), as opposed to a reply that was not valid JSON
 }
 
@@ -133,6 +135,7 @@ export interface ModelRun {
 // Why a page's reply is not valid JSON; null when it was valid.
 export function invalidReason(p: PageRun, maxOutputTokens?: number): string | null {
   if (p.validJson) return null;
+  if (p.failedPieces && p.pieces) return `${p.failedPieces} of ${p.pieces} pieces failed`;
   if (p.callFailed) return 'call failed';
   if (p.truncated) return maxOutputTokens ? `truncated at ${maxOutputTokens} output tokens` : 'truncated at the output-token cap';
   return 'unparseable';
@@ -294,14 +297,14 @@ export function renderMarkdown(reports: ModelReport | ModelReport[]): string {
     if (!v.pass) lines.push('', ...v.reasons.map((x) => `- ${x}`));
     lines.push(
       '',
-      '| Page | Matched | Expected | On page | Recall | Recall on page | JSON | Finish | Extras | Rejected | Missed | Not on page |',
-      '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+      '| Page | Pieces | Matched | Expected | On page | Recall | Recall on page | JSON | Finish | Extras | Rejected | Missed | Not on page |',
+      '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
     );
     for (const p of r.pages) {
       const why = invalidReason(p, r.maxOutputTokens ?? undefined);
       const notOn = p.score.notOnPage === 0 ? '' : `${p.score.notOnPage}: ${p.score.notOnPageNames.join(', ')}${p.score.notOnPage > p.score.notOnPageNames.length ? ', ...' : ''}`;
       lines.push(
-        `| ${cell(p.pageId)} | ${p.score.matched} | ${p.score.expected} | ${p.score.expectedOnPage} | ${pct(p.score.recall)} | ${pct(p.score.recallOnPage)} | ${
+        `| ${cell(p.pageId)} | ${p.pieces ?? 1} | ${p.score.matched} | ${p.score.expected} | ${p.score.expectedOnPage} | ${pct(p.score.recall)} | ${pct(p.score.recallOnPage)} | ${
           why === null ? 'valid' : `invalid (${why})`
         } | ${p.finishReason ?? 'n/a'} | ${cell(p.score.extras.join(', '))} | ${p.score.rejected} | ${cell(p.score.missed.join(', '))} | ${cell(notOn)} |`,
       );
@@ -325,7 +328,8 @@ export const BENCH_MODELS: Array<{ provider: ReaderProvider; model: string }> = 
 
 export const DEFAULT_PAGE_LIMIT = 8;
 export const DEFAULT_WINDOW = 180000;
-export const DEFAULT_MAX_CALLS = 40;
+export const DEFAULT_MAX_CALLS = 150;
+export const DEFAULT_TIMEOUT_SEC = 180;
 export const DEFAULT_MAX_USD = 2;
 export const BENCH_MAX_OUTPUT_TOKENS = 8192;
 
@@ -336,6 +340,8 @@ export interface BenchArgs {
   maxCalls: number;
   maxUsd: number;
   maxOutputTokens: number;
+  chunkChars: number | null; // null: one call per page (default)
+  timeoutSec: number; // Workers AI HTTP calls only
   models: string[] | null; // null: all of BENCH_MODELS
   outJson: string | null;
   outMd: string | null;
@@ -350,6 +356,8 @@ export function parseBenchArgs(argv: string[]): BenchArgs {
     maxCalls: DEFAULT_MAX_CALLS,
     maxUsd: DEFAULT_MAX_USD,
     maxOutputTokens: BENCH_MAX_OUTPUT_TOKENS,
+    chunkChars: null,
+    timeoutSec: DEFAULT_TIMEOUT_SEC,
     models: null,
     outJson: null,
     outMd: null,
@@ -373,6 +381,8 @@ export function parseBenchArgs(argv: string[]): BenchArgs {
     else if (arg === '--max-calls') a.maxCalls = Math.floor(positive(arg, argv[++i]));
     else if (arg === '--max-usd') a.maxUsd = positive(arg, argv[++i]);
     else if (arg === '--max-output-tokens') a.maxOutputTokens = Math.floor(positive(arg, argv[++i]));
+    else if (arg === '--chunk-chars') a.chunkChars = Math.floor(positive(arg, argv[++i]));
+    else if (arg === '--timeout-sec') a.timeoutSec = positive(arg, argv[++i]);
     else if (arg === '--models') a.models = text(arg, argv[++i]).split(',').map((s) => s.trim()).filter(Boolean);
     else if (arg === '--out-json') a.outJson = text(arg, argv[++i]);
     else if (arg === '--out-md') a.outMd = text(arg, argv[++i]);
@@ -512,6 +522,41 @@ export function classifyFailure(err: unknown): FailureKind {
   return 'error';
 }
 
+// Splits text into pieces of about `size` characters at line breaks. A line is never cut, unless that one line is
+// longer than `size`; then it is cut every `size` characters. Joining the pieces returns the text.
+export function splitIntoPieces(text: string, size: number): string[] {
+  if (text.length <= size) return [text];
+  const pieces: string[] = [];
+  let cur = '';
+  for (const line of text.split(/(?<=\n)/)) {
+    if (line.length > size) {
+      if (cur) pieces.push(cur);
+      cur = '';
+      for (let i = 0; i < line.length; i += size) pieces.push(line.slice(i, i + size));
+    } else if (cur.length + line.length > size) {
+      pieces.push(cur);
+      cur = line;
+    } else cur += line;
+  }
+  if (cur) pieces.push(cur);
+  return pieces;
+}
+
+// Merges acts returned for several pieces, de-duplicated by normalized name; the first quote is kept.
+export function mergeReturned(lists: ReturnedName[][]): ReturnedName[] {
+  const seen = new Set<string>();
+  const out: ReturnedName[] = [];
+  for (const list of lists) {
+    for (const r of list) {
+      const key = normalizeName(r.name);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(r);
+    }
+  }
+  return out;
+}
+
 export const MAX_RETRIES = 3;
 export const RETRY_BACKOFF_MS = 1000;
 
@@ -573,6 +618,7 @@ export interface ModelOutcome {
 export interface BenchResult {
   window: number;
   maxOutputTokens: number;
+  chunkChars: number | null; // null: one call per page
   models: ModelOutcome[];
   calls: number;
   spentUsd: number; // estimated: actual usage when reported, else the worst case
@@ -584,6 +630,7 @@ export interface BenchOptions {
   maxCalls: number;
   maxUsd: number;
   maxOutputTokens?: number;
+  chunkChars?: number | null; // opt-in: read each page in pieces of about this many characters
   aliases?: Record<string, string>;
   now?: () => number;
   log?: (line: string) => void;
@@ -598,7 +645,7 @@ export async function runBenchmark(specs: BenchModelSpec[], pages: BenchPage[], 
   const log = opts.log ?? (() => {});
   const maxOutputTokens = opts.maxOutputTokens ?? BENCH_MAX_OUTPUT_TOKENS;
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
-  const result: BenchResult = { window: opts.window, maxOutputTokens, models: [], calls: 0, spentUsd: 0, aborted: null };
+  const result: BenchResult = { window: opts.window, maxOutputTokens, chunkChars: opts.chunkChars ?? null, models: [], calls: 0, spentUsd: 0, aborted: null };
 
   for (const spec of specs) {
     const outcome: ModelOutcome = {
@@ -612,72 +659,97 @@ export async function runBenchmark(specs: BenchModelSpec[], pages: BenchPage[], 
     if (result.aborted) continue;
 
     pageLoop: for (const page of pages) {
-      const shown = Math.min(page.text.length, opts.window);
-      const worst = worstCaseMicroUsd(spec.provider, spec.model, shown, maxOutputTokens).micro / 1_000_000;
+      const pieceTexts = opts.chunkChars ? splitIntoPieces(page.text, opts.chunkChars) : [page.text];
+      const chunked = Boolean(opts.chunkChars);
       const started = now();
-      let reply: RawReply | null = null;
+      const replies: RawReply[] = [];
+      const merged: ReturnedName[] = [];
       let retries = 0;
-      // Each attempt, retries included, counts toward --max-calls and --max-usd.
-      for (;;) {
-        if (result.calls >= opts.maxCalls) {
-          result.aborted = `--max-calls ${opts.maxCalls} reached after ${result.calls} calls`;
-          break pageLoop;
-        }
-        if (result.spentUsd + worst > opts.maxUsd) {
-          result.aborted = `--max-usd ${opts.maxUsd} would be exceeded (spent about $${result.spentUsd.toFixed(4)}, next call could cost up to $${worst.toFixed(4)})`;
-          break pageLoop;
-        }
-        result.calls += 1;
-        try {
-          reply = await spec.call(page, { window: opts.window, maxOutputTokens });
-          break;
-        } catch (err) {
-          result.spentUsd += worst; // unknown usage: count the worst case
-          const kind = classifyFailure(err);
-          const message = redact(err instanceof Error ? err.message : String(err), opts.secrets ?? []);
-          if (kind === 'error' && retries < MAX_RETRIES && isTransient(spec.provider, err)) {
-            retries += 1;
-            outcome.run.retriedCalls = (outcome.run.retriedCalls ?? 0) + 1;
-            log(`  ${spec.model}: transient error on ${page.pageId}, retry ${retries} of ${MAX_RETRIES}: ${message}`);
-            await sleep(RETRY_BACKOFF_MS * 2 ** (retries - 1));
-            continue;
+      let failedPieces = 0;
+      let invalidPieces = 0;
+      for (let idx = 0; idx < pieceTexts.length; idx++) {
+        const callPage: BenchPage = chunked ? { ...page, text: pieceTexts[idx] } : page;
+        const label = chunked ? `${page.pageId} piece ${idx + 1}/${pieceTexts.length}` : page.pageId;
+        const shown = Math.min(callPage.text.length, opts.window);
+        const worst = worstCaseMicroUsd(spec.provider, spec.model, shown, maxOutputTokens).micro / 1_000_000;
+        let reply: RawReply | null = null;
+        let pieceRetries = 0;
+        // Each attempt, retries included, counts toward --max-calls and --max-usd. The worst case is checked before every call.
+        for (;;) {
+          if (result.calls >= opts.maxCalls) {
+            result.aborted = `--max-calls ${opts.maxCalls} reached after ${result.calls} calls`;
+            break pageLoop;
           }
-          if (kind === 'error') {
-            outcome.errorsByPage.push({ pageId: page.pageId, message });
-            outcome.run.pages.push(failedPage(page.pageId, now() - started, retries));
-            log(`  ${spec.model}: error on ${page.pageId}${retries ? ` after ${retries} retries` : ''}: ${message}`);
-            continue pageLoop;
+          if (result.spentUsd + worst > opts.maxUsd) {
+            result.aborted = `--max-usd ${opts.maxUsd} would be exceeded (spent about $${result.spentUsd.toFixed(4)}, next call could cost up to $${worst.toFixed(4)})`;
+            break pageLoop;
           }
-          outcome.stopped = { kind, message };
-          log(`  ${spec.model}: stopped (${kind}): ${message}`);
-          break pageLoop;
+          result.calls += 1;
+          try {
+            reply = await spec.call(callPage, { window: opts.window, maxOutputTokens });
+            break;
+          } catch (err) {
+            result.spentUsd += worst; // unknown usage: count the worst case
+            const kind = classifyFailure(err);
+            const message = redact(err instanceof Error ? err.message : String(err), opts.secrets ?? []);
+            if (kind === 'error' && pieceRetries < MAX_RETRIES && isTransient(spec.provider, err)) {
+              pieceRetries += 1;
+              retries += 1;
+              outcome.run.retriedCalls = (outcome.run.retriedCalls ?? 0) + 1;
+              log(`  ${spec.model}: transient error on ${label}, retry ${pieceRetries} of ${MAX_RETRIES}: ${message}`);
+              await sleep(RETRY_BACKOFF_MS * 2 ** (pieceRetries - 1));
+              continue;
+            }
+            if (kind === 'error') {
+              outcome.errorsByPage.push({ pageId: label, message });
+              log(`  ${spec.model}: error on ${label}${pieceRetries ? ` after ${pieceRetries} retries` : ''}: ${message}`);
+              break;
+            }
+            outcome.stopped = { kind, message };
+            log(`  ${spec.model}: stopped (${kind}): ${message}`);
+            break pageLoop;
+          }
         }
+        if (!reply) {
+          failedPieces += 1;
+          continue;
+        }
+        const cost = estimateCostUsd(spec.provider, spec.model, { inputTokens: reply.inputTokens, outputTokens: reply.outputTokens });
+        result.spentUsd += cost ?? worst;
+        replies.push(reply);
+        const returned = reply.truncated ? null : parsePerformers(reply.text);
+        if (returned === null) invalidPieces += 1;
+        else merged.push(...returned);
       }
-      if (!reply) continue;
       const latencyMs = now() - started;
-      const cost = estimateCostUsd(spec.provider, spec.model, { inputTokens: reply.inputTokens, outputTokens: reply.outputTokens });
-      result.spentUsd += cost ?? worst;
-      const returned = reply.truncated ? null : parsePerformers(reply.text);
-      const score = scorePage(page.expectedNames, returned ?? [], page.text, opts.aliases ?? {});
+      if (replies.length === 0) {
+        outcome.run.pages.push({ ...failedPage(page.pageId, latencyMs, retries), pieces: chunked ? pieceTexts.length : undefined, failedPieces: chunked ? failedPieces : undefined });
+        continue;
+      }
+      const names = chunked ? mergeReturned([merged]) : merged;
+      const score = scorePage(page.expectedNames, names, page.text, opts.aliases ?? {});
+      const first = replies[0];
+      const joinedText = replies.map((r) => r.text).join('\n');
       outcome.run.pages.push({
         pageId: page.pageId,
-        validJson: returned !== null,
+        validJson: invalidPieces === 0 && failedPieces === 0,
         score,
-        inputTokens: reply.inputTokens,
-        outputTokens: reply.outputTokens,
-        thinkingTokens: reply.thinkingTokens,
+        inputTokens: sumOrNull(replies.map((r) => r.inputTokens)),
+        outputTokens: sumOrNull(replies.map((r) => r.outputTokens)),
+        thinkingTokens: sumOrNull(replies.map((r) => r.thinkingTokens)),
         latencyMs,
-        finishReason: reply.finishReason ?? null,
-        truncated: reply.truncated,
+        finishReason: chunked ? [...new Set(replies.map((r) => r.finishReason ?? 'n/a'))].join(',') : first.finishReason ?? null,
+        truncated: replies.some((r) => r.truncated),
         retries,
-        rawReply: reply.text.slice(0, RAW_REPLY_MAX),
-        rawReplyTruncated: reply.text.length > RAW_REPLY_MAX,
+        rawReply: joinedText.slice(0, RAW_REPLY_MAX),
+        rawReplyTruncated: joinedText.length > RAW_REPLY_MAX,
+        ...(chunked ? { pieces: pieceTexts.length, failedPieces: failedPieces + invalidPieces } : {}),
       });
       const run = outcome.run.pages[outcome.run.pages.length - 1];
       const why = invalidReason(run, maxOutputTokens);
       log(
         `  ${spec.model}: ${page.pageId} recall ${pct(score.recall)}, on page ${pct(score.recallOnPage)} (${score.notOnPage} expected not on page)` +
-          `${why ? ` (invalid JSON: ${why})` : ''}${run.finishReason ? ` [finish ${run.finishReason}]` : ''}`,
+          `${chunked ? ` [${pieceTexts.length} pieces]` : ''}${why ? ` (invalid JSON: ${why})` : ''}${run.finishReason ? ` [finish ${run.finishReason}]` : ''}`,
       );
     }
   }
@@ -721,7 +793,7 @@ export function renderBenchMarkdown(result: BenchResult, pages: BenchPage[], ali
     '',
     '## Run',
     '',
-    `Window used: ${result.window} characters per page. Max output tokens: ${result.maxOutputTokens}. Pages: ${pages.length}. Calls (retries included): ${result.calls}. Estimated spend: $${result.spentUsd.toFixed(4)}.`,
+    `Window used: ${result.window} characters per page. Chunk size: ${result.chunkChars ? `${result.chunkChars} characters (pieces split at line breaks)` : 'off (one call per page)'}. Max output tokens: ${result.maxOutputTokens}. Pages: ${pages.length}. Calls (retries included): ${result.calls}. Estimated spend: $${result.spentUsd.toFixed(4)}.`,
   ];
   if (result.aborted) lines.push('', `Run aborted: ${result.aborted}.`);
   for (const m of result.models) {
@@ -735,6 +807,7 @@ export function benchJson(result: BenchResult, pages: BenchPage[], aliases: Reco
   return {
     window: result.window,
     maxOutputTokens: result.maxOutputTokens,
+    chunkChars: result.chunkChars,
     note: 'Expected names missing from the page text are a ground-truth issue, not a model miss. recallOnPage ignores them and drives the verdict.',
     calls: result.calls,
     estimatedSpendUsd: result.spentUsd,
