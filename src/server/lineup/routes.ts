@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createLookup, enqueueArtistResolution, InputError, PipelineDeps } from './pipeline';
+import { createLookup, enqueueArtistResolution, InputError, PipelineDeps, requeueFailedResolveArtists } from './pipeline';
 import { confirmLookup, confirmLookupForMember, ConfirmRequest } from './learning';
 import { currentMember } from '../auth/requestScope';
 import { isOwner } from '../entities/canonicalManage';
@@ -124,6 +124,18 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
     try {
       const jobs = await deps.store.listCanonicalJobs(30);
       res.json({ jobs: jobs.map(safeJob) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // One-time repair (slice 11.7): artist-resolution jobs that failed on a MusicBrainz 503 go back to waiting.
+  // Owner only and idempotent: a job already re-queued once is skipped.
+  router.post('/manage/requeue-resolve-artists', async (_req, res) => {
+    if (!isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
+    try {
+      const ids = await requeueFailedResolveArtists(deps);
+      res.json({ requeued: ids.length, ids });
     } catch (err) {
       fail(res, err);
     }
