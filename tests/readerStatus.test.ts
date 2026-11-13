@@ -57,7 +57,7 @@ test('owner gets the full reader shape', async () => {
   assert.equal(r.callsToday, 0);
   assert.equal(r.spendTodayUsd, 0.25);
   assert.equal(r.spendMonthUsd, 1.5);
-  assert.deepEqual(r.caps, { dayUsd: 0.5, monthUsd: 5, perJob: 6, inputChars: 200000, outputTokens: 8192 });
+  assert.deepEqual(r.caps, { dayUsd: 0.5, monthUsd: 5, perJob: 6, inputChars: 30000, outputTokens: 8192 });
   assert.equal(r.logWriteFailuresToday, 2);
   assert.equal(r.recent.length, 1);
   assert.equal(r.recent[0].outcome, 'ok');
