@@ -13,6 +13,7 @@ import { MenuButton, type MenuOption } from './ui/MenuButton';
 import { Segmented, type SegmentedOption } from './ui/Segmented';
 import { CanonicalArchive, type ArchiveSection, type EditionStatus } from './CanonicalArchive';
 import { useIsOwner } from './MeContext';
+import { AdminInbox } from './AdminInbox';
 
 const ORIGIN_BADGE: Record<ArtistOrigin, string> = {
   from_me: 'From me',
@@ -378,7 +379,10 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
       )}
 
       {archive ? (
-        <CanonicalArchive section={archiveSection} query={query} status={editionStatus} />
+        <>
+          {isOwner && <AdminInbox />}
+          <CanonicalArchive section={archiveSection} query={query} status={editionStatus} />
+        </>
       ) : kind === 'health' ? (
         <DataHealth
           data={data}

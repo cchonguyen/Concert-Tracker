@@ -78,6 +78,18 @@ export function canonReviewRouter(store: LineupStore): Router {
     res.json({ items: out });
   }));
 
+  // Recent ingest traces, newest first. Steps and counts only; a missing table (migration 0043) is reported, not thrown.
+  router.get('/canon/traces', guard(async (req, res) => {
+    const n = Number.parseInt(String(req.query.limit ?? ''), 10);
+    const limit = Number.isFinite(n) ? Math.min(50, Math.max(1, n)) : 20;
+    try {
+      res.json({ traces: await store.listIngestTraces(limit), tableMissing: false });
+    } catch (err) {
+      if (/0043|ingest_traces/.test(err instanceof Error ? err.message : String(err))) return res.json({ traces: [], tableMissing: true });
+      throw err;
+    }
+  }));
+
   router.post('/canon/review/:id/promote', guard(async (req, res) => {
     const item = await openItem(req.params.id, 'override');
     const p = item.payload as { field?: string; old?: string | null; new?: string | null };

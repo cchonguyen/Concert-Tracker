@@ -143,3 +143,20 @@ test('owner edit of an edition title or venue adds a formatting row with no pers
     { field: 'venue', old: 'Old Park', new: 'New Park', editionId: 'e1' },
   ]);
 });
+
+test('traces: owner only, newest first, limit clamped, missing table reported', async () => {
+  const member = await setup('member');
+  assert.equal((await member.get('/canon/traces')).status, 403);
+  const { store, get } = await setup();
+  for (let i = 0; i < 3; i++) {
+    await store.addIngestTrace({ id: `t${i}`, trigger: 'save', eventId: null, editionId: null, jobId: null, steps: [], subrequests: i, aiCostMicros: null, createdAt: `2026-01-0${i + 1}T00:00:00.000Z` });
+  }
+  const r = (await (await get('/canon/traces?limit=2')).json()) as any;
+  assert.deepEqual(r.traces.map((t: any) => t.id), ['t2', 't1']);
+  assert.equal(r.tableMissing, false);
+  assert.equal(((await (await get('/canon/traces?limit=0')).json()) as any).traces.length, 1);
+  assert.equal(((await (await get('/canon/traces?limit=999')).json()) as any).traces.length, 3);
+  (store as any).listIngestTraces = async () => { throw new Error('listIngestTraces (apply 0043_ingest_traces.sql)'); };
+  const m = (await (await get('/canon/traces')).json()) as any;
+  assert.deepEqual([m.traces.length, m.tableMissing], [0, true]);
+});

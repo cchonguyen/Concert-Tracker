@@ -624,6 +624,36 @@ export const canonicalApi = {
     }),
 };
 
+// Owner inbox (slice 11.22): the review queue and recent ingest traces. Ids, field names and public edition facts only.
+export interface InboxEdition { id: string; name: string; startDate: string | null; endDate: string | null; venue: string | null; city: string | null; country: string | null; status: string }
+export interface InboxItem {
+  id: string;
+  kind: 'override' | 'merge_suggestion' | 'provisional' | 'formatting' | 'failed_lookup';
+  status: string;
+  editionId?: string | null;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  edition: InboxEdition | null;
+}
+export interface InboxTrace {
+  id: string;
+  trigger: string;
+  eventId: string | null;
+  editionId: string | null;
+  steps: Array<{ name: string; at: number; detail?: Record<string, string | number | boolean | null> }>;
+  subrequests: number | null;
+  createdAt: string;
+}
+export const inboxApi = {
+  review: () => request<{ items: InboxItem[] }>('/api/canon/review?status=open').then((r) => r.items),
+  traces: (limit = 20) => request<{ traces: InboxTrace[]; tableMissing: boolean }>(`/api/canon/traces?limit=${limit}`),
+  promote: (id: string) => request<{ ok: boolean; changeId: string | null }>(`/api/canon/review/${encodeURIComponent(id)}/promote`, post()),
+  verify: (id: string) => request<{ ok: boolean; changeId: string | null }>(`/api/canon/review/${encodeURIComponent(id)}/verify`, post()),
+  merge: (id: string, keep: string, drop: string) => request<{ ok: boolean }>(`/api/canon/review/${encodeURIComponent(id)}/merge`, post({ keep, drop })),
+  dismiss: (id: string) => request<{ ok: boolean }>(`/api/canon/review/${encodeURIComponent(id)}/dismiss`, post()),
+  undo: (changeId: string, editionId: string) => request<{ ok: boolean }>(`/api/canon/changes/${encodeURIComponent(changeId)}/undo`, post({ editionId })),
+};
+
 export const lineupApi = {
   // Canonical curation (owner only): confirm an edition into the shared catalog.
   canonicalConfirm: (body: CanonicalConfirmInput) =>
