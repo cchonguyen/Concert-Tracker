@@ -187,7 +187,7 @@ test('renderMarkdown has a summary table, window and per-page rows', () => {
   assert.match(md, /\| Model \| Window \| Recall \| Recall on page \| Min page \(on page\) \| JSON valid \|/);
   assert.match(md, /gemini:gemini-3\.5-flash-lite \| 180000 \| 95\.0% \| 95\.0% \| 90\.0% \| 100% \|/);
   assert.match(md, /Window used: 180000 characters\./);
-  assert.match(md, /\| page-1 \| 9 \| 10 \| 10 \| 90\.0% \| 90\.0% \| valid \|/);
+  assert.match(md, /\| page-1 \| 1 \| 9 \| 10 \| 10 \| 90\.0% \| 90\.0% \| valid \|/);
   assert.match(md, /PASS/);
   assert.ok(md.endsWith('\n'));
 });
