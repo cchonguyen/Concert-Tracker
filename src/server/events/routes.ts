@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { startTrace } from '../telemetry/trace';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
 import { JobRunner } from '../lineup/service';
 import { DetailFinder, defaultFinders, pickCandidate, researchEvent } from './details';
@@ -67,12 +68,21 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
         // Stage 1 never waits on research: the save is done, and research runs from the queue. If the
         // send fails the event stays 'pending' and the save stands. Only when asked (research: true, the capture
         // bar): list imports do not research. Without a queue, the browser asks.
-        if (req.body?.research !== true || !runner.kickResearch) return res.status(201).json({ event });
+        const trace = startTrace('save', { eventId: event.id });
+        if (req.body?.research !== true || !runner.kickResearch) {
+          trace.step('saved', { research: 'not_asked' });
+          await trace.finish(deps.store); // +1 subrequest on the save request
+          return res.status(201).json({ event });
+        }
         try {
           const member = currentMember();
           await runner.kickResearch(event.id, member ? { userId: member.userId, role: member.role === 'owner' ? 'owner' : 'member' } : undefined);
+          trace.step('saved', { research: 'queued' });
+          await trace.finish(deps.store); // +1 subrequest on the save request
           return res.status(201).json({ event, research: 'queued' });
         } catch {
+          trace.step('saved', { research: 'pending' });
+          await trace.finish(deps.store); // +1 subrequest on the save request
           return res.status(201).json({ event, research: 'pending' });
         }
       }
