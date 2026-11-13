@@ -1,6 +1,7 @@
+import { readActName } from '../lineup/actName';
 import { canonicalName } from '../lineup/merge';
 import { isVerbatim, normalizeName } from '../lineup/text';
-import { estimateCostUsd, worstCaseMicroUsd } from './pricing';
+import { estimateCostUsd, priceFor, worstCaseMicroUsd } from './pricing';
 import type { ReaderProvider } from './types';
 
 // Pure scoring for the local recall benchmark. No I/O, no network, no env.
@@ -26,6 +27,7 @@ export interface PageScore {
 }
 
 export const NOT_ON_PAGE_LIST_MAX = 10;
+export const RAW_REPLY_MAX = 20000;
 
 function keyOf(name: string, aliases: Record<string, string>): string {
   return normalizeName(canonicalName(name, aliases));
@@ -45,15 +47,24 @@ export function scorePage(
     if (key && !expected.has(key)) expected.set(key, name);
   }
 
+  // Each returned name is split the way merge.ts splits it (canonical spelling, then readActName), so
+  // "JVNA B2B CHYL" scores as Jvna and Chyl and "MADEON (DJ SET)" as Madeon. Every part must still be verbatim
+  // in the quote; the whole-name check is an extra path, kept only for a whole name that is itself expected.
   const verbatim = new Map<string, string>();
   const rejectedKeys = new Set<string>();
   for (const r of returned) {
-    const key = keyOf(r.name, aliases);
-    if (!key) continue;
-    if (isVerbatim(r.name, r.quote, normalizedSource)) {
-      if (!verbatim.has(key)) verbatim.set(key, r.name);
-    } else {
-      rejectedKeys.add(key);
+    const wholeKey = keyOf(r.name, aliases);
+    if (!wholeKey) continue;
+    const wholeOk = isVerbatim(r.name, r.quote, normalizedSource);
+    if (wholeOk && expected.has(wholeKey) && !verbatim.has(wholeKey)) verbatim.set(wholeKey, r.name);
+    for (const part of readActName(canonicalName(r.name, aliases)).parts) {
+      const key = keyOf(part, aliases);
+      if (!key) continue;
+      if (isVerbatim(part, r.quote, normalizedSource) || (wholeOk && key === wholeKey)) {
+        if (!verbatim.has(key)) verbatim.set(key, part);
+      } else {
+        rejectedKeys.add(key);
+      }
     }
   }
   // A name rejected once but accepted elsewhere is accepted.
@@ -105,6 +116,8 @@ export interface PageRun {
   finishReason: string | null; // Gemini finishReason or Workers AI finish_reason, when reported
   truncated: boolean; // the reply hit the output-token cap
   retries: number; // extra attempts made for this page after a transient error
+  rawReply?: string | null; // the model's reply text (page-derived), cut at RAW_REPLY_MAX; JSON output only
+  rawReplyTruncated?: boolean; // rawReply was cut at RAW_REPLY_MAX
   callFailed?: boolean; // the call itself failed (no reply), as opposed to a reply that was not valid JSON
 }
 
@@ -147,6 +160,7 @@ export interface ModelReport {
   outputTokens: number | null;
   thinkingTokens: number | null;
   costUsd: number | null;
+  priceIsFallback: boolean; // no PRICES entry: cost uses the fallback price
   latencyMs: number; // total
   avgLatencyMs: number | null;
   pages: PageRun[];
@@ -195,6 +209,7 @@ export function buildReport(run: ModelRun): ModelReport {
     outputTokens: sumOrNull(pages.map((p) => p.outputTokens)),
     thinkingTokens: sumOrNull(pages.map((p) => p.thinkingTokens)),
     costUsd: sumOrNull(costs),
+    priceIsFallback: priceFor(run.provider, run.model).isFallback,
     latencyMs,
     avgLatencyMs: pages.length === 0 ? null : latencyMs / pages.length,
     pages,
@@ -263,7 +278,7 @@ export function renderMarkdown(reports: ModelReport | ModelReport[]): string {
     lines.push(
       `| ${cell(`${r.provider}:${r.model}`)} | ${r.window} | ${pct(r.overallRecall)} | ${pct(r.overallRecallOnPage)} | ${pct(r.minPageRecallOnPage)} | ${
         r.jsonValidityPct === null ? 'n/a' : `${r.jsonValidityPct.toFixed(0)}%`
-      } | ${r.truncatedPages} | ${r.retriedCalls} | ${num(r.inputTokens)} | ${num(r.outputTokens)} | ${num(r.thinkingTokens)} | ${usd(r.costUsd)} | ${
+      } | ${r.truncatedPages} | ${r.retriedCalls} | ${num(r.inputTokens)} | ${num(r.outputTokens)} | ${num(r.thinkingTokens)} | ${usd(r.costUsd)}${r.priceIsFallback ? ' (fallback price)' : ''} | ${
         r.avgLatencyMs === null ? 'n/a' : Math.round(r.avgLatencyMs)
       } | ${v.pass ? 'PASS' : 'FAIL'} |`,
     );
@@ -303,6 +318,7 @@ export function renderMarkdown(reports: ModelReport | ModelReport[]): string {
 export const BENCH_MODELS: Array<{ provider: ReaderProvider; model: string }> = [
   { provider: 'gemini', model: 'gemini-3.5-flash-lite' },
   { provider: 'gemini', model: 'gemini-4-hydrogen' },
+  { provider: 'gemini', model: 'gemini-flash-lite-latest' }, // what production runs; priced by the fallback
   { provider: 'workers-ai', model: '@cf/zai-org/glm-4.7-flash' },
   { provider: 'workers-ai', model: '@cf/google/gemma-4-26b-a4b-it' },
 ];
@@ -320,7 +336,7 @@ export interface BenchArgs {
   maxCalls: number;
   maxUsd: number;
   maxOutputTokens: number;
-  models: string[] | null; // null: all four
+  models: string[] | null; // null: all of BENCH_MODELS
   outJson: string | null;
   outMd: string | null;
   help: boolean;
@@ -654,6 +670,8 @@ export async function runBenchmark(specs: BenchModelSpec[], pages: BenchPage[], 
         finishReason: reply.finishReason ?? null,
         truncated: reply.truncated,
         retries,
+        rawReply: reply.text.slice(0, RAW_REPLY_MAX),
+        rawReplyTruncated: reply.text.length > RAW_REPLY_MAX,
       });
       const run = outcome.run.pages[outcome.run.pages.length - 1];
       const why = invalidReason(run, maxOutputTokens);

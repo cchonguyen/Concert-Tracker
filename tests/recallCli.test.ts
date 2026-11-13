@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  BENCH_MODELS,
   BenchHttpError,
+  RAW_REPLY_MAX,
   benchJson,
   classifyFailure,
   invalidReason,
@@ -235,4 +237,34 @@ test('Workers AI envelopes: response string, choices, REST result wrapper, trunc
   assert.equal(parseWorkersAiEnvelope({}).text, '');
   assert.equal(workersAiErrorCode({ errors: [{ code: 3040 }] }), 3040);
   assert.equal(workersAiErrorCode(null, 'AiError: 3036: limit'), 3036);
+});
+
+test('raw reply, finishReason and thinking tokens are recorded in the JSON, with a flag when cut; Markdown has no raw reply', async () => {
+  const long = '{"performers":[],"pad":"' + 'x'.repeat(RAW_REPLY_MAX + 50) + '"}';
+  const r = await runBenchmark(
+    [spec('m1', async () => ({ ...good, text: long, finishReason: 'STOP', thinkingTokens: 1238 }))],
+    [page('p1')],
+    opts,
+  );
+  const j = benchJson(r, [page('p1')]).models[0].pages[0] as any;
+  assert.equal(j.finishReason, 'STOP');
+  assert.equal(j.thinkingTokens, 1238);
+  assert.equal(j.rawReply.length, RAW_REPLY_MAX);
+  assert.equal(j.rawReplyTruncated, true);
+  assert.ok(!renderBenchMarkdown(r, [page('p1')]).includes('xxxxxxxx'));
+  const short = await runBenchmark([spec('m1', async () => ({ ...good, finishReason: 'FINISH_OTHER' }))], [page('p1')], opts);
+  const k = benchJson(short, [page('p1')]).models[0].pages[0] as any;
+  assert.equal(k.finishReason, 'FINISH_OTHER');
+  assert.equal(k.rawReply, good.text);
+  assert.equal(k.rawReplyTruncated, false);
+});
+
+test('gemini-flash-lite-latest is benchmarked and marked as fallback-priced', async () => {
+  assert.ok(BENCH_MODELS.some((m) => m.provider === 'gemini' && m.model === 'gemini-flash-lite-latest'));
+  assert.equal(BENCH_MODELS.length, 5);
+  const r = await runBenchmark([{ provider: 'gemini', model: 'gemini-flash-lite-latest', call: async () => good }], [page('p1')], opts);
+  assert.equal(reportsFor(r, [page('p1')])[0].priceIsFallback, true);
+  assert.match(renderBenchMarkdown(r, [page('p1')]), /\(fallback price\)/);
+  const known = await runBenchmark([spec('gemini-3.5-flash-lite', async () => good)], [page('p1')], opts);
+  assert.equal(reportsFor(known, [page('p1')])[0].priceIsFallback, false);
 });

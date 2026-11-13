@@ -52,6 +52,24 @@ test('alias counts an expected name as on the page; none on page gives null reca
   assert.equal(scorePage(['Nobody Here'], [], PAGE).recallOnPage, null);
 });
 
+test('returned names are split with readActName before matching', () => {
+  const text = 'Lineup: JVNA B2B CHYL, MADEON (DJ SET), Alpha Band.';
+  const s = scorePage(['Jvna', 'Chyl', 'Madeon'], [q('JVNA B2B CHYL'), q('MADEON (DJ SET)')], text);
+  assert.equal(s.matched, 3);
+  assert.equal(s.recall, 1);
+  assert.deepEqual(s.extras, []);
+  assert.equal(s.rejected, 0);
+});
+
+test('a part not in the quote is still rejected; whole-name matches still work', () => {
+  const text = 'Lineup: JVNA B2B CHYL, Alpha Band.';
+  const s = scorePage(['Jvna', 'Alpha Band'], [{ name: 'JVNA B2B CHYL', quote: 'JVNA' }, q('Alpha Band')], text);
+  assert.equal(s.matched, 2);
+  assert.equal(s.rejected, 1);
+  const whole = scorePage(['Madeon (DJ Set)'], [q('Madeon (DJ Set)')], 'Madeon (DJ Set) plays');
+  assert.equal(whole.matched, 1);
+});
+
 function page(id: string, matched: number, expected: number, validJson = true, expectedOnPage = expected): PageRun {
   const score: PageScore = {
     expected,
