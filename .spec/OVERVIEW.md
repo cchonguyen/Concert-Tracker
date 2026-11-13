@@ -11,5 +11,6 @@
 - **In progress:** none. Check [PROGRESS.md](PROGRESS.md) for the single `[IN_PROGRESS]` slice.
 - **Triaged 2026-11-11:** "What did you go to?" past-event suggestion. Scope and Do NOT Build list in [SYSTEM_SPEC.md](SYSTEM_SPEC.md) section 1 and 2. Estimated 3 files, client-only, no migration. Waiting on Charlie's answers before `/spec`.
 - **Triaged 2026-11-12:** design system export for onboarding new Claude Code apps. Docs only, about 3 files under `docs/design-system/`. Scope in [SYSTEM_SPEC.md](SYSTEM_SPEC.md). Waiting on Charlie's answers before `/spec`.
+- **Spec written 2026-11-12:** AI reader two-way test (Workers AI and paid Gemini), AI call log and spend guards. Spec in [docs/ai-reader-spec.md](../docs/ai-reader-spec.md), Slices 10.1 to 10.19 in PROGRESS.md, none started. Needs migration 0038 applied by Charlie before Slice 10.3 goes live.
 - **Next step:** Charlie picks the next slice from [docs/tier3-specs.md](../docs/tier3-specs.md) or the engineering ticket bank.
 - **Specs:** index in [docs/README.md](../docs/README.md). Decisions: [DECISIONS.md](DECISIONS.md).
