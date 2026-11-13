@@ -175,25 +175,20 @@ test('verbatim counts reach the call log; names not on the page are rejected, no
   assert.equal(row.jobId, job!.id);
 });
 
-test('the text sent is windowed by READER_WINDOW_CHARS, not a fixed constant', async () => {
-  // The pipeline reads the window from the process environment at call time.
-  process.env.READER_WINDOW_CHARS = '5000';
+test('a page over the default 30,000 ceiling is skipped whole, never cut into a window', async () => {
   const { deps, state } = await setup({ pages: 1, handler: (t) => okNames(t) });
   const big: SourceAdapter = {
     id: 'promoter',
     enabled: () => true,
     async collect() {
-      const a = makeDocument('https://fest.example/long', 'promoter', `LINEUP\nAct0A\n${'filler text '.repeat(1000)}`, 'text');
+      const a = makeDocument('https://fest.example/long', 'promoter', `LINEUP\nAct0A\n${'filler text '.repeat(3000)}`, 'text');
       return { documents: [a], performers: [], facts: {}, extractionQueue: [a.id], notes: [] };
     },
   };
   deps.adapters = [big];
-  try {
-    await runJob(deps, (await createLookup(deps, { eventName: 'Fest', year: 2025 })).id);
-  } finally {
-    delete process.env.READER_WINDOW_CHARS;
-  }
-  assert.ok(state.texts[0].length <= 5000);
+  const job = await runJob(deps, (await createLookup(deps, { eventName: 'Fest', year: 2025 })).id);
+  assert.equal(state.calls, 0, 'nothing is sent to the provider');
+  assert.ok(job!.log.some((l) => l.message.includes('input_too_large')));
 });
 
 test('no reader: the pages are skipped with a log line, never read another way', async () => {
@@ -205,7 +200,7 @@ test('no reader: the pages are skipped with a log line, never read another way',
   assert.equal(job?.pendingExtraction.length, 0);
 });
 
-test('a 100,000-character page reaches the model whole through the pipeline, not cut at 40,000', async () => {
+test('a 25,000-character page reaches the model whole through the pipeline, not cut', async () => {
   const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'reader-window-')));
   const sent: string[] = [];
   const generator = {
@@ -217,8 +212,8 @@ test('a 100,000-character page reaches the model whole through the pipeline, not
   };
   const quota = new QuotaLedger(store, { provider: 'gemini', model: 'fake-lite', dailyLimit: 100, perMinute: 100 });
   const reader = guardedFromGemini(generator as never, store, quota, () => NOW, readReaderConfig({}));
-  const body = `LINEUP\n${'filler text '.repeat(8500)}\nLateact`;
-  assert.ok(body.length > 90000 && body.length < 110000);
+  const body = `LINEUP\n${'filler text '.repeat(2000)}\nLateact`;
+  assert.ok(body.length > 20000 && body.length < 30000);
   const page: SourceAdapter = {
     id: 'promoter',
     enabled: () => true,
@@ -230,7 +225,7 @@ test('a 100,000-character page reaches the model whole through the pipeline, not
   const deps: PipelineDeps = { store, fetcher: fakeFetcher({}).fetcher, adapters: [page], lateAdapters: [], gemini: null, quota, reader, search: null, now: () => NOW };
   const job = await runJob(deps, (await createLookup(deps, { eventName: 'Fest', year: 2025 })).id);
   assert.equal(sent.length, 1);
-  assert.ok(sent[0].length > 90000, `sent ${sent[0].length} chars`);
+  assert.ok(sent[0].length > 20000, `sent ${sent[0].length} chars`);
   assert.ok(sent[0].endsWith('Lateact'));
   assert.deepEqual(job!.candidate!.performers.map((p) => p.name), ['Lateact']);
 });
