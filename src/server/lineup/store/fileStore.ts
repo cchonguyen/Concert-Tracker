@@ -37,7 +37,10 @@ import type {
 import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../entities/integrity';
 import type { ShareLink } from '../../share/types';
 import { shareEventOnly } from '../../share/types';
-import type { AiCallRow } from './types';
+import type { AiCallRow, MergeSummary } from './types';
+import type { CanonicalVenue, EditionChange, ReviewQueueItem, ReviewQueueKind, VenueAlias, EditionExternalId } from '../types';
+import { assertNoPersonalFields, ExternalIdConflictError, venueIdFor } from './types';
+import { normalizeName } from '../normalizeName';
 import type { CachedResponse } from '../responseCache';
 import {
   canonicalEditionPage,
@@ -94,6 +97,11 @@ interface FileState {
   // the owner. Settings per member.
   responseCache?: Record<string, CachedResponse>;
   aiCalls?: AiCallRow[];
+  venues?: Record<string, CanonicalVenue>;
+  venueAliases?: Array<VenueAlias>;
+  editionExternalIds?: EditionExternalId[];
+  editionChanges?: EditionChange[];
+  reviewQueue?: ReviewQueueItem[];
   owners?: Record<string, string>;
   userSettings?: Record<string, Record<string, unknown>>;
   // Canonical artist changes applied through applyCanonicalArtistChange, by history ID: the plan entry
@@ -1013,6 +1021,157 @@ export class FileLineupStore implements LineupStore {
     state.aiCalls = kept;
     await this.save();
     return before.length - kept.length;
+  }
+
+  // Shared occurrences (0041, 0042). Same rules as the SQL: unique keys, append-only changes.
+  async upsertVenue(v: { name: string; city?: string; region?: string; country?: string }) {
+    const state = await this.load();
+    const id = venueIdFor(v, normalizeName);
+    state.venues ??= {};
+    const existing = state.venues[id];
+    if (existing) return clone(existing);
+    const venue: CanonicalVenue = { id, name: v.name, city: v.city, region: v.region, country: v.country, createdAt: new Date().toISOString() };
+    state.venues[id] = venue;
+    this.putAlias(state, id, normalizeName(v.name));
+    await this.save();
+    return clone(venue);
+  }
+
+  private putAlias(state: FileState, venueId: string, alias: string, source?: string, externalId?: string) {
+    state.venueAliases ??= [];
+    if (externalId && source) {
+      const held = state.venueAliases.find((a) => a.source === source && a.externalId === externalId);
+      if (held && held.venueId !== venueId) throw new ExternalIdConflictError(source, externalId, held.venueId);
+    }
+    if (state.venueAliases.some((a) => a.venueId === venueId && a.aliasNormalized === alias)) return false;
+    state.venueAliases.push({ venueId, aliasNormalized: alias, source, externalId });
+    return true;
+  }
+
+  async findVenueByAlias(aliasNormalized: string) {
+    const state = await this.load();
+    const ids = new Set((state.venueAliases ?? []).filter((a) => a.aliasNormalized === aliasNormalized).map((a) => a.venueId));
+    if (ids.size !== 1) return null;
+    const venue = state.venues?.[[...ids][0]];
+    return venue ? clone(venue) : null;
+  }
+
+  async addVenueAlias(venueId: string, aliasNormalized: string, source?: string, externalId?: string) {
+    const state = await this.load();
+    if (!state.venues?.[venueId]) throw new Error(`addVenueAlias: venue ${venueId} not found`);
+    if (this.putAlias(state, venueId, aliasNormalized, source, externalId)) await this.save();
+  }
+
+  async findEditionByExternalId(source: string, externalId: string) {
+    const state = await this.load();
+    const hit = (state.editionExternalIds ?? []).find((r) => r.source === source && r.externalId === externalId);
+    const edition = hit ? state.editions[hit.editionId] : undefined;
+    return edition ? clone(edition) : null;
+  }
+
+  async addEditionExternalId(editionId: string, source: string, externalId: string) {
+    const state = await this.load();
+    if (!state.editions[editionId]) throw new Error(`addEditionExternalId: edition ${editionId} not found`);
+    state.editionExternalIds ??= [];
+    const held = state.editionExternalIds.find((r) => r.source === source && r.externalId === externalId);
+    if (held) {
+      if (held.editionId !== editionId) throw new ExternalIdConflictError(source, externalId, held.editionId);
+      return 'exists' as const;
+    }
+    state.editionExternalIds.push({ editionId, source, externalId });
+    await this.save();
+    return 'added' as const;
+  }
+
+  async recordEditionChange(c: { editionId: string; actor: string; reason?: string; before?: Record<string, unknown>; after?: Record<string, unknown> }) {
+    assertNoPersonalFields(c.before);
+    assertNoPersonalFields(c.after);
+    const state = await this.load();
+    const row = this.pushChange(state, c);
+    await this.save();
+    return clone(row);
+  }
+
+  private pushChange(state: FileState, c: { editionId: string; actor: string; reason?: string; before?: Record<string, unknown>; after?: Record<string, unknown> }) {
+    const row: EditionChange = { id: crypto.randomUUID(), editionId: c.editionId, at: new Date().toISOString(), actor: c.actor || 'system', reason: c.reason, before: c.before, after: c.after };
+    (state.editionChanges ??= []).push(clone(row));
+    return row;
+  }
+
+  async listEditionChanges(editionId: string) {
+    const rows = ((await this.load()).editionChanges ?? []).filter((r) => r.editionId === editionId);
+    return clone([...rows].reverse().sort((a, b) => b.at.localeCompare(a.at)));
+  }
+
+  async markChangeUndone(changeId: string) {
+    const state = await this.load();
+    const row = (state.editionChanges ?? []).find((r) => r.id === changeId);
+    if (!row || row.undoneAt) return false;
+    row.undoneAt = new Date().toISOString();
+    await this.save();
+    return true;
+  }
+
+  async addReviewItem(i: { kind: ReviewQueueKind; editionId?: string; eventId?: string; payload: Record<string, unknown> }) {
+    assertNoPersonalFields(i.payload);
+    const state = await this.load();
+    const row: ReviewQueueItem = { id: crypto.randomUUID(), kind: i.kind, editionId: i.editionId, eventId: i.eventId, payload: clone(i.payload), status: 'open', createdAt: new Date().toISOString() };
+    (state.reviewQueue ??= []).push(row);
+    await this.save();
+    return clone(row);
+  }
+
+  async listReviewItems(q: { status?: string; kind?: ReviewQueueKind } = {}) {
+    const rows = ((await this.load()).reviewQueue ?? []).filter((r) => (!q.status || r.status === q.status) && (!q.kind || r.kind === q.kind));
+    return clone(rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+  }
+
+  async resolveReviewItem(id: string, resolvedBy: string, status: string) {
+    const state = await this.load();
+    const row = (state.reviewQueue ?? []).find((r) => r.id === id);
+    if (!row || row.status !== 'open') return false;
+    row.status = status;
+    row.resolvedBy = resolvedBy;
+    row.resolvedAt = new Date().toISOString();
+    await this.save();
+    return true;
+  }
+
+  // In-memory twin of merge_editions (0042): move, record, delete. All checks run before the first write.
+  async mergeEditions(keepId: string, dropId: string, actor: string, reason?: string): Promise<MergeSummary> {
+    if (!keepId || !dropId) throw new Error('merge_editions: both ids are required');
+    if (keepId === dropId) throw new Error('merge_editions: keep_id and drop_id are the same edition');
+    const state = await this.load();
+    const keep = state.editions[keepId];
+    const drop = state.editions[dropId];
+    if (!keep) throw new Error(`merge_editions: edition ${keepId} not found`);
+    if (!drop) throw new Error(`merge_editions: edition ${dropId} not found`);
+    const before = clone(drop);
+    let eventsMoved = 0;
+    for (const e of Object.values(state.events)) if (e.editionId === dropId) { e.editionId = keepId; eventsMoved++; }
+    const slot = (p: { artistKey: string; slotId?: string }) => `${p.artistKey}|${p.slotId ?? ''}`;
+    const have = new Set(keep.performances.map(slot));
+    let dup = 0;
+    let moved = 0;
+    for (const p of drop.performances) {
+      if (have.has(slot(p))) dup++;
+      else { keep.performances.push(p); have.add(slot(p)); moved++; }
+    }
+    let ext = 0;
+    for (const r of state.editionExternalIds ?? []) if (r.editionId === dropId) { r.editionId = keepId; ext++; }
+    let review = 0;
+    for (const r of state.reviewQueue ?? []) if (r.editionId === dropId) { r.editionId = keepId; review++; }
+    let jobs = 0;
+    for (const j of Object.values(state.jobs) as Array<{ editionId?: string }>) if (j.editionId === dropId) { j.editionId = keepId; jobs++; }
+    const summary: MergeSummary = {
+      keep_id: keepId, drop_id: dropId, events_moved: eventsMoved, attendance_moved: 0,
+      performances_moved: moved, performances_duplicate_dropped: dup,
+      external_ids_moved: ext, lookup_jobs_moved: jobs, review_rows_moved: review,
+    };
+    this.pushChange(state, { editionId: keepId, actor: actor || 'system', reason, before: { merged_edition: before as unknown as Record<string, unknown> }, after: { merged_into: keepId, ...summary } });
+    delete state.editions[dropId];
+    await this.save();
+    return summary;
   }
 }
 
