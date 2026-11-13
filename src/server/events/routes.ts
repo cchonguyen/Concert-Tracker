@@ -4,7 +4,8 @@ import { JobRunner } from '../lineup/service';
 import { DetailFinder, defaultFinders, pickCandidate, researchEvent } from './details';
 import { geminiReader } from './detailsGemini';
 import { cityPoint, citySuggestions, placeGuess } from './place';
-import { applyPatch, EventPatch, lineupSummary, newEvent, newEventFromEdition, sortEvents, startBulkLookups, startLineupLookup } from './service';
+import { applyLinkedPatch, ensureCaptured, recordOverrides, resolveEvent, resolveEvents, unlinkEvent } from './inherit';
+import { EventPatch, lineupSummary, newEvent, newEventFromEdition, sortEvents, startBulkLookups, startLineupLookup } from './service';
 import { LineupSummary } from './types';
 import { artistSuggestions, eventPerformers, nameArtistSuggestions, pastArtists, MAX_BULK_SUGGESTIONS, storedNameSuggestions } from './artists';
 import type { LineupFacts } from './scale';
@@ -25,7 +26,10 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
 
   router.get('/events', async (_req, res) => {
     try {
-      const events = sortEvents(await deps.store.listEvents());
+      const raw = await deps.store.listEvents();
+      // A linked event shows its edition's value unless you overrode that field (inherit.ts).
+      const linkedIds = [...new Set(raw.map((e) => e.editionId).filter((id): id is string => Boolean(id)))];
+      const events = sortEvents(linkedIds.length ? resolveEvents(raw, await deps.store.getEditions(linkedIds)) : raw);
       const jobs = await deps.store.getJobs(events.map((e) => e.lineupJobId).filter((id): id is string => Boolean(id)));
       const lineups: Record<string, LineupSummary> = {};
       for (const job of jobs) if (job.eventId) lineups[job.eventId] = lineupSummary(job);
@@ -48,7 +52,7 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
     try {
       const text = String(req.body?.text ?? '');
       if (typeof req.body?.editionId !== 'string') {
-        const event = newEvent(text, deps.now());
+        const event = ensureCaptured(newEvent(text, deps.now()));
         await deps.store.putEvent(event);
         return res.status(201).json({ event });
       }
@@ -152,7 +156,7 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
       const edition = event.editionId ? await deps.store.getEdition(event.editionId) : null;
       const others = await deps.store.listEvents();
       const suggestions = artistSuggestions(event, [...eventPerformers(event, job, edition), ...pastArtists(others, event)]);
-      res.json({ event, job, edition, suggestions });
+      res.json({ event: resolveEvent(event, edition), job, edition, suggestions });
     } catch (err) {
       fail(res, err);
     }
@@ -162,7 +166,25 @@ export function eventsRouter(deps: PipelineDeps, runner: JobRunner, finders: Det
     try {
       const event = await load(req.params.id, res);
       if (!event) return;
-      const updated = applyPatch(event, (req.body ?? {}) as EventPatch, deps.now());
+      const edition = event.editionId ? await deps.store.getEdition(event.editionId) : null;
+      const body = (req.body ?? {}) as EventPatch & { import?: boolean };
+      // `import: true` (list import, Sheets): an event not yet edited takes these values as what was first imported.
+      const { event: updated, changes } = applyLinkedPatch(event, edition, body, deps.now(), { recapture: body.import === true });
+      await deps.store.putEvent(updated);
+      await recordOverrides(deps.store, updated, changes);
+      res.json({ event: resolveEvent(updated, edition) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Detach from the shared edition. Fields fall back to your override, else what you first typed.
+  router.post('/events/:id/unlink', async (req, res) => {
+    try {
+      const event = await load(req.params.id, res);
+      if (!event) return;
+      if (!event.editionId) return res.status(400).json({ error: 'That event is not linked to an edition.' });
+      const updated = unlinkEvent(event, deps.now());
       await deps.store.putEvent(updated);
       res.json({ event: updated });
     } catch (err) {

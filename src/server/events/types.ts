@@ -1,4 +1,4 @@
-import type { JobStatus, SourceType } from '../lineup/types';
+import type { JobStatus, LoggedEventInheritance, SourceType } from '../lineup/types';
 import type { Billing } from '../lineup/billing';
 import type { Attendance } from './attendance';
 
@@ -118,7 +118,7 @@ export interface EventWeather {
 // Concert or festival. Worked out from the event (scale.ts) unless you set it.
 export type EventKind = 'concert' | 'festival';
 
-export interface LoggedEvent extends EventFacts {
+export interface LoggedEvent extends EventFacts, LoggedEventInheritance {
   id: string;
   input: string; // the line you typed
   // Where each fact came from; `ticketPrice` only when a ticket email gave it.
