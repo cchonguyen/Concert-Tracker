@@ -22,6 +22,7 @@ import { makeDocument } from './adapters/common';
 import { resolveArtist } from './musicbrainz';
 import { redactSecrets } from './http';
 import { currentBudget } from './budget';
+import { isReaderExtractor } from './learning';
 import { isEventDomain, LineupSearch, pageMentionsEvent } from './search';
 
 import type { GuardedReader } from '../reader/guardedReader';
@@ -48,6 +49,10 @@ const MAX_ATTEMPTS = 3;
 // Two subrequests per artist (MusicBrainz, then the store) plus the job's own
 // reads and writes must stay under the Workers limit of 50 per invocation.
 const ARTISTS_PER_RESOLVE_RUN = 20;
+// Stage 2 gates (code, no heuristics): Clashfinder with this many acts is the lineup; the reader
+// is used for a page only when the non-model sources gave fewer than STRUCTURED_ENOUGH acts.
+const CLASHFINDER_ENOUGH = 5;
+const STRUCTURED_ENOUGH = 2;
 
 export class InputError extends Error {}
 
@@ -255,6 +260,21 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
       const official = doc.sourceType !== 'discovered' || isEventDomain(doc.url, job.input.eventName);
       const sourceType = official && doc.sourceType === 'discovered' ? 'promoter' : doc.sourceType;
       const extractor = `${reader!.provider}:${reader!.model}`;
+      // Gates: structured sources first. A skipped page costs no reader call and is not an error.
+      const have = await deps.store.listPerformerClaims(job.id);
+      const clashfinderActs = have.filter((c) => c.sourceType === 'clashfinder').length;
+      const structuredActs = have.filter((c) => !isReaderExtractor(c.extractor)).length;
+      const gate =
+        clashfinderActs >= CLASHFINDER_ENOUGH
+          ? `skipped: clashfinder_enough (Clashfinder gave ${clashfinderActs} acts)`
+          : structuredActs >= STRUCTURED_ENOUGH
+            ? `skipped: structured_enough (structured sources gave ${structuredActs} acts)`
+            : null;
+      if (gate) {
+        log(job, `Not read by the AI reader, ${doc.url}: ${gate}.`, now);
+        job.pendingExtraction = job.pendingExtraction.slice(1);
+        return;
+      }
       // Extraction cache: the same page (same content hash) already read for
       // this edition with this model and prompt gives the same names, so reuse
       // them instead of spending Gemini quota. Each is checked on the page again.
@@ -297,7 +317,7 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
       );
       if (!read.ok) {
         // A dropped page is not an error: logged, never retried, the next page is read.
-        log(job, `Skipped ${doc.url}: ${read.reason === 'input_too_large' ? 'the page is too large to read' : 'the reader gave an unusable answer'} (${read.reason}).`, now);
+        log(job, `Skipped ${doc.url}: ${read.reason === 'input_too_large' ? 'skipped: input_too_large, the page is over the reader limit and is never cut up' : 'the reader gave an unusable answer'} (${read.reason}).`, now);
         job.pendingExtraction = job.pendingExtraction.slice(1);
         return;
       }
