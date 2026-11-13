@@ -15,6 +15,7 @@ import { slugFromClashfinderUrl } from './adapters/clashfinder';
 import { LoggedEvent, SeenAct, SetKind } from '../events/types';
 import { isSetKind, withB2b } from '../events/seen';
 import { Billing, isBilling } from './billing';
+import { writeEdition } from '../canon/editions';
 
 // Review is where the system learns. Every decision is stored as data that the
 // next lookup reads: aliases, a per-site blocklist, measured source accuracy
@@ -333,7 +334,7 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
   };
   const series = await store.getSeries(slug);
   if (!series) await store.upsertSeries({ slug, name: edition.name });
-  await store.upsertEdition(edition);
+  await writeEdition(store, { edition, actor: 'system:learning', reason: 'lineup confirmed' });
 
   if (fresh) await learnFromSources(store, job, acceptedByDoc, slug);
 
