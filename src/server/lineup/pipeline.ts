@@ -24,6 +24,8 @@ import { redactSecrets } from './http';
 import { currentBudget } from './budget';
 import { isEventDomain, LineupSearch, pageMentionsEvent } from './search';
 
+import type { GuardedReader } from '../reader/guardedReader';
+
 export interface PipelineDeps {
   store: LineupStore;
   fetcher: Fetcher;
@@ -36,6 +38,8 @@ export interface PipelineDeps {
   // Web search for lineup pages, used only when every source came back empty.
   search: LineupSearch | null;
   now: () => Date;
+  // Guarded reader (src/server/reader). Nothing reads it yet.
+  reader?: GuardedReader | null;
   // Multi-user only: false for a member who is blocked or removed. Their jobs are parked, with no outside call.
   hasActiveUser?: (userId: string) => Promise<boolean>;
 }
