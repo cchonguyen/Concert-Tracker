@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { buildReport, passVerdict, renderMarkdown, scorePage, type ModelReport, type PageRun, type PageScore } from '../src/server/reader/recall';
+import { buildReport, invalidReason, passVerdict, renderMarkdown, scorePage, type ModelReport, type PageRun, type PageScore } from '../src/server/reader/recall';
 
 const PAGE = 'Lineup: Alpha Band, Beta Beat, Gamma Ray and Delta Force. Doors at 6.';
 const q = (name: string) => ({ name, quote: name });
@@ -33,7 +33,26 @@ test('zero expected gives null recall', () => {
   assert.deepEqual(s.extras, ['Alpha Band']);
 });
 
-function page(id: string, matched: number, expected: number, validJson = true): PageRun {
+test('expected names not on the page are counted, listed (max 10) and excluded from recallOnPage', () => {
+  const expected = ['Alpha Band', 'Beta Beat', ...Array.from({ length: 12 }, (_, i) => `Ghost Act ${i}`)];
+  const s = scorePage(expected, [q('Alpha Band')], PAGE);
+  assert.equal(s.expected, 14);
+  assert.equal(s.matched, 1);
+  assert.equal(s.notOnPage, 12);
+  assert.equal(s.notOnPageNames.length, 10);
+  assert.equal(s.expectedOnPage, 2);
+  assert.equal(s.recall, 1 / 14);
+  assert.equal(s.recallOnPage, 1 / 2);
+  assert.deepEqual(s.missed.slice(0, 1), ['Beta Beat']);
+});
+
+test('alias counts an expected name as on the page; none on page gives null recallOnPage', () => {
+  const s = scorePage(['Delta Force'], [], PAGE, { 'delta force': 'Delta Force' });
+  assert.equal(s.notOnPage, 0);
+  assert.equal(scorePage(['Nobody Here'], [], PAGE).recallOnPage, null);
+});
+
+function page(id: string, matched: number, expected: number, validJson = true, expectedOnPage = expected): PageRun {
   const score: PageScore = {
     expected,
     matched,
@@ -41,8 +60,12 @@ function page(id: string, matched: number, expected: number, validJson = true): 
     missed: [],
     extras: [],
     rejected: 0,
+    expectedOnPage,
+    recallOnPage: expectedOnPage === 0 ? null : matched / expectedOnPage,
+    notOnPage: expected - expectedOnPage,
+    notOnPageNames: [],
   };
-  return { pageId: id, validJson, score, inputTokens: 1000, outputTokens: 500, thinkingTokens: 100, latencyMs: 200 };
+  return { pageId: id, validJson, score, inputTokens: 1000, outputTokens: 500, thinkingTokens: 100, latencyMs: 200, finishReason: 'STOP', truncated: false, retries: 0 };
 }
 
 function report(pages: PageRun[]): ModelReport {
@@ -107,6 +130,34 @@ test('verdict: invalid JSON allowance scales with page count', () => {
   assert.equal(passVerdict(eight).pass, false);
 });
 
+test('verdict uses recallOnPage, not recall against all expected', () => {
+  // 50 of 100 expected, but only 50 are on the page and all 50 matched.
+  const r = report([page('a', 50, 100, true, 50)]);
+  assert.equal(r.overallRecall, 0.5);
+  assert.equal(r.overallRecallOnPage, 1);
+  assert.equal(passVerdict(r).pass, true);
+  // On-page recall below the mark still fails.
+  const bad = report([page('a', 40, 100, true, 50)]);
+  assert.equal(passVerdict(bad).pass, false);
+  assert.match(passVerdict(bad).reasons.join(' '), /recall on page 80\.0%/);
+  // Nothing on any page: cannot pass.
+  assert.equal(passVerdict(report([page('a', 0, 5, true, 0)])).pass, false);
+});
+
+test('report counts truncated pages and retried calls; markdown shows the reason', () => {
+  const t = { ...page('t', 0, 5, false), truncated: true, finishReason: 'MAX_TOKENS', retries: 2 };
+  const r = buildReport({ provider: 'gemini', model: 'gemini-3.5-flash-lite', window: 1000, maxOutputTokens: 4096, pages: [t, page('u', 0, 5, false)] });
+  assert.equal(r.truncatedPages, 1);
+  assert.equal(r.retriedCalls, 2);
+  assert.equal(invalidReason(t, 4096), 'truncated at 4096 output tokens');
+  assert.equal(invalidReason(r.pages[1]), 'unparseable');
+  const md = renderMarkdown(r);
+  assert.match(md, /invalid \(truncated at 4096 output tokens\)/);
+  assert.match(md, /invalid \(unparseable\)/);
+  assert.match(md, /Max output tokens: 4096/);
+  assert.match(md, /ground-truth issue, not a model miss/);
+});
+
 test('verdict: nothing expected cannot pass', () => {
   assert.equal(passVerdict(report([page('a', 0, 0)])).pass, false);
 });
@@ -115,10 +166,10 @@ test('renderMarkdown has a summary table, window and per-page rows', () => {
   const r = report([page('page-1', 9, 10), page('page-2', 10, 10)]);
   const md = renderMarkdown(r);
   assert.match(md, /^# Recall benchmark/);
-  assert.match(md, /\| Model \| Window \| Recall \| Min page \| JSON valid \|/);
-  assert.match(md, /gemini:gemini-3\.5-flash-lite \| 180000 \| 95\.0% \| 90\.0% \| 100% \|/);
+  assert.match(md, /\| Model \| Window \| Recall \| Recall on page \| Min page \(on page\) \| JSON valid \|/);
+  assert.match(md, /gemini:gemini-3\.5-flash-lite \| 180000 \| 95\.0% \| 95\.0% \| 90\.0% \| 100% \|/);
   assert.match(md, /Window used: 180000 characters\./);
-  assert.match(md, /\| page-1 \| 9 \| 10 \| 90\.0% \| valid \|/);
+  assert.match(md, /\| page-1 \| 9 \| 10 \| 10 \| 90\.0% \| 90\.0% \| valid \|/);
   assert.match(md, /PASS/);
   assert.ok(md.endsWith('\n'));
 });
