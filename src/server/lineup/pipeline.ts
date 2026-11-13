@@ -19,7 +19,7 @@ import { appendFacts, mergeLineup } from './merge';
 import { domainOf, editionKeyFor, htmlToText, isVerbatim, normalizeName, seriesSlugFor } from './text';
 import { isBilling, quoteBacksBilling } from './billing';
 import { makeDocument } from './adapters/common';
-import { resolveArtist } from './musicbrainz';
+import { MusicBrainzUnavailableError, resolveArtist } from './musicbrainz';
 import { redactSecrets } from './http';
 import { currentBudget } from './budget';
 import { isReaderExtractor } from './learning';
@@ -447,15 +447,80 @@ async function stageMerge(deps: PipelineDeps, job: LookupJob, now: Date): Promis
   }
 }
 
+// MusicBrainz outage backoff: 5 minutes after the first park, doubling for each
+// consecutive park, capped at 6 hours. A Retry-After from a 429 is honored when longer.
+const MB_PARK_BASE_MS = 5 * 60_000;
+const MB_PARK_CAP_MS = 6 * 3_600_000;
+const MB_PARK_PREFIX = 'MusicBrainz';
+
+// Consecutive parks so far, read from the job log (no new column): parks since the last successful run.
+function musicBrainzParks(job: LookupJob): number {
+  let n = 0;
+  for (let i = job.log.length - 1; i >= 0; i--) {
+    const m = job.log[i].message;
+    if (m.startsWith('Resolved ')) break;
+    if (m.startsWith(`Paused: ${MB_PARK_PREFIX}`)) n++;
+  }
+  return n;
+}
+
+export function musicBrainzRetryAt(job: LookupJob, now: Date, retryAfterSeconds?: number): Date {
+  const backoff = Math.min(MB_PARK_BASE_MS * 2 ** musicBrainzParks(job), MB_PARK_CAP_MS);
+  const asked = retryAfterSeconds ? Math.min(retryAfterSeconds * 1000, MB_PARK_CAP_MS) : 0;
+  return new Date(now.getTime() + Math.max(backoff, asked));
+}
+
 async function runResolveArtists(deps: PipelineDeps, job: LookupJob, now: Date): Promise<void> {
   const pending = await deps.store.listUnresolvedArtists(ARTISTS_PER_RESOLVE_RUN);
+  let done = 0;
   for (const artist of pending) {
-    await deps.store.upsertArtist(await resolveArtist(deps.fetcher, artist));
+    try {
+      await deps.store.upsertArtist(await resolveArtist(deps.fetcher, artist));
+      done++;
+    } catch (err) {
+      if (!(err instanceof MusicBrainzUnavailableError)) throw err;
+      // Artists already saved above stay saved. Park this job only; no other source is tried.
+      throw new QuotaExhaustedError(
+        musicBrainzRetryAt(job, now, err.retryAfterSeconds),
+        `${err.message} Retrying later; ${done} artist ID(s) were saved this run.`,
+        'job',
+      );
+    }
   }
   const remaining = await deps.store.listUnresolvedArtists(1);
   job.stage = remaining.length ? 'collect' : 'done';
   job.status = remaining.length ? 'queued' : 'confirmed';
   log(job, `Resolved ${pending.length} artist ID(s) with MusicBrainz.`, now);
+}
+
+// The Cron Trigger fires every minute; the repair runs only on the minute-0 run (once an hour).
+export function isRequeueTime(now: Date): boolean {
+  return now.getUTCMinutes() === 0;
+}
+
+const REQUEUE_MARKER = 'Re-queued once after MusicBrainz 503 (slice 11.7).';
+
+// One-time repair: resolve_artists jobs that failed on a MusicBrainz 503 before
+// the job could park are put back to waiting. A log line is the marker, so a job
+// is never re-queued twice. Idempotent. Returns the ids re-queued.
+export async function requeueFailedResolveArtists(deps: PipelineDeps, limit = 500): Promise<string[]> {
+  const now = deps.now();
+  const out: string[] = [];
+  for (const job of await deps.store.listJobs(limit)) {
+    if (job.kind !== 'resolve_artists' || job.status !== 'failed') continue;
+    if (!/\b503\b/.test(job.lastError ?? '')) continue;
+    if (job.log.some((e) => e.message === REQUEUE_MARKER)) continue;
+    log(job, REQUEUE_MARKER, now);
+    job.status = 'waiting_quota';
+    job.stage = 'collect';
+    job.attempts = 0;
+    job.waitingReason = 'MusicBrainz was unavailable; trying again shortly.';
+    job.nextAttemptAt = new Date(now.getTime() + MB_PARK_BASE_MS).toISOString();
+    job.updatedAt = now.toISOString();
+    await deps.store.updateJob(job);
+    out.push(job.id);
+  }
+  return out;
 }
 
 // Runs stages until the job finishes or must wait. Never fabricates: a stage
