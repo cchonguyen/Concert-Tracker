@@ -2,8 +2,12 @@ import {
   ArtistIdentity,
   BlocklistEntry,
   Correction,
+  CanonicalVenue,
   Edition,
+  EditionChange,
   ExtractionExample,
+  ReviewQueueItem,
+  ReviewQueueKind,
   LookupJob,
   PerformerClaim,
   QuotaUsage,
@@ -438,6 +442,73 @@ export interface LineupStore {
   listAiCalls(limit: number): Promise<AiCallRow[]>;
   // Returns how many rows were deleted.
   deleteAiCallsBefore(cutoff: Date): Promise<number>;
+
+  // Shared occurrences (0041, 0042; slice 11.9). Service key only. Same behavior in both stores.
+  // Returns the canonical venue for this name and place, creating it once; also records the normalized name as an alias.
+  upsertVenue(v: { name: string; city?: string; region?: string; country?: string }): Promise<CanonicalVenue>;
+  // The one venue holding this normalized alias; null when none, or when more than one venue holds it (never guessed).
+  findVenueByAlias(aliasNormalized: string): Promise<CanonicalVenue | null>;
+  // Idempotent on (alias, venue). A source's external ID already held by another venue throws ExternalIdConflictError.
+  addVenueAlias(venueId: string, aliasNormalized: string, source?: string, externalId?: string): Promise<void>;
+  findEditionByExternalId(source: string, externalId: string): Promise<Edition | null>;
+  // 'added' the first time, 'exists' when the same pair already points at this edition.
+  // The same pair on a different edition throws ExternalIdConflictError and changes nothing.
+  addEditionExternalId(editionId: string, source: string, externalId: string): Promise<'added' | 'exists'>;
+  // Append-only. before and after must not hold personal fields.
+  recordEditionChange(c: { editionId: string; actor: string; reason?: string; before?: Record<string, unknown>; after?: Record<string, unknown> }): Promise<EditionChange>;
+  // Newest first.
+  listEditionChanges(editionId: string): Promise<EditionChange[]>;
+  // Sets undone_at once. False when the change is unknown or was already undone.
+  markChangeUndone(changeId: string): Promise<boolean>;
+  // Throws PersonalFieldError when the payload holds a personal field at any depth.
+  addReviewItem(i: { kind: ReviewQueueKind; editionId?: string; eventId?: string; payload: Record<string, unknown> }): Promise<ReviewQueueItem>;
+  // Oldest first.
+  listReviewItems(q?: { status?: string; kind?: ReviewQueueKind }): Promise<ReviewQueueItem[]>;
+  // Closes an open item. False when it is unknown or no longer open.
+  resolveReviewItem(id: string, resolvedBy: string, status: string): Promise<boolean>;
+  // Folds dropId into keepId (the 0042 merge_editions function in Supabase). Returns the counts moved.
+  mergeEditions(keepId: string, dropId: string, actor: string, reason?: string): Promise<MergeSummary>;
+}
+
+export type MergeSummary = Record<string, unknown>;
+
+// 'confirmed' is the old name of 'verified' (0041 keeps both until a later conversion).
+export function isVerifiedStatus(status: string | undefined | null): boolean {
+  return status === 'verified' || status === 'confirmed';
+}
+
+// Same (source, external_id) already belongs to something else.
+export class ExternalIdConflictError extends Error {
+  constructor(readonly source: string, readonly externalId: string, readonly existingId: string) {
+    super(`External ID ${source}:${externalId} already belongs to ${existingId}`);
+    this.name = 'ExternalIdConflictError';
+  }
+}
+
+export class PersonalFieldError extends Error {
+  constructor(readonly field: string) {
+    super(`Shared data must not hold the personal field "${field}"`);
+    this.name = 'PersonalFieldError';
+  }
+}
+
+const PERSONAL_KEYS = new Set(['companions', 'notes', 'rating', 'price', 'attendance']);
+
+// Deep check of keys (case-insensitive). Shared tables, traces and the review queue never hold these.
+export function assertNoPersonalFields(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const v of value) assertNoPersonalFields(v);
+  } else if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) {
+      if (PERSONAL_KEYS.has(k.toLowerCase())) throw new PersonalFieldError(k);
+      assertNoPersonalFields(v);
+    }
+  }
+}
+
+// Stable id for a canonical venue: same normalized name and place, same id, in both stores.
+export function venueIdFor(v: { name: string; city?: string; region?: string; country?: string }, normalize: (s: string) => string): string {
+  return 'venue:' + [v.name, v.city, v.region, v.country].map((x) => normalize(x ?? '').replace(/ /g, '-')).join('|');
 }
 
 export type AiCallFeature = 'lineup_extract' | 'details_extract' | 'discovery';
