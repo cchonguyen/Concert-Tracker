@@ -305,6 +305,13 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Slice 11.19: events waiting on research with a year and no full date. Never researched into a date by the
+  // background step; you add it here. Same test as yearOnlyEvents (server/events/backfillResearch.ts, which is
+  // server-only and so not imported into the browser bundle).
+  const yearOnly = useMemo(
+    () => all.filter((e) => (e.details.status === 'pending' || e.details.status === 'needs_date') && !/^\d{4}-\d{2}-\d{2}$/.test(e.startDate ?? '') && Boolean(e.year)),
+    [all],
+  );
   const rows = events.filter((e) => hasGap(e, gap, lineups[e.id], editions[e.id]));
   const suggestions = useMemo(() => {
     switch (gap) {
@@ -650,6 +657,25 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
             </button>
           )}
         </div>
+      )}
+      {yearOnly.length > 0 && (
+        <section className="space-y-2 rounded-xl border border-zinc-800 p-3" aria-label="Confirm dates">
+          <h3 className="text-sm font-semibold text-zinc-100">Confirm dates</h3>
+          <p className="text-xs text-zinc-400">These events only have a year. Add the full date so the lookup can find them.</p>
+          <ul className="divide-y divide-zinc-900">
+            {yearOnly.map((e) => (
+              <li key={e.id} className="space-y-1.5 py-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <button onClick={() => onOpen(e.id)} className="truncate text-left text-sm font-medium text-zinc-100 hover:underline">
+                    <EventTitle event={e} />
+                  </button>
+                  <span className="shrink-0 text-xs text-zinc-400">{whenLabel(e) ?? e.year}</span>
+                </div>
+                <GapEditor event={e} gap="date" suggestions={[]} onSave={(patch) => save(e.id, patch)} />
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       {note && <p className="text-xs text-zinc-400">{note}</p>}
       {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
