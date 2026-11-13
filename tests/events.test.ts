@@ -510,3 +510,78 @@ test('"Use this" takes one field from the confirmed suggestion and replaces what
   assert.throws(() => pickCandidate(out, out.details.candidates[0].id, NOW, ['name' as never]));
   assert.equal(cityLabel('Los Angeles,', 'CA'), 'Los Angeles, CA');
 });
+
+// Slice 11.16: rung 1 (shared catalog) and rung 2 (persist dated occurrences).
+const catalogStore = async () => new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'rung-')));
+const catalogEdition = (over: Partial<Edition> = {}): Edition => ({
+  id: 'ce1', key: 'porter-robinson/2024-10-05', seriesSlug: 'porter-robinson', subjectKey: 'porter-robinson', year: 2024,
+  name: 'Porter Robinson', startDate: '2024-10-05', venue: 'Greek Theatre', city: 'Los Angeles, CA', status: 'verified',
+  updatedAt: '2024-01-01T00:00:00.000Z', performances: [], ...over,
+});
+const neverCalled: DetailFinder = { id: 'ticketmaster', enabled: () => true, find: async () => { throw new Error('outside call'); } };
+
+test('rung 1: a verified catalog edition fills the gaps with no outside call', async () => {
+  const store = await catalogStore();
+  const { upsertOccurrence } = await import('../src/server/canon/match.ts');
+  const created = await upsertOccurrence(store, {
+    name: 'Porter Robinson', startDate: '2024-10-05', venue: 'Greek Theatre', city: 'Los Angeles, CA',
+    subjectKey: 'porter-robinson', trust: 'verified', actor: 'system:test', reason: 'test',
+  });
+  assert.equal(created.action, 'created');
+  const ev = newEvent('Porter Robinson at Greek Theatre Oct 5 2024', NOW);
+  const out = await researchEvent({ ...ev, city: undefined }, [neverCalled], fakeFetcher({}).fetcher, NOW, undefined, { store });
+  assert.equal(out.details.status, 'matched');
+  assert.equal(out.city, 'Los Angeles');
+  assert.equal(out.sources.city?.sourceType, 'edition');
+  assert.equal(out.sources.city?.editionId, created.edition!.id);
+});
+
+test('rung 1: a provisional edition or a different date is not used; no catalog behaves as before', async () => {
+  const store = await catalogStore();
+  const { writeEdition } = await import('../src/server/canon/editions.ts');
+  await writeEdition(store, { edition: catalogEdition({ status: 'provisional' }), actor: 'system:test', reason: 'test' });
+  const ev = { ...newEvent('Porter Robinson at Greek Theatre Oct 5 2024', NOW), city: undefined };
+  const tm = finder('ticketmaster', [{ startDate: '2024-10-05', city: 'Los Angeles, CA', sources: src('ticketmaster', ['startDate', 'city']) }]);
+  const out = await researchEvent(ev, [tm], fakeFetcher({}).fetcher, NOW, undefined, { store });
+  assert.equal(out.details.status, 'matched');
+  assert.equal(out.sources.city?.sourceType, 'ticketmaster');
+});
+
+test('rung 2: persists one provisional occurrence from Ticketmaster only when asked, never setlist.fm, no personal fields', async () => {
+  const tmFacts = { name: 'Porter Robinson', startDate: '2024-10-05', venue: 'Greek Theatre', city: 'Los Angeles, CA' };
+  const tm = finder('ticketmaster', [{ ...tmFacts, sources: src('ticketmaster', ['startDate', 'venue', 'city']) }]);
+  const ev = { ...newEvent('Porter Robinson Oct 5 2024', NOW), companions: 'Sam', notes: 'great' } as any;
+
+  const off = await catalogStore();
+  await researchEvent(ev, [tm], fakeFetcher({}).fetcher, NOW, undefined, { store: off });
+  assert.equal((await off.listEditions(10)).length, 0, 'persist is off by default');
+
+  const on = await catalogStore();
+  const out = await researchEvent(ev, [tm], fakeFetcher({}).fetcher, NOW, undefined, { store: on, persist: true });
+  const rows = await on.listEditions(10);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].status, 'provisional');
+  assert.equal(rows[0].venue, 'Greek Theatre');
+  assert.ok(!JSON.stringify(rows[0]).includes('Sam') && !JSON.stringify(rows[0]).includes('great'));
+  assert.equal((await on.listEditionChanges(rows[0].id)).length, 1);
+  assert.ok(out.details.notes.some((n) => n.includes('catalog: created')));
+
+  const slf = await catalogStore();
+  const sl = finder('setlistfm', [{ ...tmFacts, sources: src('setlistfm', ['startDate', 'venue', 'city']) }]);
+  await researchEvent(ev, [sl], fakeFetcher({}).fetcher, NOW, undefined, { store: slf, persist: true });
+  assert.equal((await slf.listEditions(10)).length, 0, 'setlist.fm data is never stored in shared editions');
+
+  const mixed = await catalogStore();
+  await researchEvent(ev, [sl, finder('ticketmaster', [{ startDate: '2024-10-05', sources: src('ticketmaster', ['startDate']) }])], fakeFetcher({}).fetcher, NOW, undefined, { store: mixed, persist: true });
+  assert.equal((await mixed.listEditions(10)).length, 0, 'a name-less ticketmaster row is not stored');
+});
+
+test('research catalog: only the owner or single-user mode may persist; members get the read-only lookup', async () => {
+  const { researchCatalogFor } = await import('../src/server/events/details.ts');
+  const store = await catalogStore();
+  assert.equal(researchCatalogFor('owner', 'u1', store).persist, true);
+  assert.equal(researchCatalogFor(undefined, undefined, store).persist, true);
+  assert.equal(researchCatalogFor('member', 'u2', store).persist, false);
+  assert.equal(researchCatalogFor(undefined, 'u2', store).persist, false);
+  assert.equal(researchCatalogFor('owner', 'u1', store).actor, 'system:research');
+});
