@@ -2,6 +2,7 @@ import { handleAsNodeRequest } from 'cloudflare:node';
 import { createApiApp, healthStatus } from '../src/server/app';
 import { PipelineDeps, isRequeueTime, requeueFailedResolveArtists, runJob } from '../src/server/lineup/pipeline';
 import { createDeps, createStore } from '../src/server/lineup/service';
+import { runCanonBackfill } from '../src/server/canon/backfill';
 import { backfillEntities, backfillVenuePlaces } from '../src/server/entities/linkingStore';
 import { frontDoor, isSignedIn } from '../src/server/share/door';
 import { accessConfigFromEnv } from '../src/server/share/access';
@@ -162,6 +163,19 @@ async function runCron(env: Env): Promise<void> {
     } catch (err) {
       console.error('Artist-resolution re-queue failed:', err instanceof Error ? err.message : String(err));
     }
+  }
+  // Slice 11.14: backfill shared editions from the owner's events and email imports, up to 20 a run (fewer when
+  // the subrequest budget is short). Owner only: with multi-user on it reads the owner's scoped store.
+  try {
+    let store: typeof deps.store | null = deps.store;
+    if (multiUserFromEnv(settings)) {
+      const ownerId = await deps.store.ownerUserId?.();
+      store = ownerId && deps.store.forUser ? deps.store.forUser({ userId: ownerId, role: 'owner' }) : null;
+    }
+    const backfill = store ? await runCanonBackfill(store) : null;
+    if (backfill) console.log(`Canon backfill: ${JSON.stringify(backfill)}`);
+  } catch (err) {
+    console.error('Canon backfill failed:', err instanceof Error ? err.message : String(err));
   }
   const due = await deps.store.dueJobs(deps.now(), 5);
   if (due.length) await env.LOOKUP_QUEUE.sendBatch(due.map((job) => ({ body: { jobId: job.id } })));
