@@ -736,6 +736,9 @@ export class SupabaseLineupStore implements LineupStore {
       // Only once linked (0014): an event saved without the entity tables
       // leaves these columns out, so it saves before the migration too.
       ...(e.personIds ? { person_ids: e.personIds } : {}),
+      // 0041: written only when set, so a save works before the migration. The database keeps captured once set.
+      ...(e.captured ? { captured: e.captured } : {}),
+      ...(e.overrides ? { overrides: e.overrides } : {}),
       ...(e.refs
         ? {
             venue_id: e.refs.venueId,
@@ -780,6 +783,8 @@ export class SupabaseLineupStore implements LineupStore {
       ticketPrice: r.ticket_price ?? undefined,
       notes: r.notes ?? undefined,
       personIds: r.person_ids?.length ? r.person_ids : undefined,
+      captured: r.captured ?? undefined,
+      overrides: r.overrides && Object.keys(r.overrides).length ? r.overrides : undefined,
       refs:
         r.companion_ids != null
           ? { venueId: r.venue_id ?? null, placeId: r.place_id ?? null, seriesId: r.series_id ?? null, companionIds: r.companion_ids }
