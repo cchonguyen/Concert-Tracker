@@ -17,6 +17,7 @@ import { unsubscribeSecretFromEnv } from '../src/server/email/unsubscribe';
 import { redactSecrets } from '../src/server/lineup/http';
 import type { EventsRunner } from '../src/server/events/routes';
 import { defaultFinders, researchCatalogFor, runQueuedResearch } from '../src/server/events/details';
+import { rung4Urls, runReaderPage } from '../src/server/events/detailsGemini';
 import { makeBudget, runWithBudget } from '../src/server/lineup/budget';
 
 // Cloudflare Worker entry. Static files are served from ./dist by Workers
@@ -39,7 +40,9 @@ import { makeBudget, runWithBudget } from '../src/server/lineup/budget';
 // type is absent on messages queued before Slice 11.15: they are lookups.
 type LookupMessage =
   | { type?: 'lookup'; jobId: string; force?: boolean }
-  | { type: 'research'; eventId: string; userId?: string; role?: 'owner' | 'member' };
+  | { type: 'research'; eventId: string; userId?: string; role?: 'owner' | 'member' }
+  // Slice 11.17, rung 4: the reader reads ONE page for the event, after rung 1 to 3 research.
+  | { type: 'research_reader'; eventId: string; url: string; userId?: string; role?: 'owner' | 'member' };
 
 interface Env {
   LOOKUP_QUEUE: Queue<LookupMessage>;
@@ -246,10 +249,31 @@ export default {
         await runWithBudget(makeBudget(), async () => {
           try {
             const store = userId && deps.store.forUser ? deps.store.forUser({ userId, role: role ?? 'member' }) : deps.store;
-            await runQueuedResearch(store, eventId, defaultFinders(), deps.fetcher, deps.now(), researchCatalogFor(role, userId, deps.store));
+            const done = await runQueuedResearch(store, eventId, defaultFinders(), deps.fetcher, deps.now(), researchCatalogFor(role, userId, deps.store));
+            // Rung 4: only with the reader set up, a full date and a gap left; at most 2 pages, one message each (+2 sends).
+            if (done && deps.reader) {
+              for (const url of rung4Urls(done)) await env.LOOKUP_QUEUE.send({ type: 'research_reader', eventId, url, userId, role });
+            }
           } catch (err) {
             // The event stays as typed and 'pending'; "Look again" can run it. No retry, no fallback.
             console.error(`Queue research ${eventId} failed:`, redactSecrets(err instanceof Error ? err.message : String(err)));
+          }
+          message.ack();
+        });
+        continue;
+      }
+      if (message.body.type === 'research_reader') {
+        const { eventId, url, userId, role } = message.body;
+        // One page per message. Worst case: getEvent 1 + page fetch 1 + one guarded model call (guard and ledger
+        // store calls, ai_calls row, the model itself; about 8) + putEvent 1 = about 11 of 50. No retry, no fallback.
+        await runWithBudget(makeBudget(), async () => {
+          try {
+            if (deps.reader) {
+              const store = userId && deps.store.forUser ? deps.store.forUser({ userId, role: role ?? 'member' }) : deps.store;
+              await runReaderPage(store, deps.reader, eventId, url, deps.fetcher, deps.now());
+            }
+          } catch (err) {
+            console.error(`Queue reader ${eventId} failed:`, redactSecrets(err instanceof Error ? err.message : String(err)));
           }
           message.ack();
         });

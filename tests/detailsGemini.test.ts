@@ -4,7 +4,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { braveFinder, researchEvent } from '../src/server/events/details.ts';
-import { checkedCandidate, geminiReader } from '../src/server/events/detailsGemini.ts';
+import { checkedCandidate, geminiReader, rung4Urls, rung4Wanted, runReaderPage } from '../src/server/events/detailsGemini.ts';
 import { newEvent } from '../src/server/events/service.ts';
 import { readReaderConfig } from '../src/server/reader/config.ts';
 import { guardedFromGemini } from '../src/server/reader/guardedReader.ts';
@@ -181,4 +181,99 @@ test('a guard block (job cap) stops the press with a note and no other reader st
   } finally {
     delete process.env.BRAVE_SEARCH_API_KEY;
   }
+});
+
+// Slice 11.17: rung 4, the reader in its own queue message per page.
+const URL_A = 'https://greek.example/porter';
+function dated(event: ReturnType<typeof newEvent>, urls: string[], date = '2024-10-05') {
+  return {
+    ...event,
+    details: {
+      ...event.details,
+      status: 'matched' as const,
+      candidates: urls.map((u) => ({ id: u, startDate: date, sources: [{ sourceType: 'discovered' as const, sourceUrl: u, fields: ['startDate' as const], quote: 'Oct 5, 2024' }] })),
+    },
+  };
+}
+function memory(ev: ReturnType<typeof newEvent>) {
+  let cur = ev;
+  return { get: () => cur, getEvent: async () => cur, putEvent: async (e: typeof ev) => { cur = e; } };
+}
+const place = { dateQuote: 'Oct 5, 2024', venue: 'Greek Theatre', city: 'Los Angeles, CA', placeQuote: 'Greek Theatre, Los Angeles, CA' };
+
+test('rung 4 is wanted only with a full date and a gap; one page per message, at most 2, never AXS', () => {
+  const base = newEvent('Porter Robinson Oct 5 2024', NOW);
+  assert.equal(base.startDate, '2024-10-05');
+  assert.equal(rung4Wanted(base), true);
+  assert.equal(rung4Wanted({ ...base, venue: 'V', city: 'C' }), false);
+  assert.equal(rung4Wanted({ ...base, venue: 'V' }), true);
+  assert.equal(rung4Wanted({ ...base, startDate: undefined }), false);
+  const three = dated(base, [URL_A, 'https://www.axs.com/e/1', 'https://b.example/x', 'https://c.example/y']);
+  assert.deepEqual(rung4Urls(three), [URL_A, 'https://b.example/x']);
+  assert.deepEqual(rung4Urls(dated(base, [URL_A], '2024-10-06')), []); // pages for another date are not read
+  assert.deepEqual(rung4Urls({ ...three, startDate: undefined }), []);
+});
+
+test('rung 4 reads one page, fills only empty fields and keeps what you typed', async () => {
+  const calls = { n: 0 };
+  const { reader } = await readerFor(fakeGemini(() => place, calls));
+  const { fetcher } = fakeFetcher({ [URL_A]: { body: PAGE } });
+  const typed = { ...dated(newEvent('Porter Robinson Oct 5 2024', NOW), [URL_A]), venue: 'My Venue' };
+  const mem = memory(typed);
+  assert.equal(await runReaderPage(mem, reader, typed.id, URL_A, fetcher, NOW), 'applied');
+  assert.equal(calls.n, 1);
+  assert.equal(mem.get().venue, 'My Venue'); // typed, never overwritten
+  assert.equal(mem.get().city, 'Los Angeles');
+  assert.equal(mem.get().startDate, '2024-10-05');
+  assert.ok(mem.get().details.notes.some((n) => n.startsWith('gemini (auto): read')));
+  // Nothing left to fill: a second message makes no call.
+  assert.equal(await runReaderPage(mem, reader, typed.id, URL_A, fetcher, NOW), 'skipped');
+});
+
+test('rung 4 fills nothing when the page date is not the date you gave', async () => {
+  const calls = { n: 0 };
+  const other = PAGE.replace('Oct 5, 2024', 'Oct 6, 2024');
+  const { reader } = await readerFor(fakeGemini(() => ({ ...place, dateQuote: 'Oct 6, 2024' }), calls));
+  const { fetcher } = fakeFetcher({ [URL_A]: { body: other } });
+  const ev = dated(newEvent('Porter Robinson Oct 5 2024', NOW), [URL_A]);
+  const mem = memory(ev);
+  await runReaderPage(mem, reader, ev.id, URL_A, fetcher, NOW);
+  assert.equal(calls.n, 1);
+  assert.equal(mem.get().venue, undefined);
+  assert.equal(mem.get().city, undefined);
+});
+
+test('rung 4 skips a page of 30,000 characters or more without a call or cutting it', async () => {
+  const calls = { n: 0 };
+  const { reader } = await readerFor(fakeGemini(() => place, calls));
+  const big = `<p>Porter Robinson Oct 5, 2024 Greek Theatre, Los Angeles, CA ${'x'.repeat(30000)}</p>`;
+  const { fetcher } = fakeFetcher({ [URL_A]: { body: big } });
+  const ev = dated(newEvent('Porter Robinson Oct 5 2024', NOW), [URL_A]);
+  const mem = memory(ev);
+  assert.equal(await runReaderPage(mem, reader, ev.id, URL_A, fetcher, NOW), 'nothing');
+  assert.equal(calls.n, 0);
+  assert.equal(mem.get().venue, undefined);
+  assert.ok(mem.get().details.notes.some((n) => n.includes('30,000')));
+});
+
+test('rung 4 parks on a quota error or a guard block: a note, no fallback, no retry', async () => {
+  const refusing: Generator = {
+    model: 'fake-lite',
+    async generate() {
+      throw new QuotaExhaustedError(new Date('2026-10-21T07:00:00Z'), 'Gemini daily limit reached');
+    },
+  };
+  const { fetcher } = fakeFetcher({ [URL_A]: { body: PAGE } });
+  const ev = dated(newEvent('Porter Robinson Oct 5 2024', NOW), [URL_A]);
+  const mem = memory(ev);
+  assert.equal(await runReaderPage(mem, (await readerFor(refusing)).reader, ev.id, URL_A, fetcher, NOW), 'parked');
+  assert.equal(mem.get().venue, undefined);
+  assert.ok(mem.get().details.notes.includes('gemini (auto): stopped, Gemini daily limit reached'));
+
+  const calls = { n: 0 };
+  const blocked = (await readerFor(fakeGemini(() => place, calls), 0)).reader; // daily limit 0: guard stops it
+  const mem2 = memory(ev);
+  assert.equal(await runReaderPage(mem2, blocked, ev.id, URL_A, fetcher, NOW), 'parked');
+  assert.equal(calls.n, 0);
+  assert.equal(mem2.get().city, undefined);
 });
