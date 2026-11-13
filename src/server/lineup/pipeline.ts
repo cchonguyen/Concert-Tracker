@@ -16,8 +16,7 @@ import { isStaleRun, LineupStore } from './store/types';
 import { GeminiClient, EXTRACTION_PROMPT_VERSION } from './gemini';
 import { QuotaExhaustedError, QuotaLedger } from './quota';
 import { appendFacts, mergeLineup } from './merge';
-import { domainOf, editionKeyFor, htmlToText, isVerbatim, lineupWindow, normalizeName, seriesSlugFor } from './text';
-import { readReaderConfig } from '../reader/config';
+import { domainOf, editionKeyFor, htmlToText, isVerbatim, normalizeName, seriesSlugFor } from './text';
 import { isBilling, quoteBacksBilling } from './billing';
 import { makeDocument } from './adapters/common';
 import { resolveArtist } from './musicbrainz';
@@ -278,7 +277,8 @@ async function stageExtract(deps: PipelineDeps, job: LookupJob, now: Date, force
       }
       const examples = await deps.store.getExamples(domainOf(doc.url));
       const normalizedDoc = normalizeName(doc.body);
-      const text = lineupWindow(doc.body, readReaderConfig(process.env).windowChars);
+      // The whole page goes to the guarded reader; a page over the input ceiling is skipped there (input_too_large), never cut.
+      const text = doc.body;
       const read = await reader!.extractPerformers(
         { text, input: job.input, examples },
         {

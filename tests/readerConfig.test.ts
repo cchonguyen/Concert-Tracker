@@ -11,8 +11,8 @@ test('defaults', () => {
   assert.equal(c.thinkingLevel, 'LOW');
   assert.equal(c.geminiModel, 'gemini-3.5-flash-lite');
   assert.equal(c.workersAiModel, '@cf/zai-org/glm-4.7-flash');
-  assert.equal(c.maxInputChars, 200000);
-  assert.equal(c.windowChars, 180000);
+  assert.equal(c.maxInputChars, 30000);
+  assert.equal(c.windowChars, 30000);
   assert.equal(c.breakerFailures, 5);
   assert.equal(c.breakerCooldownMin, 30);
   assert.equal(c.maxCallsPerJob, 6);
@@ -46,7 +46,7 @@ test('invalid values fall back', () => {
     READER_MAX_SPEND_MONTH_USD: '-3', READER_ENABLED: 'yes', READER_PROVIDER: 'openai',
   });
   assert.equal(c.thinkingLevel, 'LOW');
-  assert.equal(c.maxInputChars, 200000);
+  assert.equal(c.maxInputChars, 30000);
   assert.equal(c.breakerFailures, 5);
   assert.equal(c.maxSpendMonthUsd, 5);
   assert.equal(c.enabled, false);
