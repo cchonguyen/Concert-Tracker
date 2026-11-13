@@ -85,7 +85,7 @@ export function createGuardedReader(opts: GuardedReaderOptions): GuardedReader {
     try {
       guard = await checkGuards({
         store, config, provider: client.provider, model: client.model, inputChars, maxOutputTokens,
-        jobKey: ctx.jobKey, quota, now, force: ctx.force,
+        jobKey: ctx.jobKey, quota, now, force: ctx.force, quotaOptions: { userId: ctx.userId },
       });
     } catch (err) {
       if (err instanceof QuotaExhaustedError) {
@@ -221,7 +221,7 @@ export function guardedFromGemini(
   config: ReaderConfig = readReaderConfig({}),
 ): GuardedReader {
   return createGuardedReader({
-    client: createGeminiReader(gemini, config.thinkingLevel, now),
+    client: createGeminiReader(gemini, config.thinkingLevel, now, config.windowChars),
     store,
     quota,
     config,
