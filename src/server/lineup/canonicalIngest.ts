@@ -293,5 +293,16 @@ export async function editEditionFacts(store: LineupStore, editionId: string, in
     updatedAt: now,
   };
   await writeEdition(store, { edition, actor: 'owner', reason: 'edition facts edited' });
+  // The owner's correction of a title or venue shows in the review inbox (ids, field, old and new public value only).
+  for (const field of ['name', 'venue'] as const) {
+    const old = existing[field] ?? null;
+    const next = edition[field] ?? null;
+    if (old === null || old === next) continue;
+    try {
+      await store.addReviewItem({ kind: 'formatting', editionId, payload: { field, old, new: next, editionId } });
+    } catch (err) {
+      console.error(`editEditionFacts: formatting review row failed for ${editionId}`, err);
+    }
+  }
   return edition;
 }
