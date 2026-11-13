@@ -7,6 +7,7 @@ import express from 'express';
 import { dispatch } from './helpers/testApp.ts';
 import { eventsRouter } from '../src/server/events/routes.ts';
 import { newEvent, newEventFromEdition } from '../src/server/events/service.ts';
+import { resolveEvent } from '../src/server/events/inherit.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import type { PipelineDeps } from '../src/server/lineup/pipeline.ts';
 import type { Edition } from '../src/server/lineup/types.ts';
@@ -72,31 +73,38 @@ function appFor(deps: PipelineDeps) {
   return app;
 }
 
-test('copies only the known facts, each sourced to the edition', () => {
-  const ev = newEventFromEdition('Porter Robinson at the Greek', edition(), NOW);
+test('links the edition and copies none of its facts; the typed line is captured once', () => {
+  const ev = newEventFromEdition('Porter Robinson', edition(), NOW);
+  assert.equal(ev.editionId, 'ed1');
+  // Own columns hold only what was typed.
   assert.equal(ev.name, 'Porter Robinson');
-  assert.equal(ev.year, 2024);
-  assert.equal(ev.startDate, '2024-10-05');
-  assert.equal(ev.endDate, '2024-10-06');
-  assert.equal(ev.venue, 'The Greek Theatre');
-  assert.equal(ev.city, 'Los Angeles');
-  assert.equal(ev.country, 'United States');
-  for (const f of ['startDate', 'endDate', 'venue', 'city', 'country'] as const) {
-    assert.deepEqual(ev.sources[f], { sourceType: 'edition', editionId: 'ed1' }, f);
-  }
-  assert.equal(ev.input, 'Porter Robinson at the Greek');
-});
-
-test('missing facts stay undefined and get no source', () => {
-  const ev = newEventFromEdition('Porter Robinson', edition({ startDate: undefined, endDate: undefined, venue: undefined, city: undefined, country: undefined }), NOW);
   assert.equal(ev.startDate, undefined);
   assert.equal(ev.endDate, undefined);
   assert.equal(ev.venue, undefined);
   assert.equal(ev.city, undefined);
   assert.equal(ev.country, undefined);
-  assert.equal(ev.sources.venue, undefined);
-  assert.equal(ev.sources.city, undefined);
-  assert.equal(ev.year, 2024);
+  assert.deepEqual(ev.sources, {});
+  assert.equal(ev.input, 'Porter Robinson');
+  assert.equal(ev.captured?.name, ev.name);
+  assert.equal(ev.captured?.start_date, null);
+  assert.deepEqual(ev.overrides, {});
+  // Display comes from inheritance on read.
+  const shown = resolveEvent(ev, edition());
+  assert.equal(shown.name, 'Porter Robinson');
+  assert.equal(shown.startDate, '2024-10-05');
+  assert.equal(shown.venue, 'The Greek Theatre');
+  assert.equal(shown.country, 'United States');
+  // A later edition correction reaches the event.
+  assert.equal(resolveEvent(ev, edition({ venue: 'Hollywood Bowl' })).venue, 'Hollywood Bowl');
+});
+
+test('typed facts are kept as captured and as own values, not replaced', () => {
+  const ev = newEventFromEdition('Porter Robinson, Oct 5 2024', edition(), NOW);
+  assert.equal(ev.startDate, '2024-10-05');
+  assert.equal(ev.captured?.start_date, '2024-10-05');
+  assert.deepEqual(ev.sources.startDate, { sourceType: 'user' });
+  const missing = resolveEvent(newEventFromEdition('Porter', edition({ venue: undefined }), NOW), edition({ venue: undefined }));
+  assert.equal(missing.venue, undefined);
 });
 
 test('links the edition and marks details matched, so no research runs', () => {
@@ -161,8 +169,12 @@ test('POST /events with editionId saves, links the lineup as needs_review, and m
     assert.equal(body.job.status, 'needs_review');
     assert.equal(body.job.editionId, 'ed1');
     assert.equal(body.job.eventId, body.event.id);
+    assert.equal(body.event.venue, 'The Greek Theatre'); // shown through inheritance
     const saved = await store.getEvent(body.event.id);
     assert.equal(saved?.lineupJobId, body.job.id);
+    assert.equal(saved?.venue, 'the Greek'); // only what was typed is stored, not the edition's venue
+    assert.equal(saved?.country, undefined);
+    assert.equal(saved?.captured?.venue, 'the Greek');
     // No research or lineup fetches: the only calls allowed are the weather lookup on Open-Meteo.
     assert.ok(calls.every((url) => url.startsWith(GEO) || url.startsWith(ARCHIVE)), calls.join('\n'));
   });
