@@ -39,7 +39,8 @@ test('a B2B split from one listing keeps its sources and set times on confirm', 
   const result = await confirmLookup(store, job, {
     performers: [
       { key: 'allen watts', name: 'Allen Watts', slotId: 's1', b2b: ['talla 2xlc'], accepted: true, seen: false },
-      { key: 'talla 2xlc', name: 'Talla 2XLC', slotId: 's1', b2b: ['allen watts'], accepted: true, seen: false },
+      // Reopened from the saved edition, an act with no candidate row carries no key.
+      { name: 'Talla 2XLC', slotId: 's1', b2b: ['allen watts'], accepted: true, seen: false },
     ],
   });
   const perfs = result.edition.performances;
