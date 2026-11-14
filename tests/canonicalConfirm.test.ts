@@ -34,7 +34,7 @@ test('preview writes nothing; apply writes the confirmed edition', async () => {
   const done = await confirmCanonicalEdition(s, parseCanonicalInput({ ...base, apply: true }));
   assert.equal(done.applied, true);
   const saved = await s.getEditionByKey('portola-music-festival/2024-09-28');
-  assert.equal(saved?.status, 'confirmed');
+  assert.equal(saved?.status, 'verified');
   assert.equal(saved?.performances.length, 2);
   assert.equal(saved?.performances.find((p) => p.name === 'Rüfüs Du Sol')?.billing, 'headliner');
 });

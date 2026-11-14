@@ -164,7 +164,7 @@ test('review teaches aliases, the blocklist, source scores and the cache', async
     ],
   });
 
-  assert.equal(result.edition.status, 'confirmed');
+  assert.equal(result.edition.status, 'verified');
   assert.equal(result.edition.performances.length, 4);
   // Facts default to the event's, with the date the sources cited.
   assert.equal(result.edition.name, 'Fest');
