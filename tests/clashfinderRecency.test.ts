@@ -102,3 +102,21 @@ test('recencyMs orders dates and treats a missing date as lowest', () => {
   assert.equal(recencyMs(undefined), Number.NEGATIVE_INFINITY);
   assert.equal(recencyMs('not a date'), Number.NEGATIVE_INFINITY);
 });
+
+test('clashfinderCandidates names a non-JSON list reply and quotes its start, not a bare parse error', async () => {
+  const prev = { user: process.env.CLASHFINDER_USERNAME, key: process.env.CLASHFINDER_PUBLIC_KEY };
+  process.env.CLASHFINDER_USERNAME = 'tester';
+  process.env.CLASHFINDER_PUBLIC_KEY = 'abc';
+  try {
+    const fetcher = {
+      get: async (url: string) => ({ status: 200, url, body: '<html>\n  Access   denied: bad key</html>', headers: {} }),
+    } as any;
+    await assert.rejects(
+      clashfinderCandidates(fetcher, { eventName: 'Foo Festival', year: 2026 }),
+      (err: Error) => /not JSON \(HTTP 200\): "<html> Access denied: bad key<\/html>"/.test(err.message),
+    );
+  } finally {
+    if (prev.user === undefined) delete process.env.CLASHFINDER_USERNAME; else process.env.CLASHFINDER_USERNAME = prev.user;
+    if (prev.key === undefined) delete process.env.CLASHFINDER_PUBLIC_KEY; else process.env.CLASHFINDER_PUBLIC_KEY = prev.key;
+  }
+});
