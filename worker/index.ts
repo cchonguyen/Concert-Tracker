@@ -1,4 +1,5 @@
 import { handleAsNodeRequest } from 'cloudflare:node';
+import { settledOnce } from '../src/server/settledOnce';
 import { createApiApp, healthStatus } from '../src/server/app';
 import { PipelineDeps, runJob } from '../src/server/lineup/pipeline';
 import { createDeps, createStore } from '../src/server/lineup/service';
@@ -44,30 +45,22 @@ interface Env {
 }
 
 const PORT = 8080;
-let depsPromise: Promise<PipelineDeps> | null = null;
-let serverPromise: Promise<void> | null = null;
 
 // Built once per isolate. process.env is populated from vars and secrets by
 // nodejs_compat. A failed start is retried on the next request. With
 // multi-user on, a job whose member is blocked or removed is parked (runJob).
-function getDeps(env: Env): Promise<PipelineDeps> {
-  depsPromise ??= createStore({ requireSupabase: true })
-    .then(createDeps)
-    .then((deps) => {
-      const settings = workerSettings(env as unknown as Record<string, unknown>, process.env);
-      if (settings.MULTI_USER?.trim().toLowerCase() !== 'on') return deps;
-      const members = supabaseMemberStores(getSupabaseClient()!);
-      return { ...deps, hasActiveUser: (userId: string) => members.hasActiveUser(userId) };
-    })
-    .catch((err) => {
-      depsPromise = null;
-      throw err;
-    });
-  return depsPromise;
-}
+// Only finished values are shared between requests (settledOnce), never a
+// promise another request is still running.
+const depsOnce = settledOnce(async (env: Env): Promise<PipelineDeps> => {
+  const deps = await createDeps(await createStore({ requireSupabase: true }));
+  const settings = workerSettings(env as unknown as Record<string, unknown>, process.env);
+  if (settings.MULTI_USER?.trim().toLowerCase() !== 'on') return deps;
+  const members = supabaseMemberStores(getSupabaseClient()!);
+  return { ...deps, hasActiveUser: (userId: string) => members.hasActiveUser(userId) };
+});
+const getDeps = (env: Env): Promise<PipelineDeps> => depsOnce.get(env);
 
-function ensureServer(env: Env): Promise<void> {
-  serverPromise ??= (async () => {
+const serverOnce = settledOnce(async (env: Env): Promise<void> => {
     const deps = await getDeps(env);
     // Who may use /api (src/server/auth/config.ts). Read from the bindings as
     // well as the process environment, so MULTI_USER cannot be on in one and
@@ -90,18 +83,14 @@ function ensureServer(env: Env): Promise<void> {
         resolve();
       });
       server.on('error', (err) => {
-        serverPromise = null;
+        serverOnce.reset();
         try { server.close(); } catch {}
         if (!started) reject(err);
         else console.error('Server runtime error:', err);
       });
     });
-  })().catch((err) => {
-    serverPromise = null;
-    throw err;
-  });
-  return serverPromise;
-}
+});
+const ensureServer = (env: Env): Promise<void> => serverOnce.get(env);
 
 // The Cron Trigger's work (scheduled below), run inside one subrequest budget.
 async function runCron(env: Env): Promise<void> {
