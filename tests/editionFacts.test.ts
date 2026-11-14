@@ -56,7 +56,7 @@ test('a fact edit with a note saves the facts and stores the note on the edition
   const again = (await s.getEdition(edition.id))!;
   assert.equal(again.factSourceNote, 'Festival site, FAQ page');
   assert.equal(again.key, SAVED, 'the key does not change with a fact edit');
-  assert.equal(again.status, 'confirmed');
+  assert.equal(again.status, 'verified');
   assert.equal(again.performances.length, 2, 'acts are not changed by a fact edit');
 });
 

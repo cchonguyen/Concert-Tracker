@@ -213,7 +213,7 @@ export async function confirmCanonicalEdition(store: LineupStore, input: Canonic
     venue: merged.venue,
     city: merged.city,
     country: merged.country,
-    status: 'confirmed',
+    status: 'verified',
     performances: [...byKey.values()],
     confirmedAt: now,
     updatedAt: now,
