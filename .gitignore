@@ -35,3 +35,6 @@ audit-dossier.md
 .harness-backup/
 # <<< harness <<<
 recall-result.*
+
+# Harness session event logs (local telemetry, not committed)
+.spec/.events/

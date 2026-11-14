@@ -1,5 +1,6 @@
 import { useVault } from './VaultContext';
 import { noteView } from '../services/vaultSession';
+import { draftAfterStoredChange } from '../services/fieldDraft';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Check, ChevronDown, CircleHelp, CloudSun, ExternalLink, FolderCog, Heart, History, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import {
@@ -164,7 +165,12 @@ const Field: React.FC<{
   const flashing = React.useContext(FlashContext);
   const flash = field !== undefined && flashing.includes(field);
   const [draft, setDraft] = useState(value === undefined ? '' : String(value));
-  useEffect(() => setDraft(value === undefined ? '' : String(value)), [value]);
+  // True between focus and blur. A stored value that arrives while the person is typing does not replace the draft.
+  const editing = useRef(false);
+  useEffect(() => {
+    const stored = value === undefined ? '' : String(value);
+    setDraft((prev) => draftAfterStoredChange(prev, stored, editing.current));
+  }, [value]);
   const pending = useRef<number | null>(null);
   const latest = useRef({ draft, value, onSave });
   latest.current = { draft, value, onSave };
@@ -219,7 +225,11 @@ const Field: React.FC<{
             onType?.(e.target.value);
             scheduleSave();
           }}
-          onBlur={flush}
+          onFocus={() => (editing.current = true)}
+          onBlur={() => {
+            editing.current = false;
+            flush();
+          }}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
         />
       ) : (
@@ -234,7 +244,11 @@ const Field: React.FC<{
             onType?.(e.target.value);
             scheduleSave();
           }}
-          onBlur={flush}
+          onFocus={() => (editing.current = true)}
+          onBlur={() => {
+            editing.current = false;
+            flush();
+          }}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
         />
       )}
