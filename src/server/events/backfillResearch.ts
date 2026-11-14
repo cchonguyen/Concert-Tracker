@@ -2,9 +2,9 @@
 // queue message failed). At most RESEARCH_BATCH_SIZE events per run (the cron fires every minute).
 //
 // Ladder rungs 1 and 2 only: the catalog lookup and the structured finders (Ticketmaster, setlist.fm, Clashfinder).
-// No reader model (rung 4). Brave (rung 3) is NOT used here: this backfill filters it out of the finders. The monthly
-// Brave counter below (200 queries a month, resets by calendar month) is built and tested so a later slice can gate
-// Brave with it; nothing calls it yet.
+// No reader model (rung 4). Brave (rung 3) is NOT used here: this backfill still filters it out of the finders.
+// The monthly Brave counter (200 queries a month, braveBudget.ts) now gates the live Brave calls: braveCapFetcher
+// wraps the fetcher in createDeps (lineup/service.ts), so Brave requests made by queued research are counted there.
 //
 // Never infers a date: an event with a full date is researched; an event with only a year (or nothing) is not,
 // and is listed for the person to confirm (yearOnlyEvents; Fill gaps shows the same list). Persist rules are
@@ -28,36 +28,15 @@ import { currentBudget } from '../lineup/budget';
 import { researchCatalogFor, runQueuedResearch, type DetailFinder } from './details';
 import type { Fetcher } from '../lineup/types';
 
+export { BRAVE_MONTHLY_CAP, BRAVE_SETTING, braveUsed, takeBrave, monthOf } from './braveBudget';
+export type { BraveCount } from './braveBudget';
+
 export const RESEARCH_BATCH_SIZE = 5;
 export const RESEARCH_SETTING = 'research_backfill';
-export const BRAVE_MONTHLY_CAP = 200;
-export const BRAVE_SETTING = 'brave_monthly';
 const RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
 const FIXED_COST = 3;
 const ITEM_COST = 25;
 const FULL_DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-// ---- Brave monthly counter (not yet used by the backfill) ----
-
-interface BraveCount {
-  month: string; // YYYY-MM (UTC)
-  used: number;
-}
-
-const monthOf = (now: Date) => now.toISOString().slice(0, 7);
-
-export async function braveUsed(store: Pick<LineupStore, 'getSetting'>, now: Date): Promise<number> {
-  const c = await store.getSetting<BraveCount>(BRAVE_SETTING);
-  return c && c.month === monthOf(now) ? c.used : 0;
-}
-
-// Takes `n` Brave queries from this month's allowance. False (and nothing taken) when it would pass the cap.
-export async function takeBrave(store: Pick<LineupStore, 'getSetting' | 'putSetting'>, now: Date, n = 1): Promise<boolean> {
-  const used = await braveUsed(store, now);
-  if (used + n > BRAVE_MONTHLY_CAP) return false;
-  await store.putSetting<BraveCount>(BRAVE_SETTING, { month: monthOf(now), used: used + n });
-  return true;
-}
 
 // ---- Events the person must confirm ----
 
