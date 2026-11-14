@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createLookup, InputError, PipelineDeps } from '../lineup/pipeline';
+import { clashfinderCandidates } from '../lineup/adapters/clashfinder';
 import { Edition, LookupJob } from '../lineup/types';
 import { normalizeName } from '../lineup/text';
 import { parseEventInput } from './parse';
@@ -233,6 +234,15 @@ export async function startLineupLookup(
   const updated = { ...event, lineupJobId: job.id, updatedAt: deps.now().toISOString() };
   await deps.store.putEvent(updated);
   return { event: updated, job };
+}
+
+// Stage 2 manual pick: every Clashfinder version that matches the event, best
+// first. Read-only; the lookup still starts with the automatic pick, and
+// choosing one passes its page as lineupUrl.
+export async function clashfinderChoices(deps: PipelineDeps, event: LoggedEvent) {
+  const year = event.year ?? (event.startDate ? Number(event.startDate.slice(0, 4)) : undefined);
+  if (!year) throw new InputError('Add when it was (a year is enough) before choosing a version.');
+  return clashfinderCandidates(deps.fetcher, { eventName: event.name, year, startDate: event.startDate });
 }
 
 // Per request. Each lookup queued costs several database calls and a

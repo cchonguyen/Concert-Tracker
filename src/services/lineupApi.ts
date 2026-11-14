@@ -186,6 +186,10 @@ export const eventsApi = {
     request<{ started: string[]; skipped: Array<{ id: string; reason: string }> }>('/api/events/lineups', post({ ids })),
   findLineup: (id: string, lineupUrl?: string) =>
     request<{ event: LoggedEvent; job: LookupJob }>(`/api/events/${id}/lineup`, post({ lineupUrl })),
+  lineupVersions: (id: string) =>
+    request<{ versions: Array<{ slug: string; name: string; startDate?: string; lastEdit?: string; edits?: number; numActs?: number; url: string }> }>(
+      `/api/events/${id}/lineup/versions`,
+    ).then((r) => r.versions),
   cities: (q: string) => request<{ cities: string[] }>(`/api/places/cities?q=${encodeURIComponent(q)}`).then((r) => r.cities),
   placeGuess: (place: { city: string; region?: string; country?: string }) =>
     request<{ guess: PlaceGuess | null; note?: string }>(
