@@ -43,6 +43,7 @@ import type { EditionPerformance } from '../server/lineup/types';
 import type { ManageTarget } from './ManageView';
 import { DetailShell, type DetailRow } from './ui/DetailShell';
 import { Confirm } from './ui/Confirm';
+import { VersionPicker } from './ui/VersionPicker';
 import { useToast } from './ui/Toast';
 import { Switch } from './ui/Switch';
 import { Sheet } from './ui/Sheet';
@@ -1788,6 +1789,17 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                 </Button>
               </div>
               {!(event.year || event.startDate) && <p className="text-xs text-amber-300/90">Add when it was first, then find the lineup.</p>}
+            </div>
+          )}
+
+          {(event.year || event.startDate) && (
+            <div className="mt-2">
+              <VersionPicker
+                load={async () => eventsApi.lineupVersions(event.id)}
+                confirmedActs={edition ? lineupActs.length : undefined}
+                busy={busy === 'lineup'}
+                onPick={(v, replace) => void run('lineup', async () => (await eventsApi.findLineup(event.id, v.url, replace)).event)}
+              />
             </div>
           )}
 

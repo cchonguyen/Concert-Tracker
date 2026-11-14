@@ -6,7 +6,7 @@ import { DetailFinder, defaultFinders, pickCandidate, researchEvent } from './de
 import { geminiReader } from './detailsGemini';
 import { cityPoint, citySuggestions, placeGuess } from './place';
 import { applyLinkedPatch, ensureCaptured, recordOverrides, resolveEvent, resolveEvents, unlinkEvent } from './inherit';
-import { EventPatch, lineupSummary, newEvent, newEventFromEdition, sortEvents, startBulkLookups, startLineupLookup } from './service';
+import { clashfinderChoices, EventPatch, lineupSummary, newEvent, newEventFromEdition, sortEvents, startBulkLookups, startLineupLookup } from './service';
 import { LineupSummary } from './types';
 import { isVerifiedStatus } from '../lineup/store/types';
 import { artistSuggestions, eventPerformers, nameArtistSuggestions, pastArtists, MAX_BULK_SUGGESTIONS, storedNameSuggestions } from './artists';
@@ -357,9 +357,20 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
     try {
       const event = await load(req.params.id, res);
       if (!event) return;
-      const result = await startLineupLookup(deps, event, req.body?.lineupUrl);
+      const result = await startLineupLookup(deps, event, req.body?.lineupUrl, { replaceConfirmed: req.body?.replaceConfirmed === true });
       if (result.job.status === 'queued') await runner.kick(result.job.id);
       res.status(201).json(result);
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Stage 2: every Clashfinder version that matches, for the "Not this version?" pick.
+  router.get('/events/:id/lineup/versions', async (req, res) => {
+    try {
+      const event = await load(req.params.id, res);
+      if (!event) return;
+      res.json({ versions: await clashfinderChoices(deps, event) });
     } catch (err) {
       fail(res, err);
     }
