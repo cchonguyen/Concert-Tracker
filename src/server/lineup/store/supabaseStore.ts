@@ -381,7 +381,10 @@ export class SupabaseLineupStore implements LineupStore {
       slotId: p.slot_id ?? undefined,
       alias: p.alias ?? undefined,
       set: p.set ?? undefined,
-      b2b: p.b2b?.length ? p.b2b : undefined,
+      // Keep the stored value as it is: '{}' (empty) and NULL are different rows to the canonical apply's
+      // fingerprint check (canonical_artist_state compares them as jsonb). Collapsing '{}' to undefined made
+      // every preview of an artist with such a row fail as "out of date".
+      b2b: p.b2b ?? undefined,
       name: p.name,
       days: p.days ?? [],
       stages: p.stages ?? [],
