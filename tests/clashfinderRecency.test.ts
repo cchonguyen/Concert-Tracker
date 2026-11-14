@@ -120,3 +120,26 @@ test('clashfinderCandidates names a non-JSON list reply and quotes its start, no
     if (prev.key === undefined) delete process.env.CLASHFINDER_PUBLIC_KEY; else process.env.CLASHFINDER_PUBLIC_KEY = prev.key;
   }
 });
+
+test('clashfinderCandidates asks for a 32 MB list and reports a list cut at the cap, not a parse error', async () => {
+  const prev = { user: process.env.CLASHFINDER_USERNAME, key: process.env.CLASHFINDER_PUBLIC_KEY };
+  process.env.CLASHFINDER_USERNAME = 'tester';
+  process.env.CLASHFINDER_PUBLIC_KEY = 'abc';
+  try {
+    const seen: any[] = [];
+    const fetcher = {
+      get: async (url: string, init?: any) => {
+        seen.push(init);
+        return { status: 200, url, body: '{ "foo2026": {', headers: {}, truncated: true };
+      },
+    } as any;
+    await assert.rejects(
+      clashfinderCandidates(fetcher, { eventName: 'Foo Festival', year: 2026 }),
+      (err: Error) => /larger than 32 MB/.test(err.message) && !/not JSON/.test(err.message),
+    );
+    assert.equal(seen[0]?.maxBytes, 32 * 1024 * 1024);
+  } finally {
+    if (prev.user === undefined) delete process.env.CLASHFINDER_USERNAME; else process.env.CLASHFINDER_USERNAME = prev.user;
+    if (prev.key === undefined) delete process.env.CLASHFINDER_PUBLIC_KEY; else process.env.CLASHFINDER_PUBLIC_KEY = prev.key;
+  }
+});
