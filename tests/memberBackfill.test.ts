@@ -261,3 +261,12 @@ test('a spent subrequest budget returns null and reads nothing (the idle case th
   assert.equal(m.listCalls, 0);
   assert.equal((await s.listEditions(10)).length, 0);
 });
+
+test('the cron runs the member backfill before the owner backfill, which spends the whole budget', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../worker/index.ts', import.meta.url), 'utf8');
+  const member = src.indexOf('runMemberBackfill(deps.store');
+  const owner = src.indexOf('runCanonBackfill(store)');
+  assert.ok(member > 0 && owner > 0);
+  assert.ok(member < owner);
+});
