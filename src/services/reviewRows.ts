@@ -101,7 +101,12 @@ function unpackPerformances(list: EditionPerformance[]): EditionPerformance[] {
   return result;
 }
 
-export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition | null): StartRow[] {
+// replacing: the person chose another version of a confirmed lineup (a new
+// lookup under the same edition). The new lookup's acts start ticked, with your
+// saved name, role and set kept; old acts it no longer lists start unticked,
+// except acts you added by hand.
+export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition | null, opts: { replacing?: boolean } = {}): StartRow[] {
+  const replacing = Boolean(opts.replacing && edition);
   const keepWhole = new Set((edition?.performances ?? []).filter((e) => e.oneAct).map((e) => e.artistKey));
   const performers = unpackCandidates(rawPerformers, keepWhole);
   if (!edition) {
@@ -156,7 +161,7 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
         alias: p.alias,
         b2b: p.b2b,
         name: p.name,
-        accepted: false,
+        accepted: replacing ? !p.flagged : false,
         cancelled: false,
         billing: p.billing,
         set: p.set,
@@ -179,8 +184,8 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
       cancelled,
       billing: saved.billing,
       set: saved.set ?? p.set,
-      days: saved.days,
-      stages: saved.stages,
+      days: replacing && p.days?.length ? p.days : saved.days,
+      stages: replacing && p.stages?.length ? p.stages : saved.stages,
       candidate: p,
     };
   });
@@ -194,7 +199,7 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
       b2b: e.b2b,
       name: e.name,
       oneAct: e.oneAct,
-      accepted: true,
+      accepted: !replacing || byHand(e),
       cancelled: false,
       billing: e.billing,
       set: e.set,
@@ -203,6 +208,10 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
     });
   }
   return rows;
+}
+
+function byHand(e: EditionPerformance): boolean {
+  return !e.sources?.length || e.sources.every((s) => s.sourceType === 'user');
 }
 
 export interface ReviewSlot<T> {
@@ -365,4 +374,14 @@ export function reviewSubjectFromEdition(edition: Edition): ReviewSubject {
       })),
     },
   };
+}
+
+// A lookup on an event whose lineup is already confirmed that has finished and
+// waits for review: saving its review replaces the confirmed lineup. A cached
+// job (the confirmed lineup read back) is not one.
+export function pendingReplacement(
+  job: (ReviewSubject & { status?: LookupJob['status'] }) | null | undefined,
+  edition?: Edition | null,
+): boolean {
+  return Boolean(job && edition && job.status === 'needs_review' && !job.candidate?.cached);
 }
