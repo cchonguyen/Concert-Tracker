@@ -1550,7 +1550,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               <input className={input} value={lineupUrl} onChange={(e) => setLineupUrl(e.target.value)} placeholder="Lineup page, if you know one (optional)" />
             </div>
           )}
-          {job && !edition && (
+          {/* A replacement lookup on a confirmed edition shows its progress too, so it never looks like nothing happened. */}
+          {job && (!edition || isActive(job.status)) && (
             <LineupProgress
               job={job}
               busy={busy === 'retry'}
