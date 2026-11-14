@@ -207,6 +207,7 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
   });
 
   router.get('/editions', async (_req, res) => {
+    if (!isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
     try {
       res.json({ editions: await deps.store.listEditions(100) });
     } catch (err) {

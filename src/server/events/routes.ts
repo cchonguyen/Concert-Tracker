@@ -8,6 +8,7 @@ import { cityPoint, citySuggestions, placeGuess } from './place';
 import { applyLinkedPatch, ensureCaptured, recordOverrides, resolveEvent, resolveEvents, unlinkEvent } from './inherit';
 import { EventPatch, lineupSummary, newEvent, newEventFromEdition, sortEvents, startBulkLookups, startLineupLookup } from './service';
 import { LineupSummary } from './types';
+import { isVerifiedStatus } from '../lineup/store/types';
 import { artistSuggestions, eventPerformers, nameArtistSuggestions, pastArtists, MAX_BULK_SUGGESTIONS, storedNameSuggestions } from './artists';
 import type { LineupFacts } from './scale';
 import { lookupWeather } from './weather';
@@ -87,7 +88,7 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
         }
       }
       const edition = await deps.store.getEdition(req.body.editionId);
-      if (!edition || edition.status !== 'confirmed') return res.status(404).json({ error: 'Edition not found.' });
+      if (!edition || !isVerifiedStatus(edition.status)) return res.status(404).json({ error: 'Edition not found.' });
       const event = newEventFromEdition(text, edition, deps.now());
       await deps.store.putEvent(event);
       // The lineup lookup finds the confirmed edition and goes straight to review.
