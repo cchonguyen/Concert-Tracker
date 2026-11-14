@@ -356,7 +356,7 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
     try {
       const event = await load(req.params.id, res);
       if (!event) return;
-      const result = await startLineupLookup(deps, event, req.body?.lineupUrl);
+      const result = await startLineupLookup(deps, event, req.body?.lineupUrl, { replaceConfirmed: req.body?.replaceConfirmed === true });
       if (result.job.status === 'queued') await runner.kick(result.job.id);
       res.status(201).json(result);
     } catch (err) {

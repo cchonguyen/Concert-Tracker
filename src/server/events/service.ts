@@ -214,6 +214,7 @@ export async function startLineupLookup(
   deps: PipelineDeps,
   event: LoggedEvent,
   lineupUrl?: string,
+  opts: { replaceConfirmed?: boolean } = {},
 ): Promise<{ event: LoggedEvent; job: LookupJob }> {
   const year = event.year ?? (event.startDate ? Number(event.startDate.slice(0, 4)) : undefined);
   if (!year) throw new InputError('Add when it was (a year is enough) before looking up the lineup.');
@@ -229,7 +230,7 @@ export async function startLineupLookup(
       country: event.country,
       lineupUrl: text(lineupUrl),
     },
-    { eventId: event.id },
+    { eventId: event.id, replaceConfirmed: opts.replaceConfirmed === true },
   );
   const updated = { ...event, lineupJobId: job.id, updatedAt: deps.now().toISOString() };
   await deps.store.putEvent(updated);

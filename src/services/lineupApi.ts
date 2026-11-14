@@ -184,8 +184,8 @@ export const eventsApi = {
     request<{ suggestions: Record<string, ArtistSuggestion[]> }>('/api/events/name-artists', post({ ids })).then((r) => r.suggestions),
   findLineups: (ids: string[]) =>
     request<{ started: string[]; skipped: Array<{ id: string; reason: string }> }>('/api/events/lineups', post({ ids })),
-  findLineup: (id: string, lineupUrl?: string) =>
-    request<{ event: LoggedEvent; job: LookupJob }>(`/api/events/${id}/lineup`, post({ lineupUrl })),
+  findLineup: (id: string, lineupUrl?: string, replaceConfirmed?: boolean) =>
+    request<{ event: LoggedEvent; job: LookupJob }>(`/api/events/${id}/lineup`, post({ lineupUrl, replaceConfirmed: replaceConfirmed || undefined })),
   lineupVersions: (id: string) =>
     request<{ versions: Array<{ slug: string; name: string; startDate?: string; lastEdit?: string; edits?: number; numActs?: number; url: string }> }>(
       `/api/events/${id}/lineup/versions`,
