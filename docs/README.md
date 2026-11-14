@@ -6,6 +6,7 @@ Feature specs, designs and backlogs for LiveArchive. Agent rules are in [AGENTS.
 | --- | --- |
 | [manage-section-design.md](manage-section-design.md) | Built (slices M1a to M6 in `.spec/PROGRESS.md`) |
 | [b3b-and-collaboration-aliases-spec.md](b3b-and-collaboration-aliases-spec.md) | Proposed (B3B linking and AKA aliases) |
+| [brave-rung3-spec.md](brave-rung3-spec.md) | Proposed 2026-11-14 (Brave as research rung 3: feasibility, hardening slices) |
 | [b2b-and-solo-performances-spec.md](b2b-and-solo-performances-spec.md) | Proposed |
 | [unified-set-field-and-clashfinder-extraction-spec.md](unified-set-field-and-clashfinder-extraction-spec.md) | Shipped (PR #192) |
 | [email-notifications-plan.md](email-notifications-plan.md) | Plan, not started |
