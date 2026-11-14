@@ -270,3 +270,30 @@ test('the cron runs the member backfill before the owner backfill, which spends 
   assert.ok(member > 0 && owner > 0);
   assert.ok(member < owner);
 });
+
+test('two members entering the same show with no venue make one edition, not one each (KREAM duplicate)', async () => {
+  const s = await fresh();
+  const a = accepted('member-user-kr01', [event('mev-kr01', { name: 'KREAM', startDate: '2024-12-21' })]);
+  const b = accepted('member-user-kr02', [event('mev-kr02', { name: 'KREAM', startDate: '2024-12-21' })]);
+  const t = setup([a, b]);
+  const r = await t.run(s, [
+    { userId: a.userId, role: 'member' },
+    { userId: b.userId, role: 'member' },
+  ]);
+  assert.equal(r?.created, 1);
+  assert.equal(r?.matched, 1);
+  assert.equal((await s.listEditions(10)).length, 1);
+});
+
+test('the same show with two different typed venues stays two editions', async () => {
+  const s = await fresh();
+  const a = accepted('member-user-vn01', [event('mev-vn01', { name: 'KREAM', startDate: '2024-12-21', venue: 'Club A', sources: { venue: typedSource } })]);
+  const b = accepted('member-user-vn02', [event('mev-vn02', { name: 'KREAM', startDate: '2024-12-21', venue: 'Club B', sources: { venue: typedSource } })]);
+  const t = setup([a, b]);
+  const r = await t.run(s, [
+    { userId: a.userId, role: 'member' },
+    { userId: b.userId, role: 'member' },
+  ]);
+  assert.equal(r?.created, 2);
+  assert.equal((await s.listEditions(10)).length, 2);
+});
