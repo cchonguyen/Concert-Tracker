@@ -9,7 +9,8 @@ import { applyLinkedPatch, ensureCaptured, recordOverrides, resolveEvent, resolv
 import { clashfinderChoices, EventPatch, lineupSummary, newEvent, newEventFromEdition, sortEvents, startBulkLookups, startLineupLookup } from './service';
 import { LineupSummary, LoggedEvent } from './types';
 import { isVerifiedStatus } from '../lineup/store/types';
-import { artistSuggestions, eventPerformers, nameArtistSuggestions, pastArtists, MAX_BULK_SUGGESTIONS, storedNameSuggestions } from './artists';
+import { normalizeName } from '../lineup/normalizeName';
+import { artistSuggestions, eventPerformers, nameArtistSuggestions, MAX_BULK_SUGGESTIONS, storedNameSuggestions } from './artists';
 import type { LineupFacts } from './scale';
 import { lookupWeather } from './weather';
 import { undoActivity } from './undo';
@@ -184,14 +185,57 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
     }
   });
 
+  // Lightweight poll for active lookups and pending research across events.
+  router.get('/events/poll', async (req, res) => {
+    try {
+      const rawIds = typeof req.query.ids === 'string' ? req.query.ids : '';
+      const ids = rawIds.split(',').map((s) => s.trim()).filter(Boolean);
+      if (ids.length === 0) {
+        return res.json({ jobs: [], pendingIds: [] });
+      }
+      const eventLookups = await Promise.all(ids.map((id) => deps.store.getEvent(id)));
+      const events = eventLookups.filter((e): e is LoggedEvent => Boolean(e));
+      const pendingIds = events.filter((e) => e.details?.status === 'pending').map((e) => e.id);
+      const jobIdsFromEvents = events.map((e) => e.lineupJobId).filter((id): id is string => Boolean(id));
+      const missedIds = ids.filter((_, idx) => !eventLookups[idx]);
+      const allJobIds = [...new Set([...jobIdsFromEvents, ...missedIds])];
+      const jobs = allJobIds.length ? await deps.store.getJobs(allJobIds) : [];
+      for (const e of events) {
+        if (e.lineupJobId) {
+          const j = jobs.find((job) => job.id === e.lineupJobId);
+          if (j && !j.eventId) j.eventId = e.id;
+        }
+      }
+      res.json({ jobs, pendingIds });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Lightweight poll for a single event's job and research status.
+  router.get('/events/:id/poll', async (req, res) => {
+    try {
+      const event = await deps.store.getEvent(req.params.id);
+      if (!event) return res.status(404).json({ error: 'Event not found.' });
+      const job = event.lineupJobId ? await deps.store.getJob(event.lineupJobId) : null;
+      if (job && !job.eventId) job.eventId = event.id;
+      res.json({ job, detailsStatus: event.details?.status });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
   router.get('/events/:id', async (req, res) => {
     try {
       const event = await load(req.params.id, res);
       if (!event) return;
       const job = event.lineupJobId ? await deps.store.getJob(event.lineupJobId) : null;
       const edition = event.editionId ? await deps.store.getEdition(event.editionId) : null;
-      const others = await deps.store.listEvents();
-      const suggestions = artistSuggestions(event, [...eventPerformers(event, job, edition), ...pastArtists(others, event)]);
+      const seenNames = await deps.store.listSeenArtistNames();
+      const past = seenNames
+        .filter((name) => normalizeName(name).length >= 4)
+        .map((name) => ({ name, sourceType: 'user' as const }));
+      const suggestions = artistSuggestions(event, [...eventPerformers(event, job, edition), ...past]);
       res.json({ event: resolveEvent(event, edition), job, edition, suggestions });
     } catch (err) {
       fail(res, err);

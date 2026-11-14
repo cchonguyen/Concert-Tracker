@@ -547,7 +547,7 @@ export class SupabaseLineupStore implements LineupStore {
     const rows = this.check(
       await this.db
         .from('event_editions')
-        .select('id')
+        .select('*')
         .in('status', ['confirmed', 'verified'])
         .or(`name.ilike.${pattern},series_slug.ilike.${pattern}`)
         // Bound the editions loaded per keystroke; newest first so recent editions are kept.
@@ -555,8 +555,27 @@ export class SupabaseLineupStore implements LineupStore {
         .limit(200),
       'suggestEditions',
     );
-    const ids = (rows ?? []).map((row: any) => row.id as string);
-    return suggestEditionMatches(await this.getEditions(ids), query, opts);
+    const candidates = (rows ?? []).map((r: any) => this.toEdition(r, []));
+    const suggestions = suggestEditionMatches(candidates, query, opts);
+    if (!suggestions.length) return [];
+    const matchedIds = suggestions.map((s) => s.id);
+    const perfs: any[] = [];
+    for (let from = 0; ; from += 1000) {
+      const page = this.check(
+        await this.db
+          .from('performances')
+          .select('edition_id')
+          .in('edition_id', matchedIds)
+          .range(from, from + 999),
+        'suggestEditions performances',
+      );
+      perfs.push(...(page ?? []));
+      if ((page ?? []).length < 1000) break;
+    }
+    const counts = new Map<string, number>();
+    for (const p of perfs) counts.set(p.edition_id, (counts.get(p.edition_id) ?? 0) + 1);
+    for (const s of suggestions) s.actCount = counts.get(s.id) ?? 0;
+    return suggestions;
   }
 
   async listCanonicalEditionsPage(options: CanonicalEditionPageOptions) {
@@ -564,7 +583,7 @@ export class SupabaseLineupStore implements LineupStore {
     const limit = Math.max(0, Math.min(200, Math.floor(options.limit)));
     let query = this.db
       .from('event_editions')
-      .select('id, series_slug, year, name, venue, status', { count: 'exact' });
+      .select('*', { count: 'exact' });
     if (options.status === 'verified' || options.status === 'confirmed') query = query.in('status', ['verified', 'confirmed']);
     else if (options.status && options.status !== 'all') query = query.eq('status', options.status);
     if (queryText) {
@@ -579,10 +598,34 @@ export class SupabaseLineupStore implements LineupStore {
       .limit(limit);
     const rows = this.check(result, 'listCanonicalEditionsPage') ?? [];
     if (result.count === null) throw new Error('Supabase listCanonicalEditionsPage did not return an exact count.');
+    if (!rows.length) {
+      return { editions: [], total: result.count, hasMore: false };
+    }
     const ids = rows.map((row: any) => row.id as string);
-    const loaded = new Map((await this.getEditions(ids)).map((edition) => [edition.id, edition]));
+    const perfsByEdition = new Map<string, any[]>();
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100);
+      for (let from = 0; ; from += 1000) {
+        const page = this.check(
+          await this.db
+            .from('performances')
+            .select('edition_id, artist_key, name, days, stages, status, billing, confidence')
+            .in('edition_id', chunk)
+            .order('edition_id')
+            .order('artist_key')
+            .range(from, from + 999),
+          'listCanonicalEditionsPage performances',
+        );
+        for (const p of page ?? []) {
+          const list = perfsByEdition.get(p.edition_id);
+          if (list) list.push(p);
+          else perfsByEdition.set(p.edition_id, [p]);
+        }
+        if ((page ?? []).length < 1000) break;
+      }
+    }
     return {
-      editions: ids.map((id) => loaded.get(id)).filter((edition): edition is Edition => Boolean(edition)),
+      editions: rows.map((r: any) => this.toEdition(r, perfsByEdition.get(r.id) ?? [])),
       total: result.count,
       hasMore: result.count > rows.length,
     };
@@ -843,6 +886,20 @@ export class SupabaseLineupStore implements LineupStore {
 
   async listEvents() {
     const rows = this.check(await this.mine(this.own('logged_events').select('*').is('deleted_at', null)), 'listEvents');
+    return (rows ?? []).map((r: any) => this.rowToEvent(r));
+  }
+
+  async listPendingResearchEvents(limit = 50): Promise<LoggedEvent[]> {
+    const rows = this.check(
+      await this.mine(
+        this.own('logged_events')
+          .select('*')
+          .is('deleted_at', null)
+          .eq('details->>status', 'pending')
+          .limit(limit),
+      ),
+      'listPendingResearchEvents',
+    );
     return (rows ?? []).map((r: any) => this.rowToEvent(r));
   }
 

@@ -7,7 +7,7 @@ import type { ConfirmRequest } from '../server/lineup/learning';
 import type { CanonicalConfirmInput, CanonicalDiff } from '../server/lineup/canonicalIngest';
 import type { ArtistAppearance, ArtistChangeImpact, CanonicalArtistRecord, CanonicalEditionSummary, CanonicalOperation } from '../server/entities/canonicalManage';
 import type { EditionSuggestion } from '../server/lineup/store/types';
-import type { DetailCandidate, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
+import type { DetailCandidate, EventDetails, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
 import type { EventPatch } from '../server/events/service';
 import type { ActivityEntry } from '../server/events/activityLog';
 import type { EmailImport, MergeField } from '../server/events/email/types';
@@ -27,6 +27,7 @@ export type {
   LoggedEvent,
   LineupSummary,
   DetailCandidate,
+  EventDetails,
   EventField,
   EventPatch,
   EmailImport,
@@ -151,6 +152,12 @@ export const takeResearchOutcome = (id: string): 'queued' | 'pending' | undefine
 export const eventsApi = {
   list: () =>
     request<{ events: LoggedEvent[]; lineups: Record<string, LineupSummary>; editions: Record<string, LineupFacts> }>('/api/events'),
+  pollAll: (ids: string[]) =>
+    request<{ jobs: LookupJob[]; pendingIds: string[] }>(
+      ids.length ? `/api/events/poll?ids=${ids.map(encodeURIComponent).join(',')}` : '/api/events/poll',
+    ),
+  pollOne: (id: string) =>
+    request<{ job: LookupJob | null; detailsStatus?: EventDetails['status'] }>(`/api/events/${encodeURIComponent(id)}/poll`),
   get: (id: string) =>
     request<{ event: LoggedEvent; job: LookupJob | null; edition: Edition | null; suggestions: ArtistSuggestion[] }>(`/api/events/${id}`),
   // research: true (the capture bar) asks the server to research the new event from its queue. The answer is
@@ -603,6 +610,9 @@ export const canonicalApi = {
   // Edition facts with a required source note; blank facts are sent as null and stay blank.
   editFacts: (id: string, facts: { name: string; startDate: string | null; endDate: string | null; venue: string | null; city: string | null; sourceNote: string }) =>
     request<{ edition: Edition }>(`/api/manage/canonical/editions/${encodeURIComponent(id)}/facts`, { method: 'PATCH', body: JSON.stringify(facts) }).then((r) => r.edition),
+  // Check details for an edition facts draft or stored edition. Owner only.
+  researchEdition: (id: string, body?: { name?: string; startDate?: string; endDate?: string; venue?: string; city?: string; useGemini?: boolean }) =>
+    request<EventDetails>(`/api/manage/canonical/editions/${encodeURIComponent(id)}/details`, post(body)),
   artist: (key: string) =>
     request<{ artist: CanonicalArtistRecord; appearances: ArtistAppearance[] }>(`/api/manage/canonical/artists/${encodeURIComponent(key)}`),
   // Catalog artists as records (GA3). Each returns the history entry, which Undo (entitiesApi.undo) reverses.

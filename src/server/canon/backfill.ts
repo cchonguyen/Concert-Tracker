@@ -39,6 +39,7 @@ export const BACKFILL_SETTING = 'canon_backfill';
 const ACTOR = 'system:canon-backfill';
 const ITEM_COST = 16;
 const FIXED_COST = 13;
+const CURSOR_WRITE_COST = 1;
 const FULL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 interface Cursor {
@@ -102,7 +103,7 @@ export async function runCanonBackfill(store: LineupStore, opts: BackfillOptions
   const cursor = (await store.getSetting<Cursor>(BACKFILL_SETTING)) ?? { done: [] };
   if (cursor.complete) return null;
   const budgetLeft = opts.budgetLeft ?? defaultBudgetLeft;
-  const room = Math.floor((budgetLeft() - FIXED_COST) / ITEM_COST);
+  const room = Math.floor((budgetLeft() - FIXED_COST - CURSOR_WRITE_COST) / ITEM_COST);
   if (room < 1) return null;
 
   const [events, imports, editions] = await Promise.all([store.listEvents(), store.listImports(), store.listEditions(5000)]);
@@ -124,8 +125,13 @@ export async function runCanonBackfill(store: LineupStore, opts: BackfillOptions
   const shared = cachedEditions(store, editions);
   const report = emptyReport();
   const finished: string[] = [];
+  let stopped = false;
 
   for (const item of batch) {
+    if (budgetLeft() < ITEM_COST + CURSOR_WRITE_COST) {
+      stopped = true;
+      break;
+    }
     try {
       if (item.kind === 'edition') await fillEdition(shared, item.edition, report);
       else if (item.kind === 'import') await fromImport(shared, item, priorStatus, report);
@@ -140,15 +146,17 @@ export async function runCanonBackfill(store: LineupStore, opts: BackfillOptions
       }
       // A budget or store error stops the run; finished items are kept, the rest are retried next run.
       console.error('Canon backfill stopped:', err instanceof Error ? err.message : String(err));
+      stopped = true;
       break;
     }
   }
 
   const all = [...cursor.done, ...finished];
   report.remaining = pending.length - finished.length;
-  if (finished.length || report.remaining === 0) {
+  const complete = report.remaining === 0 && !stopped;
+  if (finished.length || complete) {
     try {
-      await store.putSetting<Cursor>(BACKFILL_SETTING, { done: all, ...(report.remaining === 0 ? { complete: true } : {}) });
+      await store.putSetting<Cursor>(BACKFILL_SETTING, { done: all, ...(complete ? { complete: true } : {}) });
     } catch (err) {
       console.error('Canon backfill cursor not saved:', err instanceof Error ? err.message : String(err));
     }
@@ -165,7 +173,7 @@ async function fillEdition(store: LineupStore, edition: Edition, report: Backfil
     next.venueId = venue.id;
   }
   if (!edition.subjectKey && edition.seriesSlug) next.subjectKey = edition.seriesSlug;
-  const w = await writeEdition(store, { edition: next, actor: ACTOR, reason: 'backfill: venue and subject for an existing edition' });
+  const w = await writeEdition(store, { edition: next, before: edition, actor: ACTOR, reason: 'backfill: venue and subject for an existing edition' });
   if (w.changed) {
     if (next.venueId && !edition.venueId) report.venue_set++;
     if (next.subjectKey && !edition.subjectKey) report.subject_set++;

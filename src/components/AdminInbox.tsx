@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Undo2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Undo2 } from 'lucide-react';
 import { canonicalApi, inboxApi, type InboxItem, type InboxTrace } from '../services/lineupApi';
 import { change, editionLine, failedReason, groupByKind, mergeChoices, traceSummary } from '../services/adminInbox';
+import { editionUrl, isModifiedClick, rememberManageSearch } from '../services/manageNav';
 import { useIsOwner, useMe } from './MeContext';
 import { Button } from './ui/Button';
 import { Pill } from './ui/Pill';
@@ -13,6 +14,7 @@ const msg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wr
 export const AdminInbox: React.FC = () => {
   const owner = useIsOwner();
   const sample = useMe().sample;
+  const [open, setOpen] = useState(false);
   const [items, setItems] = useState<InboxItem[] | null>(null);
   const [traces, setTraces] = useState<InboxTrace[]>([]);
   const [tableMissing, setTableMissing] = useState(false);
@@ -70,57 +72,72 @@ export const AdminInbox: React.FC = () => {
 
   return (
     <section className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3" aria-label="Owner inbox">
-      <h2 className="text-base font-semibold text-zinc-100">Inbox</h2>
-      {error && <p className="text-sm text-amber-300">Could not load the inbox. {error} <button className="underline" onClick={() => void load()}>Try again</button></p>}
-      {items && !error && groups.length === 0 && <p className="text-sm text-zinc-400">Nothing waiting for you.</p>}
-      {groups.map((g) => (
-        <div key={g.kind} className="space-y-2">
-          <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-200">{g.label} <Pill tone="accent">{g.items.length}</Pill></h3>
-          <ul className="space-y-2">
-            {g.items.map((it) => (
-              <InboxRow key={it.id} item={it} busy={busy === it.id} onRun={run} />
-            ))}
-          </ul>
-        </div>
-      ))}
-      {done.length > 0 && (
-        <ul className="space-y-1">
-          {done.map(([id, r]) => (
-            <li key={id} className="flex flex-wrap items-center gap-3 text-sm text-zinc-300">
-              <span className="min-w-0 flex-1">{r.text}</span>
-              {r.undo && (
-                <button onClick={() => void undo(id, r.undo!)} disabled={busy === id} className="inline-flex items-center gap-1 text-violet-300 hover:text-violet-200 disabled:opacity-40">
-                  <Undo2 className="h-3.5 w-3.5" /> Undo
-                </button>
-              )}
-            </li>
+      <h2>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          className="inline-flex items-center gap-2 text-base font-semibold text-zinc-100 hover:text-white"
+        >
+          {open ? <ChevronDown className="h-4 w-4 text-zinc-400" /> : <ChevronRight className="h-4 w-4 text-zinc-400" />}
+          <span>Inbox</span>
+          {Boolean(items && items.length > 0) && <Pill tone="accent">{items!.length}</Pill>}
+        </button>
+      </h2>
+      {open && (
+        <>
+          {error && <p className="text-sm text-amber-300">Could not load the inbox. {error} <button className="underline" onClick={() => void load()}>Try again</button></p>}
+          {items && !error && groups.length === 0 && <p className="text-sm text-zinc-400">Nothing waiting for you.</p>}
+          {groups.map((g) => (
+            <div key={g.kind} className="space-y-2">
+              <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-200">{g.label} <Pill tone="accent">{g.items.length}</Pill></h3>
+              <ul className="space-y-2">
+                {g.items.map((it) => (
+                  <InboxRow key={it.id} item={it} busy={busy === it.id} onRun={run} />
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
-      )}
-
-      <div className="space-y-2">
-        <h3 className="text-sm font-medium text-zinc-200">Recent activity</h3>
-        {tableMissing ? (
-          <p className="text-sm text-zinc-400">Activity appears once the traces table is set up.</p>
-        ) : traces.length === 0 ? (
-          <p className="text-sm text-zinc-400">No activity yet.</p>
-        ) : (
-          <ul className="space-y-1.5">
-            {traces.map((t) => {
-              const s = traceSummary(t);
-              return (
-                <li key={t.id} className="rounded-lg border border-zinc-800 p-2 text-xs text-zinc-400">
-                  <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-200">
-                    <span>{s.title}</span>
-                    <span className="text-xs text-zinc-400">{new Date(t.createdAt).toLocaleString()}</span>
-                  </div>
-                  <div>For {s.target}. {s.steps}. {s.requests}.</div>
+          {done.length > 0 && (
+            <ul className="space-y-1">
+              {done.map(([id, r]) => (
+                <li key={id} className="flex flex-wrap items-center gap-3 text-sm text-zinc-300">
+                  <span className="min-w-0 flex-1">{r.text}</span>
+                  {r.undo && (
+                    <button onClick={() => void undo(id, r.undo!)} disabled={busy === id} className="inline-flex items-center gap-1 text-violet-300 hover:text-violet-200 disabled:opacity-40">
+                      <Undo2 className="h-3.5 w-3.5" /> Undo
+                    </button>
+                  )}
                 </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+              ))}
+            </ul>
+          )}
+
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium text-zinc-200">Recent activity</h3>
+            {tableMissing ? (
+              <p className="text-sm text-zinc-400">Activity appears once the traces table is set up.</p>
+            ) : traces.length === 0 ? (
+              <p className="text-sm text-zinc-400">No activity yet.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {traces.map((t) => {
+                  const s = traceSummary(t);
+                  return (
+                    <li key={t.id} className="rounded-lg border border-zinc-800 p-2 text-xs text-zinc-400">
+                      <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-200">
+                        <span>{s.title}</span>
+                        <span className="text-xs text-zinc-400">{new Date(t.createdAt).toLocaleString()}</span>
+                      </div>
+                      <div>For {s.target}. {s.steps}. {s.requests}.</div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
     </section>
   );
 };
@@ -132,9 +149,30 @@ const InboxRow: React.FC<{
 }> = ({ item, busy, onRun }) => {
   const c = change(item);
   const dismiss = (label: string, text: string) => <Button variant="ghost" disabled={busy} onClick={() => onRun(item, text, () => inboxApi.dismiss(item.id))}>{label}</Button>;
+  const editionId = item.editionId || item.edition?.id;
+  const line = editionLine(item.edition);
   return (
     <li className="space-y-2 rounded-lg border border-zinc-800 p-2.5">
-      <p className="break-words text-sm text-zinc-100">{editionLine(item.edition)}</p>
+      <p className="break-words text-sm text-zinc-100">
+        {editionId ? (
+          <a
+            href={editionUrl(editionId)}
+            onClick={(e) => {
+              if (isModifiedClick(e)) return;
+              e.preventDefault();
+              const url = editionUrl(editionId);
+              window.history.pushState({ fromManageList: false }, '', url);
+              rememberManageSearch(new URL(url, window.location.origin).search);
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }}
+            className="hover:text-violet-300 hover:underline"
+          >
+            {line}
+          </a>
+        ) : (
+          line
+        )}
+      </p>
       {c && <p className="break-words text-sm text-zinc-300">{c.field}: {c.oldValue} became {c.newValue}.</p>}
       {item.kind === 'failed_lookup' && <p className="text-sm text-zinc-300">{failedReason(item)}</p>}
       <div className="flex flex-wrap gap-2">

@@ -10,6 +10,7 @@ import {
 import type { SaveTrack } from '../services/saveStatus';
 import type { ArtistAppearance, ArtistChangeImpact, CanonicalArtistRecord } from '../server/entities/canonicalManage';
 import { normalizeName } from '../server/lineup/text';
+import { buildManageUrl, editionUrl, isModifiedClick, rememberManageSearch } from '../services/manageNav';
 import { Button } from './ui/Button';
 import { Callout } from './ui/Callout';
 import { IconButton } from './ui/IconButton';
@@ -214,7 +215,20 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
 
   return (
     <div className="space-y-5">
-      <button onClick={onBack} className="text-sm text-violet-300 hover:text-violet-200">← Back to artists</button>
+      <a
+        href={buildManageUrl(
+          { scope: 'archive', section: 'artists' },
+          typeof window !== 'undefined' ? window.location.pathname : '/app',
+        )}
+        onClick={(e) => {
+          if (isModifiedClick(e)) return;
+          e.preventDefault();
+          onBack();
+        }}
+        className="text-sm text-violet-300 hover:text-violet-200"
+      >
+        ← Back to artists
+      </a>
 
       <Callout id="canonical-artist-preview">
         Changes to the shared catalog are previewed first: nothing is saved until you press Apply. Undo is offered after each save.
@@ -386,12 +400,27 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
           <p className="text-sm text-zinc-400">Not in any edition in the archive yet.</p>
         ) : (
           <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
-            {appearances.map((a) => (
-              <li key={`${a.editionId}-${a.billing ?? ''}-${a.set ?? ''}`} className="p-2.5 text-sm">
-                <span className="text-zinc-100">{a.editionName}</span>
-                <span className="ml-2 text-xs text-zinc-400">{[a.billing ?? 'Artist', a.set, a.startDate, a.venue].filter(Boolean).join(' · ')}</span>
-              </li>
-            ))}
+            {appearances.map((a) => {
+              const url = editionUrl(a.editionId);
+              return (
+                <li key={`${a.editionId}-${a.billing ?? ''}-${a.set ?? ''}`} className="p-2.5 text-sm">
+                  <a
+                    href={url}
+                    onClick={(e) => {
+                      if (isModifiedClick(e)) return;
+                      e.preventDefault();
+                      window.history.pushState({ fromManageList: true }, '', url);
+                      rememberManageSearch(new URL(url, window.location.origin).search);
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    }}
+                    className="font-medium text-zinc-100 hover:text-violet-300 hover:underline"
+                  >
+                    {a.editionName}
+                  </a>
+                  <span className="ml-2 text-xs text-zinc-400">{[a.billing ?? 'Artist', a.set, a.startDate, a.venue].filter(Boolean).join(' · ')}</span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { checkedLabel, checkRows } from '../src/services/checkDetails.ts';
+import { sameCountry } from '../src/server/events/regions.ts';
 import type { DetailCandidate } from '../src/server/events/types.ts';
 
 const DAY = 86_400_000;
@@ -41,4 +42,33 @@ test('the last check reads in days', () => {
   assert.equal(checkedLabel(at(3 * 3600_000), NOW), 'Checked today');
   assert.equal(checkedLabel(at(DAY), NOW), 'Checked 1 day ago');
   assert.equal(checkedLabel(at(3 * DAY), NOW), 'Checked 3 days ago');
+});
+
+test('sameCountry equates country aliases and ignores case and punctuation', () => {
+  assert.equal(sameCountry('United States', 'United States Of America'), true);
+  assert.equal(sameCountry('US', 'USA'), true);
+  assert.equal(sameCountry('United States', 'US'), true);
+  assert.equal(sameCountry('United States Of America', 'usa'), true);
+  assert.equal(sameCountry('U.S.A.', 'United States'), true);
+  assert.equal(sameCountry('U.S.', 'US'), true);
+
+  assert.equal(sameCountry('United Kingdom', 'UK'), true);
+  assert.equal(sameCountry('Great Britain', 'United Kingdom'), true);
+  assert.equal(sameCountry('GB', 'uk'), true);
+  assert.equal(sameCountry('u.k.', 'United Kingdom'), true);
+
+  assert.equal(sameCountry('Canada', 'CAN'), true);
+  assert.equal(sameCountry('ca', 'Canada'), true);
+
+  // Non-matching countries
+  assert.equal(sameCountry('United States', 'Canada'), false);
+  assert.equal(sameCountry('United Kingdom', 'United States'), false);
+  assert.equal(sameCountry('Canada', 'UK'), false);
+
+  // Missing or empty values
+  assert.equal(sameCountry('United States', undefined), false);
+  assert.equal(sameCountry(undefined, 'United States'), false);
+  assert.equal(sameCountry(null, 'Canada'), false);
+  assert.equal(sameCountry('', ''), false);
+  assert.equal(sameCountry(undefined, undefined), false);
 });

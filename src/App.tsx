@@ -45,7 +45,7 @@ import { AccountPanel } from './components/AccountPanel';
 import { VaultProvider } from './components/VaultContext';
 import { PeopleProvider } from './components/PersonName';
 import { wentTo } from './server/events/attendance';
-import { hintSeen, markHintSeen, NavStorage, Page, PAGE_BLURB, SubPage, PAGE_LABELS, pageFromView, rememberedPage, rememberPage, sectionOf, SECTIONS, subPagesFor, viewFor } from './services/nav';
+import { hintSeen, markHintSeen, NavStorage, Page, PAGE_BLURB, SubPage, PAGE_LABELS, pageFromView, rememberedPage, rememberPage, sectionOf, SECTIONS, subPagesFor, viewFor, buildManageSearch, rememberManageSearch, rememberedManageSearch } from './services/nav';
 import { PAGE_ICON, SECTION_ICON } from './components/pageIcons';
 import { HomePage } from './components/HomePage';
 import { BackToTop } from './components/ui/BackToTop';
@@ -189,9 +189,39 @@ export default function App({ initialMe }: { initialMe?: Me }) {
 
   // Poll while a lineup lookup is running somewhere.
   useEffect(() => {
-    if (!Object.values(lineups).some((l) => isActive(l.status))) return;
-    const t = setTimeout(() => void refresh(), 3000);
-    return () => clearTimeout(t);
+    const activeLineups = Object.entries(lineups).filter(([, l]) => isActive(l.status));
+    if (!activeLineups.length) return;
+    const ids = activeLineups.map(([eventId]) => eventId);
+    let live = true;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const poll = async () => {
+      try {
+        const { jobs } = await eventsApi.pollAll(ids);
+        if (!live) return;
+        const changed =
+          jobs.length < ids.length ||
+          jobs.some((job) => {
+            const prev = (job.eventId && lineups[job.eventId]) || activeLineups.find(([, l]) => l.jobId === job.id)?.[1];
+            return !prev || prev.status !== job.status || !isActive(job.status);
+          });
+        if (changed) {
+          void refresh();
+          return;
+        }
+      } catch {
+        // Keep polling on transient error
+      }
+      if (live) {
+        timer = setTimeout(poll, 3000);
+      }
+    };
+
+    timer = setTimeout(poll, 3000);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
   }, [lineups, refresh]);
 
   // Queued research: poll while an event is still being looked up. An event whose details have left 'pending'
@@ -208,11 +238,37 @@ export default function App({ initialMe }: { initialMe?: Me }) {
     const finished = (id: string) => events.find((e) => e.id === id)?.details.status !== 'pending';
     if ([...queued].some(finished)) return stopQueued(finished);
     if (pollTicks.current >= 40) return stopQueued(() => true);
-    const t = setTimeout(() => {
+
+    let live = true;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const poll = async () => {
       pollTicks.current += 1;
-      void refresh();
-    }, 3000);
-    return () => clearTimeout(t);
+      if (pollTicks.current >= 40) {
+        if (live) stopQueued(() => true);
+        return;
+      }
+      try {
+        const { pendingIds } = await eventsApi.pollAll([...queued]);
+        if (!live) return;
+        const anyDone = [...queued].some((id) => !pendingIds.includes(id));
+        if (anyDone) {
+          void refresh();
+          return;
+        }
+      } catch {
+        // Keep polling on transient error
+      }
+      if (live) {
+        timer = setTimeout(poll, 3000);
+      }
+    };
+
+    timer = setTimeout(poll, 3000);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
   }, [queued, events, refresh, stopQueued]);
 
   const upsert = (event: LoggedEvent) =>
@@ -307,6 +363,33 @@ export default function App({ initialMe }: { initialMe?: Me }) {
     const params = new URLSearchParams(window.location.search);
     // Moving to a page closes any open event, so its address parameter goes too.
     params.delete('event');
+
+    // When leaving manage, save the current search if it's a manage URL
+    if (new URLSearchParams(window.location.search).get('view') === 'manage' && next !== 'manage') {
+      rememberManageSearch(window.location.search);
+    }
+
+    if (next === 'manage') {
+      // If already on manage, keep the current place (do NOT wipe query params!)
+      if (tab === 'manage') {
+        if (selectedId) {
+          setSelectedId(null);
+          const newSearch = params.toString() ? `?${params.toString()}` : '';
+          window.history.replaceState(null, '', `${window.location.pathname}${newSearch}`);
+        }
+        return;
+      }
+      // If returning from another tab, restore rememberedManageSearch() if present (via replaceState), otherwise ?view=manage
+      rememberPage('manage', navStorage());
+      const saved = rememberedManageSearch();
+      const search = saved && saved.startsWith('?') && new URLSearchParams(saved).get('view') === 'manage'
+        ? saved
+        : '?view=manage';
+      window.history.replaceState(null, '', `${window.location.pathname}${search}`);
+      setTab('manage');
+      return;
+    }
+
     if (next === 'home') {
       if (window.location.search) window.history.replaceState(null, '', window.location.pathname);
     } else {
@@ -337,8 +420,23 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   const openManage = (target: ManageTarget) => {
     if (readOnly) return askSample('manage');
     setSelectedId(null);
+    setAgendaFocus(null);
+    setLogFor(null);
+    if (sectionOf(tab)) {
+      setHintDue(false);
+      markHintSeen(navStorage());
+    }
     setManageTarget({ ...target });
-    openTab('manage');
+    const search = buildManageSearch({
+      scope: 'mine',
+      kind: target.kind,
+      id: target.id,
+      q: target.id ? undefined : target.name,
+    });
+    window.history.pushState(null, '', `${window.location.pathname}${search}`);
+    rememberManageSearch(search);
+    rememberPage('manage', navStorage());
+    setTab('manage');
   };
 
   const today = new Date().toISOString().slice(0, 10);
@@ -379,12 +477,16 @@ export default function App({ initialMe }: { initialMe?: Me }) {
     }));
   }, [selectedId, listFrom, events, lineups, editions]);
 
-  // Back and forward move the open event with the address.
+  // Back and forward move the open event and active tab with the address.
   useEffect(() => {
-    const onPop = () => setSelectedId(eventParam(window.location.search));
+    const onPop = () => {
+      setSelectedId(eventParam(window.location.search));
+      const nextTab = pageFromView(new URLSearchParams(window.location.search).get('view'), { canManage: me.role === 'owner' });
+      setTab(nextTab);
+    };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, []);
+  }, [me.role]);
 
   const toReview = imports.filter((r) => r.status === 'new' && !r.eventId && !(r.startDate && r.startDate > today)).length;
   const canManage = me.role === 'owner';

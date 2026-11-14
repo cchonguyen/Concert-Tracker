@@ -65,7 +65,7 @@ test('at most 20 items per run, and the report counts what is left', async () =>
 test('the Worker budget shortens the batch', async () => {
   const s = await fresh();
   for (let i = 1; i <= 5; i++) await s.putEvent(dated(`ev${i}`, `Band ${i}`, `2026-06-0${i}`));
-  const r = (await runCanonBackfill(s, { budgetLeft: () => 13 + 16 * 2 }))!;
+  const r = (await runCanonBackfill(s, { budgetLeft: () => 14 + 16 * 2 }))!;
   assert.equal(r.created, 2);
   assert.equal(r.remaining, 3);
   assert.equal(await runCanonBackfill(s, { budgetLeft: () => 10 }), null);
@@ -241,4 +241,40 @@ test('Supabase rows read back venueId, subjectKey and hasLineup, omitted when nu
   assert.deepEqual([a.venueId, a.subjectKey, a.hasLineup], ['v1', 'sk', true]);
   const b = store.toEdition(row({ venue_id: null, subject_key: null, has_lineup: null }), []);
   assert.ok(!('venueId' in b) && !('subjectKey' in b) && !('hasLineup' in b));
+});
+
+test('budget depletion inside the loop stops early and leaves cursor incomplete', async () => {
+  const s = await fresh();
+  await s.putEvent(dated('ev1', 'Band A', '2026-06-01'));
+  await s.putEvent(dated('ev2', 'Band B', '2026-06-02'));
+  let calls = 0;
+  const budgetLeft = () => {
+    calls++;
+    return calls <= 2 ? 50 : 10;
+  };
+  const r = (await runCanonBackfill(s, { budgetLeft }))!;
+  assert.equal(r.created, 1);
+  assert.equal(r.remaining, 1);
+  const cursor = (await s.getSetting<any>('canon_backfill'))!;
+  assert.equal(cursor.complete, undefined);
+  assert.deepEqual(cursor.done, ['event:ev1']);
+});
+
+test('writeEdition with input.before skips upsertEdition when no fields changed', async () => {
+  const s = await fresh();
+  let upsertCalled = false;
+  const originalUpsert = s.upsertEdition.bind(s);
+  s.upsertEdition = async (e) => {
+    upsertCalled = true;
+    return originalUpsert(e);
+  };
+  const base = edition({ id: 'e1', name: 'Band A' });
+  await writeEdition(s, { edition: base, actor: 't', reason: 'init' });
+  assert.equal(upsertCalled, true);
+
+  upsertCalled = false;
+  const same = { ...base, updatedAt: '2027-01-01T00:00:00.000Z' };
+  const res = await writeEdition(s, { edition: same, before: base, actor: 't', reason: 'noop' });
+  assert.equal(res.changed, false);
+  assert.equal(upsertCalled, false);
 });

@@ -1,4 +1,5 @@
 import { useVault } from './VaultContext';
+import { useIsOwner } from './MeContext';
 import { noteView } from '../services/vaultSession';
 import { draftAfterStoredChange } from '../services/fieldDraft';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -19,6 +20,7 @@ import {
   FIELD_SOURCE_LABELS,
   SOURCE_LABELS,
 } from '../services/lineupApi';
+import { editionUrl, isModifiedClick, rememberManageSearch } from '../services/manageNav';
 import { artistsOf, dateConfirmations, datesBetween, formatsOf, joinFormats, matchNames, pastArtistNames, pastCompanionNames, pastSets, supportOf, weatherLine, whenLabel } from '../services/format';
 import { actSets, byStartTime, chipTime, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
@@ -37,7 +39,7 @@ import { Popover } from './ui/Popover';
 import { Burst } from './ui/Burst';
 import { burstConfetti } from './ui/confetti';
 import { PosterHeader, ThingsLeft } from './PosterHeader';
-import { cityWithRegion } from '../server/events/regions';
+import { cityWithRegion, sameCountry } from '../server/events/regions';
 import { attendanceOf } from '../server/events/attendance';
 import type { EditionPerformance } from '../server/lineup/types';
 import type { ManageTarget } from './ManageView';
@@ -145,6 +147,7 @@ const SAVE_DELAY_MS = 500;
 const HINT_KEY = 'liveArchive.saveHint';
 // The fields a save has just written; each one flashes for a moment.
 const FlashContext = React.createContext<string[]>([]);
+const EditionIdContext = React.createContext<string | undefined>(undefined);
 
 // A text field that saves when you leave it, and 500 ms after you stop typing.
 const Field: React.FC<{
@@ -164,6 +167,8 @@ const Field: React.FC<{
   field?: keyof EventPatch;
 }> = ({ label, value, type = 'text', placeholder, source, onSave, onType, suggestions, offer, min, className, field }) => {
   const flashing = React.useContext(FlashContext);
+  const isOwner = useIsOwner();
+  const editionId = React.useContext(EditionIdContext);
   const flash = field !== undefined && flashing.includes(field);
   const [draft, setDraft] = useState(value === undefined ? '' : String(value));
   const [settled, setSettled] = useState(0);
@@ -227,7 +232,24 @@ const Field: React.FC<{
             {flash && <Check className="h-3 w-3 text-emerald-300" aria-label="Saved" />}
           </span>
           {source && source.sourceType === 'edition' && (
-            <span className="font-normal text-zinc-400">from {FIELD_SOURCE_LABELS.edition}</span>
+            isOwner && editionId ? (
+              <a
+                href={editionUrl(editionId)}
+                onClick={(e) => {
+                  if (isModifiedClick(e)) return;
+                  e.preventDefault();
+                  const url = editionUrl(editionId);
+                  window.history.pushState({ fromManageList: false }, '', url);
+                  rememberManageSearch(new URL(url, window.location.origin).search);
+                  window.dispatchEvent(new PopStateEvent('popstate'));
+                }}
+                className="font-normal text-zinc-400 hover:text-violet-300 hover:underline"
+              >
+                from {FIELD_SOURCE_LABELS.edition}
+              </a>
+            ) : (
+              <span className="font-normal text-zinc-400">from {FIELD_SOURCE_LABELS.edition}</span>
+            )
           )}
           {source && source.sourceType !== 'user' && source.sourceType !== 'edition' && (
             <a
@@ -978,6 +1000,10 @@ function cityForVenue(events: LoggedEvent[], venue: string): string | undefined 
 }
 
 export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChange, onDeleted, onClose, rows, onOpen, onManage, onOpenHistory }) => {
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const isOwner = useIsOwner();
+  const canManageEdition = isOwner || Boolean(onManage);
   const [job, setJob] = useState<LookupJob | null>(null);
   const [edition, setEdition] = useState<Edition | null>(null);
   const [suggestions, setSuggestions] = useState<ArtistSuggestion[]>([]);
@@ -1065,20 +1091,51 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         .nameArtists(event.id)
         .then((more) => setSuggestions((list) => [...list, ...more.filter((m) => !list.some((s) => s.key === m.key))]))
         .catch(() => undefined);
+      if (data.event && data.event.details.status !== event.details.status) {
+        onChangeRef.current(data.event);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [event.id]);
+  }, [event.id, event.details.status]);
 
   useEffect(() => {
     void load();
   }, [load, event.lineupJobId, event.editionId, event.seen.length, event.details.status]);
 
   useEffect(() => {
-    if (!isActive(job?.status)) return;
-    const t = setTimeout(() => void load(), 2000);
-    return () => clearTimeout(t);
-  }, [job, load]);
+    const isJobActive = isActive(job?.status);
+    const isDetailsPending = event.details.status === 'pending';
+    if (!isJobActive && !isDetailsPending) return;
+
+    let live = true;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const poll = async () => {
+      try {
+        const res = await eventsApi.pollOne(event.id);
+        if (!live) return;
+        setJob(res.job);
+        const jobFinished = isJobActive && !isActive(res.job?.status);
+        const detailsDone = isDetailsPending && res.detailsStatus !== 'pending';
+        if (jobFinished || detailsDone) {
+          void load();
+          return;
+        }
+      } catch {
+        // Keep polling on transient error
+      }
+      if (live) {
+        timer = setTimeout(poll, 2000);
+      }
+    };
+
+    timer = setTimeout(poll, 2000);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [event.id, event.details.status, job?.status, load]);
 
   const run = async (label: string, fn: () => Promise<LoggedEvent | void>) => {
     setBusy(label);
@@ -1197,7 +1254,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     const v = confirmed?.[field];
     // Sources write "Las Vegas, NV": the same as your city and state.
     const yours = field === 'city' ? cityWithRegion(event.city, event.region) : event[field];
-    if (!confirmed || !v || v === yours || (field === 'city' && v === event.city)) return undefined;
+    const same = field === 'country' ? sameCountry(v, yours) : v === yours;
+    if (!confirmed || !v || same || (field === 'city' && v === event.city)) return undefined;
     const src = confirmed.sources.find((s) => s.fields.includes(field));
     return {
       value: field === 'endDate' ? whenLabel({ startDate: v }) ?? v : v,
@@ -1273,7 +1331,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
       onClose={() => void requestClose()}
     >
       <FlashContext.Provider value={flashing}>
-        <ThingsLeft
+        <EditionIdContext.Provider value={event.editionId}>
+          <ThingsLeft
           gaps={gapsLeft}
           current={current}
           onPick={showGap}
@@ -1535,10 +1594,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             />
           </div>
           <NotesField stored={event.notes} onSave={(v) => save({ notes: v })} />
-          {onManage && manageLinks(event).length > 0 && (
+          {((onManage && manageLinks(event).length > 0) || (canManageEdition && event.editionId)) && (
             <p className="flex flex-wrap items-center gap-1.5 border-t border-zinc-800 pt-3 text-[11px] text-zinc-400">
               <FolderCog className="h-3 w-3" /> Edit on every event in Manage:
-              {manageLinks(event).map((m) => (
+              {onManage && manageLinks(event).map((m) => (
                 <button
                   key={`${m.target.kind}:${m.target.id}`}
                   onClick={() => onManage(m.target)}
@@ -1547,6 +1606,22 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                   {m.label}
                 </button>
               ))}
+              {canManageEdition && event.editionId && (
+                <a
+                  href={editionUrl(event.editionId)}
+                  onClick={(e) => {
+                    if (isModifiedClick(e)) return;
+                    e.preventDefault();
+                    const url = editionUrl(event.editionId!);
+                    window.history.pushState({ fromManageList: false }, '', url);
+                    rememberManageSearch(new URL(url, window.location.origin).search);
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }}
+                  className="rounded-full border border-zinc-800 px-2 py-0.5 text-zinc-300 hover:text-violet-300"
+                >
+                  Canonical edition
+                </a>
+              )}
             </p>
           )}
         </details>
@@ -1866,7 +1941,48 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </div>
           )}
 
-          {edition && <p className="text-[11px] text-zinc-500">{lineupActs.length} acts confirmed, each with a source.</p>}
+          {edition && (
+            <p className="text-[11px] text-zinc-500">
+              {lineupActs.length} acts confirmed, each with a source.
+              {canManageEdition && event.editionId && (
+                <>
+                  {' · '}
+                  <a
+                    href={editionUrl(event.editionId)}
+                    onClick={(e) => {
+                      if (isModifiedClick(e)) return;
+                      e.preventDefault();
+                      const url = editionUrl(event.editionId!);
+                      window.history.pushState({ fromManageList: false }, '', url);
+                      rememberManageSearch(new URL(url, window.location.origin).search);
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    }}
+                    className="text-violet-300 hover:underline"
+                  >
+                    View in Global Archive
+                  </a>
+                </>
+              )}
+            </p>
+          )}
+          {!edition && event.editionId && canManageEdition && (
+            <p className="text-[11px] text-zinc-500">
+              <a
+                href={editionUrl(event.editionId)}
+                onClick={(e) => {
+                  if (isModifiedClick(e)) return;
+                  e.preventDefault();
+                  const url = editionUrl(event.editionId!);
+                  window.history.pushState({ fromManageList: false }, '', url);
+                  rememberManageSearch(new URL(url, window.location.origin).search);
+                  window.dispatchEvent(new PopStateEvent('popstate'));
+                }}
+                className="text-violet-300 hover:underline"
+              >
+                View in Global Archive
+              </a>
+            </p>
+          )}
         </section>
 
           </div>
@@ -1887,6 +2003,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </button>
           </div>
         </div>
+        </EditionIdContext.Provider>
       </FlashContext.Provider>
 
       {confirmingDelete && (

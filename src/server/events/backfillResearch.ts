@@ -83,9 +83,11 @@ export async function runResearchBackfill(
 ): Promise<ResearchBackfillReport | null> {
   const budgetLeft = opts.budgetLeft ?? defaultBudgetLeft;
   if (budgetLeft() < FIXED_COST + ITEM_COST) return null;
-  const events = await store.listEvents();
-  const pending = events.filter((e) => e.details.status === 'pending');
-  const report: ResearchBackfillReport = { researched: 0, skipped_recent: 0, year_only: yearOnlyEvents(events).length };
+  const pending: LoggedEvent[] =
+    'listPendingResearchEvents' in store && typeof (store as any).listPendingResearchEvents === 'function'
+      ? await (store as any).listPendingResearchEvents()
+      : (await store.listEvents()).filter((e) => e.details.status === 'pending');
+  const report: ResearchBackfillReport = { researched: 0, skipped_recent: 0, year_only: yearOnlyEvents(pending).length };
   if (!pending.length) return report;
 
   const attempts = (await store.getSetting<Attempts>(RESEARCH_SETTING)) ?? { at: {} };

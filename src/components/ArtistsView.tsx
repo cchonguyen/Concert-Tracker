@@ -7,6 +7,7 @@ import { whenLabel } from '../services/format';
 import { EventTitle } from './EventTitle';
 import { Tooltip } from './ui/Tooltip';
 import { ARTIST_SORTS, artistSummaries, ArtistSort, ArtistSummary, groupArtists, jumpTargets } from '../services/artists';
+import { buildManageUrl, entityUrl, isModifiedClick } from '../services/manageNav';
 
 interface ArtistsViewProps {
   events: LoggedEvent[];
@@ -258,11 +259,23 @@ const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOp
               <Table2 className="h-3 w-3" /> In the Table
             </button>
           )}
-          {onManage && (
-            <button onClick={() => onManage(a.key)} className="inline-flex items-center gap-1 text-zinc-400 hover:text-violet-300">
-              <FolderCog className="h-3 w-3" /> In Manage
-            </button>
-          )}
+          {onManage && (() => {
+            const artistId = a.events.flatMap((e) => e.seen).find((s) => s.key === a.key && s.artistId)?.artistId;
+            const manageHref = artistId ? entityUrl('artist', artistId) : buildManageUrl({ scope: 'mine', kind: 'artist', q: a.name });
+            return (
+              <a
+                href={manageHref}
+                onClick={(e) => {
+                  if (isModifiedClick(e)) return;
+                  e.preventDefault();
+                  onManage(a.key);
+                }}
+                className="inline-flex items-center gap-1 text-zinc-400 hover:text-violet-300"
+              >
+                <FolderCog className="h-3 w-3" /> In Manage
+              </a>
+            );
+          })()}
         </div>
       </div>
     </li>
