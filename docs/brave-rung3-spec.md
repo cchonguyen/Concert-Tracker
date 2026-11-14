@@ -1,6 +1,6 @@
 # Brave Search as research rung 3: feasibility and spec
 
-Status: recommendation, nothing built. Written 2026-11-14 for Charlie's decision.
+Status: Slices 1, 3 and 4 built (slice 12.2, issue #376); Slice 2 dropped by Charlie (snippet quote stays). Written 2026-11-14 for Charlie's decision.
 
 ## Verdict
 
