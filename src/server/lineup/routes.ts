@@ -10,6 +10,7 @@ import { readReaderConfig } from '../reader/config';
 import { BREAKER_KEY, callsMonthKey, dayKey, monthKey } from '../reader/guard';
 import { isEditionSuggestQuery } from './store/types';
 import { canonReviewRouter } from '../canon/reviewRoutes';
+import { clashfinderCandidates } from './adapters/clashfinder';
 
 // Older log entries were written before redaction existed.
 const safeJob = (job: LookupJob): LookupJob => ({
@@ -161,6 +162,20 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
       });
       if (job.status === 'queued') await runner.kick(job.id);
       res.status(201).json({ job: safeJob(job) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Canonical ingest: every Clashfinder version that matches a name and year, for
+  // the Lineup URL field. Owner only; nothing is saved.
+  router.get('/manage/canonical/versions', async (req, res) => {
+    if (!isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
+    try {
+      const name = typeof req.query.name === 'string' ? req.query.name.trim() : '';
+      const year = Number(req.query.year);
+      if (!name || !Number.isInteger(year)) throw new InputError('Enter the name and a four-digit year first.');
+      res.json({ versions: await clashfinderCandidates(deps.fetcher, { eventName: name, year }) });
     } catch (err) {
       fail(res, err);
     }

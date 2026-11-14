@@ -44,6 +44,7 @@ interface EventListEntry {
   isPrivate?: boolean;
   edits?: number;
   numActs?: number;
+  lastEdit?: string; // "2026-10-17 10:37", from the list's lastEdit or modified field
 }
 
 // Clashfinder dates are Unix seconds; older formats used ISO strings.
@@ -71,6 +72,7 @@ export function parseEventList(json: unknown): EventListEntry[] {
         isPrivate: Boolean(v?.private),
         edits: typeof v?.edits === 'number' ? v.edits : undefined,
         numActs: typeof v?.numActs === 'number' ? v.numActs : undefined,
+        lastEdit: typeof (v?.lastEdit ?? v?.modified) === 'string' ? (v.lastEdit ?? v.modified) : undefined,
       });
     }
   };
@@ -121,12 +123,12 @@ export function daysBetween(a: string, b: string): number {
 // year. Among them the most-edited public clash wins, as the crowd's choice.
 // When an event date or weekend is known, date-window proximity and matching
 // weekend tokens disambiguate multi-weekend festivals (e.g. Coachella W1 vs W2).
-export function matchEdition(
+export function rankEditions(
   entries: EventListEntry[],
   eventName: string,
   year: number,
   targetStartDateOrOptions?: string | { startDate?: string },
-): EventListEntry | null {
+): EventListEntry[] {
   const targetStartDate =
     typeof targetStartDateOrOptions === 'string'
       ? targetStartDateOrOptions
@@ -139,10 +141,10 @@ export function matchEdition(
   if (!wanted.length) {
     wanted = normalizeName(eventName.replace(/\b(19|20)\d{2}\b/g, ' ')).split(' ').filter(Boolean);
   }
-  if (!wanted.length) return null;
+  if (!wanted.length) return [];
   const joined = wanted.join('');
   const yy = String(year).slice(2);
-  let best: { entry: EventListEntry; score: number } | null = null;
+  const candidates: { entry: EventListEntry; tier: number; recency: number; edits: number; shape: number }[] = [];
   for (const entry of entries) {
     if (entry.isPrivate || SPECULATIVE.test(entry.name) || SPECULATIVE.test(entry.slug) || entry.numActs === 0) continue;
 
@@ -160,25 +162,40 @@ export function matchEdition(
       ? entry.startDate.startsWith(String(year))
       : name.includes(String(year)) || new RegExp(`(^|[^0-9])(${year}|${yy})$`).test(entry.slug);
     if (!yearHit) continue;
-    let score =
+    // Edition fit first (title, date window, weekend). Recency only breaks ties
+    // between clashes that fit equally well.
+    const tier =
       (titleHit ? 1_000_000 : 0) +
-      (entry.edits ?? 0) * 10 +
+      (targetStartDate && entry.startDate && daysBetween(entry.startDate, targetStartDate) <= 2 ? 500_000 : 0) +
+      (targetWeekend !== null && entryWeekend === targetWeekend ? 500_000 : 0);
+    // Last resort: acts listed, then the closest name length (as before).
+    const shape =
       Math.min(entry.numActs ?? 0, 9) -
       Math.abs(cleanEntryName.replace(/\b(19|20)\d{2}\b/g, ' ').trim().length - wanted.join(' ').length) / 1000;
-
-    if (targetStartDate && entry.startDate) {
-      if (daysBetween(entry.startDate, targetStartDate) <= 2) {
-        score += 500_000;
-      }
-    }
-
-    if (targetWeekend !== null && entryWeekend === targetWeekend) {
-      score += 500_000;
-    }
-
-    if (!best || score > best.score) best = { entry, score };
+    candidates.push({ entry, tier, recency: recencyMs(entry.lastEdit), edits: entry.edits ?? 0, shape });
   }
-  return best?.entry ?? null;
+  candidates.sort(
+    (a, b) => b.tier - a.tier || b.recency - a.recency || b.edits - a.edits || b.shape - a.shape,
+  );
+  return candidates.map((c) => c.entry);
+}
+
+// Most recently edited wins the automatic pick. Clashfinder's list dates read
+// "2026-10-17 10:37"; they are compared as written. No date sorts last.
+export function recencyMs(lastEdit: string | undefined): number {
+  if (!lastEdit) return Number.NEGATIVE_INFINITY;
+  const t = Date.parse(`${lastEdit.trim().replace(' ', 'T')}Z`);
+  return Number.isFinite(t) ? t : Number.NEGATIVE_INFINITY;
+}
+
+// The automatic pick: the top-ranked public clash, or null.
+export function matchEdition(
+  entries: EventListEntry[],
+  eventName: string,
+  year: number,
+  targetStartDateOrOptions?: string | { startDate?: string },
+): EventListEntry | null {
+  return rankEditions(entries, eventName, year, targetStartDateOrOptions)[0] ?? null;
 }
 
 interface ClashfinderAct {
@@ -279,3 +296,35 @@ export const clashfinderAdapter: SourceAdapter = {
     return result;
   },
 };
+
+export interface ClashfinderCandidate {
+  slug: string;
+  name: string;
+  startDate?: string;
+  lastEdit?: string;
+  edits?: number;
+  numActs?: number;
+  url: string;
+}
+
+// Every public clash that matches the event, best first (the automatic pick is
+// the first). One list call, the same one the automatic pick makes.
+export async function clashfinderCandidates(
+  fetcher: AdapterContext['fetcher'],
+  input: { eventName: string; year: number; startDate?: string },
+): Promise<ClashfinderCandidate[]> {
+  const auth = clashfinderAuthQuery();
+  if (!auth) return [];
+  const listUrl = `${BASE}/data/events/all.json?${auth}`;
+  const res = await fetcher.get(listUrl);
+  if (res.status === 401) throw new HttpError(401, listUrl, 'Clashfinder rejected the credentials (401). Check CLASHFINDER_* settings.');
+  return rankEditions(parseEventList(parseJson(res)), input.eventName, input.year, input.startDate).map((e) => ({
+    slug: e.slug,
+    name: e.name,
+    startDate: e.startDate,
+    lastEdit: e.lastEdit,
+    edits: e.edits,
+    numActs: e.numActs,
+    url: `${BASE}/s/${e.slug}/`,
+  }));
+}
