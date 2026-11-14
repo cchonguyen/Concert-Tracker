@@ -39,6 +39,11 @@ export const NoticeModal: React.FC<{ onAccepted: () => void }> = ({ onAccepted }
           keep each member's rows apart, so you see only yours.
         </li>
         <li>
+          <b>What is shared.</b> When you save an event with a full date, the event's name, date, venue and city may be added to a
+          shared list of editions, so the next person who adds the same show gets the details filled in. It is marked provisional
+          until it is checked. Your notes, companions, rating, price and attendance are never shared.
+        </li>
+        <li>
           <b>Your private vault.</b> Your notes and the names of people you went with are encrypted in your browser (AES-GCM)
           before they are saved. If you lose both your passphrase and your recovery key, they cannot be recovered by anyone.
         </li>
