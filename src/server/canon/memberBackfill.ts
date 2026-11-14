@@ -15,6 +15,10 @@
 // A member with `complete` costs one settings read per run. A few items per run (default 5, across all members),
 // and only while the subrequest budget allows. An item cut off by the budget is not marked done.
 //
+// Owner override (Slice 12.10): an owner-set app setting MEMBER_BACKFILL_OVERRIDE_SETTING `{ until }` lets the walk
+// include members of any notice version while `until` is a future ISO time. It is time-boxed and expires by itself.
+// It changes nothing else: owners, blocked members, users without an id, the field list and the cursor rules stay.
+//
 // Worker subrequests: per walked member about 4 (notice read, cursor read, listEvents, cursor write), per item at
 // worst ITEM_COST = 16 (match and venue lookup, edition write, change record). An item is started only when the
 // budget covers it plus the cursor write. A run that does nothing returns null.
@@ -27,6 +31,7 @@ import { upsertOccurrence } from './match';
 
 export const MEMBER_BACKFILL_BATCH_SIZE = 5;
 export const MEMBER_BACKFILL_SETTING = 'canon_member_backfill';
+export const MEMBER_BACKFILL_OVERRIDE_SETTING = 'member_backfill_override';
 const ITEM_COST = 16;
 const MEMBER_FIXED_COST = 4;
 const CURSOR_WRITE_COST = 1;
@@ -48,6 +53,15 @@ export interface MemberBackfillReport {
 export interface MemberBackfillOptions {
   budgetLeft?: () => number;
   batchSize?: number;
+  anyNotice?: boolean; // owner override (Slice 12.10): walk members whatever notice version they accepted
+}
+
+// True only while `until` is a valid ISO date strictly after `now`. Missing, garbage or past values are off.
+export function overrideActive(value: { until?: string } | null | undefined, now: Date): boolean {
+  const until = value?.until;
+  if (typeof until !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(until)) return false;
+  const t = Date.parse(until);
+  return Number.isFinite(t) && t > now.getTime();
 }
 
 export interface MemberBackfillMember {
@@ -86,7 +100,7 @@ export async function runMemberBackfill(
       continue;
     }
     const notice = await scoped.getSetting<{ version: number }>(NOTICE_SETTING);
-    if (notice?.version !== NOTICE_VERSION) {
+    if (!opts.anyNotice && notice?.version !== NOTICE_VERSION) {
       report.skipped++;
       continue;
     }

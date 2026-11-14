@@ -6,7 +6,7 @@ import test from 'node:test';
 import type { LineupStore } from '../src/server/lineup/store/types.ts';
 import type { FieldSource, LoggedEvent } from '../src/server/events/types.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
-import { runMemberBackfill } from '../src/server/canon/memberBackfill.ts';
+import { overrideActive, runMemberBackfill } from '../src/server/canon/memberBackfill.ts';
 import { NOTICE_SETTING, NOTICE_VERSION } from '../src/server/auth/routes.ts';
 import { newEvent } from '../src/server/events/service.ts';
 
@@ -184,4 +184,70 @@ test('a few items per run; the rest waits for the next run', async () => {
   const second = (await t.run(s, members))!;
   assert.equal(second.created, 2);
   assert.equal(second.remaining, 0);
+});
+
+test('owner override: anyNotice walks a member on notice version 1 or with no notice, and creates the provisional edition', async () => {
+  const s = await fresh();
+  const old = accepted('member-user-ovr1', [event('mev-ovr1', { name: 'Band A', startDate: '2026-06-01' })]);
+  old.settings.set(NOTICE_SETTING, { version: 1 });
+  const none = accepted('member-user-ovr2', [event('mev-ovr2', { name: 'Band B', startDate: '2026-06-02' })]);
+  none.settings.delete(NOTICE_SETTING);
+  const t = setup([old, none]);
+  const members = [
+    { userId: old.userId, role: 'member' },
+    { userId: none.userId, role: 'member' },
+  ];
+  const r = (await t.run(s, members, { anyNotice: true }))!;
+  assert.equal(r.created, 2);
+  assert.equal(old.listCalls, 1);
+  assert.equal(none.listCalls, 1);
+  const editions = await s.listEditions(10);
+  assert.equal(editions.length, 2);
+  assert.ok(editions.every((e) => e.status === 'provisional'));
+});
+
+test('owner override off: a member on notice version 1 is still skipped', async () => {
+  const s = await fresh();
+  const old = accepted('member-user-ovr3', [event('mev-ovr3', { name: 'Band A', startDate: '2026-06-01' })]);
+  old.settings.set(NOTICE_SETTING, { version: 1 });
+  const t = setup([old]);
+  const r = await t.run(s, [{ userId: old.userId, role: 'member' }], { anyNotice: false });
+  assert.equal(r, null);
+  assert.equal(old.listCalls, 0);
+  assert.equal((await s.listEditions(10)).length, 0);
+});
+
+test('overrideActive: true only for a future valid until', () => {
+  const now = new Date('2026-11-14T12:00:00Z');
+  assert.equal(overrideActive({ until: '2026-11-15T00:00:00Z' }, now), true);
+  assert.equal(overrideActive({ until: '2026-11-13T00:00:00Z' }, now), false, 'past');
+  assert.equal(overrideActive({ until: '2026-11-14T12:00:00Z' }, now), false, 'equal to now is not strictly future');
+  assert.equal(overrideActive(null, now), false, 'missing value');
+  assert.equal(overrideActive(undefined, now), false, 'missing value');
+  assert.equal(overrideActive({}, now), false, 'no until');
+  assert.equal(overrideActive({ until: 'next tuesday, probably' }, now), false, 'garbage text');
+  assert.equal(overrideActive({ until: 'banana 2099' } as { until: string }, now), false, 'garbage with a year');
+});
+
+test('owner override: owner, blocked and id-less members are still skipped', async () => {
+  const s = await fresh();
+  const owner = accepted('owner-user-ovr4', [event('mev-ovr4', { name: 'Band A', startDate: '2026-06-01' })]);
+  owner.settings.set(NOTICE_SETTING, { version: 1 });
+  const blocked = accepted('member-user-ovr5', [event('mev-ovr5', { name: 'Band B', startDate: '2026-06-02' })]);
+  blocked.settings.set(NOTICE_SETTING, { version: 1 });
+  const t = setup([owner, blocked]);
+  const r = await t.run(
+    s,
+    [
+      { userId: owner.userId, role: 'owner' },
+      { userId: blocked.userId, role: 'member', blocked: true },
+      { userId: null, role: 'member' },
+    ],
+    { anyNotice: true },
+  );
+  assert.equal(r, null);
+  assert.deepEqual(t.forUserCalls, []);
+  assert.equal(owner.listCalls, 0);
+  assert.equal(blocked.listCalls, 0);
+  assert.equal((await s.listEditions(10)).length, 0);
 });
