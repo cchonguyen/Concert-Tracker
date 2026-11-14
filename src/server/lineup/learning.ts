@@ -213,7 +213,7 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
     if (!name) continue;
     reviewedKeys.add(normalizeName(name));
     const cand = findCandidate(candidates, reviewed, usedCandidates);
-    const whole = cand ? undefined : findWholeCandidate(candidates, reviewed);
+    const whole = cand ? undefined : findWholeCandidate(candidates, { key: reviewed.key || normalizeName(name), b2b: reviewed.b2b });
     const listed = cand ?? whole; // where the act's sources come from
     const types = cand?.sources.map((s) => s.sourceType) ?? [];
     const urls = cand?.sources.map((s) => s.sourceUrl) ?? [];
@@ -408,7 +408,7 @@ export async function confirmLookupForMember(store: LineupStore, job: LookupJob,
     reviewedKeys.add(normalizeName(name));
     if (!reviewed.accepted) continue;
     const cand = findCandidate(candidates, reviewed, usedCandidates);
-    const whole = cand ? undefined : findWholeCandidate(candidates, reviewed);
+    const whole = cand ? undefined : findWholeCandidate(candidates, { key: reviewed.key || normalizeName(name), b2b: reviewed.b2b });
     const listed = cand ?? whole; // where the act's sources come from
     if (cand) draft.push(toPerformance(cand, name));
     else if (whole) draft.push({ ...toPerformance(whole, name), b2b: reviewed.b2b, slotId: reviewed.slotId });
