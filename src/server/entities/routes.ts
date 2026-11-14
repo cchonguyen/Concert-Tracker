@@ -347,7 +347,7 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     }
   });
 
-  router.post('/collaborations', async (req, res) => {
+  router.post('/collaborations', ownerOnly as any, async (req, res) => {
     try {
       const { saveCollaboration } = await import('./collaborations');
       res.json(await saveCollaboration(store, req.body ?? {}));
@@ -356,7 +356,7 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     }
   });
 
-  router.delete('/collaborations/:alias', async (req, res) => {
+  router.delete('/collaborations/:alias', ownerOnly as any, async (req, res) => {
     try {
       const { removeCollaboration } = await import('./collaborations');
       res.json(await removeCollaboration(store, req.params.alias));

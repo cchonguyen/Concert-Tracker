@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { escapeHtml } from '../share/page';
 import type { EmailPreferenceStore } from './store';
 
@@ -39,8 +40,11 @@ const toBase64Url = (bytes: Uint8Array): string => {
 };
 
 export function unsubscribeSecretFromEnv(env: Record<string, string | undefined> = process.env): string | null {
-  const secret = env.EMAIL_UNSUBSCRIBE_SECRET?.trim() || env.SUPABASE_JWT_SECRET?.trim() || '';
-  return secret || null;
+  const dedicated = env.EMAIL_UNSUBSCRIBE_SECRET?.trim();
+  if (dedicated) return dedicated;
+  const jwtSecret = env.SUPABASE_JWT_SECRET?.trim();
+  if (jwtSecret) return createHmac('sha256', jwtSecret).update('livearchive:email-unsubscribe:v1').digest('hex');
+  return null;
 }
 
 export async function signUnsubscribe(email: string, secret: string): Promise<string> {

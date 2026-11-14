@@ -34,7 +34,7 @@ audit-dossier.md
 .spec/.vibe-checkpoint.json
 .harness-backup/
 # <<< harness <<<
-recall-result.*
+recall-*.*
 
 # Harness session event logs (local telemetry, not committed)
 .spec/.events/

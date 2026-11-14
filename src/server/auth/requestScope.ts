@@ -59,6 +59,8 @@ const OWNER_ONLY: Array<[method: string | null, pattern: RegExp]> = [
   // The music-story export is the owner's listening data, and MusicBrainz tags
   // are read through its genre map; members set their own genres (PUT).
   ['POST', /^\/api\/artist-genres\//],
+  ['POST', /^\/api\/collaborations(\/|$)/],
+  ['DELETE', /^\/api\/collaborations\//],
 ];
 
 export function ownerOnly(method: string, path: string, query: { state?: unknown } = {}): boolean {

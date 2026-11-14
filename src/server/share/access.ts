@@ -112,6 +112,7 @@ export async function readAccessClaims(token: string | null | undefined, config:
     if (!ok) return refused('signature does not verify');
     // A service token (machine login) has no email; only people are members.
     const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
+    if (!email) return refused('token has no email');
     return { email, sub: typeof payload.sub === 'string' ? payload.sub : '' };
   } catch (err) {
     return refused(`check failed: ${err instanceof Error ? err.message : String(err)}`);

@@ -51,8 +51,8 @@ export function createEmailNotifier(deps: CreateEmailNotifierDeps): EmailNotifie
   const nowFn = deps.now ?? (() => new Date());
 
   const makeUnsubscribe = async (email: string) => {
-    const secret = deps.secret || 'livearchive-local-unsubscribe-secret';
-    const sig = await signUnsubscribe(email, secret);
+    if (!deps.secret) throw new Error('Unsubscribe secret is required');
+    const sig = await signUnsubscribe(email, deps.secret);
     const link = unsubscribeUrl(origin, email, sig);
     return { link, headers: unsubscribeHeaders(link) };
   };

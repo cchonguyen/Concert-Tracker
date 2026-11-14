@@ -95,7 +95,7 @@ export function assertPublicHttpUrl(raw: string): URL {
     /^169\.254\./.test(host) ||
     /^192\.168\./.test(host) ||
     /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
-    /^(::1?|f[cd][0-9a-f]{2}:.*|fe80:.*)$/.test(host) ||
+    /^(::1?|::ffff:.*|f[cd][0-9a-f]{2}:.*|fe80:.*)$/.test(host) ||
     /^\d+$/.test(host);
   if (privateHost) throw new Error(`Refusing private or local address: ${url.hostname}`);
   return url;

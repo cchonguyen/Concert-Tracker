@@ -1355,6 +1355,7 @@ export class SupabaseLineupStore implements LineupStore {
 
   async replaceEntityLinks(entityIds: string[], links: EntityLink[]) {
     if (entityIds.length) {
+      if (!entityIds.every((id) => /^[A-Za-z0-9_-]+$/.test(id))) throw new Error('Invalid entity id');
       const ids = entityIds.join(',');
       this.check(await this.mine(this.ent('entity_links').delete().or(`from_id.in.(${ids}),to_id.in.(${ids})`)), 'replaceEntityLinks');
     }

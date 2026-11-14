@@ -49,7 +49,7 @@ type LookupMessage =
   | { type: 'research_reader'; eventId: string; url: string; userId?: string; role?: 'owner' | 'member' };
 
 interface Env {
-  LOOKUP_QUEUE: Queue<LookupMessage>;
+  LOOKUP_QUEUE?: Queue<LookupMessage>;
   ASSETS: Fetcher;
 }
 
@@ -78,11 +78,11 @@ const serverOnce = settledOnce(async (env: Env): Promise<void> => {
     const gate = accessGateFromEnv(settings, () => supabaseMemberStores(getSupabaseClient()!));
     const runner: EventsRunner = {
       kick: async (jobId, force) => {
-        await env.LOOKUP_QUEUE.send({ jobId, force });
+        await env.LOOKUP_QUEUE?.send({ jobId, force });
       },
       // Slice 11.15: stage 1 research for a saved event runs from the queue (rungs 1 to 3, no reader model).
       kickResearch: async (eventId, actor) => {
-        await env.LOOKUP_QUEUE.send({ type: 'research', eventId, userId: actor?.userId, role: actor?.role });
+        await env.LOOKUP_QUEUE?.send({ type: 'research', eventId, userId: actor?.userId, role: actor?.role });
       },
     };
     const app = createApiApp(deps, runner, gate);
@@ -241,7 +241,7 @@ async function runCron(env: Env): Promise<void> {
     console.error('Research backfill failed:', redactSecrets(err instanceof Error ? err.message : String(err)));
   }
   const due = await deps.store.dueJobs(deps.now(), 5);
-  if (due.length) await env.LOOKUP_QUEUE.sendBatch(due.map((job) => ({ body: { jobId: job.id } })));
+  if (due.length) await env.LOOKUP_QUEUE?.sendBatch(due.map((job) => ({ body: { jobId: job.id } })));
 }
 
 export default {
@@ -283,7 +283,7 @@ export default {
     try {
       await ensureServer(env);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = redactSecrets(err instanceof Error ? err.message : String(err));
       console.error('Startup failed:', message);
       return Response.json({ error: `Server is not configured: ${message}` }, { status: 503 });
     }
@@ -314,7 +314,7 @@ export default {
             if (done && deps.reader) {
               const urls = rung4Urls(done);
               trace.step('rung4_queued', { pages: urls.length });
-              for (const url of urls) await env.LOOKUP_QUEUE.send({ type: 'research_reader', eventId, url, userId, role });
+              for (const url of urls) await env.LOOKUP_QUEUE?.send({ type: 'research_reader', eventId, url, userId, role });
             }
           } catch (err) {
             trace.step('research_failed');
@@ -358,7 +358,7 @@ export default {
           // One stage (or one page) per message: a whole lookup in one
           // invocation went past the 50-subrequest limit and was left "running".
           const job = await runJob(deps, jobId, { force, oneStep: true });
-          if (job?.status === 'queued' && !job.nextAttemptAt) await env.LOOKUP_QUEUE.send({ jobId, force });
+          if (job?.status === 'queued' && !job.nextAttemptAt) await env.LOOKUP_QUEUE?.send({ jobId, force });
           const trace = startTrace('lookup', { jobId, eventId: job?.eventId });
           trace.step('lookup_step', { status: job?.status ?? 'missing' });
           trace.subrequests(budget.used);

@@ -58,6 +58,28 @@ export function createApiApp(
     res.json(healthStatus());
   });
 
+  app.use('/api', (req, res, next) => {
+    if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+    if (req.originalUrl.split('?')[0] === '/api/imports/email') return next();
+    const fetchSite = req.get('sec-fetch-site')?.trim().toLowerCase();
+    if (fetchSite === 'cross-site') {
+      return res.status(403).json({ error: 'Cross-origin request refused.' });
+    }
+    const origin = req.get('origin')?.trim();
+    if (origin) {
+      let originHost: string;
+      try {
+        originHost = new URL(origin).host;
+      } catch {
+        return res.status(403).json({ error: 'Cross-origin request refused.' });
+      }
+      if (originHost !== req.get('host')?.trim()) {
+        return res.status(403).json({ error: 'Cross-origin request refused.' });
+      }
+    }
+    next();
+  });
+
   if (gate.kind === 'multi') {
     const prefs: EmailPreferenceStore =
       gate.directory.getEmailPreference && gate.directory.setEmailOptOut && gate.directory.markEmailSent
@@ -70,7 +92,10 @@ export function createApiApp(
         prefs,
         requests: gate.directory,
         ownerEmail: process.env.OWNER_EMAIL ?? null,
-        secret: unsubscribeSecretFromEnv() ?? gate.jwtSecret,
+        secret: unsubscribeSecretFromEnv({
+          EMAIL_UNSUBSCRIBE_SECRET: process.env.EMAIL_UNSUBSCRIBE_SECRET,
+          SUPABASE_JWT_SECRET: process.env.SUPABASE_JWT_SECRET ?? gate.jwtSecret,
+        }),
       });
     const directory = {
       ...gate.directory,
