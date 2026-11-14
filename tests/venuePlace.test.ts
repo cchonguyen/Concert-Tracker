@@ -15,6 +15,11 @@ import {
 import { entityIdFor } from '../src/server/entities/link.ts';
 import { addLink, linkVenuePlaces, mergeEntity, renameEntity, undoEntry, venuePlaceConflicts } from '../src/server/entities/manage.ts';
 import { LineupStore } from '../src/server/lineup/store/types.ts';
+import express from 'express';
+import { dispatch } from './helpers/testApp.ts';
+import { eventsRouter } from '../src/server/events/routes.ts';
+import type { PipelineDeps } from '../src/server/lineup/pipeline.ts';
+import { fakeFetcher } from './fakes.ts';
 
 const AT = '2026-10-28T00:00:00.000Z';
 
@@ -149,4 +154,86 @@ test('first backfill does not put a venue in a city; the venue pass links only v
   assert.equal(await linkVenuePlaces(store), null);
   await undoEntry(store, result.historyId!);
   assert.equal((await get(store, 'c')).city, undefined);
+});
+
+test('a venue in a city-only place keeps state and country entered for that same city without an offer', async () => {
+  const store = await linking();
+  await store.putEvent(event('a', { venue: 'The Fonda Theatre', city: 'Los Angeles' }));
+  await store.putEvent(event('b', {
+    venue: 'The Fonda Theatre',
+    city: 'Los Angeles',
+    region: 'CA',
+    country: 'United States',
+    sources: { region: { sourceType: 'user' }, country: { sourceType: 'user' } },
+  }));
+  const b = await get(store, 'b');
+  assert.equal(b.city, 'Los Angeles');
+  assert.equal(b.region, 'CA');
+  assert.equal(b.country, 'United States');
+  assert.equal(b.sources.city?.sourceType, 'venue');
+  assert.equal(b.sources.region?.sourceType, 'user');
+  const venue = (await store.listEntities()).find((e) => e.id === venueId('the fonda theatre'))!;
+  assert.equal(venue.attrs.placeOffers, undefined);
+});
+
+test('a venue place still replaces conflicting region or different city even when missing fields', async () => {
+  const store = await linking();
+  await store.putEvent(event('a', { venue: 'Crystal Ballroom', city: 'Portland', region: 'OR' }));
+  await store.putEvent(event('b', { venue: 'Crystal Ballroom', city: 'Portland', region: 'ME', country: 'United States' }));
+  const b = await get(store, 'b');
+  assert.equal(b.city, 'Portland');
+  assert.equal(b.region, 'OR');
+  assert.equal(b.country, undefined);
+
+  await store.putEvent(event('c', { venue: 'O2 Academy', city: 'London', country: 'United Kingdom' }));
+  await store.putEvent(event('d', { venue: 'O2 Academy', city: 'Paris', region: 'Île-de-France', country: 'France' }));
+  const d = await get(store, 'd');
+  assert.equal(d.city, 'London');
+  assert.equal(d.region, undefined);
+  assert.equal(d.country, 'United Kingdom');
+});
+
+test('PATCH /api/events/:id returns the stored event after venue-place linking', async () => {
+  const store = await linking();
+  await store.putEvent(event('a', { venue: 'The Fonda Theatre', city: 'Los Angeles' }));
+  await store.putEvent(event('b', { venue: 'Shrine', ...LA }));
+  const deps: PipelineDeps = {
+    store,
+    fetcher: fakeFetcher({}).fetcher,
+    adapters: [],
+    lateAdapters: [],
+    gemini: null,
+    quota: null,
+    search: null,
+    now: () => new Date(AT),
+  };
+  const app = express();
+  app.use(express.json());
+  app.use('/api', eventsRouter(deps, {} as any, []));
+
+  const patchFonda = await dispatch(app, {
+    method: 'PATCH',
+    url: '/api/events/a',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ region: 'CA', country: 'United States' }),
+  } as any);
+  assert.equal(patchFonda.status, 200);
+  const fondaRes = patchFonda.json() as { event: LoggedEvent };
+  assert.equal(fondaRes.event.city, 'Los Angeles');
+  assert.equal(fondaRes.event.region, 'CA');
+  assert.equal(fondaRes.event.country, 'United States');
+  assert.equal((await get(store, 'a')).region, 'CA');
+  assert.equal((await get(store, 'a')).country, 'United States');
+
+  // Conflicting city replaced by venue's place is returned as stored, not stale.
+  const patchShrine = await dispatch(app, {
+    method: 'PATCH',
+    url: '/api/events/b',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ city: 'Pasadena' }),
+  } as any);
+  assert.equal(patchShrine.status, 200);
+  const shrineRes = patchShrine.json() as { event: LoggedEvent };
+  assert.equal(shrineRes.event.city, 'Los Angeles');
+  assert.equal(shrineRes.event.sources.city?.sourceType, 'venue');
 });

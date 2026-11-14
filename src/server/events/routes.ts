@@ -7,7 +7,7 @@ import { geminiReader } from './detailsGemini';
 import { cityPoint, citySuggestions, placeGuess } from './place';
 import { applyLinkedPatch, ensureCaptured, recordOverrides, resolveEvent, resolveEvents, unlinkEvent } from './inherit';
 import { clashfinderChoices, EventPatch, lineupSummary, newEvent, newEventFromEdition, sortEvents, startBulkLookups, startLineupLookup } from './service';
-import { LineupSummary } from './types';
+import { LineupSummary, LoggedEvent } from './types';
 import { isVerifiedStatus } from '../lineup/store/types';
 import { artistSuggestions, eventPerformers, nameArtistSuggestions, pastArtists, MAX_BULK_SUGGESTIONS, storedNameSuggestions } from './artists';
 import type { LineupFacts } from './scale';
@@ -34,6 +34,11 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
     const event = await deps.store.getEvent(id);
     if (!event) res.status(404).json({ error: 'Event not found.' });
     return event;
+  };
+  // Re-reads after putEvent so the response reflects store transforms (entity linking, venue place).
+  const saveEvent = async (event: LoggedEvent): Promise<LoggedEvent> => {
+    await deps.store.putEvent(event);
+    return (await deps.store.getEvent(event.id)) ?? event;
   };
 
   router.get('/events', async (_req, res) => {
@@ -64,8 +69,7 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
     try {
       const text = String(req.body?.text ?? '');
       if (typeof req.body?.editionId !== 'string') {
-        const event = ensureCaptured(newEvent(text, deps.now()));
-        await deps.store.putEvent(event);
+        const event = await saveEvent(ensureCaptured(newEvent(text, deps.now())));
         // Stage 1 never waits on research: the save is done, and research runs from the queue. If the
         // send fails the event stays 'pending' and the save stands. Only when asked (research: true, the capture
         // bar): list imports do not research. Without a queue, the browser asks.
@@ -89,8 +93,7 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
       }
       const edition = await deps.store.getEdition(req.body.editionId);
       if (!edition || !isVerifiedStatus(edition.status)) return res.status(404).json({ error: 'Edition not found.' });
-      const event = newEventFromEdition(text, edition, deps.now());
-      await deps.store.putEvent(event);
+      const event = await saveEvent(newEventFromEdition(text, edition, deps.now()));
       // The lineup lookup finds the confirmed edition and goes straight to review.
       // A failure here never fails the save.
       let current = event;
@@ -99,8 +102,7 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
         // The lookup reads the edition's facts through inheritance; the stored event keeps only what was typed.
         const seen = resolveEvent(event, edition);
         const linked = await startLineupLookup(deps, { ...seen, year: seen.year ?? edition.year });
-        current = { ...event, lineupJobId: linked.event.lineupJobId, updatedAt: linked.event.updatedAt };
-        await deps.store.putEvent(current);
+        current = await saveEvent({ ...event, lineupJobId: linked.event.lineupJobId, updatedAt: linked.event.updatedAt });
         job = linked.job;
       } catch {
         // The plain saved event stands.
@@ -110,8 +112,7 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
       try {
         const { weather } = await lookupWeather(resolveEvent(current, edition), deps.fetcher, deps.now());
         if (weather) {
-          current = { ...current, weather, updatedAt: deps.now().toISOString() };
-          await deps.store.putEvent(current);
+          current = await saveEvent({ ...current, weather, updatedAt: deps.now().toISOString() });
         }
       } catch {
         // No weather is stored.
@@ -205,9 +206,9 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
       const body = (req.body ?? {}) as EventPatch & { import?: boolean };
       // `import: true` (list import, Sheets): an event not yet edited takes these values as what was first imported.
       const { event: updated, changes } = applyLinkedPatch(event, edition, body, deps.now(), { recapture: body.import === true });
-      await deps.store.putEvent(updated);
-      await recordOverrides(deps.store, updated, changes);
-      res.json({ event: resolveEvent(updated, edition) });
+      const stored = await saveEvent(updated);
+      await recordOverrides(deps.store, stored, changes);
+      res.json({ event: resolveEvent(stored, edition) });
     } catch (err) {
       fail(res, err);
     }
@@ -220,8 +221,7 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
       if (!event) return;
       if (!event.editionId) return res.status(400).json({ error: 'That event is not linked to an edition.' });
       const updated = unlinkEvent(event, deps.now());
-      await deps.store.putEvent(updated);
-      res.json({ event: updated });
+      res.json({ event: await saveEvent(updated) });
     } catch (err) {
       fail(res, err);
     }
@@ -249,8 +249,7 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
         reader = geminiReader(deps.reader, event.id, deps.now);
       }
       const updated = await researchEvent(event, finders, deps.fetcher, deps.now(), reader);
-      await deps.store.putEvent(updated);
-      res.json({ event: updated });
+      res.json({ event: await saveEvent(updated) });
     } catch (err) {
       fail(res, err);
     }
@@ -264,8 +263,7 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
       if (!event) return;
       const fields = Array.isArray(req.body?.fields) ? req.body.fields : undefined;
       const updated = pickCandidate(event, req.body?.candidateId, deps.now(), fields);
-      await deps.store.putEvent(updated);
-      res.json({ event: updated });
+      res.json({ event: await saveEvent(updated) });
     } catch (err) {
       fail(res, err);
     }
@@ -280,8 +278,7 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
       const { weather, note } = await lookupWeather(event, deps.fetcher, deps.now());
       if (!weather) return res.json({ event, note });
       const updated = { ...event, weather, updatedAt: deps.now().toISOString() };
-      await deps.store.putEvent(updated);
-      res.json({ event: updated });
+      res.json({ event: await saveEvent(updated) });
     } catch (err) {
       fail(res, err);
     }

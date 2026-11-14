@@ -153,7 +153,7 @@ const Field: React.FC<{
   type?: string;
   placeholder?: string;
   source?: LoggedEvent['sources'][keyof LoggedEvent['sources']];
-  onSave: (value: string) => void;
+  onSave: (value: string) => void | Promise<unknown>;
   onType?: (value: string) => void;
   suggestions?: string[];
   // A confirmed source gives a different value: one tap takes it.
@@ -166,12 +166,21 @@ const Field: React.FC<{
   const flashing = React.useContext(FlashContext);
   const flash = field !== undefined && flashing.includes(field);
   const [draft, setDraft] = useState(value === undefined ? '' : String(value));
+  const [settled, setSettled] = useState(0);
   // True between focus and blur. A stored value that arrives while the person is typing does not replace the draft.
   const editing = useRef(false);
+  const awaiting = useRef(0);
+  const mounted = useRef(true);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const skipBlur = useRef(false);
+  useEffect(() => () => {
+    mounted.current = false;
+  }, []);
   useEffect(() => {
+    if (awaiting.current > 0) return;
     const stored = value === undefined ? '' : String(value);
     setDraft((prev) => draftAfterStoredChange(prev, stored, editing.current));
-  }, [value]);
+  }, [value, settled]);
   const pending = useRef<number | null>(null);
   const latest = useRef({ draft, value, onSave });
   latest.current = { draft, value, onSave };
@@ -180,7 +189,20 @@ const Field: React.FC<{
     if (pending.current !== null) window.clearTimeout(pending.current);
     pending.current = null;
     const now = latest.current;
-    if (now.draft !== (now.value === undefined ? '' : String(now.value))) now.onSave(now.draft);
+    if (now.draft === (now.value === undefined ? '' : String(now.value))) return;
+    const res = now.onSave(now.draft);
+    if (res && typeof (res as Promise<unknown>).then === 'function') {
+      awaiting.current += 1;
+      void Promise.resolve(res).then(
+        (ok) => {
+          awaiting.current -= 1;
+          if (mounted.current && awaiting.current === 0 && ok !== false) setSettled((n) => n + 1);
+        },
+        () => {
+          awaiting.current -= 1;
+        },
+      );
+    }
   };
   const scheduleSave = () => {
     if (pending.current !== null) window.clearTimeout(pending.current);
@@ -188,77 +210,98 @@ const Field: React.FC<{
   };
   // Leaving the field with a save still waiting saves it.
   useEffect(() => () => flush(), []);
+  const handleBlur = () => {
+    editing.current = false;
+    if (skipBlur.current) {
+      skipBlur.current = false;
+      return;
+    }
+    flush();
+  };
   return (
-    <label className={`-m-0.5 space-y-1 rounded-lg p-0.5 transition-shadow motion-reduce:transition-none ${flash ? 'ring-1 ring-emerald-500/60' : ''} ${className ?? ''}`}>
-      <span className="flex items-center justify-between gap-2 text-[11px] font-semibold text-zinc-400">
-        <span className="inline-flex items-center gap-1">
-          {label}
-          {flash && <Check className="h-3 w-3 text-emerald-300" aria-label="Saved" />}
+    <div ref={boxRef} className={`-m-0.5 space-y-1 rounded-lg p-0.5 transition-shadow motion-reduce:transition-none ${flash ? 'ring-1 ring-emerald-500/60' : ''} ${className ?? ''}`}>
+      <label className="block space-y-1">
+        <span className="flex items-center justify-between gap-2 text-[11px] font-semibold text-zinc-400">
+          <span className="inline-flex items-center gap-1">
+            {label}
+            {flash && <Check className="h-3 w-3 text-emerald-300" aria-label="Saved" />}
+          </span>
+          {source && source.sourceType === 'edition' && (
+            <span className="font-normal text-zinc-400">from {FIELD_SOURCE_LABELS.edition}</span>
+          )}
+          {source && source.sourceType !== 'user' && source.sourceType !== 'edition' && (
+            <a
+              href={source.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              title={source.quote ? `“${source.quote}”` : undefined}
+              className="inline-flex items-center gap-0.5 font-normal text-zinc-400 hover:text-violet-300"
+            >
+              {source.sourceType === 'venue' ? 'from' : 'via'} {FIELD_SOURCE_LABELS[source.sourceType]} <ExternalLink className="h-2.5 w-2.5" />
+            </a>
+          )}
         </span>
-        {source && source.sourceType === 'edition' && (
-          <span className="font-normal text-zinc-400">from {FIELD_SOURCE_LABELS.edition}</span>
+        {suggestions ? (
+          <SuggestInput
+            className={input}
+            value={draft}
+            placeholder={placeholder}
+            suggestions={suggestions}
+            onPick={(v) => {
+              setDraft(v);
+              onType?.(v);
+              scheduleSave();
+            }}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              onType?.(e.target.value);
+              scheduleSave();
+            }}
+            onFocus={() => (editing.current = true)}
+            onBlur={handleBlur}
+            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+          />
+        ) : (
+          <input
+            className={input}
+            type={type}
+            value={draft}
+            min={min}
+            placeholder={placeholder}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              onType?.(e.target.value);
+              scheduleSave();
+            }}
+            onFocus={() => (editing.current = true)}
+            onBlur={handleBlur}
+            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+          />
         )}
-        {source && source.sourceType !== 'user' && source.sourceType !== 'edition' && (
-          <a
-            href={source.sourceUrl}
-            target="_blank"
-            rel="noreferrer"
-            title={source.quote ? `“${source.quote}”` : undefined}
-            className="inline-flex items-center gap-0.5 font-normal text-zinc-400 hover:text-violet-300"
-          >
-            {source.sourceType === 'venue' ? 'from' : 'via'} {FIELD_SOURCE_LABELS[source.sourceType]} <ExternalLink className="h-2.5 w-2.5" />
-          </a>
-        )}
-      </span>
-      {suggestions ? (
-        <SuggestInput
-          className={input}
-          value={draft}
-          placeholder={placeholder}
-          suggestions={suggestions}
-          onPick={(v) => {
-            setDraft(v);
-            onType?.(v);
-            scheduleSave();
-          }}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            onType?.(e.target.value);
-            scheduleSave();
-          }}
-          onFocus={() => (editing.current = true)}
-          onBlur={() => {
-            editing.current = false;
-            flush();
-          }}
-          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-        />
-      ) : (
-        <input
-          className={input}
-          type={type}
-          value={draft}
-          min={min}
-          placeholder={placeholder}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            onType?.(e.target.value);
-            scheduleSave();
-          }}
-          onFocus={() => (editing.current = true)}
-          onBlur={() => {
-            editing.current = false;
-            flush();
-          }}
-          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-        />
-      )}
+      </label>
       {offer && (
-        <button type="button" onClick={offer.onUse} className="block w-full truncate text-left text-[11px] text-violet-300 hover:underline">
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            if (pending.current !== null) {
+              window.clearTimeout(pending.current);
+              pending.current = null;
+            }
+            editing.current = false;
+            const inputEl = boxRef.current?.querySelector('input');
+            if (inputEl && document.activeElement === inputEl) {
+              skipBlur.current = true;
+              inputEl.blur();
+            }
+            offer.onUse();
+          }}
+          className="block w-full truncate text-left text-[11px] text-violet-300 hover:underline"
+        >
           Use “{offer.value}” from {offer.from}
         </button>
       )}
-    </label>
+    </div>
   );
 };
 
@@ -1052,7 +1095,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   // Saves are tracked for the status line. A failed patch is kept so Try again can resend it.
   const [track, setTrack] = useState<SaveTrack<EventPatch>>(() => emptyTrack<EventPatch>());
   const trackRef = useRef(track);
-  const pendingSaves = useRef(new Set<Promise<void>>());
+  const pendingSaves = useRef(new Set<Promise<unknown>>());
   const [flashing, setFlashing] = useState<string[]>([]);
   const flashTimer = useRef<number | null>(null);
   useEffect(() => () => {
@@ -1076,18 +1119,23 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
     flashTimer.current = window.setTimeout(() => setFlashing([]), 1000);
   };
-  const sendPatch = (patch: EventPatch) => {
+  const sendPatch = (patch: EventPatch): Promise<boolean> => {
     update(beginSave);
     const sent = eventsApi.update(event.id, patch).then(
       (updated) => {
         onChange(updated);
         update((t) => succeedSave(t, Date.now()));
         flash(Object.keys(patch));
+        return true;
       },
-      () => update((t) => failSave(t, patch)),
+      () => {
+        update((t) => failSave(t, patch));
+        return false;
+      },
     );
     pendingSaves.current.add(sent);
     void sent.finally(() => pendingSaves.current.delete(sent));
+    return sent;
   };
   const save = (patch: EventPatch) => sendPatch(patch);
   const retrySaves = () => {
@@ -1359,7 +1407,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               onSave={(v) => {
                 const venue = text(v);
                 const city = venue && !event.city ? cityForVenue(others, venue) : undefined;
-                void save(city ? { venue, city } : { venue });
+                return save(city ? { venue, city } : { venue });
               }}
             />
             <Field
@@ -1370,7 +1418,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               source={event.sources.city}
               suggestions={citySuggestions}
               onType={setCityQuery}
-              onSave={(v) => void saveCity(v)}
+              onSave={(v) => saveCity(v)}
             />
             <Field
               label="State"
