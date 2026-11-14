@@ -1,4 +1,5 @@
 import type { LineupStore } from '../../lineup/store/types';
+import { listResolvedEvents } from '../inherit';
 import { GmailApi, GmailReadError } from './gmail';
 import { fillPrice, mergeImports, pricesFromImports, READERS, readEmails } from './imports';
 import type { EmailImport } from './types';
@@ -78,7 +79,7 @@ const since = (query: string, cursor: ScanCursor) =>
 export async function scanStep(store: LineupStore, gmail: GmailApi, now: Date, batch = SCAN_BATCH): Promise<ScanStep> {
   const login = await store.getSetting<GmailSetting>(GMAIL_SETTING);
   if (!login) throw new NotConnected('Connect Gmail first.');
-  const [existing, events, saved] = await Promise.all([store.listImports(), store.listEvents(), store.getSetting<ScanSetting>(SCAN_SETTING)]);
+  const [existing, events, saved] = await Promise.all([store.listImports(), listResolvedEvents(store), store.getSetting<ScanSetting>(SCAN_SETTING)]);
   const state = saved ?? startingPoint(existing);
   state.forwards ??= { recent: {} };
   state.sellers ??= {};
