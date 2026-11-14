@@ -128,7 +128,7 @@ export function suggestEditionMatches(
   const excluded = new Set(opts.excludeIds);
   const limit = Math.max(0, Math.min(EDITION_SUGGEST_MAX_LIMIT, Math.floor(opts.limit)));
   return editions
-    .filter((e) => e.status === 'confirmed' && !excluded.has(e.id))
+    .filter((e) => isVerifiedStatus(e.status) && !excluded.has(e.id))
     .filter((e) => {
       const haystack = normalizeName(`${e.name} ${e.seriesSlug}`).split(' ');
       return words.every((w) => haystack.some((h) => h.startsWith(w)));

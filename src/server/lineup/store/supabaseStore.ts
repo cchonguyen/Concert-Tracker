@@ -543,7 +543,7 @@ export class SupabaseLineupStore implements LineupStore {
       await this.db
         .from('event_editions')
         .select('id')
-        .eq('status', 'confirmed')
+        .in('status', ['confirmed', 'verified'])
         .or(`name.ilike.${pattern},series_slug.ilike.${pattern}`)
         // Bound the editions loaded per keystroke; newest first so recent editions are kept.
         .order('start_date', { ascending: false, nullsFirst: false })
