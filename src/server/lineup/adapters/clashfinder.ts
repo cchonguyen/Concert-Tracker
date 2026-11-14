@@ -296,3 +296,35 @@ export const clashfinderAdapter: SourceAdapter = {
     return result;
   },
 };
+
+export interface ClashfinderCandidate {
+  slug: string;
+  name: string;
+  startDate?: string;
+  lastEdit?: string;
+  edits?: number;
+  numActs?: number;
+  url: string;
+}
+
+// Every public clash that matches the event, best first (the automatic pick is
+// the first). One list call, the same one the automatic pick makes.
+export async function clashfinderCandidates(
+  fetcher: AdapterContext['fetcher'],
+  input: { eventName: string; year: number; startDate?: string },
+): Promise<ClashfinderCandidate[]> {
+  const auth = clashfinderAuthQuery();
+  if (!auth) return [];
+  const listUrl = `${BASE}/data/events/all.json?${auth}`;
+  const res = await fetcher.get(listUrl);
+  if (res.status === 401) throw new HttpError(401, listUrl, 'Clashfinder rejected the credentials (401). Check CLASHFINDER_* settings.');
+  return rankEditions(parseEventList(parseJson(res)), input.eventName, input.year, input.startDate).map((e) => ({
+    slug: e.slug,
+    name: e.name,
+    startDate: e.startDate,
+    lastEdit: e.lastEdit,
+    edits: e.edits,
+    numActs: e.numActs,
+    url: `${BASE}/s/${e.slug}/`,
+  }));
+}

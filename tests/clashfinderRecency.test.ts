@@ -1,6 +1,33 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { matchEdition, parseEventList, rankEditions, recencyMs } from '../src/server/lineup/adapters/clashfinder.ts';
+import { clashfinderCandidates, matchEdition, parseEventList, rankEditions, recencyMs } from '../src/server/lineup/adapters/clashfinder.ts';
+
+test('clashfinderCandidates lists every match best first, with the automatic pick on top', async () => {
+  const prev = { user: process.env.CLASHFINDER_USERNAME, key: process.env.CLASHFINDER_PUBLIC_KEY };
+  process.env.CLASHFINDER_USERNAME = 'tester';
+  process.env.CLASHFINDER_PUBLIC_KEY = 'abc';
+  try {
+    const body = JSON.stringify({
+      foo2026old: { desc: 'Foo Festival 2026', startDate: 1780000000, edits: 900, lastEdit: '2026-03-01 10:00' },
+      foo2026new: { desc: 'Foo Festival 2026', startDate: 1780000000, edits: 40, lastEdit: '2026-10-17 10:37' },
+      foo2026priv: { desc: 'Foo Festival 2026', startDate: 1780000000, private: true },
+    });
+    const calls: string[] = [];
+    const fetcher = {
+      get: async (url: string) => {
+        calls.push(url);
+        return { status: 200, url, body, headers: {} };
+      },
+    } as any;
+    const out = await clashfinderCandidates(fetcher, { eventName: 'Foo Festival', year: 2026 });
+    assert.equal(calls.length, 1, 'one list call');
+    assert.deepEqual(out.map((c) => c.slug), ['foo2026new', 'foo2026old']);
+    assert.equal(out[0].url, 'https://clashfinder.com/s/foo2026new/');
+  } finally {
+    if (prev.user === undefined) delete process.env.CLASHFINDER_USERNAME; else process.env.CLASHFINDER_USERNAME = prev.user;
+    if (prev.key === undefined) delete process.env.CLASHFINDER_PUBLIC_KEY; else process.env.CLASHFINDER_PUBLIC_KEY = prev.key;
+  }
+});
 
 test('parseEventList reads lastEdit or modified as written', () => {
   const list = parseEventList({
