@@ -10,8 +10,8 @@
 // Nothing here calls a model, writes an edition or invents a value. Review rows carry only ids, the field
 // name and the old and new public value; never a personal field.
 import type { Edition, ReviewQueueItem } from '../lineup/types';
-import type { CapturedFields, EventOverrides } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
+import type { CapturedFields, EventOverrides } from '../lineup/types';
 import type { LoggedEvent } from './types';
 import { applyPatch, EventPatch } from './service';
 
@@ -164,4 +164,12 @@ export async function recordOverrides(store: LineupStore, event: LoggedEvent, ch
     );
   }
   return rows;
+}
+
+// Every reader of the event log that shows or matches on venue, date or city goes through this, so a
+// linked event is seen with its edition's values (the same view GET /api/events gives).
+export async function listResolvedEvents(store: Pick<LineupStore, 'listEvents' | 'getEditions'>): Promise<LoggedEvent[]> {
+  const raw = await store.listEvents();
+  const ids = [...new Set(raw.map((e) => e.editionId).filter((id): id is string => Boolean(id)))];
+  return resolveEvents(raw, ids.length ? await store.getEditions(ids) : []);
 }
