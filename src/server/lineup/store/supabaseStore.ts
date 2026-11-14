@@ -84,15 +84,17 @@ export class SupabaseLineupStore implements LineupStore {
     private readonly scope?: UserScope,
   ) {}
 
-  private ownerId: Promise<string | null> | null = null;
+  private ownerId: { value: string | null } | null = null;
 
-  // The owner's user id from the members table (0017), read once.
-  ownerUserId() {
-    this.ownerId ??= (async () => {
-      const { data, error } = await this.db.from('members').select('user_id').eq('role', 'owner').maybeSingle();
-      return error ? null : ((data as any)?.user_id ?? null);
-    })();
-    return this.ownerId;
+  // The owner's user id from the members table (0017), read once. Only the
+  // finished value is kept: a promise shared with a later request can never
+  // settle once the request that made it has ended.
+  async ownerUserId(): Promise<string | null> {
+    if (this.ownerId) return this.ownerId.value;
+    const { data, error } = await this.db.from('members').select('user_id').eq('role', 'owner').maybeSingle();
+    const value: string | null = error ? null : ((data as any)?.user_id ?? null);
+    this.ownerId = { value };
+    return value;
   }
 
   forUser(scope: UserScope): LineupStore {
