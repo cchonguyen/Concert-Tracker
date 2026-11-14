@@ -52,6 +52,7 @@ test('a B2B split from one listing keeps its sources and set times on confirm', 
     assert.equal(p.sources[0].sourceType, 'clashfinder');
     assert.deepEqual(p.sources[0].sets, sets);
   }
+  assert.equal(perfs[1].artistKey, 'talla 2xlc'); // the act sent without a key, matched by its name
   // Not treated as a rename or an act added by hand.
   assert.deepEqual(await store.getAliases(), {});
 });
