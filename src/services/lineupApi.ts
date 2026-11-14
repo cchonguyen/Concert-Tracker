@@ -590,6 +590,12 @@ export const canonicalApi = {
       `/api/manage/canonical/editions?${new URLSearchParams({ query, status }).toString()}`,
     ),
   edition: (id: string) => request<{ edition: Edition }>(`/api/manage/canonical/editions/${encodeURIComponent(id)}`),
+  // Owner only: turn a provisional (member-entered) edition into a verified one. Undo with inboxApi.undo(changeId, id).
+  verifyEdition: (id: string) =>
+    request<{ ok: boolean; changeId: string | null; edition: { id: string; name: string; status: string } }>(
+      `/api/manage/canonical/editions/${encodeURIComponent(id)}/verify`,
+      post({}),
+    ),
   // Edition facts with a required source note; blank facts are sent as null and stay blank.
   editFacts: (id: string, facts: { name: string; startDate: string | null; endDate: string | null; venue: string | null; city: string | null; sourceNote: string }) =>
     request<{ edition: Edition }>(`/api/manage/canonical/editions/${encodeURIComponent(id)}/facts`, { method: 'PATCH', body: JSON.stringify(facts) }).then((r) => r.edition),
