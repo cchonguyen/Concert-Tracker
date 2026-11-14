@@ -16,7 +16,14 @@ import { Pill } from './ui/Pill';
 // The search box and the edition status filter live in ManageView and arrive as props.
 
 export type ArchiveSection = 'artists' | 'editions' | 'lookups' | 'changes';
-export type EditionStatus = 'all' | 'confirmed' | 'draft';
+export type EditionStatus = 'all' | 'verified' | 'provisional' | 'draft';
+
+// An edition's status in words. 'confirmed' is the legacy name for verified.
+export function editionStatusWords(status: string): string {
+  if (status === 'verified' || status === 'confirmed') return 'Verified';
+  if (status === 'provisional') return 'Provisional (not yet checked)';
+  return 'Draft (owner only)';
+}
 
 // The ingest queue's status, in words (the Pill tone adds color; the words carry the meaning).
 const STATUS_WORDS: Record<LookupJob['status'], string> = {
@@ -246,7 +253,7 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
                 <button onClick={() => void openEdition(e.id)} className="flex w-full flex-wrap items-baseline gap-x-3 p-2.5 text-left text-sm hover:bg-zinc-900/60">
                   <span className="font-medium text-zinc-100">{e.name}</span>
                   <span className="text-xs text-zinc-400">{[e.startDate, e.venue, e.city].filter(Boolean).join(' · ') || 'Details missing'}</span>
-                  <span className="ml-auto text-xs text-zinc-400">{e.performanceCount} billed · {e.status === 'confirmed' ? 'confirmed' : 'draft'}{e.hasSetTimes ? ' · set times' : ''}</span>
+                  <span className="ml-auto text-xs text-zinc-400">{e.performanceCount} billed · {editionStatusWords(e.status).split(' (')[0].toLowerCase()}{e.hasSetTimes ? ' · set times' : ''}</span>
                 </button>
               </li>
             ))}
@@ -513,7 +520,7 @@ const EditionDetail: React.FC<{ edition: Edition; onEditLineup: () => void; onFa
     ['Venue', edition.venue],
     ['City', edition.city],
     ['Country', edition.country],
-    ['Status', edition.status === 'confirmed' ? 'Confirmed' : 'Draft (owner only)'],
+    ['Status', editionStatusWords(edition.status)],
   ];
   return (
     <div className="space-y-4">

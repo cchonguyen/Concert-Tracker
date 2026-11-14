@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { ArtistIdentity, Edition, EditionPerformance } from '../lineup/types';
 import { normalizeName } from '../lineup/text';
 import type { CanonicalUndoResult, LineupStore } from '../lineup/store/types';
-import { CanonicalStoreError } from '../lineup/store/types';
+import { CanonicalStoreError, editionMatchesStatusFilter, isVerifiedStatus } from '../lineup/store/types';
+import type { CanonicalEditionStatusFilter } from '../lineup/store/types';
 import { currentMember } from '../auth/requestScope';
 import { ArtistAliasRow, ArtistEditionRow, CANONICAL_OPERATIONS, CanonicalChange, Entity, EntityAlias, EntityLink, HistoryEntry } from './types';
 import { applyEntityChangePlan, cleanName, EntityChangePlan, ManageError, planEntityMerge, planEntityRename, undoEntry, UndoResult } from './manage';
@@ -14,7 +15,7 @@ import { applyEntityChangePlan, cleanName, EntityChangePlan, ManageError, planEn
 // The newest editions the archive loads in one request (Workers' subrequest budget).
 export const CANONICAL_EDITION_LIMIT = 200;
 
-export type EditionStatusFilter = 'all' | 'confirmed' | 'draft';
+export type EditionStatusFilter = CanonicalEditionStatusFilter;
 
 export interface CanonicalEditionSummary {
   id: string;
@@ -54,7 +55,7 @@ export function listCanonicalEditions(editions: Edition[], opts: { query?: strin
   const status = opts.status ?? 'all';
   const q = (opts.query ?? '').trim().toLowerCase();
   return editions
-    .filter((e) => status === 'all' || e.status === status)
+    .filter((e) => editionMatchesStatusFilter(e.status, status))
     .filter((e) => !q || [e.name, e.seriesSlug, e.venue ?? ''].some((s) => s.toLowerCase().includes(q)))
     .map(summarizeEdition)
     .sort((a, b) => b.year - a.year || a.name.localeCompare(b.name));
@@ -105,7 +106,7 @@ export function unifyArtists(input: {
     if (!row.origins.includes('from_me')) row.origins.push('from_me');
   }
   for (const e of input.editions) {
-    if (e.status !== 'confirmed') continue;
+    if (!isVerifiedStatus(e.status)) continue;
     for (const p of e.performances) {
       const row = byKey.get(p.artistKey);
       if (row) row.editionsCount += 1;
