@@ -53,6 +53,17 @@ test('draft editions are never suggested', async () => {
   });
 });
 
+test('verified and legacy confirmed editions are suggested; provisional and draft are not', async () => {
+  await withStore(async (store) => {
+    await store.upsertEdition(makeEdition('v1', 'Summer Fest', 2025, { status: 'verified' } as Partial<Edition>));
+    await store.upsertEdition(makeEdition('c1', 'Summer Fest', 2024));
+    await store.upsertEdition(makeEdition('p1', 'Summer Fest', 2023, { status: 'provisional' } as Partial<Edition>));
+    await store.upsertEdition(makeEdition('d1', 'Summer Fest', 2022, { status: 'draft' }));
+    const found = await store.suggestEditions('summer', { excludeIds: [], limit: 8 });
+    assert.deepEqual(found.map((e) => e.id).sort(), ['c1', 'v1']);
+  });
+});
+
 test('a typed word matches a word prefix of the edition name', async () => {
   await withStore(async (store) => {
     await store.upsertEdition(makeEdition('e1', 'EDC Las Vegas', 2025));
