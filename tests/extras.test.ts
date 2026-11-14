@@ -5,7 +5,7 @@ import { mergeSeen } from '../src/server/lineup/learning.ts';
 import { PerformerClaim } from '../src/server/lineup/types.ts';
 import { actSets, setLabel } from '../src/server/events/sets.ts';
 import { applyPatch, newEvent } from '../src/server/events/service.ts';
-import { lookupWeather, placesFor, weatherDays } from '../src/server/events/weather.ts';
+import { cityVariants, lookupWeather, placesFor, weatherDays } from '../src/server/events/weather.ts';
 import { eventsToCsv, matchNames, pastArtistNames, pastCompanionNames, pastSets, suggestionsFor, weatherLine, weatherText } from '../src/services/format.ts';
 import { hasGap } from '../src/services/table.ts';
 import { parseCsv } from '../src/services/listImport.ts';
@@ -114,6 +114,45 @@ test('weather comes from the archive for the event days, with its URL', async ()
   assert.equal(weatherLine(weather!.days[0]), 'Clear · 31°/22°C (88°/71°F)');
   assert.equal(weatherLine(weather!.days[1]), 'Rain · 34°/23°C (93°/74°F) · 1.4 mm');
   assert.match(weatherText({ ...ev, weather }), /^May 16: Clear/);
+});
+
+const NEW_YORK = { name: 'New York', admin1: 'New York', country_code: 'US', country: 'United States', feature_code: 'PPL', latitude: 40.71, longitude: -74.0 };
+const NEW_YORK_OHIO = { ...NEW_YORK, admin1: 'Ohio', latitude: 40.1, longitude: -82.4 };
+
+test('city variants: a trailing City, NYC and a full state name are tried in order', () => {
+  assert.deepEqual(cityVariants('New York City, NY'), ['New York City, NY', 'New York, NY']);
+  assert.deepEqual(cityVariants('NYC, NY'), ['NYC, NY', 'New York, NY']);
+  assert.deepEqual(cityVariants('NYC'), ['NYC', 'New York']);
+  assert.deepEqual(cityVariants('Austin, Texas'), ['Austin, TX']);
+  assert.deepEqual(cityVariants('Berlin, Germany'), ['Berlin, Germany']);
+  assert.deepEqual(cityVariants('Las Vegas, NV'), ['Las Vegas, NV']);
+});
+
+test('New York City is placed through the variant that matches one place', async () => {
+  const ev = { ...newEvent('Show', NOW), city: 'New York City, NY', startDate: '2025-05-16', endDate: '2025-05-16' };
+  const { fetcher, calls } = fakeFetcher({ ...geocode([NEW_YORK]), ...ARCHIVE });
+  const { weather, note } = await lookupWeather(ev, fetcher, NOW);
+  assert.equal(note, undefined);
+  assert.equal(weather!.place, 'New York, NY');
+  assert.match(calls[0], /name=New%20York%20City/);
+  assert.match(calls[1], /name=New%20York&/);
+});
+
+test('NYC with no state finds New York, and two New Yorks stay ambiguous', async () => {
+  const ev = { ...newEvent('Show', NOW), city: 'NYC', startDate: '2025-05-16', endDate: '2025-05-16' };
+  const one = await lookupWeather(ev, fakeFetcher({ ...geocode([NEW_YORK]), ...ARCHIVE }).fetcher, NOW);
+  assert.equal(one.weather!.place, 'New York, NY');
+  const two = fakeFetcher({ ...geocode([NEW_YORK, NEW_YORK_OHIO]), ...ARCHIVE });
+  const ambiguous = await lookupWeather({ ...ev, city: 'New York City' }, two.fetcher, NOW);
+  assert.equal(ambiguous.weather, undefined);
+  assert.match(ambiguous.note!, /More than one place/);
+});
+
+test('a city no variant places gets the add-state note, with the city as written', async () => {
+  const ev = { ...newEvent('Show', NOW), city: 'Gotham City, NY', startDate: '2025-05-16', endDate: '2025-05-16' };
+  const { weather, note } = await lookupWeather(ev, fakeFetcher({ ...geocode([NEW_YORK]), ...ARCHIVE }).fetcher, NOW);
+  assert.equal(weather, undefined);
+  assert.equal(note, 'Couldn\'t find "Gotham City, NY" on the map. Add the state or country.');
 });
 
 test('no weather without a past date and a city it can place', async () => {
