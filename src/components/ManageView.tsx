@@ -85,7 +85,8 @@ const SCOPE_OPTIONS: SegmentedOption<'mine' | 'archive'>[] = [
 
 const EDITION_STATUS_OPTIONS: MenuOption<EditionStatus>[] = [
   { value: 'all', label: 'All' },
-  { value: 'confirmed', label: 'Confirmed' },
+  { value: 'verified', label: 'Verified' },
+  { value: 'provisional', label: 'Provisional' },
   { value: 'draft', label: 'Drafts (owner only)' },
 ];
 
