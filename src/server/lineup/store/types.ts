@@ -39,7 +39,15 @@ export interface UserScope {
   db?: SupabaseClient;
 }
 
-export type CanonicalEditionStatusFilter = 'all' | Edition['status'];
+// 'verified' also matches the legacy 'confirmed' status; 'confirmed' is kept as an alias of 'verified'.
+export type CanonicalEditionStatusFilter = 'all' | 'verified' | 'confirmed' | 'provisional' | 'draft';
+
+// Same meaning in both stores and in the owner's list: verified (and its legacy alias confirmed) is one group.
+export function editionMatchesStatusFilter(status: string | undefined | null, filter: CanonicalEditionStatusFilter): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'verified' || filter === 'confirmed') return isVerifiedStatus(status);
+  return status === filter;
+}
 
 export interface CanonicalEditionPageOptions {
   query?: string;
@@ -64,7 +72,7 @@ export function canonicalEditionPage<T extends CanonicalEditionListRow>(
   const query = (options.query ?? '').trim().toLowerCase();
   const status = options.status ?? 'all';
   const matching = rows
-    .filter((edition) => status === 'all' || edition.status === status)
+    .filter((edition) => editionMatchesStatusFilter(edition.status, status))
     .filter((edition) => !query || [edition.name, edition.seriesSlug, edition.venue ?? ''].some((value) => value.toLowerCase().includes(query)))
     .sort((a, b) => b.year - a.year || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   const limit = Math.max(0, Math.min(200, Math.floor(options.limit)));

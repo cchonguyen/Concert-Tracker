@@ -585,7 +585,7 @@ export const canonicalApi = {
   artists: () => request<{ artists: CanonicalArtistRecord[] }>('/api/manage/canonical/artists'),
   // The ingest queue: jobs with no saved event, newest first.
   lookups: () => request<{ jobs: LookupJob[] }>('/api/manage/canonical/lookups').then((r) => r.jobs),
-  editions: (query: string, status: 'all' | 'confirmed' | 'draft') =>
+  editions: (query: string, status: 'all' | 'verified' | 'provisional' | 'draft') =>
     request<{ editions: CanonicalEditionSummary[]; total: number; hasMore: boolean }>(
       `/api/manage/canonical/editions?${new URLSearchParams({ query, status }).toString()}`,
     ),

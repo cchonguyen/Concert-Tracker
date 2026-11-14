@@ -29,6 +29,8 @@ import {
   parseCanonicalInput,
   parseEditionFacts,
 } from '../lineup/canonicalIngest';
+import type { Edition } from '../lineup/types';
+import { writeEdition } from '../canon/editions';
 import {
   addAlias,
   addLink,
@@ -161,6 +163,21 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     }
   });
 
+  // Owner verifies a provisional shared edition (slice 12.4). Goes through writeEdition, so undo works.
+  router.post('/manage/canonical/editions/:id/verify', ownerOnly as any, async (req, res) => {
+    try {
+      const edition = await store.getEdition(String(req.params.id));
+      if (!edition) return res.status(404).json({ error: 'Edition not found.' });
+      if (edition.status !== 'provisional') return res.status(409).json({ error: 'Only a provisional edition can be verified here.' });
+      const next: Edition = { ...edition, status: 'verified', updatedAt: new Date().toISOString() };
+      const written = await writeEdition(store, { edition: next, actor: 'owner', reason: 'verified by owner' });
+      res.json({ ok: true, changeId: written.change?.id ?? null, edition: { id: next.id, name: next.name, status: next.status } });
+    } catch (err) {
+      if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   // Detail views (owner only): one edition with its acts, one artist with the editions they appear in.
   router.get(
     '/manage/canonical/editions/:id',
@@ -260,7 +277,7 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     '/manage/canonical/editions',
     ownerOnly as any,
     manage(async (req) => {
-      const status = ['all', 'confirmed', 'draft'].includes(req.query.status) ? (req.query.status as EditionStatusFilter) : 'all';
+      const status = ['all', 'verified', 'confirmed', 'provisional', 'draft'].includes(req.query.status) ? (req.query.status as EditionStatusFilter) : 'all';
       const page = await store.listCanonicalEditionsPage({
         query: typeof req.query.query === 'string' ? req.query.query : '',
         status,
