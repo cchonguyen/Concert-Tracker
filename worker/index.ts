@@ -11,7 +11,7 @@ import { accessConfigFromEnv } from '../src/server/share/access';
 import { isRetentionTime, runRetention } from '../src/server/events/retention';
 import { accessGateFromEnv, multiUserFromEnv, workerSettings } from '../src/server/auth/config';
 import { supabaseMemberDirectory, supabaseMemberStores } from '../src/server/auth/members';
-import { runMemberBackfill } from '../src/server/canon/memberBackfill';
+import { MEMBER_BACKFILL_OVERRIDE_SETTING, overrideActive, runMemberBackfill } from '../src/server/canon/memberBackfill';
 import { getSupabaseClient } from '../src/server/supabase';
 import { createEmailNotifier, isDigestTime } from '../src/server/email/notifier';
 import { resendFromEnv } from '../src/server/email/sender';
@@ -188,9 +188,11 @@ async function runCron(env: Env): Promise<void> {
     if (db) {
       const members = await supabaseMemberDirectory(db).listMembers();
       const trace = startTrace('backfill');
-      const report = await runMemberBackfill(deps.store, members);
+      const overrideValue = await deps.store.getSetting<{ until?: string }>(MEMBER_BACKFILL_OVERRIDE_SETTING);
+      const anyNotice = overrideActive(overrideValue, now);
+      const report = await runMemberBackfill(deps.store, members, { anyNotice });
       if (report) {
-        console.log(`Member backfill: ${JSON.stringify(report)}`);
+        console.log(`Member backfill (notice override ${anyNotice ? 'on' : 'off'}): ${JSON.stringify(report)}`);
         trace.step('member_backfill', { ...report });
         await trace.finish(deps.store); // +1 subrequest, only when the run did something
       }
