@@ -105,6 +105,28 @@ export function mergeSeen(before: SeenAct[], ticked: SeenAct[], reviewedKeys: Se
   return withB2b(out);
 }
 
+// Words that join acts in one listing ("A + B" normalizes to "a b").
+const JOINERS = new Set(['b2b', 'b3b', 'vs', 'x', 'and', 'with']);
+
+// One listing ("Allen Watts + Talla 2XLC") that the review split into its
+// acts: each act, with the others as its B2B partners, keeps the listing's
+// sources and set times. The listing must be exactly those acts' names, in
+// any order, joined only by joiner words; the name stays verbatim in its quote.
+export function findWholeCandidate(candidates: CandidatePerformer[], reviewed: Pick<ReviewedPerformer, 'key' | 'b2b'>): CandidatePerformer | undefined {
+  if (!reviewed.key || !reviewed.b2b?.length) return undefined;
+  const want = [...new Set([reviewed.key, ...reviewed.b2b])].sort((a, b) => b.length - a.length);
+  return candidates.find((c) => {
+    if (c.b2b?.length) return false;
+    let rest = ` ${normalizeName(c.name)} `;
+    for (const k of want) {
+      const at = rest.indexOf(` ${k} `);
+      if (at < 0) return false;
+      rest = `${rest.slice(0, at)} ${rest.slice(at + k.length + 2)}`;
+    }
+    return rest.split(' ').filter(Boolean).every((w) => JOINERS.has(w));
+  });
+}
+
 function findCandidate(
   candidates: CandidatePerformer[],
   reviewed: ReviewedPerformer,
@@ -191,6 +213,8 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
     if (!name) continue;
     reviewedKeys.add(normalizeName(name));
     const cand = findCandidate(candidates, reviewed, usedCandidates);
+    const whole = cand ? undefined : findWholeCandidate(candidates, reviewed);
+    const listed = cand ?? whole; // where the act's sources come from
     const types = cand?.sources.map((s) => s.sourceType) ?? [];
     const urls = cand?.sources.map((s) => s.sourceUrl) ?? [];
 
@@ -234,7 +258,7 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
           createdAt: now,
         });
       }
-    } else {
+    } else if (!whole) {
       corrections.push({
         id: randomUUID(),
         editionKey: job.editionKey,
@@ -246,8 +270,8 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
       });
     }
 
-    const perf: EditionPerformance = cand
-      ? toPerformance(cand, name)
+    const perf: EditionPerformance = listed
+      ? toPerformance(listed, name)
       : {
           artistKey: normalizeName(name),
           name,
@@ -273,7 +297,7 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
         id: randomUUID(),
         key: perf.artistKey,
         name: perf.name,
-        from: cand ? 'lineup' : 'you',
+        from: listed ? 'lineup' : 'you',
       };
       const actSlotId = cand?.slotId ?? reviewed.slotId;
       if (actSlotId) act.slotId = actSlotId;
@@ -286,7 +310,7 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
         act.roleFrom = cand && perf.billing === cand.billing ? 'lineup' : 'you';
       }
       // As the lineup billed it; your own marks win (mergeSeen).
-      if (cand?.set) act.set = cand.set;
+      if (listed?.set) act.set = listed.set;
       if (reviewed.set !== undefined) {
         setChosen.add(act.key);
         if (isSetKind(reviewed.set)) act.set = reviewed.set;
@@ -384,14 +408,17 @@ export async function confirmLookupForMember(store: LineupStore, job: LookupJob,
     reviewedKeys.add(normalizeName(name));
     if (!reviewed.accepted) continue;
     const cand = findCandidate(candidates, reviewed, usedCandidates);
+    const whole = cand ? undefined : findWholeCandidate(candidates, reviewed);
+    const listed = cand ?? whole; // where the act's sources come from
     if (cand) draft.push(toPerformance(cand, name));
+    else if (whole) draft.push({ ...toPerformance(whole, name), b2b: reviewed.b2b, slotId: reviewed.slotId });
     if (!reviewed.seen) continue;
     const billing = reviewed.billing !== undefined ? (isBilling(reviewed.billing) ? reviewed.billing : undefined) : cand?.billing;
     const act: SeenAct = {
       id: randomUUID(),
       key: normalizeName(name),
       name,
-      from: cand ? 'lineup' : 'you',
+      from: listed ? 'lineup' : 'you',
     };
     const actSlotId = cand?.slotId ?? reviewed.slotId;
     if (actSlotId) act.slotId = actSlotId;
@@ -403,7 +430,7 @@ export async function confirmLookupForMember(store: LineupStore, job: LookupJob,
       act.role = billing;
       act.roleFrom = cand && billing === cand.billing ? 'lineup' : 'you';
     }
-    if (cand?.set) act.set = cand.set;
+    if (listed?.set) act.set = listed.set;
     if (reviewed.set !== undefined) {
       setChosen.add(act.key);
       if (isSetKind(reviewed.set)) act.set = reviewed.set;
