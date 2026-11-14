@@ -10,6 +10,7 @@ import { Button } from './ui/Button';
 import { Callout } from './ui/Callout';
 import { Notice } from './ui/Notice';
 import { Pill } from './ui/Pill';
+import { VersionPicker } from './ui/VersionPicker';
 
 // Global Archive (owner only, spec Phase 4). Each section is one body rendered by ManageView:
 // Artists, Editions & Lineups, Lookups, Changes. Counts only; no member names. Never writes a personal log.
@@ -350,6 +351,13 @@ const ArchiveLookups: React.FC = () => {
           <input aria-label="Event or festival name" className={`${field} min-w-[12rem] flex-1`} placeholder="Event or festival name" value={name} onChange={(e) => setName(e.target.value)} />
           <input aria-label="Year" className={`${field} w-24`} inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value)} />
           <input aria-label="Lineup URL (optional)" className={`${field} min-w-[12rem] flex-1`} placeholder="Lineup URL (optional)" value={url} onChange={(e) => setUrl(e.target.value)} />
+          {name.trim() && /^\d{4}$/.test(year) && (
+            <VersionPicker
+              key={`${name.trim()}-${year}`}
+              load={async () => canonicalApi.versions(name.trim(), Number(year))}
+              onPick={(v) => setUrl(v.url)}
+            />
+          )}
           <button onClick={ingest} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50">
             {busy && <Loader2 className="h-4 w-4 animate-spin" />} Ingest
           </button>

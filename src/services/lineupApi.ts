@@ -184,8 +184,12 @@ export const eventsApi = {
     request<{ suggestions: Record<string, ArtistSuggestion[]> }>('/api/events/name-artists', post({ ids })).then((r) => r.suggestions),
   findLineups: (ids: string[]) =>
     request<{ started: string[]; skipped: Array<{ id: string; reason: string }> }>('/api/events/lineups', post({ ids })),
-  findLineup: (id: string, lineupUrl?: string) =>
-    request<{ event: LoggedEvent; job: LookupJob }>(`/api/events/${id}/lineup`, post({ lineupUrl })),
+  findLineup: (id: string, lineupUrl?: string, replaceConfirmed?: boolean) =>
+    request<{ event: LoggedEvent; job: LookupJob }>(`/api/events/${id}/lineup`, post({ lineupUrl, replaceConfirmed: replaceConfirmed || undefined })),
+  lineupVersions: (id: string) =>
+    request<{ versions: Array<{ slug: string; name: string; startDate?: string; lastEdit?: string; edits?: number; numActs?: number; url: string }> }>(
+      `/api/events/${id}/lineup/versions`,
+    ).then((r) => r.versions),
   cities: (q: string) => request<{ cities: string[] }>(`/api/places/cities?q=${encodeURIComponent(q)}`).then((r) => r.cities),
   placeGuess: (place: { city: string; region?: string; country?: string }) =>
     request<{ guess: PlaceGuess | null; note?: string }>(
@@ -613,6 +617,10 @@ export const canonicalApi = {
       `/api/manage/canonical/artists/${encodeURIComponent(key)}/aliases?name=${encodeURIComponent(name)}`,
       { method: 'DELETE' },
     ).then((r) => r.entry),
+  versions: (name: string, year: number) =>
+    request<{ versions: Array<{ slug: string; name: string; startDate?: string; lastEdit?: string; edits?: number; numActs?: number; url: string }> }>(
+      `/api/manage/canonical/versions?name=${encodeURIComponent(name)}&year=${year}`,
+    ).then((r) => r.versions),
   ingest: (body: { name: string; year: number; startDate?: string; endDate?: string; venue?: string; city?: string; country?: string; lineupUrl?: string }) =>
     request<{ job: LookupJob }>('/api/manage/canonical/ingest', post(body)).then((r) => {
       // A reply without a job must not look like success: the caller shows an error.
