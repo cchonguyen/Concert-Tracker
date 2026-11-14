@@ -1,6 +1,6 @@
 # Scope: anonymous review and elevate of member-entered events (triage, 2026-11-14)
 
-Status: PROPOSED. Not approved. Nothing built. Source: Charlie, 2026-11-13.
+Status: BUILT as Slices 12.1 to 12.5 (2026-11-14), revised from the first proposal below. The anonymous candidate list and its migration were dropped: member entries already reach the shared catalog as `provisional` editions (Slice 11.23, name, date, venue, city, no user id), so the owner reviews and verifies those from the Editions list (12.4 route, 12.5 button) without reading any private event. 12.1 verified autofill, 12.2 and 12.3 status filter and labels. Not built: agreement counting, member flags, "not verified" picker label (members are only offered verified editions). Source: Charlie, 2026-11-13.
 
 ## Goal
 The owner sees what members entered in their personal events, without seeing who and without private fields. The owner checks the facts, elevates good ones to verified editions, and every member then sees and is autofilled from them.
