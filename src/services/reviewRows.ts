@@ -175,7 +175,8 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
     return {
       key: p.key,
       seenKey: saved.artistKey,
-      slotId: p.slotId ?? saved.slotId,
+      // The saved slot wins: a split "A + B" gets a fresh slot id on every review.
+      slotId: saved.slotId ?? p.slotId,
       alias: saved.alias ?? p.alias,
       b2b: p.b2b ?? saved.b2b,
       name: saved.name,
@@ -190,8 +191,13 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
     };
   });
   // Acts you added by hand last time have no candidate.
+  const slotOf = (e: { artistKey: string; b2b?: string[]; set?: string }) => `${e.artistKey}|${[...(e.b2b ?? [])].sort().join(',')}|${e.set ?? ''}`;
+  const kept = new Set([...used].map(slotOf));
   for (const e of editionPerformances) {
     if (used.has(e) || e.status === 'cancelled') continue;
+    // An act you added that only repeats an act already listed, with the same partners (an earlier save stored it twice).
+    const repeat = byHand(e) && kept.has(slotOf(e));
+    kept.add(slotOf(e));
     rows.push({
       seenKey: e.artistKey,
       slotId: e.slotId,
@@ -199,7 +205,7 @@ export function startRows(rawPerformers: CandidatePerformer[], edition?: Edition
       b2b: e.b2b,
       name: e.name,
       oneAct: e.oneAct,
-      accepted: !replacing || byHand(e),
+      accepted: !repeat && (!replacing || byHand(e)),
       cancelled: false,
       billing: e.billing,
       set: e.set,
