@@ -3,7 +3,6 @@ import { clearMemberCache, type MemberDirectory } from './members';
 import { currentMember } from './requestScope';
 import type { AccessRequestStore } from './requests';
 import type { LineupStore } from '../lineup/store/types';
-import { resolveEvents } from '../events/inherit';
 import type { EmailNotifier } from '../email/notifier';
 
 // GET /api/me tells the page who is signed in, so it can hide what a member
@@ -147,8 +146,6 @@ export function accountRouter(directory: MemberDirectory, store: LineupStore): R
         // Notes and the people who went are encrypted when the vault is on; the
         // browser decrypts them into the file you download (services/exportBundle.ts).
         events,
-        // What each linked event shows (its edition values where you did not override them).
-        shownEvents: resolveEvents(events, await store.getEditions([...new Set(events.map((e) => e.editionId).filter((id): id is string => Boolean(id)))])),
         // Your records. A person with a vault has an encrypted name (nameEncrypted).
         records: entities.map((e) => ({
           id: e.id,
