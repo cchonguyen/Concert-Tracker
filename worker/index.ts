@@ -162,24 +162,8 @@ async function runCron(env: Env): Promise<void> {
       console.error('Artist-resolution re-queue failed:', err instanceof Error ? err.message : String(err));
     }
   }
-  // Slice 11.14: backfill shared editions from the owner's events and email imports, up to 20 a run (fewer when
-  // the subrequest budget is short). Owner only: with multi-user on it reads the owner's scoped store.
-  try {
-    let store: typeof deps.store | null = deps.store;
-    if (multiUserFromEnv(settings)) {
-      const ownerId = await deps.store.ownerUserId?.();
-      store = ownerId && deps.store.forUser ? deps.store.forUser({ userId: ownerId, role: 'owner' }) : null;
-    }
-    const trace = startTrace('backfill');
-    const backfill = store ? await runCanonBackfill(store) : null;
-    if (backfill) {
-      console.log(`Canon backfill: ${JSON.stringify(backfill)}`);
-      trace.step('canon_backfill', Object.fromEntries(Object.entries(backfill).filter(([, v]) => typeof v === 'number')));
-      await trace.finish(deps.store); // +1 subrequest, only when the run did something
-    }
-  } catch (err) {
-    console.error('Canon backfill failed:', err instanceof Error ? err.message : String(err));
-  }
+  // Runs before the owner backfill (Slice 12.14): that backfill spends the whole subrequest budget every minute, so a
+  // member backfill placed after it never got a call through.
   // Slice 12.6: backfill provisional shared editions from members' existing dated events (accepted notice v2 only),
   // a few per run, cursor per member in that member's settings. Multi-user only; counts are all that is logged.
   try {
@@ -216,6 +200,24 @@ async function runCron(env: Env): Promise<void> {
     } catch {
       // Best effort: the budget may be spent.
     }
+  }
+  // Slice 11.14: backfill shared editions from the owner's events and email imports, up to 20 a run (fewer when
+  // the subrequest budget is short). Owner only: with multi-user on it reads the owner's scoped store.
+  try {
+    let store: typeof deps.store | null = deps.store;
+    if (multiUserFromEnv(settings)) {
+      const ownerId = await deps.store.ownerUserId?.();
+      store = ownerId && deps.store.forUser ? deps.store.forUser({ userId: ownerId, role: 'owner' }) : null;
+    }
+    const trace = startTrace('backfill');
+    const backfill = store ? await runCanonBackfill(store) : null;
+    if (backfill) {
+      console.log(`Canon backfill: ${JSON.stringify(backfill)}`);
+      trace.step('canon_backfill', Object.fromEntries(Object.entries(backfill).filter(([, v]) => typeof v === 'number')));
+      await trace.finish(deps.store); // +1 subrequest, only when the run did something
+    }
+  } catch (err) {
+    console.error('Canon backfill failed:', err instanceof Error ? err.message : String(err));
   }
   // Slice 11.19: research up to 5 events still 'pending' (rungs 1 and 2, no Brave, no reader), owner only, as many
   // as the subrequest budget allows (worst case 3 + 5 * 25 = 128; backfillResearch.ts).
