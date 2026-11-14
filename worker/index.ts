@@ -9,7 +9,8 @@ import { frontDoor, isSignedIn } from '../src/server/share/door';
 import { accessConfigFromEnv } from '../src/server/share/access';
 import { isRetentionTime, runRetention } from '../src/server/events/retention';
 import { accessGateFromEnv, multiUserFromEnv, workerSettings } from '../src/server/auth/config';
-import { supabaseMemberStores } from '../src/server/auth/members';
+import { supabaseMemberDirectory, supabaseMemberStores } from '../src/server/auth/members';
+import { runMemberBackfill } from '../src/server/canon/memberBackfill';
 import { getSupabaseClient } from '../src/server/supabase';
 import { createEmailNotifier, isDigestTime } from '../src/server/email/notifier';
 import { resendFromEnv } from '../src/server/email/sender';
@@ -189,6 +190,24 @@ async function runCron(env: Env): Promise<void> {
     }
   } catch (err) {
     console.error('Canon backfill failed:', err instanceof Error ? err.message : String(err));
+  }
+  // Slice 12.6: backfill provisional shared editions from members' existing dated events (accepted notice v2 only),
+  // a few per run, cursor per member in that member's settings. Multi-user only; counts are all that is logged.
+  try {
+    // Every fifth minute: a finished member still costs two settings reads, so the idle cost stays low.
+    const db = multiUserFromEnv(settings) && now.getUTCMinutes() % 5 === 0 ? getSupabaseClient() : null;
+    if (db) {
+      const members = await supabaseMemberDirectory(db).listMembers();
+      const trace = startTrace('backfill');
+      const report = await runMemberBackfill(deps.store, members);
+      if (report) {
+        console.log(`Member backfill: ${JSON.stringify(report)}`);
+        trace.step('member_backfill', { ...report });
+        await trace.finish(deps.store); // +1 subrequest, only when the run did something
+      }
+    }
+  } catch (err) {
+    console.error('Member backfill failed:', err instanceof Error ? err.message : String(err));
   }
   // Slice 11.19: research up to 5 events still 'pending' (rungs 1 and 2, no Brave, no reader), owner only, as many
   // as the subrequest budget allows (worst case 3 + 5 * 25 = 128; backfillResearch.ts).
