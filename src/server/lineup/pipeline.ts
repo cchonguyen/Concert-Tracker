@@ -123,12 +123,16 @@ async function findConfirmedEdition(deps: PipelineDeps, input: LookupInput): Pro
 export async function createLookup(
   deps: PipelineDeps,
   raw: Partial<LookupInput>,
-  opts: { eventId?: string } = {},
+  // replaceConfirmed: the person chose another Clashfinder version after a second
+  // confirm. Skip the confirmed-edition shortcut so the lookup runs, under the same
+  // edition key, and confirming it replaces the lineup.
+  opts: { eventId?: string; replaceConfirmed?: boolean } = {},
 ): Promise<LookupJob> {
   const input = validateInput(raw);
   const now = deps.now();
-  const cached = await findConfirmedEdition(deps, input);
-  const editionKey = cached?.key ?? editionKeyFor(input.eventName, input.year, input.startDate);
+  const existing = await findConfirmedEdition(deps, input);
+  const cached = opts.replaceConfirmed ? null : existing;
+  const editionKey = existing?.key ?? editionKeyFor(input.eventName, input.year, input.startDate);
   const job: LookupJob = {
     id: randomUUID(),
     kind: 'lineup',
