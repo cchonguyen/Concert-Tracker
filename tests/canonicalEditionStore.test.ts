@@ -147,3 +147,45 @@ test('file store filters and counts the full edition catalog before the 200-row 
 test('Supabase store filters and counts the full edition catalog before the 200-row limit', async () => {
   await assertPageContract(supabaseStore(makeRows()));
 });
+
+const statusRows = () =>
+  ([
+    ['v-1', 2020, 'verified'],
+    ['c-1', 2019, 'confirmed'],
+    ['p-1', 2021, 'provisional'],
+    ['d-1', 2022, 'draft'],
+  ] as const).map(([id, year, status]) => {
+    const e = makeEdition(id, year, 'Status Festival', status as Edition['status']);
+    return {
+      id: e.id, key: e.key, series_slug: e.seriesSlug, year: e.year, name: e.name,
+      start_date: null, end_date: null, venue: null, city: null, country: null,
+      status: e.status, confirmed_at: null, updated_at: e.updatedAt, fact_source_note: null,
+    };
+  });
+
+async function assertStatusFilters(store: LineupStore) {
+  const idsFor = async (status: 'all' | 'verified' | 'confirmed' | 'provisional' | 'draft') =>
+    (await store.listCanonicalEditionsPage({ query: 'status festival', status, limit: 200 })).editions.map((e) => e.id).sort();
+  assert.deepEqual(await idsFor('verified'), ['c-1', 'v-1']);
+  assert.deepEqual(await idsFor('confirmed'), ['c-1', 'v-1']);
+  assert.deepEqual(await idsFor('provisional'), ['p-1']);
+  assert.deepEqual(await idsFor('draft'), ['d-1']);
+  assert.deepEqual(await idsFor('all'), ['c-1', 'd-1', 'p-1', 'v-1']);
+}
+
+test('file store status filter: verified includes legacy confirmed; provisional and draft are exact', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'canonical-status-'));
+  try {
+    const store = new FileLineupStore(dir);
+    for (const row of statusRows()) {
+      await store.upsertEdition(makeEdition(row.id, row.year, row.name, row.status as Edition['status']));
+    }
+    await assertStatusFilters(store);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('Supabase store status filter: verified includes legacy confirmed; provisional and draft are exact', async () => {
+  await assertStatusFilters(supabaseStore(statusRows()));
+});
