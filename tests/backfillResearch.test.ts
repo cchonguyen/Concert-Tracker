@@ -71,14 +71,17 @@ test('the owner persists a shared occurrence; a member does not; Brave is never 
     const calls: string[] = [];
     await runResearchBackfill(store, [finder('ticketmaster', calls), finder('discovered', calls)], fetcher, NOW, { budgetLeft: () => 1000, role: 'owner', userId: 'u1' });
     assert.ok(!calls.some((c) => c.startsWith('discovered')), 'Brave (discovered) is filtered out');
-    assert.equal((await store.listEditions(100)).length, 1);
+    // Slice 11.23: the owner's own entry also makes a provisional edition, beside the Ticketmaster occurrence.
+    assert.equal((await store.listEditions(100)).length, 2);
   });
   await withStore(async (store) => {
     await store.putEvent(dated(1));
     const r = await runResearchBackfill(store, [finder('ticketmaster', [])], fetcher, NOW, { budgetLeft: () => 1000, role: 'member', userId: 'u2' });
     assert.equal(r?.researched, 1);
     assert.equal((await store.listEvents())[0].details.status, 'matched', 'the member event is still researched');
-    assert.equal((await store.listEditions(100)).length, 0, 'but nothing is written to the shared catalog');
+    const rows = await store.listEditions(100);
+    assert.equal(rows.length, 1, 'only the member\'s own entry is written (Slice 11.23), never the outside occurrence');
+    assert.equal(rows[0].status, 'provisional');
   });
 });
 

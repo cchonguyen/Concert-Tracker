@@ -48,3 +48,5 @@ Each section lives in its own file under `docs/architecture/`:
 - [Testing](docs/architecture/22-testing.md)
 - [Roadmap](docs/architecture/23-roadmap.md)
 - [Release checks (S4)](docs/architecture/24-release-checks-s4.md)
+
+Shared editions from member entries (Slice 11.23): the research queue message also saves a `provisional` edition from the person's own typed name, full date, venue and city (never personal fields; skipped on a verified match). The member notice is version 2. See docs/architecture/08-sources.md and 12-data-model.md.

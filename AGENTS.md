@@ -17,8 +17,8 @@ Read [REQUIREMENTS.md](REQUIREMENTS.md) first: it says what the app is for (reme
 - Do not add hardcoded lists of festivals, venues or artists. Improve an adapter or add a new one under `src/server/lineup/adapters/`.
 - Respect source limits through the shared rate-limited fetcher (MusicBrainz 1 request/second). Do not scrape AXS.
 - Keep the canonical lineup and the personal event log (`logged_events`) separate.
-- Planned shared-edition rules (approved 2026-11-13, slices 11.8 to 11.22; not built yet, so today a member's events stay private):
-  - A member's own entry may create a `provisional` shared edition (name, date, venue, city only; never personal fields). The member notice version goes up and members accept it again before phase 2 ships.
+- Shared-edition rules (approved 2026-11-13, slices 11.8 to 11.22; only the first is built, in Slice 11.23):
+  - A member's own entry may create a `provisional` shared edition (name, date, venue, city only; never personal fields). Built in Slice 11.23; the member notice version is now 2 and members accept it again.
   - A ticket email import that became an event is a `verified` source for an edition's name, date, venue and city.
   - A linked event shows the edition's value unless the person overrode that field; what they first typed is kept as `captured` and never deleted.
   - Every change to a shared edition is recorded (old value, new value, who or what, why) and can be undone.

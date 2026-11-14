@@ -317,13 +317,16 @@ export interface DetailReader {
 export interface ResearchCatalog {
   store: LineupStore;
   persist?: boolean;
+  // persistOwn: the person's own typed name, full date, venue and city may create a `provisional` shared edition
+  // (Slice 11.23). On for everyone (member notice version 2); see persistOwnEntry.
+  persistOwn?: boolean;
   actor?: string;
 }
 
 // Who may write shared editions from research: the owner, or single-user mode (no userId). A member never does
 // (the member notice for shared editions is not approved). Rung 1 is read-only and runs for everyone.
 export function researchCatalogFor(role: 'owner' | 'member' | undefined, userId: string | undefined, store: LineupStore): ResearchCatalog {
-  return { store, persist: !userId || role === 'owner', actor: 'system:research' };
+  return { store, persist: !userId || role === 'owner', persistOwn: true, actor: 'system:research' };
 }
 
 const catalogDay = (e: Edition, date: string) => e.startDate === date || Boolean(e.startDate && e.endDate && e.startDate <= date && date <= e.endDate);
@@ -392,6 +395,34 @@ async function persistOccurrence(event: LoggedEvent, raw: DetailCandidate[], cat
   }
 }
 
+// Slice 11.23: a member's (or the owner's) own entry may create a `provisional` shared edition. Only the typed
+// name, a full YYYY-MM-DD start date, venue and city (venue/city only if the person typed them); no external ids,
+// no country, no end date, never personal fields. Actor 'member:entry' carries no user id. A provisional source
+// only fills empty fields of a matched edition, so it never changes another edition. Runs only inside the
+// research queue message, never in save. Worst case 8 store calls: 3 match + venue + key check + 3 write
+// (no external ids, no suggestion beyond the 2 queued ones counted in persistOccurrence's 11).
+async function persistOwnEntry(event: LoggedEvent, catalog: ResearchCatalog, notes: string[]): Promise<void> {
+  if (!catalog.persistOwn || !event.startDate || !/^\d{4}-\d{2}-\d{2}$/.test(event.startDate) || !event.name.trim()) return;
+  const typed = (f: 'venue' | 'city') => (event.sources[f]?.sourceType === 'user' ? event[f] : undefined);
+  try {
+    const r = await upsertOccurrence(catalog.store, {
+      name: event.name,
+      startDate: event.startDate,
+      ...(event.endDate && event.sources.endDate?.sourceType === 'user' ? { endDate: event.endDate } : {}),
+      venue: typed('venue'),
+      city: typed('city'),
+      subjectKey: seriesSlugFor(event.name),
+      externalIds: [],
+      trust: 'provisional',
+      actor: 'member:entry',
+      reason: 'Member entry',
+    });
+    notes.push(`catalog: ${r.action} a provisional shared edition from your entry.`);
+  } catch (err) {
+    notes.push(`catalog write of your entry failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 // Runs every configured finder and decides what to do with the results.
 export async function researchEvent(
   event: LoggedEvent,
@@ -410,6 +441,7 @@ export async function researchEvent(
   });
   const found: DetailCandidate[] = [];
   const notes: string[] = [];
+  let catalogMatched = false;
   if (catalog) {
     try {
       const hit = await catalogHit(event, catalog);
@@ -421,6 +453,7 @@ export async function researchEvent(
           return { ...ev, sources };
         };
         if (event.startDate && catalogDay(hit, event.startDate)) {
+          catalogMatched = true;
           const filled = fromEdition(applyCandidate(event, c, false));
           notes.push('catalog: a verified shared edition matches.');
           if (filled.startDate && filled.venue && filled.city) {
@@ -435,6 +468,7 @@ export async function researchEvent(
       notes.push(`catalog lookup failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+  if (catalog && !catalogMatched) await persistOwnEntry(event, catalog, notes);
   const enabled = finders.filter((f) => f.enabled() && (year || f.withoutYear));
   if (!enabled.length && !reader) {
     return year
@@ -508,6 +542,7 @@ export async function researchEvent(
 // + 3 place pages (addPlaces) = 13 without a catalog.
 // Slice 11.16 with a catalog: + rung 1 (up to 3 store calls: one external-id lookup, listEditions, venue alias)
 // + rung 2 persistence of at most one occurrence (up to 11 store calls, see persistOccurrence) = 27 worst case
+// // Slice 11.23 adds persistOwnEntry, at most 8 more store calls (35 worst case).
 // (the plan's figure is 26; 1 over, dropping the external-id lookup would meet it). Both are zero when no catalog is passed. The consumer's budget (50) holds.
 export async function runQueuedResearch(
   store: { getEvent(id: string): Promise<LoggedEvent | null>; putEvent(event: LoggedEvent): Promise<void> },
