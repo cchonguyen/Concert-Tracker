@@ -22,7 +22,7 @@ import type { EventsRunner } from '../src/server/events/routes';
 import { defaultFinders, researchCatalogFor, runQueuedResearch } from '../src/server/events/details';
 import { runResearchBackfill } from '../src/server/events/backfillResearch';
 import { rung4Urls, runReaderPage } from '../src/server/events/detailsGemini';
-import { makeBudget, runWithBudget } from '../src/server/lineup/budget';
+import { currentBudget, makeBudget, runWithBudget } from '../src/server/lineup/budget';
 
 // Cloudflare Worker entry. Static files are served from ./dist by Workers
 // static assets (wrangler.jsonc); only /api/*, the share page (/s/*) and the
@@ -191,14 +191,31 @@ async function runCron(env: Env): Promise<void> {
       const overrideValue = await deps.store.getSetting<{ until?: string }>(MEMBER_BACKFILL_OVERRIDE_SETTING);
       const anyNotice = overrideActive(overrideValue, now);
       const report = await runMemberBackfill(deps.store, members, { anyNotice });
+      const b = currentBudget();
       if (report) {
         console.log(`Member backfill (notice override ${anyNotice ? 'on' : 'off'}): ${JSON.stringify(report)}`);
         trace.step('member_backfill', { ...report });
         await trace.finish(deps.store); // +1 subrequest, only when the run did something
+      } else if (anyNotice) {
+        // Slice 12.12: while the override is on, a run that did nothing still leaves counts (no ids) so the cause shows.
+        const walkable = members.filter((m) => m.role !== 'owner' && !m.blocked && m.userId).length;
+        const detail = { listed: members.length, walkable, budgetUsed: b?.used ?? -1, budgetLimit: b?.limit ?? -1 };
+        console.log(`Member backfill idle: ${JSON.stringify(detail)}`);
+        trace.step('member_backfill_idle', detail);
+        await trace.finish(deps.store);
       }
     }
   } catch (err) {
-    console.error('Member backfill failed:', err instanceof Error ? err.message : String(err));
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('Member backfill failed:', message);
+    try {
+      // Slice 12.12: leave the error text (no ids; store errors name tables, not people) where it can be read.
+      const t = startTrace('backfill');
+      t.step('member_backfill_error', { message: message.slice(0, 200) } as any);
+      await t.finish(deps.store);
+    } catch {
+      // Best effort: the budget may be spent.
+    }
   }
   // Slice 11.19: research up to 5 events still 'pending' (rungs 1 and 2, no Brave, no reader), owner only, as many
   // as the subrequest budget allows (worst case 3 + 5 * 25 = 128; backfillResearch.ts).

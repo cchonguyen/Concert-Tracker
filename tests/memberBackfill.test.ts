@@ -251,3 +251,13 @@ test('owner override: owner, blocked and id-less members are still skipped', asy
   assert.equal(blocked.listCalls, 0);
   assert.equal((await s.listEditions(10)).length, 0);
 });
+
+test('a spent subrequest budget returns null and reads nothing (the idle case the worker traces)', async () => {
+  const s = await fresh();
+  const m = accepted('member-user-bud1', [event('mev-bud1', { name: 'Band A', startDate: '2026-06-01' })]);
+  const t = setup([m]);
+  const r = await t.run(s, [{ userId: m.userId, role: 'member' }], { budgetLeft: () => 5 });
+  assert.equal(r, null);
+  assert.equal(m.listCalls, 0);
+  assert.equal((await s.listEditions(10)).length, 0);
+});
