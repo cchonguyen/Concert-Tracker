@@ -242,3 +242,18 @@ test('Supabase artistPerformances returns the performance row ID', async () => {
   assert.equal(rows[0].id, 'perf-1');
   assert.equal(rows[0].editionId, 'ed1');
 });
+
+// Regression: the database holds b2b '{}' (empty array) and NULL as different values, and the canonical
+// fingerprint compares them. The reader must hand the planner each value unchanged, or a preview of any
+// artist with a '{}' row is refused as stale on every apply.
+test('Supabase artistPerformances keeps an empty b2b array and NULL apart', async () => {
+  const base = { edition_id: 'ed1', artist_key: 'old artist', name: 'Old Artist', days: [], stages: [], status: 'billed', billing: null, confidence: 1, sources: [], slot_id: null, alias: null, set: null };
+  const { db } = stubDb(() => ({ data: null, error: null }), [
+    { ...base, id: 'perf-empty', b2b: [] },
+    { ...base, id: 'perf-null', b2b: null },
+  ]);
+  const rows = await new SupabaseLineupStore(db).artistPerformances(['old artist']);
+  const byId = new Map(rows.map((r) => [r.id, r.b2b]));
+  assert.deepEqual(byId.get('perf-empty'), []);
+  assert.equal(byId.get('perf-null'), undefined);
+});
