@@ -245,7 +245,8 @@ export const clashfinderAdapter: SourceAdapter = {
 
     if (!slug) {
       const listUrl = `${BASE}/data/events/all.json?${auth}`;
-      const res = await ctx.fetcher.get(listUrl);
+      const res = await ctx.fetcher.get(listUrl, { maxBytes: LIST_MAX_BYTES });
+      listTruncatedCheck(res, listUrl);
       if (res.status === 401) throw new HttpError(401, listUrl, 'Clashfinder rejected the credentials (401). Check CLASHFINDER_* settings.');
       const match = matchEdition(parseEventList(parseJson(res)), ctx.input.eventName, ctx.input.year, ctx.input.startDate);
       if (!match) {
@@ -316,7 +317,8 @@ export async function clashfinderCandidates(
   const auth = clashfinderAuthQuery();
   if (!auth) return [];
   const listUrl = `${BASE}/data/events/all.json?${auth}`;
-  const res = await fetcher.get(listUrl);
+  const res = await fetcher.get(listUrl, { maxBytes: LIST_MAX_BYTES });
+  listTruncatedCheck(res, listUrl);
   if (res.status === 401) throw new HttpError(401, listUrl, 'Clashfinder rejected the credentials (401). Check CLASHFINDER_* settings.');
   return rankEditions(parseEventList(listJson(res, listUrl)), input.eventName, input.year, input.startDate).map((e) => ({
     slug: e.slug,
@@ -342,5 +344,16 @@ export function listJson(res: FetchResponse, listUrl: string): unknown {
       listUrl,
       `Clashfinder sent a reply that is not JSON (HTTP ${res.status})${snippet ? `: "${snippet}"` : ' with an empty body'}.`,
     );
+  }
+}
+
+// The whole event list is needed to match a few clashes (Clashfinder has no
+// search call), and it is larger than the shared 3 MB default cap. The list
+// is read up to this cap; a longer list is reported, not cut and parsed.
+export const LIST_MAX_BYTES = 32 * 1024 * 1024;
+
+function listTruncatedCheck(res: FetchResponse, listUrl: string): void {
+  if (res.truncated) {
+    throw new HttpError(res.status, listUrl, `Clashfinder's event list is larger than ${LIST_MAX_BYTES / (1024 * 1024)} MB, so it was not read in full.`);
   }
 }
