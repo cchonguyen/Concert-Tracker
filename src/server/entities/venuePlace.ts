@@ -40,22 +40,28 @@ const VENUE = { sourceType: 'venue' as const };
 // it had before, when that was another place.
 export function withVenuePlace(event: LoggedEvent, place: Entity, at: string): { event: LoggedEvent; offer?: PlaceOffer } {
   const want = placeFields(place);
-  const same = (['city', 'region', 'country'] as const).every((f) => (event[f] ?? undefined) === want[f]);
-  const marked = (['city', 'region', 'country'] as const).every((f) => !want[f] || event.sources[f]?.sourceType === 'venue');
+  const sameCity = Boolean(event.city && normalizeName(event.city) === normalizeName(want.city));
+  const matches = (a: string | undefined, b: string | undefined) => !a || !b || normalizeName(a) === normalizeName(b);
+  // A place that only names a city (or city + state) does not wipe state or
+  // country entered for that same place.
+  const keepExtras = sameCity && matches(event.region, want.region) && matches(event.country, want.country);
+  const fields = ['city', 'region', 'country'] as const;
+  const same = fields.every((f) => (keepExtras && !want[f] ? true : (event[f] ?? undefined) === want[f]));
+  const marked = fields.every((f) => !want[f] || event.sources[f]?.sourceType === 'venue');
   if (same && marked) return { event };
   const next: LoggedEvent = { ...event, sources: { ...event.sources } };
-  for (const f of ['city', 'region', 'country'] as const) {
+  for (const f of fields) {
     if (want[f]) {
       next[f] = want[f];
       next.sources[f] = VENUE;
-    } else {
+    } else if (!keepExtras) {
       delete next[f];
       delete next.sources[f];
     }
   }
   const was = placeOf(event);
   const now = placeOf(next);
-  const moved = Boolean(was && now && was.key !== now.key);
+  const moved = Boolean(was && now && was.key !== now.key && !keepExtras);
   // Weather is never fetched on its own: an old lookup is kept and flagged.
   if (moved && next.weather && normalizeName(event.city ?? '') !== normalizeName(want.city)) {
     next.weather = { ...next.weather, cityChanged: true };

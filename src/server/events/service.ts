@@ -234,7 +234,7 @@ export async function startLineupLookup(
   );
   const updated = { ...event, lineupJobId: job.id, updatedAt: deps.now().toISOString() };
   await deps.store.putEvent(updated);
-  return { event: updated, job };
+  return { event: (await deps.store.getEvent(updated.id)) ?? updated, job };
 }
 
 // Stage 2 manual pick: every Clashfinder version that matches the event, best
