@@ -1,4 +1,4 @@
-import { AdapterContext, AdapterResult, NewPerformerClaim, SourceAdapter } from '../types';
+import { AdapterContext, AdapterResult, FetchResponse, NewPerformerClaim, SourceAdapter } from '../types';
 import { HttpError, parseJson } from '../http';
 import { normalizeName, sha256 } from '../text';
 import { isNonMusicProgramming, isSilentDiscoSlot } from '../actName';
@@ -318,7 +318,7 @@ export async function clashfinderCandidates(
   const listUrl = `${BASE}/data/events/all.json?${auth}`;
   const res = await fetcher.get(listUrl);
   if (res.status === 401) throw new HttpError(401, listUrl, 'Clashfinder rejected the credentials (401). Check CLASHFINDER_* settings.');
-  return rankEditions(parseEventList(parseJson(res)), input.eventName, input.year, input.startDate).map((e) => ({
+  return rankEditions(parseEventList(listJson(res, listUrl)), input.eventName, input.year, input.startDate).map((e) => ({
     slug: e.slug,
     name: e.name,
     startDate: e.startDate,
@@ -327,4 +327,20 @@ export async function clashfinderCandidates(
     numActs: e.numActs,
     url: `${BASE}/s/${e.slug}/`,
   }));
+}
+
+// Parses the list reply. A 2xx reply that is not JSON gives the reason and the
+// start of the reply, so the cause shows on screen. Only the first 120
+// characters of the reply are kept, and the URL is already redacted.
+export function listJson(res: FetchResponse, listUrl: string): unknown {
+  try {
+    return parseJson(res);
+  } catch {
+    const snippet = String(res.body ?? '').slice(0, 120).replace(/\s+/g, ' ').trim();
+    throw new HttpError(
+      res.status,
+      listUrl,
+      `Clashfinder sent a reply that is not JSON (HTTP ${res.status})${snippet ? `: "${snippet}"` : ' with an empty body'}.`,
+    );
+  }
 }
