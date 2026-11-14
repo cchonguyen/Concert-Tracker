@@ -327,7 +327,7 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
     venue: facts.venue || undefined,
     city: facts.city || undefined,
     country: facts.country || undefined,
-    status: 'confirmed',
+    status: 'verified',
     performances: dedupe(performances),
     confirmedAt: now,
     updatedAt: now,
