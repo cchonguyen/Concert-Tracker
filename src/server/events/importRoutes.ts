@@ -1,5 +1,6 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { Router } from 'express';
+import { listResolvedEvents } from './inherit';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
 import { eventFromImport, findLogged, mergeImports, mergeIntoEvent, pricesFromImports, readEmails, reviewList, unmergeFromEvent } from './email/imports';
 import { GmailApi, GmailAuthError, GmailBusy } from './email/gmail';
@@ -57,7 +58,7 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
     if (!authorized(req.get('authorization'), token)) return res.status(401).json({ error: 'Wrong import token.' });
     try {
       const { outcomes, ignored } = readEmails(rawEmails(req.body));
-      const [existing, events] = await Promise.all([deps.store.listImports(), deps.store.listEvents()]);
+      const [existing, events] = await Promise.all([deps.store.listImports(), listResolvedEvents(deps.store)]);
       const changed = mergeImports(existing, outcomes, events, deps.now());
       await deps.store.putImports(changed);
       await deps.store.putEvents(pricesFromImports(changed, events, deps.now()));
@@ -86,7 +87,7 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
         if (typeof p?.seller !== 'string' || !['new', 'flag', 'unreadable', 'skipped'].includes(p?.status) || !Array.isArray(p?.messageLinks) || !Array.isArray(p?.flags))
           throw new InputError('Each proposal needs seller, status, messageLinks and flags.');
       const now = deps.now();
-      const [existing, events] = await Promise.all([deps.store.listImports(), deps.store.listEvents()]);
+      const [existing, events] = await Promise.all([deps.store.listImports(), listResolvedEvents(deps.store)]);
       const before = new Set(existing.map((r) => r.id));
       const changed = mergeProposals(existing, proposals, messages, events, now);
       await deps.store.putImports(changed);
@@ -118,7 +119,7 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
     try {
       const wanted = ids(req.body);
       const now = deps.now();
-      const [rows, events] = await Promise.all([deps.store.listImports(), deps.store.listEvents()]);
+      const [rows, events] = await Promise.all([deps.store.listImports(), listResolvedEvents(deps.store)]);
       const added = [];
       const changed: EmailImport[] = [];
       for (const row of rows) {
@@ -150,7 +151,7 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
   router.post('/imports/merge', async (req, res) => {
     try {
       const now = deps.now();
-      const [rows, events] = await Promise.all([deps.store.listImports(), deps.store.listEvents()]);
+      const [rows, events] = await Promise.all([deps.store.listImports(), listResolvedEvents(deps.store)]);
       const row = rows.find((r) => r.id === req.body?.id);
       const event = events.find((e) => e.id === req.body?.eventId);
       if (!row || row.status !== 'new') throw new InputError('That email is not waiting for review.');
@@ -169,7 +170,7 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
   router.post('/imports/unmerge', async (req, res) => {
     try {
       const now = deps.now();
-      const [rows, events] = await Promise.all([deps.store.listImports(), deps.store.listEvents()]);
+      const [rows, events] = await Promise.all([deps.store.listImports(), listResolvedEvents(deps.store)]);
       const row = rows.find((r) => r.id === req.body?.id);
       if (!row || row.status !== 'added' || !row.mergedFields) throw new InputError('That email was not merged into an event.');
       const event = events.find((e) => e.id === row.eventId);
