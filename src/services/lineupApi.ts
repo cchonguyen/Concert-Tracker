@@ -611,6 +611,10 @@ export const canonicalApi = {
       `/api/manage/canonical/artists/${encodeURIComponent(key)}/aliases?name=${encodeURIComponent(name)}`,
       { method: 'DELETE' },
     ).then((r) => r.entry),
+  versions: (name: string, year: number) =>
+    request<{ versions: Array<{ slug: string; name: string; startDate?: string; lastEdit?: string; edits?: number; numActs?: number; url: string }> }>(
+      `/api/manage/canonical/versions?name=${encodeURIComponent(name)}&year=${year}`,
+    ).then((r) => r.versions),
   ingest: (body: { name: string; year: number; startDate?: string; endDate?: string; venue?: string; city?: string; country?: string; lineupUrl?: string }) =>
     request<{ job: LookupJob }>('/api/manage/canonical/ingest', post(body)).then((r) => {
       // A reply without a job must not look like success: the caller shows an error.
