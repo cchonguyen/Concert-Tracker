@@ -79,6 +79,26 @@ const addDays = (iso: string, n: number) => {
   return d.toISOString().slice(0, 10);
 };
 
+// The ways a city is commonly typed that the geocoder files differently: a
+// trailing "City" ("New York City"), the NYC short name, and a full state name
+// after the comma ("Austin, Texas" becomes "Austin, TX"). Only the wording
+// changes. Each variant still has to match exactly one place, so a city that
+// is ambiguous stays ambiguous.
+export function cityVariants(city: string): string[] {
+  const parts = city.split(',').map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) return [];
+  const tail = parts.slice(1);
+  const state = tail.length ? regionCode(tail[0]) : undefined;
+  const writtenTail = state ? [state, ...tail.slice(1)] : tail;
+  const names = [parts[0]];
+  const bare = parts[0].replace(/\s+city$/i, '').trim();
+  if (bare && bare !== parts[0]) names.push(bare);
+  if (normalizeName(parts[0]) === 'nyc') names.push('New York');
+  const out = new Set<string>();
+  for (const n of names) out.add([n, ...writtenTail].join(', '));
+  return [...out];
+}
+
 export async function lookupWeather(event: LoggedEvent, fetcher: Fetcher, now: Date): Promise<WeatherResult> {
   if (!event.startDate) return { note: 'Add the date first.' };
   if (!event.city) return { note: 'Add the city first.' };
@@ -90,12 +110,24 @@ export async function lookupWeather(event: LoggedEvent, fetcher: Fetcher, now: D
 
   // A US or Canadian state is matched as "City, ST"; elsewhere the country decides.
   const city = (regionCode(event.region) ? cityWithRegion(event.city, event.region) : undefined) ?? event.city;
-  const name = city.split(',')[0].trim();
-  const geo = await fetcher.get(`${GEOCODE}?name=${encodeURIComponent(name)}&count=20&language=en&format=json`, { timeoutMs: 8000 });
-  const places = placesFor(parseJson<any>(geo)?.results ?? [], city, event.country);
-  if (places.length === 0) return { note: `Couldn't find "${city}" on the map. Add the state or country.` };
-  if (places.length > 1) return { note: `More than one place is called "${city}". Add the state or country.` };
-  const place = places[0];
+  // Try the city as written first, then its common variants. The first variant
+  // that matches exactly one place wins; one that matches several stops the search.
+  const results = new Map<string, any[]>();
+  let place: Place | undefined;
+  for (const candidate of cityVariants(city)) {
+    const name = candidate.split(',')[0].trim();
+    if (!results.has(name)) {
+      const geo = await fetcher.get(`${GEOCODE}?name=${encodeURIComponent(name)}&count=20&language=en&format=json`, { timeoutMs: 8000 });
+      results.set(name, parseJson<any>(geo)?.results ?? []);
+    }
+    const places = placesFor(results.get(name)!, candidate, event.country);
+    if (places.length > 1) return { note: `More than one place is called "${city}". Add the state or country.` };
+    if (places.length === 1) {
+      place = places[0];
+      break;
+    }
+  }
+  if (!place) return { note: `Couldn't find "${city}" on the map. Add the state or country.` };
 
   const url =
     `${ARCHIVE}?latitude=${place.latitude}&longitude=${place.longitude}&start_date=${event.startDate}&end_date=${end}` +
