@@ -25,17 +25,19 @@ interface Props {
 export function VersionPicker({ load, confirmedActs, busy, onPick }: Props) {
   const [open, setOpen] = useState(false);
   const [versions, setVersions] = useState<LineupVersion[] | null>(null);
-  const [failed, setFailed] = useState(false);
+  // The server's own reason (for example a Clashfinder credential error), so the cause is visible.
+  const [failed, setFailed] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const replacing = confirmedActs !== undefined;
 
   const show = async () => {
     setOpen(true);
-    setFailed(false);
+    setFailed(null);
+    setVersions(null);
     try {
       setVersions(await load());
-    } catch {
-      setFailed(true);
+    } catch (err) {
+      setFailed(err instanceof Error && err.message ? err.message : 'Could not load the Clashfinder versions.');
     }
   };
 
@@ -50,8 +52,11 @@ export function VersionPicker({ load, confirmedActs, busy, onPick }: Props) {
   if (failed) {
     return (
       <div className="space-y-1">
-        <p className="text-xs text-amber-300/90">Could not load the Clashfinder versions. Try again.</p>
-        <button type="button" onClick={() => setOpen(false)} className="text-xs text-zinc-400 hover:text-violet-300">Close</button>
+        <p className="text-xs text-amber-300/90">{failed}</p>
+        <div className="flex gap-3">
+          <button type="button" onClick={() => void show()} className="text-xs text-zinc-300 hover:text-violet-300">Try again</button>
+          <button type="button" onClick={() => setOpen(false)} className="text-xs text-zinc-400 hover:text-violet-300">Close</button>
+        </div>
       </div>
     );
   }

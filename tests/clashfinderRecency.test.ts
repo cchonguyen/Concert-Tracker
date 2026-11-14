@@ -78,6 +78,24 @@ test('rankEditions returns every public, non-speculative match and no private or
   assert.deepEqual(slugs, ['foo2026', 'foo2026b']);
 });
 
+test('clashfinderCandidates surfaces a credential rejection with its reason, not an empty list', async () => {
+  const prev = { user: process.env.CLASHFINDER_USERNAME, key: process.env.CLASHFINDER_PUBLIC_KEY };
+  process.env.CLASHFINDER_USERNAME = 'tester';
+  process.env.CLASHFINDER_PUBLIC_KEY = 'abc';
+  try {
+    const fetcher = {
+      get: async (url: string) => ({ status: 401, url, body: '', headers: {} }),
+    } as any;
+    await assert.rejects(
+      clashfinderCandidates(fetcher, { eventName: 'Foo Festival', year: 2026 }),
+      (err: Error) => /rejected the credentials \(401\)/.test(err.message),
+    );
+  } finally {
+    if (prev.user === undefined) delete process.env.CLASHFINDER_USERNAME; else process.env.CLASHFINDER_USERNAME = prev.user;
+    if (prev.key === undefined) delete process.env.CLASHFINDER_PUBLIC_KEY; else process.env.CLASHFINDER_PUBLIC_KEY = prev.key;
+  }
+});
+
 test('recencyMs orders dates and treats a missing date as lowest', () => {
   assert.ok(recencyMs('2026-10-17 10:37') > recencyMs('2026-10-17 10:36'));
   assert.ok(recencyMs('2026-10-17 10:37') > recencyMs('2025-12-31 23:59'));
