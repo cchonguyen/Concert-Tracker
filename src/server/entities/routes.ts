@@ -260,7 +260,7 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     '/manage/canonical/editions',
     ownerOnly as any,
     manage(async (req) => {
-      const status = ['all', 'confirmed', 'draft'].includes(req.query.status) ? (req.query.status as EditionStatusFilter) : 'all';
+      const status = ['all', 'verified', 'confirmed', 'provisional', 'draft'].includes(req.query.status) ? (req.query.status as EditionStatusFilter) : 'all';
       const page = await store.listCanonicalEditionsPage({
         query: typeof req.query.query === 'string' ? req.query.query : '',
         status,
