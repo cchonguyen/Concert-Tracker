@@ -47,8 +47,13 @@ export async function matchEdition(store: LineupStore, q: OccurrenceQuery): Prom
   if (!q.startDate) return { kind: 'none' };
   const onDate = (await store.listEditions(SCAN_LIMIT)).filter((e) => isShared(e) && e.startDate === q.startDate);
   const venueId = await venueIdOf(store, q.venue);
-  if (venueId && q.subjectKey) {
-    const same = onDate.filter((e) => e.venueId === venueId && e.subjectKey === q.subjectKey);
+  // Venue unknown or not typed: the venue text decides (empty matches empty), so one (date, subject, venue) is one
+  // edition even when no venue is known. Without this, every member entry with no venue created a new edition.
+  const venueText = normalizeName(q.venue ?? '');
+  const sameVenue = (e: Edition) =>
+    venueId ? e.venueId === venueId : venueText ? normalizeName(e.venue ?? '') === venueText : !e.venueId && !e.venue;
+  if (q.subjectKey) {
+    const same = onDate.filter((e) => e.subjectKey === q.subjectKey && sameVenue(e));
     if (same.length === 1) return { kind: 'same', edition: same[0], via: 'date_venue_subject' };
     if (same.length > 1) return { kind: 'ambiguous', editions: same };
   }

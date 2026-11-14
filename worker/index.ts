@@ -12,6 +12,7 @@ import { isRetentionTime, runRetention } from '../src/server/events/retention';
 import { accessGateFromEnv, multiUserFromEnv, workerSettings } from '../src/server/auth/config';
 import { supabaseMemberDirectory, supabaseMemberStores } from '../src/server/auth/members';
 import { MEMBER_BACKFILL_OVERRIDE_SETTING, overrideActive, runMemberBackfill } from '../src/server/canon/memberBackfill';
+import { dedupeProvisionalEditions } from '../src/server/canon/dedupeProvisional';
 import { getSupabaseClient } from '../src/server/supabase';
 import { createEmailNotifier, isDigestTime } from '../src/server/email/notifier';
 import { resendFromEnv } from '../src/server/email/sender';
@@ -174,6 +175,13 @@ async function runCron(env: Env): Promise<void> {
       const trace = startTrace('backfill');
       const overrideValue = await deps.store.getSetting<{ until?: string }>(MEMBER_BACKFILL_OVERRIDE_SETTING);
       const anyNotice = overrideActive(overrideValue, now);
+      // Duplicate provisional editions first (KREAM incident): one key, one edition, before the backfill adds more.
+      try {
+        const dedupe = await dedupeProvisionalEditions(deps.store);
+        if (dedupe) console.log(`Provisional duplicates: ${JSON.stringify(dedupe)}`);
+      } catch (err) {
+        console.error('Provisional dedupe failed:', err instanceof Error ? err.message : String(err));
+      }
       const report = await runMemberBackfill(deps.store, members, { anyNotice });
       const b = currentBudget();
       if (report) {
