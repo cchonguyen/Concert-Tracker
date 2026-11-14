@@ -20,7 +20,7 @@ import {
   SOURCE_LABELS,
 } from '../services/lineupApi';
 import { artistsOf, dateConfirmations, datesBetween, formatsOf, joinFormats, matchNames, pastArtistNames, pastCompanionNames, pastSets, supportOf, weatherLine, whenLabel } from '../services/format';
-import { actSets, setLabel } from '../server/events/sets';
+import { actSets, byStartTime, chipTime, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
 import { groupReviewSlots, pendingReplacement } from '../services/reviewRows';
@@ -1124,6 +1124,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   // went narrow it when you gave them.
   const multiDay = Boolean(event.endDate && event.endDate !== event.startDate);
   const sets = new Map<string, string>();
+  const chipTimes = new Map<string, string>(); // "Fri 19:00" under a lineup chip
+  const starts = new Map<string, string>(); // earliest start, to order a timed lineup
   for (const p of [
     ...(job?.candidate?.performers ?? []).map((c) => ({ key: c.key, sources: c.sources })),
     ...lineupActs.map((c) => ({ key: c.artistKey, sources: c.sources })),
@@ -1132,6 +1134,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     const onDays = all.filter((s) => s.day && event.daysAttended.includes(s.day));
     const shown = onDays.length ? onDays : all;
     if (shown.length) sets.set(p.key, shown.map((s) => setLabel(s, multiDay)).join('; '));
+    const short = chipTime(shown, multiDay);
+    if (short) chipTimes.set(p.key, short);
+    const first = shown.find((s) => s.start)?.start;
+    if (first) starts.set(p.key, first);
   }
   const days = datesBetween(event.startDate, event.endDate);
   const details = event.details;
@@ -1573,7 +1579,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               new Set(lineupActs.flatMap((p) => p.days || []).filter(Boolean)),
             ).sort();
 
-            const filteredSlots = lineupSlots.filter((slot) => {
+            const matchingSlots = lineupSlots.filter((slot) => {
               if (lineupStage !== 'all') {
                 const matchesStage = slot.items.some((it) => it.item.stages?.includes(lineupStage));
                 if (!matchesStage) return false;
@@ -1589,6 +1595,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               }
               return true;
             });
+            // A timed lineup reads as a timetable: earliest set first, untimed acts after.
+            const slotStart = (slot: (typeof lineupSlots)[number]) =>
+              slot.items.map((it) => starts.get(it.item.artistKey)).filter((t): t is string => Boolean(t)).sort()[0];
+            const filteredSlots = byStartTime(matchingSlots, slotStart);
 
             return (
               <div className="space-y-2">
@@ -1763,6 +1773,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                         {slot.items.some((it) => it.item.billing === 'support') && (
                           <span className="ml-1 text-[10px] text-zinc-400">support</span>
                         )}
+                        {(() => {
+                          const t = slot.items.map((it) => chipTimes.get(it.item.artistKey)).find(Boolean);
+                          return t ? <span className="ml-1.5 text-[10px] tabular-nums text-zinc-400">{t}</span> : null;
+                        })()}
                       </button>
                     );
                   })
