@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { canonicalApi, CanonicalChangeRow, entitiesApi, lineupApi, LookupJob, SOURCE_LABELS, UndoConflictError } from '../services/lineupApi';
+import { canonicalApi, CanonicalChangeRow, entitiesApi, inboxApi, lineupApi, LookupJob, SOURCE_LABELS, UndoConflictError } from '../services/lineupApi';
 import { reviewSubjectFromEdition } from '../services/reviewRows';
 import type { Edition, EditionPerformance } from '../server/lineup/types';
 import type { ArtistAppearance, CanonicalArtistRecord, CanonicalEditionSummary } from '../server/entities/canonicalManage';
@@ -511,6 +511,36 @@ const BILLING_WORDS: Record<string, string> = { headliner: 'Headliner', support:
 // shows its quote, or the "Admin curated" badge for the owner's own curation.
 const EditionDetail: React.FC<{ edition: Edition; onEditLineup: () => void; onFactsSaved: (edition: Edition) => void }> = ({ edition, onEditLineup, onFactsSaved }) => {
   const [editingFacts, setEditingFacts] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  // The last verify or undo result, kept with its edition id so it never shows on another edition.
+  const [verifyNote, setVerifyNote] = useState<{ editionId: string; text: string; changeId?: string } | null>(null);
+  const verifyError = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Try again.');
+  const verifyEdition = async () => {
+    setVerifying(true);
+    try {
+      const r = await canonicalApi.verifyEdition(edition.id);
+      setVerifyNote({ editionId: edition.id, text: 'Verified. Members can now see it.', changeId: r.changeId ?? undefined });
+      onFactsSaved({ ...edition, status: 'verified' });
+    } catch (e) {
+      setVerifyNote({ editionId: edition.id, text: `Could not verify. ${verifyError(e)}` });
+    } finally {
+      setVerifying(false);
+    }
+  };
+  const undoVerify = async (changeId: string) => {
+    setVerifying(true);
+    try {
+      await inboxApi.undo(changeId, edition.id);
+      setVerifyNote({ editionId: edition.id, text: 'Undone. The edition is provisional again.' });
+      onFactsSaved({ ...edition, status: 'provisional' });
+    } catch (e) {
+      // Keep the change id so Undo can be tried again.
+      setVerifyNote({ editionId: edition.id, text: `Could not undo. ${verifyError(e)}`, changeId });
+    } finally {
+      setVerifying(false);
+    }
+  };
+  const note = verifyNote?.editionId === edition.id ? verifyNote : null;
   const names = new Map(edition.performances.map((p) => [p.artistKey, p.name]));
   const dates = [edition.startDate, edition.endDate && edition.endDate !== edition.startDate ? `to ${edition.endDate}` : null].filter(Boolean).join(' ');
   const facts: Array<[string, string | undefined]> = [
@@ -530,10 +560,30 @@ const EditionDetail: React.FC<{ edition: Edition; onEditLineup: () => void; onFa
           <p className="text-xs text-zinc-500">Catalog record. Your personal log is not changed.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {edition.status === 'provisional' && (
+            <Button variant="primary" onClick={() => void verifyEdition()} disabled={verifying}>
+              {verifying && <Loader2 className="h-4 w-4 animate-spin" />} Verify for everyone
+            </Button>
+          )}
           {!editingFacts && <Button onClick={() => setEditingFacts(true)}>Edit facts</Button>}
           <Button onClick={onEditLineup}>Edit lineup</Button>
         </div>
       </div>
+      {(edition.status === 'provisional' || note) && (
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          {edition.status === 'provisional' && <span className="text-xs text-zinc-500">Members entered this. Verifying makes it autofill for everyone.</span>}
+          {note && (
+            <>
+              <span className="text-zinc-300" role="status">{note.text}</span>
+              {note.changeId && (
+                <button onClick={() => void undoVerify(note.changeId!)} disabled={verifying} className="text-violet-300 hover:text-violet-200 disabled:opacity-40">
+                  Undo
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
       {editingFacts ? (
         <EditionFactsForm
           edition={edition}
