@@ -2,6 +2,7 @@
 
 - **Last Active Platform:** Claude Code (cloud session)
 - **Active Branch / State:** main at 816cc86 (PR #353 merged, 2026-11-13). The ingest and self-healing canon plan (docs/ingest-canon-plan.md, Slices 11.0 to 11.22) is fully built and merged.
+- **Canon review (2026-11-14, PRs #365, #371, #373, #375, #379, #382; scope in `.spec/CANON_REVIEW_SCOPE.md`):** verified editions autofill for members (12.1); Editions list filters and labels Verified, Provisional, Draft (12.2, 12.3); owner "Verify for everyone" with undo on a provisional edition (12.4, 12.5); cron backfill of provisional editions from members' existing dated events, accepted notice v2 only (12.8, `src/server/canon/memberBackfill.ts`). No migration. Not built: anonymous candidate list, agreement counting, "not verified" picker label. Production before the backfill: 74 verified, 0 provisional editions. Next check: cron logs for "Member backfill", then Charlie reviews Provisional in Global archive > Editions. Raising `SUBREQUEST_LIMIT` speeds the backfill.
 - **Done this session (ingest canon, PRs #308 to #353):**
   - Phase 0 and 1 (11.0 to 11.10): rules, source terms, parser, picker rows, reader RPCs and config, stage 2 gates, MusicBrainz retry, migrations 0040 to 0042, store methods, `writeEdition` and undo.
   - 11.11 to 11.14: `match.ts` and `upsertOccurrence`, inheritance on read (`captured`, `overrides`), suggestion tap links the edition, backfill of editions from the owner's events and email imports (also fixed `supabaseStore` not saving `venue_id`, `subject_key`, `has_lineup`).
