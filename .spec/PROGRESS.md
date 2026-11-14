@@ -15,3 +15,4 @@ Contracts: SYSTEM_SPEC.md section 3. `[CORE / DATA]` slices need passing unit te
 ## Ingest and self-healing canon (plan: `docs/ingest-canon-plan.md`, approved 2026-11-13; open each issue when the slice starts)
 
 ## Canon review workflow (scope: `.spec/CANON_REVIEW_SCOPE.md`, approved by Charlie 2026-11-13; open each issue when the slice starts)
+- [ ] **Slice 0.1: Match split B2B acts that carry no candidate key** [IN_PROGRESS] [CORE / DATA] On-the-fly: Charlie: Dreamstate B2B re-save still had no set times Target files: src/server/lineup/learning.ts, tests/splitActs.test.ts | Issue: #411 | Verify: npm test --silent && npm run lint --silent
