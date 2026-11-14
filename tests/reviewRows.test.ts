@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { filterOptions, groupReviewSlots, startRows } from '../src/services/reviewRows.ts';
+import { filterOptions, groupReviewSlots, pendingReplacement, startRows } from '../src/services/reviewRows.ts';
 
 const src = (name: string) => ({ sourceType: 'clashfinder' as const, sourceUrl: 'https://clashfinder.com/s/x/', quotedSpan: name, evidence: 'crowd' as const, extractor: 'cf' });
 const cand = (name: string, extra: any = {}) => ({ key: name.toLowerCase(), name, days: [], stages: [], confidence: 0.9, flagged: false, status: 'billed', sources: [src(name)], ...extra }) as any;
@@ -234,4 +234,40 @@ test('a saved act you did not keep whole is still split on reopen (legacy behavi
   } as any;
   const rows = startRows([], edition);
   assert.deepEqual(rows.map((r) => r.name), ['Niiko', 'Swae']);
+});
+
+test('replacing a confirmed lineup starts from the new version, keeping your own fixes', () => {
+  const gem = (name: string) => ({ sourceType: 'promoter' as const, sourceUrl: 'https://dreamstate.example/lineup', quotedSpan: name, evidence: 'billed' as const, extractor: 'gemini:x' });
+  const timed = (name: string, day: string, stage: string) =>
+    cand(name, { days: [day], stages: [stage], sources: [{ ...src(name), sets: [{ day, stage, start: `${day} 21:00`, end: `${day} 22:00` }] }] });
+  const performers = [timed('Matty Ralph', '2026-11-20', 'Vision'), timed('New Act', '2026-11-21', 'Dream'), cand('Odd', { flagged: true })];
+  const edition = {
+    performances: [
+      { artistKey: 'matty ralph', name: 'Matty Ralph', days: [], stages: [], status: 'billed', billing: 'headliner', confidence: 1, sources: [gem('Matty Ralph')] },
+      { artistKey: 'visionv', name: 'VisionV', days: [], stages: [], status: 'billed', confidence: 1, sources: [gem('VisionV')] },
+      { artistKey: 'by hand', name: 'By Hand', days: [], stages: [], status: 'billed', confidence: 1, sources: [{ sourceType: 'user', sourceUrl: '', quotedSpan: 'By Hand', evidence: 'billed', extractor: 'user' }] },
+    ],
+  } as any;
+  const rows = startRows(performers, edition, { replacing: true });
+  assert.deepEqual(rows.map((r) => [r.name, r.accepted]), [
+    ['Matty Ralph', true],
+    ['New Act', true], // new in this version: ticked, not treated as rejected
+    ['Odd', false], // flagged by the lookup, as on a first review
+    ['VisionV', false], // only the old lineup had it
+    ['By Hand', true], // you added it
+  ]);
+  assert.equal(rows[0].billing, 'headliner');
+  assert.deepEqual(rows[0].days, ['2026-11-20']);
+  assert.deepEqual(rows[0].stages, ['Vision']);
+  assert.equal(rows[1].candidate?.sources[0].sets?.[0].start, '2026-11-21 21:00');
+  // Reopening without replacing keeps the old behaviour.
+  assert.deepEqual(startRows(performers, edition).map((r) => r.accepted), [true, false, false, true, true]);
+});
+
+test('a finished lookup on a confirmed lineup is a pending replacement; a cached one is not', () => {
+  const edition = { performances: [] } as any;
+  assert.equal(pendingReplacement({ id: 'j', input: {} as any, status: 'needs_review', candidate: { performers: [] } as any }, edition), true);
+  assert.equal(pendingReplacement({ id: 'j', input: {} as any, status: 'needs_review', candidate: { performers: [], cached: true } as any }, edition), false);
+  assert.equal(pendingReplacement({ id: 'j', input: {} as any, status: 'confirmed', candidate: { performers: [] } as any }, edition), false);
+  assert.equal(pendingReplacement({ id: 'j', input: {} as any, status: 'needs_review', candidate: { performers: [] } as any }, null), false);
 });

@@ -3,7 +3,7 @@ import { AlertTriangle, ExternalLink, Loader2, Plus, X } from 'lucide-react';
 import type { RejectReason } from '../server/lineup/learning';
 import { lineupApi, collaborationsApi, type CollaborationItem, LoggedEvent, LookupJob, SOURCE_LABELS } from '../services/lineupApi';
 import { EventTitle } from './EventTitle';
-import { filterOptions, groupReviewSlots, startRows, type ReviewSubject } from '../services/reviewRows';
+import { filterOptions, groupReviewSlots, pendingReplacement, startRows, type ReviewSubject } from '../services/reviewRows';
 import { hasUnambiguousB2bMark, readActName } from '../server/lineup/actName';
 import { normalizeName } from '../server/lineup/text';
 import { normalizeSet } from '../server/events/seen';
@@ -56,6 +56,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
   const canonical = (mode ?? (event ? 'personal' : 'canonical')) === 'canonical';
   const seenSource = event?.seen ?? [];
   const candidate = job.candidate;
+  const replacing = !canonical && pendingReplacement(job, edition);
   // A role you set on a seen act wins over the sources'.
   const yourSet = new Map(seenSource.filter((s) => s.set).map((s) => [s.key, s.set!]));
   const yourRole = new Map(seenSource.filter((s) => s.roleFrom === 'you').map((s) => [s.key, s.role ?? '']));
@@ -71,7 +72,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
   };
 
   const [rows, setRows] = useState<Row[]>(
-    startRows(candidate?.performers ?? [], edition).map((r) => {
+    startRows(candidate?.performers ?? [], edition, { replacing }).map((r) => {
       const rawSet = yourSet.get(r.seenKey) ?? r.set ?? r.candidate?.set ?? '';
       return {
         key: r.key,
@@ -426,7 +427,9 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
           <div>
             <h2 className="text-lg font-bold text-zinc-50">{canonical ? 'Lineup for ' : 'Who played '}{event ? <EventTitle event={event} /> : `${job.input.eventName} ${job.input.year}`}</h2>
             <p className="text-xs text-zinc-400">
-              {edition
+              {replacing
+                ? 'The version you chose. Saving replaces your confirmed lineup; your spellings, roles and who you saw are kept. Acts only the old lineup had start unticked.'
+                : edition
                 ? 'Your saved lineup. Change anything and save again.'
                 : candidate?.cached
                 ? 'This edition was confirmed before, so it came straight from your database.'

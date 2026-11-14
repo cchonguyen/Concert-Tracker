@@ -23,7 +23,7 @@ import { artistsOf, dateConfirmations, datesBetween, formatsOf, joinFormats, mat
 import { actSets, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
-import { groupReviewSlots } from '../services/reviewRows';
+import { groupReviewSlots, pendingReplacement } from '../services/reviewRows';
 import { norm } from '../services/listImport';
 import { leaveB2b, pairB2b, seenSlots, SET_LABELS, setSolo, SlotAct, slotId, toSeenInput } from '../server/events/seen';
 import { eventTitle, seriesList, seriesOffers } from '../services/series';
@@ -1551,7 +1551,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </div>
           )}
           {/* A replacement lookup on a confirmed edition shows its progress too, so it never looks like nothing happened. */}
-          {job && (!edition || isActive(job.status)) && (
+          {job && (!edition || isActive(job.status) || pendingReplacement(job, edition)) && (
             <LineupProgress
               job={job}
               busy={busy === 'retry'}
