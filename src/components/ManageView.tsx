@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, HeartPulse, History, Layers, Loader2, MapPin, Mic2, Plus, Search, Tag, Undo2, Users } from 'lucide-react';
 import { canonicalApi, entitiesApi, LoggedEvent } from '../services/lineupApi';
 import type { ArtistOrigin, CanonicalArtistSummary } from '../server/entities/canonicalManage';
@@ -14,6 +14,15 @@ import { Segmented, type SegmentedOption } from './ui/Segmented';
 import { CanonicalArchive, type ArchiveSection, type EditionStatus } from './CanonicalArchive';
 import { useIsOwner } from './MeContext';
 import { AdminInbox } from './AdminInbox';
+import {
+  parseManageParams,
+  buildManageUrl,
+  buildManageSearch,
+  rememberManageSearch,
+  entityUrl,
+  isModifiedClick,
+  type ManageRouteState,
+} from '../services/manageNav';
 
 const ORIGIN_BADGE: Record<ArtistOrigin, string> = {
   from_me: 'From me',
@@ -70,6 +79,15 @@ const SECTION_OPTIONS: MenuOption<Section>[] = [
   { value: 'history' as const, label: 'History', icon: History },
 ];
 
+const VALID_KINDS: readonly string[] = [
+  ...KINDS.map((k) => k.kind),
+  'health',
+  'history',
+];
+
+const isManageKind = (k?: string): k is ManageKind | 'history' | 'health' =>
+  Boolean(k && VALID_KINDS.includes(k));
+
 // The Global archive's sections, as header tabs (a row that scrolls sideways on narrow screens).
 const ARCHIVE_TABS: Array<{ value: ArchiveSection; label: string }> = [
   { value: 'artists', label: 'Artists' },
@@ -121,7 +139,23 @@ const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyl
 export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEvent, onOpenTable, onEventsChanged, onEventChanged }) => {
   const [data, setData] = useState<ManageData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [kind, setKind] = useState<ManageKind | 'history' | 'health'>(target?.kind ?? 'artist');
+
+  const initial = useRef<ManageRouteState | null>(null);
+  if (!initial.current) {
+    initial.current = parseManageParams(typeof window !== 'undefined' ? window.location.search : '');
+  }
+  const init = initial.current;
+
+  const [scope, setScope] = useState<'mine' | 'archive'>(init.scope);
+  const [archiveSection, setArchiveSection] = useState<ArchiveSection>(init.section ?? 'editions');
+  const [editionStatus, setEditionStatus] = useState<EditionStatus>(init.status ?? 'all');
+  const [kind, setKind] = useState<ManageKind | 'history' | 'health'>(() => {
+    if (init.kind && isManageKind(init.kind)) return init.kind;
+    return target?.kind ?? 'artist';
+  });
+  const [openId, setOpenId] = useState<string | null>(init.id ?? target?.id ?? null);
+  const [query, setQuery] = useState(init.q ?? '');
+
   const isOwner = useIsOwner();
   // Owner only: where each of my artist names also sits in the shared catalog (origin badges).
   const [origins, setOrigins] = useState<Map<string, CanonicalArtistSummary['origins']>>(new Map());
@@ -132,11 +166,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
       .then(({ artists }) => setOrigins(new Map(artists.map((a) => [a.key, a.origins]))))
       .catch(() => setOrigins(new Map()));
   }, [isOwner]);
-  const [scope, setScope] = useState<'mine' | 'archive'>('mine');
-  const [archiveSection, setArchiveSection] = useState<ArchiveSection>('artists');
-  const [editionStatus, setEditionStatus] = useState<EditionStatus>('all');
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
+
   const [history, setHistory] = useState<HistoryEntry[] | null>(null);
   const [notice, setNotice] = useState<{ text: string; undo?: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -160,6 +190,59 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
 
   const byId = useMemo(() => new Map((data?.entities ?? []).map((e) => [e.id, e])), [data]);
 
+  // Keep Manage state synchronized with browser Back and Forward navigation
+  useEffect(() => {
+    const onPop = () => {
+      const parsed = parseManageParams(window.location.search);
+      setScope(parsed.scope);
+      if (parsed.scope === 'archive') {
+        setArchiveSection(parsed.section ?? 'editions');
+        setEditionStatus(parsed.status ?? 'all');
+      } else {
+        if (parsed.kind && isManageKind(parsed.kind)) {
+          setKind(parsed.kind);
+        }
+      }
+      setOpenId(parsed.id ?? null);
+      setQuery(parsed.q ?? '');
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  const openEntity = useCallback((id: string, targetKind?: ManageKind) => {
+    const nextKind = targetKind ?? (byId.get(id)?.kind as ManageKind) ?? (kind !== 'history' && kind !== 'health' ? kind : 'artist');
+    setKind(nextKind);
+    setOpenId(id);
+    const route: ManageRouteState = {
+      scope: 'mine',
+      kind: nextKind,
+      id,
+    };
+    const url = buildManageUrl(route, window.location.pathname);
+    window.history.pushState({ fromManageList: true, manageEntity: id }, '', url);
+    rememberManageSearch(buildManageSearch(route));
+  }, [byId, kind]);
+
+  const closeEntity = useCallback(() => {
+    if (window.history.state?.fromManageList) {
+      window.history.back();
+    } else {
+      setOpenId(null);
+      const entityKind = openId ? byId.get(openId)?.kind : undefined;
+      const targetKind = entityKind ?? (kind !== 'history' && kind !== 'health' ? kind : 'artist');
+      setKind(targetKind);
+      const route: ManageRouteState = {
+        scope: 'mine',
+        kind: targetKind,
+        q: query.trim() || undefined,
+      };
+      const url = buildManageUrl(route, window.location.pathname);
+      window.history.replaceState(null, '', url);
+      rememberManageSearch(buildManageSearch(route));
+    }
+  }, [byId, kind, openId, query]);
+
   // Open what another tab asked for, once the records are here.
   useEffect(() => {
     if (!target || !data) return;
@@ -179,6 +262,16 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
       if (found?.mergedIntoId) id = found.mergedIntoId;
     }
     setOpenId(id);
+    if (id) {
+      const route: ManageRouteState = {
+        scope: 'mine',
+        kind: target.kind,
+        id,
+      };
+      const url = buildManageUrl(route, window.location.pathname);
+      window.history.replaceState({ manageEntity: id }, '', url);
+      rememberManageSearch(buildManageSearch(route));
+    }
   }, [target, data, byId]);
 
   const counts = useMemo(() => eventsByEntity(events), [events]);
@@ -220,7 +313,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
       const { entity, entry } = await entitiesApi.createOrganization(newOrg);
       setNewOrg('');
       await changed(entry, false);
-      setOpenId(entity.id);
+      openEntity(entity.id, 'organization');
     } catch (err) {
       setNotice({ text: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -234,7 +327,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
       const { entity, entry } = await entitiesApi.createLabel(newLabel, newGroup.trim() || undefined);
       setNewLabel('');
       await changed(entry, false);
-      setOpenId(entity.id);
+      openEntity(entity.id, 'label');
     } catch (err) {
       setNotice({ text: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -296,6 +389,16 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
             setScope(s);
             setOpenId(null);
             setQuery('');
+            const nextSection: ArchiveSection = s === 'archive' ? 'editions' : archiveSection;
+            if (s === 'archive') {
+              setArchiveSection('editions');
+            }
+            const route: ManageRouteState = s === 'archive'
+              ? { scope: 'archive', section: 'editions', status: editionStatus !== 'all' ? editionStatus : undefined }
+              : { scope: 'mine', kind };
+            const url = buildManageUrl(route, window.location.pathname);
+            window.history.replaceState(null, '', url);
+            rememberManageSearch(buildManageSearch(route));
           }}
         />
       )}
@@ -315,6 +418,14 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
                   setArchiveSection(t.value);
                   setOpenId(null);
                   setQuery('');
+                  const route: ManageRouteState = {
+                    scope: 'archive',
+                    section: t.value,
+                    status: t.value === 'editions' && editionStatus !== 'all' ? editionStatus : undefined,
+                  };
+                  const url = buildManageUrl(route, window.location.pathname);
+                  window.history.replaceState(null, '', url);
+                  rememberManageSearch(buildManageSearch(route));
                 }}
                 className={`shrink-0 whitespace-nowrap rounded-t-md border-b-2 px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
                   selected ? 'border-violet-400 text-zinc-50' : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -336,14 +447,48 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
               <input
                 className={`${control} pl-8`}
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  const nextQ = e.target.value;
+                  setQuery(nextQ);
+                  const route: ManageRouteState = archive
+                    ? {
+                        scope: 'archive',
+                        section: archiveSection,
+                        status: archiveSection === 'editions' && editionStatus !== 'all' ? editionStatus : undefined,
+                        q: nextQ.trim() || undefined,
+                      }
+                    : {
+                        scope: 'mine',
+                        kind,
+                        q: nextQ.trim() || undefined,
+                      };
+                  const url = buildManageUrl(route, window.location.pathname);
+                  window.history.replaceState(null, '', url);
+                  rememberManageSearch(buildManageSearch(route));
+                }}
                 placeholder={searchPlaceholder}
                 aria-label="Find"
               />
             </label>
           )}
           {archive && archiveSection === 'editions' && (
-            <MenuButton label="Edition status" value={editionStatus} options={EDITION_STATUS_OPTIONS} onChange={setEditionStatus} />
+            <MenuButton
+              label="Edition status"
+              value={editionStatus}
+              options={EDITION_STATUS_OPTIONS}
+              onChange={(st) => {
+                setEditionStatus(st);
+                const route: ManageRouteState = {
+                  scope: 'archive',
+                  section: archiveSection,
+                  status: st !== 'all' ? st : undefined,
+                  q: query.trim() || undefined,
+                };
+                const url = buildManageUrl(route, window.location.pathname);
+                window.history.replaceState(null, '', url);
+                rememberManageSearch(buildManageSearch(route));
+              }}
+            />
           )}
           {!archive && (
             <MenuButton
@@ -351,9 +496,17 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
               value={kind}
               options={SECTION_OPTIONS}
               onChange={(s) => {
-                setKind(s as ManageKind | 'history' | 'health');
+                const nextKind = s as ManageKind | 'history' | 'health';
+                setKind(nextKind);
                 setOpenId(null);
                 setQuery('');
+                const route: ManageRouteState = {
+                  scope: 'mine',
+                  kind: nextKind,
+                };
+                const url = buildManageUrl(route, window.location.pathname);
+                window.history.replaceState(null, '', url);
+                rememberManageSearch(buildManageSearch(route));
               }}
               className={showSearch ? '' : 'ml-auto'}
             />
@@ -391,8 +544,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
           counts={counts}
           onOpen={(id) => {
             const e = byId.get(id);
-            if (e) setKind(e.kind);
-            setOpenId(id);
+            openEntity(id, e?.kind);
           }}
           onChanged={changed}
         />
@@ -439,8 +591,8 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
           events={counts.get(open.id) ?? []}
           allEvents={events}
           duplicates={(duplicateOf.get(open.id) ?? []).map((id) => byId.get(id)!).filter(Boolean)}
-          onBack={() => setOpenId(null)}
-          onOpen={setOpenId}
+          onBack={closeEntity}
+          onOpen={(id) => openEntity(id)}
           onOpenEvent={onOpenEvent}
           onOpenTable={onOpenTable}
           onChanged={changed}
@@ -451,10 +603,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
             <CollaborationsCard
               allArtists={live.map((e) => ({ id: e.id, name: e.name }))}
               searchQuery={query}
-              onOpenArtist={(id) => {
-                setKind('artist');
-                setOpenId(id);
-              }}
+              onOpenArtist={(id) => openEntity(id, 'artist')}
               onChanged={changed}
             />
           )}
@@ -531,7 +680,15 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
                 const hosts = e.kind === 'series' ? data.links.filter((l) => l.fromId === e.id && l.role === 'hosted_by').length : 0;
                 return (
                   <li key={e.id}>
-                    <button onClick={() => setOpenId(e.id)} className="flex w-full items-baseline gap-3 px-3 py-2 text-left hover:bg-zinc-900/60">
+                    <a
+                      href={entityUrl(kind, e.id)}
+                      onClick={(ev) => {
+                        if (isModifiedClick(ev)) return;
+                        ev.preventDefault();
+                        openEntity(e.id);
+                      }}
+                      className="flex w-full items-baseline gap-3 px-3 py-2 text-left hover:bg-zinc-900/60"
+                    >
                       <span className="min-w-0 flex-1 truncate text-sm text-zinc-100">{entityLabel(e)}</span>
                       {duplicateOf.has(e.id) && (
                         <span className="shrink-0 rounded bg-amber-950/50 px-1.5 text-[11px] text-amber-300" title="Another record looks like the same one">
@@ -548,7 +705,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
                       {hosts > 0 && <span className="shrink-0 text-[11px] text-zinc-400">hosted</span>}
                       {e.kind === 'label' && typeof e.attrs.group === 'string' && <span className="shrink-0 text-[11px] text-zinc-400">{e.attrs.group}</span>}
                       <span className="w-10 shrink-0 text-right text-xs tabular-nums text-zinc-400">{e.kind === 'organization' ? '' : n}</span>
-                    </button>
+                    </a>
                   </li>
                 );
               })}

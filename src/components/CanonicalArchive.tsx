@@ -1,16 +1,38 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
-import { canonicalApi, CanonicalChangeRow, entitiesApi, inboxApi, lineupApi, LookupJob, SOURCE_LABELS, UndoConflictError } from '../services/lineupApi';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Loader2, RefreshCw } from 'lucide-react';
+import {
+  canonicalApi,
+  CanonicalChangeRow,
+  entitiesApi,
+  FIELD_SOURCE_LABELS,
+  inboxApi,
+  lineupApi,
+  type LineupStatus,
+  LookupJob,
+  SOURCE_LABELS,
+  UndoConflictError,
+} from '../services/lineupApi';
 import { reviewSubjectFromEdition } from '../services/reviewRows';
 import type { Edition, EditionPerformance } from '../server/lineup/types';
+import type { DetailCandidate, EventDetails } from '../server/events/types';
 import type { ArtistAppearance, CanonicalArtistRecord, CanonicalEditionSummary } from '../server/entities/canonicalManage';
+import { sameCountry } from '../server/events/regions';
 import { CanonicalArtistEntry, ORIGIN_LABEL, type SavedChange } from './CanonicalArtistEntry';
+import { CheckDetails, type Suggestion } from './CheckDetails';
 import { LineupReview } from './LineupReview';
 import { Button } from './ui/Button';
 import { Callout } from './ui/Callout';
 import { Notice } from './ui/Notice';
 import { Pill } from './ui/Pill';
 import { VersionPicker } from './ui/VersionPicker';
+import {
+  buildManageUrl,
+  canonicalArtistUrl,
+  editionUrl,
+  isModifiedClick,
+  parseManageParams,
+  rememberManageSearch,
+} from '../services/manageNav';
 
 // Global Archive (owner only, spec Phase 4). Each section is one body rendered by ManageView:
 // Artists, Editions & Lineups, Lookups, Changes. Counts only; no member names. Never writes a personal log.
@@ -62,6 +84,8 @@ export const CanonicalArchive: React.FC<{ section: ArchiveSection; query: string
 const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
   const [artists, setArtists] = useState<CanonicalArtistRecord[] | null>(null);
   const [detail, setDetail] = useState<{ artist: CanonicalArtistRecord; appearances: ArtistAppearance[] } | null>(null);
+  const detailRef = useRef<{ artist: CanonicalArtistRecord; appearances: ArtistAppearance[] } | null>(null);
+  detailRef.current = detail;
   // The last saved change, with its Undo (the history entry's id).
   const [notice, setNotice] = useState<{ text: string; undo?: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -79,7 +103,7 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
     void loadList();
   }, [loadList]);
 
-  const openArtist = async (key: string) => {
+  const openArtist = useCallback(async (key: string) => {
     setError(null);
     try {
       const r = await canonicalApi.artist(key);
@@ -87,14 +111,50 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
     } catch (err) {
       setError(messageOf(err));
     }
-  };
+  }, []);
+
+  const handleBackToArtists = useCallback(() => {
+    if (typeof window !== 'undefined' && window.history.state?.fromManageList) {
+      window.history.back();
+    } else {
+      const url = buildManageUrl(
+        { scope: 'archive', section: 'artists', q: query || undefined },
+        typeof window !== 'undefined' ? window.location.pathname : '/app',
+      );
+      window.history.replaceState(null, '', url);
+      rememberManageSearch(new URL(url, window.location.origin).search);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  }, [query]);
+
+  useEffect(() => {
+    const syncFromUrl = () => {
+      const params = parseManageParams(window.location.search);
+      if (params.artist) {
+        if (detailRef.current?.artist.key !== params.artist) {
+          void openArtist(params.artist);
+        }
+      } else if (detailRef.current) {
+        setDetail(null);
+      }
+    };
+    syncFromUrl();
+    window.addEventListener('popstate', syncFromUrl);
+    return () => window.removeEventListener('popstate', syncFromUrl);
+  }, [openArtist]);
 
   // A saved change: show it with Undo, then the artist where it now is (the list after a merge).
   const changed = async (entry: SavedChange, key: string | null) => {
     setNotice({ text: `${entry.summary}.`, undo: entry.id });
     await loadList();
-    if (key === null) setDetail(null);
-    else await openArtist(key);
+    if (key === null) {
+      handleBackToArtists();
+    } else {
+      const url = canonicalArtistUrl(key, { q: query || undefined });
+      window.history.replaceState({ fromManageList: window.history.state?.fromManageList }, '', url);
+      rememberManageSearch(new URL(url, window.location.origin).search);
+      await openArtist(key);
+    }
   };
 
   const undo = async (id: string) => {
@@ -102,7 +162,7 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
     try {
       const r = await entitiesApi.undo(id);
       setNotice({ text: `Undid: ${r.entry.summary}.` });
-      setDetail(null);
+      handleBackToArtists();
       await loadList();
     } catch (err) {
       setNotice({ text: messageOf(err) });
@@ -130,7 +190,7 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
           artist={detail.artist}
           appearances={detail.appearances}
           artists={artists ?? []}
-          onBack={() => setDetail(null)}
+          onBack={handleBackToArtists}
           onChanged={(entry, key) => void changed(entry, key)}
         />
       </div>
@@ -152,22 +212,35 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
         <p className="text-sm text-zinc-400">No artist matches "{query}".</p>
       ) : (
         <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
-          {shown.map((a) => (
-            <li key={a.key}>
-              <button onClick={() => void openArtist(a.key)} className="flex w-full flex-wrap items-center gap-2 p-2.5 text-left text-sm hover:bg-zinc-900/60">
-                <span className="text-zinc-100">{a.name}</span>
-                {a.origins.map((o) => (
-                  <Pill key={o} tone="neutral">{ORIGIN_LABEL[o]}</Pill>
-                ))}
-                <span className="text-[11px] text-zinc-500">{a.mbid ? 'MusicBrainz' : 'No MusicBrainz id'}</span>
-                {a.akas.length > 0 && <span className="basis-full text-xs text-zinc-500">Also known as {a.akas.join(', ')}</span>}
-                <span className="ml-auto text-xs text-zinc-400">
-                  {a.editionsCount} billed {a.editionsCount === 1 ? 'edition' : 'editions'}
-                  {a.communityCount === null ? '' : ` · ${a.communityCount} community`}
-                </span>
-              </button>
-            </li>
-          ))}
+          {shown.map((a) => {
+            const url = canonicalArtistUrl(a.key, { q: query || undefined });
+            return (
+              <li key={a.key}>
+                <a
+                  href={url}
+                  onClick={(e) => {
+                    if (isModifiedClick(e)) return;
+                    e.preventDefault();
+                    window.history.pushState({ fromManageList: true }, '', url);
+                    rememberManageSearch(new URL(url, window.location.origin).search);
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }}
+                  className="flex w-full flex-wrap items-center gap-2 p-2.5 text-left text-sm hover:bg-zinc-900/60"
+                >
+                  <span className="text-zinc-100">{a.name}</span>
+                  {a.origins.map((o) => (
+                    <Pill key={o} tone="neutral">{ORIGIN_LABEL[o]}</Pill>
+                  ))}
+                  <span className="text-[11px] text-zinc-500">{a.mbid ? 'MusicBrainz' : 'No MusicBrainz id'}</span>
+                  {a.akas.length > 0 && <span className="basis-full text-xs text-zinc-500">Also known as {a.akas.join(', ')}</span>}
+                  <span className="ml-auto text-xs text-zinc-400">
+                    {a.editionsCount} billed {a.editionsCount === 1 ? 'edition' : 'editions'}
+                    {a.communityCount === null ? '' : ` · ${a.communityCount} community`}
+                  </span>
+                </a>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>
@@ -178,6 +251,8 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
   // The page is the first 200 matches of the filter (searched across the whole catalog); `total` counts every match.
   const [page, setPage] = useState<{ editions: CanonicalEditionSummary[]; total: number; hasMore: boolean } | null>(null);
   const [detail, setDetail] = useState<Edition | null>(null);
+  const detailRef = useRef<Edition | null>(null);
+  detailRef.current = detail;
   // Edit lineup: the review screen, seeded from the saved edition (canonical mode).
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -195,14 +270,44 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
     void load();
   }, [load]);
 
-  const openEdition = async (id: string) => {
+  const openEdition = useCallback(async (id: string) => {
     setError(null);
     try {
       setDetail((await canonicalApi.edition(id)).edition);
     } catch (err) {
       setError(messageOf(err));
     }
-  };
+  }, []);
+
+  const handleBackToEditions = useCallback(() => {
+    if (typeof window !== 'undefined' && window.history.state?.fromManageList) {
+      window.history.back();
+    } else {
+      const url = buildManageUrl(
+        { scope: 'archive', section: 'editions', status, q: query || undefined },
+        typeof window !== 'undefined' ? window.location.pathname : '/app',
+      );
+      window.history.replaceState(null, '', url);
+      rememberManageSearch(new URL(url, window.location.origin).search);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  }, [status, query]);
+
+  useEffect(() => {
+    const syncFromUrl = () => {
+      const params = parseManageParams(window.location.search);
+      if (params.edition) {
+        if (detailRef.current?.id !== params.edition) {
+          void openEdition(params.edition);
+        }
+      } else if (detailRef.current) {
+        setDetail(null);
+      }
+    };
+    syncFromUrl();
+    window.addEventListener('popstate', syncFromUrl);
+    return () => window.removeEventListener('popstate', syncFromUrl);
+  }, [openEdition]);
 
   if (detail && editing) {
     return (
@@ -222,15 +327,20 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
   if (detail) {
     return (
       <div className="space-y-4">
-        <button
-          onClick={() => {
-            setDetail(null);
-            void load();
+        <a
+          href={buildManageUrl(
+            { scope: 'archive', section: 'editions', status, q: query || undefined },
+            typeof window !== 'undefined' ? window.location.pathname : '/app',
+          )}
+          onClick={(e) => {
+            if (isModifiedClick(e)) return;
+            e.preventDefault();
+            handleBackToEditions();
           }}
           className="text-sm text-violet-300 hover:text-violet-200"
         >
           ← Back to editions
-        </button>
+        </a>
         <EditionDetail edition={detail} onEditLineup={() => setEditing(true)} onFactsSaved={setDetail} />
       </div>
     );
@@ -249,15 +359,28 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
             {page.hasMore ? `Showing ${page.editions.length} of ${page.total}` : `${page.total} ${page.total === 1 ? 'edition' : 'editions'}`}
           </p>
           <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
-            {page.editions.map((e) => (
-              <li key={e.id}>
-                <button onClick={() => void openEdition(e.id)} className="flex w-full flex-wrap items-baseline gap-x-3 p-2.5 text-left text-sm hover:bg-zinc-900/60">
-                  <span className="font-medium text-zinc-100">{e.name}</span>
-                  <span className="text-xs text-zinc-400">{[e.startDate, e.venue, e.city].filter(Boolean).join(' · ') || 'Details missing'}</span>
-                  <span className="ml-auto text-xs text-zinc-400">{e.performanceCount} billed · {editionStatusWords(e.status).split(' (')[0].toLowerCase()}{e.hasSetTimes ? ' · set times' : ''}</span>
-                </button>
-              </li>
-            ))}
+            {page.editions.map((e) => {
+              const url = editionUrl(e.id, { status, q: query || undefined });
+              return (
+                <li key={e.id}>
+                  <a
+                    href={url}
+                    onClick={(eNav) => {
+                      if (isModifiedClick(eNav)) return;
+                      eNav.preventDefault();
+                      window.history.pushState({ fromManageList: true }, '', url);
+                      rememberManageSearch(new URL(url, window.location.origin).search);
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    }}
+                    className="flex w-full flex-wrap items-baseline gap-x-3 p-2.5 text-left text-sm hover:bg-zinc-900/60"
+                  >
+                    <span className="font-medium text-zinc-100">{e.name}</span>
+                    <span className="text-xs text-zinc-400">{[e.startDate, e.venue, e.city].filter(Boolean).join(' · ') || 'Details missing'}</span>
+                    <span className="ml-auto text-xs text-zinc-400">{e.performanceCount} billed · {editionStatusWords(e.status).split(' (')[0].toLowerCase()}{e.hasSetTimes ? ' · set times' : ''}</span>
+                  </a>
+                </li>
+              );
+            })}
           </ul>
         </>
       )}
@@ -647,6 +770,110 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [lineupStatus, setLineupStatus] = useState<LineupStatus | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [geminiChecking, setGeminiChecking] = useState(false);
+  const [details, setDetails] = useState<EventDetails | null>(null);
+  const [checkError, setCheckError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    lineupApi.status().then(
+      (st) => {
+        if (alive) setLineupStatus(st);
+      },
+      () => {
+        if (alive) setLineupStatus(null);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const runResearch = async (useGemini: boolean) => {
+    if (useGemini) {
+      setGeminiChecking(true);
+    } else {
+      setChecking(true);
+    }
+    setCheckError(null);
+    try {
+      const res = await canonicalApi.researchEdition(edition.id, {
+        name: values.name,
+        startDate: values.startDate,
+        endDate: values.endDate,
+        venue: values.venue,
+        city: values.city,
+        useGemini,
+      });
+      setDetails(res);
+    } catch (err) {
+      setCheckError(messageOf(err));
+    } finally {
+      if (useGemini) {
+        setGeminiChecking(false);
+      } else {
+        setChecking(false);
+      }
+    }
+  };
+
+  const handlePick = (id: string) => {
+    setDetails((prev) => {
+      if (!prev) return null;
+      const picked = prev.candidates.find((c) => c.id === id);
+      const remaining = prev.candidates.filter((c) => c.id !== id);
+      return {
+        ...prev,
+        status: 'resolved',
+        candidates: picked ? [picked, ...remaining] : prev.candidates,
+      };
+    });
+  };
+
+  const handleNone = () => {
+    setDetails((prev) => (prev ? { ...prev, status: 'none' } : null));
+  };
+
+  const confirmed = details?.status === 'matched' || details?.status === 'resolved' ? details.candidates[0] : undefined;
+  const checkFields: Array<{ key: 'startDate' | 'endDate' | 'venue' | 'city' | 'country'; label: string }> = [
+    { key: 'startDate', label: 'Start date' },
+    { key: 'endDate', label: 'End date' },
+    { key: 'venue', label: 'Venue' },
+    { key: 'city', label: 'City' },
+    ...(FACT_FIELDS.some((f) => (f.key as string) === 'country') ? [{ key: 'country' as const, label: 'Country' }] : []),
+  ];
+
+  const suggestions: Suggestion[] = checkFields.flatMap(({ key: fieldKey, label }) => {
+    if (!confirmed) return [];
+    const v = confirmed[fieldKey as keyof DetailCandidate] as string | undefined;
+    if (!v || !v.trim()) return [];
+    const yours = (values[fieldKey] ?? '').trim();
+    const same = fieldKey === 'country' ? sameCountry(v, yours) : v.trim() === yours;
+    if (same) return [];
+    const src = confirmed.sources.find((s) => s.fields.includes(fieldKey as any)) ?? confirmed.sources[0];
+    const from = src ? (FIELD_SOURCE_LABELS[src.sourceType] ?? SOURCE_LABELS[src.sourceType] ?? src.sourceType) : 'a source';
+    const sourceUrl = src?.sourceUrl || confirmed.sources.find((s) => s.sourceUrl)?.sourceUrl;
+    const attribution = sourceUrl ? `${from} (${sourceUrl})` : from;
+    return [{
+      key: fieldKey,
+      label,
+      yours: yours || 'Not set',
+      value: v,
+      from,
+      onUse: () => {
+        setValues((prev) => ({ ...prev, [fieldKey]: v }));
+        setNote((prev) => {
+          if ((sourceUrl && prev.includes(sourceUrl)) || (attribution && prev.includes(attribution))) {
+            return prev;
+          }
+          return prev.trim() ? `${prev.trim()}; ${attribution}` : attribution;
+        });
+      },
+    }];
+  });
+
   const trimmed = (key: string) => (values[key] ?? '').trim();
   const changes = FACT_FIELDS.filter((f) => trimmed(f.key) !== stored(f.key).trim());
   const nameBlank = trimmed('name') === '';
@@ -680,6 +907,34 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
         if (canSave) void save();
       }}
     >
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Edit facts</h4>
+        <button
+          type="button"
+          onClick={() => void runResearch(false)}
+          disabled={checking || geminiChecking}
+          className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-zinc-700 px-2.5 text-xs text-zinc-200 hover:border-violet-500 hover:text-violet-200 disabled:opacity-50 sm:min-h-8"
+        >
+          {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
+          Check details
+        </button>
+      </div>
+      <CheckDetails
+        inline
+        busy={checking}
+        geminiBusy={geminiChecking}
+        checkedAt={details?.checkedAt}
+        status={details?.status ?? 'pending'}
+        candidates={details?.candidates ?? []}
+        notes={details?.notes ?? []}
+        lineupStatus={lineupStatus}
+        suggestions={suggestions}
+        onCheck={() => void runResearch(false)}
+        onGemini={() => void runResearch(true)}
+        onPick={handlePick}
+        onNone={handleNone}
+      />
+      {checkError && <p role="alert" className="text-xs text-rose-300">{checkError}</p>}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {FACT_FIELDS.map((f) => (
           <label key={f.key} className="space-y-1 text-xs text-zinc-400">
@@ -732,13 +987,32 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
   );
 };
 
-const ActRecord: React.FC<{ act: EditionPerformance; partners: string[] }> = ({ act, partners }) => (
-  <li className="space-y-2 p-3 text-sm">
-    <div className="flex flex-wrap items-baseline gap-2">
-      <span className="font-medium text-zinc-100">{act.name}</span>
-      <Pill tone="neutral">{BILLING_WORDS[act.billing ?? ''] ?? 'Artist'}</Pill>
-      {partners.length > 0 && <span className="text-xs text-zinc-400">B2B with {partners.join(', ')}</span>}
-    </div>
+const ActRecord: React.FC<{ act: EditionPerformance; partners: string[] }> = ({ act, partners }) => {
+  const artistKey = (act as { canonicalArtistKey?: string }).canonicalArtistKey || act.artistKey || act.name;
+  const artistLink = artistKey ? canonicalArtistUrl(artistKey) : null;
+  return (
+    <li className="space-y-2 p-3 text-sm">
+      <div className="flex flex-wrap items-baseline gap-2">
+        {artistLink ? (
+          <a
+            href={artistLink}
+            onClick={(e) => {
+              if (isModifiedClick(e)) return;
+              e.preventDefault();
+              window.history.pushState({ fromManageList: true }, '', artistLink);
+              rememberManageSearch(new URL(artistLink, window.location.origin).search);
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }}
+            className="font-medium text-zinc-100 hover:text-violet-300 hover:underline"
+          >
+            {act.name}
+          </a>
+        ) : (
+          <span className="font-medium text-zinc-100">{act.name}</span>
+        )}
+        <Pill tone="neutral">{BILLING_WORDS[act.billing ?? ''] ?? 'Artist'}</Pill>
+        {partners.length > 0 && <span className="text-xs text-zinc-400">B2B with {partners.join(', ')}</span>}
+      </div>
     <p className="text-xs text-zinc-400">
       Set: {act.set ?? 'Not known'} · Day: {act.days.join(', ') || 'Not known'} · Stage: {act.stages.join(', ') || 'Not known'}
     </p>
@@ -769,4 +1043,5 @@ const ActRecord: React.FC<{ act: EditionPerformance; partners: string[] }> = ({ 
       );
     })}
   </li>
-);
+  );
+};

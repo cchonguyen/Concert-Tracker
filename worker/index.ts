@@ -203,21 +203,26 @@ async function runCron(env: Env): Promise<void> {
   }
   // Slice 11.14: backfill shared editions from the owner's events and email imports, up to 20 a run (fewer when
   // the subrequest budget is short). Owner only: with multi-user on it reads the owner's scoped store.
-  try {
-    let store: typeof deps.store | null = deps.store;
-    if (multiUserFromEnv(settings)) {
-      const ownerId = await deps.store.ownerUserId?.();
-      store = ownerId && deps.store.forUser ? deps.store.forUser({ userId: ownerId, role: 'owner' }) : null;
+  // Throttled to every 5 minutes to keep idle cost low.
+  if (now.getUTCMinutes() % 5 === 0) {
+    try {
+      let store: typeof deps.store | null = deps.store;
+      if (multiUserFromEnv(settings)) {
+        const ownerId = await deps.store.ownerUserId?.();
+        store = ownerId && deps.store.forUser ? deps.store.forUser({ userId: ownerId, role: 'owner' }) : null;
+      }
+      const trace = startTrace('backfill');
+      const backfill = store ? await runCanonBackfill(store) : null;
+      if (backfill) {
+        console.log(`Canon backfill: ${JSON.stringify(backfill)}`);
+        if (backfill.created > 0 || backfill.matched > 0 || backfill.venue_set > 0 || backfill.subject_set > 0) {
+          trace.step('canon_backfill', Object.fromEntries(Object.entries(backfill).filter(([, v]) => typeof v === 'number')));
+          await trace.finish(deps.store); // +1 subrequest, only when the run did something
+        }
+      }
+    } catch (err) {
+      console.error('Canon backfill failed:', err instanceof Error ? err.message : String(err));
     }
-    const trace = startTrace('backfill');
-    const backfill = store ? await runCanonBackfill(store) : null;
-    if (backfill) {
-      console.log(`Canon backfill: ${JSON.stringify(backfill)}`);
-      trace.step('canon_backfill', Object.fromEntries(Object.entries(backfill).filter(([, v]) => typeof v === 'number')));
-      await trace.finish(deps.store); // +1 subrequest, only when the run did something
-    }
-  } catch (err) {
-    console.error('Canon backfill failed:', err instanceof Error ? err.message : String(err));
   }
   // Slice 11.19: research up to 5 events still 'pending' (rungs 1 and 2, no Brave, no reader), owner only, as many
   // as the subrequest budget allows (worst case 3 + 5 * 25 = 128; backfillResearch.ts).

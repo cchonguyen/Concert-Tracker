@@ -1,6 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hintSeen, markHintSeen, NavStorage, pageFromView, rememberedPage, rememberPage, REMEMBER_KEY, sectionOf, subPagesFor, viewFor } from '../src/services/nav.ts';
+import {
+  hintSeen,
+  markHintSeen,
+  NavStorage,
+  pageFromView,
+  rememberedPage,
+  rememberPage,
+  REMEMBER_KEY,
+  sectionOf,
+  subPagesFor,
+  viewFor,
+  buildManageSearch,
+  parseManageParams,
+  rememberManageSearch,
+  rememberedManageSearch,
+} from '../src/services/nav.ts';
 
 const OWNER = { canManage: true };
 const MEMBER = { canManage: false };
@@ -133,4 +148,30 @@ test('the icon-tab hint shows once: unseen until marked, and blocked storage nev
   assert.equal(hintSeen(storage), true);
   assert.equal(hintSeen(null), false);
   assert.equal(hintSeen({ getItem: () => { throw new Error('denied'); }, setItem: () => undefined }), true);
+});
+
+test('pageFromView identifies manage view from complex query parameters', () => {
+  const searchMine = '?view=manage&kind=venue&id=ven-99';
+  const searchArchive = '?view=manage&scope=archive&section=editions&status=verified';
+  assert.equal(pageFromView(new URLSearchParams(searchMine).get('view'), OWNER), 'manage');
+  assert.equal(pageFromView(new URLSearchParams(searchArchive).get('view'), OWNER), 'manage');
+  assert.equal(pageFromView(new URLSearchParams(searchArchive).get('view'), MEMBER), 'summary');
+});
+
+test('manage query persistence round trips via rememberedManageSearch and integrates with buildManageSearch', () => {
+  const store = memoryStorage();
+  assert.equal(rememberedManageSearch(store), null);
+
+  const search = buildManageSearch({ scope: 'archive', section: 'editions', status: 'verified', q: 'fest' });
+  rememberManageSearch(search, store);
+  assert.equal(rememberedManageSearch(store), search);
+
+  const parsed = parseManageParams(rememberedManageSearch(store)!);
+  assert.equal(parsed.scope, 'archive');
+  assert.equal(parsed.section, 'editions');
+  assert.equal(parsed.status, 'verified');
+  assert.equal(parsed.q, 'fest');
+
+  // Verify pageFromView still extracts manage correctly from the stored query
+  assert.equal(pageFromView(new URLSearchParams(search).get('view'), OWNER), 'manage');
 });

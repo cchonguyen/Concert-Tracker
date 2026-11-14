@@ -25,6 +25,7 @@ export interface WriteEditionInput {
   edition: Edition;
   actor: string;
   reason: string;
+  before?: Edition | null;
 }
 
 export interface WriteEditionResult {
@@ -33,7 +34,7 @@ export interface WriteEditionResult {
 }
 
 export async function writeEdition(store: LineupStore, input: WriteEditionInput): Promise<WriteEditionResult> {
-  const existing = await store.getEdition(input.edition.id);
+  const existing = input.before !== undefined ? input.before : await store.getEdition(input.edition.id);
   const before = snapshot(existing);
   const after = snapshot(input.edition);
   const b: Snapshot = {};
@@ -44,6 +45,7 @@ export async function writeEdition(store: LineupStore, input: WriteEditionInput)
       a[k] = after[k];
     }
   }
+  if (input.before && Object.keys(a).length === 0) return { changed: false };
   await store.upsertEdition(input.edition);
   if (Object.keys(a).length === 0) return { changed: false };
   const rec = { editionId: input.edition.id, actor: input.actor, reason: input.reason, before: b, after: a };

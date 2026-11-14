@@ -20,7 +20,35 @@ const REGION_CODES: Record<string, string> = {
   saskatchewan: 'SK',
 };
 export const CODES = new Set(Object.values(REGION_CODES));
-export const NORTH_AMERICA = new Set(['us', 'usa', 'united states', 'united states of america', 'ca', 'can', 'canada']);
+
+const COUNTRY_ALIASES: Record<string, string[]> = {
+  'united states': ['us', 'usa', 'united states', 'united states of america', 'u s', 'u s a'],
+  canada: ['ca', 'can', 'canada'],
+  'united kingdom': ['uk', 'gb', 'great britain', 'united kingdom', 'u k'],
+};
+
+const ALIAS_TO_CANONICAL = new Map<string, string>();
+for (const [canonical, aliases] of Object.entries(COUNTRY_ALIASES)) {
+  for (const alias of aliases) {
+    ALIAS_TO_CANONICAL.set(alias, canonical);
+  }
+}
+
+export function canonicalCountry(name?: string | null): string {
+  if (!name) return '';
+  const norm = normalizeName(name);
+  if (!norm) return '';
+  return ALIAS_TO_CANONICAL.get(norm) ?? norm;
+}
+
+export function sameCountry(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false;
+  const ca = canonicalCountry(a);
+  const cb = canonicalCountry(b);
+  return Boolean(ca && cb && ca === cb);
+}
+
+export const NORTH_AMERICA = new Set([...COUNTRY_ALIASES['united states'], ...COUNTRY_ALIASES['canada']]);
 
 export function regionCode(region: string | undefined): string | undefined {
   const r = region?.trim();
@@ -37,10 +65,9 @@ export function regionCountry(code: string): 'United States' | 'Canada' | undefi
   return CANADA.has(code) ? 'Canada' : 'United States';
 }
 
-
 const COUNTRY_NAMES: Record<'United States' | 'Canada', string[]> = {
-  'United States': ['us', 'usa', 'united states', 'united states of america'],
-  Canada: ['can', 'canada'],
+  'United States': COUNTRY_ALIASES['united states'],
+  Canada: COUNTRY_ALIASES['canada'],
 };
 const isNorthAmerican = (country: string | undefined) => !country || NORTH_AMERICA.has(normalizeName(country));
 

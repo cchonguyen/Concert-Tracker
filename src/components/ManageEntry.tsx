@@ -16,6 +16,7 @@ import { artistGaps, personInsights, seriesStreak, spanLabel } from '../services
 import { wentTo } from '../server/events/attendance';
 import { entityLabel, KINDS, ManageData } from './ManageView';
 import { SuggestInput } from './SuggestInput';
+import { buildManageUrl, isModifiedClick } from '../services/manageNav';
 
 // One record in the Manage tab: its events, Rename everywhere, Merge into
 // another, AKAs, and its links (a venue's place, a series' hosts).
@@ -155,9 +156,17 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
 
   return (
     <section className="space-y-5">
-      <button onClick={onBack} className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200">
+      <a
+        href={buildManageUrl({ scope: 'mine', kind: entity.kind })}
+        onClick={(e) => {
+          if (isModifiedClick(e)) return;
+          e.preventDefault();
+          onBack();
+        }}
+        className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200"
+      >
         <ArrowLeft className="h-3.5 w-3.5" /> All {meta.label.toLowerCase()}
-      </button>
+      </a>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="truncate text-xl font-bold text-zinc-50">{entityLabel(entity)}</h2>

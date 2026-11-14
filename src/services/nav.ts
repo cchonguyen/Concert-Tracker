@@ -90,6 +90,7 @@ export interface NavStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
 }
+export const NavStorage = undefined;
 
 export const REMEMBER_KEY = 'liveArchive.subtabs';
 
@@ -136,3 +137,6 @@ export function markHintSeen(storage: NavStorage | null): void {
     // Not stored: the hint may show again next visit.
   }
 }
+
+export * from './manageNav.ts';
+

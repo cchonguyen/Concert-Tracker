@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Fetcher, SourceType } from '../lineup/types';
-import { parseJson } from '../lineup/http';
+import { createRateLimitedFetcher, parseJson } from '../lineup/http';
 import { InputError } from '../lineup/pipeline';
 import { addDays, decodeEntities, domainOf, normalizeName } from '../lineup/text';
 import { eventWords } from '../lineup/search';
@@ -13,7 +13,9 @@ import type { Edition } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
 import { seriesSlugFor } from '../lineup/text';
 import { matchEdition as matchCatalog, upsertOccurrence } from '../canon/match';
-import { DetailCandidate, EventDetails, EventField, EVENT_FIELDS, LoggedEvent } from './types';
+import type { GuardedReader } from '../reader/guardedReader';
+import { geminiReader } from './detailsGemini';
+import { DetailCandidate, DetailsStatus, EventDetails, EventField, EVENT_FIELDS, LoggedEvent } from './types';
 
 // Stage 1 research: find and verify an event's date and place from structured
 // sources and web search results. No Gemini here unless you ask for it with
@@ -574,5 +576,122 @@ export function pickCandidate(event: LoggedEvent, candidateId: string | undefine
     details: { ...event.details, status: 'resolved', candidates: c ? [c] : [] },
     updatedAt: now.toISOString(),
   };
+}
+
+export interface EditionFactsDetailsInput {
+  id: string;
+  name: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  venue?: string | null;
+  city?: string | null;
+  country?: string | null;
+  year?: number | null;
+}
+
+export interface ResearchEditionOptions {
+  fetcher?: Fetcher;
+  now?: Date | (() => Date);
+  reader?: GuardedReader | DetailReader | null;
+  detailReader?: DetailReader;
+  useGemini?: boolean;
+}
+
+export interface EditionDetailsResult {
+  status: DetailsStatus;
+  candidates: DetailCandidate[];
+  notes: string[];
+  checkedAt: string;
+}
+
+// Check details for canonical edition facts (draft or stored). Runs finders and optional guarded Gemini reader
+// without touching logged_events or personal store.
+export async function researchEditionFacts(
+  input: EditionFactsDetailsInput,
+  finders: DetailFinder[] = defaultFinders(),
+  options?: ResearchEditionOptions,
+): Promise<EditionDetailsResult> {
+  const now = typeof options?.now === 'function' ? options.now() : options?.now ?? new Date();
+  const checkedAt = now.toISOString();
+  const fetcher = options?.fetcher ?? createRateLimitedFetcher();
+  const name = (input.name ?? '').trim();
+  const parsedStartDateYear = input.startDate ? Number(input.startDate.slice(0, 4)) : undefined;
+  const year = (input.year && Number.isInteger(input.year))
+    ? input.year
+    : (parsedStartDateYear && Number.isInteger(parsedStartDateYear) ? parsedStartDateYear : undefined);
+
+  let reader = options?.detailReader;
+  if (options?.useGemini === true && !reader) {
+    if (!options?.reader) throw new InputError('Gemini is not set up on this server.');
+    if ('read' in options.reader && typeof options.reader.read === 'function') {
+      reader = options.reader as DetailReader;
+    } else {
+      reader = geminiReader(options.reader as GuardedReader, input.id, () => now);
+    }
+  } else if (!reader && options?.reader && 'read' in options.reader && typeof options.reader.read === 'function') {
+    reader = options.reader as DetailReader;
+  }
+
+  const enabled = finders.filter((f) => f.enabled() && (year || f.withoutYear));
+  if (!enabled.length && !reader) {
+    return year
+      ? { status: 'off', candidates: [], notes: ['No event source is configured.'], checkedAt }
+      : { status: 'needs_date', candidates: [], notes: ['Add when it was (a year is enough) to look it up.'], checkedAt };
+  }
+
+  if (!name) {
+    return { status: 'none', candidates: [], notes: ['Event name is required to look it up.'], checkedAt };
+  }
+
+  const q: DetailQuery = {
+    name,
+    year,
+    startDate: input.startDate ?? undefined,
+    endDate: input.endDate ?? undefined,
+    venue: input.venue ?? undefined,
+    city: input.city ?? undefined,
+  };
+
+  const found: DetailCandidate[] = [];
+  const notes: string[] = [];
+  const search = async (query: DetailQuery) => {
+    const settled = await Promise.allSettled(enabled.map((f) => f.find(query, fetcher)));
+    settled.forEach((r, i) => {
+      if (r.status === 'fulfilled') {
+        found.push(...r.value);
+        notes.push(`${enabled[i].id}: ${r.value.length} match(es) for "${query.name}".`);
+      } else {
+        notes.push(`${enabled[i].id} failed: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
+      }
+    });
+  };
+  await search(q);
+
+  if (reader) {
+    const urls = found.flatMap((c) => c.sources.filter((s) => s.sourceType === 'discovered' && s.sourceUrl).map((s) => s.sourceUrl!));
+    found.push(...(await reader.read(q, [...new Set(urls)], fetcher, notes)));
+  }
+
+  const merged = mergeCandidates(found).sort(
+    (a, b) => b.sources.length - a.sources.length || (a.startDate ?? '9999').localeCompare(b.startDate ?? '9999'),
+  );
+
+  if (!merged.length) {
+    return year
+      ? { status: 'none', candidates: [], notes, checkedAt }
+      : { status: 'needs_date', candidates: [], notes: [...notes, 'No dates found; add when it was (a year is enough).'], checkedAt };
+  }
+
+  if (input.startDate) {
+    const hits = merged.filter((c) => covers(c, input.startDate!));
+    if (hits.length === 1 || (hits.length > 1 && hits[0].sources.length > hits[1].sources.length)) {
+      await addPlaces([hits[0]], name, fetcher);
+      return { status: 'matched', candidates: [hits[0]], notes, checkedAt };
+    }
+  }
+
+  const shown = merged.slice(0, MAX_CANDIDATES);
+  await addPlaces(shown, name, fetcher);
+  return { status: 'choose', candidates: shown, notes, checkedAt };
 }
 

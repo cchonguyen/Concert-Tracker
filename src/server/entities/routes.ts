@@ -1,5 +1,6 @@
 import { Response, Router } from 'express';
-import { PipelineDeps } from '../lineup/pipeline';
+import { InputError, PipelineDeps } from '../lineup/pipeline';
+import { defaultFinders, DetailFinder, researchEditionFacts } from '../events/details';
 import { isLinking } from './linkingStore';
 import { nameIndex, possibleDuplicates } from './link';
 import { EntityIntegrityError } from './integrity';
@@ -102,7 +103,7 @@ function artistChangeBody(body: unknown, withFingerprint: boolean): { input: Art
 }
 
 // /api/entities: the records behind your events' names (0014).
-export function entitiesRouter(deps: PipelineDeps): Router {
+export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = defaultFinders()): Router {
   const router = Router();
 
   // Artist and person names and aliases to their record, so the list import
@@ -158,6 +159,41 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     } catch (err) {
       if (err instanceof CanonicalInputError) return res.status(400).json({ error: err.message });
       if (err instanceof EditionNotFoundError) return res.status(404).json({ error: err.message });
+      if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Check details for canonical edition facts (draft or stored). Owner only.
+  router.post('/manage/canonical/editions/:id/details', ownerOnly as any, async (req, res) => {
+    try {
+      const edition = await store.getEdition(String(req.params.id));
+      if (!edition) return res.status(404).json({ error: 'Edition not found.' });
+      const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+      const name = typeof body.name === 'string' && body.name.trim() !== '' ? body.name.trim() : edition.name;
+      const startDate = body.startDate !== undefined ? (typeof body.startDate === 'string' && body.startDate.trim() !== '' ? body.startDate.trim() : null) : (edition.startDate ?? null);
+      const endDate = body.endDate !== undefined ? (typeof body.endDate === 'string' && body.endDate.trim() !== '' ? body.endDate.trim() : null) : (edition.endDate ?? null);
+      const venue = body.venue !== undefined ? (typeof body.venue === 'string' && body.venue.trim() !== '' ? body.venue.trim() : null) : (edition.venue ?? null);
+      const city = body.city !== undefined ? (typeof body.city === 'string' && body.city.trim() !== '' ? body.city.trim() : null) : (edition.city ?? null);
+      const country = edition.country ?? null;
+      const parsedYear = startDate ? Number(startDate.slice(0, 4)) : null;
+      const draftYear = parsedYear && Number.isInteger(parsedYear) ? parsedYear : null;
+      const year = draftYear ?? edition.year ?? null;
+      const useGemini = body.useGemini === true;
+
+      const details = await researchEditionFacts(
+        { id: edition.id, name, startDate, endDate, venue, city, country, year },
+        finders,
+        {
+          fetcher: deps.fetcher,
+          now: deps.now ? deps.now() : new Date(),
+          reader: deps.reader,
+          useGemini,
+        },
+      );
+      res.json(details);
+    } catch (err) {
+      if (err instanceof InputError) return res.status(400).json({ error: err.message });
       if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
