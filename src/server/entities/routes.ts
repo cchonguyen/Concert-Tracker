@@ -29,6 +29,8 @@ import {
   parseCanonicalInput,
   parseEditionFacts,
 } from '../lineup/canonicalIngest';
+import type { Edition } from '../lineup/types';
+import { writeEdition } from '../canon/editions';
 import {
   addAlias,
   addLink,
@@ -156,6 +158,21 @@ export function entitiesRouter(deps: PipelineDeps): Router {
     } catch (err) {
       if (err instanceof CanonicalInputError) return res.status(400).json({ error: err.message });
       if (err instanceof EditionNotFoundError) return res.status(404).json({ error: err.message });
+      if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Owner verifies a provisional shared edition (slice 12.4). Goes through writeEdition, so undo works.
+  router.post('/manage/canonical/editions/:id/verify', ownerOnly as any, async (req, res) => {
+    try {
+      const edition = await store.getEdition(String(req.params.id));
+      if (!edition) return res.status(404).json({ error: 'Edition not found.' });
+      if (edition.status !== 'provisional') return res.status(409).json({ error: 'Only a provisional edition can be verified here.' });
+      const next: Edition = { ...edition, status: 'verified', updatedAt: new Date().toISOString() };
+      const written = await writeEdition(store, { edition: next, actor: 'owner', reason: 'verified by owner' });
+      res.json({ ok: true, changeId: written.change?.id ?? null, edition: { id: next.id, name: next.name, status: next.status } });
+    } catch (err) {
       if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
