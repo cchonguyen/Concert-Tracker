@@ -563,7 +563,8 @@ export class SupabaseLineupStore implements LineupStore {
     let query = this.db
       .from('event_editions')
       .select('id, series_slug, year, name, venue, status', { count: 'exact' });
-    if (options.status && options.status !== 'all') query = query.eq('status', options.status);
+    if (options.status === 'verified' || options.status === 'confirmed') query = query.in('status', ['verified', 'confirmed']);
+    else if (options.status && options.status !== 'all') query = query.eq('status', options.status);
     if (queryText) {
       const escaped = queryText.replace(/[\\%_*]/g, '\\$&').replace(/"/g, '\\"');
       const pattern = `"%${escaped}%"`;
