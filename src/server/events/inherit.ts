@@ -9,13 +9,13 @@
 //
 // Nothing here calls a model, writes an edition or invents a value. Review rows carry only ids, the field
 // name and the old and new public value; never a personal field.
-import type { Edition, ReviewQueueItem } from '../lineup/types';
+import type { Edition, EditionHeader, ReviewQueueItem } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
 import type { CapturedFields, EventOverrides } from '../lineup/types';
 import type { LoggedEvent } from './types';
 import { applyPatch, EventPatch } from './service';
 
-type Shared = 'name' | 'startDate' | 'endDate' | 'venue' | 'city' | 'country';
+type Shared = 'name' | 'startDate' | 'endDate' | 'venue' | 'city' | 'region' | 'country';
 // Event field, key in captured/overrides, and the edition field it follows.
 const SHARED: Array<{ field: Shared; key: keyof CapturedFields }> = [
   { field: 'name', key: 'name' },
@@ -23,10 +23,27 @@ const SHARED: Array<{ field: Shared; key: keyof CapturedFields }> = [
   { field: 'endDate', key: 'end_date' },
   { field: 'venue', key: 'venue' },
   { field: 'city', key: 'city' },
+  { field: 'region', key: 'region' },
   { field: 'country', key: 'country' },
 ];
 
 const clean = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v : undefined);
+
+export function resolvedEditionDates(
+  edition: Pick<EditionHeader, 'startDate' | 'endDate' | 'weekends'>,
+  weekend?: number,
+): { startDate?: string; endDate?: string } {
+  const weekends = edition.weekends;
+  if (weekends && weekends.length > 1) {
+    const match = weekend !== undefined ? weekends.find((w) => w.weekend === weekend) : undefined;
+    if (!match) return { startDate: undefined, endDate: undefined };
+    return { startDate: clean(match.startDate), endDate: clean(match.endDate) };
+  }
+  if (weekends && weekends.length === 1) {
+    return { startDate: clean(weekends[0].startDate), endDate: clean(weekends[0].endDate) };
+  }
+  return { startDate: clean(edition.startDate), endDate: clean(edition.endDate) };
+}
 
 // The shared-fact fields as they stand now.
 export function capturedFrom(e: LoggedEvent): CapturedFields {
@@ -49,25 +66,36 @@ export function ensureCaptured(e: LoggedEvent): LoggedEvent {
 }
 
 // What a reader sees. Without an edition (or when it is not loaded) the event's own values stand.
-export function resolveEvent(e: LoggedEvent, edition: Edition | null | undefined): LoggedEvent {
+export function resolveEvent(e: LoggedEvent, edition: EditionHeader | Edition | null | undefined): LoggedEvent {
   if (!e.editionId || !edition || edition.id !== e.editionId) return e;
   const out: LoggedEvent = { ...e };
   const overrides = e.overrides ?? {};
+  const edDates = resolvedEditionDates(edition, out.weekend);
   for (const { field, key } of SHARED) {
     if (key in overrides) (out as any)[field] = overrides[key] ?? undefined;
     else {
-      const v = clean(edition[field]);
+      const raw = field === 'startDate' ? edDates.startDate : field === 'endDate' ? edDates.endDate : edition[field];
+      const v = clean(raw);
       if (v !== undefined) (out as any)[field] = v;
     }
   }
-  if (out.startDate !== e.startDate && out.startDate) {
-    out.year = Number(out.startDate.slice(0, 4));
-    out.month = undefined;
+  if ('series' in overrides) {
+    out.series = clean(overrides.series);
+  } else if (edition.seriesSlug && clean(edition.seriesName)) {
+    out.series = clean(edition.seriesName);
+  }
+  if (out.startDate) {
+    if (out.startDate !== e.startDate) {
+      out.year = Number(out.startDate.slice(0, 4));
+      out.month = undefined;
+    }
+  } else if (edition.year && out.year === undefined) {
+    out.year = edition.year;
   }
   return out;
 }
 
-export const resolveEvents = (events: LoggedEvent[], editions: Edition[]): LoggedEvent[] => {
+export const resolveEvents = (events: LoggedEvent[], editions: Array<EditionHeader | Edition>): LoggedEvent[] => {
   const byId = new Map(editions.map((ed) => [ed.id, ed]));
   return events.map((e) => resolveEvent(e, e.editionId ? byId.get(e.editionId) : undefined));
 };
@@ -90,7 +118,7 @@ export interface LinkedPatchResult {
 // imported, once.
 export function applyLinkedPatch(
   event: LoggedEvent,
-  edition: Edition | null,
+  edition: EditionHeader | Edition | null,
   patch: EventPatch,
   now: Date,
   opts: { recapture?: boolean } = {},
@@ -107,11 +135,18 @@ export function applyLinkedPatch(
   const overrides: EventOverrides = { ...(base.overrides ?? {}) };
   const changes: OverrideChange[] = [];
   const next: LoggedEvent = { ...patched };
+  const multiWeekend = Boolean(edition!.weekends && edition!.weekends.length > 1);
+  const weekendChanged = 'weekend' in patch && patched.weekend !== base.weekend && multiWeekend;
+  if (weekendChanged) {
+    if (!('startDate' in patch)) delete overrides.start_date;
+    if (!('endDate' in patch)) delete overrides.end_date;
+  }
+  const edDates = resolvedEditionDates(edition!, patched.weekend);
   for (const { field, key } of SHARED) {
     const before = clean(seen[field]);
     const after = clean(patched[field]);
+    const fromEdition = clean(field === 'startDate' ? edDates.startDate : field === 'endDate' ? edDates.endDate : edition![field]);
     if (field in patch && before !== after) {
-      const fromEdition = clean(edition![field]);
       if (after !== undefined && after === fromEdition) delete overrides[key];
       else {
         (overrides as any)[key] = after ?? null;
@@ -119,8 +154,36 @@ export function applyLinkedPatch(
       }
       (next as any)[field] = after;
     } else {
+      if (field in patch && key in overrides && after !== undefined && after === fromEdition) {
+        delete overrides[key];
+      }
       // Not changed by this patch: keep the person's own stored value, not the edition's.
       (next as any)[field] = base[field];
+    }
+  }
+  // Personal series overrides stay local in overrides.series and never enter review_queue.
+  const edSeries = edition!.seriesSlug ? clean(edition!.seriesName) : undefined;
+  if ('series' in patch) {
+    const before = clean(seen.series);
+    const after = clean(patched.series);
+    if (before !== after) {
+      if (after !== undefined && after === edSeries) delete overrides.series;
+      else overrides.series = after ?? null;
+      next.series = after;
+    } else {
+      if ('series' in overrides && after !== undefined && after === edSeries) delete overrides.series;
+      next.series = base.series;
+    }
+  } else {
+    next.series = base.series;
+  }
+  if (weekendChanged && next.daysAttended.length) {
+    const rangeStart = 'start_date' in overrides ? clean(overrides.start_date) : edDates.startDate;
+    const rangeEnd = ('end_date' in overrides ? clean(overrides.end_date) : edDates.endDate) ?? rangeStart;
+    if (rangeStart) {
+      next.daysAttended = next.daysAttended.filter((d) => d >= rangeStart && d <= rangeEnd!);
+    } else if (!('daysAttended' in patch)) {
+      next.daysAttended = [];
     }
   }
   next.overrides = overrides;
@@ -145,7 +208,7 @@ export function unlinkEvent(event: LoggedEvent, now: Date): LoggedEvent {
     out.year = captured.year ?? undefined;
     out.month = captured.month ?? undefined;
   }
-  if (!('region' in overrides) && 'region' in captured) out.region = clean(captured.region);
+  if ('series' in overrides) out.series = clean(overrides.series);
   return out;
 }
 
