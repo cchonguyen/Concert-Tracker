@@ -85,8 +85,8 @@ test('same date and city but a different venue is not merged and asks the owner'
 test('two equal candidates are ambiguous: nothing is written, a suggestion is queued', async () => {
   const s = await fresh();
   const v = await s.upsertVenue({ name: 'The Hall', city: 'Austin' });
-  await writeEdition(s, { edition: ed({ id: 'x1', key: 'k1', venueId: v.id, subjectKey: 'band-a' }), actor: 'a', reason: 'r' });
-  await writeEdition(s, { edition: ed({ id: 'x2', key: 'k2', venueId: v.id, subjectKey: 'band-a' }), actor: 'a', reason: 'r' });
+  await writeEdition(s, { edition: ed({ id: 'x1', key: 'k1', startDate: '2026-05-31', endDate: '2026-06-02', venueId: v.id, subjectKey: 'band-a' }), actor: 'a', reason: 'r' });
+  await writeEdition(s, { edition: ed({ id: 'x2', key: 'k2', startDate: '2026-06-01', endDate: '2026-06-03', venueId: v.id, subjectKey: 'band-a' }), actor: 'a', reason: 'r' });
   const r = await upsertOccurrence(s, { ...base, name: 'Band A', startDate: '2026-06-01', venue: 'The Hall' });
   assert.equal(r.action, 'ambiguous');
   assert.equal((await s.listEditions(10)).length, 2);

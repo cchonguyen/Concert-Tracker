@@ -27,6 +27,7 @@
 //     is retried on a later run.
 import type { Edition } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
+import { EditionOccurrenceConflictError } from '../lineup/store/types';
 import type { LoggedEvent } from '../events/types';
 import type { EmailImport } from '../events/email/types';
 import { currentBudget } from '../lineup/budget';
@@ -139,6 +140,42 @@ export async function runCanonBackfill(store: LineupStore, opts: BackfillOptions
       finished.push(item.id);
     } catch (err) {
       if (err instanceof Error && err.name === 'EditionOccurrenceConflictError') {
+        if (item.kind === 'edition') {
+          try {
+            const conflictErr = err as EditionOccurrenceConflictError;
+            const clashId =
+              conflictErr.conflictingEdition?.id ??
+              editions.find(
+                (e) =>
+                  e.id !== item.edition.id &&
+                  e.startDate === (conflictErr.startDate ?? item.edition.startDate) &&
+                  e.venueId === (conflictErr.venueId ?? item.edition.venueId) &&
+                  e.subjectKey === (conflictErr.subjectKey ?? item.edition.subjectKey),
+              )?.id;
+            if (clashId) {
+              const enqueue =
+                typeof (store as any).enqueueReview === 'function'
+                  ? (store as any).enqueueReview.bind(store)
+                  : typeof store.addReviewItem === 'function'
+                    ? store.addReviewItem.bind(store)
+                    : undefined;
+              if (enqueue) {
+                await enqueue({
+                  kind: 'merge_suggestion',
+                  editionId: item.edition.id,
+                  payload: {
+                    editionIds: [item.edition.id, clashId],
+                    startDate: item.edition.startDate ?? null,
+                    venue: item.edition.venue ?? null,
+                    city: item.edition.city ?? null,
+                  },
+                });
+              }
+            }
+          } catch {
+            // best-effort: swallow enqueue errors so backfill still continues and marks the item done
+          }
+        }
         // Another edition holds this date, venue and subject: skip only this item (it is not retried).
         report.skipped_other++;
         finished.push(item.id);

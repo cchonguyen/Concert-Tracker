@@ -367,6 +367,7 @@ export interface LineupStore {
   getEdition(id: string): Promise<Edition | null>;
   getEditions(ids: string[]): Promise<Edition[]>;
   getEditionHeaders(ids: string[]): Promise<EditionHeader[]>;
+  findEditionByOccurrence?(startDate: string, venueId: string, subjectKey: string): Promise<Edition | null>;
   upsertEdition(edition: Edition): Promise<void>;
   listEditions(limit: number): Promise<Edition[]>;
   listEditionHeaders(
@@ -529,6 +530,7 @@ export interface LineupStore {
   markChangeUndone(changeId: string): Promise<boolean>;
   // Throws PersonalFieldError when the payload holds a personal field at any depth.
   addReviewItem(i: { kind: ReviewQueueKind; editionId?: string; eventId?: string; payload: Record<string, unknown> }): Promise<ReviewQueueItem>;
+  enqueueReview?(i: { kind: ReviewQueueKind; editionId?: string; eventId?: string; payload: Record<string, unknown> }): Promise<ReviewQueueItem>;
   // Oldest first.
   listReviewItems(q?: { status?: string; kind?: ReviewQueueKind }): Promise<ReviewQueueItem[]>;
   // Closes an open item. False when it is unknown or no longer open.
@@ -542,6 +544,30 @@ export type MergeSummary = Record<string, unknown>;
 // 'confirmed' is the old name of 'verified' (0041 keeps both until a later conversion).
 export function isVerifiedStatus(status: string | undefined | null): boolean {
   return status === 'verified' || status === 'confirmed';
+}
+
+export interface EditionConflictInfo {
+  id: string;
+  key: string;
+  name: string;
+}
+
+// Thrown when an edition occurrence unique index (start_date, venue_id, subject_key) is hit.
+export class EditionOccurrenceConflictError extends Error {
+  constructor(
+    public readonly editionId: string,
+    public readonly startDate?: string,
+    public readonly venueId?: string,
+    public readonly subjectKey?: string,
+    public readonly conflictingEdition?: EditionConflictInfo,
+  ) {
+    const msg =
+      conflictingEdition && conflictingEdition.id !== editionId
+        ? `Edition ${editionId} clashes with edition ${conflictingEdition.id} (${conflictingEdition.name || conflictingEdition.key}) on the same date, venue and subject.`
+        : `Edition ${editionId} clashes with another edition on the same date, venue and subject.`;
+    super(msg);
+    this.name = 'EditionOccurrenceConflictError';
+  }
 }
 
 // Same (source, external_id) already belongs to something else.

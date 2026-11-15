@@ -45,6 +45,8 @@ import {
   STALE_RUN_MS,
   isEditionSuggestQuery,
   suggestEditionMatches,
+  EditionOccurrenceConflictError,
+  type EditionConflictInfo,
   type CanonicalEditionPageOptions,
   type CanonicalEditionStatusFilter,
   type SuggestEditionOptions,
@@ -61,18 +63,7 @@ import type { CachedResponse } from '../responseCache';
 // Postgres-backed store. Tables are defined in
 // supabase/migrations/0002_source_first_lineups.sql, 0003_event_log.sql and
 // 0004_email_imports.sql (optional: only email import needs it).
-// Thrown by upsertEdition when the occurrence unique index (start_date, venue_id, subject_key) is hit.
-export class EditionOccurrenceConflictError extends Error {
-  constructor(
-    public readonly editionId: string,
-    public readonly startDate?: string,
-    public readonly venueId?: string,
-    public readonly subjectKey?: string,
-  ) {
-    super(`Edition ${editionId} clashes with another edition on the same date, venue and subject.`);
-    this.name = 'EditionOccurrenceConflictError';
-  }
-}
+export { EditionOccurrenceConflictError, type EditionConflictInfo };
 
 export class SupabaseLineupStore implements LineupStore {
   readonly kind = 'supabase' as const;
@@ -544,6 +535,20 @@ export class SupabaseLineupStore implements LineupStore {
     return row ? this.loadEdition(row) : null;
   }
 
+  async findEditionByOccurrence(startDate: string, venueId: string, subjectKey: string): Promise<Edition | null> {
+    const row = this.check(
+      await this.db
+        .from('event_editions')
+        .select(SupabaseLineupStore.EDITION_SELECT_WITH_SERIES)
+        .eq('start_date', startDate)
+        .eq('venue_id', venueId)
+        .eq('subject_key', subjectKey)
+        .maybeSingle(),
+      'findEditionByOccurrence',
+    );
+    return row ? this.loadEdition(row) : null;
+  }
+
   async upsertEdition(e: Edition) {
     const seriesSlug = e.seriesSlug?.trim() || null;
     if (seriesSlug) {
@@ -574,7 +579,18 @@ export class SupabaseLineupStore implements LineupStore {
     // event_editions_occurrence_uidx: another edition already holds this date, venue and subject.
     const err = written.error as { code?: string; message: string } | null;
     if (err && (err.code === '23505' || /event_editions_occurrence_uidx/.test(err.message))) {
-      throw new EditionOccurrenceConflictError(e.id, e.startDate, e.venueId, e.subjectKey);
+      let conflictingEdition: EditionConflictInfo | undefined;
+      if (e.startDate && e.venueId && e.subjectKey) {
+        try {
+          const clash = await this.findEditionByOccurrence(e.startDate, e.venueId, e.subjectKey);
+          if (clash && clash.id !== e.id) {
+            conflictingEdition = { id: clash.id, key: clash.key, name: clash.name };
+          }
+        } catch {
+          // ignore lookup errors
+        }
+      }
+      throw new EditionOccurrenceConflictError(e.id, e.startDate, e.venueId, e.subjectKey, conflictingEdition);
     }
     this.check(written, 'upsertEdition');
     await this.ensureArtists(e.performances.map((p) => ({ key: p.artistKey, name: p.name })));
@@ -1882,6 +1898,10 @@ export class SupabaseLineupStore implements LineupStore {
       'addReviewItem (apply 0041_shared_occurrences.sql)',
     );
     return row;
+  }
+
+  async enqueueReview(i: { kind: ReviewQueueKind; editionId?: string; eventId?: string; payload: Record<string, unknown> }): Promise<ReviewQueueItem> {
+    return this.addReviewItem(i);
   }
 
   async listReviewItems(q: { status?: string; kind?: ReviewQueueKind } = {}): Promise<ReviewQueueItem[]> {

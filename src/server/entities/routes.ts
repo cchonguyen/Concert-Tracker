@@ -21,7 +21,7 @@ import {
   unifyArtists,
   withAkas,
 } from './canonicalManage';
-import { CanonicalHistoryCursorError, CanonicalHistoryEntry, CanonicalStoreError, isVerifiedStatus } from '../lineup/store/types';
+import { CanonicalHistoryCursorError, CanonicalHistoryEntry, CanonicalStoreError, EditionOccurrenceConflictError, isVerifiedStatus } from '../lineup/store/types';
 import { currentMember } from '../auth/requestScope';
 import {
   CanonicalInputError,
@@ -186,6 +186,16 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
   // Owner-only canonical archive (spec Phase 1). Members get 403.
   const ownerOnly = (_req: any, res: Response, next: () => void) =>
     isOwner(currentMember()) ? next() : res.status(403).json({ error: 'Only the owner can do this.' });
+  // Helper to return HTTP 409 with conflict details on edition occurrence collisions.
+  function sendOccurrenceConflict(res: Response, err: unknown): boolean {
+    if (err instanceof EditionOccurrenceConflictError || (err instanceof Error && err.name === 'EditionOccurrenceConflictError')) {
+      const conflictingEdition = (err as EditionOccurrenceConflictError).conflictingEdition;
+      res.status(409).json({ error: err.message, ...(conflictingEdition ? { conflictingEdition } : {}) });
+      return true;
+    }
+    return false;
+  }
+
   // Canonical confirm (Phase 2a). Preview by default; { apply: true } writes.
   router.post('/manage/canonical/confirm', ownerOnly as any, async (req, res) => {
     try {
@@ -193,6 +203,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
       res.json(await confirmCanonicalEdition(store, input));
     } catch (err) {
       if (err instanceof CanonicalInputError) return res.status(400).json({ error: err.message });
+      if (sendOccurrenceConflict(res, err)) return;
       if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
@@ -206,6 +217,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     } catch (err) {
       if (err instanceof CanonicalInputError) return res.status(400).json({ error: err.message });
       if (err instanceof EditionNotFoundError) return res.status(404).json({ error: err.message });
+      if (sendOccurrenceConflict(res, err)) return;
       if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
@@ -256,6 +268,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
       const written = await writeEdition(store, { edition: next, actor: 'owner', reason: 'verified by owner' });
       res.json({ ok: true, changeId: written.change?.id ?? null, edition: { id: next.id, name: next.name, status: next.status } });
     } catch (err) {
+      if (sendOccurrenceConflict(res, err)) return;
       if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
@@ -284,6 +297,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     } catch (err) {
       if (err instanceof CanonicalInputError) return res.status(400).json({ error: err.message });
       if (err instanceof EditionNotFoundError) return res.status(404).json({ error: err.message });
+      if (sendOccurrenceConflict(res, err)) return;
       if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
