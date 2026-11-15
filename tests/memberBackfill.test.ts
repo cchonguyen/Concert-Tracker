@@ -271,6 +271,14 @@ test('the cron runs the member backfill before the owner backfill, which spends 
   assert.ok(member < owner);
 });
 
+test('worker cron gates backfills on staggered 5-minute slots (% 5 === 0, 1, 2)', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../worker/index.ts', import.meta.url), 'utf8');
+  assert.match(src, /now\.getUTCMinutes\(\)\s*%\s*5\s*===\s*1[\s\S]*?runMemberBackfill/);
+  assert.match(src, /now\.getUTCMinutes\(\)\s*%\s*5\s*===\s*0[\s\S]*?runCanonBackfill/);
+  assert.match(src, /now\.getUTCMinutes\(\)\s*%\s*5\s*===\s*2[\s\S]*?runResearchBackfill/);
+});
+
 test('two members entering the same show with no venue make one edition, not one each (KREAM duplicate)', async () => {
   const s = await fresh();
   const a = accepted('member-user-kr01', [event('mev-kr01', { name: 'KREAM', startDate: '2024-12-21' })]);

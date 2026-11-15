@@ -10,7 +10,7 @@ The `/api` routes live in `src/server/app.ts` and take a `JobRunner` that starts
 | Frontend | Vite middleware in dev, `dist/` in production (pages: the marketing page, the app and the demo, see Public pages) | Workers static assets from `dist/`, unknown addresses get `404.html`; the Worker runs for `/`, the app page, `/demo`, `/robots.txt`, `/sitemap.xml`, `/api/*` and the share page (`/s`, `/s/*`, `/S`, `/S/*`), and hands the pages it lets through to the static assets (`ASSETS`)
 | API | Express | The same Express app, through `handleAsNodeRequest` from `cloudflare:node` (`nodejs_compat`) |
 | Starting a job | `LookupWorker.kick` runs it in-process | A message on the `concert-tracker-lookups` Queue |
-| Due and parked jobs | `setInterval` every 20 s | Cron Trigger every minute sends due jobs to the Queue |
+| Due and parked jobs | `setInterval` every 20 s | Cron Trigger every minute sends `dueJobs` to the Queue; backfills are staggered across separate 5-minute slots (`runCanonBackfill` on `% 5 === 0`, `runMemberBackfill` on `% 5 === 1`, `runResearchBackfill` on `% 5 === 2`) |
 | Store | Supabase, or the file store | Supabase only |
 | Config | `.env` | `vars` in `wrangler.jsonc` plus `wrangler secret put` |
 

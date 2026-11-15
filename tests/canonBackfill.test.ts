@@ -71,6 +71,15 @@ test('the Worker budget shortens the batch', async () => {
   assert.equal(await runCanonBackfill(s, { budgetLeft: () => 10 }), null);
 });
 
+test('runCanonBackfill processes 1 item when budgetLeft returns 35 (typical under SUBREQUEST_LIMIT=50 on % 5 === 0)', async () => {
+  const s = await fresh();
+  for (let i = 1; i <= 3; i++) await s.putEvent(dated(`ev${i}`, `Band ${i}`, `2026-06-0${i}`));
+  const r = (await runCanonBackfill(s, { budgetLeft: () => 35 }))!;
+  assert.equal(r.created, 1);
+  assert.equal(r.remaining, 2);
+  assert.equal((await s.listEditions(10)).length, 1);
+});
+
 test('events without a full date are skipped and never get an edition', async () => {
   const s = await fresh();
   await s.putEvent(event('ev1', { name: 'Band A', year: 2026 }));

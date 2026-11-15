@@ -168,8 +168,9 @@ async function runCron(env: Env): Promise<void> {
   // Slice 12.6: backfill provisional shared editions from members' existing dated events (accepted notice v2 only),
   // a few per run, cursor per member in that member's settings. Multi-user only; counts are all that is logged.
   try {
-    // Every fifth minute: a finished member still costs two settings reads, so the idle cost stays low.
-    const db = multiUserFromEnv(settings) && now.getUTCMinutes() % 5 === 0 ? getSupabaseClient() : null;
+    // Every fifth minute (minute 1): a finished member still costs two settings reads, so the idle cost stays low.
+    // Staggered after canon backfill (minute 0).
+    const db = multiUserFromEnv(settings) && now.getUTCMinutes() % 5 === 1 ? getSupabaseClient() : null;
     if (db) {
       const members = await supabaseMemberDirectory(db).listMembers();
       const trace = startTrace('backfill');
@@ -234,24 +235,27 @@ async function runCron(env: Env): Promise<void> {
   }
   // Slice 11.19: research up to 5 events still 'pending' (rungs 1 and 2, no Brave, no reader), owner only, as many
   // as the subrequest budget allows (worst case 3 + 5 * 25 = 128; backfillResearch.ts).
-  try {
-    let store: typeof deps.store | null = deps.store;
-    let ownerId: string | undefined;
-    if (multiUserFromEnv(settings)) {
-      ownerId = (await deps.store.ownerUserId?.()) ?? undefined;
-      store = ownerId && deps.store.forUser ? deps.store.forUser({ userId: ownerId, role: 'owner' }) : null;
+  // Throttled to every 5 minutes (minute 2) to stagger subrequest budget against backfills.
+  if (now.getUTCMinutes() % 5 === 2) {
+    try {
+      let store: typeof deps.store | null = deps.store;
+      let ownerId: string | undefined;
+      if (multiUserFromEnv(settings)) {
+        ownerId = (await deps.store.ownerUserId?.()) ?? undefined;
+        store = ownerId && deps.store.forUser ? deps.store.forUser({ userId: ownerId, role: 'owner' }) : null;
+      }
+      const researched = store
+        ? await runResearchBackfill(store, defaultFinders(), deps.fetcher, now, { role: ownerId ? 'owner' : undefined, userId: ownerId, catalogStore: deps.store })
+        : null;
+      if (researched?.researched) {
+        console.log(`Research backfill: ${JSON.stringify(researched)}`);
+        const trace = startTrace('research_backfill');
+        trace.step('research_backfill', { researched: researched.researched });
+        await trace.finish(deps.store); // +1 subrequest, only when the run researched something
+      }
+    } catch (err) {
+      console.error('Research backfill failed:', redactSecrets(err instanceof Error ? err.message : String(err)));
     }
-    const researched = store
-      ? await runResearchBackfill(store, defaultFinders(), deps.fetcher, now, { role: ownerId ? 'owner' : undefined, userId: ownerId, catalogStore: deps.store })
-      : null;
-    if (researched?.researched) {
-      console.log(`Research backfill: ${JSON.stringify(researched)}`);
-      const trace = startTrace('research_backfill');
-      trace.step('research_backfill', { researched: researched.researched });
-      await trace.finish(deps.store); // +1 subrequest, only when the run researched something
-    }
-  } catch (err) {
-    console.error('Research backfill failed:', redactSecrets(err instanceof Error ? err.message : String(err)));
   }
   const due = await deps.store.dueJobs(deps.now(), 5);
   if (due.length) await env.LOOKUP_QUEUE?.sendBatch(due.map((job) => ({ body: { jobId: job.id } })));
