@@ -8,9 +8,9 @@
 //
 // Bounded: at most `limit` merges per call, and only while the subrequest budget covers each merge. Runs before the
 // member backfill in the cron, so the backfill's ambiguity check sees one edition per key.
-import type { Edition } from '../lineup/types';
+import type { EditionHeader } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
-import { normalizeName } from '../lineup/text';
+import { normalizeName, seriesSlugFor } from '../lineup/text';
 import { currentBudget } from '../lineup/budget';
 
 const SCAN_LIMIT = 5000;
@@ -29,8 +29,8 @@ function defaultBudgetLeft(): number {
   return b ? b.limit - b.reserve - b.used : Number.POSITIVE_INFINITY;
 }
 
-export const provisionalKey = (e: Edition) =>
-  [e.subjectKey ?? e.seriesSlug, e.startDate ?? '', e.venueId ?? '', normalizeName(e.venue ?? '')].join('|');
+export const provisionalKey = (e: Pick<EditionHeader, 'subjectKey' | 'seriesSlug' | 'name' | 'startDate' | 'venueId' | 'venue'>) =>
+  [e.subjectKey ?? e.seriesSlug ?? seriesSlugFor(e.name), e.startDate ?? '', e.venueId ?? '', normalizeName(e.venue ?? '')].join('|');
 
 export async function dedupeProvisionalEditions(
   store: LineupStore,
@@ -38,18 +38,29 @@ export async function dedupeProvisionalEditions(
 ): Promise<DedupeReport | null> {
   const limit = Math.max(0, opts.limit ?? DEDUPE_MERGE_LIMIT);
   const budgetLeft = opts.budgetLeft ?? defaultBudgetLeft;
-  const groups = new Map<string, Edition[]>();
-  for (const e of await store.listEditions(SCAN_LIMIT)) {
+  const groups = new Map<string, EditionHeader[]>();
+  for (const e of await store.listEditionHeaders({ limit: SCAN_LIMIT, status: 'provisional' })) {
     if (e.status !== 'provisional' || !e.startDate) continue;
     const k = provisionalKey(e);
     groups.set(k, [...(groups.get(k) ?? []), e]);
   }
 
+  const dupGroups = [...groups.values()].filter((list) => list.length >= 2);
+  if (dupGroups.length === 0) return null;
+
+  const dupEditionIds = dupGroups.flat().map((e) => e.id);
+  const actCounts = new Map<string, number>();
+  for (const ref of await store.listEditionArtistRefs({ editionIds: dupEditionIds })) {
+    actCounts.set(ref.editionId, (actCounts.get(ref.editionId) ?? 0) + 1);
+  }
+
   const report: DedupeReport = { groups: 0, merged: 0 };
-  for (const list of groups.values()) {
-    if (list.length < 2) continue;
+  for (const list of dupGroups) {
     report.groups++;
-    list.sort((a, b) => b.performances.length - a.performances.length || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    list.sort(
+      (a, b) =>
+        (actCounts.get(b.id) ?? 0) - (actCounts.get(a.id) ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    );
     const [keep, ...drops] = list;
     for (const drop of drops) {
       if (report.merged >= limit || budgetLeft() < MERGE_COST) return report.groups || report.merged ? report : null;

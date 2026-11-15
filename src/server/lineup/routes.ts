@@ -238,7 +238,12 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
       if (!isEditionSuggestQuery(q)) return res.json({ editions: [] });
       const live = await deps.store.listEvents();
       const excludeIds = [...new Set(live.map((e) => e.editionId).filter((id): id is string => Boolean(id)))];
-      res.json({ editions: await deps.store.suggestEditions(q, { excludeIds, limit: 5 }) });
+      const loggedWeekendsByEdition: Record<string, Array<number | null>> = {};
+      for (const e of live) {
+        if (!e.editionId) continue;
+        (loggedWeekendsByEdition[e.editionId] ??= []).push(e.weekend ?? null);
+      }
+      res.json({ editions: await deps.store.suggestEditions(q, { excludeIds, limit: 5, loggedWeekendsByEdition }) });
     } catch (err) {
       fail(res, err);
     }
