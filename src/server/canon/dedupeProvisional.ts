@@ -12,6 +12,8 @@ import type { EditionHeader } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
 import { normalizeName, seriesSlugFor } from '../lineup/text';
 import { currentBudget } from '../lineup/budget';
+import { autoMergeZeroLineupGroup } from '../lineup/canonicalIngest';
+import { editionsMatch, subjectOf } from './match';
 
 const SCAN_LIMIT = 5000;
 export const DEDUPE_MERGE_LIMIT = 40;
@@ -38,35 +40,98 @@ export async function dedupeProvisionalEditions(
 ): Promise<DedupeReport | null> {
   const limit = Math.max(0, opts.limit ?? DEDUPE_MERGE_LIMIT);
   const budgetLeft = opts.budgetLeft ?? defaultBudgetLeft;
+  const allHeaders = await store.listEditionHeaders({ limit: SCAN_LIMIT });
   const groups = new Map<string, EditionHeader[]>();
-  for (const e of await store.listEditionHeaders({ limit: SCAN_LIMIT, status: 'provisional' })) {
+  for (const e of allHeaders) {
     if (e.status !== 'provisional' || !e.startDate) continue;
     const k = provisionalKey(e);
     groups.set(k, [...(groups.get(k) ?? []), e]);
   }
 
   const dupGroups = [...groups.values()].filter((list) => list.length >= 2);
-  if (dupGroups.length === 0) return null;
-
-  const dupEditionIds = dupGroups.flat().map((e) => e.id);
-  const actCounts = new Map<string, number>();
-  for (const ref of await store.listEditionArtistRefs({ editionIds: dupEditionIds })) {
-    actCounts.set(ref.editionId, (actCounts.get(ref.editionId) ?? 0) + 1);
-  }
-
+  const droppedIds = new Set<string>();
   const report: DedupeReport = { groups: 0, merged: 0 };
-  for (const list of dupGroups) {
-    report.groups++;
-    list.sort(
-      (a, b) =>
-        (actCounts.get(b.id) ?? 0) - (actCounts.get(a.id) ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-    );
-    const [keep, ...drops] = list;
-    for (const drop of drops) {
-      if (report.merged >= limit || budgetLeft() < MERGE_COST) return report.groups || report.merged ? report : null;
-      await store.mergeEditions(keep.id, drop.id, DEDUPE_ACTOR, DEDUPE_REASON);
-      report.merged++;
+
+  if (dupGroups.length > 0) {
+    const dupEditionIds = dupGroups.flat().map((e) => e.id);
+    const actCounts = new Map<string, number>();
+    for (const ref of await store.listEditionArtistRefs({ editionIds: dupEditionIds })) {
+      actCounts.set(ref.editionId, (actCounts.get(ref.editionId) ?? 0) + 1);
+    }
+
+    for (const list of dupGroups) {
+      report.groups++;
+      list.sort(
+        (a, b) =>
+          (actCounts.get(b.id) ?? 0) - (actCounts.get(a.id) ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+      );
+      const [keep, ...drops] = list;
+      for (const drop of drops) {
+        if (report.merged >= limit || budgetLeft() < MERGE_COST) return report.groups || report.merged ? report : null;
+        await store.mergeEditions(keep.id, drop.id, DEDUPE_ACTOR, DEDUPE_REASON);
+        report.merged++;
+        droppedIds.add(drop.id);
+      }
     }
   }
+
+  // Pass 2: Auto-merge matching 0-lineup edition into populated verified edition
+  if (report.merged < limit && budgetLeft() >= MERGE_COST) {
+    const remainingHeaders = allHeaders.filter((e) => e.status !== 'draft' && !droppedIds.has(e.id));
+    const subjectBuckets = new Map<string, EditionHeader[]>();
+    for (const e of remainingHeaders) {
+      const subj = subjectOf(e);
+      if (!subj) continue;
+      const list = subjectBuckets.get(subj) ?? [];
+      list.push(e);
+      subjectBuckets.set(subj, list);
+    }
+
+    for (const list of subjectBuckets.values()) {
+      if (list.length < 2) continue;
+      if (report.merged >= limit || budgetLeft() < MERGE_COST) break;
+
+      const unvisited = new Set(list.map((e) => e.id));
+      const idToHeader = new Map(list.map((e) => [e.id, e]));
+
+      while (unvisited.size > 0) {
+        if (report.merged >= limit || budgetLeft() < MERGE_COST) break;
+
+        const startId = unvisited.values().next().value!;
+        unvisited.delete(startId);
+        const queue = [startId];
+        const cluster: string[] = [startId];
+
+        while (queue.length > 0) {
+          const currId = queue.shift()!;
+          const currHeader = idToHeader.get(currId)!;
+          for (const otherId of [...unvisited]) {
+            const otherHeader = idToHeader.get(otherId)!;
+            if (editionsMatch(currHeader, otherHeader)) {
+              unvisited.delete(otherId);
+              queue.push(otherId);
+              cluster.push(otherId);
+            }
+          }
+        }
+
+        if (cluster.length >= 2) {
+          const clusterHeaders = cluster.map((id) => idToHeader.get(id)!);
+          const autoMerged = await autoMergeZeroLineupGroup(store, clusterHeaders, {
+            actor: 'system:auto-merge',
+            reason: 'Auto-merge zero-lineup duplicate into matching verified edition',
+          });
+          if (autoMerged) {
+            report.groups++;
+            report.merged += autoMerged.droppedIds.length;
+            for (const id of autoMerged.droppedIds) {
+              droppedIds.add(id);
+            }
+          }
+        }
+      }
+    }
+  }
+
   return report.groups || report.merged ? report : null;
 }

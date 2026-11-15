@@ -16,16 +16,16 @@
 // runs cost one read. At most BATCH_SIZE items per run.
 //
 // Worker subrequests (the cron's budget is SUBREQUEST_LIMIT, 50 by default, shared with the rest of the cron):
-//   fixed per run: 1 (cursor read) when complete; otherwise cursor read + listEvents + listImports + listEditions
-//     (1 + 2 per 100 editions, so about 9 for 300 editions) + cursor write = about 13.
-//   per item: ITEM_COST = 16 at worst (venue alias lookup 2, upsertVenue 3, edition key check 2, getEdition on a
-//     miss 1, upsertEdition about 5, change record 1, merge-suggestion check and write 2). Editions are listed once
-//     per run and kept in step with our own writes (cachedEditions), so matching does not list them per item.
-//   worst case, no budget: 13 + 20 * 16 = 333 subrequests. Under the default budget the run does as many items
-//     as the budget allows, floor((budget left - fixed) / 16), so about 1 to 2 items a run at the default 50 and the
-//     full 20 only when SUBREQUEST_LIMIT is at least about 340. An item cut off by the budget is not marked done and
-//     is retried on a later run.
-import type { Edition } from '../lineup/types';
+//   fixed per run: 1 (cursor read) when complete; otherwise cursor read + listEvents + listImports + listEditionHeaders
+//     (or listEditions) + cursor write = about 13.
+//   per item: ITEM_COST = 20 at worst (venue alias lookup 2, upsertVenue 3, edition key check 2, getEdition on a
+//     miss 1, upsertEdition about 5, change record 1, merge-suggestion check and write 2). Edition headers are listed
+//     once per run and kept in step with our own writes (cachedEditions), so matching does not list them per item.
+//   worst case, no budget: 13 + 20 * 20 = 413 subrequests. Under the default budget the run does as many items
+//     as the budget allows, floor((budget left - fixed - cursor write) / 20), so about 1 item a run at the default 50
+//     and the full 20 only when SUBREQUEST_LIMIT is at least about 420. An item cut off by the budget is not marked
+//     done and is retried on a later run.
+import type { Edition, EditionHeader } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
 import { EditionOccurrenceConflictError } from '../lineup/store/types';
 import type { LoggedEvent } from '../events/types';
@@ -34,6 +34,7 @@ import { currentBudget } from '../lineup/budget';
 import { seriesSlugFor } from '../lineup/text';
 import { writeEdition } from './editions';
 import { upsertOccurrence } from './match';
+import { autoMergeZeroLineupGroup } from '../lineup/canonicalIngest';
 
 export const BACKFILL_BATCH_SIZE = 20;
 export const BACKFILL_SETTING = 'canon_backfill';
@@ -71,7 +72,7 @@ const emptyReport = (): BackfillReport => ({
 });
 
 type Item =
-  | { id: string; kind: 'edition'; edition: Edition }
+  | { id: string; kind: 'edition'; edition: EditionHeader }
   | { id: string; kind: 'import'; row: EmailImport; event: LoggedEvent | undefined }
   | { id: string; kind: 'event'; event: LoggedEvent };
 
@@ -80,18 +81,79 @@ function defaultBudgetLeft(): number {
   return b ? b.limit - b.reserve - b.used : Number.POSITIVE_INFINITY;
 }
 
+function toHeader(e: Edition | EditionHeader): EditionHeader {
+  if (!('performances' in e)) return e;
+  const { performances: _p, ...header } = e as Edition;
+  return header;
+}
+
 // Editions listed once and kept in step with our own writes, so upsertOccurrence's per-item list is free.
-function cachedEditions(store: LineupStore, initial: Edition[]): LineupStore {
-  const cache = new Map(initial.map((e) => [e.id, e]));
+function cachedEditions(store: LineupStore, initial: EditionHeader[]): LineupStore {
+  const headerCache = new Map<string, EditionHeader>(initial.map((e) => [e.id, toHeader(e)]));
+  const fullCache = new Map<string, Edition>();
+  for (const item of initial) {
+    if ('performances' in item && Array.isArray((item as Edition).performances)) {
+      fullCache.set(item.id, item as Edition);
+    }
+  }
   return new Proxy(store, {
     get(target, prop) {
-      if (prop === 'listEditions') return async () => [...cache.values()];
-      if (prop === 'getEdition') return async (id: string) => cache.get(id) ?? target.getEdition(id);
+      if (prop === 'listEditionHeaders') return async () => [...headerCache.values()];
+      if (prop === 'listEditions') {
+        return async () => {
+          const results: Edition[] = [];
+          for (const header of headerCache.values()) {
+            let full = fullCache.get(header.id);
+            if (!full) {
+              const fetched = await target.getEdition(header.id);
+              if (fetched) {
+                full = fetched;
+                fullCache.set(header.id, full);
+              } else {
+                full = { ...header, performances: [] };
+              }
+            }
+            results.push(full);
+          }
+          return results;
+        };
+      }
+      if (prop === 'getEdition') {
+        return async (id: string) => {
+          const cached = fullCache.get(id);
+          if (cached) return cached;
+          const fetched = await target.getEdition(id);
+          if (fetched) {
+            fullCache.set(id, fetched);
+            headerCache.set(id, toHeader(fetched));
+          }
+          return fetched;
+        };
+      }
+      if (prop === 'getEditionHeaders') {
+        return async (ids: string[]) => {
+          return ids.map((id) => headerCache.get(id)).filter((h): h is EditionHeader => Boolean(h));
+        };
+      }
       if (prop === 'upsertEdition') {
         return async (e: Edition) => {
           // Only writeEdition reaches this: it is the wrapped store's own method, passed through and mirrored.
           await (Reflect.get(target, prop, target) as (e: Edition) => Promise<void>).call(target, e);
-          cache.set(e.id, e);
+          fullCache.set(e.id, e);
+          headerCache.set(e.id, toHeader(e));
+        };
+      }
+      if (prop === 'mergeEditions') {
+        return async (keepId: string, dropId: string, actor: string, reason?: string) => {
+          const res = await (target.mergeEditions as any)(keepId, dropId, actor, reason);
+          fullCache.delete(dropId);
+          headerCache.delete(dropId);
+          const updated = await target.getEdition(keepId);
+          if (updated) {
+            fullCache.set(keepId, updated);
+            headerCache.set(keepId, toHeader(updated));
+          }
+          return res;
         };
       }
       const v = Reflect.get(target, prop, target);
@@ -107,7 +169,13 @@ export async function runCanonBackfill(store: LineupStore, opts: BackfillOptions
   const room = Math.floor((budgetLeft() - FIXED_COST - CURSOR_WRITE_COST) / ITEM_COST);
   if (room < 1) return null;
 
-  const [events, imports, editions] = await Promise.all([store.listEvents(), store.listImports(), store.listEditions(5000)]);
+  const [events, imports, editions] = await Promise.all([
+    store.listEvents(),
+    store.listImports(),
+    typeof store.listEditionHeaders === 'function'
+      ? store.listEditionHeaders({ limit: 5000 })
+      : store.listEditions(5000),
+  ]);
   const done = new Set(cursor.done);
   const eventById = new Map(events.map((e) => [e.id, e]));
   const items: Item[] = [];
@@ -140,37 +208,60 @@ export async function runCanonBackfill(store: LineupStore, opts: BackfillOptions
       finished.push(item.id);
     } catch (err) {
       if (err instanceof Error && err.name === 'EditionOccurrenceConflictError') {
-        if (item.kind === 'edition') {
-          try {
-            const conflictErr = err as EditionOccurrenceConflictError;
-            const clashId =
-              conflictErr.conflictingEdition?.id ??
-              editions.find(
-                (e) =>
-                  e.id !== item.edition.id &&
-                  e.startDate === (conflictErr.startDate ?? item.edition.startDate) &&
-                  e.venueId === (conflictErr.venueId ?? item.edition.venueId) &&
-                  e.subjectKey === (conflictErr.subjectKey ?? item.edition.subjectKey),
-              )?.id;
-            if (clashId) {
-              const enqueue =
-                typeof (store as any).enqueueReview === 'function'
-                  ? (store as any).enqueueReview.bind(store)
-                  : typeof store.addReviewItem === 'function'
-                    ? store.addReviewItem.bind(store)
-                    : undefined;
-              if (enqueue) {
-                await enqueue({
-                  kind: 'merge_suggestion',
-                  editionId: item.edition.id,
-                  payload: {
-                    editionIds: [item.edition.id, clashId],
-                    startDate: item.edition.startDate ?? null,
-                    venue: item.edition.venue ?? null,
-                    city: item.edition.city ?? null,
-                  },
-                });
+        const conflictErr = err as EditionOccurrenceConflictError;
+        let merged = false;
+        const idA = item.kind === 'edition' ? item.edition.id : conflictErr.editionId;
+        const clashId =
+          conflictErr.conflictingEdition?.id ??
+          editions.find(
+            (e) =>
+              e.id !== idA &&
+              e.startDate === (conflictErr.startDate ?? (item.kind === 'edition' ? item.edition.startDate : undefined)) &&
+              e.venueId === (conflictErr.venueId ?? (item.kind === 'edition' ? item.edition.venueId : undefined)) &&
+              e.subjectKey === (conflictErr.subjectKey ?? (item.kind === 'edition' ? item.edition.subjectKey : undefined)),
+          )?.id;
+
+        if (idA && clashId && idA !== clashId) {
+          const edA = editions.find((e) => e.id === idA) ?? (await store.getEdition(idA));
+          const edB = editions.find((e) => e.id === clashId) ?? (await store.getEdition(clashId));
+          if (edA && edB) {
+            try {
+              const autoMergeRes = await autoMergeZeroLineupGroup(store, [edA, edB], {
+                actor: ACTOR,
+                reason: 'Auto-merge zero-lineup duplicate into matching verified edition',
+              });
+              if (autoMergeRes) {
+                merged = true;
+                const droppedSet = new Set(autoMergeRes.droppedIds);
+                const kept = editions.filter((e) => !droppedSet.has(e.id));
+                editions.length = 0;
+                editions.push(...kept);
               }
+            } catch {
+              // best-effort
+            }
+          }
+        }
+
+        if (!merged && clashId && item.kind === 'edition') {
+          try {
+            const enqueue =
+              typeof (store as any).enqueueReview === 'function'
+                ? (store as any).enqueueReview.bind(store)
+                : typeof store.addReviewItem === 'function'
+                  ? store.addReviewItem.bind(store)
+                  : undefined;
+            if (enqueue) {
+              await enqueue({
+                kind: 'merge_suggestion',
+                editionId: item.edition.id,
+                payload: {
+                  editionIds: [item.edition.id, clashId],
+                  startDate: item.edition.startDate ?? null,
+                  venue: item.edition.venue ?? null,
+                  city: item.edition.city ?? null,
+                },
+              });
             }
           } catch {
             // best-effort: swallow enqueue errors so backfill still continues and marks the item done
@@ -201,19 +292,21 @@ export async function runCanonBackfill(store: LineupStore, opts: BackfillOptions
   return report;
 }
 
-const needsFill = (e: Edition) => !e.subjectKey || (!e.venueId && Boolean(e.venue?.trim()));
+const needsFill = (e: EditionHeader) => !e.subjectKey || (!e.venueId && Boolean(e.venue?.trim()));
 
-async function fillEdition(store: LineupStore, edition: Edition, report: BackfillReport) {
-  const next: Edition = { ...edition, updatedAt: new Date().toISOString() };
-  if (!edition.venueId && edition.venue?.trim()) {
-    const venue = await store.upsertVenue({ name: edition.venue.trim(), city: edition.city, country: edition.country });
+async function fillEdition(store: LineupStore, header: EditionHeader, report: BackfillReport) {
+  const full = await store.getEdition(header.id);
+  if (!full) return;
+  const next: Edition = { ...full, updatedAt: new Date().toISOString() };
+  if (!full.venueId && full.venue?.trim()) {
+    const venue = await store.upsertVenue({ name: full.venue.trim(), city: full.city, country: full.country });
     next.venueId = venue.id;
   }
-  if (!edition.subjectKey && edition.seriesSlug) next.subjectKey = edition.seriesSlug;
-  const w = await writeEdition(store, { edition: next, before: edition, actor: ACTOR, reason: 'backfill: venue and subject for an existing edition' });
+  if (!full.subjectKey && full.seriesSlug) next.subjectKey = full.seriesSlug;
+  const w = await writeEdition(store, { edition: next, before: full, actor: ACTOR, reason: 'backfill: venue and subject for an existing edition' });
   if (w.changed) {
-    if (next.venueId && !edition.venueId) report.venue_set++;
-    if (next.subjectKey && !edition.subjectKey) report.subject_set++;
+    if (next.venueId && !full.venueId) report.venue_set++;
+    if (next.subjectKey && !full.subjectKey) report.subject_set++;
   }
 }
 

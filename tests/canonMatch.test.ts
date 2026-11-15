@@ -95,6 +95,43 @@ test('two equal candidates are ambiguous: nothing is written, a suggestion is qu
   assert.equal((await s.listReviewItems({ kind: 'merge_suggestion' })).length, 1); // not queued twice
 });
 
+test('upsertOccurrence collapses ambiguous match when one is 0-lineup and the other is verified populated', async () => {
+  const s = await fresh();
+  const v = await s.upsertVenue({ name: 'The Hall', city: 'Austin' });
+  // x1 covers 2026-06-01 and is empty
+  await writeEdition(s, { edition: ed({ id: 'x1', key: 'k1', startDate: '2026-05-31', endDate: '2026-06-02', venueId: v.id, subjectKey: 'band-a', performances: [] }), actor: 'a', reason: 'r' });
+  // x2 starts 2026-06-01 and is verified and populated
+  await writeEdition(s, {
+    edition: ed({
+      id: 'x2',
+      key: 'k2',
+      startDate: '2026-06-01',
+      endDate: '2026-06-03',
+      venueId: v.id,
+      subjectKey: 'band-a',
+      performances: [{
+        artistKey: 'band-a',
+        name: 'Band A',
+        days: [],
+        stages: [],
+        status: 'billed',
+        confidence: 1,
+        sources: [{ sourceType: 'promoter', sourceUrl: 'https://example.com', quotedSpan: 'Band A', evidence: 'billed', extractor: 'user' }],
+      }],
+    }),
+    actor: 'a',
+    reason: 'r',
+  });
+
+  const r = await upsertOccurrence(s, { ...base, name: 'Band A', startDate: '2026-06-01', venue: 'The Hall' });
+  assert.notEqual(r.action, 'ambiguous');
+  assert.equal(r.edition?.id, 'x2');
+  assert.equal(r.edition?.performances.length, 1);
+  assert.equal(r.edition?.hasLineup, true);
+  // x1 was dropped
+  assert.equal(await s.getEdition('x1'), null);
+});
+
 test('no match when nothing shares the date', async () => {
   const s = await fresh();
   await upsertOccurrence(s, { ...base, name: 'Band A', startDate: '2026-06-01', venue: 'The Hall', city: 'Austin' });

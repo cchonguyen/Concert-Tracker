@@ -525,3 +525,43 @@ test('runCanonBackfill enqueues merge_suggestion when fillEdition hits EditionOc
     assert.ok(cursor.done.includes('edition:e1'));
   });
 });
+
+test('runCanonBackfill auto-merges instead of enqueuing merge_suggestion when a 0-lineup edition clashes with a populated verified edition', async () => {
+  await withFileStore(async (store) => {
+    // e1 is missing venueId and subjectKey, has 0 performances
+    await store.upsertEdition(ed('e1', 'Fest A', 2026, {
+      startDate: '2026-12-01',
+      venue: 'The Arena',
+      seriesSlug: 'fest',
+      performances: [],
+    }));
+    // e2 already has venueId and subjectKey on the same date, and has a populated verified lineup
+    const v = await store.upsertVenue({ name: 'The Arena' });
+    await store.upsertEdition(ed('e2', 'Fest A Verified', 2026, {
+      startDate: '2026-12-01',
+      venue: 'The Arena',
+      venueId: v.id,
+      subjectKey: 'fest',
+      performances: [perf('act1', 'Act 1')],
+    }));
+
+    const report = (await runCanonBackfill(store))!;
+    assert.ok(report);
+    assert.equal(report.skipped_other, 1);
+
+    // Verify NO merge_suggestion review queue item was enqueued because it auto-merged
+    const reviews = await store.listReviewItems({ kind: 'merge_suggestion' });
+    assert.equal(reviews.length, 0);
+
+    // Verify e1 was dropped and merged into e2
+    assert.equal(await store.getEdition('e1'), null);
+    const survivor = await store.getEdition('e2');
+    assert.ok(survivor);
+    assert.equal(survivor.performances.length, 1);
+    assert.equal(survivor.hasLineup, true);
+
+    // Verify e1 was marked done in the cursor
+    const cursor = (await store.getSetting<any>('canon_backfill'))!;
+    assert.ok(cursor.done.includes('edition:e1'));
+  });
+});

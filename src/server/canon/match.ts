@@ -11,6 +11,7 @@ import type { Edition, EditionHeader } from '../lineup/types';
 import { isVerifiedStatus, type LineupStore } from '../lineup/store/types';
 import { editionKeyFor, normalizeName, seriesSlugFor } from '../lineup/text';
 import { writeEdition } from './editions';
+import { autoMergeZeroLineupGroup } from '../lineup/canonicalIngest';
 
 const SCAN_LIMIT = 5000;
 const YEAR_WORD = /^\d{4}$/;
@@ -33,8 +34,48 @@ export type MatchResult =
 const isVerified = (e: Pick<EditionHeader, 'status'>) => isVerifiedStatus(e.status);
 // A draft is the owner's own and is never matched.
 const isShared = (e: Pick<EditionHeader, 'status'>) => e.status !== 'draft';
-const subjectOf = (e: Pick<EditionHeader, 'subjectKey' | 'seriesSlug' | 'name'>) =>
+export const subjectOf = (e: Pick<EditionHeader, 'subjectKey' | 'seriesSlug' | 'name'>) =>
   e.subjectKey ?? e.seriesSlug ?? seriesSlugFor(e.name);
+
+export function editionsMatch(a: EditionHeader, b: EditionHeader): boolean {
+  if (a.status === 'draft' || b.status === 'draft') return false;
+  if (!a.startDate || !b.startDate) return false;
+  const subA = subjectOf(a);
+  const subB = subjectOf(b);
+  if (!subA || subA !== subB) return false;
+
+  const dateMatches =
+    a.startDate === b.startDate ||
+    editionCoversDate(a, b.startDate).matched ||
+    editionCoversDate(b, a.startDate).matched;
+  if (!dateMatches) return false;
+
+  const hasVenueIdA = Boolean(a.venueId);
+  const hasVenueIdB = Boolean(b.venueId);
+  if (hasVenueIdA && hasVenueIdB) {
+    return a.venueId === b.venueId;
+  }
+  const venueA = a.venue?.trim();
+  const venueB = b.venue?.trim();
+  if (venueA && venueB) {
+    if (normalizeName(venueA) !== normalizeName(venueB)) return false;
+    const cityA = a.city?.trim();
+    const cityB = b.city?.trim();
+    if (cityA && cityB) {
+      return normalizeName(cityA) === normalizeName(cityB);
+    }
+    return true;
+  }
+  if (!hasVenueIdA && !hasVenueIdB && !venueA && !venueB) {
+    const cityA = a.city?.trim();
+    const cityB = b.city?.trim();
+    if (cityA && cityB) {
+      return normalizeName(cityA) === normalizeName(cityB);
+    }
+    return false;
+  }
+  return false;
+}
 
 export function editionCoversDate(
   e: Pick<EditionHeader, 'startDate' | 'endDate' | 'weekends'>,
@@ -203,8 +244,21 @@ export async function upsertOccurrence(store: LineupStore, input: UpsertOccurren
   if (!input.startDate) return { action: 'skipped_no_date' };
   const name = input.name.trim();
   if (!name) return { action: 'skipped_no_date' };
-  const m = await matchEdition(store, input);
+  let m = await matchEdition(store, input);
   const now = new Date().toISOString();
+
+  if (m.kind === 'ambiguous') {
+    const autoMerged = await autoMergeZeroLineupGroup(store, m.editions, {
+      actor: 'system:auto-merge',
+      reason: 'Auto-merge zero-lineup duplicate into matching verified edition',
+    });
+    if (autoMerged) {
+      const fullKeep = await store.getEdition(autoMerged.keep.id);
+      if (fullKeep) {
+        m = { kind: 'same', edition: fullKeep, via: 'date_venue_subject' };
+      }
+    }
+  }
 
   if (m.kind === 'ambiguous') {
     await queueSuggestion(store, m.editions.map((e) => e.id), undefined, input);
