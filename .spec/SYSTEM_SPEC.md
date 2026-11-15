@@ -157,3 +157,65 @@ Design system export:
 - Weather (B3, option 2a): after a pre-filled save, `lookupWeather` runs once, server-side, for the saved event, only when it has a city and a start date. It stores the result with its URL only when Open-Meteo places the city exactly; otherwise it stores nothing and returns the usual note. Never re-run automatically; never copied from another member's event. A failure never fails the save.
 - No "I saw everyone" button (Charlie, 2026-11-11): each seen act is its own tap, so people curate who they actually saw. A bulk tick is on the Do NOT Build list.
 - No suggestions and no writes in sample mode. No writes to `event_editions` or `performances`.
+
+**Global Archive Series, Multi-Weekend & Egress Optimization Contracts** (2026-11-15; see DECISIONS.md ADR-005)
+
+- **Nullable Series Slug:** `event_editions.series_slug` is nullable (`text null references event_series(slug) on delete set null`). Standalone concerts do not generate stub series entries. `seriesSlug` in TypeScript types (`EventEdition`, `EditionHeader`, `NewEditionInput`) is `string | null | undefined`.
+- **Hierarchy Data Models:**
+  - `Brand -> Series -> Edition -> Event/Weekend`:
+    - `event_series`: `slug` (PK), `name`, `brand` (text null), `aliases` (text[]), `city`, `region`, `country`, `created_at`, `updated_at`.
+    - `event_editions`: add `weekends jsonb null default '[]'::jsonb`, `region text null`.
+  - `EditionWeekend`:
+    ```typescript
+    export interface EditionWeekend {
+      weekendNumber: number; // 1-based index (e.g. 1 for Weekend 1)
+      name?: string; // Optional label, e.g. "Weekend 1" or "Spring Edition"
+      startDate: string; // ISO date YYYY-MM-DD
+      endDate: string; // ISO date YYYY-MM-DD
+      ticketTypes?: string[]; // e.g. ["GA", "VIP"]
+      lineupActs?: string[]; // acts specific to this weekend if split
+    }
+    ```
+  - `EditionHeader`:
+    ```typescript
+    export interface EditionHeader {
+      id: string;
+      title: string;
+      seriesSlug?: string | null;
+      brand?: string | null;
+      editionType?: 'festival' | 'concert' | 'tour';
+      startDate?: string | null;
+      endDate?: string | null;
+      venue?: string | null;
+      city?: string | null;
+      region?: string | null;
+      country?: string | null;
+      actCount: number;
+      weekends?: EditionWeekend[];
+      status?: 'draft' | 'provisional' | 'verified';
+    }
+    ```
+  - `SeriesSummary`:
+    ```typescript
+    export interface SeriesSummary {
+      slug: string;
+      name: string;
+      brand?: string | null;
+      aliases?: string[];
+      city?: string | null;
+      region?: string | null;
+      country?: string | null;
+      editionCount: number;
+    }
+    ```
+- **Option 3B Fast-Enter & Candidate Resolution Rules:**
+  - On single-line capture submission (pressing Enter without selecting an autocomplete dropdown item):
+    - Run pure normalized matcher against verified series editions.
+    - If **exactly 1 verified series edition** matches unambiguously (title/series match, date falls within edition dates or one of its `weekends`, and venue/city matches or is empty in input): **Auto-link** immediately (`logged_events.edition_id = edition.id`, optional `weekend_number` set if matched).
+    - If **2 or more editions** match (e.g. multi-weekend W1 vs W2, or multi-city editions with identical series names): do NOT auto-link. Surface candidates as 1-tap canonical offers under the capture bar. Provide explicit fallback: `"None of these — search web / keep mine"`.
+    - If 0 matches: proceed with standard stage 1 capture / web search discovery without linking.
+- **Egress-Optimized RPCs & Store Methods:**
+  - `getEditionHeaders(filter?: { seriesSlug?: string; year?: number; status?: string }): Promise<EditionHeader[]>`: Returns lean headers without pulling full act lists, set times, or quotes.
+  - `listEditionHeaders(query: { seriesSlug?: string; date?: string; venue?: string; city?: string }): Promise<EditionHeader[]>`: Replaces full-table scans in `src/server/events/match.ts` and `src/server/events/dedupeProvisional.ts`.
+  - RPC `edition_lineup_facts(p_edition_id uuid)`: Database function returning unified JSON `{ edition: EditionHeader, acts: PerformanceFact[] }` in one single query/subrequest, preventing N+1 egress during event inspection.
+  - Client queries to `/api/editions/suggest` and Global Archive search must debounce user typing by at least 300ms.
