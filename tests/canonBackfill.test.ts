@@ -278,3 +278,86 @@ test('writeEdition with input.before skips upsertEdition when no fields changed'
   assert.equal(res.changed, false);
   assert.equal(upsertCalled, false);
 });
+
+test('runCanonBackfill calls listEditionHeaders instead of listEditions when listEditionHeaders is available', async () => {
+  const s = await fresh();
+  let listHeadersCalled = false;
+  let listEditionsCalled = false;
+  const origListHeaders = s.listEditionHeaders.bind(s);
+  const origListEditions = s.listEditions.bind(s);
+  s.listEditionHeaders = async (opts) => {
+    listHeadersCalled = true;
+    return origListHeaders(opts);
+  };
+  s.listEditions = async (limit) => {
+    listEditionsCalled = true;
+    return origListEditions(limit);
+  };
+  await s.putEvent(dated('ev1', 'Band A', '2026-06-01'));
+  const r = await runCanonBackfill(s);
+  assert.ok(r);
+  assert.equal(listHeadersCalled, true);
+  assert.equal(listEditionsCalled, false);
+});
+
+test('cachedEditions caches listEditionHeaders across multiple items in the same run', async () => {
+  const s = await fresh();
+  await s.putEvent(dated('ev1', 'Band A', '2026-06-01'));
+  await s.putEvent(dated('ev2', 'Band B', '2026-06-02'));
+  let listHeadersCalls = 0;
+  const origListHeaders = s.listEditionHeaders.bind(s);
+  s.listEditionHeaders = async (opts) => {
+    listHeadersCalls++;
+    return origListHeaders(opts);
+  };
+  const r = await runCanonBackfill(s);
+  assert.ok(r);
+  assert.equal(r.created, 2);
+  assert.equal(listHeadersCalls, 1);
+});
+
+test('fillEdition hydrates the full edition via getEdition and preserves existing performances when updating venueId / subjectKey', async () => {
+  const s = await fresh();
+  const samplePerf = {
+    artistKey: 'artist-1',
+    name: 'Artist 1',
+    days: ['2026-06-01'],
+    stages: ['Main Stage'],
+    status: 'billed' as const,
+    confidence: 1,
+    sources: [],
+  };
+  await writeEdition(s, {
+    edition: edition({
+      id: 'e-perf',
+      key: 'fest/2026',
+      name: 'Fest With Perfs',
+      seriesSlug: 'fest',
+      venue: 'The Hall',
+      city: 'Austin',
+      performances: [samplePerf],
+    }),
+    actor: 'test',
+    reason: 'setup',
+  });
+
+  let getEditionCalledForEPerf = false;
+  const origGetEdition = s.getEdition.bind(s);
+  s.getEdition = async (id: string) => {
+    if (id === 'e-perf') getEditionCalledForEPerf = true;
+    return origGetEdition(id);
+  };
+
+  const r = await runCanonBackfill(s);
+  assert.ok(r);
+  assert.equal(r.venue_set, 1);
+  assert.equal(r.subject_set, 1);
+  assert.equal(getEditionCalledForEPerf, true);
+
+  const updated = await s.getEdition('e-perf');
+  assert.ok(updated);
+  assert.ok(updated.venueId);
+  assert.equal(updated.subjectKey, 'fest');
+  assert.equal(updated.performances.length, 1);
+  assert.deepEqual(updated.performances[0], samplePerf);
+});

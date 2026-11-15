@@ -42,7 +42,7 @@ import type { ShareLink } from '../../share/types';
 import { shareEventOnly } from '../../share/types';
 import type { AiCallRow, IngestTraceRow, MergeSummary } from './types';
 import type { CanonicalVenue, EditionChange, ReviewQueueItem, ReviewQueueKind, VenueAlias, EditionExternalId } from '../types';
-import { assertNoPersonalFields, ExternalIdConflictError, venueIdFor } from './types';
+import { assertNoPersonalFields, EditionOccurrenceConflictError, ExternalIdConflictError, venueIdFor } from './types';
 import { normalizeName } from '../normalizeName';
 import type { CachedResponse } from '../responseCache';
 import {
@@ -404,8 +404,35 @@ export class FileLineupStore implements LineupStore {
     return ids.map((id) => state.editions[id]).filter((e): e is Edition => Boolean(e)).map((e) => this.toEditionHeader(state, e));
   }
 
+  async findEditionByOccurrence(startDate: string, venueId: string, subjectKey: string): Promise<Edition | null> {
+    const state = await this.load();
+    const ed = Object.values(state.editions).find(
+      (e) => e.startDate === startDate && e.venueId === venueId && e.subjectKey === subjectKey,
+    );
+    return ed ? this.enrichEdition(state, ed) : null;
+  }
+
   async upsertEdition(edition: Edition) {
-    (await this.load()).editions[edition.id] = clone(edition);
+    const state = await this.load();
+    if (edition.startDate && edition.venueId && edition.subjectKey) {
+      const clash = Object.values(state.editions).find(
+        (e) =>
+          e.id !== edition.id &&
+          e.startDate === edition.startDate &&
+          e.venueId === edition.venueId &&
+          e.subjectKey === edition.subjectKey,
+      );
+      if (clash) {
+        throw new EditionOccurrenceConflictError(
+          edition.id,
+          edition.startDate,
+          edition.venueId,
+          edition.subjectKey,
+          { id: clash.id, key: clash.key, name: clash.name },
+        );
+      }
+    }
+    state.editions[edition.id] = clone(edition);
     await this.save();
   }
 
@@ -1288,6 +1315,10 @@ export class FileLineupStore implements LineupStore {
     (state.reviewQueue ??= []).push(row);
     await this.save();
     return clone(row);
+  }
+
+  async enqueueReview(i: { kind: ReviewQueueKind; editionId?: string; eventId?: string; payload: Record<string, unknown> }) {
+    return this.addReviewItem(i);
   }
 
   async listReviewItems(q: { status?: string; kind?: ReviewQueueKind } = {}) {

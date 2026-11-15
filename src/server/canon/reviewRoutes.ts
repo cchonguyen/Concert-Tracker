@@ -3,7 +3,7 @@
 import { Router } from 'express';
 import { currentMember } from '../auth/requestScope';
 import { isOwner } from '../entities/canonicalManage';
-import { isVerifiedStatus, LineupStore } from '../lineup/store/types';
+import { EditionOccurrenceConflictError, isVerifiedStatus, LineupStore } from '../lineup/store/types';
 import type { Edition, ReviewQueueItem, ReviewQueueKind } from '../lineup/types';
 import { undoEditionChange, writeEdition } from './editions';
 
@@ -39,6 +39,10 @@ export function canonReviewRouter(store: LineupStore): Router {
       await fn(req, res);
     } catch (err) {
       if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
+      if (err instanceof EditionOccurrenceConflictError || (err instanceof Error && err.name === 'EditionOccurrenceConflictError')) {
+        const conflictingEdition = (err as EditionOccurrenceConflictError).conflictingEdition;
+        return res.status(409).json({ error: err.message, ...(conflictingEdition ? { conflictingEdition } : {}) });
+      }
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   };

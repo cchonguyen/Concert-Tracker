@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { isVerifiedStatus, LineupStore, MergeSummary } from './store/types';
-import { Edition, EditionPerformance, EditionWeekend } from './types';
+import { EditionOccurrenceConflictError, isVerifiedStatus, LineupStore, MergeSummary } from './store/types';
+import { Edition, EditionHeader, EditionPerformance, EditionWeekend } from './types';
 import { isBilling, Billing } from './billing';
 import { normalizeName, seriesSlugFor } from './text';
 import { writeEdition } from '../canon/editions';
@@ -499,6 +499,9 @@ export async function mergeCanonicalEditions(
   const actor = input.actor?.trim() || 'owner';
   const reason = input.reason?.trim() || 'merged duplicate editions';
 
+  type StampAction = { editionId: string; weekend: number };
+  const stampActions: StampAction[] = [];
+
   if (input.combineAsWeekends) {
     const allEditions = [keep, ...drops];
     type Slot = { editionId: string; startDate: string; endDate?: string; singleSlot: boolean };
@@ -542,12 +545,11 @@ export async function mergeCanonicalEditions(
         wNum++;
       }
 
-      // Stamp unset logged_events.weekend on keep and drop editions BEFORE mergeEditions moves drop's events onto keep.
       for (const s of slots) {
         if (!s.singleSlot) continue;
         const assigned = rangeToWeekend.get(rangeKey(s));
         if (assigned !== undefined) {
-          await store.stampUnsetWeekend(s.editionId, assigned);
+          stampActions.push({ editionId: s.editionId, weekend: assigned });
         }
       }
 
@@ -562,13 +564,107 @@ export async function mergeCanonicalEditions(
     }
   }
 
-  await writeEdition(store, { edition: next, actor, reason });
+  // Before any mutation (stampUnsetWeekend, store.mergeEditions, writeEdition),
+  // if next.startDate && next.venueId && next.subjectKey are all present,
+  // check whether an edition outside [keepId, ...uniqueDropIds] already holds them.
+  if (next.startDate && next.venueId && next.subjectKey) {
+    const excluded = new Set([keepId, ...uniqueDropIds]);
+    let clash: Edition | null | undefined = null;
+    if (typeof store.findEditionByOccurrence === 'function') {
+      clash = await store.findEditionByOccurrence(next.startDate, next.venueId, next.subjectKey);
+    } else if (typeof store.listEditions === 'function') {
+      const all = await store.listEditions(5000);
+      clash =
+        all.find(
+          (e) =>
+            e.startDate === next.startDate &&
+            e.venueId === next.venueId &&
+            e.subjectKey === next.subjectKey,
+        ) ?? null;
+    }
+    if (clash && !excluded.has(clash.id)) {
+      throw new EditionOccurrenceConflictError(keepId, next.startDate, next.venueId, next.subjectKey, {
+        id: clash.id,
+        key: clash.key,
+        name: clash.name,
+      });
+    }
+  }
+
+  // Stamp unset logged_events.weekend on keep and drop editions BEFORE mergeEditions moves drop's events onto keep.
+  for (const action of stampActions) {
+    await store.stampUnsetWeekend(action.editionId, action.weekend);
+  }
 
   const merged: MergeSummary[] = [];
   for (const dropId of uniqueDropIds) {
     merged.push(await store.mergeEditions(keepId, dropId, actor, reason));
   }
 
+  const currentKeep = await store.getEdition(keepId);
+  if (currentKeep) {
+    next.performances = currentKeep.performances;
+  }
+  if ((next.performances && next.performances.length > 0) || keep.hasLineup || drops.some((d) => d.hasLineup)) {
+    next.hasLineup = true;
+  }
+
+  await writeEdition(store, { edition: next, actor, reason });
+
   const updatedKeep = (await store.getEdition(keepId)) ?? next;
   return { edition: updatedKeep, merged };
+}
+
+export async function autoMergeZeroLineupGroup(
+  store: LineupStore,
+  candidates: EditionHeader[],
+  opts: { actor: string; reason: string },
+): Promise<{ keep: EditionHeader; droppedIds: string[] } | null> {
+  const uniqueCandidates = [...new Map(candidates.map((c) => [c.id, c])).values()];
+  if (uniqueCandidates.length < 2) return null;
+
+  const facts = await store.editionLineupFacts(uniqueCandidates.map((c) => c.id));
+  const populatedVerified: EditionHeader[] = [];
+  const populatedOther: EditionHeader[] = [];
+  const empty: EditionHeader[] = [];
+
+  for (const c of uniqueCandidates) {
+    const acts = facts[c.id]?.acts ?? 0;
+    if (acts > 0) {
+      if (isVerifiedStatus(c.status)) {
+        populatedVerified.push(c);
+      } else {
+        populatedOther.push(c);
+      }
+    } else {
+      empty.push(c);
+    }
+  }
+
+  if (populatedVerified.length !== 1 || populatedOther.length !== 0 || empty.length < 1) {
+    return null;
+  }
+
+  const winner = populatedVerified[0];
+  let keep = winner;
+  let drops = empty;
+
+  if (winner.key.startsWith('operator-recheck/')) {
+    const canonicalEmptyRows = empty.filter(
+      (e) => isVerifiedStatus(e.status) && !e.key.startsWith('operator-recheck/') && !e.key.startsWith('provisional/'),
+    );
+    if (canonicalEmptyRows.length === 1) {
+      keep = canonicalEmptyRows[0];
+      drops = [winner, ...empty.filter((e) => e.id !== keep.id)];
+    }
+  }
+
+  const mergeRes = await mergeCanonicalEditions(store, {
+    keepId: keep.id,
+    dropIds: drops.map((d) => d.id),
+    actor: opts.actor,
+    reason: opts.reason,
+  });
+
+  return { keep: mergeRes.edition, droppedIds: drops.map((d) => d.id) };
 }

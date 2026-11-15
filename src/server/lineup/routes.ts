@@ -8,7 +8,7 @@ import { redactSecrets } from './http';
 import { LookupJob } from './types';
 import { readReaderConfig } from '../reader/config';
 import { BREAKER_KEY, callsMonthKey, dayKey, monthKey } from '../reader/guard';
-import { isEditionSuggestQuery } from './store/types';
+import { EditionOccurrenceConflictError, isEditionSuggestQuery } from './store/types';
 import { canonReviewRouter } from '../canon/reviewRoutes';
 import { clashfinderCandidates } from './adapters/clashfinder';
 
@@ -217,6 +217,10 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
       if ((await deps.store.listUnresolvedArtists(1)).length) await enqueueArtistResolution(deps);
       res.json(result);
     } catch (err) {
+      if (err instanceof EditionOccurrenceConflictError || (err instanceof Error && err.name === 'EditionOccurrenceConflictError')) {
+        const conflictingEdition = (err as EditionOccurrenceConflictError).conflictingEdition;
+        return res.status(409).json({ error: err.message, ...(conflictingEdition ? { conflictingEdition } : {}) });
+      }
       fail(res, err, 400);
     }
   });
