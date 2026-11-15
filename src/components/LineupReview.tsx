@@ -333,6 +333,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
 
   // The canonical request. Preview and save send the same one, so the diff shown is the diff saved.
   const canonicalRequest = (): CanonicalConfirmInput => ({
+    ...(edition?.id ? { editionId: edition.id } : {}),
     jobId: job.id,
     name: job.input.eventName,
     year: job.input.year,

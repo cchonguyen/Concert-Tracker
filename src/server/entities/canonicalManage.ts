@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ArtistIdentity, Edition, EditionPerformance } from '../lineup/types';
+import type { ArtistIdentity, Edition, EditionArtistRef, EditionHeader, EditionPerformance, EditionWeekend } from '../lineup/types';
 import { normalizeName } from '../lineup/text';
 import type { CanonicalUndoResult, LineupStore } from '../lineup/store/types';
 import { CanonicalStoreError, editionMatchesStatusFilter, isVerifiedStatus } from '../lineup/store/types';
@@ -20,33 +20,44 @@ export type EditionStatusFilter = CanonicalEditionStatusFilter;
 export interface CanonicalEditionSummary {
   id: string;
   key: string;
-  seriesSlug: string;
+  seriesSlug: string | null;
+  seriesName: string | null;
+  seriesBrand: string | null;
   year: number;
   name: string;
   startDate: string | null;
   endDate: string | null;
   venue: string | null;
   city: string | null;
+  region: string | null;
+  country: string | null;
+  weekends: EditionWeekend[];
   status: Edition['status'];
   performanceCount: number;
   hasSetTimes: boolean;
 }
 
-export function summarizeEdition(e: Edition): CanonicalEditionSummary {
+export function summarizeEdition(e: EditionHeader & { performances?: EditionPerformance[] }): CanonicalEditionSummary {
+  const performances = e.performances ?? [];
   return {
     id: e.id,
     key: e.key,
-    seriesSlug: e.seriesSlug,
+    seriesSlug: e.seriesSlug ?? null,
+    seriesName: e.seriesName ?? null,
+    seriesBrand: e.seriesBrand ?? null,
     year: e.year,
     name: e.name,
     startDate: e.startDate ?? null,
     endDate: e.endDate ?? null,
     venue: e.venue ?? null,
     city: e.city ?? null,
+    region: e.region ?? null,
+    country: e.country ?? null,
+    weekends: e.weekends ?? [],
     status: e.status,
-    performanceCount: e.performances.length,
+    performanceCount: performances.length,
     // Set times exist only where a source timed them (AGENTS.md): a set is timed when it has days or stages.
-    hasSetTimes: e.performances.some((p) => p.days.length > 0 || p.stages.length > 0),
+    hasSetTimes: performances.some((p) => p.days.length > 0 || p.stages.length > 0),
   };
 }
 
@@ -56,7 +67,7 @@ export function listCanonicalEditions(editions: Edition[], opts: { query?: strin
   const q = (opts.query ?? '').trim().toLowerCase();
   return editions
     .filter((e) => editionMatchesStatusFilter(e.status, status))
-    .filter((e) => !q || [e.name, e.seriesSlug, e.venue ?? ''].some((s) => s.toLowerCase().includes(q)))
+    .filter((e) => !q || [e.name, e.seriesSlug ?? '', e.seriesName ?? '', e.seriesBrand ?? '', e.venue ?? ''].some((s) => s.toLowerCase().includes(q)))
     .map(summarizeEdition)
     .sort((a, b) => b.year - a.year || a.name.localeCompare(b.name));
 }
@@ -82,7 +93,8 @@ export interface CanonicalArtistSummary {
 export function unifyArtists(input: {
   canonical: ArtistIdentity[];
   ownerNames: string[];
-  editions: Edition[];
+  editions?: Edition[];
+  artistRefs?: EditionArtistRef[];
   // From communityCounts(): name key -> members. Omit or null leaves communityCount null.
   communityCounts?: Map<string, number> | null;
 }): CanonicalArtistSummary[] {
@@ -105,11 +117,18 @@ export function unifyArtists(input: {
     const row = ensure(key, n);
     if (!row.origins.includes('from_me')) row.origins.push('from_me');
   }
-  for (const e of input.editions) {
-    if (!isVerifiedStatus(e.status)) continue;
-    for (const p of e.performances) {
-      const row = byKey.get(p.artistKey);
+  if (input.artistRefs) {
+    for (const ref of input.artistRefs) {
+      const row = byKey.get(ref.artistKey);
       if (row) row.editionsCount += 1;
+    }
+  } else {
+    for (const e of input.editions ?? []) {
+      if (!isVerifiedStatus(e.status)) continue;
+      for (const p of e.performances) {
+        const row = byKey.get(p.artistKey);
+        if (row) row.editionsCount += 1;
+      }
     }
   }
   // With counts, every row gets a number (0 when no live event has it). Without, null: unknown, not zero.
@@ -153,6 +172,30 @@ export function appearancesOf(editions: Edition[], artistKey: string): ArtistApp
         stages: p.stages,
       });
     }
+  }
+  return out.sort((a, b) => b.year - a.year || a.editionName.localeCompare(b.editionName));
+}
+
+export function appearancesFromRefs(headers: EditionHeader[], refs: EditionArtistRef[], artistKey: string): ArtistAppearance[] {
+  const byId = new Map(headers.map((h) => [h.id, h]));
+  const out: ArtistAppearance[] = [];
+  for (const ref of refs) {
+    if (ref.artistKey !== artistKey) continue;
+    const e = byId.get(ref.editionId);
+    if (!e) continue;
+    out.push({
+      editionId: e.id,
+      editionName: e.name,
+      year: e.year,
+      startDate: e.startDate ?? null,
+      venue: e.venue ?? null,
+      city: e.city ?? null,
+      status: e.status,
+      billing: null,
+      set: null,
+      days: [],
+      stages: [],
+    });
   }
   return out.sort((a, b) => b.year - a.year || a.editionName.localeCompare(b.editionName));
 }

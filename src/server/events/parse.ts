@@ -22,6 +22,7 @@ export interface ParsedInput {
   month?: number;
   startDate?: string;
   endDate?: string;
+  weekend?: number;
   venue?: string;
   city?: string;
 }
@@ -111,6 +112,10 @@ export function findDates(text: string): Array<{ startDate: string; endDate?: st
 // A bare year. "The 1975" is a band, so a year right after "the" is not a date.
 const BARE_YEAR = /(^|[^\w-])((?:19|20)\d{2})(?![\w-])/g;
 
+// Explicit weekend token ("weekend 2", "wknd 1", "W2") requiring digit 1..9 so
+// band/event names like "Vampire Weekend" or "The Weeknd" are never touched.
+const WEEKEND_RE = /\b(?:weekend|wknd)\s*([1-9])\b|\bw([1-9])\b/i;
+
 function tidy(value: string): string {
   return value
     .replace(/\(\s*\)/g, ' ')
@@ -141,6 +146,23 @@ export function parseEventInput(raw: string): ParsedInput {
     }
   }
   if (dates.startDate) dates.year = +dates.startDate.slice(0, 4);
+
+  let weekend: number | undefined;
+  const wm = text.match(WEEKEND_RE);
+  if (wm) {
+    weekend = Number(wm[1] ?? wm[2]);
+    const stripped = `${text.slice(0, wm.index!)} ${text.slice(wm.index! + wm[0].length)}`;
+    const atSplit = text.match(/^(.*?)\s(?:at|@)\s(.*)$/i) ?? text.match(/^(.*?)@(.*)$/);
+    if (atSplit && tidy(atSplit[1])) {
+      const inName = wm.index! < atSplit[1].length;
+      const strippedAt = stripped.match(/^(.*?)\s(?:at|@)\s(.*)$/i) ?? stripped.match(/^(.*?)@(.*)$/);
+      if (inName ? Boolean(strippedAt && tidy(strippedAt[1])) : Boolean(strippedAt && tidy(strippedAt[2]))) {
+        text = stripped;
+      }
+    } else if (tidy(stripped)) {
+      text = stripped;
+    }
+  }
 
   // Place: "<name> at|@ <venue>[, <city>]". Only " at ", "@" and a comma
   // after them mark a place; " in " alone never splits (it is only offered as
@@ -174,7 +196,7 @@ export function parseEventInput(raw: string): ParsedInput {
     if (alt && tidy(alt[1]) && tidy(alt[2])) addReading({ name: tidy(alt[1]), city: tidy(alt[2]) });
   }
 
-  const out: ParsedInput = { name: tidy(name), ...dates, venue, city, text: tidy(raw), readings };
+  const out: ParsedInput = { name: tidy(name), ...dates, weekend, venue, city, text: tidy(raw), readings };
   for (const k of Object.keys(out) as Array<keyof ParsedInput>) if (out[k] === undefined) delete out[k];
   return out;
 }

@@ -21,7 +21,7 @@ import {
   SOURCE_LABELS,
 } from '../services/lineupApi';
 import { editionUrl, isModifiedClick, rememberManageSearch } from '../services/manageNav';
-import { artistsOf, dateConfirmations, datesBetween, formatsOf, joinFormats, matchNames, pastArtistNames, pastCompanionNames, pastSets, supportOf, weatherLine, whenLabel } from '../services/format';
+import { artistsOf, dateConfirmations, datesBetween, formatsOf, joinFormats, matchNames, pastArtistNames, pastCompanionNames, pastSets, supportOf, weekendLabel, weatherLine, whenLabel } from '../services/format';
 import { actSets, byStartTime, chipTime, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
@@ -33,7 +33,7 @@ import { SuggestInput } from './SuggestInput';
 import { SeenGenres } from './SeenGenres';
 import { EventTitle } from './EventTitle';
 import { hasGap, placePatch, type Gap } from '../services/table';
-import { dateText, GAP_SECTION, thingsLeft } from '../services/poster';
+import { dateText, GAP_SECTION, needsWeekendPrompt, thingsLeft } from '../services/poster';
 import { rememberSection, sectionOpen } from '../services/sectionMemory';
 import { Popover } from './ui/Popover';
 import { Burst } from './ui/Burst';
@@ -1023,6 +1023,15 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const [lineupStage, setLineupStage] = useState<string>('all');
   const [lineupDay, setLineupDay] = useState<string>('all');
   const [lineupSearch, setLineupSearch] = useState<string>('');
+  const [weekendPromptDismissed, setWeekendPromptDismissed] = useState(false);
+  const whenWhereRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    setLineupStage('all');
+    setLineupDay('all');
+    setLineupSearch('');
+    setWeekendPromptDismissed(false);
+  }, [event.id]);
 
   useEffect(() => {
     if (cityQuery.trim().length < 3) return setFoundCities([]);
@@ -1335,6 +1344,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           <ThingsLeft
           gaps={gapsLeft}
           current={current}
+          needsWeekend={needsWeekendPrompt(event, edition)}
           onPick={showGap}
           onNext={() => showGap(gapsLeft[(at + 1) % gapsLeft.length])}
         />
@@ -1359,25 +1369,48 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                 onSave={(v) => save({ series: text(v), ...(text(v) ? {} : { weekend: null }) })}
                 className="flex-1"
               />
-              {event.series && (
+              {(event.series || (edition?.weekends && edition.weekends.length > 1)) && (
                 <div className="space-y-1">
                   <span className="block text-[11px] font-semibold text-zinc-400">Weekend</span>
-                  <div className="flex gap-1.5">
-                    {[1, 2].map((w) => {
-                      // A series with no weekend stored is treated as its first, so WK1 is lit until WK2 is picked.
-                      const on = (event.weekend ?? 1) === w;
-                      return (
-                        <button
-                          key={w}
-                          type="button"
-                          aria-pressed={on}
-                          onClick={() => save({ weekend: w })}
-                          className={`min-h-11 rounded-control border px-3 text-sm sm:min-h-9 ${on ? 'border-violet-400 bg-violet-500/20 text-violet-100' : 'border-zinc-700 text-zinc-300 hover:border-violet-500'}`}
-                        >
-                          WK{w}
-                        </button>
-                      );
-                    })}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {edition?.weekends && edition.weekends.length > 1
+                      ? edition.weekends.map((w) => {
+                          const on = event.weekend === w.weekend;
+                          return (
+                            <button
+                              key={w.weekend}
+                              type="button"
+                              aria-pressed={on}
+                              onClick={() => void save({ weekend: w.weekend })}
+                              className={`min-h-11 rounded-control border px-3 text-sm sm:min-h-9 ${on ? 'border-violet-400 bg-violet-500/20 text-violet-100' : 'border-zinc-700 text-zinc-300 hover:border-violet-500'}`}
+                            >
+                              {weekendLabel(w, 'WK')}
+                            </button>
+                          );
+                        })
+                      : [1, 2].map((w) => {
+                          const on = event.weekend === w;
+                          return (
+                            <button
+                              key={w}
+                              type="button"
+                              aria-pressed={on}
+                              onClick={() => void save({ weekend: w })}
+                              className={`min-h-11 rounded-control border px-3 text-sm sm:min-h-9 ${on ? 'border-violet-400 bg-violet-500/20 text-violet-100' : 'border-zinc-700 text-zinc-300 hover:border-violet-500'}`}
+                            >
+                              WK{w}
+                            </button>
+                          );
+                        })}
+                    {event.weekend != null && (
+                      <button
+                        type="button"
+                        onClick={() => void save({ weekend: null })}
+                        className="min-h-11 px-2 text-xs text-zinc-400 hover:text-zinc-200 sm:min-h-9"
+                      >
+                        Clear
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -1404,7 +1437,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         />
 
         {/* Stage 1: when and where */}
-        <section id="when-where" className={card}>
+        <section id="when-where" ref={whenWhereRef} className={card}>
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-0.5">
               <h3 className={cardTitle}>When and where</h3>
@@ -1422,6 +1455,35 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               Check details
             </button>
           </div>
+          {needsWeekendPrompt(event, edition) && !weekendPromptDismissed && edition?.weekends && (
+            <div className="space-y-2 rounded-lg border border-violet-500/30 bg-violet-950/20 p-2.5">
+              <p className="text-sm font-medium text-violet-100">Which weekend did you go?</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {edition.weekends.map((w) => (
+                  <button
+                    key={w.weekend}
+                    type="button"
+                    onClick={() => void save({ weekend: w.weekend })}
+                    className="min-h-11 rounded-control border border-violet-400/50 bg-violet-500/15 px-3 text-sm text-violet-100 hover:border-violet-300 hover:bg-violet-500/25 sm:min-h-9"
+                  >
+                    {weekendLabel(w)}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWeekendPromptDismissed(true);
+                    window.requestAnimationFrame(() => {
+                      whenWhereRef.current?.querySelector<HTMLInputElement>('input[type="date"]')?.focus();
+                    });
+                  }}
+                  className="min-h-11 px-2 text-xs text-zinc-400 hover:text-zinc-200 hover:underline sm:min-h-9"
+                >
+                  Other dates
+                </button>
+              </div>
+            </div>
+          )}
           <CheckDetails
             inline
             busy={busy === 'research'}
@@ -1436,6 +1498,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             onGemini={() => void run('research-gemini', () => eventsApi.research(event.id, true))}
             onPick={(id: string) => void run('pick', () => eventsApi.pick(event.id, id))}
             onNone={() => void run('pick', () => eventsApi.pick(event.id))}
+            onDismissCanon={() => void run('dismiss-canon', () => eventsApi.dismissCanon(event.id))}
+            dismissBusy={busy === 'dismiss-canon'}
           />
           <div className="grid grid-cols-2 gap-3">
             <Field label="Date" field="startDate" type="date" value={event.startDate} source={event.sources.startDate} onSave={(v) => save({ startDate: text(v) })} />
@@ -1707,7 +1771,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                 const matchesStage = slot.items.some((it) => it.item.stages?.includes(lineupStage));
                 if (!matchesStage) return false;
               }
-              if (lineupDay !== 'all') {
+              if (lineupDay !== 'all' && allDays.includes(lineupDay)) {
                 const matchesDay = slot.items.some((it) => it.item.days?.includes(lineupDay));
                 if (!matchesDay) return false;
               }

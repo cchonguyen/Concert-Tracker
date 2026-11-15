@@ -5,18 +5,52 @@
 // Atomicity: the row is written first, then its change. There is no Supabase function that does both in one
 // call and this slice adds no migration, so a failed change write is retried once, then logged loudly. The row
 // write is never rolled back silently; a missing change record is reported by the log, not hidden.
-import type { Edition, EditionChange } from '../lineup/types';
+import type { Edition, EditionChange, EditionWeekend } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
 
-const FIELDS = ['name', 'startDate', 'endDate', 'venue', 'city', 'country', 'status', 'venueId', 'subjectKey', 'hasLineup'] as const;
+const FIELDS = [
+  'name',
+  'startDate',
+  'endDate',
+  'venue',
+  'city',
+  'region',
+  'country',
+  'status',
+  'venueId',
+  'subjectKey',
+  'seriesSlug',
+  'weekends',
+  'hasLineup',
+] as const;
 type Field = (typeof FIELDS)[number];
 const SUMMARY = 'performanceCount';
 
-type Snapshot = Record<string, string | number | boolean | null>;
+type Snapshot = Record<string, unknown>;
+
+function normalizeWeekends(weekends: EditionWeekend[] | undefined): EditionWeekend[] | null {
+  if (!weekends || weekends.length === 0) return null;
+  return weekends.map((w) => ({
+    weekend: w.weekend,
+    startDate: w.startDate,
+    ...(w.endDate ? { endDate: w.endDate } : {}),
+  }));
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+  return false;
+}
 
 function snapshot(e: Edition | null): Snapshot {
   const s: Snapshot = {};
-  for (const f of FIELDS) s[f] = (e?.[f] as string | boolean | undefined) ?? null;
+  for (const f of FIELDS) {
+    if (f === 'weekends') s[f] = normalizeWeekends(e?.weekends);
+    else s[f] = (e?.[f] as string | boolean | undefined) ?? null;
+  }
   s[SUMMARY] = e ? e.performances.length : null;
   return s;
 }
@@ -40,7 +74,7 @@ export async function writeEdition(store: LineupStore, input: WriteEditionInput)
   const b: Snapshot = {};
   const a: Snapshot = {};
   for (const k of [...FIELDS, SUMMARY]) {
-    if (before[k] !== after[k]) {
+    if (!sameValue(before[k], after[k])) {
       b[k] = before[k];
       a[k] = after[k];
     }
@@ -82,9 +116,23 @@ export async function undoEditionChange(store: LineupStore, editionId: string, c
   if (fields.length === 0 || ('name' in before && before.name == null)) return { ok: false, reason: 'not_undoable' };
   const current = snapshot(edition);
   // A later change touched these fields when the edition no longer holds what this change wrote.
-  if (fields.some((f) => current[f] !== (change.after as Snapshot)[f])) return { ok: false, reason: 'stale' };
+  if (fields.some((f) => !sameValue(current[f], (change.after as Snapshot)[f]))) return { ok: false, reason: 'stale' };
   const restored = { ...edition, updatedAt: new Date().toISOString() } as Edition;
-  for (const f of fields) (restored as any)[f] = before[f] ?? undefined;
+  for (const f of fields) {
+    if (f === 'weekends') {
+      restored.weekends = Array.isArray(before[f]) ? normalizeWeekends(before[f] as EditionWeekend[]) ?? undefined : undefined;
+    } else if (f === 'seriesSlug') {
+      const prev = before[f] ?? undefined;
+      restored.seriesSlug = prev as string | undefined;
+      if (!prev) {
+        delete restored.seriesName;
+        delete restored.seriesBrand;
+        delete restored.seriesAliases;
+      }
+    } else {
+      (restored as any)[f] = before[f] ?? undefined;
+    }
+  }
   const written = await writeEdition(store, { edition: restored, actor, reason: `undo of ${changeId}` });
   await store.markChangeUndone(changeId);
   return { ok: true, change: written.change ?? change };

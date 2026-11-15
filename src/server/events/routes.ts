@@ -2,13 +2,17 @@ import { Router } from 'express';
 import { startTrace } from '../telemetry/trace';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
 import { JobRunner } from '../lineup/service';
-import { DetailFinder, defaultFinders, pickCandidate, researchEvent } from './details';
+import { DetailFinder, defaultFinders, pickCandidate, researchCatalogFor, researchEvent } from './details';
 import { geminiReader } from './detailsGemini';
 import { cityPoint, citySuggestions, placeGuess } from './place';
 import { applyLinkedPatch, ensureCaptured, recordOverrides, resolveEvent, resolveEvents, unlinkEvent } from './inherit';
 import { clashfinderChoices, EventPatch, lineupSummary, newEvent, newEventFromEdition, sortEvents, startBulkLookups, startLineupLookup } from './service';
-import { LineupSummary, LoggedEvent } from './types';
+import { DetailCandidate, EVENT_FIELDS, EventField, LineupSummary, LoggedEvent } from './types';
 import { isVerifiedStatus } from '../lineup/store/types';
+import type { Edition, EditionHeader } from '../lineup/types';
+import { editionCoversDate, findSeriesEditionMatches } from '../canon/match';
+import { parseEventInput } from './parse';
+import { isAhead } from './attendance';
 import { normalizeName } from '../lineup/normalizeName';
 import { artistSuggestions, eventPerformers, nameArtistSuggestions, MAX_BULK_SUGGESTIONS, storedNameSuggestions } from './artists';
 import type { LineupFacts } from './scale';
@@ -41,13 +45,63 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
     await deps.store.putEvent(event);
     return (await deps.store.getEvent(event.id)) ?? event;
   };
+  const canonicalCandidate = (e: EditionHeader): DetailCandidate => {
+    const raw: Record<string, string | undefined> = {
+      name: e.name,
+      startDate: e.startDate ?? undefined,
+      endDate: e.endDate ?? undefined,
+      venue: e.venue ?? undefined,
+      city: e.city ?? undefined,
+      region: e.region ?? undefined,
+      country: e.country ?? undefined,
+    };
+    const cleanFacts = Object.fromEntries(Object.entries(raw).filter(([, v]) => typeof v === 'string' && v.trim())) as Partial<
+      Record<'name' | EventField, string>
+    >;
+    const fields = EVENT_FIELDS.filter((f) => Boolean(cleanFacts[f]));
+    return {
+      id: e.id,
+      editionId: e.id,
+      ...(e.seriesName ? { seriesName: e.seriesName } : {}),
+      ...(e.weekends?.length ? { weekends: e.weekends } : {}),
+      ...cleanFacts,
+      sources: [{ sourceType: 'promoter', sourceUrl: '', fields }],
+    };
+  };
+  const completeEditionLink = async (
+    event: LoggedEvent,
+    edition: Edition,
+  ): Promise<{ event: LoggedEvent; job?: Awaited<ReturnType<typeof startLineupLookup>>['job'] }> => {
+    let current = event;
+    let job: Awaited<ReturnType<typeof startLineupLookup>>['job'] | undefined;
+    try {
+      // The lookup reads the edition's facts through inheritance; the stored event keeps only what was typed.
+      const seen = resolveEvent(event, edition);
+      const linked = await startLineupLookup(deps, { ...seen, year: seen.year ?? edition.year });
+      current = await saveEvent({ ...event, lineupJobId: linked.event.lineupJobId, updatedAt: linked.event.updatedAt });
+      job = linked.job;
+    } catch {
+      // The plain saved event stands.
+    }
+    // Weather is looked up once on a save from an edition (Charlie's choice),
+    // never re-run, and a failure never fails the save.
+    try {
+      const { weather } = await lookupWeather(resolveEvent(current, edition), deps.fetcher, deps.now());
+      if (weather) {
+        current = await saveEvent({ ...current, weather, updatedAt: deps.now().toISOString() });
+      }
+    } catch {
+      // No weather is stored.
+    }
+    return { event: resolveEvent(current, edition), job };
+  };
 
   router.get('/events', async (_req, res) => {
     try {
       const raw = await deps.store.listEvents();
       // A linked event shows its edition's value unless you overrode that field (inherit.ts).
       const linkedIds = [...new Set(raw.map((e) => e.editionId).filter((id): id is string => Boolean(id)))];
-      const events = sortEvents(linkedIds.length ? resolveEvents(raw, await deps.store.getEditions(linkedIds)) : raw);
+      const events = sortEvents(linkedIds.length ? resolveEvents(raw, await deps.store.getEditionHeaders(linkedIds)) : raw);
       const jobs = await deps.store.getJobs(events.map((e) => e.lineupJobId).filter((id): id is string => Boolean(id)));
       const lineups: Record<string, LineupSummary> = {};
       for (const job of jobs) if (job.eventId) lineups[job.eventId] = lineupSummary(job);
@@ -70,7 +124,42 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
     try {
       const text = String(req.body?.text ?? '');
       if (typeof req.body?.editionId !== 'string') {
-        const event = await saveEvent(ensureCaptured(newEvent(text, deps.now())));
+        const draft = ensureCaptured(newEvent(text, deps.now()));
+        const parsed = parseEventInput(draft.input);
+        const rawMatches = await findSeriesEditionMatches(deps.store, parsed);
+        const matches = parsed.month && !parsed.startDate
+          ? rawMatches.filter((m) => {
+              const dates = m.weekends?.length
+                ? m.weekends.flatMap((w) => [w.startDate, w.endDate].filter((d): d is string => Boolean(d)))
+                : [m.startDate, m.endDate].filter((d): d is string => Boolean(d));
+              return !dates.length || dates.some((d) => Number(d.slice(5, 7)) === parsed.month);
+            })
+          : rawMatches;
+
+        if (matches.length === 1) {
+          const edition = await deps.store.getEdition(matches[0].id);
+          if (edition && isVerifiedStatus(edition.status)) {
+            const inferredWeekend = parsed.weekend ?? (parsed.startDate ? editionCoversDate(edition, parsed.startDate).weekend : undefined);
+            const linked = await saveEvent(newEventFromEdition(text, edition, deps.now(), inferredWeekend));
+            const { event: shown, job } = await completeEditionLink(linked, edition);
+            return res.status(201).json(job ? { event: shown, job } : { event: shown });
+          }
+        }
+
+        if (matches.length >= 2) {
+          const canonicalCandidates = matches.map(canonicalCandidate);
+          const event = await saveEvent({
+            ...draft,
+            details: {
+              status: 'candidates',
+              candidates: canonicalCandidates,
+              notes: ['Matched multiple canonical series editions; pick one or dismiss to search web.'],
+            },
+          });
+          return res.status(201).json({ event });
+        }
+
+        const event = await saveEvent(draft);
         // Stage 1 never waits on research: the save is done, and research runs from the queue. If the
         // send fails the event stays 'pending' and the save stands. Only when asked (research: true, the capture
         // bar): list imports do not research. Without a queue, the browser asks.
@@ -94,31 +183,9 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
       }
       const edition = await deps.store.getEdition(req.body.editionId);
       if (!edition || !isVerifiedStatus(edition.status)) return res.status(404).json({ error: 'Edition not found.' });
-      const event = await saveEvent(newEventFromEdition(text, edition, deps.now()));
-      // The lineup lookup finds the confirmed edition and goes straight to review.
-      // A failure here never fails the save.
-      let current = event;
-      let job: Awaited<ReturnType<typeof startLineupLookup>>['job'] | undefined;
-      try {
-        // The lookup reads the edition's facts through inheritance; the stored event keeps only what was typed.
-        const seen = resolveEvent(event, edition);
-        const linked = await startLineupLookup(deps, { ...seen, year: seen.year ?? edition.year });
-        current = await saveEvent({ ...event, lineupJobId: linked.event.lineupJobId, updatedAt: linked.event.updatedAt });
-        job = linked.job;
-      } catch {
-        // The plain saved event stands.
-      }
-      // Weather is looked up once on a save from an edition (Charlie's choice),
-      // never re-run, and a failure never fails the save.
-      try {
-        const { weather } = await lookupWeather(resolveEvent(current, edition), deps.fetcher, deps.now());
-        if (weather) {
-          current = await saveEvent({ ...current, weather, updatedAt: deps.now().toISOString() });
-        }
-      } catch {
-        // No weather is stored.
-      }
-      const shown = resolveEvent(current, edition);
+      const weekendOpt = typeof req.body?.weekend === 'number' ? req.body.weekend : undefined;
+      const event = await saveEvent(newEventFromEdition(text, edition, deps.now(), weekendOpt));
+      const { event: shown, job } = await completeEditionLink(event, edition);
       return res.status(201).json(job ? { event: shown, job } : { event: shown });
     } catch (err) {
       fail(res, err);
@@ -306,7 +373,84 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
       const event = await load(req.params.id, res);
       if (!event) return;
       const fields = Array.isArray(req.body?.fields) ? req.body.fields : undefined;
-      const updated = pickCandidate(event, req.body?.candidateId, deps.now(), fields);
+      const candidateId = typeof req.body?.candidateId === 'string' ? req.body.candidateId : undefined;
+      const cand = candidateId ? event.details.candidates.find((x) => x.id === candidateId) : undefined;
+      if (cand?.editionId && !fields?.length) {
+        const edition = await deps.store.getEdition(cand.editionId);
+        if (!edition || !isVerifiedStatus(edition.status)) return res.status(404).json({ error: 'Edition not found.' });
+        const base = ensureCaptured(event);
+        const parsed = parseEventInput(base.input ?? '');
+        const rawWeekend =
+          base.weekend ??
+          parsed.weekend ??
+          (base.startDate ? editionCoversDate(edition, base.startDate).weekend : undefined);
+        let weekend: number | undefined;
+        if (rawWeekend !== undefined && Number.isInteger(rawWeekend) && rawWeekend >= 1 && rawWeekend <= 9) {
+          if (edition.weekends && edition.weekends.length > 1) {
+            if (edition.weekends.some((w) => w.weekend === rawWeekend)) weekend = rawWeekend;
+          } else {
+            weekend = rawWeekend;
+          }
+        }
+        const nowIso = deps.now().toISOString();
+        const linkedDraft: LoggedEvent = {
+          ...base,
+          editionId: edition.id,
+          overrides: {},
+          ...(weekend !== undefined ? { weekend } : {}),
+          details: { ...base.details, status: 'matched', candidates: [] },
+          updatedAt: nowIso,
+        };
+        if (!linkedDraft.attendance && isAhead(resolveEvent(linkedDraft, edition), nowIso.slice(0, 10))) {
+          linkedDraft.attendance = 'planned';
+        }
+        const saved = await saveEvent(linkedDraft);
+        const { event: shown, job } = await completeEditionLink(saved, edition);
+        return res.json(job ? { event: shown, job } : { event: shown });
+      }
+      const updated = pickCandidate(event, candidateId, deps.now(), fields);
+      res.json({ event: await saveEvent(updated) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Dismiss canonical series candidates and proceed with external Stage 1 research.
+  router.post('/events/:id/details/dismiss-canon', async (req, res) => {
+    try {
+      const event = await load(req.params.id, res);
+      if (!event) return;
+      const nowIso = deps.now().toISOString();
+      const remaining = event.details.candidates.filter((c) => !c.editionId);
+      const cleared: LoggedEvent = {
+        ...event,
+        details: {
+          status: 'pending',
+          candidates: remaining,
+          notes: event.details.notes,
+          skipCanon: true,
+        },
+        updatedAt: nowIso,
+      };
+      const saved = await saveEvent(cleared);
+      const member = currentMember();
+      if (runner.kickResearch) {
+        try {
+          await runner.kickResearch(
+            saved.id,
+            member ? { userId: member.userId, role: member.role === 'owner' ? 'owner' : 'member' } : undefined,
+          );
+          return res.json({ event: saved, research: 'queued' });
+        } catch {
+          // Fall back to inline external research if queue dispatch fails.
+        }
+      }
+      const catalog = researchCatalogFor(
+        member ? (member.role === 'owner' ? 'owner' : 'member') : undefined,
+        member?.userId,
+        deps.store,
+      );
+      const updated = await researchEvent(saved, finders, deps.fetcher, deps.now(), undefined, { ...catalog, skipCanon: true });
       res.json({ event: await saveEvent(updated) });
     } catch (err) {
       fail(res, err);

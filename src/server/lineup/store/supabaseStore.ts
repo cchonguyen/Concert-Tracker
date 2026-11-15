@@ -7,12 +7,15 @@ import {
   BlocklistEntry,
   Correction,
   Edition,
+  EditionArtistRef,
+  EditionHeader,
   EditionPerformance,
   ExtractionExample,
   LookupJob,
   PerformerClaim,
   QuotaUsage,
   SeriesRecord,
+  SeriesSummary,
   SourceDocument,
   SourceStat,
   SourceType,
@@ -43,6 +46,8 @@ import {
   isEditionSuggestQuery,
   suggestEditionMatches,
   type CanonicalEditionPageOptions,
+  type CanonicalEditionStatusFilter,
+  type SuggestEditionOptions,
   type UserScope,
 } from './types';
 import { normalizeName } from '../normalizeName';
@@ -343,16 +348,26 @@ export class SupabaseLineupStore implements LineupStore {
 
   // Canonical -------------------------------------------------------------
 
-  async getSeries(slug: string) {
-    const r = this.check(await this.db.from('event_series').select('*').eq('slug', slug).maybeSingle(), 'getSeries');
-    if (!r) return null;
+  private static readonly EDITION_HEADER_COLUMNS =
+    'id, key, series_slug, year, name, start_date, end_date, venue, city, region, country, weekends, status, venue_id, subject_key, has_lineup, confirmed_at, updated_at, fact_source_note, event_series(name, brand, aliases)';
+
+  private static readonly EDITION_SELECT_WITH_SERIES = '*, event_series(name, brand, aliases)';
+
+  private rowToSeries(r: any): SeriesRecord {
     return {
       slug: r.slug,
       name: r.name,
+      ...(r.brand != null ? { brand: r.brand } : {}),
+      ...(Array.isArray(r.aliases) && r.aliases.length ? { aliases: r.aliases } : {}),
       lineupUrl: r.lineup_url ?? undefined,
       clashfinderSlugs: r.clashfinder_slugs ?? {},
       sourcePriority: r.source_priority ?? undefined,
-    } as SeriesRecord;
+    };
+  }
+
+  async getSeries(slug: string) {
+    const r = this.check(await this.db.from('event_series').select('*').eq('slug', slug).maybeSingle(), 'getSeries');
+    return r ? this.rowToSeries(r) : null;
   }
 
   async upsertSeries(s: SeriesRecord) {
@@ -360,12 +375,37 @@ export class SupabaseLineupStore implements LineupStore {
       await this.db.from('event_series').upsert({
         slug: s.slug,
         name: s.name,
+        brand: s.brand ?? null,
+        aliases: s.aliases ?? [],
         lineup_url: s.lineupUrl ?? null,
         clashfinder_slugs: s.clashfinderSlugs ?? {},
         source_priority: s.sourcePriority ?? null,
       }),
       'upsertSeries',
     );
+  }
+
+  async listSeries(opts: { query?: string; brand?: string; limit?: number } = {}): Promise<SeriesSummary[]> {
+    const limit = Math.max(1, Math.min(500, Math.floor(opts.limit ?? 100)));
+    const { data, error } = await this.db.rpc('list_canonical_series_summary', {
+      p_query: opts.query?.trim() || null,
+      p_brand: opts.brand?.trim() || null,
+      p_limit: limit,
+    });
+    if (error) throw new Error(`listSeries (apply 0045_canonical_series_brand_weekends.sql): ${error.message}`);
+    return ((data ?? []) as any[]).map((r) => ({
+      ...this.rowToSeries(r),
+      editionCount: Number(r.edition_count ?? 0),
+    }));
+  }
+
+  async mergeSeries(keepSlug: string, dropSlug: string): Promise<MergeSummary> {
+    const { data, error } = await this.db.rpc('merge_canonical_series', {
+      p_keep_slug: keepSlug,
+      p_drop_slug: dropSlug,
+    });
+    if (error) throw new Error(`mergeSeries (apply 0045_canonical_series_brand_weekends.sql): ${error.message}`);
+    return (data ?? {}) as MergeSummary;
   }
 
   private async loadEdition(row: any): Promise<Edition> {
@@ -416,18 +456,24 @@ export class SupabaseLineupStore implements LineupStore {
     return row;
   }
 
-  private toEdition(row: any, perfs: any[]): Edition {
+  private toEditionHeader(row: any): EditionHeader {
+    const series = Array.isArray(row.event_series) ? row.event_series[0] : row.event_series;
     return {
       id: row.id,
       key: row.key,
-      seriesSlug: row.series_slug,
+      ...(row.series_slug != null ? { seriesSlug: row.series_slug } : {}),
+      ...(series?.name != null ? { seriesName: series.name } : {}),
+      ...(series?.brand != null ? { seriesBrand: series.brand } : {}),
+      ...(Array.isArray(series?.aliases) && series.aliases.length ? { seriesAliases: series.aliases } : {}),
       year: row.year,
       name: row.name,
       startDate: row.start_date ?? undefined,
       endDate: row.end_date ?? undefined,
       venue: row.venue ?? undefined,
       city: row.city ?? undefined,
+      region: row.region ?? undefined,
       country: row.country ?? undefined,
+      ...(Array.isArray(row.weekends) && row.weekends.length ? { weekends: row.weekends } : {}),
       ...(row.venue_id != null ? { venueId: row.venue_id } : {}),
       ...(row.subject_key != null ? { subjectKey: row.subject_key } : {}),
       ...(row.has_lineup != null ? { hasLineup: row.has_lineup } : {}),
@@ -435,6 +481,12 @@ export class SupabaseLineupStore implements LineupStore {
       confirmedAt: row.confirmed_at ?? undefined,
       updatedAt: row.updated_at,
       factSourceNote: row.fact_source_note ?? undefined,
+    };
+  }
+
+  private toEdition(row: any, perfs: any[]): Edition {
+    return {
+      ...this.toEditionHeader(row),
       performances: perfs.map((p: any) => this.toPerformance(p)),
     };
   }
@@ -445,7 +497,10 @@ export class SupabaseLineupStore implements LineupStore {
     const out: Edition[] = [];
     for (let i = 0; i < ids.length; i += 100) {
       const chunk = ids.slice(i, i + 100);
-      const rows = this.check(await this.db.from('event_editions').select('*').in('id', chunk), 'getEditions');
+      const rows = this.check(
+        await this.db.from('event_editions').select(SupabaseLineupStore.EDITION_SELECT_WITH_SERIES).in('id', chunk),
+        'getEditions',
+      );
       const perfs: any[] = [];
       for (let from = 0; ; from += 1000) {
         const page = this.check(
@@ -460,38 +515,62 @@ export class SupabaseLineupStore implements LineupStore {
     return out;
   }
 
+  async getEditionHeaders(ids: string[]): Promise<EditionHeader[]> {
+    const out: EditionHeader[] = [];
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100);
+      const rows = this.check(
+        await this.db.from('event_editions').select(SupabaseLineupStore.EDITION_HEADER_COLUMNS).in('id', chunk),
+        'getEditionHeaders',
+      );
+      for (const r of rows ?? []) out.push(this.toEditionHeader(r));
+    }
+    return out;
+  }
+
   async getEditionByKey(key: string) {
-    const row = this.check(await this.db.from('event_editions').select('*').eq('key', key).maybeSingle(), 'getEditionByKey');
+    const row = this.check(
+      await this.db.from('event_editions').select(SupabaseLineupStore.EDITION_SELECT_WITH_SERIES).eq('key', key).maybeSingle(),
+      'getEditionByKey',
+    );
     return row ? this.loadEdition(row) : null;
   }
 
   async getEdition(id: string) {
-    const row = this.check(await this.db.from('event_editions').select('*').eq('id', id).maybeSingle(), 'getEdition');
+    const row = this.check(
+      await this.db.from('event_editions').select(SupabaseLineupStore.EDITION_SELECT_WITH_SERIES).eq('id', id).maybeSingle(),
+      'getEdition',
+    );
     return row ? this.loadEdition(row) : null;
   }
 
   async upsertEdition(e: Edition) {
-    const series = await this.getSeries(e.seriesSlug);
-    if (!series) await this.upsertSeries({ slug: e.seriesSlug, name: e.name });
+    const seriesSlug = e.seriesSlug?.trim() || null;
+    if (seriesSlug) {
+      const series = await this.getSeries(seriesSlug);
+      if (!series) await this.upsertSeries({ slug: seriesSlug, name: e.seriesName ?? e.name });
+    }
     const written = await this.db.from('event_editions').upsert({
-        id: e.id,
-        key: e.key,
-        series_slug: e.seriesSlug,
-        year: e.year,
-        name: e.name,
-        start_date: e.startDate ?? null,
-        end_date: e.endDate ?? null,
-        venue: e.venue ?? null,
-        city: e.city ?? null,
-        country: e.country ?? null,
-        venue_id: e.venueId ?? null,
-        subject_key: e.subjectKey ?? null,
-        has_lineup: e.hasLineup ?? null,
-        status: e.status,
-        confirmed_at: e.confirmedAt ?? null,
-        fact_source_note: e.factSourceNote ?? null,
-        updated_at: e.updatedAt,
-      });
+      id: e.id,
+      key: e.key,
+      series_slug: seriesSlug,
+      year: e.year,
+      name: e.name,
+      start_date: e.startDate ?? null,
+      end_date: e.endDate ?? null,
+      venue: e.venue ?? null,
+      city: e.city ?? null,
+      region: e.region ?? null,
+      country: e.country ?? null,
+      weekends: e.weekends ?? [],
+      venue_id: e.venueId ?? null,
+      subject_key: e.subjectKey ?? null,
+      has_lineup: e.hasLineup ?? null,
+      status: e.status,
+      confirmed_at: e.confirmedAt ?? null,
+      fact_source_note: e.factSourceNote ?? null,
+      updated_at: e.updatedAt,
+    });
     // event_editions_occurrence_uidx: another edition already holds this date, venue and subject.
     const err = written.error as { code?: string; message: string } | null;
     if (err && (err.code === '23505' || /event_editions_occurrence_uidx/.test(err.message))) {
@@ -513,6 +592,17 @@ export class SupabaseLineupStore implements LineupStore {
   async editionLineupFacts(ids: string[]) {
     const out: Record<string, LineupFacts> = {};
     if (!ids.length) return out;
+    if (typeof (this.db as any).rpc === 'function') {
+      const res = await this.db.rpc('edition_lineup_facts', { p_ids: ids });
+      if (res.error) throw new Error(`editionLineupFacts (apply 0045_canonical_series_brand_weekends.sql): ${res.error.message}`);
+      if (Array.isArray(res.data)) {
+        for (const id of ids) out[id] = { acts: 0, clashfinder: false };
+        for (const r of res.data as Array<{ edition_id: string; act_count: number | string; has_clashfinder: boolean }>) {
+          out[r.edition_id] = { acts: Number(r.act_count ?? 0), clashfinder: Boolean(r.has_clashfinder) };
+        }
+        return out;
+      }
+    }
     const rows = this.check(
       await this.db.from('performances').select('edition_id, status, sources').in('edition_id', ids),
       'editionLineupFacts',
@@ -528,7 +618,7 @@ export class SupabaseLineupStore implements LineupStore {
   // hit Workers' 50-subrequest limit on a long list.
   async listEditions(limit: number) {
     const rows = this.check(
-      await this.db.from('event_editions').select('*').order('updated_at', { ascending: false }).limit(limit),
+      await this.db.from('event_editions').select('id').order('updated_at', { ascending: false }).limit(limit),
       'listEditions',
     );
     const ids = (rows ?? []).map((r: any) => r.id as string);
@@ -536,45 +626,106 @@ export class SupabaseLineupStore implements LineupStore {
     return ids.map((id) => loaded.get(id)).filter((e): e is Edition => Boolean(e));
   }
 
-  // Narrows in the database with ilike on the longest typed word (a superset of the word-prefix match), then
-  // applies suggestEditionMatches in code so both stores return the same editions.
-  async suggestEditions(query: string, opts: { excludeIds: string[]; limit: number }) {
+  async listEditionHeaders(
+    opts?: number | { limit?: number; startDate?: string; seriesSlug?: string; year?: number; status?: CanonicalEditionStatusFilter },
+  ): Promise<EditionHeader[]> {
+    const normalized = typeof opts === 'number' ? { limit: opts } : (opts ?? {});
+    const limit = Math.max(0, Math.floor(normalized.limit ?? 500));
+    let query: any = this.db.from('event_editions').select(SupabaseLineupStore.EDITION_HEADER_COLUMNS);
+    if (normalized.startDate) query = query.eq('start_date', normalized.startDate);
+    if (normalized.seriesSlug) query = query.eq('series_slug', normalized.seriesSlug);
+    if (normalized.year !== undefined) query = query.eq('year', normalized.year);
+    if (normalized.status === 'verified' || normalized.status === 'confirmed') query = query.in('status', ['verified', 'confirmed']);
+    else if (normalized.status && normalized.status !== 'all') query = query.eq('status', normalized.status);
+    const rows = this.check(
+      await query.order('updated_at', { ascending: false }).limit(limit),
+      'listEditionHeaders',
+    ) as any[] | null;
+    return (rows ?? []).map((r: any) => this.toEditionHeader(r));
+  }
+
+  async listEditionArtistRefs(opts: { editionIds?: string[]; verifiedOnly?: boolean } = {}): Promise<EditionArtistRef[]> {
+    const out: EditionArtistRef[] = [];
+    const mapRow = (r: any): EditionArtistRef => ({
+      editionId: r.edition_id,
+      artistKey: r.artist_key,
+      name: r.name,
+      status: r.status,
+    });
+    if (opts.editionIds) {
+      if (!opts.editionIds.length) return out;
+      for (let i = 0; i < opts.editionIds.length; i += 100) {
+        const chunk = opts.editionIds.slice(i, i + 100);
+        for (let from = 0; ; from += 1000) {
+          let q: any = this.db
+            .from('performances')
+            .select(opts.verifiedOnly ? 'edition_id, artist_key, name, status, event_editions!inner(status)' : 'edition_id, artist_key, name, status')
+            .in('edition_id', chunk);
+          if (opts.verifiedOnly) q = q.in('event_editions.status', ['verified', 'confirmed']);
+          const page = (this.check(await q.order('edition_id').order('artist_key').range(from, from + 999), 'listEditionArtistRefs') ?? []) as any[];
+          for (const r of page) out.push(mapRow(r));
+          if (page.length < 1000) break;
+        }
+      }
+      return out;
+    }
+    for (let from = 0; ; from += 1000) {
+      let q: any = this.db
+        .from('performances')
+        .select(opts.verifiedOnly ? 'edition_id, artist_key, name, status, event_editions!inner(status)' : 'edition_id, artist_key, name, status');
+      if (opts.verifiedOnly) q = q.in('event_editions.status', ['verified', 'confirmed']);
+      const page = (this.check(await q.order('edition_id').order('artist_key').range(from, from + 999), 'listEditionArtistRefs') ?? []) as any[];
+      for (const r of page) out.push(mapRow(r));
+      if (page.length < 1000) break;
+    }
+    return out;
+  }
+
+  // Narrows in the database with ilike on the longest typed word (including series name, brand, aliases),
+  // then applies suggestEditionMatches in code so both stores return the same editions.
+  async suggestEditions(query: string, opts: SuggestEditionOptions) {
     if (!isEditionSuggestQuery(query)) return [];
     const words = normalizeName(query).split(' ').filter((t) => t && !/^\d{4}$/.test(t));
     if (words.length === 0) return [];
     const longest = words.reduce((a, b) => (b.length > a.length ? b : a));
-    const pattern = `"%${longest}%"`;
+    const escaped = longest.replace(/[\\%_*]/g, '\\$&').replace(/"/g, '\\"');
+    const pattern = `"%${escaped}%"`;
+
+    let matchingSlugs: string[] = [];
+    if (typeof (this.db as any).rpc === 'function') {
+      const series = await this.listSeries({ query: longest, limit: 60 });
+      matchingSlugs = series.map((s) => s.slug);
+    } else {
+      const sRows = this.check(
+        await this.db.from('event_series').select('slug').or(`name.ilike.${pattern},brand.ilike.${pattern}`).limit(60),
+        'suggestEditions series',
+      );
+      matchingSlugs = (sRows ?? []).map((r: any) => r.slug as string);
+    }
+
+    const orParts = [`name.ilike.${pattern}`, `series_slug.ilike.${pattern}`];
+    if (matchingSlugs.length > 0) {
+      const quoted = matchingSlugs.map((s) => `"${s.replace(/"/g, '\\"')}"`).join(',');
+      orParts.push(`series_slug.in.(${quoted})`);
+    }
+
     const rows = this.check(
       await this.db
         .from('event_editions')
-        .select('*')
+        .select(SupabaseLineupStore.EDITION_HEADER_COLUMNS)
         .in('status', ['confirmed', 'verified'])
-        .or(`name.ilike.${pattern},series_slug.ilike.${pattern}`)
+        .or(orParts.join(','))
         // Bound the editions loaded per keystroke; newest first so recent editions are kept.
         .order('start_date', { ascending: false, nullsFirst: false })
-        .limit(200),
+        .limit(60),
       'suggestEditions',
     );
-    const candidates = (rows ?? []).map((r: any) => this.toEdition(r, []));
+    const candidates = (rows ?? []).map((r: any) => this.toEditionHeader(r));
     const suggestions = suggestEditionMatches(candidates, query, opts);
     if (!suggestions.length) return [];
     const matchedIds = suggestions.map((s) => s.id);
-    const perfs: any[] = [];
-    for (let from = 0; ; from += 1000) {
-      const page = this.check(
-        await this.db
-          .from('performances')
-          .select('edition_id')
-          .in('edition_id', matchedIds)
-          .range(from, from + 999),
-        'suggestEditions performances',
-      );
-      perfs.push(...(page ?? []));
-      if ((page ?? []).length < 1000) break;
-    }
-    const counts = new Map<string, number>();
-    for (const p of perfs) counts.set(p.edition_id, (counts.get(p.edition_id) ?? 0) + 1);
-    for (const s of suggestions) s.actCount = counts.get(s.id) ?? 0;
+    const facts = await this.editionLineupFacts(matchedIds);
+    for (const s of suggestions) s.actCount = facts[s.id]?.acts ?? 0;
     return suggestions;
   }
 
@@ -583,7 +734,7 @@ export class SupabaseLineupStore implements LineupStore {
     const limit = Math.max(0, Math.min(200, Math.floor(options.limit)));
     let query = this.db
       .from('event_editions')
-      .select('*', { count: 'exact' });
+      .select(SupabaseLineupStore.EDITION_HEADER_COLUMNS, { count: 'exact' });
     if (options.status === 'verified' || options.status === 'confirmed') query = query.in('status', ['verified', 'confirmed']);
     else if (options.status && options.status !== 'all') query = query.eq('status', options.status);
     if (queryText) {
@@ -629,6 +780,15 @@ export class SupabaseLineupStore implements LineupStore {
       total: result.count,
       hasMore: result.count > rows.length,
     };
+  }
+
+  async stampUnsetWeekend(editionId: string, weekend: number): Promise<number> {
+    const { data, error } = await this.db.rpc('stamp_unset_event_weekend', {
+      p_edition_id: editionId,
+      p_weekend: weekend,
+    });
+    if (error) throw new Error(`stampUnsetWeekend (apply 0045_canonical_series_brand_weekends.sql): ${error.message}`);
+    return Number(data ?? 0);
   }
 
   // Quota -----------------------------------------------------------------

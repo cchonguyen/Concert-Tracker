@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { LineupStore } from './store/types';
-import { Edition, EditionPerformance } from './types';
+import { isVerifiedStatus, LineupStore, MergeSummary } from './store/types';
+import { Edition, EditionPerformance, EditionWeekend } from './types';
 import { isBilling, Billing } from './billing';
 import { normalizeName, seriesSlugFor } from './text';
 import { writeEdition } from '../canon/editions';
@@ -27,6 +27,8 @@ export interface CanonicalPerformerInput {
 }
 
 export interface CanonicalConfirmInput {
+  editionId?: string;
+  seriesSlug?: string | null;
   name: string;
   year: number;
   startDate?: string;
@@ -70,6 +72,8 @@ export function parseCanonicalInput(body: unknown): CanonicalConfirmInput {
   const b = body as Record<string, unknown>;
   const name = str(b.name, 'name');
   if (!name) throw new CanonicalInputError('An edition needs a name.');
+  const editionId = str(b.editionId, 'editionId', 100);
+  const seriesSlug = b.seriesSlug === undefined ? undefined : (str(b.seriesSlug, 'seriesSlug', 120) ?? null);
   const jobId = str(b.jobId, 'jobId', 100);
   if (typeof b.year !== 'number' || !Number.isInteger(b.year) || b.year < 1900 || b.year > 2100) {
     throw new CanonicalInputError('year must be a whole number from 1900 to 2100.');
@@ -104,6 +108,8 @@ export function parseCanonicalInput(body: unknown): CanonicalConfirmInput {
     };
   });
   return {
+    ...(editionId ? { editionId } : {}),
+    ...(seriesSlug !== undefined ? { seriesSlug } : {}),
     name,
     year: b.year,
     startDate: (str(b.startDate, 'startDate') as string | undefined) || undefined,
@@ -157,8 +163,20 @@ const keepSources = (prev: EditionPerformance, act: EditionPerformance) =>
 export async function confirmCanonicalEdition(store: LineupStore, input: CanonicalConfirmInput, now = new Date().toISOString()): Promise<CanonicalConfirmResult> {
   const slug = seriesSlugFor(input.name);
   if (!slug) throw new CanonicalInputError('The name has no letters or digits to make a series from.');
-  const editionKey = `${slug}/${input.startDate ?? input.year}`;
-  const existing = await store.getEditionByKey(editionKey);
+  const fallbackKey = `${slug}/${input.startDate ?? input.year}`;
+  const existing = (input.editionId ? await store.getEdition(input.editionId) : null) ?? (await store.getEditionByKey(fallbackKey));
+  const editionKey = existing?.key ?? fallbackKey;
+
+  let resolvedSeriesSlug = existing?.seriesSlug;
+  if (input.seriesSlug !== undefined) {
+    if (input.seriesSlug === null || input.seriesSlug === '') {
+      resolvedSeriesSlug = undefined;
+    } else {
+      const series = await store.getSeries(input.seriesSlug);
+      if (!series) throw new CanonicalInputError(`Series "${input.seriesSlug}" not found.`);
+      resolvedSeriesSlug = series.slug;
+    }
+  }
 
   const byKey = new Map<string, EditionPerformance>((existing?.performances ?? []).map((p) => [p.artistKey, p]));
   const diff: CanonicalDiff = { editionKey, added: [], changed: [], unchanged: [], factConflicts: [], filledFacts: [] };
@@ -203,9 +221,9 @@ export async function confirmCanonicalEdition(store: LineupStore, input: Canonic
   }
 
   const edition: Edition = {
+    ...(existing ?? {}),
     id: existing?.id ?? randomUUID(),
     key: editionKey,
-    seriesSlug: slug,
     year: input.year,
     name: merged.name ?? input.name,
     startDate: merged.startDate,
@@ -220,11 +238,18 @@ export async function confirmCanonicalEdition(store: LineupStore, input: Canonic
     // A re-confirm keeps the owner's fact source note; it is not part of the lineup.
     factSourceNote: existing?.factSourceNote,
   };
+  if (resolvedSeriesSlug) {
+    edition.seriesSlug = resolvedSeriesSlug;
+  } else {
+    delete edition.seriesSlug;
+    delete edition.seriesName;
+    delete edition.seriesBrand;
+    delete edition.seriesAliases;
+  }
 
   if (!input.apply) return { applied: false, diff };
 
   await store.ensureArtists(edition.performances.map((p) => ({ key: p.artistKey, name: p.name })));
-  if (!(await store.getSeries(slug))) await store.upsertSeries({ slug, name: edition.name });
   await writeEdition(store, { edition, actor: 'system:ingest', reason: 'canonical ingest' });
 
   // Close the lookup that fed this edition, so its line leaves "Review". Only a catalog
@@ -239,7 +264,7 @@ export async function confirmCanonicalEdition(store: LineupStore, input: Canonic
       await store.updateJob(job);
     }
   }
-  return { applied: true, diff, edition };
+  return { applied: true, diff, edition: (await store.getEdition(edition.id)) ?? edition };
 }
 
 // Edition facts (GA4). The owner edits name, dates, venue and city with a source note.
@@ -251,10 +276,49 @@ export interface EditionFactsInput {
   endDate: string | null;
   venue: string | null;
   city: string | null;
+  region?: string | null;
+  country?: string | null;
+  seriesSlug?: string | null;
+  weekends?: EditionWeekend[];
   sourceNote: string;
 }
 
 export class EditionNotFoundError extends Error {}
+
+function parseWeekends(raw: unknown): EditionWeekend[] {
+  if (!Array.isArray(raw)) throw new CanonicalInputError('weekends must be a list.');
+  const seen = new Set<number>();
+  const out: EditionWeekend[] = raw.map((item, idx) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new CanonicalInputError(`weekends[${idx}] must be an object.`);
+    }
+    const w = item as Record<string, unknown>;
+    if (typeof w.weekend !== 'number' || !Number.isInteger(w.weekend) || w.weekend < 1 || w.weekend > 9) {
+      throw new CanonicalInputError(`weekends[${idx}].weekend must be a whole number from 1 to 9.`);
+    }
+    if (seen.has(w.weekend)) {
+      throw new CanonicalInputError(`Duplicate weekend number ${w.weekend}.`);
+    }
+    seen.add(w.weekend);
+    if (typeof w.startDate !== 'string' || !DATE.test(w.startDate.trim())) {
+      throw new CanonicalInputError(`weekends[${idx}].startDate must be YYYY-MM-DD.`);
+    }
+    const startDate = w.startDate.trim();
+    let endDate: string | undefined;
+    if (w.endDate !== undefined && w.endDate !== null && w.endDate !== '') {
+      if (typeof w.endDate !== 'string' || !DATE.test(w.endDate.trim())) {
+        throw new CanonicalInputError(`weekends[${idx}].endDate must be YYYY-MM-DD.`);
+      }
+      const trimmedEnd = w.endDate.trim();
+      if (trimmedEnd < startDate) {
+        throw new CanonicalInputError(`weekends[${idx}].endDate cannot be before startDate.`);
+      }
+      if (trimmedEnd !== startDate) endDate = trimmedEnd;
+    }
+    return { weekend: w.weekend, startDate, ...(endDate ? { endDate } : {}) };
+  });
+  return out.sort((a, b) => a.weekend - b.weekend);
+}
 
 export function parseEditionFacts(body: unknown): EditionFactsInput {
   if (!body || typeof body !== 'object') throw new CanonicalInputError('Send a JSON body.');
@@ -274,6 +338,10 @@ export function parseEditionFacts(body: unknown): EditionFactsInput {
     endDate: str(b.endDate, 'endDate') ?? null,
     venue: str(b.venue, 'venue') ?? null,
     city: str(b.city, 'city') ?? null,
+    ...(b.region !== undefined ? { region: str(b.region, 'region', 100) ?? null } : {}),
+    ...(b.country !== undefined ? { country: str(b.country, 'country', 80) ?? null } : {}),
+    ...(b.seriesSlug !== undefined ? { seriesSlug: str(b.seriesSlug, 'seriesSlug', 120) ?? null } : {}),
+    ...(b.weekends !== undefined ? { weekends: parseWeekends(b.weekends) } : {}),
     sourceNote,
   };
 }
@@ -292,6 +360,35 @@ export async function editEditionFacts(store: LineupStore, editionId: string, in
     factSourceNote: input.sourceNote,
     updatedAt: now,
   };
+  if (input.region !== undefined) edition.region = input.region ?? undefined;
+  if (input.country !== undefined) edition.country = input.country ?? undefined;
+  if (input.seriesSlug !== undefined) {
+    if (input.seriesSlug === null || input.seriesSlug === '') {
+      delete edition.seriesSlug;
+      delete edition.seriesName;
+      delete edition.seriesBrand;
+      delete edition.seriesAliases;
+    } else {
+      const series = await store.getSeries(input.seriesSlug);
+      if (!series) throw new CanonicalInputError(`Series "${input.seriesSlug}" not found.`);
+      edition.seriesSlug = series.slug;
+    }
+  }
+  if (input.weekends !== undefined) {
+    const validated = parseWeekends(input.weekends);
+    if (validated.length > 0) {
+      edition.weekends = validated;
+      const minStart = validated.reduce((m, w) => (w.startDate < m ? w.startDate : m), validated[0].startDate);
+      const maxEnd = validated.reduce((m, w) => {
+        const end = w.endDate ?? w.startDate;
+        return end > m ? end : m;
+      }, minStart);
+      edition.startDate = minStart;
+      edition.endDate = maxEnd === minStart ? undefined : maxEnd;
+    } else {
+      delete edition.weekends;
+    }
+  }
   await writeEdition(store, { edition, actor: 'owner', reason: 'edition facts edited' });
   // The owner's correction of a title or venue shows in the review inbox (ids, field, old and new public value only).
   for (const field of ['name', 'venue'] as const) {
@@ -304,5 +401,174 @@ export async function editEditionFacts(store: LineupStore, editionId: string, in
       console.error(`editEditionFacts: formatting review row failed for ${editionId}`, err);
     }
   }
-  return edition;
+  return (await store.getEdition(editionId)) ?? edition;
+}
+
+export interface MergeCanonicalEditionsInput {
+  keepId: string;
+  dropIds: string[];
+  factChoices?: Partial<Pick<Edition, 'name' | 'startDate' | 'endDate' | 'venue' | 'city' | 'region' | 'country' | 'seriesSlug'>>;
+  combineAsWeekends?: boolean;
+  reason?: string;
+  actor?: string;
+}
+
+export interface MergeCanonicalEditionsResult {
+  edition: Edition;
+  merged: MergeSummary[];
+}
+
+type MergeFactField = 'name' | 'startDate' | 'endDate' | 'venue' | 'city' | 'region' | 'country' | 'seriesSlug';
+const MERGE_FACT_FIELDS: MergeFactField[] = ['name', 'startDate', 'endDate', 'venue', 'city', 'region', 'country', 'seriesSlug'];
+
+export async function mergeCanonicalEditions(
+  store: LineupStore,
+  input: MergeCanonicalEditionsInput,
+  now = new Date().toISOString(),
+): Promise<MergeCanonicalEditionsResult> {
+  const keepId = typeof input.keepId === 'string' ? input.keepId.trim() : '';
+  if (!keepId) throw new CanonicalInputError('keepId is required.');
+  if (!Array.isArray(input.dropIds) || input.dropIds.length === 0) {
+    throw new CanonicalInputError('Select at least one edition to merge.');
+  }
+  const cleanDrops = input.dropIds.map((id) => (typeof id === 'string' ? id.trim() : ''));
+  if (cleanDrops.some((id) => !id)) throw new CanonicalInputError('dropIds must be non-empty ids.');
+  const uniqueDropIds = [...new Set(cleanDrops)];
+  if (uniqueDropIds.length !== cleanDrops.length) throw new CanonicalInputError('dropIds must be unique.');
+  if (uniqueDropIds.includes(keepId)) throw new CanonicalInputError('An edition cannot be merged into itself.');
+
+  const keep = await store.getEdition(keepId);
+  if (!keep) throw new EditionNotFoundError(`Edition ${keepId} not found.`);
+  const drops: Edition[] = [];
+  for (const dropId of uniqueDropIds) {
+    const drop = await store.getEdition(dropId);
+    if (!drop) throw new EditionNotFoundError(`Edition ${dropId} not found.`);
+    drops.push(drop);
+  }
+
+  const next: Edition = { ...keep, updatedAt: now };
+  const choices = input.factChoices;
+  if (choices?.seriesSlug !== undefined && choices.seriesSlug !== null && choices.seriesSlug !== '') {
+    const series = await store.getSeries(choices.seriesSlug);
+    if (!series) throw new CanonicalInputError(`Series "${choices.seriesSlug}" not found.`);
+  }
+
+  for (const field of MERGE_FACT_FIELDS) {
+    const hasChoice = Boolean(choices && Object.prototype.hasOwnProperty.call(choices, field));
+    const chosen = hasChoice ? choices![field] : undefined;
+    if (hasChoice && chosen !== undefined) {
+      if (chosen === null || chosen === '') {
+        if (field === 'name') throw new CanonicalInputError('An edition needs a name.');
+        delete (next as unknown as Record<string, unknown>)[field];
+      } else if (typeof chosen === 'string') {
+        const trimmed = chosen.trim();
+        if (!trimmed) {
+          if (field === 'name') throw new CanonicalInputError('An edition needs a name.');
+          delete (next as unknown as Record<string, unknown>)[field];
+        } else {
+          (next as unknown as Record<string, unknown>)[field] = trimmed;
+        }
+      }
+      continue;
+    }
+    const current = next[field];
+    if (!current) {
+      const donor = drops.find((d) => Boolean(d[field]));
+      if (donor?.[field]) (next as unknown as Record<string, unknown>)[field] = donor[field];
+    }
+  }
+
+  if (!next.seriesSlug) {
+    delete next.seriesSlug;
+    delete next.seriesName;
+    delete next.seriesBrand;
+    delete next.seriesAliases;
+  }
+  if (!next.venueId && (!choices?.venue || choices.venue === keep.venue)) {
+    const donorVenueId = drops.find((d) => Boolean(d.venueId) && (!next.venue || d.venue === next.venue))?.venueId;
+    if (donorVenueId) next.venueId = donorVenueId;
+  }
+  if (!next.subjectKey) {
+    const donorSubject = drops.find((d) => Boolean(d.subjectKey))?.subjectKey;
+    if (donorSubject) next.subjectKey = donorSubject;
+  }
+  if (isVerifiedStatus(keep.status) || drops.some((d) => isVerifiedStatus(d.status))) {
+    next.status = 'verified';
+  }
+
+  const actor = input.actor?.trim() || 'owner';
+  const reason = input.reason?.trim() || 'merged duplicate editions';
+
+  if (input.combineAsWeekends) {
+    const allEditions = [keep, ...drops];
+    type Slot = { editionId: string; startDate: string; endDate?: string; singleSlot: boolean };
+    const slots: Slot[] = [];
+    for (const ed of allEditions) {
+      if (ed.weekends && ed.weekends.length > 0) {
+        const single = ed.weekends.length === 1;
+        for (const w of ed.weekends) slots.push({ editionId: ed.id, startDate: w.startDate, endDate: w.endDate, singleSlot: single });
+      } else if (ed.startDate) {
+        slots.push({ editionId: ed.id, startDate: ed.startDate, endDate: ed.endDate, singleSlot: true });
+      }
+    }
+    const distinctStarts = new Set(slots.map((s) => s.startDate));
+    if (distinctStarts.size >= 2) {
+      const rangeKey = (s: { startDate: string; endDate?: string }) => `${s.startDate}|${s.endDate ?? s.startDate}`;
+      const uniqueRanges = new Map<string, { startDate: string; endDate?: string }>();
+      const sortedSlots = [...slots].sort(
+        (a, b) =>
+          a.startDate.localeCompare(b.startDate) ||
+          (a.endDate ?? a.startDate).localeCompare(b.endDate ?? b.startDate) ||
+          (a.editionId === keepId ? -1 : b.editionId === keepId ? 1 : a.editionId.localeCompare(b.editionId)),
+      );
+      for (const s of sortedSlots) {
+        const rk = rangeKey(s);
+        if (!uniqueRanges.has(rk)) {
+          uniqueRanges.set(rk, {
+            startDate: s.startDate,
+            ...(s.endDate && s.endDate !== s.startDate ? { endDate: s.endDate } : {}),
+          });
+        }
+      }
+      if (uniqueRanges.size > 9) {
+        throw new CanonicalInputError('Cannot combine more than 9 weekends into one edition.');
+      }
+      const rangeToWeekend = new Map<string, number>();
+      const combinedWeekends: EditionWeekend[] = [];
+      let wNum = 1;
+      for (const [rk, range] of uniqueRanges.entries()) {
+        rangeToWeekend.set(rk, wNum);
+        combinedWeekends.push({ weekend: wNum, ...range });
+        wNum++;
+      }
+
+      // Stamp unset logged_events.weekend on keep and drop editions BEFORE mergeEditions moves drop's events onto keep.
+      for (const s of slots) {
+        if (!s.singleSlot) continue;
+        const assigned = rangeToWeekend.get(rangeKey(s));
+        if (assigned !== undefined) {
+          await store.stampUnsetWeekend(s.editionId, assigned);
+        }
+      }
+
+      next.weekends = combinedWeekends;
+      const minStart = combinedWeekends[0].startDate;
+      const maxEnd = combinedWeekends.reduce((m, w) => {
+        const end = w.endDate ?? w.startDate;
+        return end > m ? end : m;
+      }, minStart);
+      next.startDate = minStart;
+      next.endDate = maxEnd === minStart ? undefined : maxEnd;
+    }
+  }
+
+  await writeEdition(store, { edition: next, actor, reason });
+
+  const merged: MergeSummary[] = [];
+  for (const dropId of uniqueDropIds) {
+    merged.push(await store.mergeEditions(keepId, dropId, actor, reason));
+  }
+
+  const updatedKeep = (await store.getEdition(keepId)) ?? next;
+  return { edition: updatedKeep, merged };
 }

@@ -1,6 +1,15 @@
-import type { JobStatus, LoggedEventInheritance, SourceType } from '../lineup/types';
+import type { CapturedFields, EditionWeekend, EventOverrides, JobStatus, LoggedEventInheritance, SourceType } from '../lineup/types';
 import type { Billing } from '../lineup/billing';
 import type { Attendance } from './attendance';
+
+declare module '../lineup/types' {
+  interface CapturedFields {
+    series?: string | null;
+    region?: string | null;
+  }
+}
+
+export type { CapturedFields, EventOverrides };
 
 // Your personal log: one LoggedEvent per thing you attended. Stage 1 fills its
 // name, date and place; stage 2 (the lineup lookup) links it to a canonical
@@ -32,9 +41,13 @@ export interface FieldSource {
   editionId?: string;
 }
 
-// A suggestion from a structured source during stage 1 research.
+// A suggestion from a structured source during stage 1 research, or a canonical
+// series edition waiting for disambiguation.
 export interface DetailCandidate {
   id: string;
+  editionId?: string;
+  seriesName?: string;
+  weekends?: EditionWeekend[];
   name?: string;
   startDate?: string;
   endDate?: string;
@@ -53,15 +66,16 @@ export interface DetailCandidate {
 
 // pending: not researched yet; needs_date: research needs at least a year;
 // matched: a source confirmed the date you gave and filled empty fields;
-// choose: candidates wait for your pick; none: nothing found;
-// resolved: you picked or dismissed; off: no stage 1 source is configured.
-export type DetailsStatus = 'pending' | 'needs_date' | 'matched' | 'choose' | 'none' | 'resolved' | 'off';
+// choose: candidates wait for your pick; candidates: canonical series editions wait for pick/dismiss;
+// none: nothing found; resolved: you picked or dismissed; off: no stage 1 source is configured.
+export type DetailsStatus = 'pending' | 'needs_date' | 'matched' | 'choose' | 'candidates' | 'none' | 'resolved' | 'off';
 
 export interface EventDetails {
   status: DetailsStatus;
   candidates: DetailCandidate[];
   notes: string[];
   checkedAt?: string;
+  skipCanon?: boolean;
 }
 
 // How an act played, as you mark it or as billed on a lineup (e.g. "DJ Set", "Live", "Sunrise Set").

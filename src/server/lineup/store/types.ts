@@ -4,7 +4,11 @@ import {
   Correction,
   CanonicalVenue,
   Edition,
+  EditionArtistRef,
   EditionChange,
+  EditionHeader,
+  EditionPerformance,
+  EditionWeekend,
   ExtractionExample,
   ReviewQueueItem,
   ReviewQueueKind,
@@ -12,6 +16,7 @@ import {
   PerformerClaim,
   QuotaUsage,
   SeriesRecord,
+  SeriesSummary,
   SourceDocument,
   SourceStat,
   SourceType,
@@ -61,7 +66,8 @@ export interface CanonicalEditionPage<T = Edition> {
   hasMore: boolean;
 }
 
-export type CanonicalEditionListRow = Pick<Edition, 'id' | 'seriesSlug' | 'year' | 'name' | 'venue' | 'status'>;
+export type CanonicalEditionListRow = Pick<Edition, 'id' | 'seriesSlug' | 'year' | 'name' | 'venue' | 'status'> &
+  Partial<Pick<Edition, 'seriesName' | 'seriesBrand'>>;
 
 // Keep filtering and the visible order identical in both stores. Filter the
 // full catalog before slicing so an older matching edition remains findable.
@@ -73,7 +79,13 @@ export function canonicalEditionPage<T extends CanonicalEditionListRow>(
   const status = options.status ?? 'all';
   const matching = rows
     .filter((edition) => editionMatchesStatusFilter(edition.status, status))
-    .filter((edition) => !query || [edition.name, edition.seriesSlug, edition.venue ?? ''].some((value) => value.toLowerCase().includes(query)))
+    .filter(
+      (edition) =>
+        !query ||
+        [edition.name, edition.seriesSlug ?? '', edition.seriesName ?? '', edition.seriesBrand ?? '', edition.venue ?? ''].some(
+          (value) => value.toLowerCase().includes(query),
+        ),
+    )
     .sort((a, b) => b.year - a.year || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   const limit = Math.max(0, Math.min(200, Math.floor(options.limit)));
   const editions = matching.slice(0, limit);
@@ -81,8 +93,8 @@ export function canonicalEditionPage<T extends CanonicalEditionListRow>(
 }
 
 // Canonical edition suggestions (slice 9.1). Confirmed editions only. Each typed word must be a word prefix of a
-// word in the edition name or series slug. Years typed in the query are not matched; they only rank equal-year
-// editions first. Both stores call this so their results agree.
+// word in the edition name, series slug, series name, series brand, or series aliases. Years typed in the query
+// are not matched; they only rank equal-year editions first. Both stores call this so their results agree.
 export const EDITION_SUGGEST_MAX_LIMIT = 8;
 
 export interface EditionSuggestion {
@@ -93,8 +105,19 @@ export interface EditionSuggestion {
   endDate?: string;
   venue?: string;
   city?: string;
+  region?: string;
   country?: string;
+  seriesSlug?: string;
+  seriesName?: string;
+  seriesBrand?: string;
+  weekends?: EditionWeekend[];
   actCount: number;
+}
+
+export interface SuggestEditionOptions {
+  excludeIds: string[];
+  limit: number;
+  loggedWeekendsByEdition?: Record<string, Array<number | null>>;
 }
 
 // Fewer than two letters in the query returns no suggestions.
@@ -112,20 +135,39 @@ function startDateDesc(a: string | undefined, b: string | undefined): number {
   return 0;
 }
 
-function toEditionSuggestion(e: Edition): EditionSuggestion {
-  const out: EditionSuggestion = { id: e.id, name: e.name, year: e.year, actCount: e.performances.length };
+function toEditionSuggestion(e: EditionHeader & { performances?: EditionPerformance[] }): EditionSuggestion {
+  const out: EditionSuggestion = { id: e.id, name: e.name, year: e.year, actCount: e.performances?.length ?? 0 };
   if (e.startDate) out.startDate = e.startDate;
   if (e.endDate) out.endDate = e.endDate;
   if (e.venue) out.venue = e.venue;
   if (e.city) out.city = e.city;
+  if (e.region) out.region = e.region;
   if (e.country) out.country = e.country;
+  if (e.seriesSlug) out.seriesSlug = e.seriesSlug;
+  if (e.seriesName) out.seriesName = e.seriesName;
+  if (e.seriesBrand) out.seriesBrand = e.seriesBrand;
+  if (e.weekends?.length) out.weekends = e.weekends;
   return out;
 }
 
+function canSuggestEdition(
+  e: Pick<EditionHeader, 'id' | 'weekends'>,
+  excluded: Set<string>,
+  loggedWeekendsByEdition?: Record<string, Array<number | null>>,
+): boolean {
+  const isMultiWeekend = Boolean(e.weekends && e.weekends.length > 1);
+  if (loggedWeekendsByEdition && Object.prototype.hasOwnProperty.call(loggedWeekendsByEdition, e.id)) {
+    const logged = loggedWeekendsByEdition[e.id] ?? [];
+    if (!isMultiWeekend) return logged.length === 0;
+    return logged.length < e.weekends!.length && e.weekends!.some((w) => !logged.includes(w.weekend));
+  }
+  return !excluded.has(e.id);
+}
+
 export function suggestEditionMatches(
-  editions: Edition[],
+  editions: Array<EditionHeader & { performances?: EditionPerformance[] }>,
   query: string,
-  opts: { excludeIds: string[]; limit: number },
+  opts: SuggestEditionOptions,
 ): EditionSuggestion[] {
   if (!isEditionSuggestQuery(query)) return [];
   const tokens = normalizeName(query).split(' ').filter(Boolean);
@@ -136,9 +178,13 @@ export function suggestEditionMatches(
   const excluded = new Set(opts.excludeIds);
   const limit = Math.max(0, Math.min(EDITION_SUGGEST_MAX_LIMIT, Math.floor(opts.limit)));
   return editions
-    .filter((e) => isVerifiedStatus(e.status) && !excluded.has(e.id))
+    .filter((e) => isVerifiedStatus(e.status) && canSuggestEdition(e, excluded, opts.loggedWeekendsByEdition))
     .filter((e) => {
-      const haystack = normalizeName(`${e.name} ${e.seriesSlug}`).split(' ');
+      const haystack = normalizeName(
+        `${e.name} ${e.seriesSlug ?? ''} ${e.seriesName ?? ''} ${e.seriesBrand ?? ''} ${(e.seriesAliases ?? []).join(' ')}`,
+      )
+        .split(' ')
+        .filter(Boolean);
       return words.every((w) => haystack.some((h) => h.startsWith(w)));
     })
     .sort(
@@ -314,19 +360,28 @@ export interface LineupStore {
 
   getSeries(slug: string): Promise<SeriesRecord | null>;
   upsertSeries(series: SeriesRecord): Promise<void>;
+  listSeries(opts?: { query?: string; brand?: string; limit?: number }): Promise<SeriesSummary[]>;
+  mergeSeries(keepSlug: string, dropSlug: string): Promise<MergeSummary>;
 
   getEditionByKey(key: string): Promise<Edition | null>;
   getEdition(id: string): Promise<Edition | null>;
   getEditions(ids: string[]): Promise<Edition[]>;
+  getEditionHeaders(ids: string[]): Promise<EditionHeader[]>;
   upsertEdition(edition: Edition): Promise<void>;
   listEditions(limit: number): Promise<Edition[]>;
+  listEditionHeaders(
+    opts?: number | { limit?: number; startDate?: string; seriesSlug?: string; year?: number; status?: CanonicalEditionStatusFilter },
+  ): Promise<EditionHeader[]>;
+  listEditionArtistRefs(opts?: { editionIds?: string[]; verifiedOnly?: boolean }): Promise<EditionArtistRef[]>;
   // The Global Archive: filters and counts the full catalog before returning
   // at most 200 editions in year-descending/name-ascending order.
   listCanonicalEditionsPage(options: CanonicalEditionPageOptions): Promise<CanonicalEditionPage>;
   // Confirmed editions matching the typed words (slice 9.1); see suggestEditionMatches. Never drafts.
-  suggestEditions(query: string, opts: { excludeIds: string[]; limit: number }): Promise<EditionSuggestion[]>;
+  suggestEditions(query: string, opts: SuggestEditionOptions): Promise<EditionSuggestion[]>;
   // Size of each confirmed lineup, by edition id, for Concert or Festival.
   editionLineupFacts(ids: string[]): Promise<Record<string, LineupFacts>>;
+  // Stamps weekend on live logged_events linked to editionId where weekend is still null.
+  stampUnsetWeekend(editionId: string, weekend: number): Promise<number>;
 
   getQuota(key: string): Promise<QuotaUsage | null>;
   setQuota(usage: QuotaUsage): Promise<void>;

@@ -7,7 +7,7 @@ import type { NavStorage } from './nav.ts';
 export const MANAGE_SCOPES = ['mine', 'archive'] as const;
 export type ManageScope = (typeof MANAGE_SCOPES)[number];
 
-export const ARCHIVE_SECTIONS = ['artists', 'editions', 'lookups', 'changes'] as const;
+export const ARCHIVE_SECTIONS = ['artists', 'series', 'editions', 'lookups', 'changes'] as const;
 export type ArchiveSection = (typeof ARCHIVE_SECTIONS)[number];
 
 export const EDITION_STATUSES = ['all', 'verified', 'provisional', 'draft'] as const;
@@ -19,6 +19,7 @@ export interface ManageRouteState {
   id?: string;
   section?: ArchiveSection;
   edition?: string;
+  series?: string;
   artist?: string;
   status?: EditionStatus;
   q?: string;
@@ -52,6 +53,7 @@ export function parseManageParams(search: string): ManageRouteState {
   const kind = params.get('kind')?.trim() || undefined;
   const id = params.get('id')?.trim() || undefined;
   const edition = params.get('edition')?.trim() || undefined;
+  const series = params.get('series')?.trim() || undefined;
   const artist = params.get('artist')?.trim() || undefined;
   const q = params.get('q')?.trim() || undefined;
 
@@ -61,6 +63,7 @@ export function parseManageParams(search: string): ManageRouteState {
     ...(kind !== undefined ? { kind } : {}),
     ...(id !== undefined ? { id } : {}),
     ...(edition !== undefined ? { edition } : {}),
+    ...(series !== undefined ? { series } : {}),
     ...(artist !== undefined ? { artist } : {}),
     ...(status !== undefined ? { status } : {}),
     ...(q !== undefined ? { q } : {}),
@@ -94,6 +97,10 @@ export function buildManageSearch(state: Partial<ManageRouteState> = {}): string
     params.set('edition', state.edition.trim());
   }
 
+  if (state.series?.trim()) {
+    params.set('series', state.series.trim());
+  }
+
   if (state.artist?.trim()) {
     params.set('artist', state.artist.trim());
   }
@@ -123,6 +130,16 @@ export function editionUrl(id: string, extra?: Partial<ManageRouteState>): strin
     scope: 'archive',
     section: 'editions',
     edition: id,
+    ...extra,
+  });
+}
+
+// Deep link to a canonical series
+export function seriesUrl(slug: string, extra?: Partial<ManageRouteState>): string {
+  return buildManageUrl({
+    scope: 'archive',
+    section: 'series',
+    series: slug,
     ...extra,
   });
 }

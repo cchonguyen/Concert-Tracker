@@ -13,13 +13,15 @@ import {
   UndoConflictError,
 } from '../services/lineupApi';
 import { reviewSubjectFromEdition } from '../services/reviewRows';
-import type { Edition, EditionPerformance } from '../server/lineup/types';
+import type { Edition, EditionPerformance, EditionWeekend, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
 import type { DetailCandidate, EventDetails } from '../server/events/types';
 import type { ArtistAppearance, CanonicalArtistRecord, CanonicalEditionSummary } from '../server/entities/canonicalManage';
 import { sameCountry } from '../server/events/regions';
 import { CanonicalArtistEntry, ORIGIN_LABEL, type SavedChange } from './CanonicalArtistEntry';
 import { CheckDetails, type Suggestion } from './CheckDetails';
 import { LineupReview } from './LineupReview';
+import { MergeEditionModal } from './MergeEditionModal';
+import { weekendLabel } from '../services/format';
 import { Button } from './ui/Button';
 import { Callout } from './ui/Callout';
 import { Notice } from './ui/Notice';
@@ -32,13 +34,14 @@ import {
   isModifiedClick,
   parseManageParams,
   rememberManageSearch,
+  seriesUrl,
 } from '../services/manageNav';
 
 // Global Archive (owner only, spec Phase 4). Each section is one body rendered by ManageView:
-// Artists, Editions & Lineups, Lookups, Changes. Counts only; no member names. Never writes a personal log.
+// Artists, Series, Editions & Lineups, Lookups, Changes. Counts only; no member names. Never writes a personal log.
 // The search box and the edition status filter live in ManageView and arrive as props.
 
-export type ArchiveSection = 'artists' | 'editions' | 'lookups' | 'changes';
+export type ArchiveSection = 'artists' | 'series' | 'editions' | 'lookups' | 'changes';
 export type EditionStatus = 'all' | 'verified' | 'provisional' | 'draft';
 
 // An edition's status in words. 'confirmed' is the legacy name for verified.
@@ -77,6 +80,7 @@ const field = 'rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-
 export const CanonicalArchive: React.FC<{ section: ArchiveSection; query: string; status: EditionStatus }> = ({ section, query, status }) => {
   if (section === 'lookups') return <ArchiveLookups />;
   if (section === 'changes') return <ArchiveChanges />;
+  if (section === 'series') return <ArchiveSeries query={query} />;
   if (section === 'editions') return <ArchiveEditions query={query} status={status} />;
   return <ArchiveArtists query={query} />;
 };
@@ -247,8 +251,554 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
   );
 };
 
+const SOURCE_PRIORITY_OPTIONS: SourceType[] = [
+  'promoter',
+  'clashfinder',
+  'wayback',
+  'ticketmaster',
+  'setlistfm',
+  'musicbrainz',
+  'discovered',
+  'email',
+  'user',
+];
+
+const parseAliasText = (raw: string): string[] =>
+  raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
+  const [brandFilter, setBrandFilter] = useState('');
+  const [debouncedBrand, setDebouncedBrand] = useState('');
+  const [seriesList, setSeriesList] = useState<SeriesSummary[] | null>(null);
+  const [detailSlug, setDetailSlug] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return parseManageParams(window.location.search).series ?? null;
+  });
+  const detailSlugRef = useRef<string | null>(detailSlug);
+  detailSlugRef.current = detailSlug;
+
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newBrand, setNewBrand] = useState('');
+  const [newAliases, setNewAliases] = useState('');
+  const [newLineupUrl, setNewLineupUrl] = useState('');
+  const [savingNew, setSavingNew] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedQuery(query), 300);
+    return () => window.clearTimeout(t);
+  }, [query]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedBrand(brandFilter), 300);
+    return () => window.clearTimeout(t);
+  }, [brandFilter]);
+
+  const loadSeries = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const res = await canonicalApi.series(debouncedQuery, debouncedBrand, signal);
+        setSeriesList(res.series);
+        setError(null);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setError(messageOf(err));
+      }
+    },
+    [debouncedQuery, debouncedBrand],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadSeries(controller.signal);
+    return () => controller.abort();
+  }, [loadSeries]);
+
+  useEffect(() => {
+    const syncFromUrl = () => {
+      const params = parseManageParams(window.location.search);
+      setDetailSlug(params.series ?? null);
+    };
+    syncFromUrl();
+    window.addEventListener('popstate', syncFromUrl);
+    return () => window.removeEventListener('popstate', syncFromUrl);
+  }, []);
+
+  const handleBackToSeries = useCallback(() => {
+    if (typeof window !== 'undefined' && window.history.state?.fromManageList) {
+      window.history.back();
+    } else {
+      const url = buildManageUrl(
+        { scope: 'archive', section: 'series', q: query || undefined },
+        typeof window !== 'undefined' ? window.location.pathname : '/app',
+      );
+      window.history.replaceState(null, '', url);
+      rememberManageSearch(new URL(url, window.location.origin).search);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  }, [query]);
+
+  const openSeries = (slug: string) => {
+    const url = seriesUrl(slug, { q: query || undefined });
+    window.history.pushState({ fromManageList: true }, '', url);
+    rememberManageSearch(new URL(url, window.location.origin).search);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  };
+
+  const createNewSeries = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim() || savingNew) return;
+    setSavingNew(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const created = await canonicalApi.createSeries({
+        name: newName.trim(),
+        ...(newBrand.trim() ? { brand: newBrand.trim() } : {}),
+        ...(parseAliasText(newAliases).length ? { aliases: parseAliasText(newAliases) } : {}),
+        ...(newLineupUrl.trim() ? { lineupUrl: newLineupUrl.trim() } : {}),
+      });
+      setNewName('');
+      setNewBrand('');
+      setNewAliases('');
+      setNewLineupUrl('');
+      setCreating(false);
+      setNotice(`Created series "${created.name}".`);
+      await loadSeries();
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setSavingNew(false);
+    }
+  };
+
+  if (detailSlug) {
+    return (
+      <div className="space-y-4">
+        <a
+          href={buildManageUrl(
+            { scope: 'archive', section: 'series', q: query || undefined },
+            typeof window !== 'undefined' ? window.location.pathname : '/app',
+          )}
+          onClick={(e) => {
+            if (isModifiedClick(e)) return;
+            e.preventDefault();
+            handleBackToSeries();
+          }}
+          className="text-sm text-violet-300 hover:text-violet-200"
+        >
+          ← Back to series
+        </a>
+        <SeriesDetail
+          slug={detailSlug}
+          allSeries={seriesList ?? []}
+          onUpdated={() => void loadSeries()}
+          onMerged={(keepSlug) => {
+            void loadSeries();
+            const url = seriesUrl(keepSlug, { q: query || undefined });
+            window.history.replaceState({ fromManageList: window.history.state?.fromManageList }, '', url);
+            rememberManageSearch(new URL(url, window.location.origin).search);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }}
+        />
+      </div>
+    );
+  }
+
+  const brands = [...new Set((seriesList ?? []).map((s) => s.brand).filter((b): b is string => Boolean(b)))].sort();
+
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="search"
+          aria-label="Filter series by brand"
+          placeholder="Filter by brand…"
+          value={brandFilter}
+          onChange={(e) => setBrandFilter(e.target.value)}
+          list="archive-series-brands"
+          className={`${field} w-48`}
+        />
+        <datalist id="archive-series-brands">
+          {brands.map((b) => (
+            <option key={b} value={b} />
+          ))}
+        </datalist>
+        <Button onClick={() => setCreating((v) => !v)} className="ml-auto">
+          {creating ? 'Cancel' : '+ New series'}
+        </Button>
+      </div>
+
+      {creating && (
+        <form onSubmit={(e) => void createNewSeries(e)} className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+          <h3 className="text-sm font-semibold text-zinc-100">Create canonical series</h3>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="space-y-1 text-xs text-zinc-400">
+              <span className="block text-[11px] uppercase text-zinc-500">Name *</span>
+              <input
+                required
+                className={`${field} w-full`}
+                placeholder="e.g. EDC Las Vegas"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
+            </label>
+            <label className="space-y-1 text-xs text-zinc-400">
+              <span className="block text-[11px] uppercase text-zinc-500">Brand (optional)</span>
+              <input
+                className={`${field} w-full`}
+                placeholder="e.g. Insomniac"
+                value={newBrand}
+                onChange={(e) => setNewBrand(e.target.value)}
+              />
+            </label>
+            <label className="space-y-1 text-xs text-zinc-400">
+              <span className="block text-[11px] uppercase text-zinc-500">Aliases (comma-separated)</span>
+              <input
+                className={`${field} w-full`}
+                placeholder="e.g. EDC, EDCLV"
+                value={newAliases}
+                onChange={(e) => setNewAliases(e.target.value)}
+              />
+            </label>
+            <label className="space-y-1 text-xs text-zinc-400">
+              <span className="block text-[11px] uppercase text-zinc-500">Lineup URL (optional)</span>
+              <input
+                className={`${field} w-full`}
+                placeholder="https://…"
+                value={newLineupUrl}
+                onChange={(e) => setNewLineupUrl(e.target.value)}
+              />
+            </label>
+          </div>
+          <div className="flex gap-2">
+            <Button type="submit" variant="primary" disabled={savingNew || !newName.trim()}>
+              {savingNew && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Create series
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {notice && <Notice tone="success">{notice}</Notice>}
+      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+
+      {seriesList === null ? (
+        <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+      ) : seriesList.length === 0 ? (
+        <p className="text-sm text-zinc-400">{query || brandFilter ? 'No series match.' : 'No canonical series yet.'}</p>
+      ) : (
+        <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+          {seriesList.map((s) => {
+            const url = seriesUrl(s.slug, { q: query || undefined });
+            return (
+              <li key={s.slug}>
+                <a
+                  href={url}
+                  onClick={(e) => {
+                    if (isModifiedClick(e)) return;
+                    e.preventDefault();
+                    openSeries(s.slug);
+                  }}
+                  className="flex w-full flex-wrap items-center gap-2 p-2.5 text-left text-sm hover:bg-zinc-900/60"
+                >
+                  <span className="font-medium text-zinc-100">{s.name}</span>
+                  {s.brand && <Pill tone="accent">{s.brand}</Pill>}
+                  {s.aliases && s.aliases.length > 0 && (
+                    <span className="text-xs text-zinc-400">AKA {s.aliases.join(', ')}</span>
+                  )}
+                  <span className="ml-auto text-xs text-zinc-400">
+                    {s.editionCount} {s.editionCount === 1 ? 'edition' : 'editions'}
+                  </span>
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+};
+
+const SeriesDetail: React.FC<{
+  slug: string;
+  allSeries: SeriesSummary[];
+  onUpdated: () => void;
+  onMerged: (keepSlug: string) => void;
+}> = ({ slug, allSeries, onUpdated, onMerged }) => {
+  const [series, setSeries] = useState<SeriesRecord | null>(null);
+  const [editions, setEditions] = useState<CanonicalEditionSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState('');
+  const [brand, setBrand] = useState('');
+  const [aliases, setAliases] = useState('');
+  const [lineupUrl, setLineupUrl] = useState('');
+  const [sourcePriority, setSourcePriority] = useState<SourceType[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const [merging, setMerging] = useState(false);
+  const [targetSlug, setTargetSlug] = useState('');
+  const [mergeBusy, setMergeBusy] = useState(false);
+
+  const loadDetail = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await canonicalApi.seriesEditions(slug);
+      setSeries(res.series);
+      setEditions(res.editions);
+      setName(res.series.name);
+      setBrand(res.series.brand ?? '');
+      setAliases((res.series.aliases ?? []).join(', '));
+      setLineupUrl(res.series.lineupUrl ?? '');
+      setSourcePriority(res.series.sourcePriority ?? []);
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [slug]);
+
+  useEffect(() => {
+    void loadDetail();
+  }, [loadDetail]);
+
+  const togglePriority = (src: SourceType) => {
+    setSourcePriority((prev) => (prev.includes(src) ? prev.filter((x) => x !== src) : [...prev, src]));
+  };
+
+  const saveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const updated = await canonicalApi.updateSeries(slug, {
+        name: name.trim(),
+        brand: brand.trim() || null,
+        aliases: parseAliasText(aliases),
+        lineupUrl: lineupUrl.trim() || null,
+        sourcePriority,
+      });
+      setSeries(updated);
+      setEditing(false);
+      setNotice('Series updated.');
+      onUpdated();
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const runMerge = async () => {
+    if (!targetSlug || mergeBusy) return;
+    setMergeBusy(true);
+    setError(null);
+    try {
+      await canonicalApi.mergeSeries(targetSlug, slug);
+      onMerged(targetSlug);
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setMergeBusy(false);
+    }
+  };
+
+  if (loading && !series) return <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />;
+  if (!series) return <p role="alert" className="text-sm text-rose-300">{error ?? 'Series not found.'}</p>;
+
+  const mergeTargets = allSeries.filter((s) => s.slug !== slug);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-lg font-semibold text-zinc-50">{series.name}</h3>
+            {series.brand && <Pill tone="accent">{series.brand}</Pill>}
+          </div>
+          <p className="text-xs text-zinc-500">Slug: {series.slug}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {!editing && <Button onClick={() => setEditing(true)}>Edit series</Button>}
+          {mergeTargets.length > 0 && (
+            <Button onClick={() => setMerging((v) => !v)}>
+              {merging ? 'Cancel merge' : 'Merge into…'}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {notice && <Notice tone="success">{notice}</Notice>}
+      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+
+      {merging && (
+        <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-950/20 p-3 text-sm">
+          <p className="font-semibold text-zinc-100">Merge "{series.name}" into another series</p>
+          <p className="text-xs text-zinc-400">
+            All attached editions move onto the target series, and "{series.name}" plus its aliases are kept as aliases on the target.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label="Target series"
+              value={targetSlug}
+              onChange={(e) => setTargetSlug(e.target.value)}
+              className={`${field} min-w-[14rem] flex-1`}
+            >
+              <option value="">Choose target series…</option>
+              {mergeTargets.map((s) => (
+                <option key={s.slug} value={s.slug}>
+                  {s.name}{s.brand ? ` (${s.brand})` : ''} · {s.editionCount} editions
+                </option>
+              ))}
+            </select>
+            <Button variant="primary" onClick={() => void runMerge()} disabled={!targetSlug || mergeBusy}>
+              {mergeBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Merge series
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {editing ? (
+        <form onSubmit={(e) => void saveEdit(e)} className="space-y-3 rounded-lg border border-zinc-800 p-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="space-y-1 text-xs text-zinc-400">
+              <span className="block text-[11px] uppercase text-zinc-500">Name</span>
+              <input required className={`${field} w-full`} value={name} onChange={(e) => setName(e.target.value)} />
+            </label>
+            <label className="space-y-1 text-xs text-zinc-400">
+              <span className="block text-[11px] uppercase text-zinc-500">Brand</span>
+              <input className={`${field} w-full`} placeholder="Optional" value={brand} onChange={(e) => setBrand(e.target.value)} />
+            </label>
+            <label className="space-y-1 text-xs text-zinc-400">
+              <span className="block text-[11px] uppercase text-zinc-500">Aliases (comma-separated)</span>
+              <input className={`${field} w-full`} placeholder="e.g. EDC, EDCLV" value={aliases} onChange={(e) => setAliases(e.target.value)} />
+            </label>
+            <label className="space-y-1 text-xs text-zinc-400">
+              <span className="block text-[11px] uppercase text-zinc-500">Lineup URL</span>
+              <input className={`${field} w-full`} placeholder="https://…" value={lineupUrl} onChange={(e) => setLineupUrl(e.target.value)} />
+            </label>
+          </div>
+          <div className="space-y-1">
+            <span className="block text-[11px] uppercase text-zinc-500">Source priority</span>
+            <div className="flex flex-wrap gap-1.5">
+              {SOURCE_PRIORITY_OPTIONS.map((src) => {
+                const active = sourcePriority.includes(src);
+                return (
+                  <button
+                    key={src}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => togglePriority(src)}
+                    className={`rounded-full border px-2.5 py-0.5 text-xs ${
+                      active
+                        ? 'border-violet-400 bg-violet-500/20 text-violet-100'
+                        : 'border-zinc-700 text-zinc-300 hover:border-violet-500'
+                    }`}
+                  >
+                    {SOURCE_LABELS[src] ?? src}
+                    {active ? ` #${sourcePriority.indexOf(src) + 1}` : ''}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button type="submit" variant="primary" disabled={saving || !name.trim()}>
+              {saving ? 'Saving…' : 'Save series'}
+            </Button>
+            <Button variant="ghost" onClick={() => setEditing(false)} disabled={saving}>Cancel</Button>
+          </div>
+        </form>
+      ) : (
+        <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-[11px] uppercase text-zinc-500">Aliases</dt>
+            <dd className={series.aliases?.length ? 'text-zinc-200' : 'italic text-zinc-500'}>
+              {series.aliases?.length ? series.aliases.join(', ') : 'None'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[11px] uppercase text-zinc-500">Lineup URL</dt>
+            <dd className="truncate">
+              {series.lineupUrl ? (
+                <a href={series.lineupUrl} target="_blank" rel="noreferrer" className="text-violet-300 hover:underline">
+                  {series.lineupUrl}
+                </a>
+              ) : (
+                <span className="italic text-zinc-500">Not set</span>
+              )}
+            </dd>
+          </div>
+          {series.sourcePriority && series.sourcePriority.length > 0 && (
+            <div className="sm:col-span-2">
+              <dt className="text-[11px] uppercase text-zinc-500">Source priority</dt>
+              <dd className="text-zinc-200">
+                {series.sourcePriority.map((s) => SOURCE_LABELS[s] ?? s).join(' → ')}
+              </dd>
+            </div>
+          )}
+        </dl>
+      )}
+
+      <section className="space-y-2">
+        <h4 className="text-sm font-semibold text-zinc-200">
+          Editions ({editions.length})
+        </h4>
+        {editions.length === 0 ? (
+          <p className="text-sm text-zinc-400">No editions attached to this series yet.</p>
+        ) : (
+          <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+            {editions.map((e) => {
+              const url = editionUrl(e.id);
+              const dateText = e.weekends.length > 1
+                ? e.weekends.map((w) => weekendLabel(w, 'WK')).join(' · ')
+                : e.startDate ?? String(e.year);
+              return (
+                <li key={e.id}>
+                  <a
+                    href={url}
+                    onClick={(ev) => {
+                      if (isModifiedClick(ev)) return;
+                      ev.preventDefault();
+                      window.history.pushState({ fromManageList: true }, '', url);
+                      rememberManageSearch(new URL(url, window.location.origin).search);
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    }}
+                    className="flex w-full flex-wrap items-baseline gap-x-3 p-2.5 text-left text-sm hover:bg-zinc-900/60"
+                  >
+                    <span className="font-medium text-zinc-100">{e.name}</span>
+                    <span className="text-xs text-zinc-400">
+                      {[dateText, e.venue, e.city].filter(Boolean).join(' · ')}
+                    </span>
+                    <span className="ml-auto text-xs text-zinc-400">
+                      {e.performanceCount} billed · {editionStatusWords(e.status).split(' (')[0].toLowerCase()}
+                    </span>
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+};
+
 const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ query, status }) => {
   // The page is the first 200 matches of the filter (searched across the whole catalog); `total` counts every match.
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
   const [page, setPage] = useState<{ editions: CanonicalEditionSummary[]; total: number; hasMore: boolean } | null>(null);
   const [detail, setDetail] = useState<Edition | null>(null);
   const detailRef = useRef<Edition | null>(null);
@@ -257,17 +807,34 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setPage(await canonicalApi.editions(query, status));
-      setError(null);
-    } catch (err) {
-      setError(messageOf(err));
-    }
-  }, [query, status]);
+  // Merge selection mode
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [mergeEditions, setMergeEditions] = useState<Edition[] | null>(null);
+  const [loadingMerge, setLoadingMerge] = useState(false);
 
   useEffect(() => {
-    void load();
+    const t = window.setTimeout(() => setDebouncedQuery(query), 300);
+    return () => window.clearTimeout(t);
+  }, [query]);
+
+  const load = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        setPage(await canonicalApi.editions(debouncedQuery, status, signal));
+        setError(null);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setError(messageOf(err));
+      }
+    },
+    [debouncedQuery, status],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
   }, [load]);
 
   const openEdition = useCallback(async (id: string) => {
@@ -309,6 +876,29 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
     return () => window.removeEventListener('popstate', syncFromUrl);
   }, [openEdition]);
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const startSelectedMerge = async () => {
+    if (selectedIds.size < 2 || loadingMerge) return;
+    setLoadingMerge(true);
+    setError(null);
+    try {
+      const loaded = await Promise.all([...selectedIds].map((id) => canonicalApi.edition(id).then((r) => r.edition)));
+      setMergeEditions(loaded);
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setLoadingMerge(false);
+    }
+  };
+
   if (detail && editing) {
     return (
       <LineupReview
@@ -341,7 +931,26 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
         >
           ← Back to editions
         </a>
-        <EditionDetail edition={detail} onEditLineup={() => setEditing(true)} onFactsSaved={setDetail} />
+        <EditionDetail
+          edition={detail}
+          onEditLineup={() => setEditing(true)}
+          onFactsSaved={setDetail}
+          onStartMerge={() => setMergeEditions([detail])}
+        />
+        {mergeEditions && (
+          <MergeEditionModal
+            initialEditions={mergeEditions}
+            onClose={() => setMergeEditions(null)}
+            onMerged={(kept) => {
+              setMergeEditions(null);
+              void load();
+              const url = editionUrl(kept.id, { status, q: query || undefined });
+              window.history.replaceState({ fromManageList: window.history.state?.fromManageList }, '', url);
+              rememberManageSearch(new URL(url, window.location.origin).search);
+              setDetail(kept);
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -355,27 +964,76 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
         <p className="text-sm text-zinc-400">{query || status !== 'all' ? 'No editions match.' : 'No editions yet. Ingest one under Lookups.'}</p>
       ) : (
         <>
-          <p className="text-xs text-zinc-400" role="status">
-            {page.hasMore ? `Showing ${page.editions.length} of ${page.total}` : `${page.total} ${page.total === 1 ? 'edition' : 'editions'}`}
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-zinc-400" role="status">
+              {page.hasMore ? `Showing ${page.editions.length} of ${page.total}` : `${page.total} ${page.total === 1 ? 'edition' : 'editions'}`}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {selectMode && (
+                <>
+                  <span className="text-xs text-zinc-300">{selectedIds.size} selected</span>
+                  <Button
+                    variant="primary"
+                    disabled={selectedIds.size < 2 || loadingMerge}
+                    onClick={() => void startSelectedMerge()}
+                  >
+                    {loadingMerge && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Merge selected…
+                  </Button>
+                </>
+              )}
+              <Button
+                onClick={() => {
+                  setSelectMode((v) => !v);
+                  setSelectedIds(new Set());
+                }}
+              >
+                {selectMode ? 'Cancel' : 'Select to merge'}
+              </Button>
+            </div>
+          </div>
           <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
             {page.editions.map((e) => {
               const url = editionUrl(e.id, { status, q: query || undefined });
+              const checked = selectedIds.has(e.id);
+              const dateSummary = e.weekends.length > 1
+                ? `${e.weekends.length} weekends`
+                : e.startDate;
               return (
-                <li key={e.id}>
+                <li key={e.id} className="flex items-center">
+                  {selectMode && (
+                    <label className="flex cursor-pointer items-center pl-3">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleSelect(e.id)}
+                        aria-label={`Select ${e.name}`}
+                        className="h-4 w-4 accent-violet-500"
+                      />
+                    </label>
+                  )}
                   <a
                     href={url}
                     onClick={(eNav) => {
+                      if (selectMode) {
+                        eNav.preventDefault();
+                        toggleSelect(e.id);
+                        return;
+                      }
                       if (isModifiedClick(eNav)) return;
                       eNav.preventDefault();
                       window.history.pushState({ fromManageList: true }, '', url);
                       rememberManageSearch(new URL(url, window.location.origin).search);
                       window.dispatchEvent(new PopStateEvent('popstate'));
                     }}
-                    className="flex w-full flex-wrap items-baseline gap-x-3 p-2.5 text-left text-sm hover:bg-zinc-900/60"
+                    className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 p-2.5 text-left text-sm hover:bg-zinc-900/60"
                   >
                     <span className="font-medium text-zinc-100">{e.name}</span>
-                    <span className="text-xs text-zinc-400">{[e.startDate, e.venue, e.city].filter(Boolean).join(' · ') || 'Details missing'}</span>
+                    {e.seriesName && (
+                      <span className="text-xs text-violet-300/90">
+                        {e.seriesName}{e.seriesBrand ? ` · ${e.seriesBrand}` : ''}
+                      </span>
+                    )}
+                    <span className="text-xs text-zinc-400">{[dateSummary, e.venue, e.city].filter(Boolean).join(' · ') || 'Details missing'}</span>
                     <span className="ml-auto text-xs text-zinc-400">{e.performanceCount} billed · {editionStatusWords(e.status).split(' (')[0].toLowerCase()}{e.hasSetTimes ? ' · set times' : ''}</span>
                   </a>
                 </li>
@@ -383,6 +1041,22 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
             })}
           </ul>
         </>
+      )}
+      {mergeEditions && (
+        <MergeEditionModal
+          initialEditions={mergeEditions}
+          onClose={() => setMergeEditions(null)}
+          onMerged={(kept) => {
+            setMergeEditions(null);
+            setSelectMode(false);
+            setSelectedIds(new Set());
+            void load();
+            const url = editionUrl(kept.id, { status, q: query || undefined });
+            window.history.pushState({ fromManageList: true }, '', url);
+            rememberManageSearch(new URL(url, window.location.origin).search);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }}
+        />
       )}
     </section>
   );
@@ -640,7 +1314,12 @@ const BILLING_WORDS: Record<string, string> = { headliner: 'Headliner', support:
 // One edition as a record (owner only). Missing data reads "Not known"; nothing is filled in.
 // Each act shows its billing role, B2B partners, set, day, stage and set times, and each source
 // shows its quote, or the "Admin curated" badge for the owner's own curation.
-const EditionDetail: React.FC<{ edition: Edition; onEditLineup: () => void; onFactsSaved: (edition: Edition) => void }> = ({ edition, onEditLineup, onFactsSaved }) => {
+const EditionDetail: React.FC<{
+  edition: Edition;
+  onEditLineup: () => void;
+  onFactsSaved: (edition: Edition) => void;
+  onStartMerge?: () => void;
+}> = ({ edition, onEditLineup, onFactsSaved, onStartMerge }) => {
   const [editingFacts, setEditingFacts] = useState(false);
   const [verifying, setVerifying] = useState(false);
   // The last verify or undo result, kept with its edition id so it never shows on another edition.
@@ -675,14 +1354,15 @@ const EditionDetail: React.FC<{ edition: Edition; onEditLineup: () => void; onFa
   const names = new Map(edition.performances.map((p) => [p.artistKey, p.name]));
   const dates = [edition.startDate, edition.endDate && edition.endDate !== edition.startDate ? `to ${edition.endDate}` : null].filter(Boolean).join(' ');
   const facts: Array<[string, string | undefined]> = [
-    ['Series', edition.seriesSlug],
     ['Year', String(edition.year)],
     ['Dates', dates || undefined],
     ['Venue', edition.venue],
     ['City', edition.city],
+    ['Region', edition.region],
     ['Country', edition.country],
     ['Status', editionStatusWords(edition.status)],
   ];
+  const seriesHref = edition.seriesSlug ? seriesUrl(edition.seriesSlug) : null;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -698,6 +1378,7 @@ const EditionDetail: React.FC<{ edition: Edition; onEditLineup: () => void; onFa
           )}
           {!editingFacts && <Button onClick={() => setEditingFacts(true)}>Edit facts</Button>}
           <Button onClick={onEditLineup}>Edit lineup</Button>
+          {onStartMerge && <Button onClick={onStartMerge}>Merge with…</Button>}
         </div>
       </div>
       {(edition.status === 'provisional' || note) && (
@@ -727,6 +1408,35 @@ const EditionDetail: React.FC<{ edition: Edition; onEditLineup: () => void; onFa
       ) : (
         <>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-[11px] uppercase text-zinc-500">Series</dt>
+              <dd className="flex flex-wrap items-center gap-1.5">
+                {edition.seriesSlug ? (
+                  <>
+                    {seriesHref ? (
+                      <a
+                        href={seriesHref}
+                        onClick={(e) => {
+                          if (isModifiedClick(e)) return;
+                          e.preventDefault();
+                          window.history.pushState({ fromManageList: true }, '', seriesHref);
+                          rememberManageSearch(new URL(seriesHref, window.location.origin).search);
+                          window.dispatchEvent(new PopStateEvent('popstate'));
+                        }}
+                        className="text-violet-300 hover:underline"
+                      >
+                        {edition.seriesName ?? edition.seriesSlug}
+                      </a>
+                    ) : (
+                      <span className="text-zinc-100">{edition.seriesName ?? edition.seriesSlug}</span>
+                    )}
+                    {edition.seriesBrand && <Pill tone="accent">{edition.seriesBrand}</Pill>}
+                  </>
+                ) : (
+                  <span className="italic text-zinc-500">None</span>
+                )}
+              </dd>
+            </div>
             {facts.map(([label, value]) => (
               <div key={label}>
                 <dt className="text-[11px] uppercase text-zinc-500">{label}</dt>
@@ -734,6 +1444,18 @@ const EditionDetail: React.FC<{ edition: Edition; onEditLineup: () => void; onFa
               </div>
             ))}
           </dl>
+          {edition.weekends && edition.weekends.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[11px] uppercase text-zinc-500">Weekends</p>
+              <div className="flex flex-wrap gap-1.5">
+                {edition.weekends.map((w) => (
+                  <Pill key={w.weekend} tone="neutral">
+                    {weekendLabel(w)}
+                  </Pill>
+                ))}
+              </div>
+            </div>
+          )}
           <p className="text-xs text-zinc-400">
             Facts source: {edition.factSourceNote ? <span className="text-zinc-200">{edition.factSourceNote}</span> : <span className="italic text-zinc-500">No source note for these facts yet.</span>}
           </p>
@@ -755,17 +1477,43 @@ const EditionDetail: React.FC<{ edition: Edition; onEditLineup: () => void; onFa
 // Edition facts (GA4, owner only). Name, dates, venue and city are edited with a required source note.
 // The diff (old to new) is shown before Save, which stays disabled until a fact changes and a note is given.
 // A blank fact is sent as blank (null) and reads "Not known"; nothing is defaulted.
-const FACT_FIELDS: Array<{ key: 'name' | 'startDate' | 'endDate' | 'venue' | 'city'; label: string; type?: string }> = [
+const FACT_FIELDS: Array<{ key: 'name' | 'startDate' | 'endDate' | 'venue' | 'city' | 'region' | 'country'; label: string; type?: string }> = [
   { key: 'name', label: 'Name' },
   { key: 'startDate', label: 'Start date', type: 'date' },
   { key: 'endDate', label: 'End date', type: 'date' },
   { key: 'venue', label: 'Venue' },
   { key: 'city', label: 'City' },
+  { key: 'region', label: 'Region' },
+  { key: 'country', label: 'Country' },
 ];
+
+function serializeWeekends(list: EditionWeekend[]): string {
+  return JSON.stringify(
+    list
+      .map((w) => ({
+        weekend: w.weekend,
+        startDate: w.startDate.trim(),
+        endDate: w.endDate?.trim() || undefined,
+      }))
+      .sort((a, b) => a.weekend - b.weekend),
+  );
+}
 
 const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSaved: (edition: Edition) => void }> = ({ edition, onCancel, onSaved }) => {
   const stored = (key: (typeof FACT_FIELDS)[number]['key']): string => (edition[key] ?? '') as string;
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(FACT_FIELDS.map((f) => [f.key, stored(f.key)])));
+  const [seriesSlug, setSeriesSlug] = useState<string>(edition.seriesSlug ?? '');
+  const [seriesList, setSeriesList] = useState<SeriesSummary[]>([]);
+  const [newSeriesOpen, setNewSeriesOpen] = useState(false);
+  const [newSeriesName, setNewSeriesName] = useState('');
+  const [newSeriesBrand, setNewSeriesBrand] = useState('');
+  const [creatingSeries, setCreatingSeries] = useState(false);
+
+  const initialWeekends = edition.weekends ?? [];
+  const [weekendsMode, setWeekendsMode] = useState<'single' | 'multi'>(initialWeekends.length > 0 ? 'multi' : 'single');
+  const [weekends, setWeekends] = useState<EditionWeekend[]>(() =>
+    initialWeekends.map((w) => ({ weekend: w.weekend, startDate: w.startDate, ...(w.endDate ? { endDate: w.endDate } : {}) })),
+  );
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -784,6 +1532,14 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
       },
       () => {
         if (alive) setLineupStatus(null);
+      },
+    );
+    canonicalApi.series().then(
+      (res) => {
+        if (alive) setSeriesList(res.series);
+      },
+      () => {
+        if (alive) setSeriesList([]);
       },
     );
     return () => {
@@ -874,21 +1630,60 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
     }];
   });
 
+  const normalizedWeekends: EditionWeekend[] =
+    weekendsMode === 'multi'
+      ? weekends.map((w, i) => ({
+          weekend: i + 1,
+          startDate: w.startDate.trim(),
+          ...(w.endDate?.trim() ? { endDate: w.endDate.trim() } : {}),
+        }))
+      : [];
+  const weekendsMissingStart = weekendsMode === 'multi' && (normalizedWeekends.length === 0 || normalizedWeekends.some((w) => !w.startDate));
+  const seriesChanged = seriesSlug !== (edition.seriesSlug ?? '');
+  const weekendsChanged = serializeWeekends(normalizedWeekends) !== serializeWeekends(initialWeekends);
+
   const trimmed = (key: string) => (values[key] ?? '').trim();
-  const changes = FACT_FIELDS.filter((f) => trimmed(f.key) !== stored(f.key).trim());
+  const fieldChanges = FACT_FIELDS.filter((f) => trimmed(f.key) !== stored(f.key).trim());
+  const hasChanges = fieldChanges.length > 0 || seriesChanged || weekendsChanged;
   const nameBlank = trimmed('name') === '';
-  const canSave = !saving && !nameBlank && note.trim() !== '' && changes.length > 0;
+  const canSave = !saving && !nameBlank && !weekendsMissingStart && note.trim() !== '' && hasChanges;
+
+  const createQuickSeries = async () => {
+    const cleanName = newSeriesName.trim();
+    if (!cleanName || creatingSeries) return;
+    setCreatingSeries(true);
+    setError(null);
+    try {
+      const created = await canonicalApi.createSeries({
+        name: cleanName,
+        ...(newSeriesBrand.trim() ? { brand: newSeriesBrand.trim() } : {}),
+      });
+      setSeriesList((prev) => [{ ...created, editionCount: 0 }, ...prev.filter((s) => s.slug !== created.slug)]);
+      setSeriesSlug(created.slug);
+      setNewSeriesName('');
+      setNewSeriesBrand('');
+      setNewSeriesOpen(false);
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setCreatingSeries(false);
+    }
+  };
 
   const save = async () => {
     setSaving(true);
     setError(null);
     try {
-      const saved = await canonicalApi.editFacts(edition.id, {
+      const saved = await canonicalApi.updateEdition(edition.id, {
         name: trimmed('name'),
         startDate: trimmed('startDate') || null,
         endDate: trimmed('endDate') || null,
         venue: trimmed('venue') || null,
         city: trimmed('city') || null,
+        region: trimmed('region') || null,
+        country: trimmed('country') || null,
+        seriesSlug: seriesSlug || null,
+        ...(weekendsChanged ? { weekends: normalizedWeekends } : {}),
         sourceNote: note.trim(),
       });
       onSaved(saved);
@@ -950,6 +1745,143 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
           </label>
         ))}
       </div>
+      <div className="space-y-2 rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[11px] uppercase text-zinc-500">Series</span>
+          <div className="flex items-center gap-2">
+            {seriesSlug && (
+              <button type="button" onClick={() => setSeriesSlug('')} className="text-xs text-zinc-400 hover:text-zinc-200">
+                Detach
+              </button>
+            )}
+            <button type="button" onClick={() => setNewSeriesOpen((o) => !o)} className="text-xs text-violet-300 hover:underline">
+              {newSeriesOpen ? 'Close' : '+ New series'}
+            </button>
+          </div>
+        </div>
+        <select
+          aria-label="Edition series"
+          value={seriesSlug}
+          onChange={(e) => setSeriesSlug(e.target.value)}
+          className={`${field} w-full`}
+        >
+          <option value="">None (standalone)</option>
+          {seriesSlug && !seriesList.some((s) => s.slug === seriesSlug) && (
+            <option value={seriesSlug}>{edition.seriesName ?? seriesSlug}</option>
+          )}
+          {seriesList.map((s) => (
+            <option key={s.slug} value={s.slug}>
+              {s.name}{s.brand ? ` (${s.brand})` : ''}
+            </option>
+          ))}
+        </select>
+        {newSeriesOpen && (
+          <div className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-3">
+            <input
+              type="text"
+              aria-label="New series name"
+              placeholder="Series name"
+              value={newSeriesName}
+              onChange={(e) => setNewSeriesName(e.target.value)}
+              className={field}
+            />
+            <input
+              type="text"
+              aria-label="New series brand"
+              placeholder="Brand (optional)"
+              value={newSeriesBrand}
+              onChange={(e) => setNewSeriesBrand(e.target.value)}
+              className={field}
+            />
+            <Button type="button" onClick={() => void createQuickSeries()} disabled={creatingSeries || !newSeriesName.trim()}>
+              {creatingSeries ? 'Creating…' : 'Create & attach'}
+            </Button>
+          </div>
+        )}
+      </div>
+      <div className="space-y-2 rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[11px] uppercase text-zinc-500">Schedule</span>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => setWeekendsMode('single')}
+              className={`rounded-control border px-2 py-1 text-xs ${weekendsMode === 'single' ? 'border-violet-400 bg-violet-500/20 text-violet-100' : 'border-zinc-700 text-zinc-300'}`}
+            >
+              Single date range
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setWeekendsMode('multi');
+                if (weekends.length === 0) {
+                  setWeekends([
+                    { weekend: 1, startDate: values.startDate ?? '', ...(values.endDate ? { endDate: values.endDate } : {}) },
+                    { weekend: 2, startDate: '' },
+                  ]);
+                }
+              }}
+              className={`rounded-control border px-2 py-1 text-xs ${weekendsMode === 'multi' ? 'border-violet-400 bg-violet-500/20 text-violet-100' : 'border-zinc-700 text-zinc-300'}`}
+            >
+              Multiple weekends
+            </button>
+          </div>
+        </div>
+        {weekendsMode === 'multi' && (
+          <div className="space-y-2">
+            {weekends.map((w, idx) => (
+              <div key={idx} className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[auto_1fr_1fr_auto]">
+                <span className="text-xs font-semibold text-zinc-300 sm:pb-2">Weekend {idx + 1}</span>
+                <label className="space-y-1 text-xs text-zinc-400">
+                  <span className="block text-[10px] uppercase text-zinc-500">Start date</span>
+                  <input
+                    type="date"
+                    aria-label={`Weekend ${idx + 1} start date`}
+                    className={`${field} w-full`}
+                    value={w.startDate}
+                    onChange={(e) =>
+                      setWeekends((prev) => prev.map((item, j) => (j === idx ? { ...item, startDate: e.target.value } : item)))
+                    }
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-zinc-400">
+                  <span className="block text-[10px] uppercase text-zinc-500">End date</span>
+                  <input
+                    type="date"
+                    aria-label={`Weekend ${idx + 1} end date`}
+                    className={`${field} w-full`}
+                    value={w.endDate ?? ''}
+                    onChange={(e) =>
+                      setWeekends((prev) => prev.map((item, j) => (j === idx ? { ...item, endDate: e.target.value || undefined } : item)))
+                    }
+                  />
+                </label>
+                {weekends.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setWeekends((prev) => prev.filter((_, j) => j !== idx).map((item, k) => ({ ...item, weekend: k + 1 })))
+                    }
+                    className="text-xs text-rose-300 hover:underline sm:pb-2"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            ))}
+            {weekends.length < 9 && (
+              <button
+                type="button"
+                onClick={() => setWeekends((prev) => [...prev, { weekend: prev.length + 1, startDate: '' }])}
+                className="text-xs text-violet-300 hover:underline"
+              >
+                + Add weekend
+              </button>
+            )}
+            {weekendsMissingStart && <p className="text-xs text-rose-300">Every weekend needs a start date.</p>}
+          </div>
+        )}
+      </div>
       {nameBlank && <p className="text-xs text-rose-300">An edition needs a name.</p>}
       <label className="block space-y-1 text-xs text-zinc-400">
         <span className="block text-[11px] uppercase text-zinc-500">Source note (required)</span>
@@ -963,17 +1895,28 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
         />
       </label>
       <div className="space-y-1 text-xs text-zinc-300">
-        {changes.length === 0 ? (
+        {!hasChanges ? (
           <p className="text-zinc-500">No fact has changed yet.</p>
         ) : (
           <>
             <p className="text-[11px] uppercase text-zinc-500">Changes to save</p>
             <ul className="space-y-0.5">
-              {changes.map((f) => (
+              {fieldChanges.map((f) => (
                 <li key={f.key}>
                   {f.label}: <span className="text-zinc-500">{stored(f.key) || 'Not known'}</span> → <span className="text-zinc-100">{trimmed(f.key) || 'Not known (cleared)'}</span>
                 </li>
               ))}
+              {seriesChanged && (
+                <li>
+                  Series: <span className="text-zinc-500">{edition.seriesSlug || 'None'}</span> → <span className="text-zinc-100">{seriesSlug || 'None (detached)'}</span>
+                </li>
+              )}
+              {weekendsChanged && (
+                <li>
+                  Weekends: <span className="text-zinc-500">{initialWeekends.length ? `${initialWeekends.length} weekend(s)` : 'Single date range'}</span> →{' '}
+                  <span className="text-zinc-100">{normalizedWeekends.length ? `${normalizedWeekends.length} weekend(s)` : 'Single date range'}</span>
+                </li>
+              )}
             </ul>
           </>
         )}

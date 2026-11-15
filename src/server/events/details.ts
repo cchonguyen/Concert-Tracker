@@ -12,7 +12,8 @@ import { cityWithRegion, splitEventCity } from './regions';
 import type { Edition } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
 import { seriesSlugFor } from '../lineup/text';
-import { matchEdition as matchCatalog, upsertOccurrence } from '../canon/match';
+import { editionCoversDate, matchEdition as matchCatalog, upsertOccurrence } from '../canon/match';
+import { resolvedEditionDates } from './inherit';
 import type { GuardedReader } from '../reader/guardedReader';
 import { geminiReader } from './detailsGemini';
 import { DetailCandidate, DetailsStatus, EventDetails, EventField, EVENT_FIELDS, LoggedEvent } from './types';
@@ -323,6 +324,7 @@ export interface ResearchCatalog {
   // (Slice 11.23). On for everyone (member notice version 2); see persistOwnEntry.
   persistOwn?: boolean;
   actor?: string;
+  skipCanon?: boolean;
 }
 
 // Who may write shared editions from research: the owner, or single-user mode (no userId). A member never does
@@ -331,7 +333,7 @@ export function researchCatalogFor(role: 'owner' | 'member' | undefined, userId:
   return { store, persist: !userId || role === 'owner', persistOwn: true, actor: 'system:research' };
 }
 
-const catalogDay = (e: Edition, date: string) => e.startDate === date || Boolean(e.startDate && e.endDate && e.startDate <= date && date <= e.endDate);
+const catalogDay = (e: Edition, date: string) => editionCoversDate(e, date).matched;
 
 // Rung 1: a verified catalog edition for this event. External IDs first (at most one lookup, from a source link
 // this event already holds), then date + venue + subject (matchEdition). Worst case 3 store calls.
@@ -353,14 +355,34 @@ async function catalogHit(event: LoggedEvent, catalog: ResearchCatalog): Promise
   const e = m.edition;
   if (e.status !== 'verified' && e.status !== 'confirmed') return null;
   if (event.year && e.year !== event.year) return null;
+  if (event.startDate) {
+    const cov = editionCoversDate(e, event.startDate);
+    if (cov.matched && event.weekend && cov.weekend !== undefined && cov.weekend !== event.weekend) return null;
+  }
   return e;
 }
 
-function editionCandidate(e: Edition): DetailCandidate {
-  const facts = { name: e.name, startDate: e.startDate, endDate: e.endDate, venue: e.venue, city: e.city, country: e.country };
+function editionCandidate(e: Edition, weekend?: number): DetailCandidate {
+  const dates = resolvedEditionDates(e, weekend);
+  const facts = {
+    name: e.name,
+    startDate: dates.startDate,
+    endDate: dates.endDate,
+    venue: e.venue,
+    city: e.city,
+    region: e.region,
+    country: e.country,
+  };
   const clean = Object.fromEntries(Object.entries(facts).filter(([, v]) => typeof v === 'string' && v.trim())) as Omit<DetailCandidate, 'id' | 'sources'>;
   // The catalog edition is the source; SourceType has no 'edition', so the stored FieldSource is rewritten by the caller.
-  return { id: randomUUID(), ...clean, sources: [{ sourceType: 'promoter', sourceUrl: '', fields: EVENT_FIELDS.filter((f) => clean[f]) }] };
+  return {
+    id: randomUUID(),
+    editionId: e.id,
+    ...(e.seriesName ? { seriesName: e.seriesName } : {}),
+    ...(e.weekends?.length ? { weekends: e.weekends } : {}),
+    ...clean,
+    sources: [{ sourceType: 'promoter', sourceUrl: '', fields: EVENT_FIELDS.filter((f) => clean[f]) }],
+  };
 }
 
 // Rung 2 persistence (docs/architecture/08-sources.md, Slice 11.1): only Ticketmaster and Clashfinder results,
@@ -433,22 +455,25 @@ export async function researchEvent(
   now: Date,
   reader?: DetailReader,
   catalog?: ResearchCatalog,
+  opts?: { skipCanon?: boolean },
 ): Promise<LoggedEvent> {
   const checkedAt = now.toISOString();
+  const skipCanon = Boolean(opts?.skipCanon || catalog?.skipCanon || event.details?.skipCanon);
   const year = event.year ?? (event.startDate ? Number(event.startDate.slice(0, 4)) : undefined);
   const done = (details: Omit<EventDetails, 'checkedAt'>, ev: LoggedEvent = event): LoggedEvent => ({
     ...ev,
-    details: { ...details, checkedAt },
+    details: { ...details, ...(skipCanon ? { skipCanon: true } : {}), checkedAt },
     updatedAt: checkedAt,
   });
   const found: DetailCandidate[] = [];
   const notes: string[] = [];
   let catalogMatched = false;
-  if (catalog) {
+  if (catalog && !skipCanon) {
     try {
       const hit = await catalogHit(event, catalog);
       if (hit) {
-        const c = editionCandidate(hit);
+        const cov = event.startDate ? editionCoversDate(hit, event.startDate) : { matched: false };
+        const c = editionCandidate(hit, event.weekend ?? cov.weekend);
         const fromEdition = (ev: LoggedEvent): LoggedEvent => {
           const sources = { ...ev.sources };
           for (const f of EVENT_FIELDS) if (ev[f] !== event[f] && ev[f]) sources[f] = { sourceType: 'edition', editionId: hit.id };

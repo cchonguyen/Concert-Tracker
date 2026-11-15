@@ -91,6 +91,7 @@ const isManageKind = (k?: string): k is ManageKind | 'history' | 'health' =>
 // The Global archive's sections, as header tabs (a row that scrolls sideways on narrow screens).
 const ARCHIVE_TABS: Array<{ value: ArchiveSection; label: string }> = [
   { value: 'artists', label: 'Artists' },
+  { value: 'series', label: 'Series' },
   { value: 'editions', label: 'Editions & Lineups' },
   { value: 'lookups', label: 'Lookups' },
   { value: 'changes', label: 'Changes' },
@@ -158,14 +159,20 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
 
   const isOwner = useIsOwner();
   // Owner only: where each of my artist names also sits in the shared catalog (origin badges).
+  // Lazy-loaded only when the Global Archive scope is opened, avoiding unnecessary egress on My records mount.
   const [origins, setOrigins] = useState<Map<string, CanonicalArtistSummary['origins']>>(new Map());
+  const originsLoaded = useRef(false);
   useEffect(() => {
-    if (!isOwner) return;
+    if (!isOwner || scope !== 'archive' || originsLoaded.current) return;
+    originsLoaded.current = true;
     canonicalApi
       .artists()
       .then(({ artists }) => setOrigins(new Map(artists.map((a) => [a.key, a.origins]))))
-      .catch(() => setOrigins(new Map()));
-  }, [isOwner]);
+      .catch(() => {
+        originsLoaded.current = false;
+        setOrigins(new Map());
+      });
+  }, [isOwner, scope]);
 
   const [history, setHistory] = useState<HistoryEntry[] | null>(null);
   const [notice, setNotice] = useState<{ text: string; undo?: string } | null>(null);
@@ -360,12 +367,14 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   // The search box belongs to a record list: not on Data health, History or an open record.
   // In the archive it filters the artists or editions; Lookups has no list to search.
   // Only the artists and editions lists in the archive have anything to filter.
-  const archiveFilters = archive && (archiveSection === 'artists' || archiveSection === 'editions');
+  const archiveFilters = archive && (archiveSection === 'artists' || archiveSection === 'series' || archiveSection === 'editions');
   const showSearch = archive ? archiveFilters : kind !== 'history' && kind !== 'health' && !(open && open.kind === kind);
   const searchPlaceholder = archive
     ? archiveSection === 'artists'
       ? 'Find artists in the archive by name or AKA'
-      : 'Search name, series or venue'
+      : archiveSection === 'series'
+        ? 'Find series by name, brand or alias'
+        : 'Search name, series or venue'
     : `Find ${meta?.label.toLowerCase()} by name or AKA`;
 
   return (

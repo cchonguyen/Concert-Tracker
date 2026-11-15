@@ -7,12 +7,13 @@
 // Nothing here guesses: an unknown venue, a missing date or two equal candidates is "no match" or "ambiguous".
 // Every edition write goes through writeEdition.
 import { randomUUID } from 'node:crypto';
-import type { Edition } from '../lineup/types';
-import type { LineupStore } from '../lineup/store/types';
+import type { Edition, EditionHeader } from '../lineup/types';
+import { isVerifiedStatus, type LineupStore } from '../lineup/store/types';
 import { editionKeyFor, normalizeName, seriesSlugFor } from '../lineup/text';
 import { writeEdition } from './editions';
 
 const SCAN_LIMIT = 5000;
+const YEAR_WORD = /^\d{4}$/;
 
 export interface OccurrenceQuery {
   name?: string;
@@ -24,15 +25,33 @@ export interface OccurrenceQuery {
 }
 
 export type MatchResult =
-  | { kind: 'same'; edition: Edition; via: 'external_id' | 'date_venue_subject' }
-  | { kind: 'ambiguous'; editions: Edition[] }
-  | { kind: 'suggest'; editions: Edition[] }
+  | { kind: 'same'; edition: Edition; via: 'external_id' | 'date_venue_subject'; weekend?: number }
+  | { kind: 'ambiguous'; editions: EditionHeader[] }
+  | { kind: 'suggest'; editions: EditionHeader[] }
   | { kind: 'none' };
 
-const isVerified = (e: Edition) => e.status === 'verified' || e.status === 'confirmed';
+const isVerified = (e: Pick<EditionHeader, 'status'>) => isVerifiedStatus(e.status);
 // A draft is the owner's own and is never matched.
-const isShared = (e: Edition) => e.status !== 'draft';
-const subjectOf = (e: Edition) => e.subjectKey ?? e.seriesSlug;
+const isShared = (e: Pick<EditionHeader, 'status'>) => e.status !== 'draft';
+const subjectOf = (e: Pick<EditionHeader, 'subjectKey' | 'seriesSlug' | 'name'>) =>
+  e.subjectKey ?? e.seriesSlug ?? seriesSlugFor(e.name);
+
+export function editionCoversDate(
+  e: Pick<EditionHeader, 'startDate' | 'endDate' | 'weekends'>,
+  date: string,
+): { matched: boolean; weekend?: number } {
+  if (!date) return { matched: false };
+  if (e.weekends && e.weekends.length > 0) {
+    for (const w of e.weekends) {
+      const end = w.endDate ?? w.startDate;
+      if (w.startDate <= date && date <= end) return { matched: true, weekend: w.weekend };
+    }
+    return { matched: false };
+  }
+  if (!e.startDate) return { matched: false };
+  const end = e.endDate ?? e.startDate;
+  return e.startDate <= date && date <= end ? { matched: true } : { matched: false };
+}
 
 async function venueIdOf(store: LineupStore, venue?: string): Promise<string | null> {
   const n = venue ? normalizeName(venue) : '';
@@ -45,20 +64,34 @@ export async function matchEdition(store: LineupStore, q: OccurrenceQuery): Prom
     if (hit && isShared(hit)) return { kind: 'same', edition: hit, via: 'external_id' };
   }
   if (!q.startDate) return { kind: 'none' };
-  const onDate = (await store.listEditions(SCAN_LIMIT)).filter((e) => isShared(e) && e.startDate === q.startDate);
+  const headers = await store.listEditionHeaders({ limit: SCAN_LIMIT });
+  const onDate = headers
+    .filter((e) => isShared(e))
+    .map((e) => ({ edition: e, cover: editionCoversDate(e, q.startDate!) }))
+    .filter((x) => x.cover.matched);
   const venueId = await venueIdOf(store, q.venue);
   // Venue unknown or not typed: the venue text decides (empty matches empty), so one (date, subject, venue) is one
   // edition even when no venue is known. Without this, every member entry with no venue created a new edition.
   const venueText = normalizeName(q.venue ?? '');
-  const sameVenue = (e: Edition) =>
+  const sameVenue = (e: EditionHeader) =>
     venueId ? e.venueId === venueId : venueText ? normalizeName(e.venue ?? '') === venueText : !e.venueId && !e.venue;
   if (q.subjectKey) {
-    const same = onDate.filter((e) => e.subjectKey === q.subjectKey && sameVenue(e));
-    if (same.length === 1) return { kind: 'same', edition: same[0], via: 'date_venue_subject' };
-    if (same.length > 1) return { kind: 'ambiguous', editions: same };
+    const same = onDate.filter((x) => subjectOf(x.edition) === q.subjectKey && sameVenue(x.edition));
+    if (same.length === 1) {
+      const full = await store.getEdition(same[0].edition.id);
+      if (full) {
+        return {
+          kind: 'same',
+          edition: full,
+          via: 'date_venue_subject',
+          ...(same[0].cover.weekend !== undefined ? { weekend: same[0].cover.weekend } : {}),
+        };
+      }
+    }
+    if (same.length > 1) return { kind: 'ambiguous', editions: same.map((x) => x.edition) };
   }
   const city = q.city ? normalizeName(q.city) : '';
-  const near = city ? onDate.filter((e) => e.city && normalizeName(e.city) === city) : [];
+  const near = city ? onDate.filter((x) => x.edition.city && normalizeName(x.edition.city) === city).map((x) => x.edition) : [];
   return near.length ? { kind: 'suggest', editions: near } : { kind: 'none' };
 }
 
@@ -69,15 +102,79 @@ export async function findVerifiedEdition(
   q: { eventName: string; year: number; startDate?: string; venue?: string },
 ): Promise<Edition | null> {
   const slug = seriesSlugFor(q.eventName);
-  const all = (await store.listEditions(SCAN_LIMIT)).filter((e) => isVerified(e) && subjectOf(e) === slug);
+  const all = (await store.listEditionHeaders({ limit: SCAN_LIMIT, status: 'verified' })).filter(
+    (e) => isVerified(e) && subjectOf(e) === slug,
+  );
   let found = q.startDate
-    ? all.filter((e) => e.startDate === q.startDate)
+    ? all.filter((e) => editionCoversDate(e, q.startDate!).matched)
     : all.filter((e) => e.year === q.year);
   if (found.length > 1 && q.venue) {
     const venueId = await venueIdOf(store, q.venue);
     if (venueId) found = found.filter((e) => e.venueId === venueId);
   }
-  return found.length === 1 ? found[0] : null;
+  return found.length === 1 ? store.getEdition(found[0].id) : null;
+}
+
+export interface SeriesEditionMatchQuery {
+  name: string;
+  year?: number;
+  startDate?: string;
+  venue?: string;
+  city?: string;
+  weekend?: number;
+}
+
+const cityPart = (s: string) => normalizeName(s.split(',')[0] ?? s);
+
+export async function findSeriesEditionMatches(store: LineupStore, q: SeriesEditionMatchQuery): Promise<EditionHeader[]> {
+  const tokens = normalizeName(q.name).split(' ').filter(Boolean);
+  const queryYears = new Set(tokens.filter((t) => YEAR_WORD.test(t)).map(Number));
+  const words = tokens.filter((t) => !YEAR_WORD.test(t));
+  if (words.length === 0) return [];
+
+  const headers = await store.listEditionHeaders({
+    limit: SCAN_LIMIT,
+    status: 'verified',
+    ...(q.year !== undefined ? { year: q.year } : {}),
+  });
+
+  const qv = q.venue ? normalizeName(q.venue) : '';
+  const qc = q.city ? cityPart(q.city) : '';
+
+  return headers
+    .filter((e) => {
+      if (!isVerified(e) || !e.seriesSlug) return false;
+      if (q.year !== undefined && e.year !== q.year) return false;
+      if (q.year === undefined && !q.startDate && queryYears.size > 0 && !queryYears.has(e.year)) return false;
+
+      const haystack = normalizeName(`${e.name} ${e.seriesName ?? ''} ${e.seriesBrand ?? ''} ${(e.seriesAliases ?? []).join(' ')}`)
+        .split(' ')
+        .filter(Boolean);
+      if (!words.every((w) => haystack.some((h) => h.startsWith(w)))) return false;
+
+      if (q.weekend !== undefined) {
+        if (e.weekends && e.weekends.length > 0) {
+          if (!e.weekends.some((w) => w.weekend === q.weekend)) return false;
+        } else if (q.weekend > 1) {
+          return false;
+        }
+      }
+
+      if (q.startDate) {
+        const cover = editionCoversDate(e, q.startDate);
+        if (!cover.matched) return false;
+        if (q.weekend !== undefined && cover.weekend !== undefined && cover.weekend !== q.weekend) return false;
+      }
+
+      const ev = e.venue ? normalizeName(e.venue) : '';
+      if (qv && ev && !(qv === ev || ev.includes(qv) || qv.includes(ev))) return false;
+
+      const ec = e.city ? cityPart(e.city) : '';
+      if (qc && ec && !(qc === ec || ec.includes(qc) || qc.includes(ec))) return false;
+
+      return true;
+    })
+    .sort((a, b) => b.year - a.year || (b.startDate ?? '').localeCompare(a.startDate ?? '') || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
 export interface UpsertOccurrenceInput extends OccurrenceQuery {

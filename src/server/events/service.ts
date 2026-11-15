@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createLookup, InputError, PipelineDeps } from '../lineup/pipeline';
 import { clashfinderCandidates } from '../lineup/adapters/clashfinder';
-import { Edition, LookupJob } from '../lineup/types';
+import { Edition, EditionHeader, LookupJob } from '../lineup/types';
 import { normalizeName } from '../lineup/text';
 import { parseEventInput } from './parse';
 import { isBilling } from '../lineup/billing';
@@ -9,6 +9,7 @@ import { EVENT_FIELDS, EventField, EventKind, LineupSummary, LoggedEvent, SeenAc
 import { isSetKind, SeenInput, withB2b } from './seen';
 import { cityWithRegion, regionCode, regionCountry, splitEventCity } from './regions';
 import { isAhead, isAttendance } from './attendance';
+import { resolveEvent } from './inherit';
 
 // Your event log. Stage 1 (capture and details) lives here; stage 2 hands the
 // event to the lineup pipeline. See REQUIREMENTS.md.
@@ -48,11 +49,29 @@ export function newEvent(line: string, now: Date): LoggedEvent {
 // Slice 11.13: the event is linked (editionId) and keeps only what was typed, in its own columns and in
 // `captured` (written once). The edition's facts are not copied; they show through inheritance on read
 // (inherit.ts resolveEvent), so a later edition correction reaches this event.
-export function newEventFromEdition(line: string, edition: Edition, now: Date): LoggedEvent {
+export function newEventFromEdition(
+  line: string,
+  edition: Edition | EditionHeader,
+  now: Date,
+  weekendOverride?: number,
+): LoggedEvent {
+  if (weekendOverride !== undefined && (!Number.isInteger(weekendOverride) || weekendOverride < 1 || weekendOverride > 9)) {
+    throw new InputError('Weekend is a number from 1 to 9.');
+  }
   const typed = newEvent(line, now);
-  const { attendance: _previous, ...rest } = typed;
+  const { attendance: _previous, weekend: typedWeekend, ...rest } = typed;
+  const rawWeekend = weekendOverride ?? typedWeekend;
+  let weekend: number | undefined;
+  if (rawWeekend !== undefined && Number.isInteger(rawWeekend) && rawWeekend >= 1 && rawWeekend <= 9) {
+    if (edition.weekends && edition.weekends.length > 1) {
+      if (edition.weekends.some((w) => w.weekend === rawWeekend)) weekend = rawWeekend;
+    } else {
+      weekend = rawWeekend;
+    }
+  }
   const next: LoggedEvent = {
     ...rest,
+    ...(weekend !== undefined ? { weekend } : {}),
     editionId: edition.id,
     overrides: {},
     details: { status: 'matched', candidates: [], notes: [] },
@@ -71,7 +90,7 @@ export function newEventFromEdition(line: string, edition: Edition, now: Date): 
   };
   // Same planned rule as newEvent, judged on what the person will see: a date still ahead waits for you
   // to say you went.
-  const seen = { ...next, ...(edition.startDate ? { startDate: edition.startDate, month: undefined } : {}), year: edition.year ?? next.year };
+  const seen = resolveEvent(next, edition);
   const today = now.toISOString().slice(0, 10);
   return isAhead(seen, today) ? { ...next, attendance: 'planned' as const } : next;
 }

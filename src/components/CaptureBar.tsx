@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Loader2, MapPin, Plus } from 'lucide-react';
 import { parseEventInput } from '../server/events/parse';
 import { eventsApi, EditionSuggestion, LoggedEvent, suggestEditions } from '../services/lineupApi';
-import { whenLabel } from '../services/format';
+import { suggestionPlaceLabel, suggestionWhenLabel, whenLabel } from '../services/format';
 import { isAhead } from '../server/events/attendance';
 import { isSampleMode } from '../services/sampleMode';
+import { Pill } from './ui/Pill';
 
 interface CaptureBarProps {
   onCaptured: (event: LoggedEvent) => void;
@@ -17,10 +18,10 @@ const MAX_ROWS = 5;
 // A picked edition fills the line as "<name> <year>", the year only when the name lacks it.
 const editionText = (s: EditionSuggestion): string => (s.year && !s.name.includes(String(s.year)) ? `${s.name} ${s.year}` : s.name);
 
-// The edition's facts, each left out when unknown: date (or year), venue and city, acts.
-function editionFacts(s: EditionSuggestion): string[] {
-  const when = s.startDate ? whenLabel({ startDate: s.startDate, endDate: s.endDate, year: s.year }) : s.year ? String(s.year) : null;
-  const place = [s.venue, s.city].filter(Boolean).join(', ') || null;
+// The edition's facts, each left out when unknown: date (or weekends/year), venue and full place, acts.
+function editionFacts(s: EditionSuggestion, matchedWeekend?: number): string[] {
+  const when = suggestionWhenLabel(s, matchedWeekend);
+  const place = [s.venue, suggestionPlaceLabel(s)].filter(Boolean).join(', ') || null;
   const acts = s.actCount > 0 ? `${s.actCount} ${s.actCount === 1 ? 'act' : 'acts'}` : null;
   return [when, place, acts].filter((x): x is string => Boolean(x));
 }
@@ -49,21 +50,22 @@ export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured, compact, lab
       setEditions([]);
       return;
     }
-    let stale = false;
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      suggestEditions(name).then(
+      suggestEditions(name, controller.signal).then(
         (rows) => {
-          if (stale) return;
+          if (controller.signal.aborted) return;
           setEditions(rows);
         },
-        () => {
+        (err) => {
+          if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return;
           // Suggestions are optional: an error shows none.
-          if (!stale) setEditions([]);
+          setEditions([]);
         },
       );
-    }, 250);
+    }, 300);
     return () => {
-      stale = true;
+      controller.abort();
       window.clearTimeout(timer);
     };
   }, [name, queryable]);
@@ -79,7 +81,7 @@ export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured, compact, lab
     setListOpen(false);
     setActive(-1);
     try {
-      onCaptured(await eventsApi.create(editionText(s), s.id));
+      onCaptured(await eventsApi.create(editionText(s), s.id, undefined, parsed?.weekend));
       setText('');
       setEditions([]);
     } catch (err) {
@@ -175,7 +177,7 @@ export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured, compact, lab
             className="absolute left-0 right-0 top-full z-30 mt-1 max-h-60 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl"
           >
             {rows.map((s, i) => {
-              const facts = editionFacts(s);
+              const facts = editionFacts(s, parsed?.weekend);
               return (
                 <li key={s.id} id={rowId(i)} role="option" aria-selected={i === active}>
                   <button
@@ -188,7 +190,12 @@ export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured, compact, lab
                       i === active ? 'bg-violet-600/30 text-violet-100' : 'text-zinc-200 hover:bg-zinc-800'
                     }`}
                   >
-                    <span className="block truncate font-semibold">{s.name}</span>
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <span className="truncate font-semibold">{s.name}</span>
+                      {(s.seriesName || s.seriesBrand) && (
+                        <Pill tone="neutral">{[s.seriesName, s.seriesBrand].filter(Boolean).join(' · ')}</Pill>
+                      )}
+                    </span>
                     {facts.length > 0 && <span className="block truncate text-xs text-zinc-400">{facts.join(' · ')}</span>}
                   </button>
                 </li>
@@ -200,6 +207,7 @@ export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured, compact, lab
       {parsed && (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="rounded-full bg-zinc-800 px-2.5 py-1 font-semibold text-zinc-100">{parsed.name || '…'}</span>
+          {parsed.weekend && <Pill tone="accent">Weekend {parsed.weekend}</Pill>}
           <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 ${when ? 'bg-zinc-800 text-zinc-200' : 'text-zinc-400'}`}>
             <CalendarDays className="h-3 w-3" /> {when ?? 'no date yet (that’s fine)'}
           </span>

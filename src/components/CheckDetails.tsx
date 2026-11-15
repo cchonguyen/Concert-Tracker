@@ -30,6 +30,8 @@ interface Props {
   onGemini: () => void;
   onPick: (id: string) => void;
   onNone: () => void;
+  onDismissCanon?: () => void;
+  dismissBusy?: boolean;
   // Inside a card whose header holds the Check details button: no frame, title or button of its own, and the
   // Gemini step only once a check has run.
   inline?: boolean;
@@ -61,7 +63,7 @@ function ChipRow({ label, chips, active, onPick }: { label: string; chips: Picke
 
 // Check details: searches the sources for this date and place. Nothing you typed changes. Suggestions are offered, never applied,
 // and Gemini is a separate, opt-in second step.
-export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, notes, lineupStatus, suggestions, onCheck, onGemini, onPick, onNone, inline = false }: Props) {
+export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, notes, lineupStatus, suggestions, onCheck, onGemini, onPick, onNone, onDismissCanon, dismissBusy = false, inline = false }: Props) {
   const [used, setUsed] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [city, setCity] = useState<string | null>(null);
@@ -71,6 +73,30 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
   );
   const renderCandidate = (c: DetailCandidate) => {
     const row = candidateRowParts(c);
+    if (c.editionId) {
+      return (
+        <div
+          key={c.id}
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-2.5 text-left"
+        >
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="truncate text-sm font-medium text-zinc-100">{row.name}</span>
+              {c.seriesName && <Pill tone="neutral">{c.seriesName}</Pill>}
+            </div>
+            <p className="truncate text-xs text-zinc-300">
+              {row.date} · {row.venue} · {row.place}
+            </p>
+            {c.weekends && c.weekends.length > 1 && (
+              <p className="text-[11px] text-zinc-400">{c.weekends.length} weekends</p>
+            )}
+          </div>
+          <Button variant="primary" onClick={() => onPick(c.id)} disabled={dismissBusy}>
+            Link
+          </Button>
+        </div>
+      );
+    }
     return (
       <button
         key={c.id}
@@ -109,7 +135,9 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
       {busy ? 'Checking details' : rows.length ? 'Check finished' : ''}
     </p>
   );
-  if (inline && !rows.length && !last && status !== 'choose' && !shown.length && !gemini) return live;
+  const hasCanonCandidates = candidates.some((c) => Boolean(c.editionId));
+  const showChoice = status === 'choose' || (status === 'candidates' && candidates.length > 0);
+  if (inline && !rows.length && !last && !showChoice && !shown.length && !gemini) return live;
 
   return (
     <div className={inline ? 'space-y-3' : 'space-y-3 rounded-xl border border-zinc-800 p-3'}>
@@ -136,9 +164,15 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
         </ul>
       )}
 
-      {status === 'choose' && (
+      {showChoice && (
         <div className="space-y-2 rounded-lg border border-violet-500/30 bg-violet-950/20 p-2.5">
-          <p className="text-sm text-violet-200">{candidates.length && status === 'choose' ? 'Sources give different dates. Is it one of these?' : 'Is it one of these?'}</p>
+          <p className="text-sm text-violet-200">
+            {status === 'candidates' || hasCanonCandidates
+              ? 'Is it one of these?'
+              : candidates.length && status === 'choose'
+                ? 'Sources give different dates. Is it one of these?'
+                : 'Is it one of these?'}
+          </p>
           {view.grouped && (
             <div className="space-y-2">
               <input
@@ -168,9 +202,15 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
               {g.items.map(renderCandidate)}
             </div>
           ))}
-          <button type="button" onClick={onNone} className="text-xs text-zinc-400 hover:underline">
-            None of these
-          </button>
+          {status === 'candidates' && onDismissCanon ? (
+            <button type="button" onClick={onDismissCanon} disabled={dismissBusy} className="text-xs text-zinc-400 hover:underline disabled:opacity-50">
+              {dismissBusy ? 'Dismissing…' : 'None of these — search web / keep mine'}
+            </button>
+          ) : (
+            <button type="button" onClick={onNone} className="text-xs text-zinc-400 hover:underline">
+              None of these
+            </button>
+          )}
         </div>
       )}
 

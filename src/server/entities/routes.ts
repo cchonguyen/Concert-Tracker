@@ -6,7 +6,7 @@ import { nameIndex, possibleDuplicates } from './link';
 import { EntityIntegrityError } from './integrity';
 import {
   addArtistAka,
-  appearancesOf,
+  appearancesFromRefs,
   ArtistChangeInput,
   CANONICAL_EDITION_LIMIT,
   EditionStatusFilter,
@@ -16,21 +16,24 @@ import {
   planArtistChange,
   removeArtistAka,
   renameArtist,
+  summarizeEdition,
   undoHistory,
   unifyArtists,
   withAkas,
 } from './canonicalManage';
-import { CanonicalHistoryCursorError, CanonicalHistoryEntry, CanonicalStoreError } from '../lineup/store/types';
+import { CanonicalHistoryCursorError, CanonicalHistoryEntry, CanonicalStoreError, isVerifiedStatus } from '../lineup/store/types';
 import { currentMember } from '../auth/requestScope';
 import {
   CanonicalInputError,
   EditionNotFoundError,
   confirmCanonicalEdition,
   editEditionFacts,
+  mergeCanonicalEditions,
   parseCanonicalInput,
   parseEditionFacts,
 } from '../lineup/canonicalIngest';
-import type { Edition } from '../lineup/types';
+import { seriesSlugFor } from '../lineup/text';
+import type { Edition, SeriesRecord, SourceType } from '../lineup/types';
 import { writeEdition } from '../canon/editions';
 import {
   addAlias,
@@ -100,6 +103,50 @@ function artistChangeBody(body: unknown, withFingerprint: boolean): { input: Art
   }
   const input: ArtistChangeInput = op === 'merge' ? { op, into: value } : { op: op as 'rename' | 'alias-add' | 'alias-remove', name: value };
   return withFingerprint ? { input, previewFingerprint: previewFingerprint as string } : { input };
+}
+
+const SERIES_SOURCES = new Set<SourceType>([
+  'clashfinder',
+  'promoter',
+  'wayback',
+  'ticketmaster',
+  'setlistfm',
+  'musicbrainz',
+  'discovered',
+  'email',
+  'user',
+]);
+
+function parseSeriesString(v: unknown, field: string, max = 200): string | undefined {
+  if (v === undefined || v === null || v === '') return undefined;
+  if (typeof v !== 'string') throw new ManageError(`${field} must be text.`, 400);
+  const t = v.trim();
+  if (t.length > max) throw new ManageError(`${field} is too long.`, 400);
+  return t || undefined;
+}
+
+function parseSeriesAliases(v: unknown): string[] {
+  if (!Array.isArray(v) || v.some((x) => typeof x !== 'string')) {
+    throw new ManageError('aliases must be a list of text.', 400);
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of v) {
+    const t = raw.trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out;
+}
+
+function parseSeriesSourcePriority(v: unknown): SourceType[] {
+  if (!Array.isArray(v) || v.some((x) => typeof x !== 'string' || !SERIES_SOURCES.has(x as SourceType))) {
+    throw new ManageError('sourcePriority must be a list of valid source types.', 400);
+  }
+  return [...new Set(v as SourceType[])];
 }
 
 // /api/entities: the records behind your events' names (0014).
@@ -214,6 +261,159 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     }
   });
 
+  router.post('/manage/canonical/editions/:id/merge', ownerOnly as any, async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? (req.body as Record<string, unknown>) : null;
+      if (!body) return res.status(400).json({ error: 'Send a JSON body.' });
+      const dropIds = Array.isArray(body.dropIds)
+        ? body.dropIds
+        : typeof body.dropId === 'string'
+          ? [body.dropId]
+          : [];
+      const result = await mergeCanonicalEditions(store, {
+        keepId: String(req.params.id),
+        dropIds,
+        factChoices: body.factChoices && typeof body.factChoices === 'object' && !Array.isArray(body.factChoices)
+          ? (body.factChoices as Record<string, unknown>)
+          : undefined,
+        combineAsWeekends: body.combineAsWeekends === true,
+        reason: typeof body.reason === 'string' ? body.reason : undefined,
+        actor: 'owner',
+      });
+      res.json(result);
+    } catch (err) {
+      if (err instanceof CanonicalInputError) return res.status(400).json({ error: err.message });
+      if (err instanceof EditionNotFoundError) return res.status(404).json({ error: err.message });
+      if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Canonical series management (owner only).
+  router.get('/manage/canonical/series', ownerOnly as any, async (req, res) => {
+    try {
+      const query = typeof req.query.query === 'string' ? req.query.query : undefined;
+      const brand = typeof req.query.brand === 'string' ? req.query.brand : undefined;
+      const rawLimit = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+      const limit = rawLimit !== undefined && Number.isFinite(rawLimit) ? rawLimit : undefined;
+      res.json({ series: await store.listSeries({ query, brand, limit }) });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  router.post('/manage/canonical/series', ownerOnly as any, async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? (req.body as Record<string, unknown>) : null;
+      if (!body) throw new ManageError('Send a JSON body.', 400);
+      const name = parseSeriesString(body.name, 'name');
+      if (!name) throw new ManageError('Series name is required.', 400);
+      const rawSlug = parseSeriesString(body.slug, 'slug', 120);
+      const slug = seriesSlugFor(rawSlug ?? name);
+      if (!slug) throw new ManageError('Series slug must contain letters or digits.', 400);
+      if (await store.getSeries(slug)) throw new ManageError(`Series "${slug}" already exists.`, 409);
+
+      const brand = parseSeriesString(body.brand, 'brand');
+      const aliases = body.aliases !== undefined ? parseSeriesAliases(body.aliases) : undefined;
+      const lineupUrl = parseSeriesString(body.lineupUrl, 'lineupUrl', 2000);
+      const sourcePriority = body.sourcePriority !== undefined ? parseSeriesSourcePriority(body.sourcePriority) : undefined;
+
+      const record: SeriesRecord = {
+        slug,
+        name,
+        ...(brand ? { brand } : {}),
+        ...(aliases?.length ? { aliases } : {}),
+        ...(lineupUrl ? { lineupUrl } : {}),
+        ...(sourcePriority?.length ? { sourcePriority } : {}),
+      };
+      await store.upsertSeries(record);
+      res.status(201).json({ series: (await store.getSeries(slug)) ?? record });
+    } catch (err) {
+      if (err instanceof ManageError) return res.status(err.status).json({ error: err.message, conflict: err.conflict });
+      if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  router.patch('/manage/canonical/series/:slug', ownerOnly as any, async (req, res) => {
+    try {
+      const slug = String(req.params.slug);
+      const existing = await store.getSeries(slug);
+      if (!existing) throw new ManageError('No such series.', 404);
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? (req.body as Record<string, unknown>) : null;
+      if (!body) throw new ManageError('Send a JSON body.', 400);
+
+      const next: SeriesRecord = { ...existing };
+      if ('name' in body) {
+        const name = parseSeriesString(body.name, 'name');
+        if (!name) throw new ManageError('Series name cannot be blank.', 400);
+        next.name = name;
+      }
+      if ('brand' in body) {
+        const brand = parseSeriesString(body.brand, 'brand');
+        if (brand) next.brand = brand;
+        else delete next.brand;
+      }
+      if ('aliases' in body) {
+        const aliases = body.aliases === null ? [] : parseSeriesAliases(body.aliases);
+        if (aliases.length) next.aliases = aliases;
+        else delete next.aliases;
+      }
+      if ('lineupUrl' in body) {
+        const lineupUrl = parseSeriesString(body.lineupUrl, 'lineupUrl', 2000);
+        if (lineupUrl) next.lineupUrl = lineupUrl;
+        else delete next.lineupUrl;
+      }
+      if ('sourcePriority' in body) {
+        const sourcePriority = body.sourcePriority === null ? [] : parseSeriesSourcePriority(body.sourcePriority);
+        if (sourcePriority.length) next.sourcePriority = sourcePriority;
+        else delete next.sourcePriority;
+      }
+
+      await store.upsertSeries(next);
+      res.json({ series: (await store.getSeries(slug)) ?? next });
+    } catch (err) {
+      if (err instanceof ManageError) return res.status(err.status).json({ error: err.message, conflict: err.conflict });
+      if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  router.post('/manage/canonical/series/:slug/merge', ownerOnly as any, async (req, res) => {
+    try {
+      const keepSlug = String(req.params.slug);
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? (req.body as Record<string, unknown>) : null;
+      const dropSlug = body ? parseSeriesString(body.dropSlug, 'dropSlug', 120) : undefined;
+      if (!dropSlug) throw new ManageError('dropSlug is required.', 400);
+      if (dropSlug === keepSlug) throw new ManageError('Cannot merge a series into itself.', 400);
+      if (!(await store.getSeries(keepSlug))) throw new ManageError(`Series "${keepSlug}" not found.`, 404);
+      if (!(await store.getSeries(dropSlug))) throw new ManageError(`Series "${dropSlug}" not found.`, 404);
+      const merged = await store.mergeSeries(keepSlug, dropSlug);
+      res.json({ series: await store.getSeries(keepSlug), merged });
+    } catch (err) {
+      if (err instanceof ManageError) return res.status(err.status).json({ error: err.message, conflict: err.conflict });
+      if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  router.get('/manage/canonical/series/:slug/editions', ownerOnly as any, async (req, res) => {
+    try {
+      const slug = String(req.params.slug);
+      const series = await store.getSeries(slug);
+      if (!series) throw new ManageError('No such series.', 404);
+      const headers = await store.listEditionHeaders({ seriesSlug: slug, limit: CANONICAL_EDITION_LIMIT });
+      const facts = headers.length ? await store.editionLineupFacts(headers.map((h) => h.id)) : {};
+      const editions = headers
+        .map((h) => ({ ...summarizeEdition(h), performanceCount: facts[h.id]?.acts ?? 0 }))
+        .sort((a, b) => b.year - a.year || a.name.localeCompare(b.name));
+      res.json({ series, editions });
+    } catch (err) {
+      if (err instanceof ManageError) return res.status(err.status).json({ error: err.message, conflict: err.conflict });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   // Detail views (owner only): one edition with its acts, one artist with the editions they appear in.
   router.get(
     '/manage/canonical/editions/:id',
@@ -229,16 +429,19 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     ownerOnly as any,
     manage(async (req) => {
       const key = String(req.params.key);
-      const [canonical, editions, ownerNames, communityCounts, aliases] = await Promise.all([
+      const [canonical, headers, artistRefs, ownerNames, communityCounts, aliases] = await Promise.all([
         store.listArtists(),
-        store.listEditions(CANONICAL_EDITION_LIMIT),
+        store.listEditionHeaders({ limit: 5000 }),
+        store.listEditionArtistRefs(),
         store.listSeenArtistNames(),
         store.communityCounts(),
         store.getAliases(),
       ]);
-      const row = withAkas(unifyArtists({ canonical, ownerNames, editions, communityCounts }), aliases).find((a) => a.key === key);
+      const verifiedIds = new Set(headers.filter((h) => isVerifiedStatus(h.status)).map((h) => h.id));
+      const verifiedRefs = artistRefs.filter((r) => verifiedIds.has(r.editionId));
+      const row = withAkas(unifyArtists({ canonical, ownerNames, artistRefs: verifiedRefs, communityCounts }), aliases).find((a) => a.key === key);
       if (!row) throw new ManageError('No such artist.', 404);
-      return { artist: row, appearances: appearancesOf(editions, key) };
+      return { artist: row, appearances: appearancesFromRefs(headers, artistRefs, key) };
     }),
   );
   // Catalog artists as records (GA3): rename, merge, AKAs. Each one writes a history entry, so Undo works.
@@ -299,14 +502,14 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     '/manage/canonical/artists',
     ownerOnly as any,
     manage(async () => {
-      const [canonical, editions, ownerNames, communityCounts, aliases] = await Promise.all([
+      const [canonical, artistRefs, ownerNames, communityCounts, aliases] = await Promise.all([
         store.listArtists(),
-        store.listEditions(CANONICAL_EDITION_LIMIT),
+        store.listEditionArtistRefs({ verifiedOnly: true }),
         store.listSeenArtistNames(),
         store.communityCounts(),
         store.getAliases(),
       ]);
-      return { artists: withAkas(unifyArtists({ canonical, ownerNames, editions, communityCounts }), aliases) };
+      return { artists: withAkas(unifyArtists({ canonical, ownerNames, artistRefs, communityCounts }), aliases) };
     }),
   );
   router.get(
