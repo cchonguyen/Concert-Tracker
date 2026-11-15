@@ -130,7 +130,7 @@ export function actsInOrder(seen: SeenAct[]): SeenAct[] {
 // What an event still needs, if anything, in the terms of the "needs" filter.
 export function needsOf(e: LoggedEvent, lineup?: LineupSummary): Exclude<Needs, 'any'> | null {
   if (e.details.status === 'needs_date' || (!e.startDate && !e.year)) return 'date';
-  if (e.details.status === 'choose') return 'pick';
+  if (e.details.status === 'choose' || e.details.status === 'candidates') return 'pick';
   if (lineup?.status === 'needs_review' && !e.editionId) return 'review';
   return null;
 }

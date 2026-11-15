@@ -1,6 +1,7 @@
 // The poster header and the things-left strip for an event detail. Pure: the screen passes in what is stored,
 // and gets back what to draw. Sizes come from the billing role and never from list order.
-import type { SeenAct } from '../server/events/types';
+import type { LoggedEvent, SeenAct } from '../server/events/types';
+import type { EditionHeader } from '../server/lineup/types';
 import type { Gap } from './table';
 import { GAPS, tableDate } from './table';
 
@@ -85,3 +86,17 @@ export const GAP_QUESTION: Record<Gap, string> = {
   weather: 'Want the weather for the day?',
   review: 'Anything to remember about it?',
 };
+
+// True when an event is linked to a multi-weekend edition and has neither a weekend nor a startDate yet.
+export function needsWeekendPrompt(
+  event: Pick<LoggedEvent, 'editionId' | 'weekend' | 'startDate'>,
+  edition?: Pick<EditionHeader, 'weekends'> | null,
+): boolean {
+  return Boolean(event.editionId && edition?.weekends && edition.weekends.length > 1 && !event.weekend && !event.startDate);
+}
+
+// The question shown in ThingsLeft, using "Which weekend?" when a linked multi-weekend event needs its weekend.
+export function gapQuestion(gap: Gap, opts?: { needsWeekend?: boolean }): string {
+  if (gap === 'date' && opts?.needsWeekend) return 'Which weekend?';
+  return GAP_QUESTION[gap];
+}

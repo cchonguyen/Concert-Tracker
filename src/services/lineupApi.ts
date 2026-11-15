@@ -1,4 +1,4 @@
-import type { Edition, LookupJob, SourceType } from '../server/lineup/types';
+import type { Edition, EditionWeekend, LookupJob, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
 import type { ShareSettings } from '../server/share/types';
 import type { NameIndex } from '../server/entities/link';
 import { norm } from './listImport';
@@ -6,7 +6,7 @@ import type { Entity, EntityAlias, EntityLink, HistoryEntry, LinkRole } from '..
 import type { ConfirmRequest } from '../server/lineup/learning';
 import type { CanonicalConfirmInput, CanonicalDiff } from '../server/lineup/canonicalIngest';
 import type { ArtistAppearance, ArtistChangeImpact, CanonicalArtistRecord, CanonicalEditionSummary, CanonicalOperation } from '../server/entities/canonicalManage';
-import type { EditionSuggestion } from '../server/lineup/store/types';
+import type { EditionSuggestion, MergeSummary } from '../server/lineup/store/types';
 import type { DetailCandidate, EventDetails, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
 import type { EventPatch } from '../server/events/service';
 import type { ActivityEntry } from '../server/events/activityLog';
@@ -21,6 +21,11 @@ import { allowedInSample, reportBlockedWrite, sampleSource, SAMPLE_WRITE_MESSAGE
 
 export type {
   EditionSuggestion,
+  EditionWeekend,
+  CanonicalEditionSummary,
+  SeriesRecord,
+  SeriesSummary,
+  MergeSummary,
   LookupJob,
   Edition,
   ConfirmRequest,
@@ -162,10 +167,24 @@ export const eventsApi = {
     request<{ event: LoggedEvent; job: LookupJob | null; edition: Edition | null; suggestions: ArtistSuggestion[] }>(`/api/events/${id}`),
   // research: true (the capture bar) asks the server to research the new event from its queue. The answer is
   // remembered by event id (takeQueuedResearch). Imports leave it off and are never researched.
-  create: (text: string, editionId?: string, research = false) =>
+  create: (text: string, editionId?: string, research = false, weekend?: number) =>
     request<{ event: LoggedEvent; research?: 'queued' | 'pending' }>(
       '/api/events',
-      post(editionId ? { text, editionId } : research ? { text, research: true } : { text }),
+      post(
+        editionId
+          ? { text, editionId, ...(weekend !== undefined ? { weekend } : {}) }
+          : research
+            ? { text, research: true }
+            : { text },
+      ),
+    ).then((r) => {
+      if (r.research) researchOutcome.set(r.event.id, r.research);
+      return r.event;
+    }),
+  dismissCanon: (id: string) =>
+    request<{ event: LoggedEvent; research?: 'queued' | 'pending' }>(
+      `/api/events/${encodeURIComponent(id)}/details/dismiss-canon`,
+      post({}),
     ).then((r) => {
       if (r.research) researchOutcome.set(r.event.id, r.research);
       return r.event;
@@ -209,8 +228,10 @@ export const eventsApi = {
 };
 
 // Canonical editions matching the capture line's name (slice 9.1 route). Read-only; the caller handles errors.
-export const suggestEditions = (q: string) =>
-  request<{ editions: EditionSuggestion[] }>(`/api/editions/suggest?q=${encodeURIComponent(q)}`).then((r) => r.editions);
+export const suggestEditions = (q: string, signal?: AbortSignal) =>
+  request<{ editions: EditionSuggestion[] }>(`/api/editions/suggest?q=${encodeURIComponent(q)}`, signal ? { signal } : undefined).then(
+    (r) => r.editions,
+  );
 
 // "Check email": whether Gmail is connected and how far your mail was read.
 export interface EmailScanStatus {
@@ -596,9 +617,10 @@ export const canonicalApi = {
   artists: () => request<{ artists: CanonicalArtistRecord[] }>('/api/manage/canonical/artists'),
   // The ingest queue: jobs with no saved event, newest first.
   lookups: () => request<{ jobs: LookupJob[] }>('/api/manage/canonical/lookups').then((r) => r.jobs),
-  editions: (query: string, status: 'all' | 'verified' | 'provisional' | 'draft') =>
+  editions: (query: string, status: 'all' | 'verified' | 'provisional' | 'draft', signal?: AbortSignal) =>
     request<{ editions: CanonicalEditionSummary[]; total: number; hasMore: boolean }>(
       `/api/manage/canonical/editions?${new URLSearchParams({ query, status }).toString()}`,
+      signal ? { signal } : undefined,
     ),
   edition: (id: string) => request<{ edition: Edition }>(`/api/manage/canonical/editions/${encodeURIComponent(id)}`),
   // Owner only: turn a provisional (member-entered) edition into a verified one. Undo with inboxApi.undo(changeId, id).
@@ -608,8 +630,95 @@ export const canonicalApi = {
       post({}),
     ),
   // Edition facts with a required source note; blank facts are sent as null and stay blank.
-  editFacts: (id: string, facts: { name: string; startDate: string | null; endDate: string | null; venue: string | null; city: string | null; sourceNote: string }) =>
-    request<{ edition: Edition }>(`/api/manage/canonical/editions/${encodeURIComponent(id)}/facts`, { method: 'PATCH', body: JSON.stringify(facts) }).then((r) => r.edition),
+  editFacts: (
+    id: string,
+    facts: {
+      name: string;
+      startDate: string | null;
+      endDate: string | null;
+      venue: string | null;
+      city: string | null;
+      region?: string | null;
+      country?: string | null;
+      seriesSlug?: string | null;
+      weekends?: EditionWeekend[];
+      sourceNote: string;
+    },
+  ) =>
+    request<{ edition: Edition }>(`/api/manage/canonical/editions/${encodeURIComponent(id)}/facts`, {
+      method: 'PATCH',
+      body: JSON.stringify(facts),
+    }).then((r) => r.edition),
+  updateEdition: (
+    id: string,
+    body: {
+      name: string;
+      startDate: string | null;
+      endDate: string | null;
+      venue: string | null;
+      city: string | null;
+      region?: string | null;
+      country?: string | null;
+      seriesSlug?: string | null;
+      weekends?: EditionWeekend[];
+      sourceNote?: string;
+      factSourceNote?: string;
+    },
+  ) =>
+    request<{ edition: Edition }>(`/api/manage/canonical/editions/${encodeURIComponent(id)}/facts`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        name: body.name,
+        startDate: body.startDate,
+        endDate: body.endDate,
+        venue: body.venue,
+        city: body.city,
+        ...(body.region !== undefined ? { region: body.region } : {}),
+        ...(body.country !== undefined ? { country: body.country } : {}),
+        ...(body.seriesSlug !== undefined ? { seriesSlug: body.seriesSlug } : {}),
+        ...(body.weekends !== undefined ? { weekends: body.weekends } : {}),
+        sourceNote: body.sourceNote ?? body.factSourceNote ?? '',
+      }),
+    }).then((r) => r.edition),
+  mergeEditions: (
+    keepId: string,
+    body: {
+      dropIds: string[];
+      factChoices?: Partial<Pick<Edition, 'name' | 'startDate' | 'endDate' | 'venue' | 'city' | 'region' | 'country' | 'seriesSlug'>>;
+      combineAsWeekends?: boolean;
+      reason?: string;
+    },
+  ) =>
+    request<{ edition: Edition; merged: MergeSummary[] }>(
+      `/api/manage/canonical/editions/${encodeURIComponent(keepId)}/merge`,
+      post(body),
+    ),
+  series: (query?: string, brand?: string, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (query?.trim()) params.set('query', query.trim());
+    if (brand?.trim()) params.set('brand', brand.trim());
+    const qs = params.toString();
+    return request<{ series: SeriesSummary[] }>(
+      `/api/manage/canonical/series${qs ? `?${qs}` : ''}`,
+      signal ? { signal } : undefined,
+    );
+  },
+  createSeries: (body: { name: string; slug?: string; brand?: string; aliases?: string[]; lineupUrl?: string; sourcePriority?: SourceType[] }) =>
+    request<{ series: SeriesRecord }>('/api/manage/canonical/series', post(body)).then((r) => r.series),
+  updateSeries: (slug: string, body: { name?: string; brand?: string | null; aliases?: string[] | null; lineupUrl?: string | null; sourcePriority?: SourceType[] | null }) =>
+    request<{ series: SeriesRecord }>(`/api/manage/canonical/series/${encodeURIComponent(slug)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }).then((r) => r.series),
+  mergeSeries: (keepSlug: string, dropSlug: string) =>
+    request<{ series: SeriesRecord | null; merged: { editionsMoved: number } }>(
+      `/api/manage/canonical/series/${encodeURIComponent(keepSlug)}/merge`,
+      post({ dropSlug }),
+    ),
+  seriesEditions: (slug: string) =>
+    request<{ series: SeriesRecord; editions: CanonicalEditionSummary[] }>(
+      `/api/manage/canonical/series/${encodeURIComponent(slug)}/editions`,
+    ),
   // Check details for an edition facts draft or stored edition. Owner only.
   researchEdition: (id: string, body?: { name?: string; startDate?: string; endDate?: string; venue?: string; city?: string; useGemini?: boolean }) =>
     request<EventDetails>(`/api/manage/canonical/editions/${encodeURIComponent(id)}/details`, post(body)),

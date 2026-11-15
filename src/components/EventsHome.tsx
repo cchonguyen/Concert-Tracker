@@ -21,12 +21,18 @@ interface EventsHomeProps {
 // What an event still needs, as a quiet hint. null = nothing to say.
 function hint(e: LoggedEvent, lineup: LineupSummary | undefined, researching: boolean): { text: string; busy?: boolean; tone?: string } | null {
   if (researching) return { text: 'Looking up details', busy: true };
+  if (e.details.status === 'candidates' && e.details.candidates.some((c) => Boolean(c.editionId))) {
+    return { text: 'Which edition?', tone: 'text-violet-300' };
+  }
+  if (e.editionId && !e.weekend && !e.startDate) return { text: 'Which weekend?', tone: 'text-amber-300/90' };
   if (e.details.status === 'needs_date') return { text: 'When was it?', tone: 'text-amber-300/90' };
-  if (e.details.status === 'choose')
+  if (e.details.status === 'choose') {
+    if (e.details.candidates.some((c) => Boolean(c.editionId))) return { text: 'Which edition?', tone: 'text-violet-300' };
     return {
       text: e.startDate ? 'Sources give a different date' : `Is this it? ${e.details.candidates.length} suggestion${e.details.candidates.length === 1 ? '' : 's'}`,
       tone: 'text-violet-300',
     };
+  }
   if (lineup && !e.editionId) {
     if (lineup.status === 'queued' || lineup.status === 'running') return { text: 'Finding who played', busy: true };
     if (lineup.status === 'waiting_quota') return { text: 'Lineup lookup waiting for capacity', tone: 'text-amber-300/90' };

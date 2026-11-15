@@ -1,4 +1,6 @@
 import type { LoggedEvent, SeenAct, WeatherDay } from '../server/events/types';
+import type { EditionWeekend } from '../server/lineup/types';
+import type { EditionSuggestion } from '../server/lineup/store/types';
 import { isCiphertext } from './vault';
 import { eventScale, KIND_LABELS, LineupFacts } from '../server/events/scale';
 import { norm } from './listImport';
@@ -250,4 +252,52 @@ export function dateConfirmations(e: LoggedEvent): LoggedEvent['details']['candi
   const c = e.details.candidates[0];
   const covers = c && (c.startDate === e.startDate || (c.startDate && c.endDate && c.startDate <= e.startDate && e.startDate <= c.endDate));
   return covers ? c.sources.filter((s) => s.fields.includes('startDate')) : [];
+}
+
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// Compact UTC date range without year: "Apr 12–14", "May 30–Jun 1", or "Apr 12".
+export function shortDateRange(startDate?: string | null, endDate?: string | null): string | null {
+  if (!startDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return null;
+  const sMon = SHORT_MONTHS[Number(startDate.slice(5, 7)) - 1];
+  const sDay = Number(startDate.slice(8, 10));
+  if (!sMon || !Number.isFinite(sDay)) return null;
+  if (!endDate || endDate === startDate || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    return `${sMon} ${sDay}`;
+  }
+  const eMon = SHORT_MONTHS[Number(endDate.slice(5, 7)) - 1];
+  const eDay = Number(endDate.slice(8, 10));
+  if (!eMon || !Number.isFinite(eDay)) return `${sMon} ${sDay}`;
+  if (startDate.slice(0, 7) === endDate.slice(0, 7)) {
+    return `${sMon} ${sDay}–${eDay}`;
+  }
+  return `${sMon} ${sDay}–${eMon} ${eDay}`;
+}
+
+export function weekendLabel(w: EditionWeekend, prefix: 'Weekend' | 'WK' = 'Weekend'): string {
+  const range = shortDateRange(w.startDate, w.endDate);
+  const head = prefix === 'WK' ? `WK${w.weekend}` : `Weekend ${w.weekend}`;
+  return range ? `${head} · ${range}` : head;
+}
+
+// Subtitle date part for a CaptureBar suggestion:
+// - Multi-weekend + matchedWeekend -> "Weekend 2 · Apr 19–21"
+// - Multi-weekend + unspecified -> "2 weekends · 2024"
+// - Single-weekend -> whenLabel or year
+export function suggestionWhenLabel(s: EditionSuggestion, matchedWeekend?: number): string | null {
+  if (s.weekends && s.weekends.length > 1) {
+    if (matchedWeekend !== undefined) {
+      const hit = s.weekends.find((w) => w.weekend === matchedWeekend);
+      if (hit) return weekendLabel(hit, 'Weekend');
+    }
+    const year = s.year ?? (s.startDate ? Number(s.startDate.slice(0, 4)) : undefined);
+    return year ? `${s.weekends.length} weekends · ${year}` : `${s.weekends.length} weekends`;
+  }
+  return s.startDate ? whenLabel({ startDate: s.startDate, endDate: s.endDate, year: s.year }) : s.year ? String(s.year) : null;
+}
+
+// Full place string for an edition suggestion: "Venue, City, ST, Country".
+export function suggestionPlaceLabel(s: Pick<EditionSuggestion, 'venue' | 'city' | 'region' | 'country'>): string | null {
+  const cityPart = cityWithRegion(s.city, s.region);
+  return [s.venue, cityPart, s.country].filter(Boolean).join(', ') || null;
 }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Check, ChevronRight } from 'lucide-react';
 import type { LoggedEvent, SeenAct } from '../server/events/types';
 import type { AttendanceState } from '../server/events/attendance';
-import { billLines, GAP_LABEL, GAP_QUESTION } from '../services/poster';
+import { billLines, GAP_LABEL, gapQuestion } from '../services/poster';
 import type { Gap } from '../services/table';
 import { Pill } from './ui/Pill';
 
@@ -97,13 +97,14 @@ export function PosterHeader({ title, label, event, state, seen, cited, confirme
 interface StripProps {
   gaps: Gap[];
   current: Gap | null; // The gap being asked about; its question shows in the strip.
+  needsWeekend?: boolean;
   onPick: (gap: Gap) => void;
   onNext: () => void;
 }
 
 // What the event still needs, on one line: the count, a chip per gap (the one being asked about is lit) and Next.
 // Nothing left reads "All filled in".
-export function ThingsLeft({ gaps, current, onPick, onNext }: StripProps) {
+export function ThingsLeft({ gaps, current, needsWeekend, onPick, onNext }: StripProps) {
   if (gaps.length === 0) {
     return (
       <p className="flex items-center gap-1.5 rounded-xl border border-emerald-400/30 px-4 py-2.5 text-sm text-emerald-300">
@@ -135,7 +136,7 @@ export function ThingsLeft({ gaps, current, onPick, onNext }: StripProps) {
           </li>
         ))}
       </ul>
-      {current && <span className="min-w-0 text-sm text-violet-100">{GAP_QUESTION[current]}</span>}
+      {current && <span className="min-w-0 text-sm text-violet-100">{gapQuestion(current, { needsWeekend })}</span>}
       <span className="grow" />
       <button
         type="button"

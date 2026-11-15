@@ -6,6 +6,7 @@ import {
   buildManageQuery,
   buildManageUrl,
   editionUrl,
+  seriesUrl,
   canonicalArtistUrl,
   entityUrl,
   isModifiedClick,
@@ -42,11 +43,22 @@ test('parseManageParams sets scope archive and defaults section to editions', ()
 });
 
 test('parseManageParams accepts valid archive sections', () => {
-  for (const section of ['artists', 'editions', 'lookups', 'changes'] as const) {
+  for (const section of ['artists', 'series', 'editions', 'lookups', 'changes'] as const) {
     const res = parseManageParams(`?scope=archive&section=${section}`);
     assert.equal(res.scope, 'archive');
     assert.equal(res.section, section);
   }
+});
+
+test('parseManageParams extracts series slug and seriesUrl builds archive series link', () => {
+  const res = parseManageParams('?scope=archive&section=series&series=coachella&q=fest');
+  assert.deepEqual(res, {
+    scope: 'archive',
+    section: 'series',
+    series: 'coachella',
+    q: 'fest',
+  });
+  assert.equal(seriesUrl('coachella'), '/app?view=manage&scope=archive&section=series&series=coachella');
 });
 
 test('parseManageParams extracts and trims entity kind and id', () => {
