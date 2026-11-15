@@ -18,3 +18,4 @@ Contracts: SYSTEM_SPEC.md section 3. `[CORE / DATA]` slices need passing unit te
 - [x] **Slice 0.1: Match split B2B acts that carry no candidate key** [CORE / DATA] On-the-fly: Charlie: Dreamstate B2B re-save still had no set times Target files: src/server/lineup/learning.ts, tests/splitActs.test.ts | Issue: #411 | Verify: npm test --silent && npm run lint --silent
 - [x] **Slice 0.2: Manage deep links, Inbox badge, Edition Check Details & Supabase egress fixes** Target files: src/, tests/, worker/ | Verify: npm run typecheck --silent && npm run lint --silent && npm test --silent
 - [x] **Slice 0.3: Add PR & Harness gate workflow rule** Target files: .agents/rules/pr-workflow.md | Verify: npm run lint --silent
+- [ ] **Slice 0.4: Raise canon backfill subrequest budget margins** [IN_PROGRESS] Target files: src/server/canon/backfill.ts, tests/canonBackfill.test.ts | Verify: npm run typecheck --silent && npm run lint --silent && npm test --silent
