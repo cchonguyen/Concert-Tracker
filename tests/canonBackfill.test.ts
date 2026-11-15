@@ -65,7 +65,7 @@ test('at most 20 items per run, and the report counts what is left', async () =>
 test('the Worker budget shortens the batch', async () => {
   const s = await fresh();
   for (let i = 1; i <= 5; i++) await s.putEvent(dated(`ev${i}`, `Band ${i}`, `2026-06-0${i}`));
-  const r = (await runCanonBackfill(s, { budgetLeft: () => 14 + 16 * 2 }))!;
+  const r = (await runCanonBackfill(s, { budgetLeft: () => 17 + 20 * 2 }))!;
   assert.equal(r.created, 2);
   assert.equal(r.remaining, 3);
   assert.equal(await runCanonBackfill(s, { budgetLeft: () => 10 }), null);
@@ -250,7 +250,7 @@ test('budget depletion inside the loop stops early and leaves cursor incomplete'
   let calls = 0;
   const budgetLeft = () => {
     calls++;
-    return calls <= 2 ? 50 : 10;
+    return calls <= 2 ? 60 : 10;
   };
   const r = (await runCanonBackfill(s, { budgetLeft }))!;
   assert.equal(r.created, 1);
