@@ -37,8 +37,8 @@ import { upsertOccurrence } from './match';
 export const BACKFILL_BATCH_SIZE = 20;
 export const BACKFILL_SETTING = 'canon_backfill';
 const ACTOR = 'system:canon-backfill';
-const ITEM_COST = 16;
-const FIXED_COST = 13;
+const ITEM_COST = 20;
+const FIXED_COST = 16;
 const CURSOR_WRITE_COST = 1;
 const FULL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
