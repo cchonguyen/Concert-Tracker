@@ -22,7 +22,7 @@ const ed = (over: Partial<Edition> = {}): Edition => ({
 test('summary carries only shared edition facts', () => {
   const s = summarizeEdition(ed({ startDate: '2024-09-28', venue: 'Pier 80', city: 'San Francisco, CA' }));
   assert.deepEqual(Object.keys(s).sort(), [
-    'city', 'endDate', 'hasSetTimes', 'id', 'key', 'name', 'performanceCount', 'seriesSlug', 'startDate', 'status', 'venue', 'year',
+    'city', 'country', 'endDate', 'hasSetTimes', 'id', 'key', 'name', 'performanceCount', 'region', 'seriesBrand', 'seriesName', 'seriesSlug', 'startDate', 'status', 'venue', 'weekends', 'year',
   ]);
   assert.equal(s.endDate, null);
   assert.equal(s.venue, 'Pier 80');

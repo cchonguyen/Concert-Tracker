@@ -81,7 +81,7 @@ test('a substring that starts no word does not match', async () => {
     assert.deepEqual(await store.suggestEditions('egas', { excludeIds: [], limit: 8 }), []);
     assert.deepEqual(await store.suggestEditions('as', { excludeIds: [], limit: 8 }), []);
     assert.deepEqual(await store.suggestEditions('vegas edc', { excludeIds: [], limit: 8 }), [
-      { id: 'e1', name: 'EDC Las Vegas', year: 2025, actCount: 0 },
+      { id: 'e1', name: 'EDC Las Vegas', year: 2025, seriesSlug: 'edc-las-vegas', actCount: 0 },
     ]);
   });
 });
@@ -161,11 +161,11 @@ test('returned keys are exactly the allowed ones and missing facts are omitted',
     const found = await store.suggestEditions('summer', { excludeIds: [], limit: 8 });
     const full = found.find((e) => e.id === 'full');
     assert.ok(full);
-    assert.deepEqual(Object.keys(full).sort(), ['actCount', 'city', 'country', 'endDate', 'id', 'name', 'startDate', 'venue', 'year']);
+    assert.deepEqual(Object.keys(full).sort(), ['actCount', 'city', 'country', 'endDate', 'id', 'name', 'seriesSlug', 'startDate', 'venue', 'year']);
     assert.equal(full.actCount, 2);
     const bare = found.find((e) => e.id === 'bare');
     assert.ok(bare);
-    assert.deepEqual(Object.keys(bare).sort(), ['actCount', 'id', 'name', 'year']);
+    assert.deepEqual(Object.keys(bare).sort(), ['actCount', 'id', 'name', 'seriesSlug', 'year']);
   });
 });
 

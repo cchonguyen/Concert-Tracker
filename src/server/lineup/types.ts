@@ -221,9 +221,21 @@ export interface LookupJob {
 export interface SeriesRecord {
   slug: string;
   name: string;
+  brand?: string;
+  aliases?: string[];
   lineupUrl?: string; // learned from confirmed promoter sources
   clashfinderSlugs?: Record<string, string>; // year -> clashfinder event slug
   sourcePriority?: SourceType[]; // user override of trust order
+}
+
+export interface SeriesSummary extends SeriesRecord {
+  editionCount: number;
+}
+
+export interface EditionWeekend {
+  weekend: number;
+  startDate: string;
+  endDate?: string;
 }
 
 export interface EditionPerformance {
@@ -247,14 +259,19 @@ export interface EditionPerformance {
 export interface Edition {
   id: string;
   key: string; // series_slug/year
-  seriesSlug: string;
+  seriesSlug?: string;
+  seriesName?: string;
+  seriesBrand?: string;
+  seriesAliases?: string[];
   year: number;
   name: string;
   startDate?: string;
   endDate?: string;
   venue?: string;
   city?: string;
+  region?: string;
   country?: string;
+  weekends?: EditionWeekend[];
   // 'confirmed' means 'verified'. Migration 0041 accepts both and converts nothing; a later step converts the
   // rows. It stays in the union so code written before slice 11.9 compiles; read it as 'verified'.
   status: EditionStatus | 'confirmed';
@@ -266,6 +283,15 @@ export interface Edition {
   updatedAt: string;
   // Admin-curated fact provenance (migration 0034): the owner's note for name, dates, venue, city.
   factSourceNote?: string;
+}
+
+export type EditionHeader = Omit<Edition, 'performances'>;
+
+export interface EditionArtistRef {
+  editionId: string;
+  artistKey: string;
+  name: string;
+  status: EditionPerformance['status'];
 }
 
 export interface SourceStat {

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ArtistIdentity, Edition, EditionPerformance } from '../lineup/types';
+import type { ArtistIdentity, Edition, EditionPerformance, EditionWeekend } from '../lineup/types';
 import { normalizeName } from '../lineup/text';
 import type { CanonicalUndoResult, LineupStore } from '../lineup/store/types';
 import { CanonicalStoreError, editionMatchesStatusFilter, isVerifiedStatus } from '../lineup/store/types';
@@ -20,13 +20,18 @@ export type EditionStatusFilter = CanonicalEditionStatusFilter;
 export interface CanonicalEditionSummary {
   id: string;
   key: string;
-  seriesSlug: string;
+  seriesSlug: string | null;
+  seriesName: string | null;
+  seriesBrand: string | null;
   year: number;
   name: string;
   startDate: string | null;
   endDate: string | null;
   venue: string | null;
   city: string | null;
+  region: string | null;
+  country: string | null;
+  weekends: EditionWeekend[];
   status: Edition['status'];
   performanceCount: number;
   hasSetTimes: boolean;
@@ -36,13 +41,18 @@ export function summarizeEdition(e: Edition): CanonicalEditionSummary {
   return {
     id: e.id,
     key: e.key,
-    seriesSlug: e.seriesSlug,
+    seriesSlug: e.seriesSlug ?? null,
+    seriesName: e.seriesName ?? null,
+    seriesBrand: e.seriesBrand ?? null,
     year: e.year,
     name: e.name,
     startDate: e.startDate ?? null,
     endDate: e.endDate ?? null,
     venue: e.venue ?? null,
     city: e.city ?? null,
+    region: e.region ?? null,
+    country: e.country ?? null,
+    weekends: e.weekends ?? [],
     status: e.status,
     performanceCount: e.performances.length,
     // Set times exist only where a source timed them (AGENTS.md): a set is timed when it has days or stages.
@@ -56,7 +66,7 @@ export function listCanonicalEditions(editions: Edition[], opts: { query?: strin
   const q = (opts.query ?? '').trim().toLowerCase();
   return editions
     .filter((e) => editionMatchesStatusFilter(e.status, status))
-    .filter((e) => !q || [e.name, e.seriesSlug, e.venue ?? ''].some((s) => s.toLowerCase().includes(q)))
+    .filter((e) => !q || [e.name, e.seriesSlug ?? '', e.seriesName ?? '', e.seriesBrand ?? '', e.venue ?? ''].some((s) => s.toLowerCase().includes(q)))
     .map(summarizeEdition)
     .sort((a, b) => b.year - a.year || a.name.localeCompare(b.name));
 }

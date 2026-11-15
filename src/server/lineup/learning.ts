@@ -340,10 +340,13 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
   await store.ensureArtists(performances.map((p) => ({ key: p.artistKey, name: p.name })));
 
   const existing = await store.getEditionByKey(job.editionKey);
+  const series = await store.getSeries(slug);
+  const seriesSlug = existing?.seriesSlug ?? (series ? slug : undefined);
   const edition: Edition = {
     id: existing?.id ?? randomUUID(),
     key: job.editionKey,
-    seriesSlug: slug,
+    ...(seriesSlug ? { seriesSlug } : {}),
+    subjectKey: existing?.subjectKey ?? slug,
     year: job.input.year,
     name: facts.name.trim(),
     startDate: facts.startDate || undefined,
@@ -351,13 +354,15 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
     venue: facts.venue || undefined,
     city: facts.city || undefined,
     country: facts.country || undefined,
+    ...(existing?.region ? { region: existing.region } : {}),
+    ...(existing?.weekends?.length ? { weekends: existing.weekends } : {}),
+    ...(existing?.venueId ? { venueId: existing.venueId } : {}),
+    ...(existing?.hasLineup !== undefined ? { hasLineup: existing.hasLineup } : {}),
     status: 'verified',
     performances: dedupe(performances),
     confirmedAt: now,
     updatedAt: now,
   };
-  const series = await store.getSeries(slug);
-  if (!series) await store.upsertSeries({ slug, name: edition.name });
   await writeEdition(store, { edition, actor: 'system:learning', reason: 'lineup confirmed' });
 
   if (fresh) await learnFromSources(store, job, acceptedByDoc, slug);
@@ -455,10 +460,12 @@ export async function confirmLookupForMember(store: LineupStore, job: LookupJob,
   await store.updateJob(job);
   // What the page shows after a review: the shared edition if the owner has
   // confirmed one, else a draft of the sourced acts you accepted (not stored).
+  const slug = seriesSlugFor(job.input.eventName);
+  const series = existing ? null : await store.getSeries(slug);
   const edition: Edition = existing ?? {
     id: `draft-${job.id}`,
     key: job.editionKey,
-    seriesSlug: seriesSlugFor(job.input.eventName),
+    ...(series ? { seriesSlug: slug } : {}),
     year: job.input.year,
     name: event.name,
     status: 'draft',

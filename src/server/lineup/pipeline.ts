@@ -237,7 +237,9 @@ async function stageCollect(deps: PipelineDeps, job: LookupJob, now: Date): Prom
   };
   hints = { ...hints, ...(await runAdapters(deps, job, deps.lateAdapters, enriched, series, now)) };
 
-  if (Object.keys(hints).length || !series) {
+  const hasHints = Object.keys(hints).length > 0;
+  const hasClashfinderHints = Boolean(hints.clashfinderSlugs && Object.keys(hints.clashfinderSlugs).length > 0);
+  if ((series && hasHints) || hasClashfinderHints) {
     await deps.store.upsertSeries({ ...(series ?? { slug, name: job.input.eventName }), ...hints, slug });
   }
   job.stage = 'extract';

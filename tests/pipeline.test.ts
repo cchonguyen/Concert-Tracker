@@ -148,6 +148,7 @@ test('quota exhaustion parks the job with sources intact, then resumes', async (
 
 test('review teaches aliases, the blocklist, source scores and the cache', async () => {
   const { store, state, deps } = await setup();
+  await store.upsertSeries({ slug: 'fest', name: 'Fest' });
   const logged = { ...newEvent('Fest 2025', deps.now()), seen: [{ key: 'opening act', name: 'Opening Act', from: 'you' as const }] };
   await store.putEvent(logged);
   const started = await startLineupLookup(deps, logged, 'https://fest.example/lineup');
@@ -259,6 +260,7 @@ test('web search only reads pages that name the event and year, and keeps only q
 
 test('web search reads the event site first, as a promoter page, even if stored earlier as discovered', async () => {
   const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'search-official-')));
+  await store.upsertSeries({ slug: 'sun-soaked', name: 'Sun Soaked' });
   const official = '<h1>Sun Soaked 2026</h1><p>Friday: ATICA. Saturday: Cut Snake</p>';
   const { fetcher } = fakeFetcher({ 'https://sunsoaked.promoter.example/': { body: official } });
   // Stored by an earlier run as a plain search result.

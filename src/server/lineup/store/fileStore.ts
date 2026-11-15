@@ -6,12 +6,15 @@ import {
   BlocklistEntry,
   Correction,
   Edition,
+  EditionArtistRef,
+  EditionHeader,
   EditionPerformance,
   ExtractionExample,
   LookupJob,
   PerformerClaim,
   QuotaUsage,
   SeriesRecord,
+  SeriesSummary,
   SourceDocument,
   SourceStat,
   SourceType,
@@ -44,6 +47,8 @@ import { normalizeName } from '../normalizeName';
 import type { CachedResponse } from '../responseCache';
 import {
   canonicalEditionPage,
+  editionMatchesStatusFilter,
+  isVerifiedStatus,
   suggestEditionMatches,
   CanonicalApplyResult,
   CanonicalHistoryEntry,
@@ -62,6 +67,8 @@ import {
   roundRobin,
   STALE_RUN_MS,
   type CanonicalEditionPageOptions,
+  type CanonicalEditionStatusFilter,
+  type SuggestEditionOptions,
   type UserScope,
 } from './types';
 
@@ -274,6 +281,24 @@ export class FileLineupStore implements LineupStore {
     return clone(claims.filter((c) => c.jobId === first));
   }
 
+  private enrichEdition(state: FileState, ed: Edition): Edition {
+    const out = clone(ed);
+    if (out.seriesSlug) {
+      const s = state.series[out.seriesSlug];
+      if (s) {
+        if (out.seriesName === undefined) out.seriesName = s.name;
+        if (out.seriesBrand === undefined && s.brand !== undefined) out.seriesBrand = s.brand;
+        if (out.seriesAliases === undefined && s.aliases?.length) out.seriesAliases = clone(s.aliases);
+      }
+    }
+    return out;
+  }
+
+  private toEditionHeader(state: FileState, ed: Edition): EditionHeader {
+    const { performances: _perfs, ...header } = this.enrichEdition(state, ed);
+    return header;
+  }
+
   async getSeries(slug: string) {
     const s = (await this.load()).series[slug];
     return s ? clone(s) : null;
@@ -284,20 +309,100 @@ export class FileLineupStore implements LineupStore {
     await this.save();
   }
 
+  async listSeries(opts: { query?: string; brand?: string; limit?: number } = {}): Promise<SeriesSummary[]> {
+    const state = await this.load();
+    const counts = new Map<string, number>();
+    for (const ed of Object.values(state.editions)) {
+      if (ed.seriesSlug) counts.set(ed.seriesSlug, (counts.get(ed.seriesSlug) ?? 0) + 1);
+    }
+    const q = (opts.query ?? '').trim().toLowerCase();
+    const b = (opts.brand ?? '').trim().toLowerCase();
+    const limit = Math.max(1, Math.min(500, Math.floor(opts.limit ?? 100)));
+    return clone(
+      Object.values(state.series)
+        .filter((s) => {
+          if (b && (s.brand ?? '').trim().toLowerCase() !== b) return false;
+          if (!q) return true;
+          return [s.slug, s.name, s.brand ?? '', ...(s.aliases ?? [])].some((v) => v.toLowerCase().includes(q));
+        })
+        .sort((a, z) => (a.brand ?? a.name).localeCompare(z.brand ?? z.name) || a.name.localeCompare(z.name))
+        .slice(0, limit)
+        .map((s) => ({ ...s, editionCount: counts.get(s.slug) ?? 0 })),
+    );
+  }
+
+  async mergeSeries(keepSlug: string, dropSlug: string): Promise<MergeSummary> {
+    if (!keepSlug?.trim() || !dropSlug?.trim()) throw new Error('merge_canonical_series: both slugs are required');
+    if (keepSlug === dropSlug) throw new Error('merge_canonical_series: keep and drop slugs are the same');
+    const state = await this.load();
+    const keep = state.series[keepSlug];
+    const drop = state.series[dropSlug];
+    if (!keep) throw new Error(`merge_canonical_series: series ${keepSlug} not found`);
+    if (!drop) throw new Error(`merge_canonical_series: series ${dropSlug} not found`);
+
+    const seen = new Set<string>();
+    const aliases: string[] = [];
+    const rawAliases = [
+      ...(keep.aliases ?? []),
+      ...(drop.aliases ?? []),
+      ...(drop.name.trim().toLowerCase() !== keep.name.trim().toLowerCase() ? [drop.name] : []),
+    ];
+    for (const raw of rawAliases) {
+      const val = raw.trim();
+      if (!val) continue;
+      const key = val.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      aliases.push(val);
+    }
+
+    const brand = keep.brand?.trim() ? keep.brand : drop.brand?.trim() ? drop.brand : undefined;
+    const lineupUrl = keep.lineupUrl?.trim() ? keep.lineupUrl : drop.lineupUrl?.trim() ? drop.lineupUrl : undefined;
+    const sourcePriority = keep.sourcePriority?.length ? keep.sourcePriority : drop.sourcePriority;
+    const clashfinderSlugs = { ...(drop.clashfinderSlugs ?? {}), ...(keep.clashfinderSlugs ?? {}) };
+
+    state.series[keepSlug] = {
+      ...keep,
+      ...(brand !== undefined ? { brand } : {}),
+      aliases,
+      ...(lineupUrl !== undefined ? { lineupUrl } : {}),
+      ...(sourcePriority?.length ? { sourcePriority } : {}),
+      clashfinderSlugs,
+    };
+
+    let editionsMoved = 0;
+    for (const ed of Object.values(state.editions)) {
+      if (ed.seriesSlug === dropSlug) {
+        ed.seriesSlug = keepSlug;
+        editionsMoved++;
+      }
+    }
+    delete state.series[dropSlug];
+    await this.save();
+    return { keep_slug: keepSlug, drop_slug: dropSlug, editions_moved: editionsMoved, aliases_count: aliases.length };
+  }
+
   async getEditionByKey(key: string) {
-    const ed = Object.values((await this.load()).editions).find((e) => e.key === key);
-    return ed ? clone(ed) : null;
+    const state = await this.load();
+    const ed = Object.values(state.editions).find((e) => e.key === key);
+    return ed ? this.enrichEdition(state, ed) : null;
   }
 
   async getEdition(id: string) {
-    const ed = (await this.load()).editions[id];
-    return ed ? clone(ed) : null;
-  }
-  async getEditions(ids: string[]) {
-    const editions = (await this.load()).editions;
-    return clone(ids.map((id) => editions[id]).filter((e): e is Edition => Boolean(e)));
+    const state = await this.load();
+    const ed = state.editions[id];
+    return ed ? this.enrichEdition(state, ed) : null;
   }
 
+  async getEditions(ids: string[]) {
+    const state = await this.load();
+    return ids.map((id) => state.editions[id]).filter((e): e is Edition => Boolean(e)).map((e) => this.enrichEdition(state, e));
+  }
+
+  async getEditionHeaders(ids: string[]): Promise<EditionHeader[]> {
+    const state = await this.load();
+    return ids.map((id) => state.editions[id]).filter((e): e is Edition => Boolean(e)).map((e) => this.toEditionHeader(state, e));
+  }
 
   async upsertEdition(edition: Edition) {
     (await this.load()).editions[edition.id] = clone(edition);
@@ -312,17 +417,69 @@ export class FileLineupStore implements LineupStore {
   }
 
   async listEditions(limit: number) {
-    const eds = Object.values((await this.load()).editions);
-    return clone(eds.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, limit));
+    const state = await this.load();
+    const eds = Object.values(state.editions);
+    return eds.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, limit).map((e) => this.enrichEdition(state, e));
   }
 
-  async suggestEditions(query: string, opts: { excludeIds: string[]; limit: number }) {
-    return suggestEditionMatches(Object.values((await this.load()).editions), query, opts);
+  async listEditionHeaders(
+    opts?: number | { limit?: number; startDate?: string; seriesSlug?: string; year?: number; status?: CanonicalEditionStatusFilter },
+  ): Promise<EditionHeader[]> {
+    const state = await this.load();
+    const normalized = typeof opts === 'number' ? { limit: opts } : (opts ?? {});
+    const limit = Math.max(0, Math.floor(normalized.limit ?? 500));
+    return Object.values(state.editions)
+      .filter((e) => !normalized.startDate || e.startDate === normalized.startDate)
+      .filter((e) => !normalized.seriesSlug || e.seriesSlug === normalized.seriesSlug)
+      .filter((e) => normalized.year === undefined || e.year === normalized.year)
+      .filter((e) => !normalized.status || editionMatchesStatusFilter(e.status, normalized.status))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, limit)
+      .map((e) => this.toEditionHeader(state, e));
+  }
+
+  async listEditionArtistRefs(opts: { editionIds?: string[]; verifiedOnly?: boolean } = {}): Promise<EditionArtistRef[]> {
+    const state = await this.load();
+    const idSet = opts.editionIds ? new Set(opts.editionIds) : null;
+    if (idSet && idSet.size === 0) return [];
+    const out: EditionArtistRef[] = [];
+    for (const e of Object.values(state.editions)) {
+      if (idSet && !idSet.has(e.id)) continue;
+      if (opts.verifiedOnly && !isVerifiedStatus(e.status)) continue;
+      for (const p of e.performances) {
+        out.push({ editionId: e.id, artistKey: p.artistKey, name: p.name, status: p.status });
+      }
+    }
+    return out;
+  }
+
+  async suggestEditions(query: string, opts: SuggestEditionOptions) {
+    const state = await this.load();
+    const enriched = Object.values(state.editions).map((e) => this.enrichEdition(state, e));
+    return suggestEditionMatches(enriched, query, opts);
   }
 
   async listCanonicalEditionsPage(options: CanonicalEditionPageOptions) {
-    const eds = Object.values((await this.load()).editions);
+    const state = await this.load();
+    const eds = Object.values(state.editions).map((e) => this.enrichEdition(state, e));
     return clone(canonicalEditionPage(eds, options));
+  }
+
+  async stampUnsetWeekend(editionId: string, weekend: number): Promise<number> {
+    if (!editionId?.trim()) throw new Error('stamp_unset_event_weekend: edition_id is required');
+    if (!Number.isInteger(weekend) || weekend < 1 || weekend > 9) {
+      throw new Error('stamp_unset_event_weekend: weekend must be between 1 and 9');
+    }
+    const state = await this.load();
+    let updated = 0;
+    for (const ev of Object.values(state.events)) {
+      if (!ev.deletedAt && ev.editionId === editionId && ev.weekend == null) {
+        ev.weekend = weekend;
+        updated++;
+      }
+    }
+    if (updated > 0) await this.save();
+    return updated;
   }
 
   async getQuota(key: string) {
