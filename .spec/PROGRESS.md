@@ -21,4 +21,4 @@ Contracts: SYSTEM_SPEC.md section 3. `[CORE / DATA]` slices need passing unit te
 - [x] **Slice 0.4: Raise canon backfill subrequest budget margins** Target files: src/server/canon/backfill.ts, tests/canonBackfill.test.ts | Verify: npm run typecheck --silent && npm run lint --silent && npm test --silent
 
 ## Global Archive Series & Multi-Weekend
-- [ ] **Slice 1.1: Design spec, requirements & architecture docs** [IN_PROGRESS] Target files: docs/specs/global-archive-series-weekends.md, REQUIREMENTS.md, docs/architecture/02-stage-1-capture-and-details.md, docs/architecture/12-data-model.md, docs/architecture/13-api.md | Verify: npm run lint --silent
+- [x] **Slice 1.1: Design spec, requirements & architecture docs** Target files: docs/specs/global-archive-series-weekends.md, REQUIREMENTS.md, docs/architecture/02-stage-1-capture-and-details.md, docs/architecture/12-data-model.md, docs/architecture/13-api.md | Verify: npm run lint --silent
