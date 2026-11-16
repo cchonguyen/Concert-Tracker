@@ -177,9 +177,24 @@ test('seen acts keep a valid role you set; the type takes concert, festival or n
   assert.throws(() => applyPatch(e, { kind: 'rave' as any }, NOW));
 });
 
-test('scale: your choice, then days, acts, Clashfinder; concert only from a known small lineup', () => {
+test('scale: your choice, then series kind, then days, acts, Clashfinder; concert only from a known small lineup', () => {
   assert.equal(eventScale(ev('EDC Las Vegas', { startDate: '2025-05-16', endDate: '2025-05-18' })).reason, '3 days');
   assert.equal(eventScale(ev('EDC Las Vegas', { startDate: '2025-05-16', endDate: '2025-05-18', kind: 'concert' })).kind, 'concert');
+  assert.equal(eventScale(ev('EDC Las Vegas', { startDate: '2025-05-16', endDate: '2025-05-18', kind: 'concert', seriesKind: 'festival' })).by, 'you');
+  // 1-day festival with 2 acts still resolves to festival via seriesKind.
+  const oneDayFest = eventScale(ev('Portola', { startDate: '2024-09-28', seriesKind: 'festival' }), { acts: 2, clashfinder: false });
+  assert.deepEqual(oneDayFest, { kind: 'festival', by: 'series', reason: 'Festival series' });
+  // Multi-night / 6-act tour stop still resolves to concert via seriesKind.
+  const multiNightTour = eventScale(
+    ev('Eras Tour', { startDate: '2024-05-01', endDate: '2024-05-03', seriesKind: 'concert' }),
+    { acts: 6, clashfinder: false },
+  );
+  assert.deepEqual(multiNightTour, { kind: 'concert', by: 'series', reason: 'Tour series' });
+  // User override wins over seriesKind.
+  assert.deepEqual(
+    eventScale(ev('Eras Tour', { startDate: '2024-05-01', seriesKind: 'concert', kind: 'festival' }), { acts: 2, clashfinder: false }),
+    { kind: 'festival', by: 'you', reason: 'Set by you' },
+  );
   const show = ev('Porter Robinson', { startDate: '2024-10-05' });
   assert.equal(eventScale(show).kind, undefined);
   assert.equal(eventScale(show).reason, 'Not known yet');

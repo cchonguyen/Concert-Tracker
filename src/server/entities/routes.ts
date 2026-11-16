@@ -33,7 +33,7 @@ import {
   parseEditionFacts,
 } from '../lineup/canonicalIngest';
 import { seriesSlugFor } from '../lineup/text';
-import type { Edition, SeriesRecord, SourceType } from '../lineup/types';
+import type { Edition, SeriesKind, SeriesRecord, SourceType } from '../lineup/types';
 import { writeEdition } from '../canon/editions';
 import {
   addAlias,
@@ -123,6 +123,11 @@ function parseSeriesString(v: unknown, field: string, max = 200): string | undef
   const t = v.trim();
   if (t.length > max) throw new ManageError(`${field} is too long.`, 400);
   return t || undefined;
+}
+
+function parseSeriesKind(v: unknown): SeriesKind {
+  if (v === 'festival' || v === 'tour') return v;
+  throw new ManageError('kind must be festival or tour.', 400);
 }
 
 function parseSeriesAliases(v: unknown): string[] {
@@ -327,7 +332,14 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
       if (!slug) throw new ManageError('Series slug must contain letters or digits.', 400);
       if (await store.getSeries(slug)) throw new ManageError(`Series "${slug}" already exists.`, 409);
 
+      const kind: SeriesKind = 'kind' in body ? parseSeriesKind(body.kind) : 'festival';
       const brand = parseSeriesString(body.brand, 'brand');
+      const city = parseSeriesString(body.city, 'city', 200);
+      const region = parseSeriesString(body.region, 'region', 100);
+      const country = parseSeriesString(body.country, 'country', 100);
+      if (kind === 'tour' && (city || region || country)) {
+        throw new ManageError('Tour series cannot have a fixed city, region, or country.', 400);
+      }
       const aliases = body.aliases !== undefined ? parseSeriesAliases(body.aliases) : undefined;
       const lineupUrl = parseSeriesString(body.lineupUrl, 'lineupUrl', 2000);
       const sourcePriority = body.sourcePriority !== undefined ? parseSeriesSourcePriority(body.sourcePriority) : undefined;
@@ -335,7 +347,11 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
       const record: SeriesRecord = {
         slug,
         name,
+        kind,
         ...(brand ? { brand } : {}),
+        ...(city ? { city } : {}),
+        ...(region ? { region } : {}),
+        ...(country ? { country } : {}),
         ...(aliases?.length ? { aliases } : {}),
         ...(lineupUrl ? { lineupUrl } : {}),
         ...(sourcePriority?.length ? { sourcePriority } : {}),
@@ -362,6 +378,34 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
         const name = parseSeriesString(body.name, 'name');
         if (!name) throw new ManageError('Series name cannot be blank.', 400);
         next.name = name;
+      }
+      if ('kind' in body) {
+        next.kind = parseSeriesKind(body.kind);
+      }
+      const effectiveKind: SeriesKind = next.kind === 'tour' ? 'tour' : 'festival';
+      const passedCity = 'city' in body ? parseSeriesString(body.city, 'city', 200) : undefined;
+      const passedRegion = 'region' in body ? parseSeriesString(body.region, 'region', 100) : undefined;
+      const passedCountry = 'country' in body ? parseSeriesString(body.country, 'country', 100) : undefined;
+      if (effectiveKind === 'tour') {
+        if (passedCity || passedRegion || passedCountry) {
+          throw new ManageError('Tour series cannot have a fixed city, region, or country.', 400);
+        }
+        delete next.city;
+        delete next.region;
+        delete next.country;
+      } else {
+        if ('city' in body) {
+          if (passedCity) next.city = passedCity;
+          else delete next.city;
+        }
+        if ('region' in body) {
+          if (passedRegion) next.region = passedRegion;
+          else delete next.region;
+        }
+        if ('country' in body) {
+          if (passedCountry) next.country = passedCountry;
+          else delete next.country;
+        }
       }
       if ('brand' in body) {
         const brand = parseSeriesString(body.brand, 'brand');

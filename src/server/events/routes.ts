@@ -5,7 +5,7 @@ import { JobRunner } from '../lineup/service';
 import { DetailFinder, defaultFinders, pickCandidate, researchCatalogFor, researchEvent } from './details';
 import { geminiReader } from './detailsGemini';
 import { cityPoint, citySuggestions, placeGuess } from './place';
-import { applyLinkedPatch, ensureCaptured, recordOverrides, resolveEvent, resolveEvents, unlinkEvent } from './inherit';
+import { applyLinkedPatch, editionPlaceValue, ensureCaptured, recordOverrides, resolveEvent, resolveEvents, unlinkEvent } from './inherit';
 import { clashfinderChoices, EventPatch, lineupSummary, newEvent, newEventFromEdition, sortEvents, startBulkLookups, startLineupLookup } from './service';
 import { DetailCandidate, EVENT_FIELDS, EventField, LineupSummary, LoggedEvent } from './types';
 import { isVerifiedStatus } from '../lineup/store/types';
@@ -51,9 +51,9 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
       startDate: e.startDate ?? undefined,
       endDate: e.endDate ?? undefined,
       venue: e.venue ?? undefined,
-      city: e.city ?? undefined,
-      region: e.region ?? undefined,
-      country: e.country ?? undefined,
+      city: editionPlaceValue(e, 'city'),
+      region: editionPlaceValue(e, 'region'),
+      country: editionPlaceValue(e, 'country'),
     };
     const cleanFacts = Object.fromEntries(Object.entries(raw).filter(([, v]) => typeof v === 'string' && v.trim())) as Partial<
       Record<'name' | EventField, string>

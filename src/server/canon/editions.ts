@@ -128,6 +128,10 @@ export async function undoEditionChange(store: LineupStore, editionId: string, c
         delete restored.seriesName;
         delete restored.seriesBrand;
         delete restored.seriesAliases;
+        delete restored.seriesKind;
+        delete restored.seriesCity;
+        delete restored.seriesRegion;
+        delete restored.seriesCountry;
       }
     } else {
       (restored as any)[f] = before[f] ?? undefined;

@@ -624,3 +624,132 @@ test('series CRUD/merge/editions routes, edition merge route, lean artists route
     assert.deepEqual(((await suggest2.json()) as { editions: Array<{ id: string }> }).editions, []);
   });
 });
+
+test('series API validates kind/place, clears place on festival->tour, exposes summary fields, and match resolves festival place', async () => {
+  await withFileStore(async (store) => {
+    const app = makeApp(store, 'owner');
+
+    // Invalid kind -> 400
+    const badKind = await dispatch(app, {
+      url: '/api/manage/canonical/series',
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: { name: 'Bad Kind', kind: 'rave' },
+    });
+    assert.equal(badKind.status, 400);
+
+    // Tour with place on POST -> 400
+    const tourWithPlace = await dispatch(app, {
+      url: '/api/manage/canonical/series',
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: { name: 'Tour With Place', kind: 'tour', city: 'Los Angeles' },
+    });
+    assert.equal(tourWithPlace.status, 400);
+
+    // Overlong region -> 400
+    const longRegion = await dispatch(app, {
+      url: '/api/manage/canonical/series',
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: { name: 'Long Region', region: 'x'.repeat(101) },
+    });
+    assert.equal(longRegion.status, 400);
+
+    // Default kind is festival; accepts city/region/country
+    const createdFest = await dispatch(app, {
+      url: '/api/manage/canonical/series',
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: { name: 'Coachella', city: 'Indio', region: 'CA', country: 'US' },
+    });
+    assert.equal(createdFest.status, 201);
+    const festBody = createdFest.json<{ series: any }>().series;
+    assert.equal(festBody.kind, 'festival');
+    assert.equal(festBody.city, 'Indio');
+    assert.equal(festBody.region, 'CA');
+    assert.equal(festBody.country, 'US');
+
+    // Add an edition without city/region/country and verify summary exposes seriesKind & seriesPlace
+    await writeEdition(store, {
+      edition: ed('coachella-2026', 'Coachella 2026', 2026, {
+        seriesSlug: 'coachella',
+        startDate: '2026-04-10',
+        endDate: '2026-04-12',
+      }),
+      actor: 'owner',
+      reason: 'seed',
+    });
+
+    const edListRes = await dispatch(app, { url: '/api/manage/canonical/editions?query=Coachella' });
+    assert.equal(edListRes.status, 200);
+    const edSummary = edListRes.json<{ editions: any[] }>().editions[0];
+    assert.equal(edSummary.seriesKind, 'festival');
+    assert.equal(edSummary.seriesCity, 'Indio');
+    assert.equal(edSummary.seriesRegion, 'CA');
+    assert.equal(edSummary.seriesCountry, 'US');
+    assert.equal(edSummary.city, null);
+
+    // findSeriesEditionMatches resolves edition city from festival series when edition.city is unset
+    const cityMatch = await findSeriesEditionMatches(store, { name: 'Coachella', year: 2026, city: 'Indio' });
+    assert.deepEqual(cityMatch.map((e) => e.id), ['coachella-2026']);
+    const otherCity = await findSeriesEditionMatches(store, { name: 'Coachella', year: 2026, city: 'Austin' });
+    assert.deepEqual(otherCity, []);
+
+    // PATCH festival -> tour with non-empty place -> 400
+    const badPatch = await dispatch(app, {
+      url: '/api/manage/canonical/series/coachella',
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: { kind: 'tour', city: 'Indio' },
+    });
+    assert.equal(badPatch.status, 400);
+
+    // PATCH festival -> tour without place fields clears city/region/country
+    const switchedToTour = await dispatch(app, {
+      url: '/api/manage/canonical/series/coachella',
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: { kind: 'tour' },
+    });
+    assert.equal(switchedToTour.status, 200);
+    const tourBody = switchedToTour.json<{ series: any }>().series;
+    assert.equal(tourBody.kind, 'tour');
+    assert.equal(tourBody.city, undefined);
+    assert.equal(tourBody.region, undefined);
+    assert.equal(tourBody.country, undefined);
+
+    // PATCH existing tour with city -> 400
+    const addCityToTour = await dispatch(app, {
+      url: '/api/manage/canonical/series/coachella',
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: { country: 'US' },
+    });
+    assert.equal(addCityToTour.status, 400);
+
+    // undoEditionChange clearing seriesSlug also clears seriesKind/seriesCity/seriesRegion/seriesCountry
+    await dispatch(app, {
+      url: '/api/manage/canonical/series/coachella',
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: { kind: 'festival', city: 'Indio', region: 'CA', country: 'US' },
+    });
+    const standalone = ed('st-1', 'Standalone 2026', 2026, { startDate: '2026-06-01' });
+    await writeEdition(store, { edition: standalone, actor: 'owner', reason: 'seed' });
+    const attach = await writeEdition(store, {
+      edition: { ...standalone, seriesSlug: 'coachella' },
+      actor: 'owner',
+      reason: 'attach',
+    });
+    assert.equal((await store.getEdition('st-1'))?.seriesCity, 'Indio');
+    const undone = await undoEditionChange(store, 'st-1', attach.change!.id, 'owner');
+    assert.equal(undone.ok, true);
+    const afterUndo = await store.getEdition('st-1');
+    assert.equal(afterUndo?.seriesSlug, undefined);
+    assert.equal(afterUndo?.seriesKind, undefined);
+    assert.equal(afterUndo?.seriesCity, undefined);
+    assert.equal(afterUndo?.seriesRegion, undefined);
+    assert.equal(afterUndo?.seriesCountry, undefined);
+  });
+});

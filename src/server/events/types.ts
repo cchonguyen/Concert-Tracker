@@ -143,6 +143,8 @@ export interface LoggedEvent extends EventFacts, LoggedEventInheritance {
   deletedAt?: string; // set when you delete the show; cleared by Restore. Reads skip deleted shows.
   seen: SeenAct[];
   kind?: EventKind; // your choice; absent means worked out by the rule
+  // Read-only from the linked canonical edition's series (festival -> 'festival', tour -> 'concert'); never persisted.
+  seriesKind?: EventKind;
   // What kind of night it was (club night, warehouse party, block party, ...),
   // in your words. Separate from kind, and never filled on its own.
   format?: string;

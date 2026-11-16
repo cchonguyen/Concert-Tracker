@@ -218,10 +218,16 @@ export interface LookupJob {
   updatedAt: string;
 }
 
+export type SeriesKind = 'festival' | 'tour';
+
 export interface SeriesRecord {
   slug: string;
   name: string;
+  kind?: SeriesKind;
   brand?: string;
+  city?: string;
+  region?: string;
+  country?: string;
   aliases?: string[];
   lineupUrl?: string; // learned from confirmed promoter sources
   clashfinderSlugs?: Record<string, string>; // year -> clashfinder event slug
@@ -263,6 +269,10 @@ export interface Edition {
   seriesName?: string;
   seriesBrand?: string;
   seriesAliases?: string[];
+  seriesKind?: SeriesKind;
+  seriesCity?: string;
+  seriesRegion?: string;
+  seriesCountry?: string;
   year: number;
   name: string;
   startDate?: string;

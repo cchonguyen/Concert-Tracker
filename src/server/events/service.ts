@@ -75,6 +75,9 @@ export function newEventFromEdition(
     editionId: edition.id,
     overrides: {},
     details: { status: 'matched', candidates: [], notes: [] },
+    ...(edition.seriesSlug && edition.seriesKind
+      ? { seriesKind: edition.seriesKind === 'tour' ? ('concert' as const) : ('festival' as const) }
+      : {}),
   };
   // What was typed, kept once (same shape as inherit.ts capturedFrom; not imported to avoid a cycle).
   next.captured = {

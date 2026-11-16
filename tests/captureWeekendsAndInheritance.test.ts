@@ -7,7 +7,7 @@ import express from 'express';
 import { dispatch } from './helpers/testApp.ts';
 import { fakeFetcher } from './fakes.ts';
 import { parseEventInput } from '../src/server/events/parse.ts';
-import { applyLinkedPatch, ensureCaptured, recordOverrides, resolveEvent } from '../src/server/events/inherit.ts';
+import { applyLinkedPatch, editionPlaceValue, ensureCaptured, recordOverrides, resolveEvent, unlinkEvent } from '../src/server/events/inherit.ts';
 import { newEvent, newEventFromEdition } from '../src/server/events/service.ts';
 import { researchEvent, type DetailFinder } from '../src/server/events/details.ts';
 import { eventsRouter, type EventsRunner } from '../src/server/events/routes.ts';
@@ -423,5 +423,156 @@ test('GET /api/events calls getEditionHeaders (never getEditions) and resolves i
     assert.equal(body.events[0].series, 'Coachella');
     assert.equal(body.events[0].startDate, '2024-04-19');
     assert.equal(body.editions[ev.id]?.acts, 1);
+  });
+});
+
+test('Series -> Edition -> Event place inheritance, SoCal city override, tour non-inheritance, and read-only seriesKind', async () => {
+  await withDeps(async (deps, store) => {
+    await store.upsertSeries({
+      slug: 'hard-summer',
+      name: 'HARD Summer',
+      kind: 'festival',
+      city: 'San Bernardino',
+      region: 'CA',
+      country: 'United States',
+    });
+    await store.upsertSeries({
+      slug: 'eras-tour',
+      name: 'The Eras Tour',
+      kind: 'tour',
+    });
+
+    // Edition without place inherits from festival series
+    await writeEdition(store, {
+      edition: {
+        id: 'hs-2023',
+        key: 'hard-summer/2023',
+        seriesSlug: 'hard-summer',
+        year: 2023,
+        name: 'HARD Summer 2023',
+        startDate: '2023-08-05',
+        endDate: '2023-08-06',
+        status: 'verified',
+        performances: [],
+        updatedAt: NOW.toISOString(),
+      },
+      actor: 'owner',
+      reason: 'seed',
+    });
+    // Edition with its own city (e.g. SoCal city move to Los Angeles) wins over series city while still inheriting region/country
+    await writeEdition(store, {
+      edition: {
+        id: 'hs-2024',
+        key: 'hard-summer/2024',
+        seriesSlug: 'hard-summer',
+        year: 2024,
+        name: 'HARD Summer 2024',
+        startDate: '2024-08-03',
+        endDate: '2024-08-04',
+        city: 'Los Angeles',
+        status: 'verified',
+        performances: [],
+        updatedAt: NOW.toISOString(),
+      },
+      actor: 'owner',
+      reason: 'seed',
+    });
+    // Tour edition with no place gets zero place inheritance and seriesKind === 'concert'
+    await writeEdition(store, {
+      edition: {
+        id: 'eras-2023',
+        key: 'eras-tour/2023',
+        seriesSlug: 'eras-tour',
+        year: 2023,
+        name: 'The Eras Tour',
+        startDate: '2023-08-08',
+        status: 'verified',
+        performances: [],
+        updatedAt: NOW.toISOString(),
+      },
+      actor: 'owner',
+      reason: 'seed',
+    });
+
+    const hs23 = (await store.getEdition('hs-2023'))!;
+    const hs24 = (await store.getEdition('hs-2024'))!;
+    const eras23 = (await store.getEdition('eras-2023'))!;
+
+    assert.equal(editionPlaceValue(hs23, 'city'), 'San Bernardino');
+    assert.equal(editionPlaceValue(hs24, 'city'), 'Los Angeles');
+    assert.equal(editionPlaceValue(hs24, 'region'), 'CA');
+    assert.equal(editionPlaceValue(eras23, 'city'), undefined);
+
+    const app = appFor(deps);
+    // Create via POST /api/events with editionId: hs-2023
+    const resFest = await dispatch(app, {
+      method: 'POST',
+      url: '/api/events',
+      body: { text: 'HARD Summer 2023', editionId: 'hs-2023' },
+    });
+    assert.equal(resFest.status, 201);
+    const festEv = resFest.json<{ event: any }>().event;
+    assert.equal(festEv.city, 'San Bernardino');
+    assert.equal(festEv.region, 'CA');
+    assert.equal(festEv.country, 'United States');
+    assert.equal(festEv.seriesKind, 'festival');
+
+    // Stored event never persists seriesKind
+    const rawStored = await store.getEvent(festEv.id);
+    assert.equal(rawStored?.seriesKind, undefined);
+
+    // Edition city override wins over festival series city
+    const ev24 = resolveEvent(newEventFromEdition('HARD Summer 2024', hs24, NOW), hs24);
+    assert.equal(ev24.city, 'Los Angeles');
+    assert.equal(ev24.region, 'CA');
+    assert.equal(ev24.country, 'United States');
+    assert.equal(ev24.seriesKind, 'festival');
+
+    // Patching city back to series-inherited value drops override
+    const patchedCity = applyLinkedPatch(rawStored!, hs23, { city: 'Fontana' }, LATER);
+    assert.deepEqual(patchedCity.changes, [{ field: 'city', old: 'San Bernardino', new: 'Fontana' }]);
+    assert.equal(patchedCity.event.seriesKind, undefined);
+    const resetCity = applyLinkedPatch(patchedCity.event, hs23, { city: 'San Bernardino' }, LATER);
+    assert.equal(resetCity.event.overrides?.city, undefined);
+
+    // Unlink clears seriesKind
+    const unlinked = unlinkEvent(festEv, LATER);
+    assert.equal(unlinked.seriesKind, undefined);
+
+    // Tour series: zero place inheritance and seriesKind === 'concert'
+    const evTour = resolveEvent(newEventFromEdition('The Eras Tour 2023', eras23, NOW), eras23);
+    assert.equal(evTour.city, undefined);
+    assert.equal(evTour.region, undefined);
+    assert.equal(evTour.country, undefined);
+    assert.equal(evTour.seriesKind, 'concert');
+
+    // Multiple canonical matches -> canonicalCandidate populates city/region/country from festival series
+    await writeEdition(store, {
+      edition: {
+        id: 'hs-2024-chi',
+        key: 'hard-summer/2024-chi',
+        seriesSlug: 'hard-summer',
+        year: 2024,
+        name: 'HARD Summer Chicago 2024',
+        startDate: '2024-08-10',
+        status: 'verified',
+        performances: [],
+        updatedAt: NOW.toISOString(),
+      },
+      actor: 'owner',
+      reason: 'seed',
+    });
+    const multiRes = await dispatch(app, {
+      method: 'POST',
+      url: '/api/events',
+      body: { text: 'HARD Summer 2024', research: true },
+    });
+    assert.equal(multiRes.status, 201);
+    const cands = multiRes.json<{ event: any }>().event.details.candidates;
+    const chiCand = cands.find((c: any) => c.editionId === 'hs-2024-chi');
+    const laCand = cands.find((c: any) => c.editionId === 'hs-2024');
+    assert.equal(chiCand.city, 'San Bernardino');
+    assert.equal(chiCand.region, 'CA');
+    assert.equal(laCand.city, 'Los Angeles');
   });
 });
