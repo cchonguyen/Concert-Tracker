@@ -1,4 +1,4 @@
-import type { Edition, EditionWeekend, LookupJob, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
+import type { Edition, EditionWeekend, LookupJob, SeriesKind, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
 import type { ShareSettings } from '../server/share/types';
 import type { NameIndex } from '../server/entities/link';
 import { norm } from './listImport';
@@ -23,6 +23,7 @@ export type {
   EditionSuggestion,
   EditionWeekend,
   CanonicalEditionSummary,
+  SeriesKind,
   SeriesRecord,
   SeriesSummary,
   MergeSummary,
@@ -703,9 +704,33 @@ export const canonicalApi = {
       signal ? { signal } : undefined,
     );
   },
-  createSeries: (body: { name: string; slug?: string; brand?: string; aliases?: string[]; lineupUrl?: string; sourcePriority?: SourceType[] }) =>
+  createSeries: (body: {
+    name: string;
+    slug?: string;
+    kind?: SeriesKind;
+    brand?: string;
+    city?: string | null;
+    region?: string | null;
+    country?: string | null;
+    aliases?: string[];
+    lineupUrl?: string;
+    sourcePriority?: SourceType[];
+  }) =>
     request<{ series: SeriesRecord }>('/api/manage/canonical/series', post(body)).then((r) => r.series),
-  updateSeries: (slug: string, body: { name?: string; brand?: string | null; aliases?: string[] | null; lineupUrl?: string | null; sourcePriority?: SourceType[] | null }) =>
+  updateSeries: (
+    slug: string,
+    body: {
+      name?: string;
+      kind?: SeriesKind;
+      brand?: string | null;
+      city?: string | null;
+      region?: string | null;
+      country?: string | null;
+      aliases?: string[] | null;
+      lineupUrl?: string | null;
+      sourcePriority?: SourceType[] | null;
+    },
+  ) =>
     request<{ series: SeriesRecord }>(`/api/manage/canonical/series/${encodeURIComponent(slug)}`, {
       method: 'PATCH',
       body: JSON.stringify(body),

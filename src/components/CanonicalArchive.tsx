@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 import {
   canonicalApi,
@@ -13,7 +13,7 @@ import {
   UndoConflictError,
 } from '../services/lineupApi';
 import { reviewSubjectFromEdition } from '../services/reviewRows';
-import type { Edition, EditionPerformance, EditionWeekend, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
+import type { Edition, EditionPerformance, EditionWeekend, SeriesKind, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
 import type { DetailCandidate, EventDetails } from '../server/events/types';
 import type { ArtistAppearance, CanonicalArtistRecord, CanonicalEditionSummary } from '../server/entities/canonicalManage';
 import { sameCountry } from '../server/events/regions';
@@ -21,11 +21,16 @@ import { CanonicalArtistEntry, ORIGIN_LABEL, type SavedChange } from './Canonica
 import { CheckDetails, type Suggestion } from './CheckDetails';
 import { LineupReview } from './LineupReview';
 import { MergeEditionModal } from './MergeEditionModal';
-import { weekendLabel } from '../services/format';
+import { usePlaceAutofill } from './PlaceFields';
+import { SuggestInput } from './SuggestInput';
+import { shortDateRange, weekendLabel } from '../services/format';
+import { buildPastPlaces, cityPickPatch, formatPlaceLabel, unanimousPlace } from '../services/placeAutofill';
+import { seedMultiWeekends } from '../services/weekends';
 import { Button } from './ui/Button';
 import { Callout } from './ui/Callout';
 import { Notice } from './ui/Notice';
 import { Pill } from './ui/Pill';
+import { Segmented } from './ui/Segmented';
 import { VersionPicker } from './ui/VersionPicker';
 import {
   buildManageUrl,
@@ -282,13 +287,26 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
   detailSlugRef.current = detailSlug;
 
   const [creating, setCreating] = useState(false);
+  const [newKind, setNewKind] = useState<SeriesKind>('festival');
   const [newName, setNewName] = useState('');
   const [newBrand, setNewBrand] = useState('');
+  const [newCity, setNewCity] = useState('');
+  const [newRegion, setNewRegion] = useState('');
+  const [newCountry, setNewCountry] = useState('');
   const [newAliases, setNewAliases] = useState('');
   const [newLineupUrl, setNewLineupUrl] = useState('');
   const [savingNew, setSavingNew] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const seriesPastPlaces = useMemo(() => buildPastPlaces(seriesList ?? []), [seriesList]);
+  const { setCityQuery, citySuggestions, mapOffer } = usePlaceAutofill({
+    city: newCity,
+    region: newRegion,
+    country: newCountry,
+    pastCities: seriesPastPlaces.cities,
+    enabled: creating && newKind === 'festival',
+  });
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedQuery(query), 300);
@@ -360,12 +378,20 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
     try {
       const created = await canonicalApi.createSeries({
         name: newName.trim(),
+        kind: newKind,
         ...(newBrand.trim() ? { brand: newBrand.trim() } : {}),
+        ...(newKind === 'festival' && newCity.trim() ? { city: newCity.trim() } : {}),
+        ...(newKind === 'festival' && newRegion.trim() ? { region: newRegion.trim() } : {}),
+        ...(newKind === 'festival' && newCountry.trim() ? { country: newCountry.trim() } : {}),
         ...(parseAliasText(newAliases).length ? { aliases: parseAliasText(newAliases) } : {}),
         ...(newLineupUrl.trim() ? { lineupUrl: newLineupUrl.trim() } : {}),
       });
+      setNewKind('festival');
       setNewName('');
       setNewBrand('');
+      setNewCity('');
+      setNewRegion('');
+      setNewCountry('');
       setNewAliases('');
       setNewLineupUrl('');
       setCreating(false);
@@ -437,7 +463,21 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
 
       {creating && (
         <form onSubmit={(e) => void createNewSeries(e)} className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
-          <h3 className="text-sm font-semibold text-zinc-100">Create canonical series</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-zinc-100">Create canonical series</h3>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] uppercase text-zinc-500">Type</span>
+              <Segmented
+                label="Series type"
+                value={newKind}
+                onChange={setNewKind}
+                options={[
+                  { value: 'festival', label: 'Festival' },
+                  { value: 'tour', label: 'Tour' },
+                ]}
+              />
+            </div>
+          </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label className="space-y-1 text-xs text-zinc-400">
               <span className="block text-[11px] uppercase text-zinc-500">Name *</span>
@@ -451,13 +491,76 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
             </label>
             <label className="space-y-1 text-xs text-zinc-400">
               <span className="block text-[11px] uppercase text-zinc-500">Brand (optional)</span>
-              <input
+              <SuggestInput
                 className={`${field} w-full`}
                 placeholder="e.g. Insomniac"
                 value={newBrand}
+                suggestions={brands}
                 onChange={(e) => setNewBrand(e.target.value)}
+                onPick={(b) => setNewBrand(b)}
               />
             </label>
+            {newKind === 'festival' ? (
+              <>
+                <label className="space-y-1 text-xs text-zinc-400">
+                  <span className="block text-[11px] uppercase text-zinc-500">City (optional)</span>
+                  <SuggestInput
+                    className={`${field} w-full`}
+                    placeholder="e.g. Las Vegas"
+                    value={newCity}
+                    suggestions={citySuggestions}
+                    onChange={(e) => {
+                      setNewCity(e.target.value);
+                      setCityQuery(e.target.value);
+                    }}
+                    onPick={(picked) => {
+                      const patch = cityPickPatch(picked, seriesPastPlaces.places, newCountry);
+                      setNewCity(patch.city ?? '');
+                      setNewRegion(patch.region ?? '');
+                      if (patch.country !== undefined) setNewCountry(patch.country ?? '');
+                      setCityQuery(patch.city ?? '');
+                    }}
+                  />
+                </label>
+                <div className="space-y-1 text-xs text-zinc-400">
+                  <label className="block space-y-1">
+                    <span className="block text-[11px] uppercase text-zinc-500">State (optional)</span>
+                    <input
+                      className={`${field} w-full`}
+                      placeholder="NV, or the region"
+                      value={newRegion}
+                      onChange={(e) => setNewRegion(e.target.value)}
+                    />
+                  </label>
+                  {mapOffer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (mapOffer.patch.city) setNewCity(mapOffer.patch.city);
+                        if (mapOffer.patch.region) setNewRegion(mapOffer.patch.region);
+                        if (mapOffer.patch.country) setNewCountry(mapOffer.patch.country);
+                      }}
+                      className="block text-left text-xs text-violet-300 hover:underline"
+                    >
+                      Use “{mapOffer.value}” from {mapOffer.from}
+                    </button>
+                  )}
+                </div>
+                <label className="space-y-1 text-xs text-zinc-400">
+                  <span className="block text-[11px] uppercase text-zinc-500">Country (optional)</span>
+                  <input
+                    className={`${field} w-full`}
+                    placeholder="e.g. United States"
+                    value={newCountry}
+                    onChange={(e) => setNewCountry(e.target.value)}
+                  />
+                </label>
+              </>
+            ) : (
+              <p className="text-xs text-zinc-400 sm:col-span-2">
+                Tour series are location-agnostic; each stop carries its own venue and city.
+              </p>
+            )}
             <label className="space-y-1 text-xs text-zinc-400">
               <span className="block text-[11px] uppercase text-zinc-500">Aliases (comma-separated)</span>
               <input
@@ -496,6 +599,7 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
         <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
           {seriesList.map((s) => {
             const url = seriesUrl(s.slug, { q: query || undefined });
+            const place = s.kind !== 'tour' ? formatPlaceLabel(s) : '';
             return (
               <li key={s.slug}>
                 <a
@@ -508,7 +612,9 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
                   className="flex w-full flex-wrap items-center gap-2 p-2.5 text-left text-sm hover:bg-zinc-900/60"
                 >
                   <span className="font-medium text-zinc-100">{s.name}</span>
+                  <Pill tone="neutral">{s.kind === 'tour' ? 'Tour' : 'Festival'}</Pill>
                   {s.brand && <Pill tone="accent">{s.brand}</Pill>}
+                  {place && <span className="text-xs text-zinc-400">{place}</span>}
                   {s.aliases && s.aliases.length > 0 && (
                     <span className="text-xs text-zinc-400">AKA {s.aliases.join(', ')}</span>
                   )}
@@ -538,8 +644,12 @@ const SeriesDetail: React.FC<{
   const [notice, setNotice] = useState<string | null>(null);
 
   const [editing, setEditing] = useState(false);
+  const [kind, setKind] = useState<SeriesKind>('festival');
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
+  const [city, setCity] = useState('');
+  const [region, setRegion] = useState('');
+  const [country, setCountry] = useState('');
   const [aliases, setAliases] = useState('');
   const [lineupUrl, setLineupUrl] = useState('');
   const [sourcePriority, setSourcePriority] = useState<SourceType[]>([]);
@@ -549,6 +659,20 @@ const SeriesDetail: React.FC<{
   const [targetSlug, setTargetSlug] = useState('');
   const [mergeBusy, setMergeBusy] = useState(false);
 
+  const seriesBrands = useMemo(
+    () => [...new Set(allSeries.map((s) => s.brand).filter((b): b is string => Boolean(b)))].sort(),
+    [allSeries],
+  );
+  const seriesPastPlaces = useMemo(() => buildPastPlaces(allSeries), [allSeries]);
+  const editionsPlace = useMemo(() => unanimousPlace(editions), [editions]);
+  const { setCityQuery, citySuggestions, mapOffer } = usePlaceAutofill({
+    city,
+    region,
+    country,
+    pastCities: seriesPastPlaces.cities,
+    enabled: editing && kind === 'festival',
+  });
+
   const loadDetail = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -556,8 +680,12 @@ const SeriesDetail: React.FC<{
       const res = await canonicalApi.seriesEditions(slug);
       setSeries(res.series);
       setEditions(res.editions);
+      setKind(res.series.kind === 'tour' ? 'tour' : 'festival');
       setName(res.series.name);
       setBrand(res.series.brand ?? '');
+      setCity(res.series.city ?? '');
+      setRegion(res.series.region ?? '');
+      setCountry(res.series.country ?? '');
       setAliases((res.series.aliases ?? []).join(', '));
       setLineupUrl(res.series.lineupUrl ?? '');
       setSourcePriority(res.series.sourcePriority ?? []);
@@ -585,7 +713,15 @@ const SeriesDetail: React.FC<{
     try {
       const updated = await canonicalApi.updateSeries(slug, {
         name: name.trim(),
+        kind,
         brand: brand.trim() || null,
+        ...(kind === 'festival'
+          ? {
+              city: city.trim() || null,
+              region: region.trim() || null,
+              country: country.trim() || null,
+            }
+          : { city: null, region: null, country: null }),
         aliases: parseAliasText(aliases),
         lineupUrl: lineupUrl.trim() || null,
         sourcePriority,
@@ -619,6 +755,8 @@ const SeriesDetail: React.FC<{
   if (!series) return <p role="alert" className="text-sm text-rose-300">{error ?? 'Series not found.'}</p>;
 
   const mergeTargets = allSeries.filter((s) => s.slug !== slug);
+  const seriesPlaceLabel = series.kind !== 'tour' ? formatPlaceLabel(series) : '';
+  const seriesPlaceEmpty = !city.trim() && !region.trim() && !country.trim();
 
   return (
     <div className="space-y-4">
@@ -626,7 +764,9 @@ const SeriesDetail: React.FC<{
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-lg font-semibold text-zinc-50">{series.name}</h3>
+            <Pill tone="neutral">{series.kind === 'tour' ? 'Tour' : 'Festival'}</Pill>
             {series.brand && <Pill tone="accent">{series.brand}</Pill>}
+            {seriesPlaceLabel && <span className="text-xs text-zinc-400">{seriesPlaceLabel}</span>}
           </div>
           <p className="text-xs text-zinc-500">Slug: {series.slug}</p>
         </div>
@@ -672,6 +812,18 @@ const SeriesDetail: React.FC<{
 
       {editing ? (
         <form onSubmit={(e) => void saveEdit(e)} className="space-y-3 rounded-lg border border-zinc-800 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] uppercase text-zinc-500">Type</span>
+            <Segmented
+              label="Series type"
+              value={kind}
+              onChange={setKind}
+              options={[
+                { value: 'festival', label: 'Festival' },
+                { value: 'tour', label: 'Tour' },
+              ]}
+            />
+          </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="space-y-1 text-xs text-zinc-400">
               <span className="block text-[11px] uppercase text-zinc-500">Name</span>
@@ -679,8 +831,89 @@ const SeriesDetail: React.FC<{
             </label>
             <label className="space-y-1 text-xs text-zinc-400">
               <span className="block text-[11px] uppercase text-zinc-500">Brand</span>
-              <input className={`${field} w-full`} placeholder="Optional" value={brand} onChange={(e) => setBrand(e.target.value)} />
+              <SuggestInput
+                className={`${field} w-full`}
+                placeholder="Optional"
+                value={brand}
+                suggestions={seriesBrands}
+                onChange={(e) => setBrand(e.target.value)}
+                onPick={(b) => setBrand(b)}
+              />
             </label>
+            {kind === 'festival' ? (
+              <>
+                <label className="space-y-1 text-xs text-zinc-400">
+                  <span className="block text-[11px] uppercase text-zinc-500">City</span>
+                  <SuggestInput
+                    className={`${field} w-full`}
+                    placeholder="Optional"
+                    value={city}
+                    suggestions={citySuggestions}
+                    onChange={(e) => {
+                      setCity(e.target.value);
+                      setCityQuery(e.target.value);
+                    }}
+                    onPick={(picked) => {
+                      const patch = cityPickPatch(picked, seriesPastPlaces.places, country);
+                      setCity(patch.city ?? '');
+                      setRegion(patch.region ?? '');
+                      if (patch.country !== undefined) setCountry(patch.country ?? '');
+                      setCityQuery(patch.city ?? '');
+                    }}
+                  />
+                </label>
+                <div className="space-y-1 text-xs text-zinc-400">
+                  <label className="block space-y-1">
+                    <span className="block text-[11px] uppercase text-zinc-500">State</span>
+                    <input
+                      className={`${field} w-full`}
+                      placeholder="NV, or the region"
+                      value={region}
+                      onChange={(e) => setRegion(e.target.value)}
+                    />
+                  </label>
+                  {mapOffer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (mapOffer.patch.city) setCity(mapOffer.patch.city);
+                        if (mapOffer.patch.region) setRegion(mapOffer.patch.region);
+                        if (mapOffer.patch.country) setCountry(mapOffer.patch.country);
+                      }}
+                      className="block text-left text-xs text-violet-300 hover:underline"
+                    >
+                      Use “{mapOffer.value}” from {mapOffer.from}
+                    </button>
+                  )}
+                  {seriesPlaceEmpty && editionsPlace && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCity(editionsPlace.city ?? '');
+                        setRegion(editionsPlace.region ?? '');
+                        setCountry(editionsPlace.country ?? '');
+                      }}
+                      className="block text-left text-xs text-violet-300 hover:underline"
+                    >
+                      Use “{editionsPlace.label}” from attached editions
+                    </button>
+                  )}
+                </div>
+                <label className="space-y-1 text-xs text-zinc-400">
+                  <span className="block text-[11px] uppercase text-zinc-500">Country</span>
+                  <input
+                    className={`${field} w-full`}
+                    placeholder="Optional"
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                  />
+                </label>
+              </>
+            ) : (
+              <p className="text-xs text-zinc-400 sm:col-span-2">
+                Tour series are location-agnostic; each stop carries its own venue and city.
+              </p>
+            )}
             <label className="space-y-1 text-xs text-zinc-400">
               <span className="block text-[11px] uppercase text-zinc-500">Aliases (comma-separated)</span>
               <input className={`${field} w-full`} placeholder="e.g. EDC, EDCLV" value={aliases} onChange={(e) => setAliases(e.target.value)} />
@@ -739,6 +972,12 @@ const SeriesDetail: React.FC<{
               ) : (
                 <span className="italic text-zinc-500">Not set</span>
               )}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[11px] uppercase text-zinc-500">Place</dt>
+            <dd className={seriesPlaceLabel ? 'text-zinc-200' : 'italic text-zinc-500'}>
+              {series.kind === 'tour' ? 'Location-agnostic (tour)' : seriesPlaceLabel || 'Not set'}
             </dd>
           </div>
           {series.sourcePriority && series.sourcePriority.length > 0 && (
@@ -1353,14 +1592,27 @@ const EditionDetail: React.FC<{
   const note = verifyNote?.editionId === edition.id ? verifyNote : null;
   const names = new Map(edition.performances.map((p) => [p.artistKey, p.name]));
   const dates = [edition.startDate, edition.endDate && edition.endDate !== edition.startDate ? `to ${edition.endDate}` : null].filter(Boolean).join(' ');
-  const facts: Array<[string, string | undefined]> = [
-    ['Year', String(edition.year)],
-    ['Dates', dates || undefined],
-    ['Venue', edition.venue],
-    ['City', edition.city],
-    ['Region', edition.region],
-    ['Country', edition.country],
-    ['Status', editionStatusWords(edition.status)],
+  const inheritSeriesPlace = edition.seriesKind !== 'tour';
+  const facts: Array<{ label: string; value: string | undefined; fromSeries?: boolean }> = [
+    { label: 'Year', value: String(edition.year) },
+    { label: 'Dates', value: dates || undefined },
+    { label: 'Venue', value: edition.venue },
+    {
+      label: 'City',
+      value: edition.city || (inheritSeriesPlace ? edition.seriesCity : undefined),
+      fromSeries: !edition.city && inheritSeriesPlace && Boolean(edition.seriesCity),
+    },
+    {
+      label: 'Region',
+      value: edition.region || (inheritSeriesPlace ? edition.seriesRegion : undefined),
+      fromSeries: !edition.region && inheritSeriesPlace && Boolean(edition.seriesRegion),
+    },
+    {
+      label: 'Country',
+      value: edition.country || (inheritSeriesPlace ? edition.seriesCountry : undefined),
+      fromSeries: !edition.country && inheritSeriesPlace && Boolean(edition.seriesCountry),
+    },
+    { label: 'Status', value: editionStatusWords(edition.status) },
   ];
   const seriesHref = edition.seriesSlug ? seriesUrl(edition.seriesSlug) : null;
   return (
@@ -1437,10 +1689,13 @@ const EditionDetail: React.FC<{
                 )}
               </dd>
             </div>
-            {facts.map(([label, value]) => (
-              <div key={label}>
-                <dt className="text-[11px] uppercase text-zinc-500">{label}</dt>
-                <dd className={value ? 'text-zinc-100' : 'italic text-zinc-500'}>{value ?? 'Not known'}</dd>
+            {facts.map((item) => (
+              <div key={item.label}>
+                <dt className="text-[11px] uppercase text-zinc-500">{item.label}</dt>
+                <dd className={item.value ? 'text-zinc-100' : 'italic text-zinc-500'}>
+                  {item.value ?? 'Not known'}
+                  {item.fromSeries && <span className="ml-1 text-xs text-zinc-400">(from series)</span>}
+                </dd>
               </div>
             ))}
           </dl>
@@ -1514,6 +1769,7 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
   const [weekends, setWeekends] = useState<EditionWeekend[]>(() =>
     initialWeekends.map((w) => ({ weekend: w.weekend, startDate: w.startDate, ...(w.endDate ? { endDate: w.endDate } : {}) })),
   );
+  const [draftBadges, setDraftBadges] = useState<Record<number, string>>({});
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1523,6 +1779,29 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
   const [geminiChecking, setGeminiChecking] = useState(false);
   const [details, setDetails] = useState<EventDetails | null>(null);
   const [checkError, setCheckError] = useState<string | null>(null);
+
+  const seriesBrands = useMemo(
+    () => [...new Set(seriesList.map((s) => s.brand).filter((b): b is string => Boolean(b)))].sort(),
+    [seriesList],
+  );
+  const seriesPastPlaces = useMemo(() => buildPastPlaces(seriesList), [seriesList]);
+  const { setCityQuery, citySuggestions, mapOffer } = usePlaceAutofill({
+    city: values.city,
+    region: values.region,
+    country: values.country,
+    pastCities: seriesPastPlaces.cities,
+  });
+
+  const selectedSeries = seriesList.find((s) => s.slug === seriesSlug);
+  const effectiveSeriesKind = selectedSeries?.kind ?? (seriesSlug === edition.seriesSlug ? edition.seriesKind : undefined);
+  const effectiveSeriesCity = selectedSeries?.city ?? (seriesSlug === edition.seriesSlug ? edition.seriesCity : undefined);
+  const effectiveSeriesRegion = selectedSeries?.region ?? (seriesSlug === edition.seriesSlug ? edition.seriesRegion : undefined);
+  const effectiveSeriesCountry = selectedSeries?.country ?? (seriesSlug === edition.seriesSlug ? edition.seriesCountry : undefined);
+  const seriesPlaceLabel =
+    effectiveSeriesKind !== 'tour'
+      ? formatPlaceLabel({ city: effectiveSeriesCity, region: effectiveSeriesRegion, country: effectiveSeriesCountry })
+      : '';
+  const editionPlaceEmpty = !values.city?.trim() && !values.region?.trim() && !values.country?.trim();
 
   useEffect(() => {
     let alive = true;
@@ -1601,7 +1880,23 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
     ...(FACT_FIELDS.some((f) => (f.key as string) === 'country') ? [{ key: 'country' as const, label: 'Country' }] : []),
   ];
 
-  const suggestions: Suggestion[] = checkFields.flatMap(({ key: fieldKey, label }) => {
+  const appendNoteAttribution = (prev: string, attribution: string, sourceUrl?: string): string => {
+    if ((sourceUrl && prev.includes(sourceUrl)) || (attribution && prev.includes(attribution))) {
+      return prev;
+    }
+    return prev.trim() ? `${prev.trim()}; ${attribution}` : attribution;
+  };
+
+  const normalizedWeekends: EditionWeekend[] =
+    weekendsMode === 'multi'
+      ? weekends.map((w, i) => ({
+          weekend: i + 1,
+          startDate: w.startDate.trim(),
+          ...(w.endDate?.trim() ? { endDate: w.endDate.trim() } : {}),
+        }))
+      : [];
+
+  const fieldSuggestions: Suggestion[] = checkFields.flatMap(({ key: fieldKey, label }) => {
     if (!confirmed) return [];
     const v = confirmed[fieldKey as keyof DetailCandidate] as string | undefined;
     if (!v || !v.trim()) return [];
@@ -1620,24 +1915,55 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
       from,
       onUse: () => {
         setValues((prev) => ({ ...prev, [fieldKey]: v }));
-        setNote((prev) => {
-          if ((sourceUrl && prev.includes(sourceUrl)) || (attribution && prev.includes(attribution))) {
-            return prev;
-          }
-          return prev.trim() ? `${prev.trim()}; ${attribution}` : attribution;
-        });
+        setNote((prev) => appendNoteAttribution(prev, attribution, sourceUrl));
       },
     }];
   });
 
-  const normalizedWeekends: EditionWeekend[] =
-    weekendsMode === 'multi'
-      ? weekends.map((w, i) => ({
-          weekend: i + 1,
-          startDate: w.startDate.trim(),
-          ...(w.endDate?.trim() ? { endDate: w.endDate.trim() } : {}),
-        }))
-      : [];
+  const weekendSuggestion: Suggestion[] = (() => {
+    if (!confirmed?.weekends || confirmed.weekends.length < 2) return [];
+    const sameWeekends =
+      weekendsMode === 'multi' && serializeWeekends(normalizedWeekends) === serializeWeekends(confirmed.weekends);
+    if (sameWeekends) return [];
+    const src = confirmed.sources.find((s) => s.fields.includes('startDate')) ?? confirmed.sources[0];
+    const from = src ? (FIELD_SOURCE_LABELS[src.sourceType] ?? SOURCE_LABELS[src.sourceType] ?? src.sourceType) : 'a source';
+    const sourceUrl = src?.sourceUrl || confirmed.sources.find((s) => s.sourceUrl)?.sourceUrl;
+    const attribution = sourceUrl ? `${from} (${sourceUrl})` : from;
+    const yours =
+      weekendsMode === 'multi' && normalizedWeekends.length > 0
+        ? normalizedWeekends.map((w) => weekendLabel(w)).join(' · ')
+        : values.startDate?.trim()
+          ? (shortDateRange(values.startDate.trim(), values.endDate?.trim() || undefined) ?? values.startDate.trim())
+          : 'Not set';
+    const value = confirmed.weekends.map((w) => weekendLabel(w)).join(' · ');
+    return [{
+      key: 'weekends',
+      label: 'Weekends',
+      yours,
+      value,
+      from,
+      onUse: () => {
+        const nextWeekends = confirmed.weekends!.map((w) => ({
+          weekend: w.weekend,
+          startDate: w.startDate,
+          ...(w.endDate ? { endDate: w.endDate } : {}),
+        }));
+        const starts = nextWeekends.map((w) => w.startDate).filter(Boolean).sort();
+        const ends = nextWeekends.map((w) => w.endDate || w.startDate).filter(Boolean).sort();
+        setWeekendsMode('multi');
+        setWeekends(nextWeekends);
+        setDraftBadges({});
+        setValues((prev) => ({
+          ...prev,
+          ...(starts[0] ? { startDate: starts[0] } : {}),
+          ...(ends[ends.length - 1] ? { endDate: ends[ends.length - 1] } : {}),
+        }));
+        setNote((prev) => appendNoteAttribution(prev, attribution, sourceUrl));
+      },
+    }];
+  })();
+
+  const suggestions: Suggestion[] = [...fieldSuggestions, ...weekendSuggestion];
   const weekendsMissingStart = weekendsMode === 'multi' && (normalizedWeekends.length === 0 || normalizedWeekends.some((w) => !w.startDate));
   const seriesChanged = seriesSlug !== (edition.seriesSlug ?? '');
   const weekendsChanged = serializeWeekends(normalizedWeekends) !== serializeWeekends(initialWeekends);
@@ -1731,19 +2057,98 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
       />
       {checkError && <p role="alert" className="text-xs text-rose-300">{checkError}</p>}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {FACT_FIELDS.map((f) => (
-          <label key={f.key} className="space-y-1 text-xs text-zinc-400">
-            <span className="block text-[11px] uppercase text-zinc-500">{f.label}</span>
-            <input
-              type={f.type ?? 'text'}
-              aria-label={f.label}
-              className={`${field} w-full`}
-              placeholder={f.type ? undefined : 'Not known'}
-              value={values[f.key] ?? ''}
-              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-            />
-          </label>
-        ))}
+        {FACT_FIELDS.map((f) => {
+          if (f.key === 'city') {
+            return (
+              <label key={f.key} className="space-y-1 text-xs text-zinc-400">
+                <span className="block text-[11px] uppercase text-zinc-500">{f.label}</span>
+                <SuggestInput
+                  aria-label={f.label}
+                  className={`${field} w-full`}
+                  placeholder="Not known"
+                  value={values.city ?? ''}
+                  suggestions={citySuggestions}
+                  onChange={(e) => {
+                    setValues((v) => ({ ...v, city: e.target.value }));
+                    setCityQuery(e.target.value);
+                  }}
+                  onPick={(picked) => {
+                    const patch = cityPickPatch(picked, seriesPastPlaces.places, values.country);
+                    setValues((v) => ({
+                      ...v,
+                      city: patch.city ?? '',
+                      region: patch.region ?? '',
+                      ...(patch.country !== undefined ? { country: patch.country } : {}),
+                    }));
+                    setCityQuery(patch.city ?? '');
+                  }}
+                />
+              </label>
+            );
+          }
+          if (f.key === 'region') {
+            return (
+              <div key={f.key} className="space-y-1 text-xs text-zinc-400">
+                <label className="block space-y-1">
+                  <span className="block text-[11px] uppercase text-zinc-500">{f.label}</span>
+                  <input
+                    type="text"
+                    aria-label={f.label}
+                    className={`${field} w-full`}
+                    placeholder="Not known"
+                    value={values.region ?? ''}
+                    onChange={(e) => setValues((v) => ({ ...v, region: e.target.value }))}
+                  />
+                </label>
+                {mapOffer && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setValues((v) => ({
+                        ...v,
+                        ...(mapOffer.patch.city ? { city: mapOffer.patch.city } : {}),
+                        ...(mapOffer.patch.region ? { region: mapOffer.patch.region } : {}),
+                        ...(mapOffer.patch.country ? { country: mapOffer.patch.country } : {}),
+                      }))
+                    }
+                    className="block text-left text-xs text-violet-300 hover:underline"
+                  >
+                    Use “{mapOffer.value}” from {mapOffer.from}
+                  </button>
+                )}
+                {effectiveSeriesKind !== 'tour' && editionPlaceEmpty && seriesPlaceLabel && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setValues((v) => ({
+                        ...v,
+                        city: effectiveSeriesCity ?? '',
+                        region: effectiveSeriesRegion ?? '',
+                        country: effectiveSeriesCountry ?? '',
+                      }))
+                    }
+                    className="block text-left text-xs text-violet-300 hover:underline"
+                  >
+                    Use “{seriesPlaceLabel}” from series
+                  </button>
+                )}
+              </div>
+            );
+          }
+          return (
+            <label key={f.key} className="space-y-1 text-xs text-zinc-400">
+              <span className="block text-[11px] uppercase text-zinc-500">{f.label}</span>
+              <input
+                type={f.type ?? 'text'}
+                aria-label={f.label}
+                className={`${field} w-full`}
+                placeholder={f.type ? undefined : 'Not known'}
+                value={values[f.key] ?? ''}
+                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+              />
+            </label>
+          );
+        })}
       </div>
       <div className="space-y-2 rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1785,13 +2190,15 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
               onChange={(e) => setNewSeriesName(e.target.value)}
               className={field}
             />
-            <input
+            <SuggestInput
               type="text"
               aria-label="New series brand"
               placeholder="Brand (optional)"
               value={newSeriesBrand}
+              suggestions={seriesBrands}
               onChange={(e) => setNewSeriesBrand(e.target.value)}
-              className={field}
+              onPick={(b) => setNewSeriesBrand(b)}
+              className={`${field} w-full`}
             />
             <Button type="button" onClick={() => void createQuickSeries()} disabled={creatingSeries || !newSeriesName.trim()}>
               {creatingSeries ? 'Creating…' : 'Create & attach'}
@@ -1815,10 +2222,14 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
               onClick={() => {
                 setWeekendsMode('multi');
                 if (weekends.length === 0) {
-                  setWeekends([
-                    { weekend: 1, startDate: values.startDate ?? '', ...(values.endDate ? { endDate: values.endDate } : {}) },
-                    { weekend: 2, startDate: '' },
-                  ]);
+                  const seeded = seedMultiWeekends({
+                    name: values.name,
+                    startDate: values.startDate,
+                    endDate: values.endDate,
+                    confirmedWeekends: confirmed?.weekends,
+                  });
+                  setWeekends(seeded.weekends);
+                  setDraftBadges(seeded.draftBadges);
                 }
               }}
               className={`rounded-control border px-2 py-1 text-xs ${weekendsMode === 'multi' ? 'border-violet-400 bg-violet-500/20 text-violet-100' : 'border-zinc-700 text-zinc-300'}`}
@@ -1831,7 +2242,10 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
           <div className="space-y-2">
             {weekends.map((w, idx) => (
               <div key={idx} className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[auto_1fr_1fr_auto]">
-                <span className="text-xs font-semibold text-zinc-300 sm:pb-2">Weekend {idx + 1}</span>
+                <div className="flex flex-wrap items-center gap-1.5 sm:pb-2">
+                  <span className="text-xs font-semibold text-zinc-300">Weekend {idx + 1}</span>
+                  {draftBadges[w.weekend] && <Pill tone="warn">{draftBadges[w.weekend]}</Pill>}
+                </div>
                 <label className="space-y-1 text-xs text-zinc-400">
                   <span className="block text-[10px] uppercase text-zinc-500">Start date</span>
                   <input
@@ -1839,9 +2253,15 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
                     aria-label={`Weekend ${idx + 1} start date`}
                     className={`${field} w-full`}
                     value={w.startDate}
-                    onChange={(e) =>
-                      setWeekends((prev) => prev.map((item, j) => (j === idx ? { ...item, startDate: e.target.value } : item)))
-                    }
+                    onChange={(e) => {
+                      setWeekends((prev) => prev.map((item, j) => (j === idx ? { ...item, startDate: e.target.value } : item)));
+                      setDraftBadges((prev) => {
+                        if (!(w.weekend in prev)) return prev;
+                        const next = { ...prev };
+                        delete next[w.weekend];
+                        return next;
+                      });
+                    }}
                   />
                 </label>
                 <label className="space-y-1 text-xs text-zinc-400">
@@ -1851,17 +2271,30 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
                     aria-label={`Weekend ${idx + 1} end date`}
                     className={`${field} w-full`}
                     value={w.endDate ?? ''}
-                    onChange={(e) =>
-                      setWeekends((prev) => prev.map((item, j) => (j === idx ? { ...item, endDate: e.target.value || undefined } : item)))
-                    }
+                    onChange={(e) => {
+                      setWeekends((prev) => prev.map((item, j) => (j === idx ? { ...item, endDate: e.target.value || undefined } : item)));
+                      setDraftBadges((prev) => {
+                        if (!(w.weekend in prev)) return prev;
+                        const next = { ...prev };
+                        delete next[w.weekend];
+                        return next;
+                      });
+                    }}
                   />
                 </label>
                 {weekends.length > 1 && (
                   <button
                     type="button"
-                    onClick={() =>
-                      setWeekends((prev) => prev.filter((_, j) => j !== idx).map((item, k) => ({ ...item, weekend: k + 1 })))
-                    }
+                    onClick={() => {
+                      const nextBadges: Record<number, string> = {};
+                      weekends.forEach((item, j) => {
+                        if (j === idx) return;
+                        const newNum = j > idx ? j : j + 1;
+                        if (draftBadges[item.weekend]) nextBadges[newNum] = draftBadges[item.weekend];
+                      });
+                      setDraftBadges(nextBadges);
+                      setWeekends((prev) => prev.filter((_, j) => j !== idx).map((item, k) => ({ ...item, weekend: k + 1 })));
+                    }}
                     className="text-xs text-rose-300 hover:underline sm:pb-2"
                   >
                     Remove
