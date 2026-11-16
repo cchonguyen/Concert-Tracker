@@ -9,7 +9,7 @@ import { matchingEvents } from '../lineup/adapters/ticketmaster';
 import { clashfinderAuthQuery, matchEdition, parseEventList } from '../lineup/adapters/clashfinder';
 import { cityLabel, placeFromPage } from './place';
 import { cityWithRegion, splitEventCity } from './regions';
-import type { Edition } from '../lineup/types';
+import type { Edition, EditionWeekend } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
 import { seriesSlugFor } from '../lineup/text';
 import { editionCoversDate, matchEdition as matchCatalog, upsertOccurrence } from '../canon/match';
@@ -35,6 +35,9 @@ export interface DetailQuery {
   endDate?: string;
   venue?: string;
   city?: string;
+  // Canonical edition research may already hold Weekend 1's startDate while
+  // looking up additional weekends in the same year.
+  fullYearWindow?: boolean;
 }
 
 export interface DetailFinder {
@@ -45,10 +48,19 @@ export interface DetailFinder {
 }
 
 const MAX_CANDIDATES = 5;
+const DAY_MS = 86_400_000;
+const WEEKEND_MENTION_RE = /\b(?:weekends?|wknds?|w[1-9])\b/i;
+const WEEKEND_TOKEN_EXTRACT_RE = /\b(?:weekend|wknd)\s*([1-9])\b|\bw([1-9])\b/i;
+const WEEKEND_TOKEN_STRIP_RE = /\b(?:weekends?|wknds?)\s*[1-9]?\b|\bw[1-9]\b/gi;
+const WEEKEND_SUFFIX_STRIP_RE = /[\s\-–—·:,]*(?:\b(?:weekends?|wknds?)\s*[1-9]\b|\bw[1-9]\b)\s*$/i;
+
+function dayDiff(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS);
+}
 
 export function searchWindow(q: DetailQuery): { from: string; to: string } {
   if (!q.year && !q.startDate) return { from: '1950-01-01', to: '2100-12-31' };
-  if (q.startDate) return { from: addDays(q.startDate, -1), to: addDays(q.endDate ?? q.startDate, 1) };
+  if (q.startDate && !(q.fullYearWindow && q.year)) return { from: addDays(q.startDate, -1), to: addDays(q.endDate ?? q.startDate, 1) };
   if (q.month && q.year) {
     const mm = String(q.month).padStart(2, '0');
     const last = new Date(Date.UTC(q.year, q.month, 0)).getUTCDate();
@@ -102,20 +114,47 @@ export const ticketmasterFinder: DetailFinder = {
       groups.set(key, [...(groups.get(key) ?? []), e]);
     }
     return [...groups.values()].map((events) => {
-      const dates = events.map((e) => e.dates?.start?.localDate).filter(Boolean).sort();
+      const uniqueDates = [...new Set(events.map((e) => e.dates?.start?.localDate).filter((d): d is string => Boolean(d)))].sort();
+      const runs: Array<{ start: string; end: string }> = [];
+      for (const d of uniqueDates) {
+        const last = runs[runs.length - 1];
+        if (!last || dayDiff(last.end, d) >= 4) {
+          runs.push({ start: d, end: d });
+        } else {
+          last.end = d;
+        }
+      }
+      const hasReasonableRuns =
+        runs.length >= 2 &&
+        runs.length <= 9 &&
+        runs.every((r, i) => i === 0 || dayDiff(runs[i - 1].end, r.start) <= 21);
+      const weekends: EditionWeekend[] | undefined = hasReasonableRuns
+        ? runs.map((r, i) => ({
+            weekend: i + 1,
+            startDate: r.start,
+            ...(r.end !== r.start ? { endDate: r.end } : {}),
+          }))
+        : undefined;
+      const startDate = runs[0]?.start;
+      const lastEnd = runs[runs.length - 1]?.end;
+      const endDate = startDate && lastEnd && lastEnd !== startDate ? lastEnd : undefined;
       const v = events[0]._embedded?.venues?.[0];
       const url = events[0].url ?? `https://www.ticketmaster.com/event/${events[0].id}`;
       const names = [...new Set<string>(events.flatMap((e) => (e._embedded?.attractions ?? []).map((a: any) => String(a.name ?? '').trim())))];
       const c = candidate('ticketmaster', url, {
         name: events[0].name,
-        startDate: dates[0],
-        endDate: dates.length > 1 && dates[dates.length - 1] !== dates[0] ? dates[dates.length - 1] : undefined,
+        startDate,
+        endDate,
         venue: v?.name,
         city: cityLabel(v?.city?.name, v?.state?.stateCode, v?.country?.countryCode),
         country: v?.country?.name,
       });
       const performers = names.filter(Boolean).map((name) => ({ name, sourceType: 'ticketmaster' as const, sourceUrl: url }));
-      return performers.length ? { ...c, performers } : c;
+      return {
+        ...c,
+        ...(weekends ? { weekends } : {}),
+        ...(performers.length ? { performers } : {}),
+      };
     });
   },
 };
@@ -211,6 +250,34 @@ export async function braveResults(q: DetailQuery, fetcher: Fetcher): Promise<Ar
   return out;
 }
 
+function braveWeekendsFromHits(
+  text: string,
+  hits: Array<{ startDate: string; endDate?: string; quote: string }>,
+): EditionWeekend[] | undefined {
+  if (hits.length < 2 || hits.length > 9) return undefined;
+  const sorted = [...hits].sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const gaps: number[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const prevEnd = sorted[i - 1].endDate ?? sorted[i - 1].startDate;
+    if (prevEnd >= sorted[i].startDate) return undefined;
+    const gap = dayDiff(prevEnd, sorted[i].startDate);
+    if (gap < 4 || gap > 21) return undefined;
+    gaps.push(gap);
+  }
+  const mentionsWeekend = WEEKEND_MENTION_RE.test(text);
+  const twoOrThreeWeekendRuns =
+    sorted.length >= 2 &&
+    sorted.length <= 3 &&
+    sorted.every((d) => dayDiff(d.startDate, d.endDate ?? d.startDate) <= 3) &&
+    gaps.every((g) => g >= 4 && g <= 14);
+  if (!mentionsWeekend && !twoOrThreeWeekendRuns) return undefined;
+  return sorted.map((d, i) => ({
+    weekend: i + 1,
+    startDate: d.startDate,
+    ...(d.endDate && d.endDate !== d.startDate ? { endDate: d.endDate } : {}),
+  }));
+}
+
 export const braveFinder: DetailFinder = {
   id: 'discovered',
   enabled: () => Boolean(process.env.BRAVE_SEARCH_API_KEY),
@@ -221,11 +288,18 @@ export const braveFinder: DetailFinder = {
     for (const r of await braveResults(q, fetcher)) {
       const text = r.text;
       const seen = new Set<string>();
+      const hits: Array<{ startDate: string; endDate?: string; quote: string }> = [];
       for (const d of findDates(text)) {
         if (!inWindow(d.startDate, w) || seen.has(d.startDate)) continue;
         seen.add(d.startDate);
+        hits.push(d);
+      }
+      const weekends = braveWeekendsFromHits(text, hits);
+      const firstWeekendStart = weekends?.[0]?.startDate;
+      for (const d of hits) {
         const c = candidate('discovered', r.url, { startDate: d.startDate, endDate: d.endDate });
         c.sources[0].quote = d.quote;
+        if (weekends && d.startDate === firstWeekendStart) c.weekends = weekends;
         out.push(c);
       }
     }
@@ -244,12 +318,217 @@ export function mergeCandidates(all: DetailCandidate[]): DetailCandidate[] {
   for (const c of all) {
     const same = c.startDate ? out.find((o) => o.startDate === c.startDate) : undefined;
     if (!same) {
-      out.push({ ...c, sources: [...c.sources] });
+      out.push({ ...c, sources: [...c.sources], ...(c.weekends?.length ? { weekends: [...c.weekends] } : {}) });
       continue;
     }
     for (const f of ['name', ...EVENT_FIELDS] as const) if (!same[f] && c[f]) same[f] = c[f];
+    if (c.weekends?.length) same.weekends = [...c.weekends];
     same.sources.push(...c.sources);
     if (c.performers?.length) same.performers = [...(same.performers ?? []), ...c.performers];
+  }
+  return out;
+}
+
+function baseEventWords(name?: string): string[] {
+  if (!name) return [];
+  const cleaned = name.replace(/\b(19|20)\d{2}\b/g, ' ').replace(WEEKEND_TOKEN_STRIP_RE, ' ');
+  return normalizeName(cleaned).split(' ').filter(Boolean);
+}
+
+function compatibleEventNames(a?: string, b?: string, editionName?: string): boolean {
+  if (a && b) {
+    const wa = baseEventWords(a);
+    const wb = baseEventWords(b);
+    if (!wa.length || !wb.length) return false;
+    if (wa.join(' ') === wb.join(' ')) return true;
+    const setA = new Set(wa);
+    const setB = new Set(wb);
+    return wa.every((w) => setB.has(w)) || wb.every((w) => setA.has(w));
+  }
+  const single = a ?? b;
+  if (!single || !editionName) return true;
+  const ws = baseEventWords(single);
+  const we = baseEventWords(editionName);
+  if (!ws.length || !we.length) return true;
+  const setS = new Set(ws);
+  const setE = new Set(we);
+  return ws.every((w) => setE.has(w)) || we.every((w) => setS.has(w));
+}
+
+function hasWeekendSignal(c: DetailCandidate): boolean {
+  return WEEKEND_MENTION_RE.test(c.name ?? '') || c.sources.some((s) => WEEKEND_MENTION_RE.test(s.quote ?? ''));
+}
+
+function explicitWeekendIndex(c: DetailCandidate): number | undefined {
+  const fromName = c.name?.match(WEEKEND_TOKEN_EXTRACT_RE);
+  if (fromName) return Number(fromName[1] ?? fromName[2]);
+  for (const s of c.sources) {
+    const m = s.quote?.match(WEEKEND_TOKEN_EXTRACT_RE);
+    if (m) return Number(m[1] ?? m[2]);
+  }
+  return undefined;
+}
+
+function shareSource(a: DetailCandidate, b: DetailCandidate): boolean {
+  return a.sources.some((sa) =>
+    b.sources.some(
+      (sb) =>
+        (Boolean(sa.sourceUrl) && sa.sourceUrl === sb.sourceUrl) ||
+        (sa.sourceType !== 'discovered' && sa.sourceType === sb.sourceType),
+    ),
+  );
+}
+
+function mergeCandidateSources(sources: DetailCandidate['sources']): DetailCandidate['sources'] {
+  const out: DetailCandidate['sources'] = [];
+  for (const s of sources) {
+    const existing = s.sourceUrl
+      ? out.find((o) => o.sourceType === s.sourceType && o.sourceUrl === s.sourceUrl && o.readBy === s.readBy)
+      : undefined;
+    if (!existing) {
+      out.push({ ...s, fields: [...s.fields] });
+      continue;
+    }
+    for (const f of s.fields) if (!existing.fields.includes(f)) existing.fields.push(f);
+    if (s.quote) {
+      if (!existing.quote) existing.quote = s.quote;
+      else if (!existing.quote.includes(s.quote)) existing.quote = `${existing.quote} … ${s.quote}`;
+    }
+  }
+  return out;
+}
+
+function cleanGroupName(members: DetailCandidate[]): string | undefined {
+  const primary = [...members].sort((a, b) => b.sources.length - a.sources.length)[0];
+  const raw = primary?.name ?? members.find((m) => m.name)?.name;
+  if (!raw) return undefined;
+  const distinctNames = new Set(members.map((m) => m.name).filter(Boolean));
+  if (distinctNames.size > 1) {
+    const stripped = raw.replace(WEEKEND_SUFFIX_STRIP_RE, '').trim();
+    if (stripped) return stripped;
+  }
+  return raw;
+}
+
+function mergeWeekendGroup(members: DetailCandidate[], weekends: EditionWeekend[]): DetailCandidate {
+  const primary = [...members].sort((a, b) => b.sources.length - a.sources.length)[0];
+  const sortedWeekends = [...weekends].sort((a, b) => a.weekend - b.weekend);
+  const startDate = sortedWeekends.reduce((m, w) => (w.startDate < m ? w.startDate : m), sortedWeekends[0].startDate);
+  const maxEnd = sortedWeekends.reduce((m, w) => {
+    const end = w.endDate ?? w.startDate;
+    return end > m ? end : m;
+  }, startDate);
+  const endDate = maxEnd !== startDate ? maxEnd : undefined;
+  const name = cleanGroupName(members);
+  const ordered = [primary, ...members.filter((m) => m !== primary)];
+  const pick = (f: 'venue' | 'city' | 'region' | 'country') => ordered.find((m) => m[f])?.[f];
+  const venue = pick('venue');
+  const city = pick('city');
+  const region = pick('region');
+  const country = pick('country');
+  const seenPerf = new Set<string>();
+  const performers: NonNullable<DetailCandidate['performers']> = [];
+  for (const m of ordered) {
+    for (const p of m.performers ?? []) {
+      const k = `${normalizeName(p.name)}|${p.sourceType}|${p.sourceUrl}`;
+      if (seenPerf.has(k)) continue;
+      seenPerf.add(k);
+      performers.push(p);
+    }
+  }
+  return {
+    ...primary,
+    ...(name ? { name } : {}),
+    startDate,
+    ...(endDate ? { endDate } : {}),
+    weekends: sortedWeekends,
+    ...(venue ? { venue } : {}),
+    ...(city ? { city } : {}),
+    ...(region ? { region } : {}),
+    ...(country ? { country } : {}),
+    ...(performers.length ? { performers } : {}),
+    sources: mergeCandidateSources(ordered.flatMap((m) => m.sources)),
+  };
+}
+
+// Groups separate weekend candidates belonging to the same multi-weekend edition
+// into one candidate carrying `weekends` and the full date span.
+export function groupWeekendCandidates(candidates: DetailCandidate[], eventName?: string): DetailCandidate[] {
+  const used = new Set<number>();
+  const out: DetailCandidate[] = [];
+
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i];
+    if (!c.weekends || c.weekends.length < 2) continue;
+    used.add(i);
+    const members = [c];
+    for (let j = 0; j < candidates.length; j++) {
+      if (used.has(j)) continue;
+      const other = candidates[j];
+      if (other.weekends?.length || !other.startDate) continue;
+      if (!c.weekends.some((w) => w.startDate === other.startDate)) continue;
+      if (!compatibleEventNames(c.name, other.name, eventName)) continue;
+      if (!shareSource(c, other) && !hasWeekendSignal(c) && !hasWeekendSignal(other)) continue;
+      used.add(j);
+      members.push(other);
+    }
+    out.push(mergeWeekendGroup(members, c.weekends));
+  }
+
+  const eligibleIndices = candidates
+    .map((c, idx) => ({ c, idx }))
+    .filter(({ c, idx }) => !used.has(idx) && Boolean(c.startDate) && dayDiff(c.startDate!, c.endDate ?? c.startDate!) <= 3)
+    .sort((a, b) => a.c.startDate!.localeCompare(b.c.startDate!) || (a.c.endDate ?? a.c.startDate!).localeCompare(b.c.endDate ?? b.c.startDate!))
+    .map(({ idx }) => idx);
+
+  for (const headIdx of eligibleIndices) {
+    if (used.has(headIdx)) continue;
+    const head = candidates[headIdx];
+    const chain = [headIdx];
+    let prevEnd = head.endDate ?? head.startDate!;
+    for (const idx of eligibleIndices) {
+      if (idx === headIdx || used.has(idx)) continue;
+      if (chain.length >= 9) break;
+      const curr = candidates[idx];
+      if (!compatibleEventNames(head.name, curr.name, eventName)) continue;
+      if (prevEnd >= curr.startDate!) continue;
+      const gap = dayDiff(prevEnd, curr.startDate!);
+      if (gap < 4 || gap > 21) continue;
+      if (!shareSource(head, curr) && !hasWeekendSignal(head) && !hasWeekendSignal(curr)) continue;
+      chain.push(idx);
+      prevEnd = curr.endDate ?? curr.startDate!;
+    }
+    if (chain.length < 2) continue;
+    const members = chain.map((idx) => candidates[idx]);
+    const validGroup = members.some((m) => hasWeekendSignal(m)) || members.every((m, k) => k === 0 || shareSource(members[0], m));
+    if (!validGroup) continue;
+    for (const idx of chain) used.add(idx);
+
+    const explicitNums = members.map((m) => explicitWeekendIndex(m));
+    const definedExplicit = explicitNums.filter((n): n is number => n !== undefined);
+    const hasCollision = new Set(definedExplicit).size !== definedExplicit.length;
+    const usedNums = new Set<number>(hasCollision ? [] : definedExplicit);
+    let nextSeq = 1;
+    const weekends: EditionWeekend[] = members.map((m, k) => {
+      let wNum: number;
+      if (!hasCollision && explicitNums[k] !== undefined) {
+        wNum = explicitNums[k]!;
+      } else {
+        while (usedNums.has(nextSeq)) nextSeq++;
+        wNum = nextSeq++;
+        usedNums.add(wNum);
+      }
+      return {
+        weekend: wNum,
+        startDate: m.startDate!,
+        ...(m.endDate && m.endDate !== m.startDate ? { endDate: m.endDate } : {}),
+      };
+    });
+    out.push(mergeWeekendGroup(members, weekends));
+  }
+
+  for (let i = 0; i < candidates.length; i++) {
+    if (!used.has(i)) out.push(candidates[i]);
   }
   return out;
 }
@@ -675,6 +954,7 @@ export async function researchEditionFacts(
     endDate: input.endDate ?? undefined,
     venue: input.venue ?? undefined,
     city: input.city ?? undefined,
+    ...(year ? { fullYearWindow: true } : {}),
   };
 
   const found: DetailCandidate[] = [];
@@ -700,22 +980,25 @@ export async function researchEditionFacts(
   const merged = mergeCandidates(found).sort(
     (a, b) => b.sources.length - a.sources.length || (a.startDate ?? '9999').localeCompare(b.startDate ?? '9999'),
   );
+  const grouped = groupWeekendCandidates(merged, name).sort(
+    (a, b) => b.sources.length - a.sources.length || (a.startDate ?? '9999').localeCompare(b.startDate ?? '9999'),
+  );
 
-  if (!merged.length) {
+  if (!grouped.length) {
     return year
       ? { status: 'none', candidates: [], notes, checkedAt }
       : { status: 'needs_date', candidates: [], notes: [...notes, 'No dates found; add when it was (a year is enough).'], checkedAt };
   }
 
   if (input.startDate) {
-    const hits = merged.filter((c) => covers(c, input.startDate!));
+    const hits = grouped.filter((c) => covers(c, input.startDate!));
     if (hits.length === 1 || (hits.length > 1 && hits[0].sources.length > hits[1].sources.length)) {
       await addPlaces([hits[0]], name, fetcher);
       return { status: 'matched', candidates: [hits[0]], notes, checkedAt };
     }
   }
 
-  const shown = merged.slice(0, MAX_CANDIDATES);
+  const shown = grouped.slice(0, MAX_CANDIDATES);
   await addPlaces(shown, name, fetcher);
   return { status: 'choose', candidates: shown, notes, checkedAt };
 }

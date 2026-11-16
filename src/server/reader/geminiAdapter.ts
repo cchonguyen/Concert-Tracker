@@ -69,14 +69,20 @@ export function createGeminiReader(client: GeminiGenerator, thinkingLevel: Think
         { contents: buildDetailsContents(eventName, year, text, windowChars), systemInstruction: DETAILS_SYSTEM, schema: DETAILS_SCHEMA, maxOutputTokens },
         (p) => {
           if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
-          const out: Record<string, string> = {};
+          const record = p as Record<string, unknown>;
+          const out: ExtractedDetails = {};
           for (const k of DETAIL_FIELDS) {
-            const v = (p as Record<string, unknown>)[k];
+            const v = record[k];
             if (v === undefined || v === null) continue;
             if (typeof v !== 'string') return null;
             out[k] = v;
           }
-          return out as ExtractedDetails;
+          const wq = record.weekendQuotes;
+          if (wq !== undefined && wq !== null) {
+            if (!Array.isArray(wq) || wq.some((item) => typeof item !== 'string')) return null;
+            out.weekendQuotes = wq;
+          }
+          return out;
         },
       );
     },
