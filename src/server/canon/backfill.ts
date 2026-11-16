@@ -17,14 +17,14 @@
 //
 // Worker subrequests (the cron's budget is SUBREQUEST_LIMIT, 50 by default, shared with the rest of the cron):
 //   fixed per run: 1 (cursor read) when complete; otherwise cursor read + listEvents + listImports + listEditionHeaders
-//     (or listEditions) + cursor write = about 13.
+//     + ownerUserId + margin = 6 (plus cursor write = 1).
 //   per item: ITEM_COST = 20 at worst (venue alias lookup 2, upsertVenue 3, edition key check 2, getEdition on a
 //     miss 1, upsertEdition about 5, change record 1, merge-suggestion check and write 2). Edition headers are listed
 //     once per run and kept in step with our own writes (cachedEditions), so matching does not list them per item.
-//   worst case, no budget: 13 + 20 * 20 = 413 subrequests. Under the default budget the run does as many items
-//     as the budget allows, floor((budget left - fixed - cursor write) / 20), so about 1 item a run at the default 50
-//     and the full 20 only when SUBREQUEST_LIMIT is at least about 420. An item cut off by the budget is not marked
-//     done and is retried on a later run.
+//   worst case, no budget: 6 + 1 + 20 * 20 = 407 subrequests. Under the default budget the run does as many items
+//     as the budget allows, floor((budget left - fixed - cursor write) / 20), needing 6 + 1 + 20 = 27 minimum
+//     budgetLeft for 1 item under the 50-subrequest Worker budget, and the full 20 only when SUBREQUEST_LIMIT is
+//     at least about 407. An item cut off by the budget is not marked done and is retried on a later run.
 import type { Edition, EditionHeader } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
 import { EditionOccurrenceConflictError } from '../lineup/store/types';
@@ -40,7 +40,7 @@ export const BACKFILL_BATCH_SIZE = 20;
 export const BACKFILL_SETTING = 'canon_backfill';
 const ACTOR = 'system:canon-backfill';
 const ITEM_COST = 20;
-const FIXED_COST = 16;
+const FIXED_COST = 6;
 const CURSOR_WRITE_COST = 1;
 const FULL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
