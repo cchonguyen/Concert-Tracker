@@ -1,6 +1,6 @@
 # Global Archive: Series, Multi-Weekend Editions & Egress Optimization
 
-Approved design specification (2026-11-15; see `DECISIONS.md` ADR-005 and `.spec/SYSTEM_SPEC.md` section 3).
+Approved design specification (2026-11-15; see `DECISIONS.md` ADR-005, ADR-006, and `.spec/SYSTEM_SPEC.md` section 3).
 
 ---
 
@@ -24,7 +24,8 @@ Brand (optional grouping text on series, e.g. "Insomniac" or "Coachella")
 - **`event_series`**:
   - `slug` (`text` primary key)
   - `name` (`text not null`)
-  - `brand` (`text null`) — optional parent brand/promoter label
+  - `kind` (`text not null default 'festival' check (kind in ('festival', 'tour'))`)
+  - `brand` (`text null`) — optional parent brand/promoter label (location-agnostic)
   - `aliases` (`text[] not null default '{}'`) — alternate names/abbreviations matched during suggestions and disambiguation
   - `city` (`text null`), `region` (`text null`), `country` (`text null`)
   - `created_at`, `updated_at`
@@ -33,9 +34,19 @@ Brand (optional grouping text on series, e.g. "Insomniac" or "Coachella")
   - `region` (`text null`) — state or province alongside `city` and `country`
   - `weekends` (`jsonb null default '[]'::jsonb`) — array of `EditionWeekend` entries for multi-weekend festivals/runs
 
+### Festival vs. Tour Series Semantics
+- **Festival Series (`kind = 'festival'`):**
+  - Holds home `city`, `region`, and `country` at whichever granularity applies (e.g., `Las Vegas, NV, US`, or regional `CA, US` with `city: null`).
+  - **Read-Time Place Resolution (`Edition ?? Series`):** missing `city`, `region`, or `country` on attached `event_editions` resolve on read from the Series (`edition.city ?? series.city`). Edition values always win when set (supporting year-to-year venue/city moves within a region like SoCal).
+- **Tour Series (`kind = 'tour'`):**
+  - Location-agnostic (`city`, `region`, and `country` are always `null` and disabled in Series UI and API).
+  - Individual tour stops carry their own `venue`, `city`, `region`, `country`, and dates on `event_editions`.
+
 ### Core TypeScript Contracts
 
 ```typescript
+export type SeriesKind = 'festival' | 'tour';
+
 export interface EditionWeekend {
   weekendNumber: number; // 1-based index (e.g. 1 for Weekend 1)
   name?: string;         // Optional label, e.g. "Weekend 1" or "Spring Edition"
@@ -49,6 +60,7 @@ export interface EditionHeader {
   id: string;
   title: string;
   seriesSlug?: string | null;
+  seriesKind?: SeriesKind | null;
   brand?: string | null;
   editionType?: 'festival' | 'concert' | 'tour';
   startDate?: string | null;
@@ -65,6 +77,7 @@ export interface EditionHeader {
 export interface SeriesSummary {
   slug: string;
   name: string;
+  kind: SeriesKind;
   brand?: string | null;
   aliases?: string[];
   city?: string | null;
@@ -80,10 +93,26 @@ export interface SeriesSummary {
 
 ### Canonical Series Management
 Mounted under `/api/manage/canonical/series*`:
-- **Create** (`POST /api/manage/canonical/series`): create a canonical `event_series` record with `name`, optional `brand`, `aliases`, `city`, `region`, and `country`.
-- **Edit** (`PATCH /api/manage/canonical/series/:slug`): update `name`, `brand`, `aliases`, and place fields on the canonical series.
+- **Create** (`POST /api/manage/canonical/series`): create a canonical `event_series` record with `name`, `kind` (`'festival' | 'tour'`, default `'festival'`), optional `brand`, `aliases`, `city`, `region`, and `country` (place fields are disabled/omitted for tours).
+- **Edit** (`PATCH /api/manage/canonical/series/:slug`): update `name`, `kind`, `brand`, `aliases`, and place fields on the canonical series. Switching a series to `kind = 'tour'` clears stored place fields.
 - **Merge** (`POST /api/manage/canonical/series/:slug/merge` via `merge_canonical_series`): merge a source series into a target series, re-pointing all attached `event_editions.series_slug` to the target and absorbing the source's name and aliases into the target's `aliases`.
 - **Attach / Detach on Editions**: assign `event_editions.series_slug` to link an edition to a series, or set it to `null` to detach a standalone edition without deleting the series.
+
+### Global Archive Place Autofill
+- Forms for `ArchiveSeries` (`+ New series`), `SeriesDetail` (`Edit series`, active when `kind === 'festival'`), and `EditionFactsForm` (`Edit edition`) share `EventDetail`-style `SuggestInput`:
+  - `Brand` suggests existing brands.
+  - `City` suggests from `/api/places/cities` (Open-Meteo geocoding) alongside existing catalog cities.
+  - `/api/places/guess` provides 1-tap `"Use ... from the map"` (`placePatch`) offers to fill missing region and country without overwriting typed fields.
+- `SeriesDetail` additionally offers a 1-tap `"Use ... from attached editions"` suggestion when the series's own place fields are empty and all attached editions agree on location.
+
+### Edition Multi-Weekend Research & Draft Seed
+- **Research Extraction (`researchEditionFacts` in `details.ts` & `detailsGemini.ts`):**
+  - Preserves and extracts distinct `Weekend 1` and `Weekend 2` date spans from Ticketmaster (identifying non-contiguous weekend runs grouped under the same event), Brave/web search results, and quoted Gemini page extraction (`details@2` schema).
+  - Surfaces a 1-tap `"Use Weekend 1 & Weekend 2 dates"` offer in `CheckDetails` and `EditionFactsForm`.
+- **Draft Sibling Seed (`EditionFactsForm`):**
+  - When the owner toggles `Multiple weekends` on an edition with existing `startDate..endDate`, code detects whether the existing dates correspond to Weekend 1 or Weekend 2 (e.g. finding a `"Weekend 2"` marker in name or notes, or analyzing date offsets).
+  - The detected weekend is placed into its respective slot (W1 or W2), and the sibling weekend is pre-filled at `±7 days` as a clearly marked draft: `"Draft (-7d) — confirm"` or `"Draft (+7d) — confirm"`.
+  - Saving requires the owner to confirm dates and provide an explicit `Source note`. Draft weekends are never auto-saved and are never synthesized during capture or background ingest.
 
 ### Canonical Edition Merging (`mergeCanonicalEditions`)
 Mounted at `POST /api/manage/canonical/editions/:id/merge`:
@@ -121,9 +150,17 @@ When the user submits the capture line by pressing Enter without tapping a dropd
 ### Inheritance & Personal Overrides
 When an event links to a canonical edition:
 - Pre-fills **`series`** (from the attached `event_series.name`, when `series_slug` is set), **`region`** / `country`, **`venue`**, **`city`**, and **`weekends`**:
+  - Location fields inherit from the edition; if the edition lacks `city`, `region`, or `country`, values resolve from the attached festival series (`Edition ?? Series`).
   - Single-weekend edition (or multi-weekend with a weekend token typed/picked): populates that weekend's `startDate` and `endDate` (sourced `{ sourceType: 'edition', editionId }`).
   - Multi-weekend edition with no weekend chosen yet: leaves `startDate`/`endDate` empty so dates are never guessed.
 - **Personal overrides stay local**: editing `series`, dates, or any field on `logged_events` overrides only your personal log entry and never mutates `event_series` or `event_editions`.
+
+### Automatic Type (`Festival` / `Concert`) Inheritance (`scale.ts`)
+- `logged_events.kind` strictly stores only the user's explicit choice (`'concert'`, `'festival'`, or `null` for automatic calculation).
+- `resolveEvent` passes the linked series's `kind` (`festival` -> `'festival'`, `tour` -> `'concert'`) as a read-only `seriesKind` signal into `eventScale()`.
+- `seriesKind` is loaded via the existing `event_series` join in `EDITION_HEADER_COLUMNS` / `EDITION_SELECT_WITH_SERIES` (zero extra DB queries).
+- Precedence in `eventScale()`:
+  $$\text{User choice } (e.kind) > \text{Series kind } (e.seriesKind) > \text{Day / Act / Clashfinder rules}$$
 
 ### Event Detail `"Which weekend did you go?"` Soft-Prompt
 - When a linked event points to a multi-weekend canonical edition and has no `weekend` (or unresolved dates), Event Detail displays a non-blocking soft-prompt: **`"Which weekend did you go?"`** listing each `EditionWeekend` as a 1-tap choice (which sets `weekend` and fills that weekend's `startDate`/`endDate`).

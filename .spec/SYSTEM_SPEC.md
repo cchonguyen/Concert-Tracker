@@ -158,15 +158,17 @@ Design system export:
 - No "I saw everyone" button (Charlie, 2026-11-11): each seen act is its own tap, so people curate who they actually saw. A bulk tick is on the Do NOT Build list.
 - No suggestions and no writes in sample mode. No writes to `event_editions` or `performances`.
 
-**Global Archive Series, Multi-Weekend & Egress Optimization Contracts** (2026-11-15; see DECISIONS.md ADR-005)
+**Global Archive Series, Multi-Weekend & Egress Optimization Contracts** (2026-11-15; see DECISIONS.md ADR-005, ADR-006)
 
 - **Nullable Series Slug:** `event_editions.series_slug` is nullable (`text null references event_series(slug) on delete set null`). Standalone concerts do not generate stub series entries. `seriesSlug` in TypeScript types (`EventEdition`, `EditionHeader`, `NewEditionInput`) is `string | null | undefined`.
 - **Hierarchy Data Models:**
   - `Brand -> Series -> Edition -> Event/Weekend`:
-    - `event_series`: `slug` (PK), `name`, `brand` (text null), `aliases` (text[]), `city`, `region`, `country`, `created_at`, `updated_at`.
+    - `event_series`: `slug` (PK), `name`, `kind` (`'festival' | 'tour'` not null default `'festival'`), `brand` (text null), `aliases` (text[]), `city`, `region`, `country`, `created_at`, `updated_at`.
     - `event_editions`: add `weekends jsonb null default '[]'::jsonb`, `region text null`.
   - `EditionWeekend`:
     ```typescript
+    export type SeriesKind = 'festival' | 'tour';
+
     export interface EditionWeekend {
       weekendNumber: number; // 1-based index (e.g. 1 for Weekend 1)
       name?: string; // Optional label, e.g. "Weekend 1" or "Spring Edition"
@@ -182,6 +184,7 @@ Design system export:
       id: string;
       title: string;
       seriesSlug?: string | null;
+      seriesKind?: SeriesKind | null;
       brand?: string | null;
       editionType?: 'festival' | 'concert' | 'tour';
       startDate?: string | null;
@@ -200,6 +203,7 @@ Design system export:
     export interface SeriesSummary {
       slug: string;
       name: string;
+      kind: SeriesKind;
       brand?: string | null;
       aliases?: string[];
       city?: string | null;
@@ -208,6 +212,20 @@ Design system export:
       editionCount: number;
     }
     ```
+- **Festival vs. Tour Series Semantics & Place Resolution:**
+  - **Festival Series (`kind = 'festival'`):** holds home `city`, `region`, `country` at whatever granularity applies (e.g. `Las Vegas, NV, US` or regional `CA, US` with `city: null`). Missing `city`/`region`/`country` on attached editions resolve on read from the series (`Edition ?? Series`); edition-level values always take precedence when set.
+  - **Tour Series (`kind = 'tour'`):** location-agnostic (`city`, `region`, `country` are always `null` and disabled in UI/API). Individual tour stops carry their own `venue`, `city`, `region`, `country`, and dates on `event_editions`.
+- **Automatic Type (`Festival` / `Concert`) Inheritance:**
+  - `logged_events.kind` strictly stores only explicit user choice (`'concert'`, `'festival'`, or `null` for automatic calculation).
+  - `resolveEvent` passes the linked series's `kind` (`festival` -> `'festival'`, `tour` -> `'concert'`) as a read-only `seriesKind` signal into `eventScale()`.
+  - Loaded via the existing `event_series` join in `EDITION_HEADER_COLUMNS` / `EDITION_SELECT_WITH_SERIES` (zero extra DB queries).
+  - Precedence in `eventScale()`: `User choice (e.kind) > Series kind (e.seriesKind) > Day/Act/Clashfinder rules`.
+- **Global Archive Place Autofill:**
+  - `ArchiveSeries` (`+ New series`), `SeriesDetail` (`Edit series`, when `kind === 'festival'`), and `EditionFactsForm` (`Edit edition`) share `EventDetail`-style `SuggestInput` (`Brand`, `City` via `/api/places/cities` + existing places) and `/api/places/guess` 1-tap `"Use ... from the map"` (`placePatch`) offers.
+  - `SeriesDetail` offers 1-tap `"Use ... from attached editions"` when the series place is empty and attached editions agree.
+- **Edition Multi-Weekend Research & Draft Sibling Seed:**
+  - `researchEditionFacts` (`details.ts` & `detailsGemini.ts`) extracts and preserves `Weekend 1` & `Weekend 2` date spans from Ticketmaster (non-contiguous runs), web results, and quoted Gemini page extraction (`details@2`), offering 1-tap `"Use Weekend 1 & Weekend 2 dates"` in Check details and `EditionFactsForm`.
+  - In `EditionFactsForm`, toggling `Multiple weekends` detects whether existing dates belong to W1 or W2, places them into the matching slot, and pre-fills the sibling weekend at `±7 days` as a clearly marked draft (`"Draft (-7d) — confirm"` or `+7d`), requiring an owner `Source note` before saving; never auto-saved or used during background ingest.
 - **Option 3B Fast-Enter & Candidate Resolution Rules:**
   - On single-line capture submission (pressing Enter without selecting an autocomplete dropdown item):
     - Run pure normalized matcher against verified series editions.
