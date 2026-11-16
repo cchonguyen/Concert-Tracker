@@ -15,6 +15,7 @@ import {
   LookupJob,
   PerformerClaim,
   QuotaUsage,
+  SeriesKind,
   SeriesRecord,
   SeriesSummary,
   SourceDocument,
@@ -110,6 +111,10 @@ export interface EditionSuggestion {
   seriesSlug?: string;
   seriesName?: string;
   seriesBrand?: string;
+  seriesKind?: SeriesKind;
+  seriesCity?: string;
+  seriesRegion?: string;
+  seriesCountry?: string;
   weekends?: EditionWeekend[];
   actCount: number;
 }
@@ -146,6 +151,12 @@ function toEditionSuggestion(e: EditionHeader & { performances?: EditionPerforma
   if (e.seriesSlug) out.seriesSlug = e.seriesSlug;
   if (e.seriesName) out.seriesName = e.seriesName;
   if (e.seriesBrand) out.seriesBrand = e.seriesBrand;
+  if (e.seriesKind) out.seriesKind = e.seriesKind;
+  if (e.seriesKind !== 'tour') {
+    if (e.seriesCity) out.seriesCity = e.seriesCity;
+    if (e.seriesRegion) out.seriesRegion = e.seriesRegion;
+    if (e.seriesCountry) out.seriesCountry = e.seriesCountry;
+  }
   if (e.weekends?.length) out.weekends = e.weekends;
   return out;
 }

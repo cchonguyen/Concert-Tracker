@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { braveFinder, researchEvent } from '../src/server/events/details.ts';
+import { braveFinder, researchEditionFacts, researchEvent } from '../src/server/events/details.ts';
 import { checkedCandidate, geminiReader, rung4Urls, rung4Wanted, runReaderPage } from '../src/server/events/detailsGemini.ts';
 import { newEvent } from '../src/server/events/service.ts';
 import { readReaderConfig } from '../src/server/reader/config.ts';
@@ -15,7 +15,7 @@ import { fakeFetcher } from './fakes.ts';
 const NOW = new Date('2026-10-20T12:00:00Z');
 const PAGE = '<html><body><h1>Porter Robinson: Smile! :D World Tour</h1><p>Saturday, Oct 5, 2024 · Greek Theatre, Los Angeles, CA</p></body></html>';
 
-type Answer = Record<string, string>;
+type Answer = Record<string, unknown>;
 type Generator = { model: string; generate: (a: unknown) => Promise<{ text: string; promptTokens: number; candidatesTokens: number; thoughtsTokens: number }> };
 
 function fakeGemini(answer: () => Answer, calls: { n: number }): Generator {
@@ -276,4 +276,98 @@ test('rung 4 parks on a quota error or a guard block: a note, no fallback, no re
   assert.equal(await runReaderPage(mem2, blocked, ev.id, URL_A, fetcher, NOW), 'parked');
   assert.equal(calls.n, 0);
   assert.equal(mem2.get().city, undefined);
+});
+
+test('checkedCandidate verifies weekendQuotes verbatim, reads dates in code, and rejects hallucinated quotes', () => {
+  const q = { name: 'Coachella', year: 2025 };
+  const text = 'Coachella 2025 · Weekend 1: April 11-13, 2025 and Weekend 2: April 18-20, 2025 at Empire Polo Club, Indio, CA';
+
+  const multi = checkedCandidate(q, 'https://coachella.example/2025', text, {
+    weekendQuotes: ['Weekend 1: April 11-13, 2025', 'Weekend 2: April 18-20, 2025'],
+    venue: 'Empire Polo Club',
+    city: 'Indio, CA',
+    placeQuote: 'Empire Polo Club, Indio, CA',
+  });
+  assert.equal(multi?.startDate, '2025-04-11');
+  assert.equal(multi?.endDate, '2025-04-20');
+  assert.deepEqual(multi?.weekends, [
+    { weekend: 1, startDate: '2025-04-11', endDate: '2025-04-13' },
+    { weekend: 2, startDate: '2025-04-18', endDate: '2025-04-20' },
+  ]);
+  assert.equal(multi?.venue, 'Empire Polo Club');
+  assert.equal(multi?.city, 'Indio, CA');
+  assert.ok(multi?.sources[0].quote?.includes('Weekend 1: April 11-13, 2025'));
+  assert.ok(multi?.sources[0].quote?.includes('Weekend 2: April 18-20, 2025'));
+
+  // Implicit numbering when quotes omit "Weekend N", sorted chronologically and deduplicated.
+  const noLabelText = 'Festival dates: April 18-20, 2025 and April 11-13, 2025.';
+  const implicit = checkedCandidate(q, 'https://fest.example', noLabelText, {
+    weekendQuotes: ['April 18-20, 2025', 'April 11-13, 2025', 'April 11-13, 2025'],
+  });
+  assert.deepEqual(implicit?.weekends, [
+    { weekend: 1, startDate: '2025-04-11', endDate: '2025-04-13' },
+    { weekend: 2, startDate: '2025-04-18', endDate: '2025-04-20' },
+  ]);
+
+  // Hallucinated weekend quote is dropped; with valid dateQuote it falls back to single range without weekends.
+  const partialHallucinated = checkedCandidate(q, 'https://coachella.example/2025', text, {
+    dateQuote: 'April 11-13, 2025',
+    weekendQuotes: ['Weekend 1: April 11-13, 2025', 'Weekend 2: April 25-27, 2025'],
+  });
+  assert.equal(partialHallucinated?.startDate, '2025-04-11');
+  assert.equal(partialHallucinated?.endDate, '2025-04-13');
+  assert.equal(partialHallucinated?.weekends, undefined);
+
+  // Fully hallucinated weekendQuotes with no valid dateQuote is rejected.
+  assert.equal(
+    checkedCandidate(q, 'https://coachella.example/2025', text, {
+      weekendQuotes: ['Weekend 1: May 1-3, 2025', 'Weekend 2: May 8-10, 2025'],
+    }),
+    null,
+  );
+});
+
+test('researchEditionFacts with Gemini extracts verified multi-weekend dates and place', async () => {
+  process.env.BRAVE_SEARCH_API_KEY = 'k';
+  try {
+    const calls = { n: 0 };
+    const gemini = fakeGemini(
+      () => ({
+        dateQuote: 'April 11-13, 2025',
+        weekendQuotes: ['Weekend 1: April 11-13, 2025', 'Weekend 2: April 18-20, 2025'],
+        venue: 'Empire Polo Club',
+        city: 'Indio, CA',
+        placeQuote: 'Empire Polo Club, Indio, CA',
+      }),
+      calls,
+    );
+    const { fetcher } = fakeFetcher({
+      'https://api.search.brave.com/': {
+        body: { web: { results: [{ url: 'https://fest.example/coachella', title: 'Coachella 2025', description: 'Dates announced.' }] } },
+      },
+      'https://fest.example/coachella': {
+        body: '<p>Coachella 2025 · Weekend 1: April 11-13, 2025 · Weekend 2: April 18-20, 2025 · Empire Polo Club, Indio, CA</p>',
+      },
+    });
+    const { reader } = await readerFor(gemini);
+    const res = await researchEditionFacts({ id: 'ed-coachella', name: 'Coachella', year: 2025 }, [braveFinder], {
+      fetcher,
+      now: NOW,
+      reader,
+      useGemini: true,
+    });
+    assert.equal(calls.n, 1);
+    assert.equal(res.status, 'choose');
+    assert.equal(res.candidates.length, 1);
+    assert.equal(res.candidates[0].startDate, '2025-04-11');
+    assert.equal(res.candidates[0].endDate, '2025-04-20');
+    assert.deepEqual(res.candidates[0].weekends, [
+      { weekend: 1, startDate: '2025-04-11', endDate: '2025-04-13' },
+      { weekend: 2, startDate: '2025-04-18', endDate: '2025-04-20' },
+    ]);
+    assert.equal(res.candidates[0].venue, 'Empire Polo Club');
+    assert.equal(res.candidates[0].city, 'Indio, CA');
+  } finally {
+    delete process.env.BRAVE_SEARCH_API_KEY;
+  }
 });

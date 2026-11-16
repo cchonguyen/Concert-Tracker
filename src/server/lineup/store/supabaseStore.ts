@@ -14,6 +14,7 @@ import {
   LookupJob,
   PerformerClaim,
   QuotaUsage,
+  SeriesKind,
   SeriesRecord,
   SeriesSummary,
   SourceDocument,
@@ -340,15 +341,20 @@ export class SupabaseLineupStore implements LineupStore {
   // Canonical -------------------------------------------------------------
 
   private static readonly EDITION_HEADER_COLUMNS =
-    'id, key, series_slug, year, name, start_date, end_date, venue, city, region, country, weekends, status, venue_id, subject_key, has_lineup, confirmed_at, updated_at, fact_source_note, event_series(name, brand, aliases)';
+    'id, key, series_slug, year, name, start_date, end_date, venue, city, region, country, weekends, status, venue_id, subject_key, has_lineup, confirmed_at, updated_at, fact_source_note, event_series(name, brand, aliases, kind, city, region, country)';
 
-  private static readonly EDITION_SELECT_WITH_SERIES = '*, event_series(name, brand, aliases)';
+  private static readonly EDITION_SELECT_WITH_SERIES = '*, event_series(name, brand, aliases, kind, city, region, country)';
 
   private rowToSeries(r: any): SeriesRecord {
+    const kind: SeriesKind | undefined = r.kind === 'tour' || r.kind === 'festival' ? r.kind : undefined;
     return {
       slug: r.slug,
       name: r.name,
+      ...(kind ? { kind } : {}),
       ...(r.brand != null ? { brand: r.brand } : {}),
+      ...(kind !== 'tour' && r.city != null ? { city: r.city } : {}),
+      ...(kind !== 'tour' && r.region != null ? { region: r.region } : {}),
+      ...(kind !== 'tour' && r.country != null ? { country: r.country } : {}),
       ...(Array.isArray(r.aliases) && r.aliases.length ? { aliases: r.aliases } : {}),
       lineupUrl: r.lineup_url ?? undefined,
       clashfinderSlugs: r.clashfinder_slugs ?? {},
@@ -362,11 +368,17 @@ export class SupabaseLineupStore implements LineupStore {
   }
 
   async upsertSeries(s: SeriesRecord) {
+    const kind: SeriesKind = s.kind === 'tour' ? 'tour' : 'festival';
+    const isTour = kind === 'tour';
     this.check(
       await this.db.from('event_series').upsert({
         slug: s.slug,
         name: s.name,
+        kind,
         brand: s.brand ?? null,
+        city: isTour ? null : (s.city ?? null),
+        region: isTour ? null : (s.region ?? null),
+        country: isTour ? null : (s.country ?? null),
         aliases: s.aliases ?? [],
         lineup_url: s.lineupUrl ?? null,
         clashfinder_slugs: s.clashfinderSlugs ?? {},
@@ -383,7 +395,7 @@ export class SupabaseLineupStore implements LineupStore {
       p_brand: opts.brand?.trim() || null,
       p_limit: limit,
     });
-    if (error) throw new Error(`listSeries (apply 0045_canonical_series_brand_weekends.sql): ${error.message}`);
+    if (error) throw new Error(`listSeries (apply 0046_series_kind_and_place.sql): ${error.message}`);
     return ((data ?? []) as any[]).map((r) => ({
       ...this.rowToSeries(r),
       editionCount: Number(r.edition_count ?? 0),
@@ -395,7 +407,7 @@ export class SupabaseLineupStore implements LineupStore {
       p_keep_slug: keepSlug,
       p_drop_slug: dropSlug,
     });
-    if (error) throw new Error(`mergeSeries (apply 0045_canonical_series_brand_weekends.sql): ${error.message}`);
+    if (error) throw new Error(`mergeSeries (apply 0046_series_kind_and_place.sql): ${error.message}`);
     return (data ?? {}) as MergeSummary;
   }
 
@@ -449,6 +461,7 @@ export class SupabaseLineupStore implements LineupStore {
 
   private toEditionHeader(row: any): EditionHeader {
     const series = Array.isArray(row.event_series) ? row.event_series[0] : row.event_series;
+    const seriesKind: SeriesKind | undefined = series?.kind === 'tour' || series?.kind === 'festival' ? series.kind : undefined;
     return {
       id: row.id,
       key: row.key,
@@ -456,6 +469,10 @@ export class SupabaseLineupStore implements LineupStore {
       ...(series?.name != null ? { seriesName: series.name } : {}),
       ...(series?.brand != null ? { seriesBrand: series.brand } : {}),
       ...(Array.isArray(series?.aliases) && series.aliases.length ? { seriesAliases: series.aliases } : {}),
+      ...(seriesKind ? { seriesKind } : {}),
+      ...(seriesKind !== 'tour' && series?.city != null ? { seriesCity: series.city } : {}),
+      ...(seriesKind !== 'tour' && series?.region != null ? { seriesRegion: series.region } : {}),
+      ...(seriesKind !== 'tour' && series?.country != null ? { seriesCountry: series.country } : {}),
       year: row.year,
       name: row.name,
       startDate: row.start_date ?? undefined,
@@ -1052,7 +1069,13 @@ export class SupabaseLineupStore implements LineupStore {
     const before = await this.priorEvents(list.map((e) => e.id));
     this.check(await this.own('logged_events').upsert(list.map((e) => this.stamp(this.eventToRow(e)))), 'putEvents');
     const now = new Date().toISOString();
-    await this.writeActivity(list.flatMap((e) => diffEvent(before.get(e.id) ?? null, splitEventCity(e), isCiphertext)), now);
+    await this.writeActivity(
+      list.flatMap((e) => {
+        const { seriesKind: _seriesKind, ...cleanAfter } = splitEventCity(e);
+        return diffEvent(before.get(e.id) ?? null, cleanAfter, isCiphertext);
+      }),
+      now,
+    );
   }
 
   async getEvent(id: string) {

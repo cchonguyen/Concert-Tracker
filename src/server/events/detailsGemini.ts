@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Fetcher } from '../lineup/types';
+import type { EditionWeekend, Fetcher } from '../lineup/types';
 import { QuotaExhaustedError } from '../lineup/quota';
 import type { GuardedReader } from '../reader/guardedReader';
 import { domainOf, htmlToText, isVerbatim, normalizeName } from '../lineup/text';
@@ -172,22 +172,99 @@ export async function runReaderPage(
   return outcome;
 }
 
+const WEEKEND_INDEX_RE = /\b(?:weekend|wknd)\s*([1-9])\b|\bw([1-9])\b/i;
+
+function verifiedWeekends(
+  quotes: unknown,
+  onPage: (q?: string) => boolean,
+  w: { from: string; to: string },
+): Array<{ weekend: number; startDate: string; endDate?: string; quote: string }> {
+  if (!Array.isArray(quotes) || !quotes.length) return [];
+  const rawEntries: Array<{ explicit?: number; startDate: string; endDate?: string; quote: string }> = [];
+  const seenDates = new Set<string>();
+  for (const item of quotes) {
+    if (!onPage(item)) continue;
+    const trimmed = (item as string).trim();
+    const date = findDates(trimmed).find((d) => d.startDate >= w.from && d.startDate <= w.to);
+    if (!date || seenDates.has(date.startDate)) continue;
+    seenDates.add(date.startDate);
+    const wm = trimmed.match(WEEKEND_INDEX_RE);
+    const explicit = wm ? Number(wm[1] ?? wm[2]) : undefined;
+    rawEntries.push({ explicit, startDate: date.startDate, endDate: date.endDate, quote: trimmed });
+  }
+  if (rawEntries.length < 2) return [];
+  rawEntries.sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+  const usedWeekends = new Set<number>();
+  const assigned: Array<{ weekend: number; startDate: string; endDate?: string; quote: string }> = [];
+  const implicit: typeof rawEntries = [];
+  for (const entry of rawEntries) {
+    if (entry.explicit !== undefined) {
+      if (usedWeekends.has(entry.explicit)) continue;
+      usedWeekends.add(entry.explicit);
+      assigned.push({ weekend: entry.explicit, startDate: entry.startDate, endDate: entry.endDate, quote: entry.quote });
+    } else {
+      implicit.push(entry);
+    }
+  }
+  let nextSeq = 1;
+  for (const entry of implicit) {
+    while (usedWeekends.has(nextSeq)) nextSeq++;
+    usedWeekends.add(nextSeq);
+    assigned.push({ weekend: nextSeq, startDate: entry.startDate, endDate: entry.endDate, quote: entry.quote });
+    nextSeq++;
+  }
+  assigned.sort((a, b) => a.weekend - b.weekend);
+  return assigned;
+}
+
 // Keeps only what the page itself says. Exported for tests.
 export function checkedCandidate(
   q: DetailQuery,
   url: string,
   pageText: string,
-  got: { dateQuote?: string; venue?: string; city?: string; country?: string; placeQuote?: string },
+  got: { dateQuote?: string; weekendQuotes?: string[]; venue?: string; city?: string; country?: string; placeQuote?: string },
 ): DetailCandidate | null {
   const page = normalizeName(pageText);
   const onPage = (quote?: string) => typeof quote === 'string' && Boolean(quote.trim()) && isVerbatim(quote, quote, page);
-  if (!onPage(got.dateQuote)) return null;
   const w = searchWindow(q);
-  const date = findDates(got.dateQuote!).find((d) => d.startDate >= w.from && d.startDate <= w.to);
-  if (!date) return null; // a page without the event's date can't be placed among the others
-  const c: DetailCandidate = { id: randomUUID(), startDate: date.startDate, endDate: date.endDate, sources: [] };
-  const fields: EventField[] = date.endDate ? ['startDate', 'endDate'] : ['startDate'];
-  const quotes = [date.quote];
+
+  const weekendHits = verifiedWeekends(got.weekendQuotes, onPage, w);
+  let startDate: string;
+  let endDate: string | undefined;
+  let weekends: EditionWeekend[] | undefined;
+  const quotes: string[] = [];
+
+  if (weekendHits.length >= 2) {
+    startDate = weekendHits.reduce((min, x) => (x.startDate < min ? x.startDate : min), weekendHits[0].startDate);
+    const maxEnd = weekendHits.reduce((max, x) => {
+      const end = x.endDate ?? x.startDate;
+      return end > max ? end : max;
+    }, startDate);
+    endDate = maxEnd !== startDate ? maxEnd : undefined;
+    weekends = weekendHits.map((x) => ({
+      weekend: x.weekend,
+      startDate: x.startDate,
+      ...(x.endDate && x.endDate !== x.startDate ? { endDate: x.endDate } : {}),
+    }));
+    quotes.push(...weekendHits.map((x) => x.quote));
+  } else {
+    if (!onPage(got.dateQuote)) return null;
+    const date = findDates(got.dateQuote!).find((d) => d.startDate >= w.from && d.startDate <= w.to);
+    if (!date) return null; // a page without the event's date can't be placed among the others
+    startDate = date.startDate;
+    endDate = date.endDate;
+    quotes.push(date.quote);
+  }
+
+  const c: DetailCandidate = {
+    id: randomUUID(),
+    startDate,
+    endDate,
+    ...(weekends ? { weekends } : {}),
+    sources: [],
+  };
+  const fields: EventField[] = endDate ? ['startDate', 'endDate'] : ['startDate'];
   if (onPage(got.placeQuote)) {
     for (const f of ['venue', 'city', 'country'] as const) {
       const v = typeof got[f] === 'string' ? got[f]!.trim() : '';
@@ -196,7 +273,7 @@ export function checkedCandidate(
         fields.push(f);
       }
     }
-    if (fields.length > (date.endDate ? 2 : 1)) quotes.push(got.placeQuote!.trim());
+    if (fields.length > (endDate ? 2 : 1)) quotes.push(got.placeQuote!.trim());
   }
   c.sources.push({ sourceType: 'discovered', sourceUrl: url, fields, quote: quotes.join(' … '), readBy: 'gemini' });
   return c;

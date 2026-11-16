@@ -6,11 +6,11 @@ Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
 | Method and path | Purpose |
 | --- | --- |
 | `GET /api/events` | Your events, newest first, plus a summary of each one's lineup lookup and the size of each confirmed lineup (`editions`) |
-| `POST /api/events` | Save one typed line as an event (`{ text, editionId?, weekend? }`). With `editionId` (a tapped canonical edition) or an unambiguous Option 3B fast-Enter series match, the event is copied from that edition (`series`, `region`, `country`, `weekends`/Weekend N dates when known, venue, city) and linked to its lineup; 404 if an explicit `editionId` is missing or not confirmed. Multi-match Option 3B returns disambiguation candidates without linking. Linked events skip research |
+| `POST /api/events` | Save one typed line as an event (`{ text, editionId?, weekend? }`). With `editionId` (a tapped canonical edition) or an unambiguous Option 3B fast-Enter series match, the event is copied from that edition (`series`, `region`, `country`, `weekends`/Weekend N dates when known, venue, city; missing edition place resolves from attached festival series `Edition ?? Series`) and linked to its lineup; 404 if an explicit `editionId` is missing or not confirmed. Multi-match Option 3B returns disambiguation candidates without linking. Linked events skip research |
 | `GET /api/editions/suggest?q=` | Up to 5 confirmed editions matching typed words across edition `name`, series `name`, `brand` and `aliases` (`{ editions: EditionSuggestion[] }`, `q` under 2 letters gives `[]`, debounced >=300ms on the client); single-weekend editions already logged are excluded while multi-weekend editions remain re-selectable |
 | `GET /api/events/:id` | The event with its lineup job, confirmed edition and acts suggested from its name |
 | `PATCH /api/events/:id`, `DELETE /api/events/:id` | Edit or delete an event |
-| `POST /api/events/:id/details` | Run stage 1 research; `{ useGemini: true }` also has Gemini read the pages found (Check details, then "Read with Gemini") |
+| `POST /api/events/:id/details` | Run stage 1 research; `{ useGemini: true }` also has Gemini read the pages found (Check details, then "Read with Gemini"). Canonical editions also research multi-weekend dates (`researchEditionFacts`) |
 | `POST /api/events/:id/details/pick` | Pick a suggestion (`{ candidateId }`) or dismiss them (`{}`) |
 | `POST /api/events/:id/lineup` | Start stage 2 for the event (`{ lineupUrl? }`) |
 | `POST /api/events/lineups` | Queue stage 2 for up to 5 events per request (`{ ids }`; Fill gaps sends up to 50 in chunks); skips events with a confirmed lineup, a lookup that is not `failed`, or no date. Jobs are not kicked: the worker or the Cloudflare cron runs them one at a time |
@@ -43,13 +43,13 @@ Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
 | `POST /api/lookups` | Start a lookup without an event (kept for scripts); returns the job (already `needs_review` on a cache hit) |
 | `GET /api/lookups`, `GET /api/lookups/:id` | Job list and detail with log and candidate lineup |
 | `GET /api/manage/canonical/lookups` | Owner only. Recent jobs with no saved event, newest first (the Global archive's Lookups list) |
-| `GET /api/manage/canonical/editions` | Owner only. Lean edition headers (`getEditionHeaders`, `{ editions, total, hasMore }`) filtered by search/status without loading full act lists |
-| `GET /api/manage/canonical/editions/:id` | Owner only. One edition as a record via `edition_lineup_facts` SQL RPC: its facts (`seriesSlug`, `brand`, `region`, `weekends`, etc.), and its acts with billing, B2B, set, days, stages, set times and sources (`{ edition }`) |
+| `GET /api/manage/canonical/editions` | Owner only. Lean edition headers (`getEditionHeaders`, `{ editions, total, hasMore }`) filtered by search/status without loading full act lists; includes `seriesKind` and resolved place fields |
+| `GET /api/manage/canonical/editions/:id` | Owner only. One edition as a record via `edition_lineup_facts` SQL RPC: its facts (`seriesSlug`, `seriesKind`, `brand`, `region`, `weekends`, etc.; missing edition place resolves from attached festival series `Edition ?? Series`), and its acts with billing, B2B, set, days, stages, set times and sources (`{ edition }`) |
 | `PATCH /api/manage/canonical/editions/:id/facts` | Owner only. Edit name, `startDate`, `endDate`, `venue`, `city`, `region`, `weekends`, `seriesSlug` with a required `sourceNote` (400 without one, 404 for no such edition). A blank fact is stored as null. Writes `event_editions` only (`{ edition }`) |
 | `POST /api/manage/canonical/editions/:id/merge` | Owner only. Merge this edition into a target edition (`mergeCanonicalEditions`), with optional `"Combine dates into Weekend 1 & Weekend 2"` preserving `logged_events.weekend` |
-| `GET /api/manage/canonical/series` | Owner only. List canonical `event_series` summaries (`SeriesSummary[]`) |
-| `POST /api/manage/canonical/series` | Owner only. Create a canonical series (`name`, `brand`, `aliases`, `city`, `region`, `country`) |
-| `PATCH /api/manage/canonical/series/:slug` | Owner only. Edit a canonical series, or attach/detach editions (`seriesSlug`) |
+| `GET /api/manage/canonical/series` | Owner only. List canonical `event_series` summaries (`SeriesSummary[]`) with `kind` (`'festival' | 'tour'`) |
+| `POST /api/manage/canonical/series` | Owner only. Create a canonical series (`name`, `kind` (`'festival' | 'tour'`, default `'festival'`), `brand`, `aliases`, `city`, `region`, `country`; place null for tours) |
+| `PATCH /api/manage/canonical/series/:slug` | Owner only. Edit a canonical series (`name`, `kind`, `brand`, `aliases`, `city`, `region`, `country`; switching to tour clears place), or attach/detach editions (`seriesSlug`) |
 | `POST /api/manage/canonical/series/:slug/merge` | Owner only. Merge source canonical series into target (`merge_canonical_series`), moving editions and absorbing aliases |
 | `POST /api/manage/canonical/confirm` | Owner only. Merge an edition into the catalog. Without `apply: true` it returns the merge diff only (`{ applied: false, diff }`); with it, it writes (Edit lineup sends the preview first) |
 | `PATCH /api/manage/canonical/artists/:key` | Owner only. Rename a catalog artist (`name`); its old name becomes an AKA |

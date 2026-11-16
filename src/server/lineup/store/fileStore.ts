@@ -13,6 +13,7 @@ import {
   LookupJob,
   PerformerClaim,
   QuotaUsage,
+  SeriesKind,
   SeriesRecord,
   SeriesSummary,
   SourceDocument,
@@ -281,14 +282,41 @@ export class FileLineupStore implements LineupStore {
     return clone(claims.filter((c) => c.jobId === first));
   }
 
+  private normalizeSeriesRecord(s: SeriesRecord): SeriesRecord {
+    const kind: SeriesKind = s.kind === 'tour' ? 'tour' : 'festival';
+    const out: SeriesRecord = { ...clone(s), kind };
+    if (kind === 'tour') {
+      delete out.city;
+      delete out.region;
+      delete out.country;
+    }
+    return out;
+  }
+
   private enrichEdition(state: FileState, ed: Edition): Edition {
     const out = clone(ed);
     if (out.seriesSlug) {
-      const s = state.series[out.seriesSlug];
-      if (s) {
-        if (out.seriesName === undefined) out.seriesName = s.name;
-        if (out.seriesBrand === undefined && s.brand !== undefined) out.seriesBrand = s.brand;
-        if (out.seriesAliases === undefined && s.aliases?.length) out.seriesAliases = clone(s.aliases);
+      const rawSeries = state.series[out.seriesSlug];
+      if (rawSeries) {
+        const s = this.normalizeSeriesRecord(rawSeries);
+        out.seriesName = s.name;
+        if (s.brand !== undefined) out.seriesBrand = s.brand;
+        else delete out.seriesBrand;
+        if (s.aliases?.length) out.seriesAliases = clone(s.aliases);
+        else delete out.seriesAliases;
+        out.seriesKind = s.kind;
+        if (s.kind !== 'tour') {
+          if (s.city !== undefined) out.seriesCity = s.city;
+          else delete out.seriesCity;
+          if (s.region !== undefined) out.seriesRegion = s.region;
+          else delete out.seriesRegion;
+          if (s.country !== undefined) out.seriesCountry = s.country;
+          else delete out.seriesCountry;
+        } else {
+          delete out.seriesCity;
+          delete out.seriesRegion;
+          delete out.seriesCountry;
+        }
       }
     }
     return out;
@@ -301,11 +329,11 @@ export class FileLineupStore implements LineupStore {
 
   async getSeries(slug: string) {
     const s = (await this.load()).series[slug];
-    return s ? clone(s) : null;
+    return s ? this.normalizeSeriesRecord(s) : null;
   }
 
   async upsertSeries(series: SeriesRecord) {
-    (await this.load()).series[series.slug] = clone(series);
+    (await this.load()).series[series.slug] = this.normalizeSeriesRecord(series);
     await this.save();
   }
 
@@ -320,6 +348,7 @@ export class FileLineupStore implements LineupStore {
     const limit = Math.max(1, Math.min(500, Math.floor(opts.limit ?? 100)));
     return clone(
       Object.values(state.series)
+        .map((s) => this.normalizeSeriesRecord(s))
         .filter((s) => {
           if (b && (s.brand ?? '').trim().toLowerCase() !== b) return false;
           if (!q) return true;
@@ -335,10 +364,12 @@ export class FileLineupStore implements LineupStore {
     if (!keepSlug?.trim() || !dropSlug?.trim()) throw new Error('merge_canonical_series: both slugs are required');
     if (keepSlug === dropSlug) throw new Error('merge_canonical_series: keep and drop slugs are the same');
     const state = await this.load();
-    const keep = state.series[keepSlug];
-    const drop = state.series[dropSlug];
-    if (!keep) throw new Error(`merge_canonical_series: series ${keepSlug} not found`);
-    if (!drop) throw new Error(`merge_canonical_series: series ${dropSlug} not found`);
+    const keepRaw = state.series[keepSlug];
+    const dropRaw = state.series[dropSlug];
+    if (!keepRaw) throw new Error(`merge_canonical_series: series ${keepSlug} not found`);
+    if (!dropRaw) throw new Error(`merge_canonical_series: series ${dropSlug} not found`);
+    const keep = this.normalizeSeriesRecord(keepRaw);
+    const drop = this.normalizeSeriesRecord(dropRaw);
 
     const seen = new Set<string>();
     const aliases: string[] = [];
@@ -356,14 +387,24 @@ export class FileLineupStore implements LineupStore {
       aliases.push(val);
     }
 
+    const kind: SeriesKind = keepRaw.kind === 'tour' || keepRaw.kind === 'festival' ? keepRaw.kind : drop.kind ?? 'festival';
+    const isTour = kind === 'tour';
     const brand = keep.brand?.trim() ? keep.brand : drop.brand?.trim() ? drop.brand : undefined;
+    const city = isTour ? undefined : (keep.city?.trim() ? keep.city : drop.city?.trim() ? drop.city : undefined);
+    const region = isTour ? undefined : (keep.region?.trim() ? keep.region : drop.region?.trim() ? drop.region : undefined);
+    const country = isTour ? undefined : (keep.country?.trim() ? keep.country : drop.country?.trim() ? drop.country : undefined);
     const lineupUrl = keep.lineupUrl?.trim() ? keep.lineupUrl : drop.lineupUrl?.trim() ? drop.lineupUrl : undefined;
     const sourcePriority = keep.sourcePriority?.length ? keep.sourcePriority : drop.sourcePriority;
     const clashfinderSlugs = { ...(drop.clashfinderSlugs ?? {}), ...(keep.clashfinderSlugs ?? {}) };
 
     state.series[keepSlug] = {
-      ...keep,
+      slug: keep.slug,
+      name: keep.name,
+      kind,
       ...(brand !== undefined ? { brand } : {}),
+      ...(city !== undefined ? { city } : {}),
+      ...(region !== undefined ? { region } : {}),
+      ...(country !== undefined ? { country } : {}),
       aliases,
       ...(lineupUrl !== undefined ? { lineupUrl } : {}),
       ...(sourcePriority?.length ? { sourcePriority } : {}),
@@ -602,9 +643,10 @@ export class FileLineupStore implements LineupStore {
     const now = new Date().toISOString();
     for (const e of events) {
       const prior = state.events[e.id];
+      const { seriesKind: _seriesKind, ...cleanEvent } = splitEventCity(e);
       // A save never undeletes a show: deletedAt is only changed by delete and restore.
-      state.events[e.id] = clone({ ...splitEventCity(e), deletedAt: prior?.deletedAt });
-      this.logActivity(state, uid, diffEvent(prior ? splitEventCity(prior) : null, splitEventCity(e), isCiphertext), now);
+      state.events[e.id] = clone({ ...cleanEvent, deletedAt: prior?.deletedAt });
+      this.logActivity(state, uid, diffEvent(prior ? splitEventCity(prior) : null, cleanEvent, isCiphertext), now);
     }
     await this.save();
   }

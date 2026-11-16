@@ -343,7 +343,7 @@ test('SupabaseLineupStore: upsertEdition skips event_series when seriesSlug is a
               weekends: [{ weekend: 1, startDate: '2026-05-15', endDate: '2026-05-17' }],
               status: 'verified',
               updated_at: '2026-01-01T00:00:00.000Z',
-              event_series: { name: 'EDC Las Vegas', brand: 'Insomniac', aliases: ['EDCLV'] },
+              event_series: { name: 'EDC Las Vegas', brand: 'Insomniac', aliases: ['EDCLV'], kind: 'festival', city: 'Las Vegas', region: 'NV', country: 'US' },
             },
           ],
           error: null,
@@ -401,10 +401,28 @@ test('SupabaseLineupStore: upsertEdition skips event_series when seriesSlug is a
   assert.equal(suggested.length, 1);
   assert.equal(suggested[0].actCount, 12);
   assert.equal(suggested[0].seriesBrand, 'Insomniac');
+  assert.equal(suggested[0].seriesKind, 'festival');
+  assert.equal(suggested[0].seriesCity, 'Las Vegas');
+  assert.equal(suggested[0].seriesRegion, 'NV');
+  assert.equal(suggested[0].seriesCountry, 'US');
   assert.equal(suggested[0].region, 'NV');
   assert.equal(editionSelects[0].limit, 60);
-  assert.ok(editionSelects[0].columns?.includes('event_series(name, brand, aliases)'));
+  assert.ok(editionSelects[0].columns?.includes('event_series(name, brand, aliases, kind, city, region, country)'));
   assert.ok(editionSelects[0].or?.includes('series_slug.in.("edc-lv")'));
+
+  await store.upsertSeries({
+    slug: 'eras-tour',
+    name: 'The Eras Tour',
+    kind: 'tour',
+    city: 'Should Be Ignored',
+    region: 'CA',
+    country: 'US',
+  });
+  const tourUpsert = upserts.filter((u) => u.table === 'event_series').pop()?.payload;
+  assert.equal(tourUpsert.kind, 'tour');
+  assert.equal(tourUpsert.city, null);
+  assert.equal(tourUpsert.region, null);
+  assert.equal(tourUpsert.country, null);
 
   // Without rpc(), editionLineupFacts falls back to performances select.
   const dbNoRpc = {
@@ -421,4 +439,72 @@ test('SupabaseLineupStore: upsertEdition skips event_series when seriesSlug is a
   const fallbackStore = new SupabaseLineupStore(dbNoRpc as any);
   const fbFacts = await fallbackStore.editionLineupFacts(['ed1']);
   assert.deepEqual(fbFacts.ed1, { acts: 1, clashfinder: true });
+});
+
+test('FileLineupStore series kind/place CRUD, enrichEdition, suggestEditions, and mergeSeries place coalescing', async () => {
+  await withFileStore(async (store) => {
+    // Festival series with city/region/country
+    await store.upsertSeries({
+      slug: 'hard-summer',
+      name: 'HARD Summer',
+      kind: 'festival',
+      city: 'San Bernardino',
+    });
+    await store.upsertSeries({
+      slug: 'hard-summer-alt',
+      name: 'Hard Fest',
+      kind: 'festival',
+      city: 'Los Angeles',
+      region: 'CA',
+      country: 'US',
+    });
+    await store.upsertEdition(ed('hs-24', 'HARD Summer 2024', 2024, { seriesSlug: 'hard-summer' }));
+    const beforeMerge = await store.getEdition('hs-24');
+    assert.equal(beforeMerge?.seriesKind, 'festival');
+    assert.equal(beforeMerge?.seriesCity, 'San Bernardino');
+    assert.equal(beforeMerge?.seriesRegion, undefined);
+
+    // mergeSeries keeps keep's non-empty city and coalesces drop's region/country
+    await store.mergeSeries('hard-summer', 'hard-summer-alt');
+    const mergedFest = await store.getSeries('hard-summer');
+    assert.equal(mergedFest?.kind, 'festival');
+    assert.equal(mergedFest?.city, 'San Bernardino');
+    assert.equal(mergedFest?.region, 'CA');
+    assert.equal(mergedFest?.country, 'US');
+
+    // Tour series never stores or exposes series place fields
+    await store.upsertSeries({
+      slug: 'eras-tour',
+      name: 'The Eras Tour',
+      kind: 'tour',
+      city: 'Seattle',
+      region: 'WA',
+      country: 'US',
+    });
+    const tour = await store.getSeries('eras-tour');
+    assert.equal(tour?.kind, 'tour');
+    assert.equal(tour?.city, undefined);
+    assert.equal(tour?.region, undefined);
+    assert.equal(tour?.country, undefined);
+
+    await store.upsertEdition(ed('eras-la', 'The Eras Tour Los Angeles', 2023, { seriesSlug: 'eras-tour', city: 'Inglewood', region: 'CA' }));
+    const sugFest = (await store.suggestEditions('hard summer', { excludeIds: [], limit: 8 }))[0];
+    assert.equal(sugFest.seriesKind, 'festival');
+    assert.equal(sugFest.seriesCity, 'San Bernardino');
+    assert.equal(sugFest.seriesRegion, 'CA');
+    assert.equal(sugFest.seriesCountry, 'US');
+
+    const sugTour = (await store.suggestEditions('eras', { excludeIds: [], limit: 8 }))[0];
+    assert.equal(sugTour.seriesKind, 'tour');
+    assert.equal(sugTour.city, 'Inglewood');
+    assert.equal(sugTour.seriesCity, undefined);
+
+    // Merging a festival into a tour clears place fields
+    await store.upsertSeries({ slug: 'eras-alt', name: 'Eras Alt', kind: 'festival', city: 'Tokyo', country: 'Japan' });
+    await store.mergeSeries('eras-tour', 'eras-alt');
+    const mergedTour = await store.getSeries('eras-tour');
+    assert.equal(mergedTour?.kind, 'tour');
+    assert.equal(mergedTour?.city, undefined);
+    assert.equal(mergedTour?.country, undefined);
+  });
 });

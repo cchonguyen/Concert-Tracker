@@ -37,6 +37,9 @@ const isShared = (e: Pick<EditionHeader, 'status'>) => e.status !== 'draft';
 export const subjectOf = (e: Pick<EditionHeader, 'subjectKey' | 'seriesSlug' | 'name'>) =>
   e.subjectKey ?? e.seriesSlug ?? seriesSlugFor(e.name);
 
+const editionCity = (e: Pick<EditionHeader, 'city' | 'seriesKind' | 'seriesCity'>): string | undefined =>
+  e.city?.trim() || (e.seriesKind !== 'tour' ? e.seriesCity?.trim() : undefined) || undefined;
+
 export function editionsMatch(a: EditionHeader, b: EditionHeader): boolean {
   if (a.status === 'draft' || b.status === 'draft') return false;
   if (!a.startDate || !b.startDate) return false;
@@ -59,16 +62,16 @@ export function editionsMatch(a: EditionHeader, b: EditionHeader): boolean {
   const venueB = b.venue?.trim();
   if (venueA && venueB) {
     if (normalizeName(venueA) !== normalizeName(venueB)) return false;
-    const cityA = a.city?.trim();
-    const cityB = b.city?.trim();
+    const cityA = editionCity(a);
+    const cityB = editionCity(b);
     if (cityA && cityB) {
       return normalizeName(cityA) === normalizeName(cityB);
     }
     return true;
   }
   if (!hasVenueIdA && !hasVenueIdB && !venueA && !venueB) {
-    const cityA = a.city?.trim();
-    const cityB = b.city?.trim();
+    const cityA = editionCity(a);
+    const cityB = editionCity(b);
     if (cityA && cityB) {
       return normalizeName(cityA) === normalizeName(cityB);
     }
@@ -132,7 +135,14 @@ export async function matchEdition(store: LineupStore, q: OccurrenceQuery): Prom
     if (same.length > 1) return { kind: 'ambiguous', editions: same.map((x) => x.edition) };
   }
   const city = q.city ? normalizeName(q.city) : '';
-  const near = city ? onDate.filter((x) => x.edition.city && normalizeName(x.edition.city) === city).map((x) => x.edition) : [];
+  const near = city
+    ? onDate
+        .filter((x) => {
+          const ec = editionCity(x.edition);
+          return ec && normalizeName(ec) === city;
+        })
+        .map((x) => x.edition)
+    : [];
   return near.length ? { kind: 'suggest', editions: near } : { kind: 'none' };
 }
 
@@ -210,7 +220,8 @@ export async function findSeriesEditionMatches(store: LineupStore, q: SeriesEdit
       const ev = e.venue ? normalizeName(e.venue) : '';
       if (qv && ev && !(qv === ev || ev.includes(qv) || qv.includes(ev))) return false;
 
-      const ec = e.city ? cityPart(e.city) : '';
+      const rawCity = editionCity(e);
+      const ec = rawCity ? cityPart(rawCity) : '';
       if (qc && ec && !(qc === ec || ec.includes(qc) || qc.includes(ec))) return false;
 
       return true;

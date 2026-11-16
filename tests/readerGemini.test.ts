@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createGeminiReader, thinkingConfigFor } from '../src/server/reader/geminiAdapter.ts';
 import { QuotaExhaustedError } from '../src/server/lineup/quota.ts';
-import { SYSTEM, DETAILS_SYSTEM } from '../src/server/lineup/gemini.ts';
+import { SYSTEM, DETAILS_PROMPT_VERSION, DETAILS_SCHEMA, DETAILS_SYSTEM } from '../src/server/lineup/gemini.ts';
 
 function fake(model: string, reply: any) {
   const calls: any[] = [];
@@ -64,7 +64,9 @@ test('bad JSON, wrong shape and MAX_TOKENS are invalid_json', async () => {
   }
 });
 
-test('details: DETAILS_SYSTEM, only string fields', async () => {
+test('details: DETAILS_SYSTEM, only string fields and optional weekendQuotes string array', async () => {
+  assert.equal(DETAILS_PROMPT_VERSION, 'details@2');
+  assert.ok('weekendQuotes' in DETAILS_SCHEMA.properties);
   const f = fake('m', { text: '{"venue":"Hall","city":"Oslo"}' });
   const reader = createGeminiReader(f.client);
   const r: any = await reader.extractEventDetails({ text: 'x', eventName: 'E', year: 2026, maxOutputTokens: 100 });
@@ -72,6 +74,21 @@ test('details: DETAILS_SYSTEM, only string fields', async () => {
   assert.equal(f.calls[0].systemInstruction, DETAILS_SYSTEM);
   const bad: any = await createGeminiReader(fake('m', { text: '{"venue":5}' }).client).extractEventDetails({ text: 'x', eventName: 'E', maxOutputTokens: 100 });
   assert.equal(bad.reason, 'invalid_json');
+
+  const withWeekends: any = await createGeminiReader(
+    fake('m', { text: '{"dateQuote":"Apr 11-13, 2025","weekendQuotes":["Weekend 1: Apr 11-13, 2025","Weekend 2: Apr 18-20, 2025"]}' }).client,
+  ).extractEventDetails({ text: 'x', eventName: 'Coachella', year: 2025, maxOutputTokens: 100 });
+  assert.equal(withWeekends.ok, true);
+  assert.deepEqual(withWeekends.value, {
+    dateQuote: 'Apr 11-13, 2025',
+    weekendQuotes: ['Weekend 1: Apr 11-13, 2025', 'Weekend 2: Apr 18-20, 2025'],
+  });
+
+  for (const invalidWq of ['{"weekendQuotes":"not-an-array"}', '{"weekendQuotes":["ok", 123]}', '{"weekendQuotes":[null]}']) {
+    const res: any = await createGeminiReader(fake('m', { text: invalidWq }).client).extractEventDetails({ text: 'x', eventName: 'E', maxOutputTokens: 100 });
+    assert.equal(res.ok, false);
+    assert.equal(res.reason, 'invalid_json');
+  }
 });
 
 test('402 and prepay-depleted 429 park for 6 hours', async () => {

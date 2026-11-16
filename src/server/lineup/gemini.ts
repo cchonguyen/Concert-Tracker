@@ -33,18 +33,20 @@ export interface GeminiClient {
 
 export interface ExtractedDetails {
   dateQuote?: string;
+  weekendQuotes?: string[];
   venue?: string;
   city?: string;
   country?: string;
   placeQuote?: string;
 }
 
-export const DETAILS_PROMPT_VERSION = 'details@1';
+export const DETAILS_PROMPT_VERSION = 'details@2';
 
 export const DETAILS_SYSTEM = `You copy where and when one event took place out of a web page. Rules:
 - Use only the PAGE TEXT provided. Never use outside knowledge and never guess.
 - The event is named below. Ignore other events, dates, cities or editions the page lists.
 - "dateQuote": an exact substring of the page text (up to 120 characters) that states the event's date or dates, written as on the page. Leave it out if the page does not state a full date for this event.
+- "weekendQuotes": when the page explicitly lists separate Weekend 1 / Weekend 2 (etc.) date ranges for this event, an array of exact substrings of the page text (each up to 120 characters), one per weekend. Omit when the event does not list separate weekends.
 - "venue", "city", "country": copied exactly as written on the page, each only if the page states it for this event.
 - "placeQuote": an exact substring of the page text (up to 200 characters) that contains every place value you gave.
 - If the page is not about this event, return an empty object.`;
@@ -53,6 +55,7 @@ export const DETAILS_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     dateQuote: { type: Type.STRING },
+    weekendQuotes: { type: Type.ARRAY, items: { type: Type.STRING } },
     venue: { type: Type.STRING },
     city: { type: Type.STRING },
     country: { type: Type.STRING },

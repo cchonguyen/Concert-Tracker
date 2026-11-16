@@ -17,7 +17,7 @@ export interface LineupFacts {
 
 export interface EventScale {
   kind?: EventKind;
-  by: 'you' | 'rule';
+  by: 'you' | 'series' | 'rule';
   reason: string;
 }
 
@@ -36,6 +36,13 @@ function onClashfinder(e: LoggedEvent): boolean {
 
 export function eventScale(e: LoggedEvent, lineup?: LineupFacts): EventScale {
   if (e.kind) return { kind: e.kind, by: 'you', reason: 'Set by you' };
+  if (e.seriesKind) {
+    return {
+      kind: e.seriesKind,
+      by: 'series',
+      reason: e.seriesKind === 'festival' ? 'Festival series' : 'Tour series',
+    };
+  }
   if (e.startDate && e.endDate && e.endDate > e.startDate) {
     const days = Math.round((Date.parse(e.endDate) - Date.parse(e.startDate)) / DAY_MS) + 1;
     return { kind: 'festival', by: 'rule', reason: `${days} days` };

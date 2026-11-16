@@ -16,7 +16,6 @@ import {
   LineupStatus,
   LoggedEvent,
   LookupJob,
-  PlaceGuess,
   FIELD_SOURCE_LABELS,
   SOURCE_LABELS,
 } from '../services/lineupApi';
@@ -30,9 +29,11 @@ import { norm } from '../services/listImport';
 import { leaveB2b, pairB2b, seenSlots, SET_LABELS, setSolo, SlotAct, slotId, toSeenInput } from '../server/events/seen';
 import { eventTitle, seriesList, seriesOffers } from '../services/series';
 import { SuggestInput } from './SuggestInput';
+import { usePlaceAutofill } from './PlaceFields';
+import { buildPastPlaces, cityPickPatch } from '../services/placeAutofill';
 import { SeenGenres } from './SeenGenres';
 import { EventTitle } from './EventTitle';
-import { hasGap, placePatch, type Gap } from '../services/table';
+import { hasGap, type Gap } from '../services/table';
 import { dateText, GAP_SECTION, needsWeekendPrompt, thingsLeft } from '../services/poster';
 import { rememberSection, sectionOpen } from '../services/sectionMemory';
 import { Popover } from './ui/Popover';
@@ -1018,8 +1019,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   }, [event.details.checkedAt]);
   const [showLog, setShowLog] = useState(false);
   const [reviewing, setReviewing] = useState(false);
-  const [cityQuery, setCityQuery] = useState('');
-  const [foundCities, setFoundCities] = useState<string[]>([]);
   const [lineupStage, setLineupStage] = useState<string>('all');
   const [lineupDay, setLineupDay] = useState<string>('all');
   const [lineupSearch, setLineupSearch] = useState<string>('');
@@ -1033,52 +1032,19 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     setWeekendPromptDismissed(false);
   }, [event.id]);
 
-  useEffect(() => {
-    if (cityQuery.trim().length < 3) return setFoundCities([]);
-    const t = setTimeout(() => {
-      eventsApi.cities(cityQuery).then(setFoundCities, () => setFoundCities([]));
-    }, 300);
-    return () => clearTimeout(t);
-  }, [cityQuery]);
-
   const others = events.filter((e) => e.id !== event.id);
   const pastVenues = pastValues(others, 'venue');
   // Cities you gave before, as "Las Vegas, NV": picking one brings its state
   // and, when none is stored, its country.
-  const pastPlaces = useMemo(() => {
-    const out = new Map<string, Pick<LoggedEvent, 'city' | 'region' | 'country'>>();
-    for (const e of others) {
-      const label = cityWithRegion(e.city, e.region);
-      if (label && !out.has(label)) out.set(label, { city: e.city, region: e.region, country: e.country });
-    }
-    return out;
-  }, [events, event.id]);
-  const pastCities = pastValues(others.map((e) => ({ ...e, city: cityWithRegion(e.city, e.region) })), 'city');
-  const citySuggestions = [...new Set([...pastCities, ...foundCities])];
-  const saveCity = (v: string) => {
-    const typed = text(v);
-    const past = typed ? pastPlaces.get(typed) : undefined;
-    // A new city drops the old one's state; "City, ST" brings its own.
-    if (past) return save({ city: past.city, region: past.region ?? null, ...(event.country || !past.country ? {} : { country: past.country }) });
-    return save({ city: typed, region: null });
-  };
-
-  // The state and country the map service gives for your city, offered
-  // under State when either is missing. Saved only when you tap it.
-  const [placeGuess, setPlaceGuess] = useState<PlaceGuess | null>(null);
-  useEffect(() => {
-    setPlaceGuess(null);
-    if (!event.city || (event.region && event.country)) return;
-    let live = true;
-    eventsApi.placeGuess({ city: event.city, region: event.region, country: event.country }).then(
-      (r) => live && setPlaceGuess(r.guess),
-      () => undefined,
-    );
-    return () => {
-      live = false;
-    };
-  }, [event.city, event.region, event.country]);
-  const guessed = placeGuess ? placePatch(event, placeGuess) : null;
+  const { places: pastPlaces, cities: pastCities } = useMemo(() => buildPastPlaces(others), [events, event.id]);
+  const { setCityQuery, citySuggestions, mapOffer } = usePlaceAutofill({
+    city: event.city,
+    region: event.region,
+    country: event.country,
+    pastCities,
+    guessDelayMs: 0,
+  });
+  const saveCity = (v: string) => save(cityPickPatch(text(v), pastPlaces, event.country));
   const formatSuggestions = useMemo(() => {
     const counts = new Map<string, number>();
     for (const e of others) for (const v of formatsOf(e.format)) counts.set(v, (counts.get(v) ?? 0) + 1);
@@ -1550,9 +1516,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               placeholder="NV, or the region"
               source={event.sources.region}
               offer={
-                (guessed && placeGuess
-                  ? { value: placeGuess.label, from: placeGuess.places > 1 ? 'the map (the biggest by that name)' : 'the map', onUse: () => void save(guessed) }
-                  : undefined)
+                mapOffer
+                  ? { value: mapOffer.value, from: mapOffer.from, onUse: () => void save(mapOffer.patch) }
+                  : undefined
               }
               onSave={(v) => save({ region: text(v) })}
             />
@@ -1575,9 +1541,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                   );
                 })}
                 {!event.kind && worked.kind && (
-                  <span title="Worked out from the lineup. Tap a type to change it." aria-label="Guessed from the lineup" className="text-violet-300">
-                    ✦
-                  </span>
+                  worked.by === 'series' ? (
+                    <span
+                      title={`${worked.kind === 'festival' ? 'From festival series' : 'From tour series'}. Tap a type to change it.`}
+                      className="text-xs text-zinc-400"
+                    >
+                      {worked.kind === 'festival' ? 'From festival series' : 'From tour series'}
+                    </span>
+                  ) : (
+                    <span title="Worked out from the lineup. Tap a type to change it." aria-label="Guessed from the lineup" className="text-violet-300">
+                      ✦
+                    </span>
+                  )
                 )}
               </div>
             </div>

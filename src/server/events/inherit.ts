@@ -29,6 +29,20 @@ const SHARED: Array<{ field: Shared; key: keyof CapturedFields }> = [
 
 const clean = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v : undefined);
 
+type PlaceField = 'city' | 'region' | 'country';
+const SERIES_PLACE_FIELD: Record<PlaceField, 'seriesCity' | 'seriesRegion' | 'seriesCountry'> = {
+  city: 'seriesCity',
+  region: 'seriesRegion',
+  country: 'seriesCountry',
+};
+
+export function editionPlaceValue(
+  edition: Pick<EditionHeader, 'city' | 'region' | 'country' | 'seriesKind' | 'seriesCity' | 'seriesRegion' | 'seriesCountry'>,
+  field: PlaceField,
+): string | undefined {
+  return clean(edition[field]) ?? (edition.seriesKind !== 'tour' ? clean(edition[SERIES_PLACE_FIELD[field]]) : undefined);
+}
+
 export function resolvedEditionDates(
   edition: Pick<EditionHeader, 'startDate' | 'endDate' | 'weekends'>,
   weekend?: number,
@@ -74,7 +88,14 @@ export function resolveEvent(e: LoggedEvent, edition: EditionHeader | Edition | 
   for (const { field, key } of SHARED) {
     if (key in overrides) (out as any)[field] = overrides[key] ?? undefined;
     else {
-      const raw = field === 'startDate' ? edDates.startDate : field === 'endDate' ? edDates.endDate : edition[field];
+      const raw =
+        field === 'startDate'
+          ? edDates.startDate
+          : field === 'endDate'
+            ? edDates.endDate
+            : field === 'city' || field === 'region' || field === 'country'
+              ? editionPlaceValue(edition, field)
+              : edition[field];
       const v = clean(raw);
       if (v !== undefined) (out as any)[field] = v;
     }
@@ -83,6 +104,11 @@ export function resolveEvent(e: LoggedEvent, edition: EditionHeader | Edition | 
     out.series = clean(overrides.series);
   } else if (edition.seriesSlug && clean(edition.seriesName)) {
     out.series = clean(edition.seriesName);
+  }
+  if (edition.seriesSlug && edition.seriesKind) {
+    out.seriesKind = edition.seriesKind === 'tour' ? 'concert' : 'festival';
+  } else {
+    delete out.seriesKind;
   }
   if (out.startDate) {
     if (out.startDate !== e.startDate) {
@@ -145,7 +171,15 @@ export function applyLinkedPatch(
   for (const { field, key } of SHARED) {
     const before = clean(seen[field]);
     const after = clean(patched[field]);
-    const fromEdition = clean(field === 'startDate' ? edDates.startDate : field === 'endDate' ? edDates.endDate : edition![field]);
+    const fromEdition = clean(
+      field === 'startDate'
+        ? edDates.startDate
+        : field === 'endDate'
+          ? edDates.endDate
+          : field === 'city' || field === 'region' || field === 'country'
+            ? editionPlaceValue(edition!, field)
+            : edition![field],
+    );
     if (field in patch && before !== after) {
       if (after !== undefined && after === fromEdition) delete overrides[key];
       else {
@@ -187,6 +221,7 @@ export function applyLinkedPatch(
     }
   }
   next.overrides = overrides;
+  delete next.seriesKind;
   return { event: next, changes };
 }
 
@@ -195,6 +230,7 @@ export function applyLinkedPatch(
 export function unlinkEvent(event: LoggedEvent, now: Date): LoggedEvent {
   const base = ensureCaptured(event);
   const out: LoggedEvent = { ...base, editionId: undefined, overrides: {}, updatedAt: now.toISOString() };
+  delete out.seriesKind;
   const overrides = base.overrides ?? {};
   const captured = base.captured ?? {};
   for (const { field, key } of SHARED) {

@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, ExternalLink, Loader2, RefreshCw, Search } from 'lucide-react';
 import type { DetailCandidate, DetailsStatus } from '../server/events/types';
 import type { LineupStatus } from '../services/lineupApi';
 import { candidateRowParts, checkedLabel, checkRows, type CheckRow } from '../services/checkDetails';
+import { weekendLabel } from '../services/format';
 import { buildPickerView, type PickerChip } from '../services/pickerGroups';
 import { Button } from './ui/Button';
 import { Pill } from './ui/Pill';
@@ -65,6 +66,9 @@ function ChipRow({ label, chips, active, onPick }: { label: string; chips: Picke
 // and Gemini is a separate, opt-in second step.
 export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, notes, lineupStatus, suggestions, onCheck, onGemini, onPick, onNone, onDismissCanon, dismissBusy = false, inline = false }: Props) {
   const [used, setUsed] = useState<string[]>([]);
+  useEffect(() => {
+    setUsed([]);
+  }, [checkedAt]);
   const [search, setSearch] = useState('');
   const [city, setCity] = useState<string | null>(null);
   const [month, setMonth] = useState<string | null>(null);
@@ -107,6 +111,11 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
         <span className="min-w-0">
           <span className="block truncate text-sm text-zinc-100">{row.name}</span>
           <span className="block truncate text-xs text-zinc-300">{row.date} · {row.venue} · {row.place}</span>
+          {c.weekends && c.weekends.length > 1 && (
+            <span className="block truncate text-[11px] text-violet-300/90">
+              {c.weekends.length} weekends ({c.weekends.map((w) => weekendLabel(w, 'WK')).join(' · ')})
+            </span>
+          )}
           <span className="block truncate text-[11px] text-zinc-400">
             {[...new Set(c.sources.map((s) => SOURCE_LABELS[s.sourceType] + (s.readBy === 'gemini' ? ' (read by Gemini)' : '')))].join(', ')}
           </span>

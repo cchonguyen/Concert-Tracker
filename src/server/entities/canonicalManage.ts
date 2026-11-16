@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ArtistIdentity, Edition, EditionArtistRef, EditionHeader, EditionPerformance, EditionWeekend } from '../lineup/types';
+import type { ArtistIdentity, Edition, EditionArtistRef, EditionHeader, EditionPerformance, EditionWeekend, SeriesKind } from '../lineup/types';
 import { normalizeName } from '../lineup/text';
 import type { CanonicalUndoResult, LineupStore } from '../lineup/store/types';
 import { CanonicalStoreError, editionMatchesStatusFilter, isVerifiedStatus } from '../lineup/store/types';
@@ -23,6 +23,10 @@ export interface CanonicalEditionSummary {
   seriesSlug: string | null;
   seriesName: string | null;
   seriesBrand: string | null;
+  seriesKind: SeriesKind | null;
+  seriesCity: string | null;
+  seriesRegion: string | null;
+  seriesCountry: string | null;
   year: number;
   name: string;
   startDate: string | null;
@@ -45,6 +49,10 @@ export function summarizeEdition(e: EditionHeader & { performances?: EditionPerf
     seriesSlug: e.seriesSlug ?? null,
     seriesName: e.seriesName ?? null,
     seriesBrand: e.seriesBrand ?? null,
+    seriesKind: e.seriesKind ?? null,
+    seriesCity: e.seriesKind !== 'tour' ? (e.seriesCity ?? null) : null,
+    seriesRegion: e.seriesKind !== 'tour' ? (e.seriesRegion ?? null) : null,
+    seriesCountry: e.seriesKind !== 'tour' ? (e.seriesCountry ?? null) : null,
     year: e.year,
     name: e.name,
     startDate: e.startDate ?? null,

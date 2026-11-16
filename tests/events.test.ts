@@ -6,8 +6,10 @@ import path from 'node:path';
 import { findDates, parseEventInput } from '../src/server/events/parse.ts';
 import {
   DetailFinder,
+  groupWeekendCandidates,
   mergeCandidates,
   pickCandidate,
+  researchEditionFacts,
   researchEvent,
   setlistfmFinder,
   ticketmasterFinder,
@@ -585,4 +587,179 @@ test('research catalog: only the owner or single-user mode may persist; members 
   assert.equal(researchCatalogFor(undefined, 'u2', store).persist, false);
   assert.equal(researchCatalogFor('member', 'u2', store).persistOwn, true);
   assert.equal(researchCatalogFor('owner', 'u1', store).actor, 'system:research');
+});
+
+test('Ticketmaster splits two-weekend runs into weekends while keeping continuous 3-day runs single', async () => {
+  process.env.TICKETMASTER_API_KEY = 'k';
+  try {
+    const venue = { name: 'Empire Polo Club', city: { name: 'Indio' }, state: { stateCode: 'CA' } };
+    const { fetcher: twoWkndFetcher } = fakeFetcher({
+      'https://app.ticketmaster.com/': {
+        body: {
+          _embedded: {
+            events: [
+              { id: '1', name: 'Coachella', dates: { start: { localDate: '2025-04-11' } }, _embedded: { venues: [venue] } },
+              { id: '2', name: 'Coachella', dates: { start: { localDate: '2025-04-12' } }, _embedded: { venues: [venue] } },
+              { id: '3', name: 'Coachella', dates: { start: { localDate: '2025-04-13' } }, _embedded: { venues: [venue] } },
+              { id: '4', name: 'Coachella', dates: { start: { localDate: '2025-04-18' } }, _embedded: { venues: [venue] } },
+              { id: '5', name: 'Coachella', dates: { start: { localDate: '2025-04-19' } }, _embedded: { venues: [venue] } },
+              { id: '6', name: 'Coachella', dates: { start: { localDate: '2025-04-20' } }, _embedded: { venues: [venue] } },
+            ],
+          },
+        },
+      },
+    });
+    const split = await ticketmasterFinder.find({ name: 'Coachella', year: 2025 }, twoWkndFetcher);
+    assert.equal(split.length, 1);
+    assert.equal(split[0].startDate, '2025-04-11');
+    assert.equal(split[0].endDate, '2025-04-20');
+    assert.deepEqual(split[0].weekends, [
+      { weekend: 1, startDate: '2025-04-11', endDate: '2025-04-13' },
+      { weekend: 2, startDate: '2025-04-18', endDate: '2025-04-20' },
+    ]);
+
+    const { fetcher: singleFetcher } = fakeFetcher({
+      'https://app.ticketmaster.com/': {
+        body: {
+          _embedded: {
+            events: [
+              { id: '1', name: 'Coachella', dates: { start: { localDate: '2025-04-11' } }, _embedded: { venues: [venue] } },
+              { id: '2', name: 'Coachella', dates: { start: { localDate: '2025-04-12' } }, _embedded: { venues: [venue] } },
+              { id: '3', name: 'Coachella', dates: { start: { localDate: '2025-04-13' } }, _embedded: { venues: [venue] } },
+            ],
+          },
+        },
+      },
+    });
+    const single = await ticketmasterFinder.find({ name: 'Coachella', year: 2025 }, singleFetcher);
+    assert.equal(single.length, 1);
+    assert.equal(single[0].startDate, '2025-04-11');
+    assert.equal(single[0].endDate, '2025-04-13');
+    assert.equal(single[0].weekends, undefined);
+
+    // Runs separated by > 21 days do not produce weekends.
+    const { fetcher: farFetcher } = fakeFetcher({
+      'https://app.ticketmaster.com/': {
+        body: {
+          _embedded: {
+            events: [
+              { id: '1', name: 'Residency', dates: { start: { localDate: '2025-04-11' } }, _embedded: { venues: [venue] } },
+              { id: '2', name: 'Residency', dates: { start: { localDate: '2025-06-11' } }, _embedded: { venues: [venue] } },
+            ],
+          },
+        },
+      },
+    });
+    const far = await ticketmasterFinder.find({ name: 'Residency', year: 2025 }, farFetcher);
+    assert.equal(far.length, 1);
+    assert.equal(far[0].weekends, undefined);
+  } finally {
+    delete process.env.TICKETMASTER_API_KEY;
+  }
+});
+
+test('braveFinder, mergeCandidates, and groupWeekendCandidates preserve multi-weekend dates without fabricating', async () => {
+  process.env.BRAVE_SEARCH_API_KEY = 'k';
+  try {
+    const { fetcher } = fakeFetcher({
+      'https://api.search.brave.com/': {
+        body: {
+          web: {
+            results: [
+              {
+                url: 'https://coachella.example/2025',
+                title: 'Coachella 2025 Dates Announced',
+                description: 'Weekend 1: April 11-13, 2025. Weekend 2: April 18-20, 2025.',
+              },
+            ],
+          },
+        },
+      },
+    });
+    const found = await braveFinder.find({ name: 'Coachella', year: 2025 }, fetcher);
+    assert.equal(found.length, 2);
+    assert.equal(found[0].startDate, '2025-04-11');
+    assert.equal(found[0].endDate, '2025-04-13');
+    assert.deepEqual(found[0].weekends, [
+      { weekend: 1, startDate: '2025-04-11', endDate: '2025-04-13' },
+      { weekend: 2, startDate: '2025-04-18', endDate: '2025-04-20' },
+    ]);
+    assert.equal(found[1].startDate, '2025-04-18');
+    assert.equal(found[1].endDate, '2025-04-20');
+
+    // mergeCandidates preserves weekends when merging on the same startDate.
+    const merged = mergeCandidates([
+      { id: 'a', startDate: '2025-04-11', endDate: '2025-04-13', sources: src('discovered', ['startDate', 'endDate']) },
+      found[0],
+    ]);
+    assert.equal(merged.length, 1);
+    assert.deepEqual(merged[0].weekends, found[0].weekends);
+
+    // researchEditionFacts groups Brave W1+W2 into one matched candidate when input.startDate matches W1.
+    const edFacts = await researchEditionFacts(
+      { id: 'ed1', name: 'Coachella', year: 2025, startDate: '2025-04-11' },
+      [braveFinder],
+      { fetcher, now: NOW },
+    );
+    assert.equal(edFacts.status, 'matched');
+    assert.equal(edFacts.candidates.length, 1);
+    assert.equal(edFacts.candidates[0].startDate, '2025-04-11');
+    assert.equal(edFacts.candidates[0].endDate, '2025-04-20');
+    assert.deepEqual(edFacts.candidates[0].weekends, [
+      { weekend: 1, startDate: '2025-04-11', endDate: '2025-04-13' },
+      { weekend: 2, startDate: '2025-04-18', endDate: '2025-04-20' },
+    ]);
+  } finally {
+    delete process.env.BRAVE_SEARCH_API_KEY;
+  }
+
+  // Conflicting dates from different URLs without weekend tokens are never merged into weekends.
+  const ungrouped = groupWeekendCandidates(
+    [
+      {
+        id: 'x1',
+        name: 'Some Fest',
+        startDate: '2025-05-02',
+        endDate: '2025-05-04',
+        sources: [{ sourceType: 'discovered', sourceUrl: 'https://a.example', fields: ['startDate', 'endDate'], quote: 'May 2-4, 2025' }],
+      },
+      {
+        id: 'x2',
+        name: 'Some Fest',
+        startDate: '2025-05-09',
+        endDate: '2025-05-11',
+        sources: [{ sourceType: 'discovered', sourceUrl: 'https://b.example', fields: ['startDate', 'endDate'], quote: 'May 9-11, 2025' }],
+      },
+    ],
+    'Some Fest',
+  );
+  assert.equal(ungrouped.length, 2);
+  assert.equal(ungrouped[0].weekends, undefined);
+
+  // Explicit Weekend 2 / Weekend 1 tokens out of order are honored and sorted by weekend index.
+  const explicit = groupWeekendCandidates(
+    [
+      {
+        id: 'w2',
+        name: 'Coachella Weekend 2',
+        startDate: '2025-04-18',
+        endDate: '2025-04-20',
+        sources: [{ sourceType: 'ticketmaster', sourceUrl: 'https://tm/2', fields: ['startDate', 'endDate'] }],
+      },
+      {
+        id: 'w1',
+        name: 'Coachella Weekend 1',
+        startDate: '2025-04-11',
+        endDate: '2025-04-13',
+        sources: [{ sourceType: 'ticketmaster', sourceUrl: 'https://tm/1', fields: ['startDate', 'endDate'] }],
+      },
+    ],
+    'Coachella',
+  );
+  assert.equal(explicit.length, 1);
+  assert.equal(explicit[0].name, 'Coachella');
+  assert.deepEqual(explicit[0].weekends, [
+    { weekend: 1, startDate: '2025-04-11', endDate: '2025-04-13' },
+    { weekend: 2, startDate: '2025-04-18', endDate: '2025-04-20' },
+  ]);
 });

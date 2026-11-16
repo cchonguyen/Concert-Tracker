@@ -325,3 +325,74 @@ test('canonicalApi.researchEdition formats the request to /api/manage/canonical/
     globalThis.fetch = originalFetch;
   }
 });
+
+test('researchEditionFacts preserves W1 and W2 when input.startDate matches W1, and details route passes weekends through', async () => {
+  const s = await store();
+  await confirmCanonicalEdition(
+    s,
+    parseCanonicalInput({
+      name: 'Coachella',
+      year: 2025,
+      startDate: '2025-04-11',
+      venue: 'Empire Polo Club',
+      city: 'Indio, CA',
+      performers: [{ name: 'Lady Gaga' }],
+      apply: true,
+    }),
+  );
+  const edition = (await s.getEditionByKey('coachella/2025-04-11'))!;
+
+  const tmSplitFinder: DetailFinder = {
+    id: 'ticketmaster',
+    enabled: () => true,
+    withoutYear: true,
+    async find(): Promise<DetailCandidate[]> {
+      return [
+        {
+          id: 'tm-w1',
+          name: 'Coachella Weekend 1',
+          startDate: '2025-04-11',
+          endDate: '2025-04-13',
+          venue: 'Empire Polo Club',
+          city: 'Indio, CA',
+          sources: [{ sourceType: 'ticketmaster', sourceUrl: 'https://tm.example/w1', fields: ['startDate', 'endDate', 'venue', 'city'] }],
+        },
+        {
+          id: 'tm-w2',
+          name: 'Coachella Weekend 2',
+          startDate: '2025-04-18',
+          endDate: '2025-04-20',
+          venue: 'Empire Polo Club',
+          city: 'Indio, CA',
+          sources: [{ sourceType: 'ticketmaster', sourceUrl: 'https://tm.example/w2', fields: ['startDate', 'endDate', 'venue', 'city'] }],
+        },
+      ];
+    },
+  };
+
+  const direct = await researchEditionFacts(
+    { id: edition.id, name: 'Coachella', year: 2025, startDate: '2025-04-11' },
+    [tmSplitFinder],
+  );
+  assert.equal(direct.status, 'matched');
+  assert.equal(direct.candidates.length, 1);
+  assert.equal(direct.candidates[0].startDate, '2025-04-11');
+  assert.equal(direct.candidates[0].endDate, '2025-04-20');
+  assert.equal(direct.candidates[0].name, 'Coachella');
+  assert.deepEqual(direct.candidates[0].weekends, [
+    { weekend: 1, startDate: '2025-04-11', endDate: '2025-04-13' },
+    { weekend: 2, startDate: '2025-04-18', endDate: '2025-04-20' },
+  ]);
+
+  await withRole('owner', s, [tmSplitFinder], async (app) => {
+    const res = await post(app, `/api/manage/canonical/editions/${edition.id}/details`, {});
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as EventDetails;
+    assert.equal(body.status, 'matched');
+    assert.equal(body.candidates.length, 1);
+    assert.deepEqual(body.candidates[0].weekends, [
+      { weekend: 1, startDate: '2025-04-11', endDate: '2025-04-13' },
+      { weekend: 2, startDate: '2025-04-18', endDate: '2025-04-20' },
+    ]);
+  });
+});
