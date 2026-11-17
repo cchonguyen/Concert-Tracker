@@ -46,4 +46,4 @@ Contracts: SYSTEM_SPEC.md section 3. `[CORE / DATA]` slices need passing unit te
 
 ## Harness rollout (hub plan harness-consistency, approved by Charlie 2026-11-17)
 - [x] **Slice 2.11: Switch to the shared harness gate and telemetry workflows** Target files: .github/workflows/harness-slice-gate.yml, .github/workflows/harness-telemetry.yml | Issue: #448 | Verify: npm run lint --silent && npm test --silent
-- [ ] **Slice 2.12: Find lineup: look up editions that have no acts** [IN_PROGRESS] [CORE / DATA] On-the-fly: Charlie: Find lineup returned empty results for six editions (issue #452) Target files: src/server/lineup/pipeline.ts, tests/canonMatch.test.ts, tests/eventFromEdition.test.ts, tests/events.test.ts | Issue: #452 | Verify: npm test --silent && npm run lint --silent
+- [x] **Slice 2.12: Find lineup: look up editions that have no acts** [CORE / DATA] On-the-fly: Charlie: Find lineup returned empty results for six editions (issue #452) Target files: src/server/lineup/pipeline.ts, tests/canonMatch.test.ts, tests/eventFromEdition.test.ts, tests/events.test.ts | Issue: #452 | Verify: npm test --silent && npm run lint --silent

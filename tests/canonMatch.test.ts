@@ -160,7 +160,7 @@ test('findVerifiedEdition: dated, undated, provisional and ambiguous cases', asy
 
 test('pipeline cache: a verified edition found by the matcher skips the lookup; a provisional one does not', async () => {
   const s = await fresh();
-  await writeEdition(s, { edition: ed({ key: 'differently-keyed' }), actor: 'a', reason: 'r' });
+  await writeEdition(s, { edition: ed({ key: 'differently-keyed', performances: [{ name: 'Act One' } as any] }), actor: 'a', reason: 'r' });
   await writeEdition(s, { edition: ed({ id: 'p', key: 'p/1', seriesSlug: 'prov', name: 'Prov', status: 'provisional' }), actor: 'a', reason: 'r' });
   const deps = { store: s, now: () => new Date('2026-02-01T00:00:00Z') } as any;
   const hit = await createLookup(deps, { eventName: 'Band A', year: 2026, startDate: '2026-06-01' });
@@ -169,4 +169,14 @@ test('pipeline cache: a verified edition found by the matcher skips the lookup; 
   const miss = await createLookup(deps, { eventName: 'Prov', year: 2026, startDate: '2026-06-01' });
   assert.equal(miss.status, 'queued');
   assert.equal(miss.editionId, undefined);
+});
+
+test('pipeline cache: a verified edition with no acts is looked up, not reported as a confirmed lineup', async () => {
+  const s = await fresh();
+  await writeEdition(s, { edition: ed({ key: 'empty-edition' }), actor: 'a', reason: 'r' });
+  const deps = { store: s, now: () => new Date('2026-02-01T00:00:00Z') } as any;
+  const job = await createLookup(deps, { eventName: 'Band A', year: 2026, startDate: '2026-06-01' });
+  assert.equal(job.status, 'queued');
+  assert.equal(job.editionId, undefined);
+  assert.equal(job.editionKey, 'empty-edition');
 });
