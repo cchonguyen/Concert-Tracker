@@ -7,7 +7,7 @@ import type { NavStorage } from './nav.ts';
 export const MANAGE_SCOPES = ['mine', 'archive'] as const;
 export type ManageScope = (typeof MANAGE_SCOPES)[number];
 
-export const ARCHIVE_SECTIONS = ['artists', 'series', 'editions', 'lookups', 'changes'] as const;
+export const ARCHIVE_SECTIONS = ['artists', 'series', 'brands', 'editions', 'lookups', 'changes'] as const;
 export type ArchiveSection = (typeof ARCHIVE_SECTIONS)[number];
 
 export const EDITION_STATUSES = ['all', 'verified', 'provisional', 'draft'] as const;

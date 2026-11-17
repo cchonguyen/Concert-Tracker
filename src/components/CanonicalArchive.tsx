@@ -13,6 +13,7 @@ import {
   UndoConflictError,
 } from '../services/lineupApi';
 import { reviewSubjectFromEdition } from '../services/reviewRows';
+import { brandsApi, type BrandRecord } from '../services/brandsApi';
 import type { Edition, EditionPerformance, EditionWeekend, SeriesKind, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
 import type { DetailCandidate, EventDetails } from '../server/events/types';
 import type { ArtistAppearance, CanonicalArtistRecord, CanonicalEditionSummary } from '../server/entities/canonicalManage';
@@ -46,7 +47,7 @@ import {
 // Artists, Series, Editions & Lineups, Lookups, Changes. Counts only; no member names. Never writes a personal log.
 // The search box and the edition status filter live in ManageView and arrive as props.
 
-export type ArchiveSection = 'artists' | 'series' | 'editions' | 'lookups' | 'changes';
+export type ArchiveSection = 'artists' | 'series' | 'brands' | 'editions' | 'lookups' | 'changes';
 export type EditionStatus = 'all' | 'verified' | 'provisional' | 'draft';
 
 // An edition's status in words. 'confirmed' is the legacy name for verified.
@@ -86,6 +87,7 @@ export const CanonicalArchive: React.FC<{ section: ArchiveSection; query: string
   if (section === 'lookups') return <ArchiveLookups />;
   if (section === 'changes') return <ArchiveChanges />;
   if (section === 'series') return <ArchiveSeries query={query} />;
+  if (section === 'brands') return <ArchiveBrands query={query} />;
   if (section === 'editions') return <ArchiveEditions query={query} status={status} />;
   return <ArchiveArtists query={query} />;
 };
@@ -273,6 +275,162 @@ const parseAliasText = (raw: string): string[] =>
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+
+// Brands (Global Editions slice 2.9): one table of brands with rename, merge into another brand,
+// organization, and undo of the last change. Owner only; shared data, so no personal fields.
+const ArchiveBrands: React.FC<{ query: string }> = ({ query }) => {
+  const [brands, setBrands] = useState<BrandRecord[] | null>(null);
+  const [organizations, setOrganizations] = useState<Array<{ id: string; name: string }>>([]);
+  const [editing, setEditing] = useState<{ id: string; mode: 'rename' | 'merge' } | null>(null);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // The last change and the history entry that undoes it.
+  const [notice, setNotice] = useState<{ text: string; undoId: string } | null>(null);
+
+  const load = useCallback(
+    () =>
+      brandsApi
+        .list()
+        .then((rows) => {
+          setBrands(rows);
+          setError(null);
+        })
+        .catch((err) => setError(messageOf(err))),
+    [],
+  );
+  useEffect(() => {
+    void load();
+    entitiesApi
+      .list()
+      .then((r) => setOrganizations(r.entities.filter((e) => e.kind === 'organization').map((e) => ({ id: e.id, name: e.name }))))
+      .catch(() => setOrganizations([]));
+  }, [load]);
+
+  const orgName = useMemo(() => new Map(organizations.map((o) => [o.id, o.name])), [organizations]);
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const rows = brands ?? [];
+    if (!q) return rows;
+    return rows.filter((b) => [b.name, ...b.aliases].some((n) => n.toLowerCase().includes(q)));
+  }, [brands, query]);
+
+  const run = async (text: string, action: () => Promise<{ id: string }>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const entry = await action();
+      setEditing(null);
+      setNotice({ text, undoId: entry.id });
+      await load();
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const undo = async () => {
+    if (!notice) return;
+    await run('Undone.', () => brandsApi.undo(notice.undoId));
+    setNotice(null);
+  };
+
+  return (
+    <section className="space-y-3">
+      {error && <Notice tone="warning">{error}</Notice>}
+      {notice && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Notice tone="success">{notice.text}</Notice>
+          <Button variant="ghost" onClick={() => void undo()} disabled={busy}>
+            Undo
+          </Button>
+        </div>
+      )}
+      {brands === null && !error && <p className="text-sm text-zinc-500">Loading brands…</p>}
+      {brands && brands.length === 0 && <p className="text-sm text-zinc-500">No brands yet. A brand appears once a series has one.</p>}
+      {visible.length > 0 && (
+        <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+          {visible.map((b) => (
+            <li key={b.id} className="space-y-2 p-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="font-medium text-zinc-100">{b.name}</span>
+                <span className="text-xs text-zinc-500">{b.organizationId ? orgName.get(b.organizationId) ?? 'Organization' : 'No organization'}</span>
+              </div>
+              {b.aliases.length > 0 && <p className="text-xs text-zinc-500">Also known as {b.aliases.join(', ')}</p>}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button onClick={() => { setEditing({ id: b.id, mode: 'rename' }); setDraft(b.name); }} disabled={busy}>
+                  Rename
+                </Button>
+                <Button onClick={() => { setEditing({ id: b.id, mode: 'merge' }); setDraft(''); }} disabled={busy || (brands?.length ?? 0) < 2}>
+                  Merge into another brand
+                </Button>
+                <select
+                  aria-label={`Organization for ${b.name}`}
+                  className={field}
+                  value={b.organizationId ?? ''}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const next = e.target.value || null;
+                    void run(`Organization set for ${b.name}.`, () => brandsApi.setOrganization(b.id, next));
+                  }}
+                >
+                  <option value="">No organization</option>
+                  {organizations.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {editing?.id === b.id && editing.mode === 'rename' && (
+                <form
+                  className="flex flex-wrap items-center gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void run(`Renamed to ${draft.trim()}.`, () => brandsApi.rename(b.id, draft));
+                  }}
+                >
+                  <input aria-label="New brand name" className={field} value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={80} />
+                  <Button variant="primary" type="submit" disabled={busy || !draft.trim()}>
+                    Save name
+                  </Button>
+                  <Button onClick={() => setEditing(null)}>Cancel</Button>
+                </form>
+              )}
+              {editing?.id === b.id && editing.mode === 'merge' && (
+                <form
+                  className="flex flex-wrap items-center gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const target = (brands ?? []).find((x) => x.id === draft);
+                    if (!target) return;
+                    void run(`Merged ${b.name} into ${target.name}.`, () => brandsApi.merge(b.id, target.id));
+                  }}
+                >
+                  <select aria-label="Brand to keep" className={field} value={draft} onChange={(e) => setDraft(e.target.value)}>
+                    <option value="">Pick the brand to keep</option>
+                    {(brands ?? [])
+                      .filter((x) => x.id !== b.id)
+                      .map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.name}
+                        </option>
+                      ))}
+                  </select>
+                  <Button variant="primary" type="submit" disabled={busy || !draft}>
+                    Merge
+                  </Button>
+                  <Button onClick={() => setEditing(null)}>Cancel</Button>
+                </form>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+};
 
 const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
   const [debouncedQuery, setDebouncedQuery] = useState(query);
