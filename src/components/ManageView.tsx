@@ -92,6 +92,7 @@ const isManageKind = (k?: string): k is ManageKind | 'history' | 'health' =>
 const ARCHIVE_TABS: Array<{ value: ArchiveSection; label: string }> = [
   { value: 'artists', label: 'Artists' },
   { value: 'series', label: 'Series' },
+  { value: 'brands', label: 'Brands' },
   { value: 'editions', label: 'Editions & Lineups' },
   { value: 'lookups', label: 'Lookups' },
   { value: 'changes', label: 'Changes' },
