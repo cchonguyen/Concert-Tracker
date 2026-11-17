@@ -50,6 +50,11 @@ Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
 | `GET /api/manage/canonical/series` | Owner only. List canonical `event_series` summaries (`SeriesSummary[]`) with `kind` (`'festival' | 'tour'`) |
 | `POST /api/manage/canonical/series` | Owner only. Create a canonical series (`name`, `kind` (`'festival' | 'tour'`, default `'festival'`), `brand`, `aliases`, `city`, `region`, `country`; place null for tours) |
 | `PATCH /api/manage/canonical/series/:slug` | Owner only. Edit a canonical series (`name`, `kind`, `brand`, `aliases`, `city`, `region`, `country`; switching to tour clears place), or attach/detach editions (`seriesSlug`) |
+| `GET /api/manage/brands` | Owner only. Every brand (`id`, `name`, `aliases`, `organizationId`) |
+| `PATCH /api/manage/brands/:id` | Owner only. Rename a brand (`name`); the old name stays as an alias. Refused with 409 when another brand has the name; recorded in brand history |
+| `PATCH /api/manage/brands/:id/organization` | Owner only. Set (`organizationId`, an entity id) or clear (`null`) the brand's organization; recorded in brand history |
+| `POST /api/manage/brands/merge` | Owner only. Merge `sourceId` into `targetId`: series move to the target, names become aliases, the source is removed; recorded in brand history |
+| `POST /api/manage/brands/history/:id/undo` | Owner only. Undo one brand change; series that moved again since are left alone; a second undo is refused with 409 |
 | `POST /api/manage/canonical/series/:slug/merge` | Owner only. Merge source canonical series into target (`merge_canonical_series`), moving editions and absorbing aliases |
 | `POST /api/manage/canonical/confirm` | Owner only. Merge an edition into the catalog. Without `apply: true` it returns the merge diff only (`{ applied: false, diff }`); with it, it writes (Edit lineup sends the preview first) |
 | `PATCH /api/manage/canonical/artists/:key` | Owner only. Rename a catalog artist (`name`); its old name becomes an AKA |

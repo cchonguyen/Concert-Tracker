@@ -23,6 +23,7 @@ import {
 } from './canonicalManage';
 import { CanonicalHistoryCursorError, CanonicalHistoryEntry, CanonicalStoreError, EditionOccurrenceConflictError, isVerifiedStatus } from '../lineup/store/types';
 import { currentMember } from '../auth/requestScope';
+import { brandsRouter } from '../brands/routes';
 import {
   CanonicalInputError,
   EditionNotFoundError,
@@ -662,5 +663,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     }
   });
 
+  // Brands under organizations (Global Editions slice 2.8). Owner only.
+  router.use(brandsRouter({ isOwner: () => isOwner(currentMember()) }));
   return router;
 }
