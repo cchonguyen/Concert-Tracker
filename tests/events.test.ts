@@ -321,7 +321,7 @@ test('a lineup lookup from a dated event reuses an edition confirmed for that da
     name: 'Porter Robinson',
     startDate: '2024-10-05',
     status: 'confirmed',
-    performances: [],
+    performances: [{ name: 'Act One' } as any],
     updatedAt: NOW.toISOString(),
   };
   await store.upsertEdition(edition);
