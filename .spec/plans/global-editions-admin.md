@@ -1,7 +1,7 @@
 # Plan: global-editions-admin
 
-Source spec: docs/specs/global-editions-admin-spec.md (merged in #434). Approved by Charlie 2026-11-17.
-Merging this plan records approval of the slices below (see .spec/plans/README.md).
+Source spec: docs/specs/global-editions-admin-spec.md (merged in #434). Charlie approved the spec and said to start slice 2.7 on 2026-11-17.
+Merging this plan records approval of the slices below (see .spec/plans/README.md). Slice 2.7 is done and merged in #444. Slices 2.8 to 2.10 wait for this merge.
 
 - slice: 2.7
 - slice: 2.8
