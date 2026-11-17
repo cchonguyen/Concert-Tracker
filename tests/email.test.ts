@@ -269,6 +269,7 @@ test('email imports: an email once unreadable leaves the review list when a read
   });
   const before = mergeImports([], readEmails([old]).outcomes, [], NOW);
   assert.equal(reviewList(before)[0].status, 'unreadable');
+  assert.ok(reviewList(before)[0].unreadableReason, 'an unreadable row keeps the reader’s reason');
   const learned = {
     ...old,
     text: 'Hi Sam , this is your order confirmation for Costume Party\nAbout this event\nSaturday, October 17, 2015 at 9:30 PM\nRickshaw Stop\nSan Francisco, CA 94102',
