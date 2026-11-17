@@ -115,21 +115,3 @@ Clashfinder is involved in the most corrections because it supplies the most acc
 1. Do you want the 60 calendar-venue rows cleaned up? Reply yes or no. If yes, the cleanup will set the venue to empty and mark it as a system correction, so it can be undone.
 2. Is the 25% deletion rate expected? Were most deletions duplicates, mistakes or test rows? A quick yes/no per type helps decide whether a delete reason is worth building.
 3. Should unreadable email messages be retried later, or treated as final?
-
-## Follow-up (2026-11-17, same day)
-
-Charlie's answers and what was done.
-
-**1. Calendar-link venues: cleaned up.** The venue was cleared on the 60 active rows that held the calendar-link text. Nothing else changed. The original text is still in each row's `captured.venue`, so restoring a row is `set venue = captured->>'venue'`. All 60 rows point to one `venue_id` (`27c60dc6-…`) that does not resolve in `venues` or `canonical_venues`. It is unexplained and needs its own look.
-
-**2. Deletions: expected.** No change.
-
-**3. Unreadable emails.** The 466 unreadable rows stored no reason, so the cause was unknown. By sender:
-- Sickening.events: 68. No reader exists for it.
-- Eventbrite: 49. Some are older layouts the readers still miss.
-- Front Gate 12, Tixr 5, AXS 3. Ticket senders, probably recoverable with readers.
-- About 120 from retail and general senders (Best Buy 35, USPS 22, Michaels 16, Newegg 16, others). These are not ticket mail, so the label is misleading.
-
-Change: an unreadable row now stores the reader's own reason (`unreadableReason`, `src/server/events/email/imports.ts`). Rows imported before this change have no reason until they are read again.
-
-**Scope and overlap.** The counts cover every row in `logged_events` (572, 7 users) and every row in `email_imports`. One member holds 315 of the 572 rows. No shared edition is linked by more than one user. Three pairs of users share an event name and date. Six same-city, same-date groups across users use different venue spellings.
