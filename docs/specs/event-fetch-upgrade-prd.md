@@ -79,7 +79,8 @@ Deferred: MusicBrainz MBID lookup for setlist.fm (the PRD's FR-1). MusicBrainz f
 | Slice | What |
 | --- | --- |
 | 3.1 | A batch step for events with a year, a city and no date. It runs the structured finders only (setlist.fm, Clashfinder, Ticketmaster; no Brave and no reader), under the cron's subrequest budget, a few events a run, each event at most once a day (the retry rule from `backfillResearch.ts`). Results are `choose` candidates; nothing is filled without your tap. |
-| 3.2 | Fill gaps lists the batch results, so a whole set of single good candidates can be confirmed in a few taps. Each still shows its date, venue and source. |
+| 3.2 | Fill gaps shows a count of events with batch results waiting, and lists them, so a whole set of single good candidates can be confirmed in a few taps. Each still shows its date, venue and source. |
+| 3.4 | Rollout: the batch runs for the owner only first. Once it works, it is turned on for all members (Charlie, 2026-11-17). |
 | 3.3 | Cascade instead of parallel. Today Brave runs alongside the free finders on every research run. In production, Brave was the only source with a hit in 117 of 162 runs, and redundant in at most 21 (13%), where a free source had already answered. From this slice, Brave runs only when the free finders leave the date (or, with a full date, the venue or city) unanswered. Brave is then allowed in the batch too, because it is invoked only when it can add something (Charlie, 2026-11-17: automation is fine if it cascades efficiently). Each Brave call made by the batch is noted on the event and counted in the 200 monthly cap. |
 
 Subrequests: per event about 7 to 9 (store 2, finders 3 or 4, Open-Meteo 1, page 2 1). That is 4 to 5 events per run under 50.
@@ -99,12 +100,12 @@ Subrequests: page fetches stay at 3 in total, so the worst case is unchanged.
 | Slice | What |
 | --- | --- |
 | 5.1 | Ranking: a candidate whose venue matches the venue you typed ranks first, then the number of sources, then the date. |
-| 5.3 | "Did you mean?" (Charlie, 2026-11-17). Each candidate gets a score computed in code from its sources: date coverage, venue match, distance, number of sources. The best one is offered first. Another candidate counts as a near match when its score reaches 50% of the best one's. In that case the event shows a small button that highlights the difference, for example another date or venue, and asks whether you meant that one. This catches a wrong year or venue typed from memory. Nothing changes without a tap. |
+| 5.3 | "Did you mean?" (Charlie, 2026-11-17). Each candidate gets a score computed in code from its sources: date coverage, venue match, distance, number of sources. The best one is offered first. Another candidate counts as a near match when its score reaches 50% of the best one's. In that case the event shows a small button that highlights the difference, for example another date or venue, and asks whether you meant that one. This catches a wrong year or venue typed from memory. Nothing changes without a tap. It shows only on new research and on older events that are not fully filled out. A resolved event never shows it on its own; a manual search on it can (Charlie, 2026-11-17). |
 | 5.2 | Same-artist guardrail. When two or more candidates fall in your window in the same metro area, nothing is applied on its own even with a full date, unless exactly one matches your typed venue. The `choose` list shows date and venue for each. |
 
 Not built: the PRD's afterparty and pop-up word list (FR-5). In Charlie's history, the same artist (or event name) appears in the same city in one year in about 2% of cases (4 of 385 name, city and year groups; 12 of 498 artist, city and year groups among acts seen, at most 3 times). Several of those are recurring series or duplicates, not afterparties. Venue matching (5.1) and the guardrail (5.2) cover the real cases without a fixed word list.
 
-### Stage 4b: deep search for hard events (proposal, waiting on Charlie)
+### Stage 4b: deep search for hard events (approved by Charlie 2026-11-17, with a 60-query allowance and year-only events included)
 
 Rung 4 has been close to useless as built (section 5). The measured bottleneck is finding pages, not reading them. When the reader failed, it usually had no page that named the event. A person searching by hand would try a few searches, open the likely pages and read them. Deep search does the same inside the rules:
 
