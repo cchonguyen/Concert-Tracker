@@ -45,4 +45,4 @@ Contracts: SYSTEM_SPEC.md section 3. `[CORE / DATA]` slices need passing unit te
 - [ ] **Slice 2.10: Clashfinder Find lineup on festival editions** [CORE / DATA] Target files: src/server/lineup/routes.ts, src/server/lineup/canonicalIngest.ts, src/components/CanonicalArchive.tsx, docs/architecture/08-sources.md, tests/canonicalFindLineup.test.ts | Issue: #441 | Verify: npm run typecheck --silent && npm run lint --silent && npm test --silent
 
 ## Harness rollout (hub plan harness-consistency, approved by Charlie 2026-11-17)
-- [ ] **Slice 2.11: Switch to the shared harness gate and telemetry workflows** [IN_PROGRESS] [CORE / DATA] Target files: .github/workflows/harness-slice-gate.yml, .github/workflows/harness-telemetry.yml | Issue: #448 | Verify: npm run lint --silent && npm test --silent
+- [x] **Slice 2.11: Switch to the shared harness gate and telemetry workflows** Target files: .github/workflows/harness-slice-gate.yml, .github/workflows/harness-telemetry.yml | Issue: #448 | Verify: npm run lint --silent && npm test --silent
