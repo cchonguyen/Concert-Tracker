@@ -174,7 +174,8 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
     if (!isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
     try {
       const edition = await deps.store.getEdition(req.params.id);
-      const request = findLineupRequest(edition);
+      const series = edition?.seriesSlug ? await deps.store.getSeries(edition.seriesSlug) : null;
+      const request = findLineupRequest(edition, series?.clashfinderSlugs?.[String(edition?.year)] ?? null);
       if (!request.ok) return res.status(edition ? 400 : 404).json({ error: request.error });
       const { ok: _ok, ...input } = request;
       const job = await createLookup(deps, input);

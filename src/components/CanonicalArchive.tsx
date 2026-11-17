@@ -358,6 +358,9 @@ const ArchiveBrands: React.FC<{ query: string }> = ({ query }) => {
                 <span className="text-xs text-zinc-500">{b.organizationId ? orgName.get(b.organizationId) ?? 'Organization' : 'No organization'}</span>
               </div>
               {b.aliases.length > 0 && <p className="text-xs text-zinc-500">Also known as {b.aliases.join(', ')}</p>}
+              <p className="text-xs text-zinc-500">
+                {b.seriesCount} series · {b.editionCount} {b.editionCount === 1 ? 'edition' : 'editions'}
+              </p>
               <div className="flex flex-wrap items-center gap-2">
                 <Button onClick={() => { setEditing({ id: b.id, mode: 'rename' }); setDraft(b.name); }} disabled={busy}>
                   Rename

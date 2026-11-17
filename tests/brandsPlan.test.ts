@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BrandError,
+  brandCounts,
   cleanAliases,
   normalizeBrandName,
   planMerge,
@@ -117,4 +118,26 @@ test('undo of a rename restores the name and aliases', () => {
   assert.equal(undo.restoreTarget.name, 'EDC');
   assert.deepEqual(undo.restoreTarget.aliases, ['Electric Daisy']);
   assert.equal(undo.restoreBrand, null);
+});
+
+test('brandCounts counts each brand\'s series, and its editions through those series', () => {
+  const brands = [
+    { id: 'b-ins', name: 'Insomniac', aliases: [], organizationId: null },
+    { id: 'b-edc', name: 'EDC', aliases: [], organizationId: null },
+  ];
+  const series = [
+    { slug: 'edc-las-vegas', brandId: 'b-edc' },
+    { slug: 'edc-orlando', brandId: 'b-edc' },
+    { slug: 'escape', brandId: 'b-ins' },
+    { slug: 'loose', brandId: null },
+  ];
+  const editions = ['edc-las-vegas', 'edc-las-vegas', 'edc-las-vegas', 'edc-orlando', 'escape', 'loose'];
+  const rows = brandCounts(brands, series, editions);
+  assert.deepEqual(
+    rows.map((r) => [r.id, r.seriesCount, r.editionCount]),
+    [
+      ['b-ins', 1, 1],
+      ['b-edc', 2, 4],
+    ],
+  );
 });

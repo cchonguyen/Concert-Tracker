@@ -58,4 +58,10 @@ Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
 | `DELETE /api/manage/canonical/artists/:key/aliases?name=` | Owner only. Remove an AKA |
 | `POST /api/lookups/:id/run` | Retry now |
 | `POST /api/lookups/:id/confirm` | Save the reviewed lineup and learning data, and the event's seen acts |
+| `GET /api/manage/brands` | Owner only. Brands with `seriesCount` and `editionCount` for each (`{ brands }`) |
+| `PATCH /api/manage/brands/:id` | Owner only. Rename a brand (`{ name }`); its old name stays as an alias. Returns the change, which can be undone |
+| `PATCH /api/manage/brands/:id/organization` | Owner only. Set the brand's organization (`{ organizationId }`, or null to detach) |
+| `POST /api/manage/brands/merge` | Owner only. Merge a brand into another (`{ sourceId, targetId }`): moves its series and aliases |
+| `POST /api/manage/brands/history/:id/undo` | Owner only. Undo a brand change, if nothing has changed since |
+| `POST /api/manage/canonical/editions/:id/find-lineup` | Owner only. Start a Clashfinder lookup for a festival edition with no acts (`{ job }`, 201). Uses the series' stored Clashfinder slug for the year when there is one. The result waits in Lookups for review |
 | `GET /api/editions` | Confirmed and draft editions |

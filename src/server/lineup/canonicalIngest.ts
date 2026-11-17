@@ -673,10 +673,12 @@ export async function autoMergeZeroLineupGroup(
 // the edition's own name and year, so the existing ingest adapter ranks the Clashfinder versions. Its result still
 // waits for review under Lookups and is written by the usual confirm path.
 export type FindLineupRequest =
-  | { ok: true; eventName: string; year: number; startDate?: string; endDate?: string; venue?: string; city?: string; country?: string }
+  | { ok: true; eventName: string; year: number; startDate?: string; endDate?: string; venue?: string; city?: string; country?: string; lineupUrl?: string }
   | { ok: false; error: string };
 
-export function findLineupRequest(edition: Edition | null): FindLineupRequest {
+// clashfinderSlug is the series' Clashfinder slug for this edition's year, when one is stored. It becomes the lineup
+// URL, so the adapter reads that event and not a name match.
+export function findLineupRequest(edition: Edition | null, clashfinderSlug?: string | null): FindLineupRequest {
   if (!edition) return { ok: false, error: 'No such edition.' };
   if (edition.seriesKind !== 'festival') return { ok: false, error: 'Find lineup works on festival editions only.' };
   if (edition.performances.length > 0) return { ok: false, error: 'This edition already has a lineup.' };
@@ -692,5 +694,6 @@ export function findLineupRequest(edition: Edition | null): FindLineupRequest {
     venue: edition.venue,
     city: edition.city,
     country: edition.country,
+    ...(clashfinderSlug ? { lineupUrl: `https://clashfinder.com/l/${clashfinderSlug}` } : {}),
   };
 }
