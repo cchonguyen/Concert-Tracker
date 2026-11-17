@@ -11,6 +11,7 @@ import { BREAKER_KEY, callsMonthKey, dayKey, monthKey } from '../reader/guard';
 import { EditionOccurrenceConflictError, isEditionSuggestQuery } from './store/types';
 import { canonReviewRouter } from '../canon/reviewRoutes';
 import { clashfinderCandidates } from './adapters/clashfinder';
+import { findLineupRequest } from './canonicalIngest';
 
 // Older log entries were written before redaction existed.
 const safeJob = (job: LookupJob): LookupJob => ({
@@ -161,6 +162,23 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
         lineupUrl: lineupUrl as string | undefined,
       });
       if (job.status === 'queued') await runner.kick(job.id);
+      res.status(201).json({ job: safeJob(job) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Clashfinder "Find lineup" on one festival edition (slice 2.10). Owner only. Starts the same owner lookup as
+  // the ingest route, with no event attached, so the result goes to Lookups for review.
+  router.post('/manage/canonical/editions/:id/find-lineup', async (req, res) => {
+    if (!isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
+    try {
+      const edition = await deps.store.getEdition(req.params.id);
+      const request = findLineupRequest(edition);
+      if (!request.ok) return res.status(edition ? 400 : 404).json({ error: request.error });
+      const { ok: _ok, ...input } = request;
+      const job = await createLookup(deps, input);
+      await runner.kick(job.id, true);
       res.status(201).json({ job: safeJob(job) });
     } catch (err) {
       fail(res, err);

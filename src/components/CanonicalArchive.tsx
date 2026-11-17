@@ -1747,6 +1747,29 @@ const EditionDetail: React.FC<{
       setVerifying(false);
     }
   };
+  // Clashfinder "Find lineup" (slice 2.10): festival editions with no lineup only. The job goes to Lookups for review.
+  const [findingLineup, setFindingLineup] = useState(false);
+  const [lineupNote, setLineupNote] = useState<{ editionId: string; text: string } | null>(null);
+  const canFindLineup = edition.seriesKind === 'festival' && edition.performances.length === 0;
+  const findLineup = async () => {
+    setFindingLineup(true);
+    try {
+      const res = await fetch(`/api/manage/canonical/editions/${encodeURIComponent(edition.id)}/find-lineup`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof body?.error === 'string' ? body.error : `Request failed (${res.status})`);
+      setLineupNote({ editionId: edition.id, text: 'Clashfinder lookup started. Review the result under Lookups.' });
+    } catch (e) {
+      setLineupNote({ editionId: edition.id, text: `Could not start the lookup. ${verifyError(e)}` });
+    } finally {
+      setFindingLineup(false);
+    }
+  };
+  const lineupStatus = lineupNote?.editionId === edition.id ? lineupNote : null;
   const note = verifyNote?.editionId === edition.id ? verifyNote : null;
   const names = new Map(edition.performances.map((p) => [p.artistKey, p.name]));
   const dates = [edition.startDate, edition.endDate && edition.endDate !== edition.startDate ? `to ${edition.endDate}` : null].filter(Boolean).join(' ');
@@ -1787,10 +1810,16 @@ const EditionDetail: React.FC<{
             </Button>
           )}
           {!editingFacts && <Button onClick={() => setEditingFacts(true)}>Edit facts</Button>}
+          {canFindLineup && (
+            <Button onClick={() => void findLineup()} disabled={findingLineup}>
+              {findingLineup && <Loader2 className="h-4 w-4 animate-spin" />} Find lineup
+            </Button>
+          )}
           <Button onClick={onEditLineup}>Edit lineup</Button>
           {onStartMerge && <Button onClick={onStartMerge}>Merge with…</Button>}
         </div>
       </div>
+      {lineupStatus && <p className="text-sm text-zinc-300" role="status">{lineupStatus.text}</p>}
       {(edition.status === 'provisional' || note) && (
         <div className="flex flex-wrap items-center gap-3 text-sm">
           {edition.status === 'provisional' && <span className="text-xs text-zinc-500">Members entered this. Verifying makes it autofill for everyone.</span>}
