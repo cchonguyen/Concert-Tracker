@@ -54,3 +54,13 @@ test('a blank name or missing year is refused before any lookup', () => {
   assert.equal(findLineupRequest(edition({ name: '   ' })).ok, false);
   assert.equal(findLineupRequest(edition({ year: Number.NaN })).ok, false);
 });
+
+test('a stored Clashfinder slug for the year becomes the lineup URL', () => {
+  const r = findLineupRequest(edition(), 'edc2026');
+  assert.equal(r.ok && r.lineupUrl, 'https://clashfinder.com/l/edc2026');
+});
+
+test('without a stored slug the lookup goes by name and year only', () => {
+  const r = findLineupRequest(edition(), null);
+  assert.equal(r.ok && 'lineupUrl' in r, false);
+});

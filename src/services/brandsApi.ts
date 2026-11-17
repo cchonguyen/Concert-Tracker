@@ -6,6 +6,8 @@ export interface BrandRecord {
   name: string;
   aliases: string[];
   organizationId: string | null;
+  seriesCount: number;
+  editionCount: number;
 }
 
 // One applied change. `undoneAt` is set once it has been undone.

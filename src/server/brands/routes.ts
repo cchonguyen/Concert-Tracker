@@ -2,7 +2,7 @@
 // BrandStore so tests can call them directly; the router only maps them to HTTP.
 import { Router, Request, Response } from 'express';
 import { getSupabaseClient } from '../supabase';
-import { BrandError, type BrandRow } from './plan';
+import { BrandError, brandCounts, type BrandListRow } from './plan';
 import {
   BrandStore,
   createSupabaseBrandStore,
@@ -15,7 +15,7 @@ import {
 } from './store';
 
 export interface BrandActions {
-  list(): Promise<BrandRow[]>;
+  list(): Promise<BrandListRow[]>;
   rename(id: string, name: unknown): Promise<BrandHistoryRow>;
   setOrganization(id: string, organizationId: unknown): Promise<BrandHistoryRow>;
   merge(sourceId: unknown, targetId: unknown): Promise<BrandHistoryRow>;
@@ -37,7 +37,11 @@ const organizationOf = (raw: unknown): string | null => {
 export function brandActions(store: BrandStore, newId: () => string = () => crypto.randomUUID()): BrandActions {
   const deps: ApplyDeps = { store, newId };
   return {
-    list: () => store.listBrands(),
+    // Brands with how many series and editions each has (the Brands tab's counts).
+    list: async () => {
+      const [brands, links, slugs] = await Promise.all([store.listBrands(), store.listSeriesLinks(), store.listEditionSeriesSlugs()]);
+      return brandCounts(brands, links, slugs);
+    },
     // Async so that input errors arrive as rejections, the same as store errors.
     rename: async (id, name) => renameBrand(deps, idOf(id, 'brand'), name),
     setOrganization: async (id, organizationId) =>

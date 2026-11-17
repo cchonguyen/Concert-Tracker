@@ -15,6 +15,22 @@ export interface SeriesLink {
   brandId: string | null;
 }
 
+// A brand as the Brands tab shows it: how many series and editions it has.
+export interface BrandListRow extends BrandRow {
+  seriesCount: number;
+  editionCount: number;
+}
+
+// Counts per brand. A series counts once; each edition counts toward its series' brand.
+export function brandCounts(brands: readonly BrandRow[], series: readonly SeriesLink[], editionSeriesSlugs: readonly string[]): BrandListRow[] {
+  const brandOf = new Map(series.map((s) => [s.slug, s.brandId]));
+  return brands.map((b) => {
+    const seriesCount = series.filter((s) => s.brandId === b.id).length;
+    const editionCount = editionSeriesSlugs.filter((slug) => brandOf.get(slug) === b.id).length;
+    return { ...b, aliases: [...b.aliases], seriesCount, editionCount };
+  });
+}
+
 export class BrandError extends Error {
   constructor(
     message: string,
