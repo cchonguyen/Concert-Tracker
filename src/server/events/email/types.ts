@@ -87,6 +87,9 @@ export interface EmailImport {
   // One ticket's cost: an email's total in dollars over its ticket count,
   // from the first email that gives both.
   ticketPrice?: number;
+  // Why no reader understood an unreadable email (the reader's own message),
+  // so the reason can be counted and the seller's reader fixed.
+  unreadableReason?: string;
   eventId?: string; // the event it became, or the one already in your log
   // Fields this row's emails filled on an event you had entered, when you
   // merged it into that event (so the merge can be undone).

@@ -192,6 +192,7 @@ export function mergeImports(existing: EmailImport[], outcomes: ReadOutcome[], e
       if (byKey.has(key)) continue;
       const row = blank(key, o.seller, iso);
       row.status = 'unreadable';
+      row.unreadableReason = o.unreadable;
       row.name = o.email.subject;
       row.messages.push(message(o.email));
       touch(row);
