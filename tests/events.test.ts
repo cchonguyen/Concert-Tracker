@@ -4,8 +4,11 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { findDates, parseEventInput } from '../src/server/events/parse.ts';
+import { LIST_MAX_BYTES } from '../src/server/lineup/adapters/clashfinder.ts';
+import { Fetcher } from '../src/server/lineup/types.ts';
 import {
   DetailFinder,
+  clashfinderFinder,
   groupWeekendCandidates,
   mergeCandidates,
   pickCandidate,
@@ -170,6 +173,55 @@ test('research needs a year, reports nothing found, and survives a failing sourc
   const none = await researchEvent(newEvent('Kaskade 2024', NOW), [broken, finder('setlistfm', [])], fakeFetcher({}).fetcher, NOW);
   assert.equal(none.details.status, 'none');
   assert.ok(none.details.notes.some((n) => n.includes('ticketmaster failed: HTTP 401')));
+});
+
+test('clashfinder research asks for the 32 MB cap and reports a cut-off list', async () => {
+  const saved = { user: process.env.CLASHFINDER_USERNAME, key: process.env.CLASHFINDER_PUBLIC_KEY };
+  process.env.CLASHFINDER_USERNAME = 'tester';
+  process.env.CLASHFINDER_PUBLIC_KEY = 'public-test-key';
+  try {
+    const seen: Array<number | undefined> = [];
+    const whole: Fetcher = {
+      async get(url, init) {
+        seen.push(init?.maxBytes);
+        return { url, status: 200, headers: {}, body: '[]' };
+      },
+    };
+    await clashfinderFinder.find({ name: 'Ultra', year: 2024 }, whole);
+    assert.equal(seen[0], LIST_MAX_BYTES);
+
+    const cut: Fetcher = {
+      async get(url) {
+        return { url, status: 200, headers: {}, body: '[{"name":"Ul', truncated: true };
+      },
+    };
+    await assert.rejects(() => clashfinderFinder.find({ name: 'Ultra', year: 2024 }, cut), (err: Error) => {
+      assert.match(err.message, /larger than 32 MB, so it was not read in full/);
+      assert.doesNotMatch(err.message, /Invalid JSON/);
+      return true;
+    });
+  } finally {
+    if (saved.user === undefined) delete process.env.CLASHFINDER_USERNAME;
+    else process.env.CLASHFINDER_USERNAME = saved.user;
+    if (saved.key === undefined) delete process.env.CLASHFINDER_PUBLIC_KEY;
+    else process.env.CLASHFINDER_PUBLIC_KEY = saved.key;
+  }
+});
+
+test('research names a finder that is not configured in the notes', async () => {
+  const saved = process.env.SETLISTFM_API_KEY;
+  delete process.env.SETLISTFM_API_KEY;
+  try {
+    const out = await researchEvent(newEvent('Kaskade 2024', NOW), [setlistfmFinder, finder('ticketmaster', [])], fakeFetcher({}).fetcher, NOW);
+    assert.ok(out.details.notes.includes('setlistfm: not configured.'));
+
+    const off = await researchEvent(newEvent('Kaskade 2024', NOW), [setlistfmFinder], fakeFetcher({}).fetcher, NOW);
+    assert.equal(off.details.status, 'off');
+    assert.deepEqual(off.details.notes, ['setlistfm: not configured.', 'No event source is configured.']);
+  } finally {
+    if (saved === undefined) delete process.env.SETLISTFM_API_KEY;
+    else process.env.SETLISTFM_API_KEY = saved;
+  }
 });
 
 test('mergeCandidates keeps undated candidates apart', () => {
