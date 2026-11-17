@@ -47,4 +47,12 @@ Review of the PRD "Concert Lookup Enrichment & Metro-Radius Resolution (Stage 1 
 
 ## Questions for Charlie
 
-See the thread. Answers will be recorded here before `/spec`.
+Answers from 2026-11-17, now built into [event-fetch-upgrade-prd.md](event-fetch-upgrade-prd.md):
+
+1. setlist.fm key: added to the Worker secrets by Charlie.
+2. Fix the broken items first: yes. That is Stage 0, with a check-back 2 to 3 hours after deploy.
+3. Success counts as A (year-only events get dates), then B (typed-from-memory events resolve), then C (fewer wrong candidates).
+4. Batch research: yes, in batches wherever possible.
+5. Rung 4: Charlie asked for an explanation (PRD section 5). Keep or drop is still open.
+6. Ancillary demotion: review how often the same artist plays the same city in one year first. In Charlie's history it is about 2%, so the PRD uses venue matching and a guardrail instead of a word list.
+7. Radius: tunable, in miles.
