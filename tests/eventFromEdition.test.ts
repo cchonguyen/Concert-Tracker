@@ -27,7 +27,7 @@ const edition = (extra: Partial<Edition> = {}): Edition => ({
   city: 'Los Angeles',
   country: 'United States',
   status: 'confirmed',
-  performances: [],
+  performances: [{ name: 'Act One' } as any],
   updatedAt: NOW.toISOString(),
   ...extra,
 });
