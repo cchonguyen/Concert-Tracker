@@ -60,15 +60,15 @@ If there is too little traffic in that window, the check runs one "Look again" o
 | 1.2 | A small owner-only readout (Settings, next to the AI spend panel): per finder over the last 30 days, runs, hits, failures and the success-rate rows from section 2 | 0 at research time |
 | 1.3 | Offline test fixtures, written by hand, for the four failure shapes (crowded setlist.fm page, metro suburb, year-less snippet, same artist twice in a city). No recorded setlist.fm or Brave data is kept, per their terms. | 0 |
 
-Stage 1 exists so Stages 2 to 5 can be judged on numbers instead of guesses.
+Stage 1 exists so Stages 2 to 5 can be judged on numbers instead of guesses. It runs for at most a few days before Stage 2 starts (Charlie, 2026-11-17); the numbers keep collecting alongside.
 
 ### Stage 2: single-artist shows through setlist.fm (success A and B)
 
 | Slice | What |
 | --- | --- |
-| 2.1 | `haversineMiles` and `withinRadius(target, coords, miles)` in `src/server/events/place.ts`. The radius is tunable through `METRO_RADIUS_MILES` (default 30 miles, about 48 km). |
+| 2.1 | `haversineMiles` and `withinRadius(target, coords, miles)` in `src/server/events/place.ts`. The radius is tunable through `METRO_RADIUS_MILES` (default 50 miles, Charlie 2026-11-17; lowered only if false positives show up). |
 | 2.2 | Stage 2 setlist.fm `cityName` and Ticketmaster `city` get the bare city ("Los Angeles", not "Los Angeles, CA"); both APIs index bare names (moved from Stage 0, whose slice is capped under 5 target files). Stage 1 `setlistfmFinder` gets the bare city too. It keeps a setlist when its venue name matches the venue you typed (normalized); failing that, when the venue's city is within the radius of your city (setlist.fm gives coordinates); failing that, when the bare city names match. It fetches page 2 only when page 1 was full (20) and kept nothing. With no city typed, behavior is unchanged. |
-| 2.3 | Candidates from setlist.fm show "via setlist.fm" with the setlist link (attribution, per its terms). |
+| 2.3 | Candidates and stored sources from setlist.fm show the same small source icon and name as Clashfinder and the other sources, with a tooltip and the setlist link (attribution, per its terms). Approved by Charlie 2026-11-17: simple, unintrusive, consistent. |
 
 Subrequests: +1 Open-Meteo (cached per isolate), +1 setlist.fm page 2, doubled when the typed-name retry runs: worst case 35 to 39.
 
@@ -80,7 +80,7 @@ Deferred: MusicBrainz MBID lookup for setlist.fm (the PRD's FR-1). MusicBrainz f
 | --- | --- |
 | 3.1 | A batch step for events with a year, a city and no date. It runs the structured finders only (setlist.fm, Clashfinder, Ticketmaster; no Brave and no reader), under the cron's subrequest budget, a few events a run, each event at most once a day (the retry rule from `backfillResearch.ts`). Results are `choose` candidates; nothing is filled without your tap. |
 | 3.2 | Fill gaps lists the batch results, so a whole set of single good candidates can be confirmed in a few taps. Each still shows its date, venue and source. |
-| 3.3 | (Only if Charlie approves; see question 1) Brave in the batch, from a separate monthly allowance inside the 200 cap. |
+| 3.3 | Cascade instead of parallel. Today Brave runs alongside the free finders on every research run. In production, Brave was the only source with a hit in 117 of 162 runs, and redundant in at most 21 (13%), where a free source had already answered. From this slice, Brave runs only when the free finders leave the date (or, with a full date, the venue or city) unanswered. Brave is then allowed in the batch too, because it is invoked only when it can add something (Charlie, 2026-11-17: automation is fine if it cascades efficiently). Each Brave call made by the batch is noted on the event and counted in the 200 monthly cap. |
 
 Subrequests: per event about 7 to 9 (store 2, finders 3 or 4, Open-Meteo 1, page 2 1). That is 4 to 5 events per run under 50.
 
@@ -99,13 +99,26 @@ Subrequests: page fetches stay at 3 in total, so the worst case is unchanged.
 | Slice | What |
 | --- | --- |
 | 5.1 | Ranking: a candidate whose venue matches the venue you typed ranks first, then the number of sources, then the date. |
+| 5.3 | "Did you mean?" (Charlie, 2026-11-17). Each candidate gets a score computed in code from its sources: date coverage, venue match, distance, number of sources. The best one is offered first. Another candidate counts as a near match when its score reaches 50% of the best one's. In that case the event shows a small button that highlights the difference, for example another date or venue, and asks whether you meant that one. This catches a wrong year or venue typed from memory. Nothing changes without a tap. |
 | 5.2 | Same-artist guardrail. When two or more candidates fall in your window in the same metro area, nothing is applied on its own even with a full date, unless exactly one matches your typed venue. The `choose` list shows date and venue for each. |
 
 Not built: the PRD's afterparty and pop-up word list (FR-5). In Charlie's history, the same artist (or event name) appears in the same city in one year in about 2% of cases (4 of 385 name, city and year groups; 12 of 498 artist, city and year groups among acts seen, at most 3 times). Several of those are recurring series or duplicates, not afterparties. Venue matching (5.1) and the guardrail (5.2) cover the real cases without a fixed word list.
 
+### Stage 4b: deep search for hard events (proposal, waiting on Charlie)
+
+Rung 4 has been close to useless as built (section 5). The measured bottleneck is finding pages, not reading them. When the reader failed, it usually had no page that named the event. A person searching by hand would try a few searches, open the likely pages and read them. Deep search does the same inside the rules:
+
+| Slice | What |
+| --- | --- |
+| 4b.1 | When rungs 1 to 3 found nothing usable, code builds up to 2 more Brave queries from what you typed: artist with venue and year, then venue with city and month or year. Pages from those results that name the event (never AXS, never hosts that refused before) go to the reader, at most 3 pages and 30,000 characters each, inside the spend guards. |
+| 4b.2 | Also for year-only events. Results are candidates only and are never applied without a tap (R1.5). |
+| 4b.3 | Its own monthly allowance inside the 200 Brave cap, for example 60, so ordinary research always has queries left. |
+
+Cost per hard event: at most 2 Brave queries and 3 reader pages (about 1 cent). The reader still never searches by itself, never chooses URLs and never answers from memory. Gemini's grounded search is not used, because that would have the model fetch pages the app did not fetch.
+
 ## 5. Rung 4 (for reference)
 
-Rung 4 is the one place where the reader model (Gemini) runs in Stage 1 without a button press. It was built in Slice 11.17. After the queued research (rungs 1 to 3) finishes, it runs only if the event has a full date and venue or city is still empty. It reads at most 2 pages that the web search already found, each under 30,000 characters, one queue message per page, inside the spend guards. Its result fills empty fields only when its date equals the full date you gave. A year-only event never reaches rung 4. In production it has run twice since 2026-11-13. All Gemini details reads together, rung 4 and the button, cost $0.099 for 25 calls.
+Rung 4 is the one place where the reader model (Gemini) runs in Stage 1 without a button press. It was built in Slice 11.17. After the queued research (rungs 1 to 3) finishes, it runs only if the event has a full date and venue or city is still empty. It reads at most 2 pages that the web search already found, each under 30,000 characters, one queue message per page, inside the spend guards. Its result fills empty fields only when its date equals the full date you gave. A year-only event never reaches rung 4. Measured effect (2026-11-13 to 2026-11-16): automatic rung 4 ran once, on one page, and no field it read was kept. The same reader behind "Look again with Gemini" ran on 12 events (24 calls, $0.099). It gave a usable candidate on 4 events (33%), about 2.5 cents per success. Of the 8 failures, 4 had no web page to read and 2 had pages that did not name the event, so no call was made; 2 read pages that held nothing. The reader is effective when it has the right page. Rung 4's trigger (full date, missing venue or city) is narrow and skips the main failure, a missing date. Charlie's rule (2026-11-17): keep it only if it adds value; Stage 4b is the proposal to make it effective.
 
 ## 6. Out of scope
 
