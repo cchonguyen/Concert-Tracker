@@ -54,3 +54,23 @@ Global Editions (owner-only Global Archive) works like an upgraded admin version
 
 - Whether `TableView` and the summary components can take shared-only rows without a fork.
 - Whether the entities backfill (migration 0014) has run in production. Brands must not depend on it.
+
+## Slice 5 spec pass (2026-11-17): component reuse
+
+Inventory of the views in use today:
+- `src/components/EventDetail.tsx` (2,079 lines): member event detail. Personal fields throughout (companions, notes, rating, price, attendance).
+- `src/components/TableView.tsx` (778 lines): member table and its summary. The summary counts events you went to, acts seen and venues, which are personal.
+- `src/components/CanonicalArchive.tsx` (2,423 lines): Global Archive. Owns the editions list, the facts panel, the series and brand lists, and the lookups list.
+- `src/components/LineupReview.tsx`: already shared between member and archive (canonical mode).
+- `src/components/ui/`: Pill, Popover, MenuButton, IconButton, Dialog, Segmented and the others. Already shared.
+
+Finding: the member summary and table rows cannot be reused as they stand. They read personal fields. Reuse is possible only for presentation pieces that take shared rows as props: the edition row, the facts list, the status pill, the date and venue line, and the series or brand chip.
+
+Proposed slice 5 targets (to confirm before it is planned):
+- New `src/components/shared/EditionFacts.tsx`: facts list used by both the archive panel and the member detail for shared facts only.
+- New `src/components/shared/EditionRow.tsx`: row used by the archive editions list and the member table rows for shared columns.
+- `src/components/CanonicalArchive.tsx`: switch its edition rows and facts panel to these two components.
+- `src/components/EventDetail.tsx`: switch only its shared facts block to `EditionFacts`. Personal fields stay as they are.
+- `tests/sharedEditionComponents.test.ts`: tests that the shared components take no personal prop.
+
+Open question for Charlie: should the admin summary be a shared-data summary (editions, acts, venues across the catalog), built next to the member one, rather than a reuse of the member summary?
