@@ -6,7 +6,7 @@ import { addDays, decodeEntities, domainOf, normalizeName } from '../lineup/text
 import { eventWords } from '../lineup/search';
 import { findDates, parseEventInput } from './parse';
 import { matchingEvents } from '../lineup/adapters/ticketmaster';
-import { clashfinderAuthQuery, matchEdition, parseEventList } from '../lineup/adapters/clashfinder';
+import { clashfinderAuthQuery, LIST_MAX_BYTES, matchEdition, parseEventList } from '../lineup/adapters/clashfinder';
 import { cityLabel, placeFromPage } from './place';
 import { cityWithRegion, splitEventCity } from './regions';
 import type { Edition, EditionWeekend } from '../lineup/types';
@@ -201,7 +201,10 @@ export const clashfinderFinder: DetailFinder = {
   id: 'clashfinder',
   enabled: () => clashfinderAuthQuery() !== null,
   async find(q, fetcher) {
-    const res = await fetcher.get(`https://clashfinder.com/data/events/all.json?${clashfinderAuthQuery()}`);
+    // The whole list is needed to match (no search call), so it gets the same 32 MB cap as the lineup adapter.
+    const res = await fetcher.get(`https://clashfinder.com/data/events/all.json?${clashfinderAuthQuery()}`, { maxBytes: LIST_MAX_BYTES });
+    // A cut-off list is reported, not parsed.
+    if (res.truncated) throw new Error(`Clashfinder's event list is larger than ${LIST_MAX_BYTES / (1024 * 1024)} MB, so it was not read in full.`);
     if (res.status !== 200) return [];
     const match = matchEdition(parseEventList(parseJson(res)), q.name, q.year!, q.startDate);
     if (!match) return [];
@@ -775,11 +778,14 @@ export async function researchEvent(
     }
   }
   if (catalog && !catalogMatched) await persistOwnEntry(event, catalog, notes);
-  const enabled = finders.filter((f) => f.enabled() && (year || f.withoutYear));
+  // A finder that is off is named in the notes; one skipped only for lack of a year is not.
+  const configured = finders.filter((f) => f.enabled());
+  notes.push(...finders.filter((f) => !configured.includes(f)).map((f) => `${f.id}: not configured.`));
+  const enabled = configured.filter((f) => year || f.withoutYear);
   if (!enabled.length && !reader) {
     return year
-      ? done({ status: 'off', candidates: [], notes: ['No event source is configured.'] })
-      : done({ status: 'needs_date', candidates: [], notes: ['Add when it was (a year is enough) to look it up.'] });
+      ? done({ status: 'off', candidates: [], notes: [...notes, 'No event source is configured.'] })
+      : done({ status: 'needs_date', candidates: [], notes: [...notes, 'Add when it was (a year is enough) to look it up.'] });
   }
 
   const q: DetailQuery = {

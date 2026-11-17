@@ -22,7 +22,7 @@ Promoters overwrite their lineup page for the next edition, so a past event neve
 
 Job logs and errors are shown in the UI and stored, so credentials are redacted from them (`redactSecrets` and `redactUrl` in `http.ts`).
 
-All HTTP goes through `createRateLimitedFetcher()` (`src/server/lineup/http.ts`), which spaces requests per host (MusicBrainz 1.5 s with retry/backoff on 503, Clashfinder 1 s, setlist.fm 0.6 s, Open-Meteo 0.2 s) and sends a User-Agent with `CONTACT_EMAIL`.
+All HTTP goes through `createRateLimitedFetcher()` (`src/server/lineup/http.ts`), which spaces requests per host (MusicBrainz 1.5 s with retry/backoff on 503, Clashfinder 1 s, setlist.fm 0.6 s, Open-Meteo 0.2 s) and sends a User-Agent with `CONTACT_EMAIL`. The fetcher refuses axs.com and its subdomains, and any redirect that lands on them, so no path can fetch AXS.
 
 ## Source terms: what may be stored
 

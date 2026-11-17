@@ -101,6 +101,13 @@ export function assertPublicHttpUrl(raw: string): URL {
   return url;
 }
 
+// AXS is never fetched (AGENTS.md). Checked on the first URL and on every redirect hop.
+// The optional trailing dot is covered so "axs.com." cannot slip past.
+const AXS_HOST_RE = /(^|\.)axs\.com\.?$/i;
+function assertNotAxs(url: URL): void {
+  if (AXS_HOST_RE.test(url.hostname)) throw new Error('AXS pages are never fetched.');
+}
+
 const DEFAULT_MAX_BYTES = 3145728;
 const MAX_REDIRECTS = 3;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
@@ -123,7 +130,9 @@ async function fetchFollowingRedirects(
     if (!REDIRECT_STATUSES.has(res.status) || !location) return { res, url: target };
     if (hops >= MAX_REDIRECTS) throw new Error(`Too many redirects for ${host}`);
     await res.body?.cancel().catch(() => undefined);
-    target = assertPublicHttpUrl(new URL(location, target).toString()).toString();
+    const next = assertPublicHttpUrl(new URL(location, target).toString());
+    assertNotAxs(next);
+    target = next.toString();
   }
 }
 
@@ -169,7 +178,9 @@ export function createRateLimitedFetcher(): Fetcher {
 
   return {
     async get(url, init = {}): Promise<FetchResponse> {
-      const host = assertPublicHttpUrl(url).hostname.replace(/^www\./, '');
+      const parsed = assertPublicHttpUrl(url);
+      assertNotAxs(parsed);
+      const host = parsed.hostname.replace(/^www\./, '');
       const maxRetries = init.maxRetries ?? (host === 'musicbrainz.org' ? 2 : 0);
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         await waitTurn(host);
