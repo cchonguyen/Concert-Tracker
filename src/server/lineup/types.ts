@@ -11,7 +11,8 @@ export type SourceType =
   | 'musicbrainz'
   | 'discovered'
   | 'email' // your own ticket emails (stage 1 only, never lineup evidence)
-  | 'user';
+  | 'user'
+  | 'edition name'; // the shared edition's own name, matched to a catalog artist (docs/edition-lineup-from-name-spec.md)
 
 // billed: announced on a lineup; performed: a post-show record says they played;
 // crowd: a crowd-sourced listing (Clashfinder).

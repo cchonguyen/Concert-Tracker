@@ -833,6 +833,7 @@ export const SOURCE_LABELS: Record<SourceType, string> = {
   discovered: 'Web page',
   email: 'your email',
   user: 'You',
+  'edition name': 'the edition name',
 };
 
 // Where an event field came from, which also covers the event's venue and a
