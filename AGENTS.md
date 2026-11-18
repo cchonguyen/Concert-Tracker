@@ -10,7 +10,7 @@ Read [REQUIREMENTS.md](REQUIREMENTS.md) first: it says what the app is for (reme
 - Concert or Festival is worked out in code (`src/server/events/scale.ts`); store only the person's own choice.
 - Format is the person's own words; the app suggests past values but never fills it.
 - Suggestions from an event's name (a source's listing, your other events, MusicBrainz) are one-tap offers; nothing is added to seen acts without a tap.
-- Set times come only from a source that times them, stored on that source. Weather is looked up only when asked, or once when you save an event from a canonical edition, only for a city that matches exactly one place, and stored with its URL.
+- Set times come only from a source that times them, stored on that source. Weather is looked up only when asked, or once per canonical edition when a member saves an event from it, only for a city that matches exactly one place, and stored with its URL. The edition's record is shared and refreshed only by an admin request, and each change is logged. A month-only event gets no weather.
 - Confidence is computed in code from sources and review history.
 - Every model call in the app goes through the guarded reader (`src/server/reader/`): spend guards and the circuit breaker run first, one `ai_calls` row is written after, no page text goes in it, and there is no automatic switch between providers.
 - On a quota error (any provider), park the job and stop. Do not retry with another model and do not fall back to heuristics or regex parsing.
