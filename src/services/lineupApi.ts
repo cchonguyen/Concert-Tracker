@@ -375,6 +375,9 @@ export const membersApi = {
     request<{ ok: boolean; emailSent?: boolean; emailReason?: string }>('/api/members', post({ email, ...opts })),
   // Deletes the member's account and data. The server wants the email again as `confirm`.
   remove: (email: string) => request<unknown>(`/api/members/${encodeURIComponent(email)}`, { method: 'DELETE', body: JSON.stringify({ confirm: email }) }),
+  // Slice 3.4: whether the event research batch also runs for accepted members. Off by default.
+  researchBatch: () => request<{ on: boolean }>('/api/members/research-batch'),
+  setResearchBatch: (on: boolean) => request<{ on: boolean }>('/api/members/research-batch', { method: 'PUT', body: JSON.stringify({ on }) }),
 };
 
 // Request access (ARCHITECTURE.md "Request access"). The owner's list, settings and status changes.

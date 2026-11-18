@@ -34,10 +34,12 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
   const [ban, setBan] = useState('');
   const [capDraft, setCapDraft] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ kind: 'block' | 'delete'; email: string } | null>(null);
+  const [researchOn, setResearchOn] = useState<boolean | null>(null);
 
   const load = async () => {
-    const [m, r] = await Promise.all([membersApi.list(), accessRequestsApi.list()]);
+    const [m, r, rb] = await Promise.all([membersApi.list(), accessRequestsApi.list(), membersApi.researchBatch()]);
     setMembers(m);
+    setResearchOn(rb.on);
     setRequests({ rows: r.requests, settings: r.settings });
     setSelected((s) => new Set([...s].filter((e) => r.requests.some((row) => row.email === e && row.status === 'pending'))));
   };
@@ -183,6 +185,26 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
           <p className="text-xs text-zinc-400">
             Each member keeps their own events, imports and share link. Nobody, you included, sees another member's events here.
           </p>
+          {researchOn !== null && (
+            <label className="flex items-start gap-2 text-xs text-zinc-300">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={researchOn}
+                disabled={busy}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  act(async () => {
+                    await membersApi.setResearchBatch(on);
+                  });
+                }}
+              />
+              <span>
+                Let the background research batch look up saved events for accepted members too. Off by default. Each member's
+                events are still only ever written to their own list.
+              </span>
+            </label>
+          )}
           <form
             className="space-y-2"
             onSubmit={(e) => {
