@@ -387,7 +387,7 @@ export interface EditionChange {
   undoneAt?: string;
 }
 
-export type ReviewQueueKind = 'override' | 'merge_suggestion' | 'provisional' | 'formatting' | 'failed_lookup';
+export type ReviewQueueKind = 'override' | 'merge_suggestion' | 'provisional' | 'formatting' | 'failed_lookup' | 'lineup_proposal';
 
 // Payloads hold edition facts and field names only, never personal fields.
 export interface ReviewQueueItem {
