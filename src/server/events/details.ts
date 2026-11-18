@@ -251,7 +251,9 @@ export function webQuery(q: DetailQuery): string {
       : q.year
         ? String(q.year)
         : undefined;
-  return [`"${q.name}"`, when, q.venue, q.city].filter(Boolean).join(' ');
+  // Slice 4.1: the bare city ("Los Angeles", not "Los Angeles, CA"), the same rule the setlist.fm finder uses.
+  const bareCity = q.city?.split(',')[0].trim();
+  return [`"${q.name}"`, when, q.venue, bareCity].filter(Boolean).join(' ');
 }
 
 const stripTags = (html: string) => decodeEntities(html.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
