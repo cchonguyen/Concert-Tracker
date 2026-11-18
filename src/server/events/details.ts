@@ -10,11 +10,12 @@ import { clashfinderAuthQuery, LIST_MAX_BYTES, matchEdition, parseEventList } fr
 import { cityLabel, placeFromPage } from './place';
 import { cityWithRegion, splitEventCity } from './regions';
 import type { Edition, EditionWeekend } from '../lineup/types';
-import type { LineupStore } from '../lineup/store/types';
+import type { IngestTraceRow, LineupStore } from '../lineup/store/types';
 import { seriesSlugFor } from '../lineup/text';
 import { editionCoversDate, matchEdition as matchCatalog, upsertOccurrence } from '../canon/match';
 import { resolvedEditionDates } from './inherit';
 import type { GuardedReader } from '../reader/guardedReader';
+import { startTrace, type Trace } from '../telemetry/trace';
 import { geminiReader } from './detailsGemini';
 import { DetailCandidate, DetailsStatus, EventDetails, EventField, EVENT_FIELDS, LoggedEvent } from './types';
 
@@ -730,6 +731,19 @@ async function persistOwnEntry(event: LoggedEvent, catalog: ResearchCatalog, not
 }
 
 // Runs every configured finder and decides what to do with the results.
+// One trace step per finder: outcome, candidate count and milliseconds. Counts only, never page text.
+async function timedFind(f: DetailFinder, query: DetailQuery, fetcher: Fetcher, trace?: Trace): Promise<DetailCandidate[]> {
+  const started = Date.now();
+  try {
+    const out = await f.find(query, fetcher);
+    trace?.step('finder', { finder: f.id, outcome: out.length ? 'ok' : 'empty', candidates: out.length, ms: Date.now() - started });
+    return out;
+  } catch (err) {
+    trace?.step('finder', { finder: f.id, outcome: 'failed', ms: Date.now() - started });
+    throw err;
+  }
+}
+
 export async function researchEvent(
   event: LoggedEvent,
   finders: DetailFinder[],
@@ -737,7 +751,7 @@ export async function researchEvent(
   now: Date,
   reader?: DetailReader,
   catalog?: ResearchCatalog,
-  opts?: { skipCanon?: boolean },
+  opts?: { skipCanon?: boolean; trace?: Trace },
 ): Promise<LoggedEvent> {
   const checkedAt = now.toISOString();
   const skipCanon = Boolean(opts?.skipCanon || catalog?.skipCanon || event.details?.skipCanon);
@@ -781,6 +795,7 @@ export async function researchEvent(
   // A finder that is off is named in the notes; one skipped only for lack of a year is not.
   const configured = finders.filter((f) => f.enabled());
   notes.push(...finders.filter((f) => !configured.includes(f)).map((f) => `${f.id}: not configured.`));
+  for (const f of finders.filter((x) => !configured.includes(x))) opts?.trace?.step('finder', { finder: f.id, outcome: 'off' });
   const enabled = configured.filter((f) => year || f.withoutYear);
   if (!enabled.length && !reader) {
     return year
@@ -798,7 +813,7 @@ export async function researchEvent(
     city: cityWithRegion(event.city, event.region),
   };
   const search = async (query: DetailQuery) => {
-    const settled = await Promise.allSettled(enabled.map((f) => f.find(query, fetcher)));
+    const settled = await Promise.allSettled(enabled.map((f) => timedFind(f, query, fetcher, opts?.trace)));
     settled.forEach((r, i) => {
       if (r.status === 'fulfilled') {
         found.push(...r.value);
@@ -857,7 +872,11 @@ export async function researchEvent(
 // // Slice 11.23 adds persistOwnEntry, at most 8 more store calls (35 worst case).
 // (the plan's figure is 26; 1 over, dropping the external-id lookup would meet it). Both are zero when no catalog is passed. The consumer's budget (50) holds.
 export async function runQueuedResearch(
-  store: { getEvent(id: string): Promise<LoggedEvent | null>; putEvent(event: LoggedEvent): Promise<void> },
+  store: {
+    getEvent(id: string): Promise<LoggedEvent | null>;
+    putEvent(event: LoggedEvent): Promise<void>;
+    addIngestTrace?(row: IngestTraceRow): Promise<void>;
+  },
   eventId: string,
   finders: DetailFinder[],
   fetcher: Fetcher,
@@ -866,9 +885,14 @@ export async function runQueuedResearch(
 ): Promise<LoggedEvent | null> {
   const event = await store.getEvent(eventId);
   if (!event || event.details.status !== 'pending') return null;
-  const updated = await researchEvent(event, finders, fetcher, now, undefined, catalog);
-  await store.putEvent(updated);
-  return updated;
+  const trace = startTrace('research', { eventId });
+  try {
+    const updated = await researchEvent(event, finders, fetcher, now, undefined, catalog, { trace });
+    await store.putEvent(updated);
+    return updated;
+  } finally {
+    await trace.finish(typeof store.addIngestTrace === 'function' ? { addIngestTrace: store.addIngestTrace.bind(store) } : null);
+  }
 }
 
 export function pickCandidate(event: LoggedEvent, candidateId: string | undefined, now: Date, fields?: EventField[]): LoggedEvent {

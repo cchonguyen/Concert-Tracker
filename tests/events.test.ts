@@ -815,3 +815,30 @@ test('braveFinder, mergeCandidates, and groupWeekendCandidates preserve multi-we
     { weekend: 2, startDate: '2025-04-18', endDate: '2025-04-20' },
   ]);
 });
+
+test('research trace: one step per finder with outcome, count and milliseconds, and no page text', async () => {
+  const ev = newEvent('Test Fest Oct 5 2024', new Date('2024-09-01T12:00:00Z'));
+  const steps: Array<{ name: string; detail?: Record<string, unknown> }> = [];
+  const trace = {
+    step(name: string, detail?: Record<string, unknown>) { steps.push({ name, detail }); },
+    subrequests() {},
+    cost() {},
+    async finish() {},
+  };
+  const hit = { id: 'c1', name: 'Test Fest', startDate: '2024-10-05', sources: [{ sourceType: 'discovered' as const, sourceUrl: 'https://x.example/e/1', fields: ['startDate' as const] }] };
+  const finders = [
+    { id: 'discovered' as const, enabled: () => true, withoutYear: true, find: async () => [hit] },
+    { id: 'ticketmaster' as const, enabled: () => true, find: async () => { throw new Error('boom'); } },
+    { id: 'setlistfm' as const, enabled: () => false, find: async () => [] },
+  ];
+  await researchEvent(ev, finders, fakeFetcher({}).fetcher, new Date('2024-09-01T12:00:00Z'), undefined, undefined, { trace: trace as any });
+  const byFinder = Object.fromEntries(steps.filter((s) => s.name === 'finder').map((s) => [s.detail?.finder, s.detail]));
+  assert.equal(byFinder.discovered?.outcome, 'ok');
+  assert.equal(byFinder.discovered?.candidates, 1);
+  assert.equal(byFinder.ticketmaster?.outcome, 'failed');
+  assert.equal(byFinder.setlistfm?.outcome, 'off');
+  for (const s of steps) {
+    if (s.name === 'finder' && s.detail?.outcome !== 'off') assert.equal(typeof s.detail?.ms, 'number');
+    assert.ok(!JSON.stringify(s.detail ?? {}).includes('Test Fest'));
+  }
+});
