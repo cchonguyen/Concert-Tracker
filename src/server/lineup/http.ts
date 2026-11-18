@@ -3,6 +3,9 @@ import { currentBudget } from './budget';
 
 // Minimum spacing between requests per host. MusicBrainz bans clients that
 // exceed 1 req/s; the others are kept polite.
+// Hosts that retry a 429 or 503 by default (up to two more tries, waiting as the server asks).
+const RETRY_HOSTS = new Set(['musicbrainz.org', 'api.setlist.fm']);
+
 const HOST_INTERVAL_MS: Record<string, number> = {
   'api.search.brave.com': 1100,
   'musicbrainz.org': 1500,
@@ -181,7 +184,8 @@ export function createRateLimitedFetcher(): Fetcher {
       const parsed = assertPublicHttpUrl(url);
       assertNotAxs(parsed);
       const host = parsed.hostname.replace(/^www\./, '');
-      const maxRetries = init.maxRetries ?? (host === 'musicbrainz.org' ? 2 : 0);
+      // setlist.fm answers 429 when lookups run close together (its spacing is per Worker instance), so it retries too.
+      const maxRetries = init.maxRetries ?? (RETRY_HOSTS.has(host) ? 2 : 0);
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         await waitTurn(host);
         const controller = new AbortController();

@@ -109,3 +109,24 @@ test('createRateLimitedFetcher: stops retrying and returns 503 after maxRetries'
     globalThis.fetch = originalFetch;
   }
 });
+
+test('createRateLimitedFetcher: setlist.fm retries a 429 by default', async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls++;
+    if (calls === 1) {
+      return new Response('Too many requests', { status: 429, headers: { 'retry-after': '0.01' } });
+    }
+    return new Response(JSON.stringify({ setlist: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
+
+  try {
+    const fetcher = createRateLimitedFetcher();
+    const res = await fetcher.get('https://api.setlist.fm/rest/1.0/search/setlists?p=1');
+    assert.equal(calls, 2);
+    assert.equal(res.status, 200);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
