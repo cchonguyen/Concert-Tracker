@@ -1,6 +1,7 @@
 // Core types for the source-first lineup pipeline. See ARCHITECTURE.md.
 
 import type { Billing } from './billing';
+import type { EventWeather } from '../events/types';
 
 export type SourceType =
   | 'clashfinder'
@@ -294,6 +295,9 @@ export interface Edition {
   updatedAt: string;
   // Admin-curated fact provenance (migration 0034): the owner's note for name, dates, venue, city.
   factSourceNote?: string;
+  // One weather record shared by the edition's members (migration 0049). undefined keeps the stored value,
+  // null clears it. See docs/specs/canonical-weather.md.
+  weather?: EventWeather | null;
 }
 
 export type EditionHeader = Omit<Edition, 'performances'>;
