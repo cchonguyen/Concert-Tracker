@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { stopDecision, hasInProgressSlice, unwatchedPrs } from '../stop-guard.mjs';
+import { stopDecision, hasInProgressSlice, unwatchedPrs, stalledPlan } from '../stop-guard.mjs';
 
 const HOOK = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'stop-guard.mjs');
 
@@ -206,4 +206,207 @@ test('stopDecision: PR block respects the wake and PR-subscribed escapes', () =>
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+// Closed or merged PRs are settled (slice 19.199).
+const closedEventLine = JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'z', content: '<event source="github" kind="pull_request.closed" from="system" trust="relay">\n {"outcome":"closed","pr":"acme/app#7"}\n</event>' }] } });
+
+test('unwatchedPrs: a closed event for the opened PR settles it', () => {
+  assert.deepEqual(unwatchedPrs(transcript(...openPr('a', 7), closedEventLine)), []);
+});
+
+test('unwatchedPrs: a closed event for a different PR does not settle this one', () => {
+  const otherClosed = closedEventLine.replace('acme/app#7', 'acme/app#8');
+  assert.deepEqual(unwatchedPrs(transcript(...openPr('a', 7), otherClosed)), [7]);
+});
+
+test('unwatchedPrs: update_pull_request with state closed settles the PR', () => {
+  assert.deepEqual(unwatchedPrs(transcript(...openPr('a', 7), toolUse('b', 'mcp__github__update_pull_request', { pullNumber: 7, state: 'closed' }))), []);
+});
+
+test('unwatchedPrs: update_pull_request without state (body edit) does not settle the PR', () => {
+  assert.deepEqual(unwatchedPrs(transcript(...openPr('a', 7), toolUse('b', 'mcp__github__update_pull_request', { pullNumber: 7, body: 'edited' }))), [7]);
+});
+
+test('unwatchedPrs: unsubscribe_pr_activity settles the PR', () => {
+  assert.deepEqual(unwatchedPrs(transcript(...openPr('a', 7), toolUse('b', 'mcp__github__unsubscribe_pr_activity', { pullNumber: 7 }))), []);
+});
+
+test('unwatchedPrs: pull_request_read result that is closed settles the PR', () => {
+  const text = transcript(...openPr('a', 7), toolUse('r', 'mcp__github__pull_request_read', { pullNumber: 7 }), toolResult('r', JSON.stringify({ number: 7, state: 'closed', merged: false })));
+  assert.deepEqual(unwatchedPrs(text), []);
+});
+
+test('unwatchedPrs: pull_request_read result that is open does not settle the PR', () => {
+  const text = transcript(...openPr('a', 7), toolUse('r', 'mcp__github__pull_request_read', { pullNumber: 7 }), toolResult('r', JSON.stringify({ number: 7, state: 'open', merged: false })));
+  assert.deepEqual(unwatchedPrs(text), [7]);
+});
+
+test('unwatchedPrs: list_pull_requests result containing a closed PR settles it', () => {
+  const text = transcript(...openPr('a', 7), toolUse('l', 'mcp__github__list_pull_requests', { owner: 'acme', repo: 'app' }), toolResult('l', JSON.stringify([{ number: 7, state: 'closed' }])));
+  assert.deepEqual(unwatchedPrs(text), []);
+});
+
+test('stopDecision: block reason tells the thread to read a closed PR with pull_request_read', () => {
+  const root = makeRoot(DONE_ONLY);
+  const transcriptPath = path.join(root, 'session.jsonl');
+  fs.writeFileSync(transcriptPath, transcript(...openPr('a', 42)));
+  try {
+    const reason = stopDecision({ root, env: {}, payload: { transcript_path: transcriptPath } });
+    assert.match(reason, /pull_request_read/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('unwatchedPrs: subscribe sent in parallel with the open (before its result) counts as watched', () => {
+  const text = transcript(
+    JSON.stringify({ type: 'assistant', message: { content: [
+      { type: 'tool_use', id: 'c', name: 'mcp__github__create_pull_request', input: {} },
+      { type: 'tool_use', id: 's', name: 'mcp__claude-code-remote__subscribe_pr_activity', input: { pullNumber: 200 } },
+    ] } }),
+    toolResult('c', [{ type: 'text', text: 'https://github.com/acme/app/pull/200' }]),
+    toolResult('s', 'Subscribed'),
+  );
+  assert.deepEqual(unwatchedPrs(text), []);
+});
+
+test('unwatchedPrs: send_later sent in parallel with the open counts as watched', () => {
+  const text = transcript(
+    JSON.stringify({ type: 'assistant', message: { content: [
+      { type: 'tool_use', id: 'c', name: 'mcp__github__create_pull_request', input: {} },
+      { type: 'tool_use', id: 'l', name: 'mcp__claude-code-remote__send_later', input: {} },
+    ] } }),
+    toolResult('c', [{ type: 'text', text: 'https://github.com/acme/app/pull/9' }]),
+  );
+  assert.deepEqual(unwatchedPrs(text), []);
+});
+
+test('unwatchedPrs: this session\'s real shape (subscribe beside create) is not flagged, but a later open still is', () => {
+  const text = transcript(
+    JSON.stringify({ type: 'assistant', message: { content: [
+      { type: 'tool_use', id: 'c', name: 'mcp__github__create_pull_request', input: {} },
+      { type: 'tool_use', id: 's', name: 'mcp__claude-code-remote__subscribe_pr_activity', input: { pullNumber: 5 } },
+    ] } }),
+    toolResult('c', [{ type: 'text', text: 'https://github.com/acme/app/pull/5' }]),
+    ...openPr('d', 6),
+  );
+  assert.deepEqual(unwatchedPrs(text), [6]);
+});
+
+// Checklist and next-step stall (slice 19.201).
+const CL = 'mcp__hearthbot__update_progress_checklist';
+const OPEN_LIST = 'Title\n\n✓ a\n✱ b\n○ c';
+const DONE_LIST = 'Title\n\n✓ a\n✓ b';
+const checklist = (text) => toolUse('cl', CL, { text });
+
+test('stalledPlan: open checklist steps with nothing after them blocks and names the next step', () => {
+  const reason = stalledPlan(transcript(checklist(OPEN_LIST)));
+  assert.match(reason, /unfinished/);
+  assert.match(reason, /"b"/);
+});
+
+test('stalledPlan: all steps done allows stop', () => {
+  assert.equal(stalledPlan(transcript(checklist(DONE_LIST))), '');
+});
+
+test('stalledPlan: open steps then send_later allows stop', () => {
+  assert.equal(stalledPlan(transcript(checklist(OPEN_LIST), toolUse('s', 'mcp__hearthbot__send_later', { delaySeconds: 600 }))), '');
+});
+
+test('stalledPlan: open steps then request_decision allows stop', () => {
+  assert.equal(stalledPlan(transcript(checklist(OPEN_LIST), toolUse('d', 'mcp__hearthbot__request_decision', { question: 'Go on?' }))), '');
+});
+
+test('stalledPlan: open steps then post_message with a question allows stop; without one blocks', () => {
+  assert.equal(stalledPlan(transcript(checklist(OPEN_LIST), toolUse('p', 'mcp__hearthbot__post_message', { text: 'Ready to merge?' }))), '');
+  assert.match(stalledPlan(transcript(checklist(OPEN_LIST), toolUse('p', 'mcp__hearthbot__post_message', { text: 'Working on it.' }))), /unfinished/);
+});
+
+test('stalledPlan: open steps then subscribe_pr_activity only still blocks', () => {
+  assert.match(stalledPlan(transcript(checklist(OPEN_LIST), toolUse('s', 'mcp__github__subscribe_pr_activity', { pullNumber: 7 }))), /unfinished/);
+});
+
+test('stalledPlan: background Agent covers the stop; a foreground one does not', () => {
+  assert.equal(stalledPlan(transcript(checklist(OPEN_LIST), toolUse('g', 'Agent', { prompt: 'x' }))), '');
+  assert.match(stalledPlan(transcript(checklist(OPEN_LIST), toolUse('g', 'Agent', { prompt: 'x', run_in_background: false }))), /unfinished/);
+});
+
+test('stalledPlan: set_thread_resolved with resolved true allows stop', () => {
+  assert.equal(stalledPlan(transcript(checklist(OPEN_LIST), toolUse('r', 'mcp__hearthbot__set_thread_resolved', { resolved: true }))), '');
+});
+
+test('stalledPlan: an all-done checklist after an earlier open one allows stop', () => {
+  assert.equal(stalledPlan(transcript(checklist(OPEN_LIST), checklist(DONE_LIST))), '');
+});
+
+test('stalledPlan: a stated next step with no checklist blocks and quotes the phrase', () => {
+  const reason = stalledPlan(transcript(toolUse('p', 'mcp__hearthbot__post_message', { text: 'Merged. Next is slice 3, the writes.' })));
+  assert.match(reason, /Next is/);
+});
+
+test('stalledPlan: garbage lines and non-string input do not throw', () => {
+  assert.equal(stalledPlan('{not json\nnull\n[1,2\n'), '');
+  assert.equal(stalledPlan(''), '');
+  assert.equal(stalledPlan(undefined), '');
+});
+
+test('stopDecision: stop_hook_active allows a stalled plan', () => {
+  const root = makeRoot(DONE_ONLY);
+  const transcriptPath = path.join(root, 'session.jsonl');
+  fs.writeFileSync(transcriptPath, transcript(checklist(OPEN_LIST)));
+  try {
+    assert.equal(stopDecision({ root, env: {}, payload: { stop_hook_active: true, transcript_path: transcriptPath } }), '');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('stopDecision: a stalled plan with no in-progress slice blocks', () => {
+  const root = makeRoot(DONE_ONLY);
+  const transcriptPath = path.join(root, 'session.jsonl');
+  fs.writeFileSync(transcriptPath, transcript(checklist(OPEN_LIST)));
+  try {
+    assert.ok(stopDecision({ root, env: {}, payload: { transcript_path: transcriptPath } }).length > 0);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('stalledPlan: a stated next step followed by real work is not a stall', () => {
+  const text = transcript(
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: "I'll run the tests now." }] } }),
+    toolUse('b1', 'Bash', { command: 'npm test' }),
+    toolResult('b1', 'ok'),
+    toolUse('n1', 'mcp__hearthbot__no_reply_needed', { reason: 'nothing_to_add' }),
+  );
+  assert.equal(stalledPlan(text), '');
+});
+
+test('stalledPlan: a stated next step followed only by end-of-turn calls is a stall', () => {
+  const text = transcript(
+    toolUse('p1', 'mcp__hearthbot__post_message', { text: 'Merged. Next is slice 3.' }),
+    toolUse('r1', 'mcp__hearthbot__unreact', { emoji: 'eyes' }),
+  );
+  assert.match(stalledPlan(text), /Next is/);
+});
+
+test('stalledPlan: a send_later earlier in the same turn as the checklist counts', () => {
+  const text = transcript(
+    JSON.stringify({ type: 'user', message: { content: 'wake' } }),
+    toolUse('l1', 'mcp__claude-code-remote__send_later', { delay_minutes: 6 }),
+    toolResult('l1', 'ok'),
+    toolUse('c1', 'mcp__hearthbot__update_progress_checklist', { text: 'T\n\n✓ a\n✱ b' }),
+  );
+  assert.equal(stalledPlan(text), '');
+});
+
+test('stalledPlan: a send_later from an earlier turn does not cover a later checklist', () => {
+  const text = transcript(
+    toolUse('l1', 'mcp__claude-code-remote__send_later', { delay_minutes: 6 }),
+    toolResult('l1', 'ok'),
+    JSON.stringify({ type: 'user', message: { content: 'wake' } }),
+    toolUse('c1', 'mcp__hearthbot__update_progress_checklist', { text: 'T\n\n✓ a\n✱ b' }),
+  );
+  assert.match(stalledPlan(text), /unfinished/);
 });
