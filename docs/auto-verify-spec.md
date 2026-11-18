@@ -1,6 +1,6 @@
 # Auto-verify acts and editions, and member ticks
 
-Status: draft for approval (2026-11-18). Scope confirmed by Charlie in thread "Scope auto-adding Who I Saw artists to lineup".
+Status: decisions recorded 2026-11-18; slices await approval. Scope confirmed by Charlie in thread "Scope auto-adding Who I Saw artists to lineup".
 
 ## Goal
 
@@ -26,13 +26,19 @@ These rules change, so AGENTS.md and ARCHITECTURE.md change first, in the same P
 - **Source rule (AGENTS.md, "every stored act").** A member's own tick is stored with source type `your entry`, the typed text as the quoted span, and no user id in the shared row. Its audit record lives in `edition_changes` (owner only).
 - **Sources that verify.** Anything in `docs/architecture/08-sources.md` that returns a name and date for an act counts, as long as the terms in that document allow storing what is needed (see Conflicts).
 
-## Conflicts that need a decision
+## Conflicts (decided by Charlie, 2026-11-18: all three yes)
 
-These come from recorded rules, not from this request.
+1. **Brave Search.** Brave may point to a page. The app fetches and stores that page, and the verified fact comes from the stored page. Brave's own result is never stored in shared data, per `docs/brave-rung3-spec.md`.
+2. **setlist.fm.** Its terms bar keeping copies and putting data in shared storage. Reading: setlist.fm is checked live in code and stores only a source ID, a link and the verified flag. The stored name and date come from a fetched page or a ticket email, so setlist.fm alone cannot write an act's name or date into a shared edition. This follows `docs/ingest-canon-plan.md` rule C6.
+3. **Gemini search.** Not a source. The reader may read a fetched page, and its quote counts only if the name occurs verbatim in it.
 
-1. **Brave Search.** The decision on record (2026-11-13) is that Brave data never goes into shared editions, and Brave's terms bar storing or caching results. Charlie's answer says Brave may verify. Proposed reading: Brave can point to a page, and that page is fetched and stored by the app, so the verified fact comes from the stored page. Brave's own result is never stored in shared data. Needs Charlie's yes.
-2. **setlist.fm.** Its terms bar keeping copies and bar putting data in a shared repository. So setlist.fm can supply a source id and link only, and the name and date must come from a fetched page the app stores or from a ticket email. Needs Charlie's yes.
-3. **Gemini search.** The reader may only extract from pages the app fetched. A Gemini answer from search is not a source. Gemini may still read a fetched page, and its quote counts only if the name occurs verbatim in it.
+## Overlap with prior planned work (checked 2026-11-18)
+
+- **Edition-lineup-from-name spec (`docs/edition-lineup-from-name-spec.md`).** Its member proposals (Changes queue, `lineup_proposal`) are superseded by member ticks as candidates, as Charlie said ("no double confirmation"). Its owner tap, undo branch and catalog matcher still apply. Its slice 4 is retired when slice 2 starts.
+- **Ingest plan (`docs/ingest-canon-plan.md`, approved).** `upsertOccurrence` already promotes provisional to verified on a ticket email, and rule 3 already makes ticket emails a verified source. Auto-verify of complete editions extends that rule. The owner's "Verify for everyone" (slices 12.4 and 12.5) stays as the manual path for incomplete editions.
+- **Confidence (`AGENTS.md`).** Confidence is computed in code (`src/server/lineup/merge.ts`). The threshold must reuse that path, not add a second scheme.
+- **Migration.** Act status needs a column on `performances`, because its current status holds only billed, performed or cancelled. The next free number is 0052, since 0051 exists.
+- **Global Archive (`docs/global-archive-rework-spec.md`).** Slice 4 extends Editions & Lineups; it does not replace it.
 
 ## Verification rules (in code, no model call)
 
@@ -47,7 +53,7 @@ These come from recorded rules, not from this request.
 - Every change goes through `writeEdition` (`src/server/canon/editions.ts`) with actor `system:<source>` or `member:entry`, and a reason.
 - Undo: a new branch in `undoEditionChange` removes an auto-added act if unchanged, and reverts an auto-status change. A second undo is refused.
 - Shared rows never hold a user id or any personal field (companions, notes, rating, price, attendance).
-- Migration: none expected. Act status can live in the existing performance status and sources fields. If a column is needed, that migration is written first and held until Charlie says applied.
+- Migration: `0052` adds an act status column on `performances` (`candidate` or `verified`). Written, held until Charlie says applied.
 
 ## Surfaces
 
