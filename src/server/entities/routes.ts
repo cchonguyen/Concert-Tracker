@@ -291,13 +291,21 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     '/manage/canonical/name-matches',
     ownerOnly as any,
     manage(async () => {
-      const [editions, artists, blocked] = await Promise.all([store.listEditions(NAME_MATCH_EDITION_LIMIT), store.listArtists(), namedPlaceRemainders(store)]);
+      // Headers only (one query), then the lineups of the few editions whose name matched. Loading every
+      // edition in full cost a round trip per 100 editions and hit the Worker's subrequest budget.
+      const [headers, artists, blocked] = await Promise.all([store.listEditionHeaders({ limit: NAME_MATCH_EDITION_LIMIT }), store.listArtists(), namedPlaceRemainders(store)]);
       const catalog = artists.map((a) => ({ key: a.key, name: a.name }));
-      const matches = [];
-      for (const edition of editions) {
+      const named = [];
+      for (const edition of headers) {
         const match = matchEditionName(edition.name, catalog, blocked);
-        if (!match) continue;
-        if (edition.performances.some((p) => p.artistKey === match.artistKey)) continue;
+        if (match) named.push({ edition, match });
+      }
+      if (!named.length) return { matches: [] };
+      const refs = await store.listEditionArtistRefs({ editionIds: named.map((n) => n.edition.id) });
+      const onLineup = new Set(refs.map((r) => `${r.editionId}\u0000${r.artistKey}`));
+      const matches = [];
+      for (const { edition, match } of named) {
+        if (onLineup.has(`${edition.id}\u0000${match.artistKey}`)) continue;
         matches.push({ editionId: edition.id, editionName: edition.name, artistKey: match.artistKey, artistName: match.artistName });
       }
       return { matches };
