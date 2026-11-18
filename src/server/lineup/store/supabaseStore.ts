@@ -28,6 +28,8 @@ import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres } from '../../events/genres';
+import { brandKey } from '../../brands/plan';
+import { findOrCreateBrandId } from '../../brands/store';
 import {
   ArtistPerformanceRow,
   CanonicalApplyResult,
@@ -367,15 +369,32 @@ export class SupabaseLineupStore implements LineupStore {
     return r ? this.rowToSeries(r) : null;
   }
 
+  // brand_id follows the brand text only when the text changes, so a brand moved in the Brands tab
+  // is not undone by an unrelated series edit. A series with no brand text loses its brand link.
+  private async brandIdPatch(s: SeriesRecord): Promise<{ brand_id?: string | null }> {
+    const before = this.check(
+      await this.db.from('event_series').select('brand').eq('slug', s.slug).maybeSingle(),
+      'upsertSeries.brand',
+    );
+    const oldKey = before?.brand?.trim() ? brandKey(before.brand) : null;
+    const newText = s.brand?.trim() ? s.brand : null;
+    const newKey = newText ? brandKey(newText) : null;
+    if (oldKey === newKey) return {};
+    if (!newText) return { brand_id: null };
+    return { brand_id: await findOrCreateBrandId(this.db, newText) };
+  }
+
   async upsertSeries(s: SeriesRecord) {
     const kind: SeriesKind = s.kind === 'tour' ? 'tour' : 'festival';
     const isTour = kind === 'tour';
+    const brandPatch = await this.brandIdPatch(s);
     this.check(
       await this.db.from('event_series').upsert({
         slug: s.slug,
         name: s.name,
         kind,
         brand: s.brand ?? null,
+        ...brandPatch,
         city: isTour ? null : (s.city ?? null),
         region: isTour ? null : (s.region ?? null),
         country: isTour ? null : (s.country ?? null),

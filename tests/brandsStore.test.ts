@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { BrandError, type BrandRow, type SeriesLink } from '../src/server/brands/plan.ts';
 import {
   createMemoryBrandStore,
+  findOrCreateBrandId,
   mergeBrands,
   renameBrand,
   setBrandOrganization,
@@ -95,4 +96,62 @@ test('undo of a merge leaves a series moved again after the merge alone', async 
 test('unknown brand ids are reported as not found', async () => {
   const store = createMemoryBrandStore(brands, series);
   await assert.rejects(() => renameBrand(deps(store), 'nope', 'X'), (e: unknown) => e instanceof BrandError && e.status === 404);
+});
+
+// A minimal fake of the Supabase builder calls the brand helper uses: select/eq/maybeSingle and insert.
+function fakeBrandsDb(rows: { id: string; name_key: string }[], insertError: string | null = null) {
+  const inserts: unknown[] = [];
+  const db = {
+    from(table: string) {
+      assert.equal(table, 'brands');
+      return {
+        select() {
+          return {
+            eq(_col: string, key: string) {
+              return { maybeSingle: async () => ({ data: rows.find((r) => r.name_key === key) ?? null, error: null }) };
+            },
+          };
+        },
+        insert: async (row: { id: string; name_key: string }) => {
+          inserts.push(row);
+          if (insertError) return { error: { message: insertError } };
+          rows.push({ id: row.id, name_key: row.name_key });
+          return { error: null };
+        },
+      };
+    },
+  };
+  return { db: db as any, inserts };
+}
+
+test('a series brand name links to the existing brand row, ignoring case and spacing', async () => {
+  const { db, inserts } = fakeBrandsDb([{ id: 'b-bl', name_key: 'brownies & lemonade' }]);
+  assert.equal(await findOrCreateBrandId(db, '  Brownies   &  Lemonade '), 'b-bl');
+  assert.equal(inserts.length, 0);
+});
+
+test('a series brand name with no brand row creates one with its key', async () => {
+  const { db, inserts } = fakeBrandsDb([]);
+  const id = await findOrCreateBrandId(db, 'Brownies & Lemonade');
+  assert.match(id, /^[0-9a-f-]{36}$/);
+  assert.deepEqual(inserts, [{ id, name: 'Brownies & Lemonade', name_key: 'brownies & lemonade' }]);
+});
+
+test('a brand row created by another save in the meantime is reused, not an error', async () => {
+  // The first lookup misses; the insert fails because another save wrote the row; the second lookup finds it.
+  let lookups = 0;
+  const db = {
+    from: () => ({
+      select: () => ({
+        eq: () => ({ maybeSingle: async () => ({ data: ++lookups > 1 ? { id: 'b-day' } : null, error: null }) }),
+      }),
+      insert: async () => ({ error: { message: 'duplicate key value' } }),
+    }),
+  };
+  assert.equal(await findOrCreateBrandId(db as any, 'Day Trip'), 'b-day');
+});
+
+test('a failed brand insert with no matching row throws instead of linking nothing', async () => {
+  const { db } = fakeBrandsDb([], 'permission denied');
+  await assert.rejects(() => findOrCreateBrandId(db, 'Outloud Music Festival'), /permission denied/);
 });
