@@ -56,3 +56,16 @@ test('errors map to HTTP statuses; unknown errors are 500', () => {
   assert.deepEqual(brandErrorStatus(new BrandError('Taken.', 409)), { status: 409, error: 'Taken.' });
   assert.deepEqual(brandErrorStatus(new Error('boom')), { status: 500, error: 'boom' });
 });
+
+test('list returns each brand with its series and edition counts', async () => {
+  const store = createMemoryBrandStore(
+    [{ id: 'b-edc', name: 'EDC', aliases: [], organizationId: null }],
+    [{ slug: 'edc-las-vegas', brandId: 'b-edc' }],
+    ['edc-las-vegas', 'edc-las-vegas'],
+  );
+  const rows = await brandActions(store).list();
+  assert.deepEqual(
+    rows.map((r) => [r.id, r.seriesCount, r.editionCount]),
+    [['b-edc', 1, 2]],
+  );
+});

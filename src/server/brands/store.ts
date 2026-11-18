@@ -24,6 +24,8 @@ export interface BrandStore {
   listBrands(): Promise<BrandRow[]>;
   getBrand(id: string): Promise<BrandRow | null>;
   listSeriesLinks(): Promise<SeriesLink[]>;
+  // The series slug of every edition that has one (one entry per edition).
+  listEditionSeriesSlugs(): Promise<string[]>;
   saveBrand(row: BrandRow): Promise<void>;
   removeBrand(id: string): Promise<void>;
   moveSeries(slugs: readonly string[], brandId: string): Promise<void>;
@@ -110,6 +112,7 @@ export async function undoBrandChange(deps: ApplyDeps, historyId: string): Promi
 export function createMemoryBrandStore(
   brands: BrandRow[] = [],
   series: SeriesLink[] = [],
+  editionSeriesSlugs: string[] = [],
 ): BrandStore & { brands: Map<string, BrandRow>; series: Map<string, SeriesLink>; history: Map<string, BrandHistoryRow> } {
   const brandMap = new Map(brands.map((b) => [b.id, { ...b, aliases: [...b.aliases] }]));
   const seriesMap = new Map(series.map((s) => [s.slug, { ...s }]));
@@ -127,6 +130,9 @@ export function createMemoryBrandStore(
     },
     async listSeriesLinks() {
       return [...seriesMap.values()].map((s) => ({ ...s }));
+    },
+    async listEditionSeriesSlugs() {
+      return [...editionSeriesSlugs];
     },
     async saveBrand(row) {
       brandMap.set(row.id, { ...row, aliases: [...row.aliases] });
@@ -181,6 +187,17 @@ export function createSupabaseBrandStore(db: SupabaseClient): BrandStore {
       const res = await db.from('event_series').select('slug, brand_id');
       fail('listSeriesLinks', res.error);
       return (res.data ?? []).map((r: any) => ({ slug: r.slug, brandId: r.brand_id ?? null }));
+    },
+    async listEditionSeriesSlugs() {
+      // Pages of 1000 so a large catalog is read whole.
+      const slugs: string[] = [];
+      for (let from = 0; ; from += 1000) {
+        const res = await db.from('event_editions').select('series_slug').not('series_slug', 'is', null).range(from, from + 999);
+        fail('listEditionSeriesSlugs', res.error);
+        const rows = res.data ?? [];
+        for (const r of rows as any[]) slugs.push(r.series_slug);
+        if (rows.length < 1000) return slugs;
+      }
     },
     async saveBrand(row) {
       const res = await db.from('brands').upsert({
