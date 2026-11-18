@@ -33,6 +33,12 @@ export type { BraveCount } from './braveBudget';
 
 export const RESEARCH_BATCH_SIZE = 5;
 export const RESEARCH_SETTING = 'research_backfill';
+// Slice 3.4: the batch runs for members too once this app setting is { "on": true }. Off by default, so the owner
+// batch runs alone until it has worked in production.
+export const RESEARCH_MEMBERS_SETTING = 'research_batch_members';
+export function membersResearchOn(value: { on?: boolean } | null | undefined): boolean {
+  return value?.on === true;
+}
 const RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
 const FIXED_COST = 3;
 const ITEM_COST = 27;

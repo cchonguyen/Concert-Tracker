@@ -182,3 +182,13 @@ test('Slice 3.1: a year alone, with no city, is still listed and not researched'
     assert.equal(r?.year_only, 1);
   });
 });
+
+test('Slice 3.4: the member batch is off unless its setting says on', async () => {
+  const { membersResearchOn, RESEARCH_MEMBERS_SETTING } = await import('../src/server/events/backfillResearch.ts');
+  assert.equal(RESEARCH_MEMBERS_SETTING, 'research_batch_members');
+  assert.equal(membersResearchOn(null), false);
+  assert.equal(membersResearchOn(undefined), false);
+  assert.equal(membersResearchOn({ on: false }), false);
+  assert.equal(membersResearchOn({ on: 'yes' as unknown as boolean }), false);
+  assert.equal(membersResearchOn({ on: true }), true);
+});
