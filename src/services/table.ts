@@ -499,3 +499,12 @@ export function placePatch(
   if (!e.country && g.country) patch.country = g.country;
   return Object.keys(patch).length ? patch : null;
 }
+
+// Slice 3.2: events whose research (a batch run, or "Look again") is waiting for your tap: a year and a city, no full
+// date, and candidates the sources found. Nothing is applied until you pick one.
+const FULL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+export function batchResultsWaiting(events: LoggedEvent[]): LoggedEvent[] {
+  return events.filter(
+    (e) => e.details.status === 'choose' && !FULL_DATE_RE.test(e.startDate ?? '') && Boolean(e.year) && Boolean(e.city) && e.details.candidates.length > 0,
+  );
+}
