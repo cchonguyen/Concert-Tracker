@@ -27,3 +27,4 @@ Contracts: SYSTEM_SPEC.md section 3. `[CORE / DATA]` slices need passing unit te
 
 ## Edition lineup from the edition name (docs/edition-lineup-from-name-spec.md)
 - [x] **Slice 20.3: Member lineup offers from linked editions** [CORE / DATA] On-the-fly: Charlie: build slice 5 of the edition lineup spec (member Fill gaps), server part Target files: src/server/canon/nameArtists.ts, src/server/entities/routes.ts, tests/nameArtists.test.ts | Issue: #494 | Verify: npm test --silent
+- [ ] **Slice 20.505: Member Fill gaps lineup offer** [IN_PROGRESS] [UI / VISUAL] On-the-fly: Charlie: build slice 5 of the edition lineup spec (member Fill gaps), UI part Target files: src/services/table.ts, src/services/lineupApi.ts, src/components/FillGaps.tsx, src/services/poster.ts | Issue: #505 | Verify: npm run lint --silent
