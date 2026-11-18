@@ -183,3 +183,25 @@ test('quota error from the provider parks: settle opens the breaker, no second p
   assert.equal(s.settle[0].outcome, 'quota');
   assert.equal(s.settle[0].row.outcome, 'quota');
 });
+
+// The owner is exempt from the member daily cap in the database preflight; members keep it.
+test('owner is exempt from the member daily cap; a member keeps it', async () => {
+  const fakeQuota: any = {
+    key: () => 'gemini:m:2026-11-13',
+    config: { dailyLimit: 50, perMinute: 10, userDaily: 5, ownerReserve: 20, userBackfillDaily: 0 },
+    recent: [],
+  };
+  const s = rpcStore();
+  s.store.ownerUserId = async () => 'owner-1';
+
+  await checkGuards(base(s, {}, { quota: fakeQuota, quotaOptions: { userId: 'owner-1' } }));
+  const owner = s.pre[0].quota;
+  assert.equal(owner.user_key, null);
+  assert.equal(owner.user_daily, 0);
+  assert.equal(owner.daily_limit, 50);
+
+  await checkGuards(base(s, {}, { quota: fakeQuota, quotaOptions: { userId: 'member-2' } }));
+  const member = s.pre[1].quota;
+  assert.equal(member.user_key, 'gemini:m:2026-11-13:user:member-2');
+  assert.equal(member.user_daily, 5);
+});
