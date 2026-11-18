@@ -489,6 +489,7 @@ export class SupabaseLineupStore implements LineupStore {
       confirmedAt: row.confirmed_at ?? undefined,
       updatedAt: row.updated_at,
       factSourceNote: row.fact_source_note ?? undefined,
+      ...(row.weather != null ? { weather: row.weather } : {}),
     };
   }
 
@@ -591,6 +592,8 @@ export class SupabaseLineupStore implements LineupStore {
       status: e.status,
       confirmed_at: e.confirmedAt ?? null,
       fact_source_note: e.factSourceNote ?? null,
+      // Left out when unset, so an edition save that does not carry weather keeps the stored record.
+      ...(e.weather !== undefined ? { weather: e.weather } : {}),
       updated_at: e.updatedAt,
     });
     // event_editions_occurrence_uidx: another edition already holds this date, venue and subject.

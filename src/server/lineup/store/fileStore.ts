@@ -473,7 +473,9 @@ export class FileLineupStore implements LineupStore {
         );
       }
     }
-    state.editions[edition.id] = clone(edition);
+    // Same rule as the Supabase store: undefined keeps the stored weather, null clears it.
+    const weather = edition.weather === undefined ? state.editions[edition.id]?.weather : edition.weather ?? undefined;
+    state.editions[edition.id] = clone({ ...edition, weather });
     await this.save();
   }
 
