@@ -9,6 +9,7 @@ import { Fetcher } from '../src/server/lineup/types.ts';
 import {
   DetailFinder,
   clashfinderFinder,
+  resetClashfinderListMemo,
   groupWeekendCandidates,
   mergeCandidates,
   pickCandidate,
@@ -180,6 +181,7 @@ test('clashfinder research asks for the 32 MB cap and reports a cut-off list', a
   process.env.CLASHFINDER_USERNAME = 'tester';
   process.env.CLASHFINDER_PUBLIC_KEY = 'public-test-key';
   try {
+    resetClashfinderListMemo();
     const seen: Array<number | undefined> = [];
     const whole: Fetcher = {
       async get(url, init) {
@@ -190,6 +192,7 @@ test('clashfinder research asks for the 32 MB cap and reports a cut-off list', a
     await clashfinderFinder.find({ name: 'Ultra', year: 2024 }, whole);
     assert.equal(seen[0], LIST_MAX_BYTES);
 
+    resetClashfinderListMemo();
     const cut: Fetcher = {
       async get(url) {
         return { url, status: 200, headers: {}, body: '[{"name":"Ul', truncated: true };
