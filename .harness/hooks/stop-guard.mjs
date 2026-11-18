@@ -7,6 +7,8 @@
 // Second block (slice 19.196): a stop that leaves a pull request opened in this session with nothing to wake
 // the thread (no subscribe_pr_activity, merge_pull_request, send_later, create_trigger or ScheduleWakeup for it)
 // is blocked too. It reads the session transcript at payload.transcript_path. Same escapes apply.
+// Third block (slice 19.201): a stop with checklist steps still open, or a stated next step ("Next is slice 3"),
+// and nothing after it that wakes the thread, is blocked too (see stalledPlan). Same escapes apply.
 // Output: {"decision":"block","reason":"..."} on stdout when blocking; nothing and exit 0 when allowing.
 // Never throws. Malformed stdin fails open (allows stop). A repeat stop (stop_hook_active) is allowed,
 // so the hook blocks at most once per stop attempt and cannot loop.
@@ -46,17 +48,50 @@ const resultText = (content) => {
   return content.filter((b) => b && b.type === 'text' && typeof b.text === 'string').map((b) => b.text).join('\n');
 };
 
+// A raw transcript line that carries a pull_request.closed event (the event text is escaped inside JSON strings).
+// Scanned on the raw line, before JSON parsing.
+const CLOSED_EVENT = /pull_request\.closed[\s\S]{0,400}?#(\d+)/g;
+const READ_TOOLS = ['pull_request_read', 'list_pull_requests'];
+const MAX_DEPTH = 6;
+
+// Adds the PR numbers in a parsed GitHub result that show closed or merged. An object with no numeric number
+// that shows closed takes the pullNumber the read was called with (fallback). Depth-limited. Never throws.
+function collectClosed(value, fallback, out, depth = 0) {
+  if (depth > MAX_DEPTH || !value || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    for (const item of value) collectClosed(item, fallback, out, depth + 1);
+    return;
+  }
+  const isClosed = value.state === 'closed' || value.merged === true || Boolean(value.merged_at);
+  if (typeof value.number === 'number') {
+    if (isClosed) out.add(value.number);
+    return;
+  }
+  if (isClosed && Number.isFinite(fallback)) {
+    out.add(fallback);
+    return;
+  }
+  for (const child of Object.values(value)) collectClosed(child, fallback, out, depth + 1);
+}
+
 // PR numbers opened in the transcript and never given a wake (slice 19.196). Walks the JSONL in order:
 // create_pull_request opens a PR (number read from its result's /pull/<n> URL); subscribe_pr_activity or
 // merge_pull_request with that pullNumber watches it; send_later, create_trigger or ScheduleWakeup watches
-// every PR opened before it. Returns sorted unique numbers, or [] on any problem. Never throws.
+// every PR opened before it. A PR the transcript shows closed or merged (closed event, update_pull_request
+// with state closed, unsubscribe_pr_activity, or a pull_request_read / list_pull_requests result) is settled
+// and not returned, whenever that close appears. Returns sorted unique numbers, or [] on any problem. Never throws.
 export function unwatchedPrs(transcriptText) {
   try {
     if (typeof transcriptText !== 'string' || !transcriptText) return [];
     const opened = new Map(); // PR number -> watched?
+    const closed = new Set(); // PR numbers the transcript shows closed or merged, at any point
     const pendingOpens = new Set(); // tool_use ids of create_pull_request calls awaiting a result
+    const pendingReads = new Map(); // tool_use id -> input of pull_request_read / list_pull_requests calls
+    const watchedAny = new Set(); // pullNumbers subscribed or merged at any point (parallel calls can precede the open's result)
+    const timerCovered = new Set(); // create_pull_request ids still awaiting a result when a timer was set
     for (const line of transcriptText.split('\n')) {
       if (!line.trim()) continue;
+      for (const match of line.matchAll(CLOSED_EVENT)) closed.add(Number(match[1]));
       let entry;
       try { entry = JSON.parse(line); } catch { continue; }
       const blocks = entry && entry.message && Array.isArray(entry.message.content) ? entry.message.content : [];
@@ -69,25 +104,136 @@ export function unwatchedPrs(transcriptText) {
             if (block.id) pendingOpens.add(block.id);
           } else if (endsWithTool(name, 'subscribe_pr_activity') || endsWithTool(name, 'merge_pull_request')) {
             const n = Number(input.pullNumber);
+            watchedAny.add(n);
             if (opened.has(n)) opened.set(n, true);
           } else if (endsWithTool(name, 'send_later') || endsWithTool(name, 'create_trigger') || endsWithTool(name, 'ScheduleWakeup')) {
             for (const n of opened.keys()) opened.set(n, true);
+            for (const id of pendingOpens) timerCovered.add(id);
+          } else if (endsWithTool(name, 'update_pull_request')) {
+            if (input.state === 'closed') closed.add(Number(input.pullNumber));
+          } else if (endsWithTool(name, 'unsubscribe_pr_activity')) {
+            closed.add(Number(input.pullNumber));
+          } else if (READ_TOOLS.some((tool) => endsWithTool(name, tool))) {
+            if (block.id) pendingReads.set(block.id, input);
           }
-        } else if (block.type === 'tool_result' && pendingOpens.has(block.tool_use_id)) {
-          pendingOpens.delete(block.tool_use_id);
-          const match = /\/pull\/(\d+)/.exec(resultText(block.content));
-          if (match) {
-            const n = Number(match[1]);
-            if (!opened.has(n)) opened.set(n, false);
+        } else if (block.type === 'tool_result') {
+          if (pendingOpens.has(block.tool_use_id)) {
+            pendingOpens.delete(block.tool_use_id);
+            const match = /\/pull\/(\d+)/.exec(resultText(block.content));
+            if (match) {
+              const n = Number(match[1]);
+              if (!opened.has(n)) opened.set(n, timerCovered.has(block.tool_use_id));
+            }
+          } else if (pendingReads.has(block.tool_use_id)) {
+            const input = pendingReads.get(block.tool_use_id);
+            pendingReads.delete(block.tool_use_id);
+            let parsed;
+            try { parsed = JSON.parse(resultText(block.content)); } catch { parsed = undefined; }
+            collectClosed(parsed, Number(input.pullNumber), closed);
           }
         }
       }
     }
-    return [...opened.entries()].filter(([, watched]) => !watched).map(([n]) => n).sort((a, b) => a - b);
+    return [...opened.entries()].filter(([n, watched]) => !watched && !watchedAny.has(n) && !closed.has(n)).map(([n]) => n).sort((a, b) => a - b);
   } catch {
     return [];
   }
 }
+
+// Checklist and next-step check (slice 19.201). Walks the JSONL in order. Blocks a stop that leaves checklist
+// steps open (or a stated next step) with nothing after it that wakes the thread. A PR subscription alone does
+// not count: a green check sometimes never wakes the thread. Returns '' (allow) or a block reason. Never throws.
+const CHECKLIST_TOOL = 'update_progress_checklist';
+const NEXT_STEP = /\b(next (is|up)|i'?ll (now )?(start|begin|move on|do|build|open|run)|starting (on )?|moving on to|now (starting|building|doing))\b/i;
+const OPEN_STEP_MARK = /^[✱○]/;
+const QUIET_REASONS = ['asked_to_be_quiet', 'not_for_me'];
+const END_OF_TURN = ['no_reply_needed', 'react', 'unreact', 'edit_message', 'rename_thread'];
+
+// True when a tool_use made after the checklist or stated step will wake the thread (or otherwise settles the stop).
+function wakesThread(name, input) {
+  if (endsWithTool(name, 'request_decision')) return true;
+  if (endsWithTool(name, 'post_message') && typeof input.text === 'string' && (input.text.includes('?') || input.text.includes('Needed from you'))) return true;
+  if (endsWithTool(name, 'send_later') || endsWithTool(name, 'create_trigger') || endsWithTool(name, 'ScheduleWakeup')) return true;
+  if (endsWithTool(name, 'set_thread_resolved') && input.resolved === true) return true;
+  if ((name === 'Agent' || name === 'Task') && input.run_in_background !== false) return true;
+  if (name === 'Bash' && input.run_in_background === true) return true;
+  if (endsWithTool(name, 'no_reply_needed') && QUIET_REASONS.includes(input.reason)) return true;
+  return false;
+}
+
+export function stalledPlan(transcriptText) {
+  try {
+    if (typeof transcriptText !== 'string' || !transcriptText) return '';
+    const events = []; // { kind: 'tool', name, input } or { kind: 'text', text }, in transcript order
+    for (const line of transcriptText.split('\n')) {
+      if (!line.trim()) continue;
+      let entry;
+      try { entry = JSON.parse(line); } catch { continue; }
+      const message = entry && entry.message;
+      const blocks = message && Array.isArray(message.content) ? message.content : [];
+      const assistant = Boolean(entry) && (entry.type === 'assistant' || Boolean(message && message.role === 'assistant'));
+      // A user entry that is not only tool results starts a new turn (a person's message or a wake).
+      if (!assistant && entry && entry.type === 'user' && message) {
+        const content = message.content;
+        const isPrompt = typeof content === 'string' || (Array.isArray(content) && content.some((b) => b && b.type !== 'tool_result'));
+        if (isPrompt) events.push({ kind: 'prompt' });
+      }
+      for (const block of blocks) {
+        if (!block || typeof block !== 'object') continue;
+        if (block.type === 'tool_use') {
+          const input = block.input && typeof block.input === 'object' ? block.input : {};
+          events.push({ kind: 'tool', name: String(block.name || ''), input });
+        } else if (block.type === 'text' && assistant && typeof block.text === 'string') {
+          events.push({ kind: 'text', text: block.text });
+        }
+      }
+    }
+    let checklistAt = -1;
+    for (let i = events.length - 1; i >= 0; i -= 1) {
+      if (events[i].kind === 'tool' && endsWithTool(events[i].name, CHECKLIST_TOOL)) { checklistAt = i; break; }
+    }
+    const checklistText = checklistAt >= 0 && typeof events[checklistAt].input.text === 'string' ? events[checklistAt].input.text : '';
+    const openSteps = checklistText.split('\n').map((line) => line.trim()).filter((line) => OPEN_STEP_MARK.test(line));
+    let lastAt = -1;
+    for (let i = events.length - 1; i >= 0; i -= 1) {
+      const ev = events[i];
+      if (ev.kind === 'text' || (ev.kind === 'tool' && endsWithTool(ev.name, 'post_message'))) { lastAt = i; break; }
+    }
+    let stated = null;
+    if (lastAt >= 0 && (checklistAt < 0 || lastAt > checklistAt)) {
+      const ev = events[lastAt];
+      const said = ev.kind === 'text' ? ev.text : (typeof ev.input.text === 'string' ? ev.input.text : '');
+      // A stated step that substantive tool calls followed was acted on; only end-of-turn calls may follow it.
+      const actedOn = events.slice(lastAt + 1).some((later) => later.kind === 'tool' && !END_OF_TURN.some((t) => endsWithTool(later.name, t)));
+      stated = actedOn ? null : NEXT_STEP.exec(said);
+    }
+    if (openSteps.length === 0 && !stated) return '';
+    // A wake set earlier in the same turn as the checklist counts too (calls in one message can come in any order).
+    let base = checklistAt >= 0 ? checklistAt : lastAt;
+    for (let i = base - 1; i >= 0; i -= 1) {
+      if (events[i].kind === 'prompt') { base = i; break; }
+    }
+    if (events.slice(base + 1).some((ev) => ev.kind === 'tool' && wakesThread(ev.name, ev.input))) return '';
+    if (openSteps.length > 0) {
+      const step = openSteps[0].replace(OPEN_STEP_MARK, '').trim().slice(0, 80);
+      return `Your checklist still has ${openSteps.length} unfinished step(s) (next: "${step}") and nothing will wake this thread. Keep going with that step now. If it waits on the operator, ask with request_decision or a reply that asks the question. If it waits on checks or another job, call send_later to check back in about 10 minutes (a PR subscription alone can miss a green check). If the step is actually done or dropped, update the checklist.`;
+    }
+    return `You said "${stated[0]}" but ended the turn with nothing that will wake this thread. Do that step now, or call send_later, or ask the question with request_decision.`;
+  } catch {
+    return '';
+  }
+}
+
+// Block reason for a stalled checklist or stated next step at payload.transcript_path, or ''. Never throws.
+const stalledPlanReason = (transcriptPath) => {
+  try {
+    if (!transcriptPath) return '';
+    fs.accessSync(transcriptPath, fs.constants.R_OK);
+    return stalledPlan(fs.readFileSync(transcriptPath, 'utf8'));
+  } catch {
+    return '';
+  }
+};
 
 // Block reason for PRs opened but never watched in the transcript at payload.transcript_path, or ''.
 const unwatchedPrReason = (transcriptPath) => {
@@ -97,7 +243,7 @@ const unwatchedPrReason = (transcriptPath) => {
     const nums = unwatchedPrs(fs.readFileSync(transcriptPath, 'utf8'));
     if (nums.length === 0) return '';
     const list = nums.map((n) => `#${n}`).join(', ');
-    return `PR ${list} was opened in this session, but nothing will wake you when its checks finish. Call subscribe_pr_activity for it now (or send_later to recheck in a few minutes). From that wake: merge when green, merge the base branch on a conflict, fix the cause on red.`;
+    return `PR ${list} was opened in this session, but nothing will wake you when its checks finish. Call subscribe_pr_activity for it now (or send_later to recheck in a few minutes). From that wake: merge when green, merge the base branch on a conflict, fix the cause on red. If it is already closed or merged, read it once with pull_request_read so this check sees that.`;
   } catch {
     return '';
   }
@@ -114,7 +260,8 @@ export function stopDecision({ root, env = {}, payload = {} } = {}) {
       return `Slice ${id} is still [IN_PROGRESS] in .spec/PROGRESS.md. Finish it with finish-slice.mjs or schedule a wake-up before stopping.`;
     }
     if (escapeReason(env)) return '';
-    return unwatchedPrReason(typeof payload.transcript_path === 'string' ? payload.transcript_path : '');
+    const transcriptPath = typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
+    return unwatchedPrReason(transcriptPath) || stalledPlanReason(transcriptPath);
   } catch {
     return '';
   }
