@@ -23,6 +23,9 @@ const button =
 const primary =
   'inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40';
 
+// The sign-in lacks Sheets access (or Google asks to connect again): offer a fresh sign-in.
+const RECONNECT = /sign in to google sheets again/i;
+
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
 export const SheetSync: React.FC<SheetSyncProps> = ({ notice, onClose }) => {
@@ -30,6 +33,7 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ notice, onClose }) => {
   const [link, setLink] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(notice && notice !== 'connected' ? notice : null);
+  const [reconnect, setReconnect] = useState<boolean>(RECONNECT.test(notice ?? ''));
   const [message, setMessage] = useState<string | null>(null);
   const [unlinking, setUnlinking] = useState(false);
   // Edits made in the sheet that updating would replace, waiting for your OK.
@@ -47,11 +51,14 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ notice, onClose }) => {
   const run = async (what: string, fn: () => Promise<unknown>) => {
     setBusy(what);
     setError(null);
+    setReconnect(false);
     setMessage(null);
     try {
       await fn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      setReconnect(RECONNECT.test(msg) || (err as { status?: number })?.status === 409);
       void load();
     } finally {
       setBusy(null);
@@ -102,6 +109,11 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ notice, onClose }) => {
         </div>
 
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
+        {reconnect && (
+          <a href="/api/sheets/connect" className={primary}>
+            Sign in with Google again
+          </a>
+        )}
         {message && <p className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-2 text-sm text-emerald-200">{message}</p>}
 
         {!status ? (

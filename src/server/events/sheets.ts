@@ -16,6 +16,14 @@ const AUTH = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN = 'https://oauth2.googleapis.com/token';
 const USERINFO = 'https://openidconnect.googleapis.com/v1/userinfo';
 const API = 'https://sheets.googleapis.com/v4/spreadsheets';
+const SHEETS_SCOPE_URLS = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file'];
+// Whether a sign-in's granted scopes include Sheets. When Google omits the
+// scope field we cannot tell, so we allow it.
+function sheetsGranted(scope: unknown): boolean {
+  if (typeof scope !== 'string') return true;
+  const granted = scope.split(' ');
+  return SHEETS_SCOPE_URLS.some((s) => granted.includes(s));
+}
 
 export const SHEETS_SETTING = 'google_sheets';
 export const SHEETS_OAUTH_SETTING = 'google_sheets_oauth';
@@ -99,6 +107,8 @@ export function createSheets(clientId: string, clientSecret: string): SheetsApi 
   async function json(res: Response, what: string): Promise<Json> {
     const body = (await res.json().catch(() => ({}))) as Json;
     const reason = body.error_description ?? body.error?.message ?? (typeof body.error === 'string' ? body.error : undefined) ?? res.status;
+    const scopeRefused = /insufficient authentication scopes/i.test(String(reason));
+    if (scopeRefused) throw new SheetsAuthError(`Google Sheets refused ${what} because the saved sign-in lacks Sheets permission. Sign in to Google Sheets again and keep the Google Sheets box ticked.`);
     if (res.status === 401 || (res.status === 400 && (body.error === 'invalid_grant' || body.error === 'invalid_client'))) {
       throw new SheetsAuthError(`Google refused ${what} (${reason}). Sign in to Google Sheets again.`);
     }
@@ -154,6 +164,7 @@ export function createSheets(clientId: string, clientSecret: string): SheetsApi 
     },
     async connect(code, redirectUri) {
       const t = await token({ grant_type: 'authorization_code', code, redirect_uri: redirectUri }, 'the sign-in');
+      if (!sheetsGranted(t.scope)) throw new SheetsAuthError('Google signed you in without access to Google Sheets. Sign in to Google Sheets again and keep the Google Sheets box ticked.');
       if (!t.refresh_token) throw new SheetsAuthError('Google gave no lasting sign-in. Sign in to Google Sheets again.');
       tokens.set(t.refresh_token, { token: t.access_token, until: Date.now() + (Number(t.expires_in ?? 3600) - 60) * 1000 });
       const me = await call(t.refresh_token, USERINFO, 'reading your address').catch(() => ({}) as Json);
