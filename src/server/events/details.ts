@@ -225,16 +225,33 @@ export const setlistfmFinder: DetailFinder = {
 };
 
 // Clashfinder: festival editions and their start dates.
+// The parsed list is kept in memory for a day per Worker instance, so a Check details press does not download
+// and parse the 4 MB list again each time. Memory only: nothing is written to the database or to a cache store.
+const CLASHFINDER_LIST_MEMO_MS = 24 * 60 * 60 * 1000;
+let clashfinderListMemo: { at: number; entries: ReturnType<typeof parseEventList> } | null = null;
+
+export function resetClashfinderListMemo(): void {
+  clashfinderListMemo = null;
+}
+
 export const clashfinderFinder: DetailFinder = {
   id: 'clashfinder',
   enabled: () => clashfinderAuthQuery() !== null,
   async find(q, fetcher) {
-    // The whole list is needed to match (no search call), so it gets the same 32 MB cap as the lineup adapter.
-    const res = await fetcher.get(`https://clashfinder.com/data/events/all.json?${clashfinderAuthQuery()}`, { maxBytes: LIST_MAX_BYTES });
-    // A cut-off list is reported, not parsed.
-    if (res.truncated) throw new Error(`Clashfinder's event list is larger than ${LIST_MAX_BYTES / (1024 * 1024)} MB, so it was not read in full.`);
-    if (res.status !== 200) return [];
-    const match = matchEdition(parseEventList(parseJson(res)), q.name, q.year!, q.startDate);
+    const now = Date.now();
+    let entries: ReturnType<typeof parseEventList>;
+    if (clashfinderListMemo && now - clashfinderListMemo.at < CLASHFINDER_LIST_MEMO_MS) {
+      entries = clashfinderListMemo.entries;
+    } else {
+      // The whole list is needed to match (no search call), so it gets the same 32 MB cap as the lineup adapter.
+      const res = await fetcher.get(`https://clashfinder.com/data/events/all.json?${clashfinderAuthQuery()}`, { maxBytes: LIST_MAX_BYTES });
+      // A cut-off list is reported, not parsed.
+      if (res.truncated) throw new Error(`Clashfinder's event list is larger than ${LIST_MAX_BYTES / (1024 * 1024)} MB, so it was not read in full.`);
+      if (res.status !== 200) return [];
+      entries = parseEventList(parseJson(res));
+      clashfinderListMemo = { at: now, entries };
+    }
+    const match = matchEdition(entries, q.name, q.year!, q.startDate);
     if (!match) return [];
     const c = candidate('clashfinder', `https://clashfinder.com/s/${match.slug}/`, { name: match.name, startDate: match.startDate });
     return !q.month && !q.startDate ? [c] : inWindow(c.startDate, searchWindow(q)) ? [c] : [];
