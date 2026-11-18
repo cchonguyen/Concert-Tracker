@@ -367,6 +367,8 @@ test('Brave results confirm a date only when they name the event and write the d
     });
     const q = { name: 'Porter Robinson', year: 2024, startDate: '2024-10-05', venue: 'the Greek' };
     assert.equal(webQuery(q), '"Porter Robinson" October 5 2024 the Greek');
+    // Slice 4.1: a city typed with a region is searched by its bare name.
+    assert.equal(webQuery({ ...q, city: 'Los Angeles, CA' }), '"Porter Robinson" October 5 2024 the Greek Los Angeles');
     const found = await braveFinder.find(q, fetcher);
     assert.deepEqual(found.map((c) => c.sources[0].sourceUrl), ['https://greek.example/porter', 'https://news.example/review']);
     assert.equal(found[0].sources[0].quote, 'Oct 5, 2024');
