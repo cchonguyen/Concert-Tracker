@@ -9,6 +9,7 @@ import { applyLinkedPatch, editionPlaceValue, ensureCaptured, recordOverrides, r
 import { clashfinderChoices, EventPatch, lineupSummary, newEvent, newEventFromEdition, sortEvents, startBulkLookups, startLineupLookup } from './service';
 import { DetailCandidate, EVENT_FIELDS, EventField, LineupSummary, LoggedEvent } from './types';
 import { isVerifiedStatus } from '../lineup/store/types';
+import { recordWhoISawTicks } from '../canon/memberTick';
 import type { Edition, EditionHeader } from '../lineup/types';
 import { editionCoversDate, findSeriesEditionMatches } from '../canon/match';
 import { parseEventInput } from './parse';
@@ -320,6 +321,10 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
       const { event: updated, changes } = applyLinkedPatch(event, edition, body, deps.now(), { recapture: body.import === true });
       const stored = await saveEvent(updated);
       await recordOverrides(deps.store, stored, changes);
+      // The event is already saved; a failed shared write must not fail the save. The tick is retried on the next save.
+      if (edition && body.seen) {
+        await recordWhoISawTicks(deps.store, edition, stored.seen ?? []).catch((err) => console.warn('member tick not recorded', err instanceof Error ? err.name : 'error'));
+      }
       res.json({ event: resolveEvent(stored, edition) });
     } catch (err) {
       fail(res, err);
