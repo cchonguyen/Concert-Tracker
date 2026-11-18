@@ -22,6 +22,7 @@ import { redactSecrets } from '../src/server/lineup/http';
 import type { EventsRunner } from '../src/server/events/routes';
 import { defaultFinders, researchCatalogFor, runQueuedResearch } from '../src/server/events/details';
 import { membersResearchOn, RESEARCH_MEMBERS_SETTING, runResearchBackfill } from '../src/server/events/backfillResearch';
+import { loadRefusals, refusalFetcher, saveRefusals } from '../src/server/events/refusedHosts';
 import { rung4Urls, runReaderPage } from '../src/server/events/detailsGemini';
 import { currentBudget, makeBudget, runWithBudget } from '../src/server/lineup/budget';
 
@@ -343,7 +344,12 @@ export default {
           const trace = startTrace('research', { eventId });
           try {
             const store = userId && deps.store.forUser ? deps.store.forUser({ userId, role: role ?? 'member' }) : deps.store;
-            const done = await runQueuedResearch(store, eventId, defaultFinders(), deps.fetcher, deps.now(), researchCatalogFor(role, userId, deps.store));
+            // Slice 4.3: a host that refused in the last 30 days is skipped; a new refusal is saved for later runs.
+            const nowQ = deps.now();
+            const refusedBefore = await loadRefusals(deps.store, nowQ);
+            const refusals = { ...refusedBefore };
+            const done = await runQueuedResearch(store, eventId, defaultFinders(), refusalFetcher(deps.fetcher, refusals, nowQ), nowQ, researchCatalogFor(role, userId, deps.store));
+            await saveRefusals(deps.store, refusedBefore, refusals, nowQ).catch(() => undefined);
             // Rung 4: only with the reader set up, a full date and a gap left; at most 2 pages, one message each (+2 sends).
             trace.step('research_done', { ran: !!done });
             if (done && deps.reader) {

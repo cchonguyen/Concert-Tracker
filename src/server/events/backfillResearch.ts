@@ -27,6 +27,7 @@ import type { LineupStore } from '../lineup/store/types';
 import { currentBudget } from '../lineup/budget';
 import { researchCatalogFor, runQueuedResearch, type DetailFinder } from './details';
 import type { Fetcher } from '../lineup/types';
+import { loadRefusals, refusalFetcher, saveRefusals } from './refusedHosts';
 
 export { BRAVE_MONTHLY_CAP, BRAVE_SETTING, braveUsed, takeBrave, monthOf } from './braveBudget';
 export type { BraveCount } from './braveBudget';
@@ -115,6 +116,10 @@ export async function runResearchBackfill(
   const catalog = researchCatalogFor(opts.role, opts.userId, opts.catalogStore ?? store);
   const batch = opts.batchSize ?? RESEARCH_BATCH_SIZE;
   const room = (n: number) => budgetLeft() >= ITEM_COST + n;
+  // Slice 4.3: hosts that refused in the last 30 days are not asked again; new refusals are saved at the end.
+  const refusedBefore = await loadRefusals(store, now);
+  const refusals = { ...refusedBefore };
+  const guarded = refusalFetcher(fetcher, refusals, now);
   for (const e of pending) {
     if (report.researched >= batch || !room(1)) break;
     if (!batchable(e)) continue; // a year with no city, or no year: listed, never researched
@@ -126,11 +131,16 @@ export async function runResearchBackfill(
     changed = true;
     report.researched++;
     try {
-      await runQueuedResearch(store, e.id, usable, fetcher, now, catalog);
+      await runQueuedResearch(store, e.id, usable, guarded, now, catalog);
     } catch (err) {
       // Stays pending; tried again after RETRY_AFTER_MS. No fallback.
       console.error(`Research backfill ${e.id} failed:`, err instanceof Error ? err.message : String(err));
     }
+  }
+  try {
+    await saveRefusals(store, refusedBefore, refusals, now);
+  } catch (err) {
+    console.error('Refused hosts not saved:', err instanceof Error ? err.message : String(err));
   }
   if (changed) {
     try {
