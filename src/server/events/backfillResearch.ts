@@ -6,8 +6,8 @@
 // The monthly Brave counter (200 queries a month, braveBudget.ts) now gates the live Brave calls: braveCapFetcher
 // wraps the fetcher in createDeps (lineup/service.ts), so Brave requests made by queued research are counted there.
 //
-// Never infers a date: an event with a full date is researched; an event with only a year (or nothing) is not,
-// and is listed for the person to confirm (yearOnlyEvents; Fill gaps shows the same list). Persist rules are
+// Never infers a date: an event with a full date, or a year and a city, is researched (batchable); an event with only
+// a year (or nothing) is not, and is listed for the person to confirm (yearOnlyEvents; Fill gaps shows the same list). Persist rules are
 // runQueuedResearch's: the catalog is written only for the owner or in single-user mode (researchCatalogFor).
 //
 // Idempotent: runQueuedResearch skips an event that is no longer 'pending', so a researched event leaves the
@@ -37,6 +37,14 @@ const RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
 const FIXED_COST = 3;
 const ITEM_COST = 25;
 const FULL_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Slice 3.1: an event with a full date is researched as before. So is one with a year and a city but no date:
+// the structured finders search that year in that city, and what they find is a candidate for your tap, never
+// filled on its own (a year-only event has no full date for researchEvent to match). A year alone is not enough.
+export function batchable(e: LoggedEvent): boolean {
+  if (e.startDate && FULL_DATE.test(e.startDate)) return true;
+  return Boolean(e.year && e.city);
+}
 
 // ---- Events the person must confirm ----
 
@@ -102,7 +110,7 @@ export async function runResearchBackfill(
   const room = (n: number) => budgetLeft() >= ITEM_COST + n;
   for (const e of pending) {
     if (report.researched >= batch || !room(1)) break;
-    if (!e.startDate || !FULL_DATE.test(e.startDate)) continue; // year-only or undated: listed, never researched
+    if (!batchable(e)) continue; // a year with no city, or no year: listed, never researched
     if (recent(next.at[e.id]) || recent(e.details.checkedAt)) {
       report.skipped_recent++;
       continue;
