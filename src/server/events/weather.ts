@@ -119,7 +119,7 @@ export async function lookupWeather(event: LoggedEvent, fetcher: Fetcher, now: D
     const name = candidate.split(',')[0].trim();
     if (!results.has(name)) {
       const geo = await fetcher.get(`${GEOCODE}?name=${encodeURIComponent(name)}&count=20&language=en&format=json`, { timeoutMs: 8000 });
-      results.set(name, parseJson<any>(geo)?.results ?? []);
+      results.set(name, geo.status === 200 ? parseJson<any>(geo)?.results ?? [] : []);
     }
     const places = placesFor(results.get(name)!, candidate, event.country);
     if (places.length > 1) return { note: `More than one place is called "${city}". Add the state or country.` };

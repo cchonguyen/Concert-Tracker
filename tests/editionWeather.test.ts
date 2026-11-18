@@ -166,3 +166,43 @@ test('edition weather: promotion refuses another place, days outside the dates, 
   assert.equal(promotableWeather(withWeather({ ...inside, cityChanged: true }), ed), undefined);
   assert.equal(promotableWeather(withWeather(undefined), ed), undefined);
 });
+
+// Slice 4: the owner's refresh replaces the record, is in the edition history, and can be undone.
+import { refreshEditionWeather } from '../src/server/events/editionWeather.ts';
+import { undoEditionChange } from '../src/server/canon/editions.ts';
+
+test('edition weather: owner refresh replaces the record and the change can be undone', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'edition-weather-'));
+  try {
+    const store = new FileLineupStore(dir);
+    const before = linkEdition({ weather });
+    await store.upsertEdition(before);
+    const { fetcher } = fakeFetcher(ROUTES);
+    const out = await refreshEditionWeather(store, before, fetcher, NOW, 'owner');
+    assert.equal(out.changed, true);
+    assert.equal((await store.getEdition('ed-1'))?.weather?.days[0].high, 31.2);
+    const changes = await store.listEditionChanges?.('ed-1');
+    const change = changes?.[0];
+    assert.ok(change, 'the refresh is in the edition history');
+    const undone = await undoEditionChange(store, 'ed-1', change!.id, 'owner');
+    assert.equal(undone.ok, true);
+    assert.equal((await store.getEdition('ed-1'))?.weather?.days[0].high, 27);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('edition weather: a refresh the archive cannot answer keeps the stored record', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'edition-weather-'));
+  try {
+    const store = new FileLineupStore(dir);
+    const before = linkEdition({ weather });
+    await store.upsertEdition(before);
+    const { fetcher } = fakeFetcher({});
+    const out = await refreshEditionWeather(store, before, fetcher, NOW, 'owner');
+    assert.equal(out.changed, false);
+    assert.equal((await store.getEdition('ed-1'))?.weather?.days[0].high, 27);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

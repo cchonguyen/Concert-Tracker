@@ -122,7 +122,8 @@ export async function undoEditionChange(store: LineupStore, editionId: string, c
   if (!edition) return { ok: false, reason: 'unknown' };
   const addedAct = (change.after as Snapshot | null)?.lineupActAdded;
   if (typeof addedAct === 'string') return undoLineupAct(store, edition, change, addedAct, actor);
-  const fields = Object.keys(change.after ?? {}).filter((k): k is Field => (FIELDS as readonly string[]).includes(k));
+  // weather is recorded with the field edits (slice 4). It is restored to null when the change had none.
+  const fields = Object.keys(change.after ?? {}).filter((k): k is Field | 'weather' => (FIELDS as readonly string[]).includes(k) || k === 'weather');
   const before = change.before ?? {};
   // The edition's first write (name was empty before) and summary-only changes cannot be rolled back as a field edit.
   if (fields.length === 0 || ('name' in before && before.name == null)) return { ok: false, reason: 'not_undoable' };
@@ -133,6 +134,8 @@ export async function undoEditionChange(store: LineupStore, editionId: string, c
   for (const f of fields) {
     if (f === 'weekends') {
       restored.weekends = Array.isArray(before[f]) ? normalizeWeekends(before[f] as EditionWeekend[]) ?? undefined : undefined;
+    } else if (f === 'weather') {
+      restored.weather = (before.weather as Edition['weather']) ?? null;
     } else if (f === 'seriesSlug') {
       const prev = before[f] ?? undefined;
       restored.seriesSlug = prev as string | undefined;
