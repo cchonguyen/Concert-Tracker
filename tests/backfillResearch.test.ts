@@ -155,3 +155,30 @@ test('Brave monthly counter stops at the cap and resets with the calendar month'
     assert.equal(await braveUsed(store, new Date('2026-12-02T00:00:00Z')), 1);
   });
 });
+
+test('Slice 3.1: a year and a city with no date is researched in the batch, and nothing is filled on its own', async () => {
+  await withStore(async (store) => {
+    const ev = { ...newEvent('Test Fest 2024', NOW), city: 'Los Angeles' };
+    assert.equal(ev.year, 2024);
+    await store.putEvent(ev);
+    const calls: string[] = [];
+    const r = await runResearchBackfill(store, [finder('ticketmaster', calls)], fetcher, NOW, { budgetLeft: () => 1000, role: 'owner' });
+    assert.equal(r?.researched, 1);
+    assert.ok(calls.some((c) => c.startsWith('ticketmaster:')), 'the structured finder searched');
+    const after = await store.getEvent(ev.id);
+    assert.notEqual(after?.details.status, 'pending', 'it left the queue');
+    assert.equal(after?.startDate, undefined, 'no date is filled without your tap');
+  });
+});
+
+test('Slice 3.1: a year alone, with no city, is still listed and not researched', async () => {
+  await withStore(async (store) => {
+    const yo = newEvent('Test Fest 2024', NOW);
+    await store.putEvent(yo);
+    const calls: string[] = [];
+    const r = await runResearchBackfill(store, [finder('ticketmaster', calls)], fetcher, NOW, { budgetLeft: () => 1000, role: 'owner' });
+    assert.equal(r?.researched, 0);
+    assert.equal(calls.length, 0);
+    assert.equal(r?.year_only, 1);
+  });
+});
