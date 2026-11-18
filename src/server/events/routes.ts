@@ -17,6 +17,7 @@ import { normalizeName } from '../lineup/normalizeName';
 import { artistSuggestions, eventPerformers, nameArtistSuggestions, MAX_BULK_SUGGESTIONS, storedNameSuggestions } from './artists';
 import type { LineupFacts } from './scale';
 import { lookupWeather } from './weather';
+import { weatherForEdition } from './editionWeather';
 import { undoActivity } from './undo';
 import { currentMember } from '../auth/requestScope';
 
@@ -83,12 +84,12 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
     } catch {
       // The plain saved event stands.
     }
-    // Weather is looked up once on a save from an edition (Charlie's choice),
-    // never re-run, and a failure never fails the save.
+    // Weather is one record per edition: copied when the edition has one, otherwise looked up once and
+    // kept on the edition. Never re-run from here, and a failure never fails the save.
     try {
-      const { weather } = await lookupWeather(resolveEvent(current, edition), deps.fetcher, deps.now());
-      if (weather) {
-        current = await saveEvent({ ...current, weather, updatedAt: deps.now().toISOString() });
+      const got = await weatherForEdition(deps.store, edition, current, deps.fetcher, deps.now());
+      if (got.weather) {
+        current = await saveEvent({ ...current, weather: got.weather, updatedAt: deps.now().toISOString() });
       }
     } catch {
       // No weather is stored.
