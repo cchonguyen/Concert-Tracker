@@ -616,6 +616,10 @@ export class UndoConflictError extends Error {
 // Global Archive (owner only): the shared catalog, not your log.
 export const canonicalApi = {
   artists: () => request<{ artists: CanonicalArtistRecord[] }>('/api/manage/canonical/artists'),
+  // Find gaps: editions named for a catalog artist who is not on their lineup yet (slice 3).
+  nameMatches: () => request<{ matches: Array<{ editionId: string; editionName: string; artistKey: string; artistName: string }> }>('/api/manage/canonical/name-matches'),
+  addLineupAct: (editionId: string, artistKey: string) =>
+    request<{ ok: boolean; changeId: string | null }>(`/api/manage/canonical/editions/${encodeURIComponent(editionId)}/lineup`, post({ artistKey })),
   // The ingest queue: jobs with no saved event, newest first.
   lookups: () => request<{ jobs: LookupJob[] }>('/api/manage/canonical/lookups').then((r) => r.jobs),
   editions: (query: string, status: 'all' | 'verified' | 'provisional' | 'draft', signal?: AbortSignal) =>
