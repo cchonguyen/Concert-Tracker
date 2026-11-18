@@ -260,6 +260,8 @@ export interface EditionPerformance {
   stages: string[];
   status: 'billed' | 'performed' | 'cancelled';
   billing?: Billing; // absent: no lead stated (filed under Artist)
+  // Auto-verify status (docs/auto-verify-spec.md). Absent means verified: acts stored before migration 0052 are verified.
+  verification?: 'candidate' | 'verified';
   confidence: number;
   sources: CandidateSource[];
 }

@@ -454,6 +454,7 @@ export class SupabaseLineupStore implements LineupStore {
       stages: p.stages ?? [],
       status: p.status,
       billing: p.billing ?? undefined,
+      verification: (p.verification as EditionPerformance['verification']) ?? 'verified',
       confidence: Number(p.confidence),
       sources: p.sources ?? [],
     };
@@ -468,6 +469,7 @@ export class SupabaseLineupStore implements LineupStore {
       stages: p.stages,
       status: p.status,
       billing: p.billing ?? null,
+      verification: p.verification ?? 'verified',
       confidence: p.confidence,
       sources: p.sources,
     };
