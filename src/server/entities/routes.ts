@@ -36,7 +36,7 @@ import {
 import { seriesSlugFor } from '../lineup/text';
 import type { Edition, SeriesKind, SeriesRecord, SourceType } from '../lineup/types';
 import { addEditionAct, writeEdition } from '../canon/editions';
-import { lineupProposalPayload, matchEditionName } from '../canon/nameArtists';
+import { lineupProposalPayload, matchEditionName, offersForEditions } from '../canon/nameArtists';
 import { normalizeName } from '../lineup/normalizeName';
 import {
   addAlias,
@@ -328,6 +328,21 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
         payload: lineupProposalPayload(edition.name, { key: artist.key, name: artist.name }) as unknown as Record<string, unknown>,
       });
       res.json({ ok: true, duplicate: false, id: item.id });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Member lineup offers (slice 5): the catalog acts named in the given linked editions' names that their lineups lack.
+  // Returns catalog names and edition ids only, never a personal field. The member tap uses POST /canon/lineup-proposals.
+  router.get('/canon/lineup-offers', (_req: any, res: Response, next: () => void) =>
+    currentMember() ? next() : res.status(401).json({ error: 'Sign in to see offers.' }), async (req, res) => {
+    try {
+      const ids = String(req.query?.editionIds ?? '').split(',').map((id) => id.trim()).filter(Boolean).slice(0, 500);
+      const editions = (await Promise.all(ids.map((id) => store.getEdition(id)))).filter((e): e is NonNullable<typeof e> => Boolean(e));
+      const [artists, blocked] = await Promise.all([store.listArtists(), namedPlaceRemainders(store)]);
+      const catalog = artists.map((a) => ({ key: a.key, name: a.name }));
+      res.json({ offers: offersForEditions(editions, catalog, blocked) });
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
