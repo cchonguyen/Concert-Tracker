@@ -7,7 +7,7 @@ import { EditionOccurrenceConflictError, isVerifiedStatus, LineupStore } from '.
 import type { Edition, ReviewQueueItem, ReviewQueueKind } from '../lineup/types';
 import { undoEditionChange, writeEdition } from './editions';
 
-const KINDS: ReviewQueueKind[] = ['override', 'merge_suggestion', 'provisional', 'formatting', 'failed_lookup'];
+const KINDS: ReviewQueueKind[] = ['override', 'merge_suggestion', 'provisional', 'formatting', 'failed_lookup', 'lineup_proposal'];
 const STATUSES = ['open', 'resolved', 'dismissed', 'promoted', 'verified', 'merged'];
 const ID = /^[A-Za-z0-9_-]{1,100}$/;
 const OVERRIDE_FIELDS = ['name', 'startDate', 'endDate', 'venue', 'city', 'country'] as const;
