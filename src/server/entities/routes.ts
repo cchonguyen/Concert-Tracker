@@ -35,7 +35,8 @@ import {
 } from '../lineup/canonicalIngest';
 import { seriesSlugFor } from '../lineup/text';
 import type { Edition, SeriesKind, SeriesRecord, SourceType } from '../lineup/types';
-import { writeEdition } from '../canon/editions';
+import { addEditionAct, writeEdition } from '../canon/editions';
+import { matchEditionName } from '../canon/nameArtists';
 import {
   addAlias,
   addLink,
@@ -265,6 +266,32 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
   });
 
   // Owner verifies a provisional shared edition (slice 12.4). Goes through writeEdition, so undo works.
+  // Owner taps an artist named in the edition's name onto its lineup (slice 2). The server re-checks the match.
+  router.post('/manage/canonical/editions/:id/lineup', ownerOnly as any, async (req, res) => {
+    try {
+      const edition = await store.getEdition(String(req.params.id));
+      if (!edition) return res.status(404).json({ error: 'Edition not found.' });
+      const artist = await store.getArtist(String(req.body?.artistKey ?? ''));
+      if (!artist) return res.status(404).json({ error: 'Artist is not in the catalog.' });
+      const match = matchEditionName(edition.name, [{ key: artist.key, name: artist.name }]);
+      if (!match) return res.status(409).json({ error: 'The edition name does not start with this artist.' });
+      const result = await addEditionAct(store, {
+        editionId: edition.id,
+        artistKey: artist.key,
+        artistName: artist.name,
+        actor: 'owner',
+        reason: 'edition name',
+      });
+      if (!result.ok) {
+        return res.status(result.reason === 'unknown' ? 404 : 409).json({ error: result.reason === 'already_listed' ? 'Already on the lineup.' : 'Edition not found.' });
+      }
+      res.json({ ok: true, changeId: result.changeId });
+    } catch (err) {
+      if (sendOccurrenceConflict(res, err)) return;
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   router.post('/manage/canonical/editions/:id/verify', ownerOnly as any, async (req, res) => {
     try {
       const edition = await store.getEdition(String(req.params.id));
