@@ -10,12 +10,14 @@ import type { LineupStore } from '../lineup/store/types';
 import type { Fetcher, FetchResponse } from '../lineup/types';
 
 export const BRAVE_MONTHLY_CAP = 200;
+export const BRAVE_INTERACTIVE_RESERVE = 60;
 export const BRAVE_SETTING = 'brave_monthly';
 const BRAVE_HOST = 'api.search.brave.com';
 
 export interface BraveCount {
   month: string; // YYYY-MM (UTC)
   used: number;
+  bySource?: Record<string, number>;
 }
 
 export const monthOf = (now: Date) => now.toISOString().slice(0, 7);
@@ -25,11 +27,47 @@ export async function braveUsed(store: Pick<LineupStore, 'getSetting'>, now: Dat
   return c && c.month === monthOf(now) ? c.used : 0;
 }
 
-// Takes `n` Brave queries from this month's allowance. False (and nothing taken) when it would pass the cap.
-export async function takeBrave(store: Pick<LineupStore, 'getSetting' | 'putSetting'>, now: Date, n = 1): Promise<boolean> {
+export async function braveBatchRemaining(
+  store: Pick<LineupStore, 'getSetting'>,
+  now: Date,
+  reserve = BRAVE_INTERACTIVE_RESERVE,
+): Promise<number> {
   const used = await braveUsed(store, now);
+  return Math.max(0, BRAVE_MONTHLY_CAP - reserve - used);
+}
+
+export async function braveHasBatchBudget(
+  store: Pick<LineupStore, 'getSetting'>,
+  now: Date,
+  reserve = BRAVE_INTERACTIVE_RESERVE,
+): Promise<boolean> {
+  return (await braveBatchRemaining(store, now, reserve)) > 0;
+}
+
+// Takes `n` Brave queries from this month's allowance. False (and nothing taken) when it would pass the cap.
+export async function takeBrave(
+  store: Pick<LineupStore, 'getSetting' | 'putSetting'>,
+  now: Date,
+  n = 1,
+  source?: string,
+): Promise<boolean> {
+  const current = await store.getSetting<BraveCount>(BRAVE_SETTING);
+  const month = monthOf(now);
+  const active = current && current.month === month ? current : undefined;
+  const used = active?.used ?? 0;
   if (used + n > BRAVE_MONTHLY_CAP) return false;
-  await store.putSetting<BraveCount>(BRAVE_SETTING, { month: monthOf(now), used: used + n });
+  const nextBySource =
+    source || active?.bySource
+      ? {
+          ...(active?.bySource ?? {}),
+          ...(source ? { [source]: (active?.bySource?.[source] ?? 0) + n } : {}),
+        }
+      : undefined;
+  await store.putSetting<BraveCount>(BRAVE_SETTING, {
+    month,
+    used: used + n,
+    ...(nextBySource ? { bySource: nextBySource } : {}),
+  });
   return true;
 }
 
