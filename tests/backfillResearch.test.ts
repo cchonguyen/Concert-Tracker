@@ -65,12 +65,12 @@ test('at most 5 pending events are researched per run, and the rest on the next'
   });
 });
 
-test('the owner persists a shared occurrence; a member does not; Brave is never called', async () => {
+test('the owner persists a shared occurrence; a member does not; Brave is not called when the free finders answer', async () => {
   await withStore(async (store) => {
     await store.putEvent(dated(1));
     const calls: string[] = [];
     await runResearchBackfill(store, [finder('ticketmaster', calls), finder('discovered', calls)], fetcher, NOW, { budgetLeft: () => 1000, role: 'owner', userId: 'u1' });
-    assert.ok(!calls.some((c) => c.startsWith('discovered')), 'Brave (discovered) is filtered out');
+    assert.ok(!calls.some((c) => c.startsWith('discovered')), 'Brave (discovered) is not called when the free finders answer the gaps (Slice 3.3)');
     // Slice 11.23: the owner's own entry also makes a provisional edition, beside the Ticketmaster occurrence.
     assert.equal((await store.listEditions(100)).length, 2);
   });

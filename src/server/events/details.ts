@@ -771,6 +771,13 @@ async function timedFind(f: DetailFinder, query: DetailQuery, fetcher: Fetcher, 
   }
 }
 
+// Slice 3.3: the free finders leave a gap when, without a full date, none of their candidates gives a date, or, with a
+// full date, a field you left empty (venue or city) is answered by none of them. Only then is web search worth its call.
+export function leavesGap(event: LoggedEvent, found: DetailCandidate[]): boolean {
+  if (!event.startDate) return !found.some((c) => c.startDate);
+  return (!event.venue && !found.some((c) => c.venue)) || (!event.city && !found.some((c) => c.city));
+}
+
 export async function researchEvent(
   event: LoggedEvent,
   finders: DetailFinder[],
@@ -839,16 +846,23 @@ export async function researchEvent(
     venue: event.venue,
     city: cityWithRegion(event.city, event.region),
   };
-  const search = async (query: DetailQuery) => {
-    const settled = await Promise.allSettled(enabled.map((f) => timedFind(f, query, fetcher, opts?.trace)));
+  const runFinders = async (list: DetailFinder[], query: DetailQuery) => {
+    const settled = await Promise.allSettled(list.map((f) => timedFind(f, query, fetcher, opts?.trace)));
     settled.forEach((r, i) => {
       if (r.status === 'fulfilled') {
         found.push(...r.value);
-        notes.push(`${enabled[i].id}: ${r.value.length} match(es) for "${query.name}".`);
+        notes.push(`${list[i].id}: ${r.value.length} match(es) for "${query.name}".`);
       } else {
-        notes.push(`${enabled[i].id} failed: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
+        notes.push(`${list[i].id} failed: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
       }
     });
+  };
+  // Slice 3.3: the free finders run first. Web search (Brave, id 'discovered') runs only when they leave a gap.
+  const search = async (query: DetailQuery) => {
+    await runFinders(enabled.filter((f) => f.id !== 'discovered'), query);
+    const web = enabled.filter((f) => f.id === 'discovered');
+    if (web.length && leavesGap(event, found)) await runFinders(web, query);
+    else if (web.length) notes.push('discovered: not searched; the free sources answered the gaps.');
   };
   await search(q);
   // You may have renamed the event after saving it ("Coachella" to
