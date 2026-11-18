@@ -9,6 +9,7 @@ export const EditionNameGaps: React.FC = () => {
   const [rows, setRows] = useState<NameMatch[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -36,12 +37,41 @@ export const EditionNameGaps: React.FC = () => {
     }
   };
 
+  // Adds each row in turn, so two acts on one edition never race. A row the server refuses is counted, not retried.
+  const addAll = async () => {
+    if (!rows?.length) return;
+    setBusy('all');
+    setNotice(null);
+    let failed = 0;
+    for (const row of rows) {
+      try {
+        await canonicalApi.addLineupAct(row.editionId, row.artistKey);
+      } catch {
+        failed += 1;
+      }
+    }
+    setNotice(failed ? `Added ${rows.length - failed} of ${rows.length}. ${failed} could not be added.` : `Added ${rows.length} to lineups.`);
+    await load();
+    setBusy(null);
+  };
+
   if (rows === null && !error) return null;
 
   return (
     <section aria-label="Find gaps" className="space-y-2 rounded-lg border border-zinc-800 p-3">
       <h3 className="text-sm font-semibold text-zinc-100">Find gaps: named in the edition, not on the lineup</h3>
       {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+      {notice && <p role="status" className="text-sm text-zinc-300">{notice}</p>}
+      {rows && rows.length > 1 && (
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() => void addAll()}
+          className="rounded-md border border-violet-700 px-2.5 py-1 text-xs text-violet-200 hover:bg-violet-950 disabled:opacity-50"
+        >
+          {busy === 'all' ? 'Adding all…' : `Add all to lineup (${rows.length})`}
+        </button>
+      )}
       {rows && rows.length === 0 && <p className="text-sm text-zinc-400">Nothing to add: every edition named for an artist already lists them.</p>}
       {rows && rows.length > 0 && (
         <ul className="divide-y divide-zinc-800">
