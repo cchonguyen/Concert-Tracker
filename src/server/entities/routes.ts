@@ -37,7 +37,7 @@ import {
 import { seriesSlugFor } from '../lineup/text';
 import type { Edition, SeriesKind, SeriesRecord, SourceType } from '../lineup/types';
 import { addEditionAct, writeEdition } from '../canon/editions';
-import { lineupProposalPayload, matchEditionName, offersForEditions } from '../canon/nameArtists';
+import { lineupProposalPayload, matchEditionName, offersForEditions, prepareCatalog } from '../canon/nameArtists';
 import { normalizeName } from '../lineup/normalizeName';
 import {
   addAlias,
@@ -295,7 +295,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
       // Headers only (one query), then the lineups of the few editions whose name matched. Loading every
       // edition in full cost a round trip per 100 editions and hit the Worker's subrequest budget.
       const [headers, artists, blocked] = await Promise.all([store.listEditionHeaders({ limit: NAME_MATCH_EDITION_LIMIT }), store.listArtists(), namedPlaceRemainders(store)]);
-      const catalog = artists.map((a) => ({ key: a.key, name: a.name }));
+      const catalog = prepareCatalog(artists.map((a) => ({ key: a.key, name: a.name })));
       const named = [];
       for (const edition of headers) {
         const match = matchEditionName(edition.name, catalog, blocked);
