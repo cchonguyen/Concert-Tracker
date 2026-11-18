@@ -56,3 +56,25 @@ export interface LineupProposalPayload {
 export function lineupProposalPayload(editionName: string, artist: CatalogArtist): LineupProposalPayload {
   return { artistKey: artist.key, artistName: artist.name, editionName, quote: editionName };
 }
+
+// The catalog acts each edition's name offers that its lineup does not have yet (slice 5). Pure: the caller passes the editions and catalog.
+export interface EditionNameOffer {
+  editionId: string;
+  artistKey: string;
+  artistName: string;
+}
+
+export function offersForEditions(
+  editions: Array<{ id: string; name: string; performances: Array<{ artistKey: string }> }>,
+  artists: CatalogArtist[],
+  blockedRemainders: ReadonlySet<string> = new Set(),
+): EditionNameOffer[] {
+  const offers: EditionNameOffer[] = [];
+  for (const edition of editions) {
+    const match = matchEditionName(edition.name, artists, blockedRemainders);
+    if (!match) continue;
+    if (edition.performances.some((p) => p.artistKey === match.artistKey)) continue;
+    offers.push({ editionId: edition.id, artistKey: match.artistKey, artistName: match.artistName });
+  }
+  return offers;
+}

@@ -52,3 +52,15 @@ test('punctuation and diacritics do not stop a match', () => {
   const m = matchEditionName('TSHÁ: live!', catalog);
   assert.equal(m?.artistName, 'Tsha');
 });
+
+test('offersForEditions offers the named catalog act, skips acts already listed, and keeps the blocked remainders', async () => {
+  const { offersForEditions } = await import('../src/server/canon/nameArtists.ts');
+  const editions = [
+    { id: 'e1', name: 'Tsha at Sound Nightclub', performances: [] },
+    { id: 'e2', name: 'Tsha at Sound Nightclub', performances: [{ artistKey: 'tsha' }] },
+    { id: 'e3', name: 'Above & Beyond Group Therapy', performances: [] },
+  ];
+  assert.deepEqual(offersForEditions(editions, catalog, new Set(['group therapy'])), [
+    { editionId: 'e1', artistKey: 'tsha', artistName: 'Tsha' },
+  ]);
+});

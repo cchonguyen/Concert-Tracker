@@ -8,7 +8,7 @@
   - 11.11 to 11.14: `match.ts` and `upsertOccurrence`, inheritance on read (`captured`, `overrides`), suggestion tap links the edition, backfill of editions from the owner's events and email imports (also fixed `supabaseStore` not saving `venue_id`, `subject_key`, `has_lineup`).
   - Phase 2 (11.15 to 11.19): save enqueues a `research` message on `LOOKUP_QUEUE`; rung 1 catalog lookup and rung 2 owner-only occurrence persistence; rung 4 reader in its own `research_reader` messages; picker grouping; cron research backfill and the Confirm dates list.
   - Phase 3 (11.20 to 11.22): `ingest_traces` and the trace writer (migration 0043 written), owner review-queue routes, owner inbox in the Global archive.
-- **Verification Status:** Verified via finish-slice.mjs (Slice 20.2)
+- **Verification Status:** Verified via finish-slice.mjs (Slice 20.3)
 - **Verification Status:** Verified via finish-slice.mjs (Slice 12.13)
 - **Open gaps:** (items for Charlie first, then follow-ups)
   - Apply migration 0043 (`supabase/migrations/0043_ingest_traces.sql`). Until then traces are skipped quietly and the inbox shows "Activity appears once the traces table is set up".
