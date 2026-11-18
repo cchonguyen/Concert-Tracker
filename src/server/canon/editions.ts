@@ -7,7 +7,7 @@
 // write is never rolled back silently; a missing change record is reported by the log, not hidden.
 import type { Edition, EditionChange, EditionPerformance, EditionWeekend } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
-import { verifyAct, type ActEvidence, type ActExpectation, type ActVerdict } from './autoVerify';
+import { editionVerified, verifyAct, type ActEvidence, type ActExpectation, type ActVerdict, type EditionFieldFacts } from './autoVerify';
 
 const FIELDS = [
   'name',
@@ -122,6 +122,8 @@ export async function undoEditionChange(store: LineupStore, editionId: string, c
   if (change.undoneAt) return { ok: false, reason: 'already_undone' };
   const edition = await store.getEdition(editionId);
   if (!edition) return { ok: false, reason: 'unknown' };
+  const autoEdition = (change.after as Snapshot | null)?.[AUTO_EDITION_KEY];
+  if (typeof autoEdition === 'string') return undoAutoEdition(store, edition, change, actor);
   const autoAct = (change.after as Snapshot | null)?.[AUTO_VERIFY_KEY];
   if (typeof autoAct === 'string') return undoAutoVerify(store, edition, change, autoAct, actor);
   const addedAct = (change.after as Snapshot | null)?.lineupActAdded;
@@ -284,6 +286,56 @@ async function undoAutoVerify(store: LineupStore, edition: Edition, change: Edit
     actor,
     reason: `undo of ${change.id}`,
     extra: { before: { [AUTO_VERIFY_KEY]: artistKey }, after: { [AUTO_VERIFY_KEY]: null } },
+  });
+  await store.markChangeUndone(change.id);
+  return { ok: true, change: written.change ?? change };
+}
+
+// Auto-verify of a provisional edition (docs/auto-verify-spec.md, slice 3c). The edition becomes verified
+// only when name, act, location, venue and date each come from a verified source. The change records the
+// previous status, so undo puts the edition back to provisional.
+export const AUTO_EDITION_KEY = 'autoVerifiedEdition';
+
+export interface AutoVerifyEditionInput {
+  editionId: string;
+  facts: EditionFieldFacts;
+  actor: string;
+  reason: string;
+}
+
+export type AutoVerifyEditionResult =
+  | { ok: true; changed: boolean; changeId: string | null }
+  | { ok: false; reason: 'unknown' };
+
+export async function autoVerifyEdition(store: LineupStore, input: AutoVerifyEditionInput): Promise<AutoVerifyEditionResult> {
+  const edition = await store.getEdition(input.editionId);
+  if (!edition) return { ok: false, reason: 'unknown' };
+  if (edition.status !== 'provisional' || !editionVerified(input.facts)) {
+    return { ok: true, changed: false, changeId: null };
+  }
+  const next: Edition = { ...edition, status: 'verified', updatedAt: new Date().toISOString() };
+  const written = await writeEdition(store, {
+    edition: next,
+    actor: input.actor,
+    reason: input.reason,
+    extra: {
+      before: { [AUTO_EDITION_KEY]: 'provisional' },
+      after: { [AUTO_EDITION_KEY]: 'verified' },
+    },
+  });
+  return { ok: true, changed: written.changed, changeId: written.change?.id ?? null };
+}
+
+async function undoAutoEdition(store: LineupStore, edition: Edition, change: EditionChange, actor: string): Promise<UndoResult> {
+  // Changed since the auto-verify (the owner set the status again): leave it to the owner.
+  if (edition.status !== 'verified') return { ok: false, reason: 'stale' };
+  const previous = ((change.before ?? {}) as Snapshot)[AUTO_EDITION_KEY];
+  const next: Edition = { ...edition, status: (typeof previous === 'string' ? previous : 'provisional') as Edition['status'], updatedAt: new Date().toISOString() };
+  const written = await writeEdition(store, {
+    edition: next,
+    actor,
+    reason: `undo of ${change.id}`,
+    extra: { before: { [AUTO_EDITION_KEY]: 'verified' }, after: { [AUTO_EDITION_KEY]: null } },
   });
   await store.markChangeUndone(change.id);
   return { ok: true, change: written.change ?? change };
