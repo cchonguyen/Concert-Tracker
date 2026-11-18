@@ -88,6 +88,18 @@ export async function runMemberBackfill(
   const report: MemberBackfillReport = { members: 0, created: 0, matched: 0, skipped: 0, remaining: 0 };
   let items = 0; // items started across all members this run
   let didWork = false;
+  const prefetched =
+    typeof service.listUserSettingsByKeys === 'function'
+      ? await service.listUserSettingsByKeys([NOTICE_SETTING, MEMBER_BACKFILL_SETTING])
+      : null;
+  const settingsByUser = new Map<string, Map<string, unknown>>();
+  if (prefetched) {
+    for (const row of prefetched) {
+      const m = settingsByUser.get(row.userId) ?? new Map<string, unknown>();
+      m.set(row.key, row.data);
+      settingsByUser.set(row.userId, m);
+    }
+  }
 
   for (const m of members) {
     if (m.role === 'owner' || m.blocked || !m.userId) continue;
@@ -99,14 +111,20 @@ export async function runMemberBackfill(
       report.skipped++;
       continue;
     }
-    const notice = await scoped.getSetting<{ version: number }>(NOTICE_SETTING);
+    const cached = settingsByUser.get(m.userId);
+    const notice = prefetched
+      ? ((cached?.get(NOTICE_SETTING) as { version: number } | undefined) ?? null)
+      : await scoped.getSetting<{ version: number }>(NOTICE_SETTING);
     if (!opts.anyNotice && notice?.version !== NOTICE_VERSION) {
       report.skipped++;
       continue;
     }
     report.members++;
 
-    const cursor = (await scoped.getSetting<Cursor>(MEMBER_BACKFILL_SETTING)) ?? { done: [] };
+    const cursor =
+      (prefetched
+        ? (cached?.get(MEMBER_BACKFILL_SETTING) as Cursor | undefined)
+        : await scoped.getSetting<Cursor>(MEMBER_BACKFILL_SETTING)) ?? { done: [] };
     if (cursor.complete) continue;
 
     const done = new Set(cursor.done);

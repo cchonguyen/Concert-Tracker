@@ -610,7 +610,7 @@ export class SupabaseLineupStore implements LineupStore {
       weekends: e.weekends ?? [],
       venue_id: e.venueId ?? null,
       subject_key: e.subjectKey ?? null,
-      has_lineup: e.hasLineup ?? null,
+      has_lineup: e.performances.length > 0 ? true : (e.hasLineup ?? null),
       status: e.status,
       confirmed_at: e.confirmedAt ?? null,
       fact_source_note: e.factSourceNote ?? null,
@@ -1279,6 +1279,33 @@ export class SupabaseLineupStore implements LineupStore {
       await this.db.from('app_settings').upsert({ key, data, updated_at: new Date().toISOString() }),
       'putSetting (apply 0006_app_settings.sql)',
     );
+  }
+
+  async listUserSettingsByKeys(keys: string[]): Promise<Array<{ userId: string; key: string; data: unknown }>> {
+    if (!keys.length) return [];
+    const out: Array<{ userId: string; key: string; data: unknown }> = [];
+    for (let from = 0; ; from += 1000) {
+      const page = this.check(
+        await this.db.from('user_settings').select('user_id, key, data').in('key', keys).order('user_id').order('key').range(from, from + 999),
+        'listUserSettingsByKeys (apply 0017_members_and_user_id.sql)',
+      ) as any[] | null;
+      for (const r of page ?? []) out.push({ userId: r.user_id, key: r.key, data: r.data });
+      if ((page ?? []).length < 1000) break;
+    }
+    return out;
+  }
+
+  async listPendingResearchUserIds(): Promise<string[]> {
+    const rows = this.check(
+      await this.db
+        .from('logged_events')
+        .select('user_id')
+        .is('deleted_at', null)
+        .eq('details->>status', 'pending')
+        .limit(500),
+      'listPendingResearchUserIds',
+    ) as any[] | null;
+    return [...new Set((rows ?? []).map((r: any) => r.user_id).filter((id: unknown): id is string => typeof id === 'string' && id.length > 0))];
   }
 
   async getArtist(key: string) {

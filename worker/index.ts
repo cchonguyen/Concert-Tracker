@@ -189,6 +189,7 @@ async function runCron(env: Env): Promise<void> {
       if (report) {
         console.log(`Member backfill (notice override ${anyNotice ? 'on' : 'off'}): ${JSON.stringify(report)}`);
         trace.step('member_backfill', { ...report });
+        if (b) trace.subrequests(b.used);
         await trace.finish(deps.store); // +1 subrequest, only when the run did something
       } else if (anyNotice) {
         // Slice 12.12: while the override is on, a run that did nothing still leaves counts (no ids) so the cause shows.
@@ -196,6 +197,7 @@ async function runCron(env: Env): Promise<void> {
         const detail = { listed: members.length, walkable, budgetUsed: b?.used ?? -1, budgetLimit: b?.limit ?? -1 };
         console.log(`Member backfill idle: ${JSON.stringify(detail)}`);
         trace.step('member_backfill_idle', detail);
+        if (b) trace.subrequests(b.used);
         await trace.finish(deps.store);
       }
     }
@@ -206,6 +208,8 @@ async function runCron(env: Env): Promise<void> {
       // Slice 12.12: leave the error text (no ids; store errors name tables, not people) where it can be read.
       const t = startTrace('backfill');
       t.step('member_backfill_error', { message: message.slice(0, 200) } as any);
+      const b = currentBudget();
+      if (b) t.subrequests(b.used);
       await t.finish(deps.store);
     } catch {
       // Best effort: the budget may be spent.
@@ -227,6 +231,8 @@ async function runCron(env: Env): Promise<void> {
         console.log(`Canon backfill: ${JSON.stringify(backfill)}`);
         if (backfill.created > 0 || backfill.matched > 0 || backfill.venue_set > 0 || backfill.subject_set > 0) {
           trace.step('canon_backfill', Object.fromEntries(Object.entries(backfill).filter(([, v]) => typeof v === 'number')));
+          const b = currentBudget();
+          if (b) trace.subrequests(b.used);
           await trace.finish(deps.store); // +1 subrequest, only when the run did something
         }
       }
@@ -238,12 +244,19 @@ async function runCron(env: Env): Promise<void> {
   // as the subrequest budget allows (worst case 3 + 5 * 25 = 128; backfillResearch.ts).
   // Throttled to every 5 minutes (minute 2) to stagger subrequest budget against backfills.
   if (now.getUTCMinutes() % 5 === 2) {
+    const pendingUsers =
+      typeof deps.store.listPendingResearchUserIds === 'function'
+        ? new Set(await deps.store.listPendingResearchUserIds())
+        : null;
     try {
       let store: typeof deps.store | null = deps.store;
       let ownerId: string | undefined;
       if (multiUserFromEnv(settings)) {
         ownerId = (await deps.store.ownerUserId?.()) ?? undefined;
-        store = ownerId && deps.store.forUser ? deps.store.forUser({ userId: ownerId, role: 'owner' }) : null;
+        const skipOwner = pendingUsers && (!ownerId || !pendingUsers.has(ownerId));
+        store = !skipOwner && ownerId && deps.store.forUser ? deps.store.forUser({ userId: ownerId, role: 'owner' }) : null;
+      } else if (pendingUsers && pendingUsers.size === 0) {
+        store = null;
       }
       const researched = store
         ? await runResearchBackfill(store, defaultFinders(), deps.fetcher, now, { role: ownerId ? 'owner' : undefined, userId: ownerId, catalogStore: deps.store })
@@ -252,6 +265,8 @@ async function runCron(env: Env): Promise<void> {
         console.log(`Research backfill: ${JSON.stringify(researched)}`);
         const trace = startTrace('research_backfill');
         trace.step('research_backfill', { researched: researched.researched });
+        const b = currentBudget();
+        if (b) trace.subrequests(b.used);
         await trace.finish(deps.store); // +1 subrequest, only when the run researched something
       }
     } catch (err) {
@@ -260,12 +275,16 @@ async function runCron(env: Env): Promise<void> {
     // Slice 3.4: once the owner batch has worked, the same batch runs for each accepted member, scoped to that member's
     // own store, only while the setting is on. Members get no shared-catalog writes beyond their own entry (role 'member').
     try {
-      const membersOn = multiUserFromEnv(settings) && membersResearchOn(await deps.store.getSetting<{ on?: boolean }>(RESEARCH_MEMBERS_SETTING));
+      const membersOn =
+        multiUserFromEnv(settings) &&
+        (!pendingUsers || pendingUsers.size > 0) &&
+        membersResearchOn(await deps.store.getSetting<{ on?: boolean }>(RESEARCH_MEMBERS_SETTING));
       if (membersOn) {
         const db = getSupabaseClient();
         const members = db ? await supabaseMemberDirectory(db).listMembers() : [];
         for (const m of members) {
           if (m.role === 'owner' || m.blocked || !m.userId) continue;
+          if (pendingUsers && !pendingUsers.has(m.userId)) continue;
           const scoped = deps.store.forUser?.({ userId: m.userId, role: 'member' });
           if (!scoped) continue;
           const r = await runResearchBackfill(scoped, defaultFinders(), deps.fetcher, now, { role: 'member', userId: m.userId, catalogStore: deps.store });

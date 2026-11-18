@@ -443,6 +443,8 @@ export interface LineupStore {
   // your mail has been read.
   getSetting<T>(key: string): Promise<T | null>;
   putSetting<T>(key: string, data: T): Promise<void>;
+  listUserSettingsByKeys?(keys: string[]): Promise<Array<{ userId: string; key: string; data: unknown }>>;
+  listPendingResearchUserIds?(): Promise<string[]>;
 
   getArtist(key: string): Promise<ArtistIdentity | null>;
   getArtists(keys: string[]): Promise<ArtistIdentity[]>;
