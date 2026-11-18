@@ -21,6 +21,36 @@ export function promotableWeather(event: LoggedEvent, edition: Edition): EventWe
   return inside ? { place: w.place, latitude: w.latitude, longitude: w.longitude, days: w.days, sourceUrl: w.sourceUrl, checkedAt: w.checkedAt } : undefined;
 }
 
+// Owner refresh (slice 4): look the edition's days up again and replace its record. The change goes
+// through writeEdition, so the edition history shows the old and new values and the owner can undo it.
+// When the archive has nothing, the stored record stays and the note says why.
+export async function refreshEditionWeather(
+  store: LineupStore,
+  edition: Edition,
+  fetcher: Fetcher,
+  now: Date,
+  actor: string,
+): Promise<{ changed: boolean; weather?: EventWeather; note?: string }> {
+  const probe = {
+    id: edition.id,
+    startDate: edition.startDate,
+    endDate: edition.endDate,
+    city: edition.city,
+    region: edition.region,
+    country: edition.country,
+    sources: {},
+  } as unknown as LoggedEvent;
+  const { weather, note } = await lookupWeather(probe, fetcher, now);
+  if (!weather) return { changed: false, note };
+  const res = await writeEdition(store, {
+    edition: { ...edition, weather },
+    before: edition,
+    actor,
+    reason: 'owner refreshed the weather record',
+  });
+  return { changed: res.changed, weather };
+}
+
 // One weather record per canonical edition (docs/specs/canonical-weather.md). A save from the edition
 // copies the record when the edition has one. When it has none, a record the member already has for
 // these days is promoted; otherwise one lookup fills it, so later members reuse it. Each change is
