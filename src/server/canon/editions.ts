@@ -128,6 +128,8 @@ export async function undoEditionChange(store: LineupStore, editionId: string, c
   if (typeof autoAct === 'string') return undoAutoVerify(store, edition, change, autoAct, actor);
   const addedAct = (change.after as Snapshot | null)?.lineupActAdded;
   if (typeof addedAct === 'string') return undoLineupAct(store, edition, change, addedAct, actor);
+  const tickAct = (change.after as Snapshot | null)?.[MEMBER_TICK_KEY];
+  if (typeof tickAct === 'string') return undoMemberTick(store, edition, change, tickAct, actor);
   // weather is recorded with the field edits (slice 4). It is restored to null when the change had none.
   const fields = Object.keys(change.after ?? {}).filter((k): k is Field | 'weather' => (FIELDS as readonly string[]).includes(k) || k === 'weather');
   const before = change.before ?? {};
@@ -208,6 +210,25 @@ export async function addEditionAct(store: LineupStore, input: AddEditionActInpu
     extra: { after: { [LINEUP_NAME_KEY]: input.artistKey } },
   });
   return { ok: true, changeId: written.change?.id ?? null };
+}
+
+// Member tick (slice 5): undo removes only a candidate act still sourced from a single "your entry" tick.
+// An act that an owner or a source has since changed is left alone.
+export const MEMBER_TICK_KEY = 'memberTickAct';
+
+async function undoMemberTick(store: LineupStore, edition: Edition, change: EditionChange, artistKey: string, actor: string): Promise<UndoResult> {
+  const idx = edition.performances.findIndex((p) => p.artistKey === artistKey);
+  if (idx < 0) return { ok: false, reason: 'stale' };
+  const act = edition.performances[idx];
+  if (act.verification !== 'candidate' || act.sources.length !== 1 || act.sources[0].extractor !== 'your entry') return { ok: false, reason: 'stale' };
+  const next: Edition = {
+    ...edition,
+    performances: edition.performances.filter((_, i) => i !== idx),
+    updatedAt: new Date().toISOString(),
+  };
+  const written = await writeEdition(store, { edition: next, actor, reason: `undo of ${change.id}` });
+  await store.markChangeUndone(change.id);
+  return { ok: true, change: written.change ?? change };
 }
 
 async function undoLineupAct(store: LineupStore, edition: Edition, change: EditionChange, artistKey: string, actor: string): Promise<UndoResult> {
