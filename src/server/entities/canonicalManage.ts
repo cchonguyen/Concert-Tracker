@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ArtistIdentity, Edition, EditionArtistRef, EditionHeader, EditionPerformance, EditionWeekend, SeriesKind } from '../lineup/types';
+import type { ArtistIdentity, Edition, EditionArtistRef, EditionHeader, EditionPerformance, EditionWeekend, SeriesKind, SeriesRecord } from '../lineup/types';
 import { normalizeName } from '../lineup/text';
 import type { CanonicalUndoResult, LineupStore } from '../lineup/store/types';
 import { CanonicalStoreError, editionMatchesStatusFilter, isVerifiedStatus } from '../lineup/store/types';
@@ -940,8 +940,48 @@ async function undoFileCanonicalChange(store: LineupStore, id: string, at: strin
 }
 
 // Undo for any history entry: a catalog artist change, or a Manage change (manage.ts).
+// Save a canonical series with an undoable history entry (Global archive: type, place, name, brand, and the rest of the record).
+// The entry is written before the save, so undo can put back exactly the record it replaced.
+export async function saveSeriesLogged(store: LineupStore, existing: SeriesRecord, next: SeriesRecord, at = now()): Promise<HistoryEntry | null> {
+  if (stable(existing) === stable(next)) {
+    await store.upsertSeries(next);
+    return null;
+  }
+  const entry: HistoryEntry = {
+    id: randomUUID(),
+    operation: 'canonical-series',
+    summary: `Series "${next.name}" changed`,
+    sourceEntityId: next.slug,
+    entities: { before: [], after: [] },
+    touched: [],
+    aliases: { before: [], after: [] },
+    links: { before: [], after: [] },
+    events: [],
+    createdAt: at,
+    series: { slug: next.slug, before: existing, after: next },
+  };
+  await store.putEntityHistory(entry);
+  await store.upsertSeries(next);
+  return entry;
+}
+
+async function undoSeriesChange(store: LineupStore, entry: HistoryEntry, at: string): Promise<UndoResult> {
+  if (!isOwner(currentMember())) throw new ManageError('Only the owner can do this.', 403);
+  if (entry.undoneAt) throw new ManageError('That change was already undone.', 409);
+  const change = entry.series!;
+  const current = await store.getSeries(change.slug);
+  if (!current || stable(current) !== stable(change.after)) {
+    throw new ManageError('Those records changed after this. Undo the later change first.', 409);
+  }
+  await store.upsertSeries(change.before);
+  const done = { ...entry, undoneAt: at };
+  await store.putEntityHistory(done);
+  return { entry: done, restored: 0, skipped: [] };
+}
+
 export async function undoHistory(store: LineupStore, id: string, at = now()): Promise<UndoResult | CanonicalUndoOutcome> {
   const entry = await store.getEntityHistory(id);
+  if (entry?.series) return undoSeriesChange(store, entry, at);
   if (entry?.canonical) return undoArtistChange(store, entry, at);
   if (!entry) return undoFileCanonicalChange(store, id, at);
   return undoEntry(store, id, at);
