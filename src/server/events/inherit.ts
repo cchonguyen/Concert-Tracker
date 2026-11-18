@@ -110,6 +110,8 @@ export function resolveEvent(e: LoggedEvent, edition: EditionHeader | Edition | 
   } else {
     delete out.seriesKind;
   }
+  // The edition's weather record is shared, so a linked event shows it. The event's own copy stays as the fallback.
+  if (edition.weather) out.weather = edition.weather;
   if (out.startDate) {
     if (out.startDate !== e.startDate) {
       out.year = Number(out.startDate.slice(0, 4));
