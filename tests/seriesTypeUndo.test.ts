@@ -49,3 +49,11 @@ test('undo refuses when the series changed after the logged change', async () =>
     await assert.rejects(() => undoHistory(store, entry!.id), /changed after this/);
   });
 });
+
+test('a series saved without a type stays without one (no festival default)', async () => {
+  const store = await freshStore();
+  await store.upsertSeries({ slug: 'untyped', name: 'Untyped' });
+  assert.equal((await store.getSeries('untyped'))!.kind, undefined);
+  await store.upsertSeries({ slug: 'typed', name: 'Typed', kind: 'tour' });
+  assert.equal((await store.getSeries('typed'))!.kind, 'tour');
+});

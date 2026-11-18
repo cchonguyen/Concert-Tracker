@@ -283,9 +283,11 @@ export class FileLineupStore implements LineupStore {
   }
 
   private normalizeSeriesRecord(s: SeriesRecord): SeriesRecord {
-    const kind: SeriesKind = s.kind === 'tour' ? 'tour' : 'festival';
-    const out: SeriesRecord = { ...clone(s), kind };
-    if (kind === 'tour') {
+    // No type stays empty: a series is never typed festival by default (series type fix, slice 3).
+    const out: SeriesRecord = clone(s);
+    if (s.kind === 'tour' || s.kind === 'festival') out.kind = s.kind;
+    else delete out.kind;
+    if (out.kind === 'tour') {
       delete out.city;
       delete out.region;
       delete out.country;
