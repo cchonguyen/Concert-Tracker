@@ -70,6 +70,16 @@ export interface ReaderStatus {
   recent?: ReaderCallSummary[];
 }
 
+export interface FinderReadoutRow {
+  finder: string;
+  runs: number;
+  hits: number;
+  empty: number;
+  failures: number;
+  successRate: number | null;
+  medianMs: number | null;
+}
+
 export interface LineupStatus {
   store: 'file' | 'supabase';
   sources: Array<{ id: SourceType; enabled: boolean }>;
@@ -827,6 +837,8 @@ export const lineupApi = {
   canonicalConfirm: (body: CanonicalConfirmInput) =>
     request<{ applied: boolean; diff: CanonicalDiff; edition?: unknown }>('/api/manage/canonical/confirm', post(body)),
   status: () => request<LineupStatus>('/api/lineup/status'),
+  // Owner only (Stage 1.2): research finders over the last 30 days.
+  finderReadout: () => request<{ days: number; finders: FinderReadoutRow[] }>('/api/lineup/finder-readout'),
   retry: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}/run`, post()).then((r) => r.job),
   job: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}`).then((r) => r.job),
   confirm: (id: string, body: ConfirmRequest) =>
