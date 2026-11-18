@@ -43,8 +43,8 @@ Feature: **"What did you go to?" past-event suggestion** (triaged 2026-11-11, di
   3. A name alone is enough to match. Each suggestion shows its date.
   4. Events in Recently deleted never match.
 - **R1.9 relevance:** venue and city already suggest what you have entered before, and city suggests real places as you type. Venue-to-place links apply to edition matches. Applies to typed fields only, so the suggestion feature stays separate from R1.9.
-  5. A pre-fill copies everything canonical: date, location, venue, lineup, weather.
-- **Plan:** `/mnt/project-files/canonical-autocomplete/plan.md` (stages A to C, slices A1 to B3). Open: lineup vs who you saw (AGENTS.md tap rule), weather source, members creating editions.
+  5. A pre-fill copies the canonical edition's date, location, venue and lineup. Weather is not canonical: it is looked up once per saved event (Open-Meteo, see Weather below) and never copied from an edition or another member's event.
+- **Plan:** `/mnt/project-files/canonical-autocomplete/plan.md` (stages A to C, slices A1 to B3). Open: lineup vs who you saw (AGENTS.md tap rule), members creating editions. Weather source closed: Open-Meteo archive, per event, per AGENTS.md.
 
 ## Prev 1. Manage section (shipped, kept for reference)
 Feature: **Manage section** (triaged 2026-10-28). Full design: [../docs/manage-section-design.md](../docs/manage-section-design.md).
