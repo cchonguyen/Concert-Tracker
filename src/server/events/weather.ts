@@ -102,6 +102,7 @@ export function cityVariants(city: string): string[] {
 export async function lookupWeather(event: LoggedEvent, fetcher: Fetcher, now: Date): Promise<WeatherResult> {
   if (!event.startDate) return { note: 'Add the date first.' };
   if (!event.city) return { note: 'Add the city first.' };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(event.startDate)) return { note: 'Weather needs a full date, not just a year or month.' };
   const today = now.toISOString().slice(0, 10);
   const last = event.endDate && event.endDate > event.startDate ? event.endDate : event.startDate;
   if (event.startDate > today) return { note: 'Weather is kept only for days that have passed.' };

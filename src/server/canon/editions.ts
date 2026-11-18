@@ -52,6 +52,7 @@ function snapshot(e: Edition | null): Snapshot {
     else s[f] = (e?.[f] as string | boolean | undefined) ?? null;
   }
   s[SUMMARY] = e ? e.performances.length : null;
+  s.weather = e?.weather ?? null;
   return s;
 }
 
@@ -72,10 +73,11 @@ export interface WriteEditionResult {
 export async function writeEdition(store: LineupStore, input: WriteEditionInput): Promise<WriteEditionResult> {
   const existing = input.before !== undefined ? input.before : await store.getEdition(input.edition.id);
   const before = snapshot(existing);
-  const after = snapshot(input.edition);
+  // An edition without a weather key keeps the stored record, so it is not recorded as a removal.
+  const after = snapshot(input.edition.weather === undefined ? { ...input.edition, weather: existing?.weather } : input.edition);
   const b: Snapshot = {};
   const a: Snapshot = {};
-  for (const k of [...FIELDS, SUMMARY]) {
+  for (const k of [...FIELDS, SUMMARY, 'weather']) {
     if (!sameValue(before[k], after[k])) {
       b[k] = before[k];
       a[k] = after[k];

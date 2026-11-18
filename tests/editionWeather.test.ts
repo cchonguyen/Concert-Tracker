@@ -53,3 +53,76 @@ test('edition weather: a value replaces the record and null clears it', async ()
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// Slice 2: a save from an edition copies the edition's record, or looks it up once and keeps it there.
+import { weatherForEdition } from '../src/server/events/editionWeather.ts';
+import { writeEdition } from '../src/server/canon/editions.ts';
+import { lookupWeather } from '../src/server/events/weather.ts';
+import type { LoggedEvent } from '../src/server/events/types.ts';
+import { fakeFetcher } from './fakes.ts';
+
+const NOW = new Date('2026-10-21T12:00:00Z');
+const VEGAS = { name: 'Las Vegas', admin1: 'Nevada', country_code: 'US', country: 'United States', feature_code: 'PPLA2', latitude: 36.17, longitude: -115.14 };
+const ROUTES = {
+  'https://geocoding-api.open-meteo.com/': { body: { results: [VEGAS] } },
+  'https://archive-api.open-meteo.com/': {
+    body: { daily: { time: ['2025-05-16'], temperature_2m_max: [31.2], temperature_2m_min: [21.9], precipitation_sum: [0], weather_code: [0] } },
+  },
+};
+const event = { id: 'ev-1', city: 'Las Vegas, NV', startDate: '2025-05-16', endDate: '2025-05-16', sources: {} } as unknown as LoggedEvent;
+
+test('edition weather: a save copies the edition record without a lookup', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'edition-weather-'));
+  try {
+    const store = new FileLineupStore(dir);
+    await store.upsertEdition(edition(weather));
+    const { fetcher, calls } = fakeFetcher(ROUTES);
+    const got = await weatherForEdition(store, (await store.getEdition('ed-1'))!, event, fetcher, NOW);
+    assert.equal(got.source, 'edition');
+    assert.deepEqual(got.weather, weather);
+    assert.equal(calls.length, 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('edition weather: with no record, one lookup fills the edition, is recorded, and is reused', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'edition-weather-'));
+  try {
+    const store = new FileLineupStore(dir);
+    await store.upsertEdition(edition());
+    const { fetcher, calls } = fakeFetcher(ROUTES);
+    const first = await weatherForEdition(store, (await store.getEdition('ed-1'))!, event, fetcher, NOW);
+    assert.equal(first.source, 'lookup');
+    assert.equal((await store.getEdition('ed-1'))?.weather?.place, 'Las Vegas, NV');
+    const callsAfterFirst = calls.length;
+    const second = await weatherForEdition(store, (await store.getEdition('ed-1'))!, event, fetcher, NOW);
+    assert.equal(second.source, 'edition');
+    assert.equal(calls.length, callsAfterFirst);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('edition weather: a change to the record is recorded in the edition history', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'edition-weather-'));
+  try {
+    const store = new FileLineupStore(dir);
+    const before = edition();
+    await store.upsertEdition(before);
+    const res = await writeEdition(store, { edition: { ...before, weather }, before, actor: 'test', reason: 'check' });
+    assert.equal(res.changed, true);
+    assert.equal(res.change?.after?.weather !== undefined, true);
+    const unchanged = await writeEdition(store, { edition: { ...before, name: before.name }, actor: 'test', reason: 'no weather key' });
+    assert.equal(unchanged.changed, false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('edition weather: a month-only event gets no weather and no fetch', async () => {
+  const { fetcher, calls } = fakeFetcher(ROUTES);
+  const got = await lookupWeather({ ...event, startDate: '2025-05' } as LoggedEvent, fetcher, NOW);
+  assert.match(got.note!, /full date/);
+  assert.equal(calls.length, 0);
+});
