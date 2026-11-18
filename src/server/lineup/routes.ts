@@ -10,6 +10,7 @@ import { readReaderConfig } from '../reader/config';
 import { BREAKER_KEY, callsMonthKey, dayKey, monthKey } from '../reader/guard';
 import { EditionOccurrenceConflictError, isEditionSuggestQuery } from './store/types';
 import { canonReviewRouter } from '../canon/reviewRoutes';
+import { finderReadout } from '../telemetry/finderReadout';
 import { clashfinderCandidates } from './adapters/clashfinder';
 import { findLineupRequest } from './canonicalIngest';
 
@@ -94,6 +95,17 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
     try {
       const reader = await readerStatus(deps, isOwner(currentMember()));
       res.json({ ...configuredSources(deps), quota: deps.quota ? await deps.quota.status() : null, ...(reader ? { reader } : {}) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Owner only (Stage 1.2): per-finder runs, hits and timings for research over the last 30 days.
+  router.get('/lineup/finder-readout', async (_req, res) => {
+    if (!isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
+    try {
+      const traces = await deps.store.listIngestTraces(2000);
+      res.json({ days: 30, finders: finderReadout(traces, deps.now()) });
     } catch (err) {
       fail(res, err);
     }
