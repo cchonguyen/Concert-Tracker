@@ -126,3 +126,43 @@ test('edition weather: a month-only event gets no weather and no fetch', async (
   assert.match(got.note!, /full date/);
   assert.equal(calls.length, 0);
 });
+
+// Slice 3: a member's own record for the edition's place and days is promoted when the event is linked.
+import { promotableWeather } from '../src/server/events/editionWeather.ts';
+
+const linkEdition = (over: Partial<Edition> = {}): Edition => ({
+  ...edition(),
+  city: 'Las Vegas',
+  region: 'NV',
+  startDate: '2025-05-16',
+  endDate: '2025-05-17',
+  ...over,
+});
+const withWeather = (w: EventWeather | undefined) => ({ ...event, weather: w }) as LoggedEvent;
+
+test('edition weather: a member record for the same place and inside the dates is promoted without a lookup', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'edition-weather-'));
+  try {
+    const store = new FileLineupStore(dir);
+    const ed = linkEdition();
+    await store.upsertEdition(ed);
+    const { fetcher, calls } = fakeFetcher(ROUTES);
+    const member = withWeather({ ...weather, place: 'Las Vegas, NV', days: [{ date: '2025-05-16', high: 30, low: 20, precipitation: 0, code: 0 }] });
+    const got = await weatherForEdition(store, (await store.getEdition('ed-1'))!, member, fetcher, NOW);
+    assert.equal(got.source, 'promoted');
+    assert.equal(calls.length, 0);
+    assert.equal((await store.getEdition('ed-1'))?.weather?.days[0].date, '2025-05-16');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('edition weather: promotion refuses another place, days outside the dates, and cityChanged records', () => {
+  const ed = linkEdition();
+  const inside = { place: 'Las Vegas, NV', latitude: 1, longitude: 1, days: [{ date: '2025-05-16', high: 1, low: 1, precipitation: 0, code: 0 }], sourceUrl: 'u', checkedAt: 'c' };
+  assert.ok(promotableWeather(withWeather(inside), ed));
+  assert.equal(promotableWeather(withWeather({ ...inside, place: 'Reno, NV' }), ed), undefined);
+  assert.equal(promotableWeather(withWeather({ ...inside, days: [{ date: '2025-06-01', high: 1, low: 1, precipitation: 0, code: 0 }] }), ed), undefined);
+  assert.equal(promotableWeather(withWeather({ ...inside, cityChanged: true }), ed), undefined);
+  assert.equal(promotableWeather(withWeather(undefined), ed), undefined);
+});
