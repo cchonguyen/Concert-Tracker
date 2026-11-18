@@ -21,7 +21,7 @@ import { unsubscribeSecretFromEnv } from '../src/server/email/unsubscribe';
 import { redactSecrets } from '../src/server/lineup/http';
 import type { EventsRunner } from '../src/server/events/routes';
 import { defaultFinders, researchCatalogFor, runQueuedResearch } from '../src/server/events/details';
-import { runResearchBackfill } from '../src/server/events/backfillResearch';
+import { membersResearchOn, RESEARCH_MEMBERS_SETTING, runResearchBackfill } from '../src/server/events/backfillResearch';
 import { rung4Urls, runReaderPage } from '../src/server/events/detailsGemini';
 import { currentBudget, makeBudget, runWithBudget } from '../src/server/lineup/budget';
 
@@ -255,6 +255,24 @@ async function runCron(env: Env): Promise<void> {
       }
     } catch (err) {
       console.error('Research backfill failed:', redactSecrets(err instanceof Error ? err.message : String(err)));
+    }
+    // Slice 3.4: once the owner batch has worked, the same batch runs for each accepted member, scoped to that member's
+    // own store, only while the setting is on. Members get no shared-catalog writes beyond their own entry (role 'member').
+    try {
+      const membersOn = multiUserFromEnv(settings) && membersResearchOn(await deps.store.getSetting<{ on?: boolean }>(RESEARCH_MEMBERS_SETTING));
+      if (membersOn) {
+        const db = getSupabaseClient();
+        const members = db ? await supabaseMemberDirectory(db).listMembers() : [];
+        for (const m of members) {
+          if (m.role === 'owner' || m.blocked || !m.userId) continue;
+          const scoped = deps.store.forUser?.({ userId: m.userId, role: 'member' });
+          if (!scoped) continue;
+          const r = await runResearchBackfill(scoped, defaultFinders(), deps.fetcher, now, { role: 'member', userId: m.userId, catalogStore: deps.store });
+          if (r?.researched) console.log(`Member research backfill: ${JSON.stringify(r)}`);
+        }
+      }
+    } catch (err) {
+      console.error('Member research backfill failed:', redactSecrets(err instanceof Error ? err.message : String(err)));
     }
   }
   const due = await deps.store.dueJobs(deps.now(), 5);
