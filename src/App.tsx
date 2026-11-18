@@ -30,6 +30,7 @@ import { QuickAdd, QuickAddButton, QuickAddFab } from './components/QuickAdd';
 import { useToast } from './components/ui/Toast';
 import { AboutDialog } from './components/AboutDialog';
 import { ReaderPanel } from './components/ReaderPanel';
+import { FinderReadoutPanel } from './components/FinderReadoutPanel';
 import { DataPanel, exportCsv } from './components/DataActions';
 import { ListImport } from './components/ListImport';
 import { SheetSync } from './components/SheetSync';
@@ -713,6 +714,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
           />
         )}
         {shown === 'manage' && canManage && <ReaderPanel status={status} />}
+        {shown === 'manage' && canManage && <FinderReadoutPanel />}
       </main>
       </PeopleProvider>
 
