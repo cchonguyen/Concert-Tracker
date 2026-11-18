@@ -269,6 +269,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
   // Owner verifies a provisional shared edition (slice 12.4). Goes through writeEdition, so undo works.
   // Normalized names of series (name, brand, aliases), venues and organizations: a name remainder equal to one of
   // these blocks a lineup match (docs/edition-lineup-from-name-spec.md, Matching rule 4).
+  const NAME_MATCH_EDITION_LIMIT = 5000;
   async function namedPlaceRemainders(s: typeof store): Promise<Set<string>> {
     const out = new Set<string>();
     for (const series of await s.listSeries()) {
@@ -284,6 +285,24 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     out.delete('');
     return out;
   }
+
+  // Find gaps (slice 3): every edition whose name starts with a catalog artist who is not on its lineup yet.
+  router.get(
+    '/manage/canonical/name-matches',
+    ownerOnly as any,
+    manage(async () => {
+      const [editions, artists, blocked] = await Promise.all([store.listEditions(NAME_MATCH_EDITION_LIMIT), store.listArtists(), namedPlaceRemainders(store)]);
+      const catalog = artists.map((a) => ({ key: a.key, name: a.name }));
+      const matches = [];
+      for (const edition of editions) {
+        const match = matchEditionName(edition.name, catalog, blocked);
+        if (!match) continue;
+        if (edition.performances.some((p) => p.artistKey === match.artistKey)) continue;
+        matches.push({ editionId: edition.id, editionName: edition.name, artistKey: match.artistKey, artistName: match.artistName });
+      }
+      return { matches };
+    }),
+  );
 
   // Owner taps an artist named in the edition's name onto its lineup (slice 2). The server re-checks the match.
   router.post('/manage/canonical/editions/:id/lineup', ownerOnly as any, async (req, res) => {
