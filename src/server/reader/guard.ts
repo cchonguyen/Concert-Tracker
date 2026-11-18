@@ -97,7 +97,8 @@ async function refuseAndOpen(args: GuardArgs, now: Date, until: Date, reason: st
 
 // The per-minute window lives in the Worker's memory (QuotaLedger.recent), so it is read here, not in SQL.
 // Private members are reached by index on purpose: quota.ts is outside this slice.
-function quotaPayload(args: GuardArgs, now: Date): Record<string, unknown> | null {
+// `exempt` is the owner: no member cap (user_key null, user_daily 0). The shared daily budget still applies.
+function quotaPayload(args: GuardArgs, now: Date, exempt: boolean): Record<string, unknown> | null {
   const quota = args.quota;
   if (!quota) return null;
   const qc = quota['config'];
@@ -105,13 +106,13 @@ function quotaPayload(args: GuardArgs, now: Date): Record<string, unknown> | nul
   const userId = args.quotaOptions?.userId;
   const lane = args.quotaOptions?.lane ?? 'interactive';
   const recent: number[] = quota['recent'].filter((t: number) => t > now.getTime() - 60_000);
-  const userDaily = lane === 'backfill' ? (qc.userBackfillDaily ?? 0) : (qc.userDaily ?? 0);
+  const userDaily = exempt ? 0 : lane === 'backfill' ? (qc.userBackfillDaily ?? 0) : (qc.userDaily ?? 0);
   return {
     key,
     daily_limit: qc.dailyLimit,
     ignore_pause: args.force ?? args.quotaOptions?.ignorePause ?? false,
     user_id: userId ?? null,
-    user_key: userId ? (lane === 'backfill' ? `${key}:user:${userId}:backfill` : `${key}:user:${userId}`) : null,
+    user_key: userId && !exempt ? (lane === 'backfill' ? `${key}:user:${userId}:backfill` : `${key}:user:${userId}`) : null,
     user_daily: userDaily,
     owner_reserve: qc.ownerReserve ?? 0,
     minute_blocked_until: recent.length >= qc.perMinute ? new Date(recent[0] + 61_000).toISOString() : null,
@@ -121,6 +122,8 @@ function quotaPayload(args: GuardArgs, now: Date): Record<string, unknown> | nul
 async function checkGuardsRpc(args: GuardArgs & { store: LineupStore & ReaderRpcStore }, now: Date): Promise<GuardResult> {
   const { store, config, provider, model } = args;
   const { micro } = worstCaseMicroUsd(provider, model, args.inputChars, args.maxOutputTokens);
+  const userId = args.quotaOptions?.userId;
+  const exempt = Boolean(userId) && userId === ((await store.ownerUserId?.()) ?? null);
   let reply: PreflightReply;
   try {
     reply = await store.readerPreflight({
@@ -141,7 +144,7 @@ async function checkGuardsRpc(args: GuardArgs & { store: LineupStore & ReaderRpc
       next_month: nextUtcMonthStart(now).toISOString(),
       cooldown_until: new Date(now.getTime() + config.breakerCooldownMin * 60_000).toISOString(),
       breaker_key: BREAKER_KEY,
-      quota: quotaPayload(args, now),
+      quota: quotaPayload(args, now, exempt),
     });
   } catch {
     // Fail closed: park the job, never fall back to another model or to heuristics.
