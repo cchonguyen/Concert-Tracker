@@ -7,7 +7,7 @@ import { eventWords } from '../lineup/search';
 import { findDates, parseEventInput } from './parse';
 import { matchingEvents } from '../lineup/adapters/ticketmaster';
 import { clashfinderAuthQuery, LIST_MAX_BYTES, matchEdition, parseEventList } from '../lineup/adapters/clashfinder';
-import { cityLabel, placeFromPage } from './place';
+import { cityLabel, cityPoint, metroRadiusMiles, placeFromPage, withinRadius } from './place';
 import { cityWithRegion, splitEventCity } from './regions';
 import type { Edition, EditionWeekend } from '../lineup/types';
 import type { IngestTraceRow, LineupStore } from '../lineup/store/types';
@@ -166,34 +166,61 @@ export const setlistfmFinder: DetailFinder = {
   enabled: () => Boolean(process.env.SETLISTFM_API_KEY),
   withoutYear: true,
   async find(q, fetcher) {
-    const params = new URLSearchParams({ artistName: q.name, p: '1' });
-    if (q.startDate && !q.endDate) {
-      const [y, m, d] = q.startDate.split('-');
-      params.set('date', `${d}-${m}-${y}`);
-    } else if (q.year) {
-      params.set('year', String(q.year));
-    }
-    const res = await fetcher.get(`https://api.setlist.fm/rest/1.0/search/setlists?${params}`, {
-      headers: { 'x-api-key': process.env.SETLISTFM_API_KEY!, Accept: 'application/json' },
-    });
-    if (res.status === 404) return []; // setlist.fm answers 404 when nothing matches
     const w = searchWindow(q);
     const wanted = normalizeName(q.name);
-    return (parseJson<any>(res)?.setlist ?? [])
-      .filter((s: any) => normalizeName(s.artist?.name ?? '') === wanted)
-      .map((s: any) => {
-        const [d, m, y] = String(s.eventDate ?? '').split('-');
-        const url = s.url ?? 'https://www.setlist.fm';
-        const c = candidate('setlistfm', url, {
-          name: s.artist?.name,
-          startDate: y ? `${y}-${m}-${d}` : undefined,
-          venue: s.venue?.name,
-          city: cityLabel(s.venue?.city?.name, s.venue?.city?.stateCode, s.venue?.city?.country?.code),
-          country: s.venue?.city?.country?.name,
-        });
-        return { ...c, performers: [{ name: String(s.artist.name), sourceType: 'setlistfm' as const, sourceUrl: url }] };
-      })
-      .filter((c: DetailCandidate) => inWindow(c.startDate, w));
+    // With a city typed, a show is kept when its venue is the one you typed, or its
+    // city is the bare city you typed, or it is within the metro radius (a suburb).
+    // Without a city, every show by the act in the window is kept, as before.
+    const bareCity = q.city?.split(',')[0].trim();
+    // A failed city lookup only turns off the radius rule; the venue and city rules still run.
+    const target = bareCity ? await cityPoint(bareCity, undefined, fetcher).catch(() => null) : null;
+    const radius = metroRadiusMiles();
+    const typedVenue = q.venue ? normalizeName(q.venue) : '';
+    const keep = (s: any): boolean => {
+      if (!bareCity) return true;
+      if (typedVenue && normalizeName(s.venue?.name ?? '') === typedVenue) return true;
+      if (normalizeName(s.venue?.city?.name ?? '') === normalizeName(bareCity)) return true;
+      const lat = Number(s.venue?.city?.coords?.lat);
+      const lon = Number(s.venue?.city?.coords?.long);
+      return Boolean(target && Number.isFinite(lat) && Number.isFinite(lon) && withinRadius(target, { lat, lon }, radius));
+    };
+    const toCandidate = (s: any): DetailCandidate => {
+      const [d, m, y] = String(s.eventDate ?? '').split('-');
+      const url = s.url ?? 'https://www.setlist.fm';
+      const c = candidate('setlistfm', url, {
+        name: s.artist?.name,
+        startDate: y ? `${y}-${m}-${d}` : undefined,
+        venue: s.venue?.name,
+        city: cityLabel(s.venue?.city?.name, s.venue?.city?.stateCode, s.venue?.city?.country?.code),
+        country: s.venue?.city?.country?.name,
+      });
+      return { ...c, performers: [{ name: String(s.artist.name), sourceType: 'setlistfm' as const, sourceUrl: url }] };
+    };
+    const page = async (p: number): Promise<any[]> => {
+      const params = new URLSearchParams({ artistName: q.name, p: String(p) });
+      if (q.startDate && !q.endDate) {
+        const [y, m, d] = q.startDate.split('-');
+        params.set('date', `${d}-${m}-${y}`);
+      } else if (q.year) {
+        params.set('year', String(q.year));
+      }
+      const res = await fetcher.get(`https://api.setlist.fm/rest/1.0/search/setlists?${params}`, {
+        headers: { 'x-api-key': process.env.SETLISTFM_API_KEY!, Accept: 'application/json' },
+      });
+      if (res.status === 404) return []; // setlist.fm answers 404 when nothing matches
+      return parseJson<any>(res)?.setlist ?? [];
+    };
+    const collect = (rows: any[]) =>
+      rows
+        .filter((s: any) => normalizeName(s.artist?.name ?? '') === wanted)
+        .filter(keep)
+        .map(toCandidate)
+        .filter((c: DetailCandidate) => inWindow(c.startDate, w));
+    const first = await page(1);
+    const kept = collect(first);
+    // setlist.fm returns 20 per page. A full page that kept nothing may hide the city's show on page 2.
+    if (bareCity && kept.length === 0 && first.length === 20) return collect(await page(2));
+    return kept;
   },
 };
 
