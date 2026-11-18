@@ -8,6 +8,7 @@ import { buildPickerView, type PickerChip } from '../services/pickerGroups';
 import { Button } from './ui/Button';
 import { Pill } from './ui/Pill';
 import { SOURCE_LABELS } from '../services/lineupApi';
+import { SourceIcon } from './ui/SourceIcon';
 
 export interface Suggestion {
   key: string;
@@ -116,8 +117,10 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
               {c.weekends.length} weekends ({c.weekends.map((w) => weekendLabel(w, 'WK')).join(' · ')})
             </span>
           )}
-          <span className="block truncate text-[11px] text-zinc-400">
-            {[...new Set(c.sources.map((s) => SOURCE_LABELS[s.sourceType] + (s.readBy === 'gemini' ? ' (read by Gemini)' : '')))].join(', ')}
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-zinc-400">
+            {[...new Map(c.sources.map((s) => [`${s.sourceType}|${s.readBy ?? ''}`, s])).values()].map((s) => (
+              <SourceIcon key={`${s.sourceType}|${s.readBy ?? ''}`} source={s.sourceType} readBy={s.readBy} />
+            ))}
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-2">
