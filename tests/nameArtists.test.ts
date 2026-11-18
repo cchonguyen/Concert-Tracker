@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { prepareCatalog } from '../src/server/canon/nameArtists.ts';
 import { matchEditionName, type CatalogArtist } from '../src/server/canon/nameArtists.ts';
 
 const artist = (name: string): CatalogArtist => ({ key: name.toLowerCase(), name });
@@ -63,4 +64,17 @@ test('offersForEditions offers the named catalog act, skips acts already listed,
   assert.deepEqual(offersForEditions(editions, catalog, new Set(['group therapy'])), [
     { editionId: 'e1', artistKey: 'tsha', artistName: 'Tsha' },
   ]);
+});
+
+test('a prepared catalog gives the same match as the plain list, for every name', () => {
+  const names = ['Tsha at Sound Nightclub', 'Above & Beyond Acoustic', 'Above', 'Future Music Fest', 'Nobody Here', '', 'The Future'];
+  const prepared = prepareCatalog(catalog);
+  for (const name of names) {
+    assert.deepEqual(matchEditionName(name, prepared), matchEditionName(name, catalog), name);
+  }
+});
+
+test('an artist whose first word differs from the name is never offered', () => {
+  const prepared = prepareCatalog([artist('Sound Nightclub')]);
+  assert.equal(matchEditionName('Tsha at Sound Nightclub', prepared), null);
 });

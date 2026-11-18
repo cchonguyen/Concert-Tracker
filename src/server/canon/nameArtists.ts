@@ -16,19 +16,39 @@ export interface EditionNameArtistMatch {
 
 // The artist must be a whole-word prefix of the edition name. The longest prefix wins; a tie offers nothing.
 // If the words after the prefix are exactly a known series, brand or venue (normalized), nothing is offered.
+// The catalog with each name normalized once, grouped by its first word. Matching an edition name against thousands of
+// editions would otherwise normalize every artist name for every edition (the Worker's CPU limit, see ARCHITECTURE.md).
+export interface PreparedCatalog {
+  byFirstWord: Map<string, Array<{ artist: CatalogArtist; words: string[] }>>;
+}
+
+export function prepareCatalog(artists: CatalogArtist[]): PreparedCatalog {
+  const byFirstWord = new Map<string, Array<{ artist: CatalogArtist; words: string[] }>>();
+  for (const artist of artists) {
+    const words = normalizeName(artist.name).split(' ').filter(Boolean);
+    if (words.length === 0) continue;
+    const list = byFirstWord.get(words[0]) ?? [];
+    list.push({ artist, words });
+    byFirstWord.set(words[0], list);
+  }
+  return { byFirstWord };
+}
+
 export function matchEditionName(
   editionName: string,
-  artists: CatalogArtist[],
+  artists: CatalogArtist[] | PreparedCatalog,
   blockedRemainders: ReadonlySet<string> = new Set(),
 ): EditionNameArtistMatch | null {
   const words = normalizeName(editionName).split(' ').filter(Boolean);
   if (words.length === 0) return null;
 
+  const catalog = Array.isArray(artists) ? prepareCatalog(artists) : artists;
+  // Only artists whose first word is the edition's first word can be a prefix, so the others are never looked at.
+  const candidates = catalog.byFirstWord.get(words[0]) ?? [];
   let best: { artist: CatalogArtist; length: number } | null = null;
   let tied = false;
-  for (const artist of artists) {
-    const artistWords = normalizeName(artist.name).split(' ').filter(Boolean);
-    if (artistWords.length === 0 || artistWords.length > words.length) continue;
+  for (const { artist, words: artistWords } of candidates) {
+    if (artistWords.length > words.length) continue;
     if (!artistWords.every((w, i) => words[i] === w)) continue;
     if (!best || artistWords.length > best.length) {
       best = { artist, length: artistWords.length };
@@ -70,8 +90,9 @@ export function offersForEditions(
   blockedRemainders: ReadonlySet<string> = new Set(),
 ): EditionNameOffer[] {
   const offers: EditionNameOffer[] = [];
+  const catalog = prepareCatalog(artists);
   for (const edition of editions) {
-    const match = matchEditionName(edition.name, artists, blockedRemainders);
+    const match = matchEditionName(edition.name, catalog, blockedRemainders);
     if (!match) continue;
     if (edition.performances.some((p) => p.artistKey === match.artistKey)) continue;
     offers.push({ editionId: edition.id, artistKey: match.artistKey, artistName: match.artistName });
