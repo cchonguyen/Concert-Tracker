@@ -68,6 +68,14 @@ test('quota: members stop at the owner\'s reserve; the owner can use it', async 
   assert.ok((await refused(quota.acquire(NOW, { userId: 'owner' })))?.scope === 'global');
 });
 
+test('quota: the owner is exempt from the member daily cap but not from the shared budget', async () => {
+  const { quota } = await ledger({ userDaily: 2, dailyLimit: 5 });
+  for (let i = 0; i < 5; i++) await quota.acquire(NOW, { userId: 'owner' });
+  const err = await refused(quota.acquire(NOW, { userId: 'owner' }));
+  assert.equal(err?.scope, 'global');
+  assert.equal((await quota.status(NOW)).used, 5);
+});
+
 test('quota: counts reset the next Pacific day', async () => {
   const { quota } = await ledger({ userDaily: 1 });
   await quota.acquire(NOW, { userId: 'ann' });
