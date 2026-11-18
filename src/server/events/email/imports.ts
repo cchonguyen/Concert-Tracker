@@ -5,7 +5,7 @@ import { isAhead } from '../attendance';
 import { cityWithRegion, splitEventCity } from '../regions';
 import { axs } from './axs';
 import { dice } from './dice';
-import { eventbrite } from './eventbrite';
+import { eventbrite, isCalendarLine } from './eventbrite';
 import { unwrapForward } from './forwarded';
 import { frontGate } from './frontGate';
 import { liveNation } from './liveNation';
@@ -113,7 +113,7 @@ function fill(row: EmailImport, read: ReadEmail, email: RawEmail): void {
   set('name', read.name);
   set('startDate', read.startDate);
   set('endDate', read.endDate);
-  set('venue', read.venue);
+  set('venue', read.venue && !isCalendarLine(read.venue.value) ? read.venue : undefined);
   set('city', read.city);
   if (!row.startDate && !row.dateText && read.dateText) row.dateText = read.dateText;
   if (read.tickets && (!row.tickets || read.tickets > row.tickets)) row.tickets = read.tickets;
@@ -270,8 +270,10 @@ export function mergeImports(existing: EmailImport[], outcomes: ReadOutcome[], e
 export function eventFromImport(row: EmailImport, now: Date): LoggedEvent {
   if (!row.name) throw new Error('An imported event needs a name.');
   const iso = now.toISOString();
+  const venue = row.venue && !isCalendarLine(row.venue) ? row.venue : undefined;
   const sources: LoggedEvent['sources'] = {};
   for (const f of ['startDate', 'endDate', 'venue', 'city'] as const) {
+    if (f === 'venue' && !venue) continue;
     const s = row.sources[f];
     if (row[f] && s) sources[f] = { sourceType: 'email', sourceUrl: s.link, quote: s.quote };
   }
@@ -284,7 +286,7 @@ export function eventFromImport(row: EmailImport, now: Date): LoggedEvent {
     year: row.startDate ? Number(row.startDate.slice(0, 4)) : undefined,
     startDate: row.startDate,
     endDate: row.endDate,
-    venue: row.venue,
+    venue,
     city: row.city,
     sources,
     details: row.startDate
@@ -337,7 +339,8 @@ export function mergeIntoEvent(row: EmailImport, event: LoggedEvent, now: Date):
     next.month = undefined;
   }
   if (next.startDate === row.startDate) fill('endDate', row.endDate, (a) => a === row.endDate, event.endDate);
-  fill('venue', row.venue, (a) => eq(a, row.venue!), event.venue);
+  const importVenue = row.venue && !isCalendarLine(row.venue) ? row.venue : undefined;
+  fill('venue', importVenue, (a) => eq(a, importVenue!), event.venue);
   const yourCity = cityWithRegion(event.city, event.region);
   if (fill('city', row.city, (a) => eq(a, row.city!) || eq(event.city ?? '', row.city!.split(',')[0]), yourCity || undefined)) {
     next = splitEventCity(next);

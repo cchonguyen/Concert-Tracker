@@ -53,13 +53,13 @@ Measured against: Live Supabase (`mybwchgqhrpvdczqigma`), Supabase Logs & Adviso
 
 #### P0.3 Security, Privacy & `refused_hosts` Scoping Lockdown
 - **Observed evidence:**
-  1. Supabase Security Advisor flagged **4 `SECURITY DEFINER` RPCs executable by `authenticated`**: `canonical_apply_artist_change`, `canonical_artist_fingerprint`, `canonical_undo_artist_change`, and `owner_user_id`.
+  1. Supabase Security Advisor flagged **4 `SECURITY DEFINER` RPCs executable by `authenticated`**: `canonical_apply_artist_change`, `canonical_artist_fingerprint`, `canonical_undo_artist_change`, and `owner_user_id`. Inspection of `src/server/lineup/store/supabaseStore.ts` (`canonicalClient()`) confirms all three `canonical_*` RPCs are intentionally called via the owner's `authenticated` JWT and enforce `canonical_assert_owner(p_user_id)` (`42501`) inside Postgres, while `owner_user_id()` is required by `owner_read` RLS policies. Revoking `authenticated` would break Global Archive artist edits/undo and `owner_read` policies.
   2. **4 dead `0001` tables** (`events`, `venues`, `artists`, `event_appearances`) have open `roles: ["public"], cmd: ALL, qual: true` policies.
   3. **6 obsolete pre-multi-user rows in global `app_settings`:** `google_sheets_base` (37.2 KB personal event snapshot), `google_sheets` (refresh token), `gmail`, `gmail_oauth`, `google_sheets_oauth`, `email_scan`. Active per-user rows already live in `user_settings`.
   4. **`refused_hosts` scoping bug:** `backfillResearch.ts` called `loadRefusals(store, now)` / `saveRefusals(store, ...)` using user-scoped `store`, writing the 9 learned 403 hosts into `user_settings` instead of shared `app_settings`.
 - **Spec (Slices 21.1 & 21.4):**
   - **Slice 21.1 (`backfillResearch.ts`):** Pass `opts.catalogStore ?? store` to `loadRefusals`/`saveRefusals`.
-  - **Slice 21.4 (`0054_db_perf_rls_and_lineup_flag.sql`):** Revoke `EXECUTE` from `PUBLIC, anon, authenticated` on the 3 `canonical_*` RPCs (keep `authenticated` on `owner_user_id()` because `owner_read` RLS policies call it; revoke `PUBLIC, anon` only); drop the 4 open `public` policies on `0001` tables; copy `refused_hosts` from `user_settings` into `app_settings`; include commented operator SQL for dropping the 4 empty `0001` tables and deleting the 6 obsolete `app_settings` keys after Charlie's confirmation.
+  - **Slice 21.4 (`0054_db_perf_rls_and_lineup_flag.sql`):** Re-affirm `REVOKE EXECUTE ... FROM PUBLIC, anon` on `owner_user_id()` and the 3 `canonical_*` RPCs while explicitly retaining `authenticated` (required by `owner_read` RLS and `canonicalClient()` owner calls); drop the 4 open `public` policies on `0001` tables; copy `refused_hosts` from `user_settings` into `app_settings`; include commented operator SQL for dropping the 4 empty `0001` tables and deleting the 6 obsolete `app_settings` keys after Charlie's confirmation.
 
 ---
 
@@ -144,5 +144,15 @@ Measured against: Live Supabase (`mybwchgqhrpvdczqigma`), Supabase Logs & Adviso
 
 - **Slice 21.1 (P0 Stability):** Save this spec + batch `/canon/lineup-offers` + reserve 60 interactive Brave queries + skip past-year Ticketmaster calls + scope `refused_hosts` globally + trace `research` subrequests + turn on `SOURCE_CACHE=on`.
 - **Slice 21.2 (P1 Egress & P3 Hygiene):** Remove `createStore({ requireSupabase: true })` startup probes + batch `memberBackfill` settings & pre-check pending research IDs + sync `has_lineup` on write + silence anonymous `isSignedIn` warnings + cron `subrequests` traces.
-- **Slice 21.3 (P2 Quality):** Harden Eventbrite `isCalendarLine` & strip legacy calendar venues on import + seed lineup `spellings` from `canonical_artists` + normalize country display aliases (`USA`/`US` -> `United States`).
-- **Slice 21.4 (Migration `0054` & Docs):** Write additive SQL migration `supabase/migrations/0054_db_perf_rls_and_lineup_flag.sql` (for Charlie to review & apply) + update `docs/architecture/02-stage-1-capture-and-details.md`, `12-data-model.md`, and `16-hosting.md`.
+- **Slice 21.3 (P2 Quality):** Harden Eventbrite `isCalendarLine` & strip legacy calendar venues on import + seed lineup `spellings` from `canonical_artists` (preferring scoped `getArtists(claimKeys)`) + normalize country display aliases (`USA`/`US` -> `United States`).
+- **Slice 21.4 (Migration `0054` & Docs):** Write additive SQL migration `supabase/migrations/0054_db_perf_rls_and_lineup_flag.sql` (for Charlie to review & apply) + update [02-stage-1-capture-and-details.md](../architecture/02-stage-1-capture-and-details.md), [12-data-model.md](../architecture/12-data-model.md), and [16-hosting.md](../architecture/16-hosting.md).
+
+---
+
+## 5. Execution Checkpoint (Interrupt / Restart Log)
+
+- **Branch & worktree:** `feat/db-logs-improvement-pass` in `.worktrees/db-logs-improvement-pass` (off `origin/main` `52d8d76`; keeps root repo's untracked `lookup-audit.md` untouched).
+- **Slice 21.1 (committed `fad7a47`, `Referee-Verdict: VERIFIED`):** Saved spec, batched `/api/canon/lineup-offers` (`getEditions`), added Brave 60/200 interactive reserve + 140 batch cap + `bySource`, skipped past-year Ticketmaster searches when `now` given, scoped `refused_hosts` to `catalogStore`, traced `research` subrequests, set `SOURCE_CACHE=on`, added `tests/improvementPassP0.test.ts`.
+- **Slice 21.2 (committed `88c690e`, `Referee-Verdict: VERIFIED`):** Skipped 3 cold-start probes when `requireSupabase: true`, returned `false` early in `isSignedIn` without `CF_Authorization`, added `listUserSettingsByKeys` + `listPendingResearchUserIds` cron fast-paths, synced `has_lineup` in `upsertEdition`, recorded cron `subrequests`, added `tests/improvementPassP1.test.ts`.
+- **Slice 21.3 (`[IN_PROGRESS]`, anchored `b692c31`):** Implemented Eventbrite `isCalendarLine` + `imports.ts` calendar-venue filtering, `pipeline.ts` `getArtists(claimKeys)` canonical casing seeding (user spelling still wins), `regions.ts` `normalizeCountryDisplay` + `service.ts` `applyPatch` normalization, and `tests/improvementPassP2.test.ts`.
+- **Slice 21.4 (pending after 21.3 commit):** Write idempotent `supabase/migrations/0054_db_perf_rls_and_lineup_flag.sql` (keeping `authenticated` on `canonical_*` and `owner_user_id()`), update architecture docs + `tests/migration0054.test.ts`, run full gates (`lint`, `test`, `ci-gate.mjs`, `pr-scope-check.mjs --strict`), open PR, remove temporary worktree.
