@@ -19,6 +19,7 @@ import { canFindLineup, cityOf, Gap, gapCounts, GAPS, hasGap, placePatch } from 
 import { regionCode } from '../server/events/regions';
 import { EventTitle } from './EventTitle';
 import { SuggestInput } from './SuggestInput';
+import { memberLineupApi } from '../services/lineupApi';
 
 interface FillGapsProps {
   events: LoggedEvent[]; // the rows the Table shows
@@ -40,6 +41,7 @@ const GAP_LABELS: Record<Gap, string> = {
   seen: 'Who you saw',
   favourite: 'Favourite set',
   review: 'Lineup to review',
+  lineup: 'Lineup',
   format: 'Format',
   companions: 'Went with',
   rating: 'Rating',
@@ -299,11 +301,47 @@ const ReviewRow: React.FC<{ event: LoggedEvent; onDone: (e: LoggedEvent) => void
 // starts details research or lineup lookups for many events at once. Nothing
 // is filled without you; lookups only propose.
 export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editions, onChanged, onRefresh, onOpen, onClose }) => {
-  const counts = useMemo(() => gapCounts(events, lineups, editions), [events, lineups, editions]);
   const [gap, setGap] = useState<Gap>(() => GAPS.find((g) => counts[g] > 0) ?? 'date');
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Slice 5: catalog acts named in a linked edition's name that its lineup lacks, and the ones this member has proposed.
+  const [offers, setOffers] = useState<Record<string, Array<{ artistKey: string; artistName: string }>>>({});
+  const [proposed, setProposed] = useState<Set<string>>(new Set());
+  const offeredIds = useMemo(() => new Set(Object.keys(offers).filter((id) => offers[id].length > 0)), [offers]);
+  useEffect(() => {
+    const ids = [...new Set(events.flatMap((e) => (e.editionId ? [e.editionId] : [])))];
+    if (ids.length === 0) return;
+    let cancelled = false;
+    memberLineupApi
+      .offers(ids)
+      .then((list) => {
+        if (cancelled) return;
+        const next: Record<string, Array<{ artistKey: string; artistName: string }>> = {};
+        for (const o of list) (next[o.editionId] ??= []).push({ artistKey: o.artistKey, artistName: o.artistName });
+        setOffers(next);
+      })
+      .catch(() => {
+        if (!cancelled) setOffers({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [events]);
+  // The owner decides: a member's tap is a proposal in the Changes queue, not an act on the lineup.
+  const propose = async (editionId: string, artistKey: string) => {
+    setBusy(`lineup:${editionId}:${artistKey}`);
+    setError(null);
+    try {
+      await memberLineupApi.propose(editionId, artistKey);
+      setProposed((p) => new Set(p).add(`${editionId}:${artistKey}`));
+      setNote('Proposed. The owner decides.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not propose the act.');
+    } finally {
+      setBusy(null);
+    }
+  };
 
   // Slice 11.19: events waiting on research with a year and no full date. Never researched into a date by the
   // background step; you add it here. Same test as yearOnlyEvents (server/events/backfillResearch.ts, which is
@@ -312,7 +350,8 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
     () => all.filter((e) => (e.details.status === 'pending' || e.details.status === 'needs_date') && !/^\d{4}-\d{2}-\d{2}$/.test(e.startDate ?? '') && Boolean(e.year)),
     [all],
   );
-  const rows = events.filter((e) => hasGap(e, gap, lineups[e.id], editions[e.id]));
+  const counts = useMemo(() => gapCounts(events, lineups, editions, offeredIds), [events, lineups, editions, offeredIds]);
+  const rows = events.filter((e) => hasGap(e, gap, lineups[e.id], editions[e.id], offeredIds));
   const suggestions = useMemo(() => {
     switch (gap) {
       case 'venue':
@@ -696,7 +735,28 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
                     .join(' · ')}
                 </span>
               </div>
-              {gap === 'review' ? (
+              {gap === 'lineup' ? (
+                <div className="flex flex-wrap gap-2">
+                  {(offers[e.editionId ?? ''] ?? []).map((o) => {
+                    const key = `${e.editionId}:${o.artistKey}`;
+                    return proposed.has(key) ? (
+                      <span key={key} className="text-xs text-zinc-400">
+                        Proposed {o.artistName}. The owner decides.
+                      </span>
+                    ) : (
+                      <button
+                        key={key}
+                        type="button"
+                        disabled={busy !== null}
+                        onClick={() => void propose(e.editionId!, o.artistKey)}
+                        className="inline-flex items-center gap-1 rounded-full border border-violet-500/50 px-2.5 py-1 text-xs text-violet-200 hover:bg-violet-950/40 disabled:opacity-50"
+                      >
+                        <Plus className="h-3 w-3" /> Propose {o.artistName}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : gap === 'review' ? (
                 <ReviewRow
                   event={e}
                   onOpen={() => onOpen(e.id)}
