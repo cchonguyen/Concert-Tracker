@@ -36,7 +36,7 @@ import {
 import { seriesSlugFor } from '../lineup/text';
 import type { Edition, SeriesKind, SeriesRecord, SourceType } from '../lineup/types';
 import { addEditionAct, writeEdition } from '../canon/editions';
-import { matchEditionName } from '../canon/nameArtists';
+import { lineupProposalPayload, matchEditionName } from '../canon/nameArtists';
 import { normalizeName } from '../lineup/normalizeName';
 import {
   addAlias,
@@ -303,6 +303,69 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
       return { matches };
     }),
   );
+
+  // Member proposal (slice 4): a signed-in member proposes a catalog artist named in a shared edition's name. The owner
+  // approves or rejects it in the Changes queue. Stored as a review item with no user id and no personal field.
+  router.post('/canon/lineup-proposals', (_req: any, res: Response, next: () => void) =>
+    currentMember() ? next() : res.status(401).json({ error: 'Sign in to propose an act.' }), async (req, res) => {
+    try {
+      const edition = await store.getEdition(String(req.body?.editionId ?? ''));
+      if (!edition) return res.status(404).json({ error: 'Edition not found.' });
+      const artist = await store.getArtist(String(req.body?.artistKey ?? ''));
+      if (!artist) return res.status(404).json({ error: 'Artist is not in the catalog.' });
+      if (edition.performances.some((p) => p.artistKey === artist.key)) return res.status(409).json({ error: 'Already on the lineup.' });
+      const blocked = await namedPlaceRemainders(store);
+      if (!matchEditionName(edition.name, [{ key: artist.key, name: artist.name }], blocked)) {
+        return res.status(409).json({ error: 'The edition name does not start with this artist.' });
+      }
+      const open = (await store.listReviewItems({ status: 'open', kind: 'lineup_proposal' })).find(
+        (r) => r.editionId === edition.id && (r.payload as { artistKey?: string }).artistKey === artist.key,
+      );
+      if (open) return res.json({ ok: true, duplicate: true, id: open.id });
+      const item = await store.addReviewItem({
+        kind: 'lineup_proposal',
+        editionId: edition.id,
+        payload: lineupProposalPayload(edition.name, { key: artist.key, name: artist.name }) as unknown as Record<string, unknown>,
+      });
+      res.json({ ok: true, duplicate: false, id: item.id });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Owner approves a member's lineup proposal (slice 4). The match is re-checked, the act goes through addEditionAct.
+  router.post('/manage/canonical/proposals/:id/approve', ownerOnly as any, async (req, res) => {
+    try {
+      const item = (await store.listReviewItems({ kind: 'lineup_proposal' })).find((r) => r.id === String(req.params.id));
+      if (!item) return res.status(404).json({ error: 'No such proposal.' });
+      if (item.status !== 'open') return res.status(409).json({ error: 'That proposal is already closed.' });
+      const edition = item.editionId ? await store.getEdition(item.editionId) : null;
+      if (!edition) return res.status(404).json({ error: 'That proposal\'s edition no longer exists.' });
+      const p = item.payload as { artistKey?: string; artistName?: string };
+      const artist = p.artistKey ? await store.getArtist(p.artistKey) : null;
+      if (!artist) return res.status(409).json({ error: 'Artist is no longer in the catalog.' });
+      const blocked = await namedPlaceRemainders(store);
+      if (!matchEditionName(edition.name, [{ key: artist.key, name: artist.name }], blocked)) {
+        return res.status(409).json({ error: 'The edition name no longer matches this artist.' });
+      }
+      const result = await addEditionAct(store, {
+        editionId: edition.id,
+        artistKey: artist.key,
+        artistName: artist.name,
+        actor: 'member proposal',
+        reason: 'member proposal',
+      });
+      if (!result.ok && result.reason === 'already_listed') {
+        await store.resolveReviewItem(item.id, 'owner', 'dismissed');
+        return res.status(409).json({ error: 'Already on the lineup.' });
+      }
+      if (!result.ok) return res.status(404).json({ error: 'Edition not found.' });
+      await store.resolveReviewItem(item.id, 'owner', 'promoted');
+      res.json({ ok: true, changeId: result.changeId });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
 
   // Owner taps an artist named in the edition's name onto its lineup (slice 2). The server re-checks the match.
   router.post('/manage/canonical/editions/:id/lineup', ownerOnly as any, async (req, res) => {
