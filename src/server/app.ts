@@ -15,6 +15,7 @@ import type { AccessGate } from './auth/config';
 import { closedMiddleware, localOwnerMiddleware, ownerMiddleware } from './auth/gate';
 import { memberMiddleware, requestScopedStore } from './auth/requestScope';
 import { accountRouter, membersRouter, singleOwnerMeRouter } from './auth/routes';
+import { researchBatchRouter } from './events/researchBatchRoutes';
 import { prefsRouter } from './auth/prefs';
 import { accessRequestOwnerRouter, accessRequestRouter } from './auth/requestRoutes';
 import { vaultGuard, vaultRouter } from './auth/vault';
@@ -108,6 +109,7 @@ export function createApiApp(
     app.use('/api', accessRequestRouter({ config: gate, directory, requests: gate.directory }));
     app.use('/api', memberMiddleware({ config: gate, directory, base: baseDeps.store }));
     app.use('/api', membersRouter(directory, lineupDeps.store, gate.directory, notifier));
+    app.use('/api', researchBatchRouter(baseDeps.store));
     app.use('/api', accessRequestOwnerRouter(gate.directory, notifier));
     // Your data: the vault's key material, a plaintext-note guard, export and deletion.
     app.use('/api', vaultGuard(lineupDeps.store));
