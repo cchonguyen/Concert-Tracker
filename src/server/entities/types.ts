@@ -2,7 +2,7 @@
 // has a permanent ID; events point at them. Contracts: .spec/SYSTEM_SPEC.md
 // section 3.
 
-import type { ArtistIdentity, EditionPerformance } from '../lineup/types';
+import type { ArtistIdentity, EditionPerformance, SeriesRecord } from '../lineup/types';
 
 // One performance row: the edition it is in, with the act's fields.
 export type ArtistEditionRow = EditionPerformance & { editionId: string };
@@ -74,7 +74,7 @@ export interface CanonicalChange {
   personalHistoryId?: string;
 }
 
-export const CANONICAL_OPERATIONS = ['canonical-rename', 'canonical-merge', 'canonical-alias-add', 'canonical-alias-remove'] as const;
+export const CANONICAL_OPERATIONS = ['canonical-rename', 'canonical-merge', 'canonical-alias-add', 'canonical-alias-remove', 'canonical-series'] as const;
 
 export interface HistoryEntry {
   id: string;
@@ -95,4 +95,6 @@ export interface HistoryEntry {
   eventsChanged?: boolean;
   // Set on a catalog artist change (CANONICAL_OPERATIONS); its records are not entities.
   canonical?: CanonicalChange;
+  // Set on a series save (CANONICAL_OPERATIONS 'canonical-series'): the full record before and after, so undo puts it back.
+  series?: { slug: string; before: SeriesRecord; after: SeriesRecord };
 }

@@ -17,6 +17,7 @@ import {
   removeArtistAka,
   renameArtist,
   summarizeEdition,
+  saveSeriesLogged,
   undoHistory,
   unifyArtists,
   withAkas,
@@ -581,7 +582,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
         else delete next.sourcePriority;
       }
 
-      await store.upsertSeries(next);
+      await saveSeriesLogged(store, existing, next);
       res.json({ series: (await store.getSeries(slug)) ?? next });
     } catch (err) {
       if (err instanceof ManageError) return res.status(err.status).json({ error: err.message, conflict: err.conflict });
