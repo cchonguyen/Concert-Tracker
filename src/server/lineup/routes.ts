@@ -286,8 +286,8 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
   });
 
   // Slice 4 (canonical weather): the owner refreshes an edition's weather record. The change is in the
-  // edition history, so it can be undone there.
-  router.post('/canon/editions/:id/weather/refresh', async (req, res) => {
+  // edition history, so it can be undone there. Under /manage/canonical like the other owner-only edition calls.
+  router.post('/manage/canonical/editions/:id/weather/refresh', async (req, res) => {
     try {
       if (!isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
       if (!/^[A-Za-z0-9_-]{1,100}$/.test(req.params.id)) return res.status(400).json({ error: 'That is not a valid edition id.' });
