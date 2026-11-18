@@ -1576,6 +1576,7 @@ const ArchiveLookups: React.FC = () => {
                 <span className="text-xs text-zinc-400">{j.input.year}</span>
                 <Pill tone={STATUS_TONE[j.status]}>{STATUS_WORDS[j.status]}</Pill>
                 {j.status === 'failed' && j.lastError && <span className="basis-full text-xs text-rose-300">{j.lastError}</span>}
+                {j.status === 'waiting_quota' && j.waitingReason && <span className="basis-full text-xs text-amber-200">{j.waitingReason}</span>}
                 <span className="ml-auto flex gap-2">
                   {j.status === 'needs_review' && <Button variant="primary" onClick={() => setReviewing(j)}>Review</Button>}
                   {canRetry(j) && (
