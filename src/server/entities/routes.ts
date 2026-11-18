@@ -37,6 +37,7 @@ import { seriesSlugFor } from '../lineup/text';
 import type { Edition, SeriesKind, SeriesRecord, SourceType } from '../lineup/types';
 import { addEditionAct, writeEdition } from '../canon/editions';
 import { matchEditionName } from '../canon/nameArtists';
+import { normalizeName } from '../lineup/normalizeName';
 import {
   addAlias,
   addLink,
@@ -266,6 +267,24 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
   });
 
   // Owner verifies a provisional shared edition (slice 12.4). Goes through writeEdition, so undo works.
+  // Normalized names of series (name, brand, aliases), venues and organizations: a name remainder equal to one of
+  // these blocks a lineup match (docs/edition-lineup-from-name-spec.md, Matching rule 4).
+  async function namedPlaceRemainders(s: typeof store): Promise<Set<string>> {
+    const out = new Set<string>();
+    for (const series of await s.listSeries()) {
+      for (const n of [series.name, series.brand, ...(series.aliases ?? [])]) {
+        if (n) out.add(normalizeName(n));
+      }
+    }
+    for (const entity of await s.listEntities()) {
+      if ((entity.kind === 'venue' || entity.kind === 'series') && !entity.mergedIntoId && entity.nameNormalized) {
+        out.add(entity.nameNormalized);
+      }
+    }
+    out.delete('');
+    return out;
+  }
+
   // Owner taps an artist named in the edition's name onto its lineup (slice 2). The server re-checks the match.
   router.post('/manage/canonical/editions/:id/lineup', ownerOnly as any, async (req, res) => {
     try {
@@ -273,7 +292,8 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
       if (!edition) return res.status(404).json({ error: 'Edition not found.' });
       const artist = await store.getArtist(String(req.body?.artistKey ?? ''));
       if (!artist) return res.status(404).json({ error: 'Artist is not in the catalog.' });
-      const match = matchEditionName(edition.name, [{ key: artist.key, name: artist.name }]);
+      const blocked = await namedPlaceRemainders(store);
+      const match = matchEditionName(edition.name, [{ key: artist.key, name: artist.name }], blocked);
       if (!match) return res.status(409).json({ error: 'The edition name does not start with this artist.' });
       const result = await addEditionAct(store, {
         editionId: edition.id,
