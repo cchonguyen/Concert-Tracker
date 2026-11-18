@@ -101,6 +101,35 @@ export function placeFromPage(html: string, eventName: string, startDate: string
   };
 }
 
+// Slice 4.2: the event a page's schema.org JSON-LD gives for this act, read in code. Used when a web result names the
+// event but its snippet has no full date. Every matching event on a day in the window counts, and the quote is built
+// from the JSON-LD fields (never from the snippet). Nothing is taken when the page's matches disagree on the place.
+export interface PageEventDate {
+  startDate: string;
+  endDate?: string;
+  venue?: string;
+  city?: string;
+  quote: string;
+}
+
+export function eventsFromPage(html: string, eventName: string, from: string, to: string): PageEventDate[] {
+  const words = eventWords(eventName);
+  if (!words.length) return [];
+  const hits = pageEvents(html).filter((e) => {
+    if (!e.startDate || e.startDate < from || e.startDate > to) return false;
+    return e.names.some((n) => {
+      const norm = ` ${normalizeName(n)} `;
+      return words.every((w) => norm.includes(` ${w} `));
+    });
+  });
+  return hits.map((h) => ({
+    startDate: h.startDate!,
+    venue: h.venue,
+    city: h.city,
+    quote: [h.startDate, h.venue, h.city].filter(Boolean).join(' · '),
+  }));
+}
+
 const cityCache = new Map<string, string[]>();
 
 // How a geocoding result is written: "Las Vegas, NV", "Berlin, Germany".

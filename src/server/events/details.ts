@@ -7,7 +7,7 @@ import { eventWords } from '../lineup/search';
 import { findDates, parseEventInput } from './parse';
 import { matchingEvents } from '../lineup/adapters/ticketmaster';
 import { clashfinderAuthQuery, LIST_MAX_BYTES, matchEdition, parseEventList } from '../lineup/adapters/clashfinder';
-import { cityLabel, cityPoint, metroRadiusMiles, placeFromPage, withinRadius } from './place';
+import { cityLabel, cityPoint, eventsFromPage, metroRadiusMiles, placeFromPage, withinRadius } from './place';
 import { cityWithRegion, splitEventCity } from './regions';
 import type { Edition, EditionWeekend } from '../lineup/types';
 import type { IngestTraceRow, LineupStore } from '../lineup/store/types';
@@ -318,6 +318,7 @@ export const braveFinder: DetailFinder = {
   async find(q, fetcher) {
     const w = searchWindow(q);
     const out: DetailCandidate[] = [];
+    let pageReads = 0;
     for (const r of await braveResults(q, fetcher)) {
       const text = r.text;
       const seen = new Set<string>();
@@ -326,6 +327,26 @@ export const braveFinder: DetailFinder = {
         if (!inWindow(d.startDate, w) || seen.has(d.startDate)) continue;
         seen.add(d.startDate);
         hits.push(d);
+      }
+      // Slice 4.2: the snippet names the event but gives no full date, so read the page's own event data (JSON-LD).
+      // At most one page a search (the page budget is shared with addPlaces: MAX_PLACE_PAGES), never AXS.
+      if (!hits.length && pageReads < PAGE_READS_PER_SEARCH && w && !/(^|\.)axs\.com$/.test(domainOf(r.url))) {
+        pageReads++;
+        try {
+          const res = await fetcher.get(r.url, { headers: { Accept: 'text/html' }, timeoutMs: 8000 });
+          if (res.status === 200) {
+            for (const e of eventsFromPage(res.body, q.name, w.from, w.to)) {
+              const c = candidate('discovered', r.url, { startDate: e.startDate });
+              c.venue = e.venue;
+              c.city = e.city;
+              c.sources[0].quote = e.quote;
+              c.sources[0].fields = ['startDate', ...(e.venue ? ['venue'] : []), ...(e.city ? ['city'] : [])] as EventField[];
+              out.push(c);
+            }
+          }
+        } catch {
+          // An unreachable page gives no date.
+        }
       }
       const weekends = braveWeekendsFromHits(text, hits);
       const firstWeekendStart = weekends?.[0]?.startDate;
@@ -566,7 +587,8 @@ export function groupWeekendCandidates(candidates: DetailCandidate[], eventName?
   return out;
 }
 
-const MAX_PLACE_PAGES = 3;
+const MAX_PLACE_PAGES = 2; // Slice 4.2: 1 page for the Brave finder plus 2 for addPlaces keeps the shared total at 3
+const PAGE_READS_PER_SEARCH = 1;
 
 // Search results give a date but rarely a place. For candidates without a
 // venue or city, read the event markup on the pages that gave their date
