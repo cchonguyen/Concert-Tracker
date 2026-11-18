@@ -245,3 +245,24 @@ export async function placeGuess(
   if (res.status === 200) guessCache.set(key, out);
   return out;
 }
+
+// Great-circle distance in miles between two points (haversine, Earth radius 3958.8 mi).
+export function haversineMiles(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLon = rad(b.lon - a.lon);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * 3958.8 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+// True when a place is within `miles` of the target. Used to keep a suburb
+// (Inglewood for Los Angeles) without matching a distant city of the same name.
+export function withinRadius(target: { lat: number; lon: number }, coords: { lat: number; lon: number }, miles: number): boolean {
+  return haversineMiles(target, coords) <= miles;
+}
+
+// The metro radius in miles: METRO_RADIUS_MILES when it is a positive number, else 50.
+export function metroRadiusMiles(env: Record<string, string | undefined> = process.env): number {
+  const n = Number(env.METRO_RADIUS_MILES);
+  return Number.isFinite(n) && n > 0 ? n : 50;
+}
