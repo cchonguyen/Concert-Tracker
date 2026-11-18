@@ -12,6 +12,7 @@ import { EditionOccurrenceConflictError, isEditionSuggestQuery } from './store/t
 import { canonReviewRouter } from '../canon/reviewRoutes';
 import { clashfinderCandidates } from './adapters/clashfinder';
 import { findLineupRequest } from './canonicalIngest';
+import { refreshEditionWeather } from '../events/editionWeather';
 
 // Older log entries were written before redaction existed.
 const safeJob = (job: LookupJob): LookupJob => ({
@@ -267,6 +268,20 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
         (loggedWeekendsByEdition[e.editionId] ??= []).push(e.weekend ?? null);
       }
       res.json({ editions: await deps.store.suggestEditions(q, { excludeIds, limit: 5, loggedWeekendsByEdition }) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Slice 4 (canonical weather): the owner refreshes an edition's weather record. The change is in the
+  // edition history, so it can be undone there.
+  router.post('/canon/editions/:id/weather/refresh', async (req, res) => {
+    try {
+      if (!isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
+      if (!/^[A-Za-z0-9_-]{1,100}$/.test(req.params.id)) return res.status(400).json({ error: 'That is not a valid edition id.' });
+      const edition = await deps.store.getEdition(req.params.id);
+      if (!edition) return res.status(404).json({ error: 'No such edition.' });
+      res.json(await refreshEditionWeather(deps.store, edition, deps.fetcher, deps.now(), 'owner'));
     } catch (err) {
       fail(res, err);
     }
