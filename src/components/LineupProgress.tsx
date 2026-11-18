@@ -20,7 +20,7 @@ export function LineupProgress({ job, busy, onRetry, onReview }: { job: LookupJo
     job.status === 'needs_review'
       ? `Ready to review · ${acts} acts`
       : job.status === 'waiting_quota'
-        ? 'Paused: daily limit reached.'
+        ? (job.waitingReason ?? 'Paused: waiting for capacity.')
         : (HEADLINE[job.status] ?? '');
 
   return (

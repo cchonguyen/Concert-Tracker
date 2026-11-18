@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -172,19 +173,48 @@ test('pullFromHub pulls .harness/agents and synchronizes into .claude/agents and
   fs.rmSync(spokeRoot, { recursive: true, force: true });
 });
 
+test('pullFromHub records the hash of the runtime-payloads.json compiled in the spoke', () => {
+  const hubRoot = makeTempDir('hub-');
+  const spokeRoot = makeTempDir('spoke-');
+  const hubAgentsDir = path.join(hubRoot, '.harness', 'agents');
+  fs.mkdirSync(hubAgentsDir, { recursive: true });
+  fs.writeFileSync(path.join(hubAgentsDir, 'gf-coder.md'), '---\nname: gf-coder\nmodel: haiku\n---\nBody\n');
+  // A stale hub copy that differs from what the spoke compiles.
+  fs.writeFileSync(path.join(hubAgentsDir, 'runtime-payloads.json'), '{"stale": true}\n');
+  fs.mkdirSync(path.join(hubRoot, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(hubRoot, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: [], deny: [] } }));
+  fs.writeFileSync(path.join(hubRoot, '.harness-version'), '4.0.0\n');
+
+  pullFromHub(hubRoot, spokeRoot);
+
+  const payloadPath = path.join(spokeRoot, '.harness', 'agents', 'runtime-payloads.json');
+  const compiled = fs.readFileSync(payloadPath);
+  assert.notEqual(compiled.toString(), '{"stale": true}\n');
+  const manifest = JSON.parse(fs.readFileSync(path.join(spokeRoot, '.harness', 'managed.json'), 'utf8'));
+  const expected = crypto.createHash('sha256').update(compiled).digest('hex');
+  assert.equal(manifest.files['.harness/agents/runtime-payloads.json'], expected);
+
+  fs.rmSync(hubRoot, { recursive: true, force: true });
+  fs.rmSync(spokeRoot, { recursive: true, force: true });
+});
+
 test('mapAntigravityModel maps model strings accurately', () => {
-  assert.equal(mapAntigravityModel('haiku'), 'flash');
-  assert.equal(mapAntigravityModel('claude-3-5-haiku-20241022'), 'flash');
+  assert.equal(mapAntigravityModel('haiku'), 'inherit');
+  assert.equal(mapAntigravityModel('claude-3-5-haiku-20241022'), 'inherit');
+  assert.equal(mapAntigravityModel('hydrogen'), 'inherit');
+  assert.equal(mapAntigravityModel('inherit'), 'inherit');
   assert.equal(mapAntigravityModel('flash'), 'flash');
   assert.equal(mapAntigravityModel('gemini-2.5-flash'), 'flash');
+  assert.equal(mapAntigravityModel('flash_lite'), 'flash_lite');
+  assert.equal(mapAntigravityModel('gemini-2.5-flash-lite'), 'flash_lite');
   assert.equal(mapAntigravityModel('opus'), 'pro');
   assert.equal(mapAntigravityModel('claude-3-opus-20240229'), 'pro');
   assert.equal(mapAntigravityModel('pro'), 'pro');
   assert.equal(mapAntigravityModel('gemini-2.5-pro'), 'pro');
   assert.equal(mapAntigravityModel('sonnet'), 'pro');
   assert.equal(mapAntigravityModel('claude-3-7-sonnet'), 'pro');
-  assert.equal(mapAntigravityModel(''), 'flash');
-  assert.equal(mapAntigravityModel(null), 'flash');
+  assert.equal(mapAntigravityModel(''), 'inherit');
+  assert.equal(mapAntigravityModel(null), 'inherit');
   assert.equal(mapAntigravityModel('custom-model'), 'custom-model');
 });
 
@@ -235,6 +265,19 @@ You are Tier 3 Coder.
 `
   );
 
+  fs.writeFileSync(
+    path.join(harnessAgents, 'gf-flash.md'),
+    `---
+name: gf-flash
+description: Explicit Flash override
+model: haiku
+antigravity_model: flash
+tools: Read
+---
+You use Flash explicitly.
+`
+  );
+
   const payloads = compileRuntimePayloads(root);
 
   const expectedPayloadsPath = path.join(harnessAgents, 'runtime-payloads.json');
@@ -255,9 +298,13 @@ You are Tier 3 Coder.
   assert.equal(payloads['gf-coder'].name, 'gf-coder');
   assert.equal(payloads['gf-coder'].description, 'Tier 3 Code Implementer');
   assert.equal(payloads['gf-coder'].model, 'haiku');
-  assert.equal(payloads['gf-coder'].antigravity_model, 'flash');
+  assert.equal(payloads['gf-coder'].antigravity_model, 'inherit');
   assert.deepEqual(payloads['gf-coder'].tools, ['Read', 'Edit', 'Write', 'Bash']);
   assert.equal(payloads['gf-coder'].systemPrompt, 'You are Tier 3 Coder.');
+
+  assert.ok(payloads['gf-flash']);
+  assert.equal(payloads['gf-flash'].model, 'haiku');
+  assert.equal(payloads['gf-flash'].antigravity_model, 'flash');
 
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -272,10 +319,22 @@ test('syncAgents generates runtime-payloads.json alongside copied templates', ()
     `---
 name: gf-verifier
 description: Ephemeral Verifier
-model: flash
+model: haiku
 tools: Read, Bash
 ---
 You are Verifier.
+`
+  );
+
+  fs.writeFileSync(
+    path.join(harnessAgents, 'gf-flash-verifier.md'),
+    `---
+name: gf-flash-verifier
+description: Explicit Flash Verifier
+model: flash
+tools: Read, Bash
+---
+You are Flash Verifier.
 `
   );
 
@@ -284,7 +343,8 @@ You are Verifier.
   const payloadsFile = path.join(harnessAgents, 'runtime-payloads.json');
   assert.ok(fs.existsSync(payloadsFile));
   const data = JSON.parse(fs.readFileSync(payloadsFile, 'utf8'));
-  assert.equal(data['gf-verifier'].antigravity_model, 'flash');
+  assert.equal(data['gf-verifier'].antigravity_model, 'inherit');
+  assert.equal(data['gf-flash-verifier'].antigravity_model, 'flash');
 
   fs.rmSync(root, { recursive: true, force: true });
 });

@@ -131,7 +131,9 @@ export async function createLookup(
   const input = validateInput(raw);
   const now = deps.now();
   const existing = await findConfirmedEdition(deps, input);
-  const cached = opts.replaceConfirmed ? null : existing;
+  // A verified edition with no acts is not a confirmed lineup. Shortcutting on it returned an empty
+  // result and never searched (Find lineup, 2026-11-17), so only a populated edition short-circuits.
+  const cached = opts.replaceConfirmed || !existing || existing.performances.length === 0 ? null : existing;
   const editionKey = existing?.key ?? editionKeyFor(input.eventName, input.year, input.startDate);
   const job: LookupJob = {
     id: randomUUID(),

@@ -85,9 +85,12 @@ export function parseFrontmatter(content) {
 }
 
 export function mapAntigravityModel(model) {
-  if (!model) return 'flash';
-  const m = String(model).toLowerCase();
-  if (m.includes('haiku') || m.includes('flash')) return 'flash';
+  if (!model) return 'inherit';
+  const m = String(model).trim().toLowerCase();
+  if (!m) return 'inherit';
+  if (m.includes('flash_lite') || m.includes('flash-lite')) return 'flash_lite';
+  if (m.includes('flash')) return 'flash';
+  if (m.includes('haiku') || m.includes('hydrogen') || m.includes('inherit')) return 'inherit';
   if (m.includes('opus') || m.includes('pro') || m.includes('sonnet')) return 'pro';
   return m;
 }
@@ -106,11 +109,14 @@ export function compileRuntimePayloads(projectRoot = (process.env.CLAUDE_PROJECT
     const fallbackName = path.basename(file, '.md');
     const name = frontmatter.name || fallbackName;
     const model = frontmatter.model || '';
+    const antigravityModel = frontmatter.antigravity_model
+      ? mapAntigravityModel(frontmatter.antigravity_model)
+      : mapAntigravityModel(model);
     payloads[name] = {
       name,
       description: frontmatter.description || '',
       model,
-      antigravity_model: mapAntigravityModel(model),
+      antigravity_model: antigravityModel,
       tools: frontmatter.tools || '',
       systemPrompt,
     };
@@ -347,6 +353,14 @@ export function pullFromHub(hubRoot, spokeRoot = (process.env.CLAUDE_PROJECT_DIR
   const syncedAgents = syncAgents(spokeRoot);
   if (syncedAgents.length) {
     receipt.written.push(...syncedAgents);
+  }
+
+  // syncAgents recompiles runtime-payloads.json in the spoke, so record the compiled file's hash, not the hub copy's.
+  // Otherwise pr-scope-check sees a hash mismatch and does not recognise the PR as a hub sync.
+  const payloadRel = '.harness/agents/runtime-payloads.json';
+  const payloadAbs = path.join(spokeRoot, payloadRel);
+  if (files[payloadRel] !== undefined && fs.existsSync(payloadAbs)) {
+    files[payloadRel] = sha256(fs.readFileSync(payloadAbs));
   }
 
   // Keep the old hash for conflicted files so they stay conflicted until resolved
