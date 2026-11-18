@@ -1949,11 +1949,21 @@ const EditionDetail: React.FC<{
       {edition.performances.length === 0 ? (
         <p className="text-sm text-zinc-400">No acts recorded for this edition.</p>
       ) : (
+        <>
+          {(() => {
+            const candidates = edition.performances.filter((p) => p.verification === 'candidate').length;
+            return candidates > 0 ? (
+              <p className="text-xs text-amber-300">
+                {candidates} {candidates === 1 ? 'act' : 'acts'} not yet verified. Each shows as a candidate until a second source agrees or the owner verifies it.
+              </p>
+            ) : null;
+          })()}
         <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
           {edition.performances.map((p) => (
             <ActRecord key={p.artistKey} act={p} partners={(p.b2b ?? []).map((k) => names.get(k) ?? k)} />
           ))}
         </ul>
+        </>
       )}
     </div>
   );
@@ -2617,6 +2627,7 @@ const ActRecord: React.FC<{ act: EditionPerformance; partners: string[] }> = ({ 
           <span className="font-medium text-zinc-100">{act.name}</span>
         )}
         <Pill tone="neutral">{BILLING_WORDS[act.billing ?? ''] ?? 'Artist'}</Pill>
+        {act.verification === 'candidate' && <Pill tone="warn">Candidate</Pill>}
         {partners.length > 0 && <span className="text-xs text-zinc-400">B2B with {partners.join(', ')}</span>}
       </div>
     <p className="text-xs text-zinc-400">
