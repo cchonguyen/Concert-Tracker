@@ -359,7 +359,9 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
         if (!deps.reader) throw new InputError('Gemini is not set up on this server.');
         reader = geminiReader(deps.reader, event.id, deps.now);
       }
-      const updated = await researchEvent(event, finders, deps.fetcher, deps.now(), reader);
+      const trace = startTrace('research', { eventId: event.id });
+      const updated = await researchEvent(event, finders, deps.fetcher, deps.now(), reader, undefined, { trace });
+      await trace.finish(deps.store);
       res.json({ event: await saveEvent(updated) });
     } catch (err) {
       fail(res, err);
@@ -450,7 +452,9 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
         member?.userId,
         deps.store,
       );
-      const updated = await researchEvent(saved, finders, deps.fetcher, deps.now(), undefined, { ...catalog, skipCanon: true });
+      const trace = startTrace('research', { eventId: saved.id });
+      const updated = await researchEvent(saved, finders, deps.fetcher, deps.now(), undefined, { ...catalog, skipCanon: true }, { trace });
+      await trace.finish(deps.store);
       res.json({ event: await saveEvent(updated) });
     } catch (err) {
       fail(res, err);
