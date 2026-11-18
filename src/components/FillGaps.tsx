@@ -302,7 +302,9 @@ const ReviewRow: React.FC<{ event: LoggedEvent; onDone: (e: LoggedEvent) => void
 // starts details research or lineup lookups for many events at once. Nothing
 // is filled without you; lookups only propose.
 export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editions, onChanged, onRefresh, onOpen, onClose }) => {
-  const [gap, setGap] = useState<Gap>(() => GAPS.find((g) => counts[g] > 0) ?? 'date');
+  // The chosen gap. Until one is tapped, the first gap with anything to fill is shown. Derived below, after
+  // `counts`: reading `counts` in a useState initializer here threw on every mount (TDZ), so the dialog went blank.
+  const [gapChoice, setGapChoice] = useState<Gap | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -366,6 +368,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
     }
   };
   const counts = useMemo(() => gapCounts(events, lineups, editions, offeredIds), [events, lineups, editions, offeredIds]);
+  const gap: Gap = gapChoice ?? GAPS.find((g) => counts[g] > 0) ?? 'date';
   const rows = events.filter((e) => hasGap(e, gap, lineups[e.id], editions[e.id], offeredIds));
   const suggestions = useMemo(() => {
     switch (gap) {
@@ -606,7 +609,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
           <button
             key={g}
             onClick={() => {
-              setGap(g);
+              setGapChoice(g);
               setNote(null);
             }}
             className={`rounded-full border px-2.5 py-1 text-xs ${
