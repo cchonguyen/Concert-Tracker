@@ -1,6 +1,6 @@
 # Auto-verify acts and editions, and member ticks
 
-Status: decisions recorded 2026-11-18; slices await approval. Scope confirmed by Charlie in thread "Scope auto-adding Who I Saw artists to lineup".
+Status: decisions recorded 2026-11-18; slices approved 2026-11-18 and built (slices 2 to 5 merged, PRs #543, #544, #546, #549, #552, #557). AGENTS.md rules approved and added in this change. Scope confirmed by Charlie in thread "Scope auto-adding Who I Saw artists to lineup".
 
 ## Goal
 
