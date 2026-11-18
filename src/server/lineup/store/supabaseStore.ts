@@ -385,7 +385,8 @@ export class SupabaseLineupStore implements LineupStore {
   }
 
   async upsertSeries(s: SeriesRecord) {
-    const kind: SeriesKind = s.kind === 'tour' ? 'tour' : 'festival';
+    // No type stays empty (NULL, "Not set"): a series is never typed festival by default (series type fix, slice 3).
+    const kind: SeriesKind | null = s.kind === 'tour' || s.kind === 'festival' ? s.kind : null;
     const isTour = kind === 'tour';
     const brandPatch = await this.brandIdPatch(s);
     this.check(
