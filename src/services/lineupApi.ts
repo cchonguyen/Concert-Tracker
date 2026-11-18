@@ -7,7 +7,7 @@ import type { ConfirmRequest } from '../server/lineup/learning';
 import type { CanonicalConfirmInput, CanonicalDiff } from '../server/lineup/canonicalIngest';
 import type { ArtistAppearance, ArtistChangeImpact, CanonicalArtistRecord, CanonicalEditionSummary, CanonicalOperation } from '../server/entities/canonicalManage';
 import type { EditionSuggestion, MergeSummary } from '../server/lineup/store/types';
-import type { DetailCandidate, EventDetails, EventField, LineupSummary, LoggedEvent } from '../server/events/types';
+import type { DetailCandidate, EventDetails, EventField, EventWeather, LineupSummary, LoggedEvent } from '../server/events/types';
 import type { EventPatch } from '../server/events/service';
 import type { ActivityEntry } from '../server/events/activityLog';
 import type { EmailImport, MergeField } from '../server/events/email/types';
@@ -632,6 +632,12 @@ export const canonicalApi = {
   verifyEdition: (id: string) =>
     request<{ ok: boolean; changeId: string | null; edition: { id: string; name: string; status: string } }>(
       `/api/manage/canonical/editions/${encodeURIComponent(id)}/verify`,
+      post({}),
+    ),
+  // Owner only: re-read the archive for the edition's place and dates. Logged in the edition history; undo there.
+  refreshWeather: (id: string) =>
+    request<{ changed: boolean; weather?: EventWeather; note?: string }>(
+      `/api/manage/canonical/editions/${encodeURIComponent(id)}/weather/refresh`,
       post({}),
     ),
   // Edition facts with a required source note; blank facts are sent as null and stay blank.

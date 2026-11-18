@@ -25,7 +25,7 @@ import { EditionNameGaps } from './EditionNameGaps';
 import { MergeEditionModal } from './MergeEditionModal';
 import { usePlaceAutofill } from './PlaceFields';
 import { SuggestInput } from './SuggestInput';
-import { shortDateRange, weekendLabel } from '../services/format';
+import { shortDateRange, weatherLine, weekendLabel } from '../services/format';
 import { buildPastPlaces, cityPickPatch, formatPlaceLabel, unanimousPlace } from '../services/placeAutofill';
 import { seedMultiWeekends } from '../services/weekends';
 import { Button } from './ui/Button';
@@ -1777,6 +1777,25 @@ const EditionDetail: React.FC<{
   };
   const lineupStatus = lineupNote?.editionId === edition.id ? lineupNote : null;
   const note = verifyNote?.editionId === edition.id ? verifyNote : null;
+  // Owner refresh of the edition's weather (slice 4 API). A change is in the edition history, so Undo is there.
+  const [weatherBusy, setWeatherBusy] = useState(false);
+  const [weatherStatus, setWeatherStatus] = useState<{ editionId: string; text: string } | null>(null);
+  const refreshWeather = async () => {
+    setWeatherBusy(true);
+    try {
+      const r = await canonicalApi.refreshWeather(edition.id);
+      if (r.changed && r.weather) onFactsSaved({ ...edition, weather: r.weather });
+      setWeatherStatus({
+        editionId: edition.id,
+        text: r.changed ? 'Weather refreshed. The change is in the edition history.' : r.note ?? 'The archive has no new reading. The stored record is kept.',
+      });
+    } catch (e) {
+      setWeatherStatus({ editionId: edition.id, text: `Could not refresh the weather. ${verifyError(e)}` });
+    } finally {
+      setWeatherBusy(false);
+    }
+  };
+  const weatherNote = weatherStatus?.editionId === edition.id ? weatherStatus : null;
   const names = new Map(edition.performances.map((p) => [p.artistKey, p.name]));
   const dates = [edition.startDate, edition.endDate && edition.endDate !== edition.startDate ? `to ${edition.endDate}` : null].filter(Boolean).join(' ');
   const inheritSeriesPlace = edition.seriesKind !== 'tour';
@@ -1822,10 +1841,28 @@ const EditionDetail: React.FC<{
             </Button>
           )}
           <Button onClick={onEditLineup}>Edit lineup</Button>
+          {edition.weather && (
+            <Button onClick={() => void refreshWeather()} disabled={weatherBusy}>
+              {weatherBusy && <Loader2 className="h-4 w-4 animate-spin" />} Refresh weather
+            </Button>
+          )}
           {onStartMerge && <Button onClick={onStartMerge}>Merge with…</Button>}
         </div>
       </div>
       {lineupStatus && <p className="text-sm text-zinc-300" role="status">{lineupStatus.text}</p>}
+      {edition.weather && (
+        <div className="space-y-1 text-xs text-zinc-400">
+          <p className="text-zinc-300">Weather, {edition.weather.place}. Read from the Open-Meteo archive.</p>
+          <ul className="space-y-0.5">
+            {edition.weather.days.map((d) => (
+              <li key={d.date}>
+                {d.date}: {weatherLine(d) || 'No reading'}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {weatherNote && <p className="text-sm text-zinc-300" role="status">{weatherNote.text}</p>}
       {(edition.status === 'provisional' || note) && (
         <div className="flex flex-wrap items-center gap-3 text-sm">
           {edition.status === 'provisional' && <span className="text-xs text-zinc-500">Members entered this. Verifying makes it autofill for everyone.</span>}
