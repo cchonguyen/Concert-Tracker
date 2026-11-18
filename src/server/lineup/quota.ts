@@ -133,11 +133,13 @@ export class QuotaLedger {
     const usage = (await this.store.getQuota(userKey)) ?? { key: userKey, used: 0 };
     const until = nextPacificMidnight(now);
     const { ownerReserve = 0, userBackfillDaily = 0 } = this.config;
+    const owner = (await this.store.ownerUserId?.()) ?? null;
+    // The owner is exempt from the member daily cap; the shared budget and reserve still apply.
+    const isOwner = owner !== null && userId === owner;
     const userDaily = lane === 'backfill' ? userBackfillDaily : (this.config.userDaily ?? 0);
-    if (userDaily > 0 && usage.used >= userDaily) {
+    if (!isOwner && userDaily > 0 && usage.used >= userDaily) {
       throw new QuotaExhaustedError(until, `Your daily limit of ${userDaily} ${lane === 'backfill' ? 'background ' : ''}Gemini calls is used; retrying after the midnight Pacific reset.`, 'user');
     }
-    const owner = (await this.store.ownerUserId?.()) ?? null;
     if (ownerReserve > 0 && userId !== owner && globalUsed >= this.config.dailyLimit - ownerReserve) {
       throw new QuotaExhaustedError(until, `The shared Gemini budget is down to the owner's reserve; retrying after the midnight Pacific reset.`, 'user');
     }
