@@ -15,7 +15,8 @@ import {
 } from '../services/lineupApi';
 import { formatsOf, whenLabel } from '../services/format';
 import { toSeenInput } from '../server/events/seen';
-import { canFindLineup, cityOf, Gap, gapCounts, GAPS, hasGap, placePatch } from '../services/table';
+import { batchResultsWaiting, canFindLineup, cityOf, Gap, gapCounts, GAPS, hasGap, placePatch } from '../services/table';
+import { candidateRowParts } from '../services/checkDetails';
 import { regionCode } from '../server/events/regions';
 import { EventTitle } from './EventTitle';
 import { SuggestInput } from './SuggestInput';
@@ -350,6 +351,20 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
     () => all.filter((e) => (e.details.status === 'pending' || e.details.status === 'needs_date') && !/^\d{4}-\d{2}-\d{2}$/.test(e.startDate ?? '') && Boolean(e.year)),
     [all],
   );
+  // Slice 3.2: research results waiting for a tap (a batch run found a candidate for a year and a city).
+  const batchWaiting = useMemo(() => batchResultsWaiting(all), [all]);
+  const [picking, setPicking] = useState<string | null>(null);
+  const pickBatch = async (id: string, candidateId: string) => {
+    setError(null);
+    setPicking(candidateId);
+    try {
+      onChanged(await eventsApi.pick(id, candidateId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPicking(null);
+    }
+  };
   const counts = useMemo(() => gapCounts(events, lineups, editions, offeredIds), [events, lineups, editions, offeredIds]);
   const rows = events.filter((e) => hasGap(e, gap, lineups[e.id], editions[e.id], offeredIds));
   const suggestions = useMemo(() => {
@@ -696,6 +711,41 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
             </button>
           )}
         </div>
+      )}
+      {batchWaiting.length > 0 && (
+        <section className="space-y-2 rounded-xl border border-violet-500/30 p-3" aria-label="Batch results to confirm">
+          <h3 className="text-sm font-semibold text-zinc-100">Results to confirm ({batchWaiting.length})</h3>
+          <p className="text-xs text-zinc-400">Found for the year and city you gave. Nothing is applied until you tap one.</p>
+          <ul className="divide-y divide-zinc-900">
+            {batchWaiting.map((e) => (
+              <li key={e.id} className="space-y-1.5 py-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <button onClick={() => onOpen(e.id)} className="truncate text-left text-sm font-medium text-zinc-100 hover:underline">
+                    <EventTitle event={e} />
+                  </button>
+                  <span className="shrink-0 text-xs text-zinc-400">{[e.year, cityOf(e)].filter(Boolean).join(' · ')}</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {e.details.candidates.slice(0, 3).map((c) => {
+                    const row = candidateRowParts(c);
+                    const sources = [...new Set(c.sources.map((src) => SOURCE_LABELS[src.sourceType]))].join(', ');
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        disabled={picking !== null}
+                        onClick={() => pickBatch(e.id, c.id)}
+                        className="rounded-full border border-zinc-700 px-2.5 py-1 text-xs text-zinc-200 hover:border-violet-500 disabled:opacity-50"
+                      >
+                        {[row.date, row.venue, sources].filter(Boolean).join(' · ')}
+                      </button>
+                    );
+                  })}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       {yearOnly.length > 0 && (
         <section className="space-y-2 rounded-xl border border-zinc-800 p-3" aria-label="Confirm dates">
