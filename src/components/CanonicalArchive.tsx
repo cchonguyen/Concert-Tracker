@@ -774,7 +774,7 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
                   className="flex w-full flex-wrap items-center gap-2 p-2.5 text-left text-sm hover:bg-zinc-900/60"
                 >
                   <span className="font-medium text-zinc-100">{s.name}</span>
-                  <Pill tone="neutral">{s.kind === 'tour' ? 'Tour' : 'Festival'}</Pill>
+                  <Pill tone="neutral">{s.kind === 'tour' ? 'Tour' : s.kind === 'festival' ? 'Festival' : 'Not set'}</Pill>
                   {s.brand && <Pill tone="accent">{s.brand}</Pill>}
                   {place && <span className="text-xs text-zinc-400">{place}</span>}
                   {s.aliases && s.aliases.length > 0 && (
@@ -806,7 +806,8 @@ const SeriesDetail: React.FC<{
   const [notice, setNotice] = useState<string | null>(null);
 
   const [editing, setEditing] = useState(false);
-  const [kind, setKind] = useState<SeriesKind>('festival');
+  // null = Not set: a series with no type yet is saved without one, never as festival (series type fix, slice 5).
+  const [kind, setKind] = useState<SeriesKind | null>(null);
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
   const [city, setCity] = useState('');
@@ -832,7 +833,7 @@ const SeriesDetail: React.FC<{
     region,
     country,
     pastCities: seriesPastPlaces.cities,
-    enabled: editing && kind === 'festival',
+    enabled: editing && kind !== 'tour',
   });
 
   const loadDetail = useCallback(async () => {
@@ -842,7 +843,7 @@ const SeriesDetail: React.FC<{
       const res = await canonicalApi.seriesEditions(slug);
       setSeries(res.series);
       setEditions(res.editions);
-      setKind(res.series.kind === 'tour' ? 'tour' : 'festival');
+      setKind(res.series.kind === 'tour' || res.series.kind === 'festival' ? res.series.kind : null);
       setName(res.series.name);
       setBrand(res.series.brand ?? '');
       setCity(res.series.city ?? '');
@@ -875,9 +876,9 @@ const SeriesDetail: React.FC<{
     try {
       const updated = await canonicalApi.updateSeries(slug, {
         name: name.trim(),
-        kind,
+        ...(kind ? { kind } : {}),
         brand: brand.trim() || null,
-        ...(kind === 'festival'
+        ...(kind !== 'tour'
           ? {
               city: city.trim() || null,
               region: region.trim() || null,
@@ -926,7 +927,7 @@ const SeriesDetail: React.FC<{
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-lg font-semibold text-zinc-50">{series.name}</h3>
-            <Pill tone="neutral">{series.kind === 'tour' ? 'Tour' : 'Festival'}</Pill>
+            <Pill tone="neutral">{series.kind === 'tour' ? 'Tour' : series.kind === 'festival' ? 'Festival' : 'Not set'}</Pill>
             {series.brand && <Pill tone="accent">{series.brand}</Pill>}
             {seriesPlaceLabel && <span className="text-xs text-zinc-400">{seriesPlaceLabel}</span>}
           </div>
@@ -978,8 +979,8 @@ const SeriesDetail: React.FC<{
             <span className="text-[11px] uppercase text-zinc-500">Type</span>
             <Segmented
               label="Series type"
-              value={kind}
-              onChange={setKind}
+              value={kind ?? ''}
+              onChange={(v) => setKind(v as SeriesKind)}
               options={[
                 { value: 'festival', label: 'Festival' },
                 { value: 'tour', label: 'Tour' },
@@ -1002,7 +1003,7 @@ const SeriesDetail: React.FC<{
                 onPick={(b) => setBrand(b)}
               />
             </label>
-            {kind === 'festival' ? (
+            {kind !== 'tour' ? (
               <>
                 <label className="space-y-1 text-xs text-zinc-400">
                   <span className="block text-[11px] uppercase text-zinc-500">City</span>
