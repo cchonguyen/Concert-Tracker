@@ -11,7 +11,7 @@ import { EventPatch } from '../src/server/events/service.ts';
 import { LoggedEvent } from '../src/server/events/types.ts';
 import { sheetsRouter } from '../src/server/events/sheetRoutes.ts';
 import { importsRouter } from '../src/server/events/importRoutes.ts';
-import { parseSheetLink, SHEETS_SETTING, SheetsApi, SheetsAuthError, SheetValue, sheetVersion } from '../src/server/events/sheets.ts';
+import { createSheets, parseSheetLink, SHEETS_SETTING, SheetsApi, SheetsAuthError, SheetValue, sheetVersion } from '../src/server/events/sheets.ts';
 import { fillPatch, findMatches, ImportApi, readTable, runImport } from '../src/services/listImport.ts';
 import { SHEETS_BASE_SETTING } from '../src/server/events/sheets.ts';
 import { droppedColumns, outsideEdits, serialToDate, sheetRows, sheetTable } from '../src/services/sheetSync.ts';
@@ -274,4 +274,35 @@ test('sheets routes: sign in through the shared callback, link a tab, and refuse
   await call('/sheets/disconnect', 'POST');
   assert.deepEqual(await (await call('/sheets')).json(), { configured: true, member: false, picker: false, connected: false });
   assert.deepEqual(await store.getSetting(SHEETS_SETTING), {});
+});
+
+test('sheets sign-in: a grant without Sheets is refused, and a Sheets scope refusal asks to sign in again', async (t) => {
+  const realFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = realFetch;
+  });
+  const reply = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  const sheets = createSheets('id', 'secret');
+
+  // Google signs in with an email-only grant: refused before anything is saved.
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes('oauth2.googleapis.com/token')) {
+      return reply({ access_token: 'a', refresh_token: 'r', expires_in: 3600, scope: 'openid email https://www.googleapis.com/auth/userinfo.email' });
+    }
+    return reply({});
+  }) as typeof fetch;
+  await assert.rejects(sheets.connect('code', 'https://x/cb'), (err: unknown) => err instanceof SheetsAuthError && /Sheets/.test((err as Error).message));
+
+  // A saved sign-in that Google refuses for Sheets scope: asks for a fresh sign-in.
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes('oauth2.googleapis.com/token')) return reply({ access_token: 'a', expires_in: 3600 });
+    return reply({ error: { code: 403, message: 'Request had insufficient authentication scopes.', status: 'PERMISSION_DENIED' } }, 403);
+  }) as typeof fetch;
+  await assert.rejects(
+    sheets.info('r', 'sheetid'),
+    (err: unknown) => err instanceof SheetsAuthError && /sign in to google sheets again/i.test((err as Error).message),
+  );
 });
