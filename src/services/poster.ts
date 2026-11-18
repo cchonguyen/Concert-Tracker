@@ -50,6 +50,7 @@ export const GAP_LABEL: Record<Gap, string> = {
   price: 'Price',
   weather: 'Weather',
   review: 'Review',
+  lineup: 'Lineup',
 };
 
 // The section of the detail each gap is filled in, by its id on the page.
@@ -68,6 +69,7 @@ export const GAP_SECTION: Record<Gap, SectionId> = {
   price: 'your-notes',
   format: 'your-notes',
   review: 'your-notes',
+  lineup: 'who-you-saw',
 };
 
 // The guided question a gap asks, shown on the strip's Next button.
@@ -85,6 +87,7 @@ export const GAP_QUESTION: Record<Gap, string> = {
   price: 'What did you pay?',
   weather: 'Want the weather for the day?',
   review: 'Anything to remember about it?',
+  lineup: 'Add the act the edition is named for?',
 };
 
 // True when an event is linked to a multi-weekend edition and has neither a weekend nor a startDate yet.

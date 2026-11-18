@@ -851,3 +851,13 @@ export const FIELD_SOURCE_LABELS: Record<SourceType | 'venue' | 'edition', strin
 export function isActive(status: LookupJob['status'] | undefined): boolean {
   return status === 'queued' || status === 'running';
 }
+
+// Member lineup offers (slice 5): the catalog acts named in linked editions' names that their lineups lack, and the one-tap proposal.
+export const memberLineupApi = {
+  offers: (editionIds: string[]) =>
+    request<{ offers: Array<{ editionId: string; artistKey: string; artistName: string }> }>(
+      `/api/canon/lineup-offers?editionIds=${encodeURIComponent(editionIds.join(','))}`,
+    ).then((r) => r.offers),
+  propose: (editionId: string, artistKey: string) =>
+    request<{ ok: boolean; duplicate: boolean; id: string }>('/api/canon/lineup-proposals', post({ editionId, artistKey })),
+};

@@ -425,13 +425,14 @@ export type Gap =
   | 'rating'
   | 'price'
   | 'weather'
-  | 'review';
-export const GAPS: Gap[] = ['date', 'venue', 'city', 'place', 'type', 'seen', 'review', 'favourite', 'format', 'companions', 'rating', 'price', 'weather'];
+  | 'review'
+  | 'lineup';
+export const GAPS: Gap[] = ['date', 'venue', 'city', 'place', 'type', 'seen', 'review', 'lineup', 'favourite', 'format', 'companions', 'rating', 'price', 'weather'];
 
 // Who you saw, your favourite set and a rating wait until you have been.
 const AFTER_YOU_WENT: Gap[] = ['seen', 'favourite', 'rating'];
 
-export function hasGap(e: LoggedEvent, gap: Gap, lineup?: LineupSummary, facts?: LineupFacts): boolean {
+export function hasGap(e: LoggedEvent, gap: Gap, lineup?: LineupSummary, facts?: LineupFacts, offered?: ReadonlySet<string>): boolean {
   if (AFTER_YOU_WENT.includes(gap) && attendanceOf(e, today()) !== 'went') return false;
   switch (gap) {
     case 'date':
@@ -462,6 +463,9 @@ export function hasGap(e: LoggedEvent, gap: Gap, lineup?: LineupSummary, facts?:
       return !e.weather && Boolean(e.startDate && e.city) && e.startDate! < today();
     case 'review':
       return lineup?.status === 'needs_review' && !e.editionId;
+    case 'lineup':
+      // The server offers a catalog act named in the edition's name that its lineup lacks (slice 5).
+      return Boolean(e.editionId && offered?.has(e.editionId));
   }
 }
 
@@ -469,9 +473,10 @@ export function gapCounts(
   events: LoggedEvent[],
   lineups: Record<string, LineupSummary> = {},
   editions: Record<string, LineupFacts> = {},
+  offered?: ReadonlySet<string>,
 ): Record<Gap, number> {
   const out = Object.fromEntries(GAPS.map((g) => [g, 0])) as Record<Gap, number>;
-  for (const e of events) for (const g of GAPS) if (hasGap(e, g, lineups[e.id], editions[e.id])) out[g] += 1;
+  for (const e of events) for (const g of GAPS) if (hasGap(e, g, lineups[e.id], editions[e.id], offered)) out[g] += 1;
   return out;
 }
 
