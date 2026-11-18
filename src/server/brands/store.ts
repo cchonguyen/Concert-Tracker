@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   BrandError,
   brandKey,
+  normalizeBrandName,
   planMerge,
   planOrganization,
   planRename,
@@ -159,6 +160,28 @@ export function createMemoryBrandStore(
       if (h) h.undoneAt = at;
     },
   };
+}
+
+// Returns the id of the brands row with this name (case-insensitive, trimmed), creating it when none
+// exists. Used when a series is saved with brand text, so the Brands tab lists that brand.
+// Throws on a database error or a name the plans would reject; the caller saves nothing.
+export async function findOrCreateBrandId(db: SupabaseClient, rawName: string): Promise<string> {
+  const name = normalizeBrandName(rawName);
+  const key = brandKey(name);
+  const lookup = async () => {
+    const res = await db.from('brands').select('id').eq('name_key', key).maybeSingle();
+    if (res.error) throw new Error(`findOrCreateBrandId: ${res.error.message}`);
+    return (res.data as { id: string } | null)?.id ?? null;
+  };
+  const existing = await lookup();
+  if (existing) return existing;
+  const id = crypto.randomUUID();
+  const ins = await db.from('brands').insert({ id, name, name_key: key });
+  if (!ins.error) return id;
+  // Another save may have created the same brand between the lookup and the insert.
+  const again = await lookup();
+  if (again) return again;
+  throw new Error(`findOrCreateBrandId: ${ins.error.message}`);
 }
 
 // Supabase store. Tables: brands, event_series (brand_id), brand_history (migrations 0047, 0048).
