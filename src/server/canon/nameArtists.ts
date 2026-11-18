@@ -44,3 +44,15 @@ export function matchEditionName(
 
   return { artistKey: best.artist.key, artistName: best.artist.name, quote: editionName };
 }
+
+// The payload a member's lineup proposal stores (slice 4). Only the act and the edition's name: never a user id or a personal field.
+export interface LineupProposalPayload {
+  artistKey: string;
+  artistName: string;
+  editionName: string;
+  quote: string;
+}
+
+export function lineupProposalPayload(editionName: string, artist: CatalogArtist): LineupProposalPayload {
+  return { artistKey: artist.key, artistName: artist.name, editionName, quote: editionName };
+}
