@@ -1,0 +1,12 @@
+{
+  "note": "Hand-written. A Brave result that names the act, the place and a day and month, with no year and no full date in the snippet.",
+  "web": {
+    "results": [
+      {
+        "url": "https://example-venue-listings.test/gryffin-los-angeles",
+        "title": "Gryffin live in Los Angeles | Tickets",
+        "description": "Gryffin plays Los Angeles on Oct 10 with openers. Doors 7pm. All ages."
+      }
+    ]
+  }
+}

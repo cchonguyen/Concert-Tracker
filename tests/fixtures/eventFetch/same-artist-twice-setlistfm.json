@@ -1,0 +1,7 @@
+{
+  "note": "Hand-written. The same act plays two Los Angeles venues in one year, on different dates.",
+  "setlist": [
+    { "eventDate": "05-10-2026", "url": "https://www.setlist.fm/setlist/gryffin/2026/la1.html", "artist": { "name": "Gryffin" }, "venue": { "name": "Shrine Expo Hall", "city": { "name": "Los Angeles", "stateCode": "CA", "country": { "code": "US", "name": "United States" } } } },
+    { "eventDate": "12-10-2026", "url": "https://www.setlist.fm/setlist/gryffin/2026/la2.html", "artist": { "name": "Gryffin" }, "venue": { "name": "The Wiltern", "city": { "name": "Los Angeles", "stateCode": "CA", "country": { "code": "US", "name": "United States" } } } }
+  ]
+}

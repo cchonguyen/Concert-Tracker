@@ -1,0 +1,17 @@
+{
+  "note": "Hand-written. The show is at a venue in Inglewood, a suburb of Los Angeles. The person typed Los Angeles.",
+  "_embedded": {
+    "events": [
+      {
+        "name": "Gryffin",
+        "id": "vk1-metro",
+        "url": "https://www.ticketmaster.com/gryffin-inglewood-tickets/event/vk1-metro",
+        "dates": { "start": { "localDate": "2026-10-10" } },
+        "_embedded": {
+          "venues": [{ "name": "The Forum", "city": { "name": "Inglewood" }, "state": { "stateCode": "CA" }, "country": { "countryCode": "US", "name": "United States" } }],
+          "attractions": [{ "name": "Gryffin" }]
+        }
+      }
+    ]
+  }
+}
