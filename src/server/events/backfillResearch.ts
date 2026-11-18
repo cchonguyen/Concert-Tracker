@@ -1,8 +1,8 @@
 // Slice 11.19: a cron step that researches events still 'pending' (saved before queue research existed, or whose
 // queue message failed). At most RESEARCH_BATCH_SIZE events per run (the cron fires every minute).
 //
-// Ladder rungs 1 and 2 only: the catalog lookup and the structured finders (Ticketmaster, setlist.fm, Clashfinder).
-// No reader model (rung 4). Brave (rung 3) is NOT used here: this backfill still filters it out of the finders.
+// Ladder rungs 1 to 3: the catalog lookup, the structured finders (Ticketmaster, setlist.fm, Clashfinder) and, since
+// Slice 3.3, Brave (rung 3) only when the free finders leave a gap (researchEvent, leavesGap). No reader model (rung 4).
 // The monthly Brave counter (200 queries a month, braveBudget.ts) now gates the live Brave calls: braveCapFetcher
 // wraps the fetcher in createDeps (lineup/service.ts), so Brave requests made by queued research are counted there.
 //
@@ -18,8 +18,8 @@
 // Worker subrequests (the cron's budget is SUBREQUEST_LIMIT, 50 by default, shared with the rest of the cron):
 //   fixed per run: 3 (attempts read, listEvents, attempts write) = FIXED_COST.
 //   per event: ITEM_COST = 25 at worst: getEvent + putEvent 2, 3 finders, 3 again when the typed name differs,
-//     3 place pages, catalog rung 1 (3) and rung 2 persistence (up to 11) = 25 (the queue message's 27 minus Brave's 2).
-//   worst case, no budget: 3 + 5 * 25 = 128 subrequests. Under the default 50 the step runs only as many events as
+//     3 place pages, catalog rung 1 (3), rung 2 persistence (up to 11) and Brave's 2 = 27 (the queue message's worst case).
+//   worst case, no budget: 3 + 5 * 27 = 138 subrequests. Under the default 50 the step runs only as many events as
 //     the budget left allows (checked before each event), so 1 event a run at 50 and all 5 once SUBREQUEST_LIMIT is
 //     at least about 130. An event cut off is not marked and is retried on a later run.
 import type { LoggedEvent } from './types';
@@ -35,7 +35,7 @@ export const RESEARCH_BATCH_SIZE = 5;
 export const RESEARCH_SETTING = 'research_backfill';
 const RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
 const FIXED_COST = 3;
-const ITEM_COST = 25;
+const ITEM_COST = 27;
 const FULL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Slice 3.1: an event with a full date is researched as before. So is one with a year and a city but no date:
@@ -104,7 +104,8 @@ export async function runResearchBackfill(
   const next: Attempts = { at: Object.fromEntries(Object.entries(attempts.at).filter(([, t]) => recent(t))) };
   let changed = Object.keys(next.at).length !== Object.keys(attempts.at).length;
 
-  const usable = finders.filter((f) => f.id !== 'discovered'); // no Brave (rung 3) here
+  // Slice 3.3: Brave is allowed here too; researchEvent calls it only when the free finders leave a gap.
+  const usable = finders;
   const catalog = researchCatalogFor(opts.role, opts.userId, opts.catalogStore ?? store);
   const batch = opts.batchSize ?? RESEARCH_BATCH_SIZE;
   const room = (n: number) => budgetLeft() >= ITEM_COST + n;
