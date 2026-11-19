@@ -32,7 +32,10 @@ export async function createStore(opts: { requireSupabase?: boolean } = {}): Pro
     if (opts.requireSupabase) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required on this host.');
     return withEntityLinks(fileStore());
   }
-  // Probe one table from each migration so a missing one fails clearly.
+  if (opts.requireSupabase) {
+    return withEntityLinks(new SupabaseLineupStore(client));
+  }
+  // Local dev only: probe one table from each migration so a missing one falls back to the file store.
   for (const [table, migration] of [
     ['lookup_jobs', '0002_source_first_lineups.sql'],
     ['logged_events', '0003_event_log.sql'],

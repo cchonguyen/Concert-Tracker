@@ -28,7 +28,8 @@ export async function isSignedIn(request: Request, access: AccessConfig | null, 
     .map((c) => c.trim())
     .find((c) => c.startsWith('CF_Authorization='))
     ?.slice('CF_Authorization='.length);
-  return verify(token ? decodeURIComponent(token) : null, access);
+  if (!token) return false;
+  return verify(decodeURIComponent(token), access);
 }
 
 // The first thing the Worker runs on every request it sees. Share page

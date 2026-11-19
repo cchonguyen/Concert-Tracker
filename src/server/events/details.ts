@@ -15,6 +15,7 @@ import { seriesSlugFor } from '../lineup/text';
 import { editionCoversDate, matchEdition as matchCatalog, upsertOccurrence } from '../canon/match';
 import { resolvedEditionDates } from './inherit';
 import type { GuardedReader } from '../reader/guardedReader';
+import { currentBudget } from '../lineup/budget';
 import { startTrace, type Trace } from '../telemetry/trace';
 import { geminiReader } from './detailsGemini';
 import { DetailCandidate, DetailsStatus, EventDetails, EventField, EVENT_FIELDS, LoggedEvent } from './types';
@@ -45,7 +46,7 @@ export interface DetailFinder {
   id: SourceType;
   enabled(): boolean;
   withoutYear?: boolean;
-  find(q: DetailQuery, fetcher: Fetcher): Promise<DetailCandidate[]>;
+  find(q: DetailQuery, fetcher: Fetcher, now?: Date): Promise<DetailCandidate[]>;
 }
 
 const MAX_CANDIDATES = 5;
@@ -96,7 +97,14 @@ function candidate(
 export const ticketmasterFinder: DetailFinder = {
   id: 'ticketmaster',
   enabled: () => Boolean(process.env.TICKETMASTER_API_KEY),
-  async find(q, fetcher) {
+  async find(q, fetcher, now) {
+    if (now) {
+      const startYear = q.startDate ? Number(q.startDate.slice(0, 4)) : q.year;
+      const endYear = q.endDate ? Number(q.endDate.slice(0, 4)) : startYear;
+      if (startYear && Number.isFinite(startYear) && Math.max(startYear, endYear ?? startYear) < now.getUTCFullYear()) {
+        return [];
+      }
+    }
     const w = searchWindow(q);
     const params = new URLSearchParams({
       apikey: process.env.TICKETMASTER_API_KEY!,
@@ -800,10 +808,10 @@ async function persistOwnEntry(event: LoggedEvent, catalog: ResearchCatalog, not
 
 // Runs every configured finder and decides what to do with the results.
 // One trace step per finder: outcome, candidate count and milliseconds. Counts only, never page text.
-async function timedFind(f: DetailFinder, query: DetailQuery, fetcher: Fetcher, trace?: Trace): Promise<DetailCandidate[]> {
+async function timedFind(f: DetailFinder, query: DetailQuery, fetcher: Fetcher, trace?: Trace, now?: Date): Promise<DetailCandidate[]> {
   const started = Date.now();
   try {
-    const out = await f.find(query, fetcher);
+    const out = await f.find(query, fetcher, now);
     trace?.step('finder', { finder: f.id, outcome: out.length ? 'ok' : 'empty', candidates: out.length, ms: Date.now() - started });
     return out;
   } catch (err) {
@@ -888,7 +896,7 @@ export async function researchEvent(
     city: cityWithRegion(event.city, event.region),
   };
   const runFinders = async (list: DetailFinder[], query: DetailQuery) => {
-    const settled = await Promise.allSettled(list.map((f) => timedFind(f, query, fetcher, opts?.trace)));
+    const settled = await Promise.allSettled(list.map((f) => timedFind(f, query, fetcher, opts?.trace, now)));
     settled.forEach((r, i) => {
       if (r.status === 'fulfilled') {
         found.push(...r.value);
@@ -965,6 +973,7 @@ export async function runQueuedResearch(
   now: Date,
   catalog?: ResearchCatalog,
 ): Promise<LoggedEvent | null> {
+  const startUsed = currentBudget()?.used ?? null;
   const event = await store.getEvent(eventId);
   if (!event || event.details.status !== 'pending') return null;
   const trace = startTrace('research', { eventId });
@@ -973,6 +982,8 @@ export async function runQueuedResearch(
     await store.putEvent(updated);
     return updated;
   } finally {
+    const b = currentBudget();
+    if (b && startUsed !== null) trace.subrequests(Math.max(0, b.used - startUsed));
     await trace.finish(typeof store.addIngestTrace === 'function' ? { addIngestTrace: store.addIngestTrace.bind(store) } : null);
   }
 }

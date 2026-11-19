@@ -477,7 +477,8 @@ export class FileLineupStore implements LineupStore {
     }
     // Same rule as the Supabase store: undefined keeps the stored weather, null clears it.
     const weather = edition.weather === undefined ? state.editions[edition.id]?.weather : edition.weather ?? undefined;
-    state.editions[edition.id] = clone({ ...edition, weather });
+    const hasLineup = edition.performances.length > 0 ? true : edition.hasLineup;
+    state.editions[edition.id] = clone({ ...edition, ...(hasLineup !== undefined ? { hasLineup } : {}), weather });
     await this.save();
   }
 
@@ -795,6 +796,18 @@ export class FileLineupStore implements LineupStore {
     const state = await this.load();
     state.settings = { ...state.settings, [key]: clone(data) };
     await this.save();
+  }
+
+  async listPendingResearchUserIds(): Promise<string[]> {
+    const state = await this.load();
+    const owners = (await this.ownersState()).owners;
+    const ids = new Set<string>();
+    for (const ev of Object.values(state.events)) {
+      if (ev.details.status !== 'pending') continue;
+      const uid = owners[`event:${ev.id}`];
+      if (uid) ids.add(uid);
+    }
+    return [...ids];
   }
 
   async getArtist(key: string) {

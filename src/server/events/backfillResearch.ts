@@ -28,8 +28,9 @@ import { currentBudget } from '../lineup/budget';
 import { researchCatalogFor, runQueuedResearch, type DetailFinder } from './details';
 import type { Fetcher } from '../lineup/types';
 import { loadRefusals, refusalFetcher, saveRefusals } from './refusedHosts';
+import { braveHasBatchBudget } from './braveBudget';
 
-export { BRAVE_MONTHLY_CAP, BRAVE_SETTING, braveUsed, takeBrave, monthOf } from './braveBudget';
+export { BRAVE_INTERACTIVE_RESERVE, BRAVE_MONTHLY_CAP, BRAVE_SETTING, braveBatchRemaining, braveHasBatchBudget, braveUsed, takeBrave, monthOf } from './braveBudget';
 export type { BraveCount } from './braveBudget';
 
 export const RESEARCH_BATCH_SIZE = 5;
@@ -111,13 +112,15 @@ export async function runResearchBackfill(
   const next: Attempts = { at: Object.fromEntries(Object.entries(attempts.at).filter(([, t]) => recent(t))) };
   let changed = Object.keys(next.at).length !== Object.keys(attempts.at).length;
 
-  // Slice 3.3: Brave is allowed here too; researchEvent calls it only when the free finders leave a gap.
-  const usable = finders;
+  // Slice 3.3: Brave is allowed here too while interactive reserve remains; researchEvent calls it only when free finders leave a gap.
+  const globalStore = opts.catalogStore ?? store;
+  const hasBrave = finders.some((f) => f.id === 'discovered');
+  let allowBrave = hasBrave ? await braveHasBatchBudget(globalStore, now) : false;
   const catalog = researchCatalogFor(opts.role, opts.userId, opts.catalogStore ?? store);
   const batch = opts.batchSize ?? RESEARCH_BATCH_SIZE;
   const room = (n: number) => budgetLeft() >= ITEM_COST + n;
-  // Slice 4.3: hosts that refused in the last 30 days are not asked again; new refusals are saved at the end.
-  const refusedBefore = await loadRefusals(store, now);
+  // Slice 4.3: hosts that refused in the last 30 days are kept globally in catalog/app_settings and skipped across members.
+  const refusedBefore = await loadRefusals(globalStore, now);
   const refusals = { ...refusedBefore };
   const guarded = refusalFetcher(fetcher, refusals, now);
   for (const e of pending) {
@@ -127,6 +130,10 @@ export async function runResearchBackfill(
       report.skipped_recent++;
       continue;
     }
+    if (report.researched > 0 && allowBrave) {
+      allowBrave = await braveHasBatchBudget(globalStore, now);
+    }
+    const usable = allowBrave ? finders : finders.filter((f) => f.id !== 'discovered');
     next.at[e.id] = now.toISOString();
     changed = true;
     report.researched++;
@@ -138,7 +145,7 @@ export async function runResearchBackfill(
     }
   }
   try {
-    await saveRefusals(store, refusedBefore, refusals, now);
+    await saveRefusals(globalStore, refusedBefore, refusals, now);
   } catch (err) {
     console.error('Refused hosts not saved:', err instanceof Error ? err.message : String(err));
   }

@@ -39,6 +39,7 @@
     // Google Search grounding has no free-tier quota on this key (every call
     // returns 429). Turn on once billing is enabled for the Gemini project.
     "GEMINI_SEARCH_DISCOVERY": "off",
+    "SOURCE_CACHE": "on",
     "CLASHFINDER_HASH_FORMAT": "{username}{privateKey}",
     // Where Google sends you back after "Connect Gmail".
     "APP_URL": "https://concert.charliechonguyen.com"

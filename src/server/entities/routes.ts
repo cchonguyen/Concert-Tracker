@@ -347,9 +347,13 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
   router.get('/canon/lineup-offers', (_req: any, res: Response, next: () => void) =>
     currentMember() ? next() : res.status(401).json({ error: 'Sign in to see offers.' }), async (req, res) => {
     try {
-      const ids = String(req.query?.editionIds ?? '').split(',').map((id) => id.trim()).filter(Boolean).slice(0, 500);
-      const editions = (await Promise.all(ids.map((id) => store.getEdition(id)))).filter((e): e is NonNullable<typeof e> => Boolean(e));
-      const [artists, blocked] = await Promise.all([store.listArtists(), namedPlaceRemainders(store)]);
+      const ids = [...new Set(String(req.query?.editionIds ?? '').split(',').map((id) => id.trim()).filter(Boolean))].slice(0, 500);
+      if (!ids.length) return res.json({ offers: [] });
+      const [editions, artists, blocked] = await Promise.all([
+        store.getEditions(ids),
+        store.listArtists(),
+        namedPlaceRemainders(store),
+      ]);
       const catalog = artists.map((a) => ({ key: a.key, name: a.name }));
       res.json({ offers: offersForEditions(editions, catalog, blocked) });
     } catch (err) {

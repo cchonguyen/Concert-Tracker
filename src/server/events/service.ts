@@ -7,7 +7,7 @@ import { parseEventInput } from './parse';
 import { isBilling } from '../lineup/billing';
 import { EVENT_FIELDS, EventField, EventKind, LineupSummary, LoggedEvent, SeenAct } from './types';
 import { isSetKind, SeenInput, withB2b } from './seen';
-import { cityWithRegion, regionCode, regionCountry, splitEventCity } from './regions';
+import { cityWithRegion, normalizeCountryDisplay, regionCode, regionCountry, splitEventCity } from './regions';
 import { isAhead, isAttendance } from './attendance';
 import { resolveEvent } from './inherit';
 
@@ -134,7 +134,7 @@ export function applyPatch(event: LoggedEvent, patch: EventPatch, now: Date): Lo
   for (const f of EVENT_FIELDS) {
     if (!(f in patch)) continue;
     const raw = patch[f];
-    const value = text(raw);
+    const value = f === 'country' ? normalizeCountryDisplay(text(raw)) : text(raw);
     if (value && (f === 'startDate' || f === 'endDate') && !DATE.test(value)) throw new InputError(`${f} must be YYYY-MM-DD.`);
     setField(next, f, value);
   }

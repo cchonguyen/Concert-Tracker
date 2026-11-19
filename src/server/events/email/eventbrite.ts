@@ -12,6 +12,17 @@ import { EmailReader, UnreadableEmail } from './types';
 // - 2013: "Your order for <event> is complete!", the date, the event name,
 //   then the venue and its address.
 const CALENDAR = /^(add to|add to my calendar:?|google|outlook|ical|yahoo|·|\(?view on map\)?)$/i;
+const CALENDAR_TOKEN = '(?:google|outlook|ical|yahoo|apple|\\(?view\\s+on\\s+map\\)?)';
+const COMBINED_CALENDAR = new RegExp(
+  `^(?:add\\s+to(?:\\s+my\\s+calendar:?)?(?:\\s*[·|,/:]?\\s*|\\s+)${CALENDAR_TOKEN}(?:(?:\\s*[·|,/:]?\\s*|\\s+)${CALENDAR_TOKEN})*|${CALENDAR_TOKEN}(?:\\s*[·|,/]\\s*|\\s+)${CALENDAR_TOKEN}(?:(?:\\s*[·|,/]?\\s*|\\s+)${CALENDAR_TOKEN})*)(?:\\s*[·|,/])?$`,
+  'i',
+);
+
+export function isCalendarLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  return CALENDAR.test(trimmed) || COMBINED_CALENDAR.test(trimmed);
+}
 
 const hasDate = (line: string | undefined, sentAt: string) => Boolean(line && dateFields(line, sentAt).startDate);
 
@@ -42,15 +53,17 @@ export const eventbrite: EmailReader = {
     const card = findCard(lines, name, email.sentAt);
     if (!card) throw new UnreadableEmail('No event date on the order card.');
     let v = card.venueAt;
-    while (v < lines.length && CALENDAR.test(lines[v])) v++;
+    while (v < lines.length && isCalendarLine(lines[v])) v++;
     const address = lines.slice(v, v + 4).find((l) => cityFromAddress(l));
     const order = lines.map((l) => l.match(/^(?:Order #:\s*|#)(\d[\d-]*)/)?.[1]).find(Boolean);
     const between = card.nameAt >= 0 && card.nameAt < card.dateAt ? lines.slice(card.nameAt + 1, card.dateAt) : [];
+    const candidateVenue = lines[v];
+    const isNonVenueLine = !candidateVenue || address === candidateVenue || isCalendarLine(candidateVenue) || /^(?:Order #:\s*|#)\d/i.test(candidateVenue);
     return {
       kind: 'order',
       name: quoted(name, card.nameAt >= 0 ? lines[card.nameAt] : nameLine),
       ...dateFields(lines[card.dateAt], email.sentAt),
-      venue: address === lines[v] ? undefined : venueFrom(lines[v]),
+      venue: isNonVenueLine ? undefined : venueFrom(candidateVenue),
       city: cityFromAddress(address),
       orderId: order,
       tickets: count(between.find((l) => /^\d+\s*x\s/i.test(l))),

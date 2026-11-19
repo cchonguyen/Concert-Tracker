@@ -1,4 +1,4 @@
-import { yourSpellings } from './actName';
+import { readActName, yourSpellings } from './actName';
 import { randomUUID } from 'node:crypto';
 import {
   AdapterResult,
@@ -426,6 +426,24 @@ async function stageMerge(deps: PipelineDeps, job: LookupJob, now: Date): Promis
   const claims = await deps.store.listPerformerClaims(job.id);
   const domains = ['*', ...new Set(claims.map((c) => domainOf(c.sourceUrl)))];
   const series = await deps.store.getSeries(slug);
+  const seenStore = job.userId && deps.store.forUser ? deps.store.forUser({ userId: job.userId, role: 'member' }) : deps.store;
+  const claimKeys = [
+    ...new Set(claims.flatMap((c) => [normalizeName(c.name), ...readActName(c.name).parts.map(normalizeName)]).filter(Boolean)),
+  ];
+  const catalogSpellings: Record<string, string> = {};
+  const catalogArtists =
+    typeof deps.store.getArtists === 'function'
+      ? claimKeys.length
+        ? await deps.store.getArtists(claimKeys)
+        : []
+      : typeof deps.store.listArtists === 'function'
+        ? await deps.store.listArtists()
+        : [];
+  for (const artist of catalogArtists) {
+    const key = normalizeName(artist.name);
+    if (key && artist.name && !(key in catalogSpellings)) catalogSpellings[key] = artist.name;
+  }
+  const memberSpellings = yourSpellings(await seenStore.listSeenArtistNames());
   job.candidate = mergeLineup({
     input: job.input,
     editionKey: job.editionKey,
@@ -436,10 +454,8 @@ async function stageMerge(deps: PipelineDeps, job: LookupJob, now: Date): Promis
     blocklist: await deps.store.getBlocklist(domains),
     stats: await deps.store.getSourceStats(),
     priority: series?.sourcePriority,
-    // Only the spellings of the member who started the lookup.
-    spellings: yourSpellings(
-      await (job.userId && deps.store.forUser ? deps.store.forUser({ userId: job.userId, role: 'member' }) : deps.store).listSeenArtistNames(),
-    ),
+    // Catalog artist casing first, then the spellings of the member who started the lookup win.
+    spellings: { ...catalogSpellings, ...memberSpellings },
   });
   job.stage = 'done';
   if (job.candidate.performers.length > 0) {

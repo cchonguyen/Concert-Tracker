@@ -34,11 +34,23 @@ for (const [canonical, aliases] of Object.entries(COUNTRY_ALIASES)) {
   }
 }
 
+const CANONICAL_DISPLAY: Record<string, string> = {
+  'united states': 'United States',
+  canada: 'Canada',
+  'united kingdom': 'United Kingdom',
+};
+
 export function canonicalCountry(name?: string | null): string {
   if (!name) return '';
   const norm = normalizeName(name);
   if (!norm) return '';
   return ALIAS_TO_CANONICAL.get(norm) ?? norm;
+}
+
+export function normalizeCountryDisplay(name?: string | null): string | undefined {
+  const trimmed = name?.trim();
+  if (!trimmed) return undefined;
+  return CANONICAL_DISPLAY[canonicalCountry(trimmed)] ?? trimmed;
 }
 
 export function sameCountry(a?: string | null, b?: string | null): boolean {
