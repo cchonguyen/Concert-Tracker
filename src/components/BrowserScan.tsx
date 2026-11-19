@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Download, Loader2, ScanSearch } from 'lucide-react';
 import { scanGmailInBrowser, scanReportCsv, type GmailScanProgress, type GmailScanResult } from '@livearchive/ticket-scanner';
 import { EmailImport, EmailScanStatus, importsApi } from '../services/lineupApi';
@@ -17,31 +17,61 @@ declare global {
   }
 }
 
-function loadGis(): Promise<any> {
+let gisPromise: Promise<any> | null = null;
+
+export function resetGisLoaderForTests(): void {
+  gisPromise = null;
+}
+
+export function loadGis(): Promise<any> {
   if (window.google?.accounts?.oauth2) return Promise.resolve(window.google);
-  return new Promise((resolve, reject) => {
+  if (gisPromise) return gisPromise;
+  const pending = new Promise<any>((resolve, reject) => {
+    const finishLoad = () => {
+      if (window.google?.accounts?.oauth2) {
+        resolve(window.google);
+        return;
+      }
+      if (gisPromise === pending) gisPromise = null;
+      reject(new Error('Could not load Google sign-in.'));
+    };
+    const finishError = (el?: { remove?: () => void }) => {
+      if (gisPromise === pending) gisPromise = null;
+      el?.remove?.();
+      reject(new Error('Could not load Google sign-in.'));
+    };
+    const existing = document.querySelector?.(`script[src="${GIS_SRC}"]`) as HTMLScriptElement | null | undefined;
+    if (existing) {
+      existing.addEventListener?.('load', finishLoad, { once: true });
+      existing.addEventListener?.('error', () => finishError(existing), { once: true });
+      return;
+    }
     const s = document.createElement('script');
     s.src = GIS_SRC;
     s.async = true;
-    s.onload = () => resolve(window.google);
-    s.onerror = () => reject(new Error('Could not load Google sign-in.'));
+    s.onload = finishLoad;
+    s.onerror = () => finishError(s);
     document.head.appendChild(s);
+  });
+  gisPromise = pending;
+  return pending;
+}
+
+function openPopup(google: any, clientId: string): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: SCOPE,
+      callback: (r: any) => (r?.access_token ? resolve(r.access_token) : reject(new Error(r?.error_description ?? 'Gmail was not opened.'))),
+      error_callback: (e: any) => reject(new Error(e?.message ?? 'The Google sign-in was closed.')),
+    });
+    client.requestAccessToken({ prompt: '' });
   });
 }
 
-function askToken(clientId: string): Promise<string> {
-  return loadGis().then(
-    (google) =>
-      new Promise<string>((resolve, reject) => {
-        const client = google.accounts.oauth2.initTokenClient({
-          client_id: clientId,
-          scope: SCOPE,
-          callback: (r: any) => (r?.access_token ? resolve(r.access_token) : reject(new Error(r?.error_description ?? 'Gmail was not opened.'))),
-          error_callback: (e: any) => reject(new Error(e?.message ?? 'The Google sign-in was closed.')),
-        });
-        client.requestAccessToken({ prompt: '' });
-      }),
-  );
+export function askToken(clientId: string): Promise<string> {
+  if (window.google?.accounts?.oauth2) return openPopup(window.google, clientId);
+  return loadGis().then((google) => openPopup(google, clientId));
 }
 
 type Mode = 'incremental' | 'full';
@@ -51,6 +81,11 @@ export const BrowserScan: React.FC<{ status: EmailScanStatus; onFound: (imports:
   const [progress, setProgress] = useState<GmailScanProgress | null>(null);
   const [report, setReport] = useState<{ mode: Mode; result: GmailScanResult; saved?: { added: number; changed: number } } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!status.clientId) return;
+    loadGis().catch(() => undefined);
+  }, [status.clientId]);
 
   if (!status.clientId) return null;
 
