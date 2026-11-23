@@ -4,7 +4,7 @@ import { canonicalApi } from '../services/lineupApi';
 type NameMatch = { editionId: string; editionName: string; artistKey: string; artistName: string };
 
 // Find gaps in Global Archive > Editions: editions whose name starts with a catalog artist who is not on the lineup.
-// One tap adds that act; the server re-checks the match and records the change (slice 3, docs/archive/edition-lineup-from-name-spec.md).
+// One tap adds that act; the server re-checks the match and records the change (slice 3, docs/edition-lineup-from-name-spec.md).
 export const EditionNameGaps: React.FC = () => {
   const [rows, setRows] = useState<NameMatch[] | null>(null);
   const [error, setError] = useState<string | null>(null);
