@@ -1,5 +1,7 @@
 # Global Archive rework spec
 
+> **Archived 2026-11-23.** Built as Slices 8.1 to 8.10.
+
 Status: approved by Charlie 2026-11-03. Build one slice at a time; do not start a slice until the previous one is verified (lint, tests, typecheck).
 Base: the original canonical-curation draft (Manage scope switcher, section menu with Editions & Lineups, shared record views) and `/mnt/project-files/canonical-curation/review.md` decisions. AGENTS.md rules apply unchanged.
 

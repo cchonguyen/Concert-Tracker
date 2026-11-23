@@ -1,7 +1,7 @@
 # Event fetch upgrade: PRD and staged spec
 
-Status: **Stage 0 approved (Charlie, 2026-11-17); Stages 1 to 5 drafted, waiting on the open questions at the end.**
-Inputs: Charlie's PRD "Concert Lookup Enrichment & Metro-Radius Resolution" (2026-11-17), the production audit [docs/audits/2026-11-17-external-event-fetch.md](../audits/2026-11-17-external-event-fetch.md), and the review [docs/specs/event-fetch-upgrade-review.md](event-fetch-upgrade-review.md).
+Status: Stages 0 to 4 built (Slices 2.5, 20.2 to 20.559, PRs up to #560). Stage 4b (deep search) and Stage 5 (candidate quality) are not started.
+Inputs: Charlie's PRD "Concert Lookup Enrichment & Metro-Radius Resolution" (2026-11-17), the production audit [docs/audits/2026-11-17-external-event-fetch.md](../audits/2026-11-17-external-event-fetch.md), and the review [docs/archive/event-fetch-upgrade-review.md](../archive/event-fetch-upgrade-review.md).
 
 ## 1. Goal
 

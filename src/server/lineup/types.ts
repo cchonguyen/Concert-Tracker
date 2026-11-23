@@ -13,7 +13,7 @@ export type SourceType =
   | 'discovered'
   | 'email' // your own ticket emails (stage 1 only, never lineup evidence)
   | 'user'
-  | 'edition name'; // the shared edition's own name, matched to a catalog artist (docs/edition-lineup-from-name-spec.md)
+  | 'edition name'; // the shared edition's own name, matched to a catalog artist (docs/archive/edition-lineup-from-name-spec.md)
 
 // billed: announced on a lineup; performed: a post-show record says they played;
 // crowd: a crowd-sourced listing (Clashfinder).
@@ -298,7 +298,7 @@ export interface Edition {
   // Admin-curated fact provenance (migration 0034): the owner's note for name, dates, venue, city.
   factSourceNote?: string;
   // One weather record shared by the edition's members (migration 0049). undefined keeps the stored value,
-  // null clears it. See docs/specs/canonical-weather.md.
+  // null clears it. See docs/archive/canonical-weather.md.
   weather?: EventWeather | null;
 }
 

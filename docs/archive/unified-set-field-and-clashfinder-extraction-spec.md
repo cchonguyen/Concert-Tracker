@@ -1,5 +1,7 @@
 # Unified `set` Field & Clashfinder Set Extraction Spec
 
+> **Archived 2026-11-23.** Built in PR #192.
+
 ## 1. Context & Motivation
 Lineup sources (specifically Clashfinder) frequently bill artist performances with modifiers:
 - Technical format modifiers: `Porter Robinson (DJ Set)`, `Bicep (Live)`

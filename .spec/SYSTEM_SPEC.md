@@ -7,7 +7,7 @@ The full spec already lives in the project docs. This file holds only what `/tri
 - Hard rules for every change: [AGENTS.md](../AGENTS.md)
 
 ## 1. Core Scope & MVP Boundaries
-Feature: **Two-way reader test: Cloudflare Workers AI and paid Gemini, with an AI call log and spend guards** (triaged 2026-11-12, scope confirmed by Charlie 2026-11-12). Full spec: [docs/ai-reader-spec.md](../docs/ai-reader-spec.md). Research: `/mnt/project-files/ai-provider/Gemini free tier replacement options.md`.
+Feature: **Two-way reader test: Cloudflare Workers AI and paid Gemini, with an AI call log and spend guards** (triaged 2026-11-12, scope confirmed by Charlie 2026-11-12). Full spec: [docs/archive/ai-reader-spec.md](../docs/ai-reader-spec.md). Research: `/mnt/project-files/ai-provider/Gemini free tier replacement options.md`.
 
 - **Core problem:** the Gemini free tier refuses reads far below its stated limit (6 calls on 2026-11-02), so lineup reading and "Look again with Gemini" fail often. Volume is small: about 200 reads a month, peak 50 a day, typical page 2,000 tokens, largest 43,000.
 - **Confirmed scope (Charlie):**
@@ -43,7 +43,7 @@ Feature: **"What did you go to?" past-event suggestion** (triaged 2026-11-11, di
   3. A name alone is enough to match. Each suggestion shows its date.
   4. Events in Recently deleted never match.
 - **R1.9 relevance:** venue and city already suggest what you have entered before, and city suggests real places as you type. Venue-to-place links apply to edition matches. Applies to typed fields only, so the suggestion feature stays separate from R1.9.
-  5. A pre-fill copies the canonical edition's date, location, venue, lineup and weather. Weather is one record per edition (`docs/specs/canonical-weather.md`).
+  5. A pre-fill copies the canonical edition's date, location, venue, lineup and weather. Weather is one record per edition (`docs/archive/canonical-weather.md`).
 - **Plan:** `/mnt/project-files/canonical-autocomplete/plan.md` (stages A to C, slices A1 to B3). Open: lineup vs who you saw (AGENTS.md tap rule), members creating editions. Weather source closed: Open-Meteo archive, one record per edition.
 
 ## Prev 1. Manage section (shipped, kept for reference)
@@ -103,7 +103,7 @@ Design system export:
 
 ## 3. Data Models & Module Boundaries
 
-**AI reader** (full spec: [docs/ai-reader-spec.md](../docs/ai-reader-spec.md); slices 10.1 to 10.20; 10.15 to 10.17 are gated)
+**AI reader** (full spec: [docs/archive/ai-reader-spec.md](../docs/ai-reader-spec.md); slices 10.1 to 10.20; 10.15 to 10.17 are gated)
 - Module `src/server/reader/` (`types.ts`, `schemas.ts`, `geminiAdapter.ts`, `workersAiAdapter.ts`, `config.ts`, `pricing.ts`, `guard.ts`, `callLog.ts`, `guardedReader.ts`, `recall.ts`). `src/server/lineup/gemini.ts` stays the only `@google/genai` user in `src/`. Pipeline, details route and discovery hold only a `GuardedReader`. `recall.ts` is pure scoring used by the local CLI `scripts/recall-test.ts` (outside `src/`, never deployed, never writes to lineups or the database).
 - `ReaderClient { provider, model, extractPerformers, extractEventDetails }` returns `ReaderResult<T>` = `{ ok: true, value, usage: { provider, model, inputTokens, outputTokens, durationMs } }` or `{ ok: false, reason: 'invalid_json' | 'input_too_large', usage }`. Quota throws `QuotaExhaustedError` (park; `scope: 'global' | 'job'`); Workers AI 3040 throws `ReaderBusyError` (the job's normal attempts path). No fallback between providers, no repair call.
 - Reasoning: Gemini models starting `gemini-2.5` get `thinkingConfig { thinkingBudget: 0 }`; all others get `thinkingConfig { thinkingLevel }` from `READER_THINKING_LEVEL` (`OFF` as `LOW`; never `thinkingBudget` on 3+, never default `MINIMAL`). No `temperature`, `topP`, `topK`, `frequencyPenalty` or `presencePenalty`; `contents` never ends with a `model` turn. Workers AI sends `reasoning_effort: 'low'` and `chat_template_kwargs: { enable_thinking: false }` and reads either response envelope. Empty Gemini balance (HTTP 402, or 429 "prepayment credits are depleted") throws `QuotaExhaustedError(now + 6h)`.
@@ -154,7 +154,7 @@ Design system export:
 - Store method on `LineupStore` (`src/server/lineup/store/types.ts`), implemented in `fileStore.ts` and `supabaseStore.ts`: `suggestEditions(query: string, opts: { excludeIds: string[]; limit: number }): Promise<EditionSuggestion[]>`. Supabase narrows with `ilike` on name or series, then applies the word-prefix test in code so both stores agree; tests run against the file store.
 - `POST /api/events { text: string; editionId?: string }`. Without `editionId`: unchanged (`newEvent`). With it: 404 if the edition is missing or not `confirmed`. Otherwise `newEventFromEdition(edition, text, now)` in `src/server/events/service.ts` copies name, year, startDate, endDate, venue, city, country (only those the edition has), each sourced `{ sourceType: 'edition', editionId }`; sets `editionId` (the link); sets `details.status = 'matched'` so no stage 1 research runs; the lookup job is created through the existing `createLookup`, which finds the confirmed edition by key and goes to review with no network calls. The venue's place still fills city, region and country on save as today (`venuePlace.ts`). Personal fields are never copied: seen stays empty, companions, rating, price, notes, format, own series name, Concert or Festival choice. The lineup shows through the edition link only.
 - New `FieldSource` type in `src/server/events/types.ts`: `sourceType: SourceType | 'venue' | 'edition'`, plus optional `editionId?: string`. The UI label reads "from the canonical edition".
-- Weather (B3, option 2a): after a pre-filled save, `lookupWeather` runs once, server-side, for the saved event, only when it has a city and a start date. It stores the result with its URL only when Open-Meteo places the city exactly; otherwise it stores nothing and returns the usual note. Never re-run automatically. The lookup is per edition (`docs/specs/canonical-weather.md`): a pre-fill copies the edition's record, and a lookup runs only when the edition has none. A failure never fails the save.
+- Weather (B3, option 2a): after a pre-filled save, `lookupWeather` runs once, server-side, for the saved event, only when it has a city and a start date. It stores the result with its URL only when Open-Meteo places the city exactly; otherwise it stores nothing and returns the usual note. Never re-run automatically. The lookup is per edition (`docs/archive/canonical-weather.md`): a pre-fill copies the edition's record, and a lookup runs only when the edition has none. A failure never fails the save.
 - No "I saw everyone" button (Charlie, 2026-11-11): each seen act is its own tap, so people curate who they actually saw. A bulk tick is on the Do NOT Build list.
 - No suggestions and no writes in sample mode. No writes to `event_editions` or `performances`.
 

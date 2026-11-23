@@ -269,7 +269,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
 
   // Owner verifies a provisional shared edition (slice 12.4). Goes through writeEdition, so undo works.
   // Normalized names of series (name, brand, aliases), venues and organizations: a name remainder equal to one of
-  // these blocks a lineup match (docs/edition-lineup-from-name-spec.md, Matching rule 4).
+  // these blocks a lineup match (docs/archive/edition-lineup-from-name-spec.md, Matching rule 4).
   const NAME_MATCH_EDITION_LIMIT = 5000;
   async function namedPlaceRemainders(s: typeof store): Promise<Set<string>> {
     const out = new Set<string>();

@@ -1,5 +1,7 @@
 # Specification: B2B and Solo Performance Architecture
 
+> **Archived 2026-11-23.** Built: acts carry `slotId`, `b2b` partner keys and `set` (see `src/server/events/types.ts`).
+
 **Status:** Proposed  
 **Author:** Pair Programming (Agent & Operator)  
 **Date:** 2026-11-02  

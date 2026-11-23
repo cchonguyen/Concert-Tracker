@@ -70,6 +70,24 @@ test('every top-level doc in docs/ is listed in docs/README.md', () => {
   assert.deepEqual(missing, []);
 });
 
+test('every doc in docs/specs/ and docs/archive/ is listed in docs/README.md', () => {
+  const index = readFileSync(path.join(docsDir, 'README.md'), 'utf8');
+  const missing = ['specs', 'archive'].flatMap((sub) =>
+    readdirSync(path.join(docsDir, sub), { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+      .map((entry) => `${sub}/${entry.name}`)
+      .filter((name) => !index.includes(`(${name})`)),
+  );
+  assert.deepEqual(missing, []);
+});
+
+test('every archived spec says why it was archived', () => {
+  const unmarked = readdirSync(path.join(docsDir, 'archive'))
+    .filter((name) => name.endsWith('.md') && name !== 'engineering-ticket-bank-closed.md' && name !== 'collab-aliases-manage-design.md')
+    .filter((name) => !readFileSync(path.join(docsDir, 'archive', name), 'utf8').includes('**Archived'));
+  assert.deepEqual(unmarked, []);
+});
+
 // Every repo path the open ticket bank names must exist, or carry the
 // "(planned, not yet created)" marker. A marker on a path that exists is stale.
 test('every project path named in the open ticket bank exists or is marked planned', () => {

@@ -1,5 +1,7 @@
 # DB, Logs & Production Improvement Spec (2026-11-18)
 
+> **Archived 2026-11-23.** Built as Slices 21.1 to 21.5 (PRs #587, #589).
+
 Status: **Approved & implementing (Slices 21.1 to 21.4)**
 Measured against: Live Supabase (`mybwchgqhrpvdczqigma`), Supabase Logs & Advisors, Cloudflare Workers Observability (`concert-tracker`, 7-day + post-PR #585 windows), and `origin/main` at PR `#585` (`52d8d76`).
 

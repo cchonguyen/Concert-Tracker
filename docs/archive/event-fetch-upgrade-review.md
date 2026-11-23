@@ -1,5 +1,7 @@
 # Event fetch upgrade: PRD review (2026-11-17)
 
+> **Archived 2026-11-23.** Review of the [event fetch PRD](../specs/event-fetch-upgrade-prd.md); its points were taken into the PRD.
+
 Review of the PRD "Concert Lookup Enrichment & Metro-Radius Resolution (Stage 1 & Stage 2)", Slices A to D, against the code on `main` at `7abc135` and the production audit in [docs/audits/2026-11-17-external-event-fetch.md](../audits/2026-11-17-external-event-fetch.md). Status: **not approved, nothing built.** Open questions for Charlie are at the end.
 
 ## The PRD's diagnosis, checked
@@ -47,7 +49,7 @@ Review of the PRD "Concert Lookup Enrichment & Metro-Radius Resolution (Stage 1 
 
 ## Questions for Charlie
 
-Answers from 2026-11-17, now built into [event-fetch-upgrade-prd.md](event-fetch-upgrade-prd.md):
+Answers from 2026-11-17, now built into [event-fetch-upgrade-prd.md](../specs/event-fetch-upgrade-prd.md):
 
 1. setlist.fm key: added to the Worker secrets by Charlie.
 2. Fix the broken items first: yes. That is Stage 0, with a check-back 2 to 3 hours after deploy.

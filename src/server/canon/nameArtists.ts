@@ -1,4 +1,4 @@
-// Matches a shared edition's name to catalog artists (docs/edition-lineup-from-name-spec.md, slice 1).
+// Matches a shared edition's name to catalog artists (docs/archive/edition-lineup-from-name-spec.md, slice 1).
 // Pure: no store, no network, no model. Only the catalog list passed in is considered, never personal entities.
 import { normalizeName } from '../lineup/normalizeName';
 

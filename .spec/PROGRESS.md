@@ -10,7 +10,7 @@ Contracts: SYSTEM_SPEC.md section 3. `[CORE / DATA]` slices need passing unit te
 
 ## Tier 3 (specs: docs/tier3-specs.md, build order row 1)
 
-## Global Archive UX (spec: `docs/canonical-archive-ux-spec.md`)
+## Global Archive UX (spec: `docs/archive/canonical-archive-ux-spec.md`)
 
 ## Ingest and self-healing canon (plan: `docs/ingest-canon-plan.md`, approved 2026-11-13; open each issue when the slice starts)
 
@@ -25,9 +25,9 @@ Contracts: SYSTEM_SPEC.md section 3. `[CORE / DATA]` slices need passing unit te
 
 ## Harness rollout (hub plan harness-consistency, approved by Charlie 2026-11-17)
 
-## Edition lineup from the edition name (docs/edition-lineup-from-name-spec.md)
+## Edition lineup from the edition name (docs/archive/edition-lineup-from-name-spec.md)
 - [x] **Slice 20.3: Member lineup offers from linked editions** [CORE / DATA] On-the-fly: Charlie: build slice 5 of the edition lineup spec (member Fill gaps), server part Target files: src/server/canon/nameArtists.ts, src/server/entities/routes.ts, tests/nameArtists.test.ts | Issue: #494 | Verify: npm test --silent
-- [x] **Slice 20.4: Finder readout panel (Stage 1.2)** [UI / VISUAL] Client method and Manage panel under the reader panel, owner only; plan: docs/specs/event-fetch-stage-1-2-plan.md Target files: src/services/lineupApi.ts, src/components/FinderReadoutPanel.tsx, src/App.tsx | Issue: #504 | Verify: npm run lint --silent
+- [x] **Slice 20.4: Finder readout panel (Stage 1.2)** [UI / VISUAL] Client method and Manage panel under the reader panel, owner only; plan: docs/archive/event-fetch-stage-1-2-plan.md Target files: src/services/lineupApi.ts, src/components/FinderReadoutPanel.tsx, src/App.tsx | Issue: #504 | Verify: npm run lint --silent
 - [x] **Slice 20.508: Link series brand text to the Brands tab** [CORE / DATA] On-the-fly: Charlie: Brownies & Lemonade missing from Brands (issue 508) Target files: src/server/brands/store.ts, src/server/lineup/store/supabaseStore.ts, tests/brandsStore.test.ts, docs/architecture/12-data-model.md | Issue: #508 | Verify: npm test --silent
 - [x] **Slice 20.2: Finder readout server (Stage 1.2)** [CORE / DATA] On-the-fly: Charlie approved Stage 1 and chose Plan it with /spec for 1.2 (2026-11-18), plan PR #506 Target files: src/server/telemetry/finderReadout.ts, src/server/lineup/routes.ts, tests/finderReadout.test.ts, docs/architecture/02-stage-1-capture-and-details.md | Issue: #493 | Verify: npm test --silent
 - [x] **Slice 20.522: Event fetch Stage 1.3 fixtures** [CORE / DATA] On-the-fly: Event fetch PRD Stage 1.3 (Charlie-approved plan) Target files: tests/eventFetchFixtures.test.ts, tests/fixtures/eventFetch | Issue: #522 | Verify: node --import tsx --test tests/eventFetchFixtures.test.ts
@@ -43,10 +43,10 @@ Contracts: SYSTEM_SPEC.md section 3. `[CORE / DATA]` slices need passing unit te
 - [x] **Slice 20.551: Event fetch Stage 4.2: read page event data when a result has no date** [CORE / DATA] On-the-fly: Charlie: continue building Stage 4 (PRD approved) Target files: src/server/events/details.ts, src/server/events/place.ts, tests/eventFetchStage4.test.ts | Issue: #551 | Verify: npm test --silent
 - [x] **Slice 20.559: Event fetch Stage 4.3: skip hosts that refused the Worker** [CORE / DATA] On-the-fly: Charlie: continue building Stage 4 (PRD approved) Target files: src/server/events/refusedHosts.ts, src/server/events/backfillResearch.ts, worker/index.ts, tests/refusedHosts.test.ts | Issue: #559 | Verify: npm test --silent
 
-## DB & Logs Improvement Pass (spec: `docs/specs/2026-11-18-db-logs-improvement-spec.md`)
-- [x] **Slice 21.1: Save DB/logs improvement spec and ship P0 stability fixes** [CORE / DATA] Target files: docs/specs/2026-11-18-db-logs-improvement-spec.md, src/server/entities/routes.ts, src/server/events/braveBudget.ts, src/server/events/backfillResearch.ts, src/server/events/details.ts, wrangler.jsonc, tests/improvementPassP0.test.ts | Verify: npm run lint --silent && npm test --silent
+## DB & Logs Improvement Pass (spec: `docs/archive/2026-11-18-db-logs-improvement-spec.md`)
+- [x] **Slice 21.1: Save DB/logs improvement spec and ship P0 stability fixes** [CORE / DATA] Target files: docs/archive/2026-11-18-db-logs-improvement-spec.md, src/server/entities/routes.ts, src/server/events/braveBudget.ts, src/server/events/backfillResearch.ts, src/server/events/details.ts, wrangler.jsonc, tests/improvementPassP0.test.ts | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 21.2: Remove cold-start probes, batch idle cron queries, sync has_lineup and silence public auth warns** [CORE / DATA] Target files: src/server/lineup/service.ts, src/server/share/door.ts, src/server/lineup/store/types.ts, src/server/lineup/store/supabaseStore.ts, src/server/lineup/store/fileStore.ts, src/server/canon/memberBackfill.ts, worker/index.ts, tests/improvementPassP1.test.ts | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 21.3: Harden Eventbrite venue parsing, seed lineup casing from canonical artists and normalize country display** [CORE / DATA] Target files: src/server/events/email/eventbrite.ts, src/server/events/email/imports.ts, src/server/lineup/pipeline.ts, src/server/events/regions.ts, src/server/events/service.ts, tests/improvementPassP2.test.ts | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 21.4: Add migration 0054 for RLS/index hardening and data repairs plus architecture doc updates** [CORE / DATA] Target files: supabase/migrations/0054_db_perf_rls_and_lineup_flag.sql, docs/architecture/02-stage-1-capture-and-details.md, docs/architecture/12-data-model.md, docs/architecture/16-hosting.md, tests/migration0054.test.ts | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 21.5: Preload Google Identity Services on BrowserScan mount and allow popups in COOP** [UI / VISUAL] Target files: src/components/BrowserScan.tsx, public/_headers, tests/browserScan.test.ts | Verify: npm run lint --silent && npm test --silent
-- [ ] **Slice 21.591: Docs cleanup 1: docs index, spec statuses and archive** [IN_PROGRESS] [CORE / DATA] On-the-fly: Charlie: full docs audit, approved scope 2026-11-23 Target files: docs/, tests/docsLinks.test.ts | Issue: #591 | Verify: npm test --silent
+- [x] **Slice 21.591: Docs cleanup 1: docs index, spec statuses and archive** [CORE / DATA] On-the-fly: Charlie: full docs audit, approved scope 2026-11-23 Target files: docs/, tests/docsLinks.test.ts | Issue: #591 | Verify: npm test --silent

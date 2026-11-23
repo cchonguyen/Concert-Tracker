@@ -1,6 +1,8 @@
 # LiveArchive Tier 2 Ticket Review
 
-> **Date**: 2026-11-02. **Covers**: SEC-01, PERF-01, PERF-02, REL-01, A11Y-02, A11Y-03, FEAT-03 in [engineering-ticket-bank.md](engineering-ticket-bank.md).
+> **Archived 2026-11-23.** Its findings were written into the [ticket bank](../engineering-ticket-bank.md) on 2026-11-02.
+
+> **Date**: 2026-11-02. **Covers**: SEC-01, PERF-01, PERF-02, REL-01, A11Y-02, A11Y-03, FEAT-03 in [engineering-ticket-bank.md](../engineering-ticket-bank.md).
 > **Outcome**: the tickets in the bank were rewritten from this review. Line numbers refer to the code as of this date.
 
 Every finding below was checked against the current code, not just the ticket text.
@@ -19,7 +21,7 @@ Every finding below was checked against the current code, not just the ticket te
 
 ## SEC-01: Cold-start concurrency race in `ensureServer`
 
-**What the code actually does** ([index.ts](../worker/index.ts#L67-L87)): `ensureServer` checks `listening` again on line 70, *after* `await getDeps(env)`. Between that second check and `listening = true` on line 86, nothing yields: `createApiApp` is synchronous and `app.listen` returns synchronously. An isolate runs one thread, so two cold requests can't both reach `app.listen`. `getDeps` already memoizes its promise and resets it on failure.
+**What the code actually does** ([index.ts](../../worker/index.ts#L67-L87)): `ensureServer` checks `listening` again on line 70, *after* `await getDeps(env)`. Between that second check and `listening = true` on line 86, nothing yields: `createApiApp` is synchronous and `app.listen` returns synchronously. An isolate runs one thread, so two cold requests can't both reach `app.listen`. `getDeps` already memoizes its promise and resets it on failure.
 
 **Edge cases that do exist**
 - `app.listen(PORT)` reports `EADDRINUSE` and similar failures as an asynchronous `'error'` event, but `listening = true` is set anyway. The isolate would then send every request to a dead port. In workerd this is very unlikely, but nothing catches it.
@@ -37,10 +39,10 @@ Every finding below was checked against the current code, not just the ticket te
 
 ## PERF-01: `listSeenArtistNames` for `stageMerge`
 
-The problem is real. [pipeline.ts:369](../src/server/lineup/pipeline.ts#L369) deserializes every `logged_events` row (sources, details, weather, candidates) just to read names. On Workers Free (10 ms CPU), parsing that JSON is the expensive part, not the single subrequest.
+The problem is real. [pipeline.ts:369](../../src/server/lineup/pipeline.ts#L369) deserializes every `logged_events` row (sources, details, weather, candidates) just to read names. On Workers Free (10 ms CPU), parsing that JSON is the expensive part, not the single subrequest.
 
 **Edge cases and failure modes**
-- **Tenant leak (critical).** `scopedFileStore` returns a `Proxy` that falls through to the base store for any method it doesn't override ([fileStore.ts](../src/server/lineup/store/fileStore.ts#L930-L938)). A new `listSeenArtistNames` added only to `FileLineupStore` would return **every member's** names in a scoped context. That breaks rule 4 without any error.
+- **Tenant leak (critical).** `scopedFileStore` returns a `Proxy` that falls through to the base store for any method it doesn't override ([fileStore.ts](../../src/server/lineup/store/fileStore.ts#L930-L938)). A new `listSeenArtistNames` added only to `FileLineupStore` would return **every member's** names in a scoped context. That breaks rule 4 without any error.
 - **Supabase scoping.** The query has to go through `this.mine(this.own('logged_events')...)`, or it ignores `user_id` and RLS.
 - **Silent truncation.** PostgREST caps responses at 1,000 rows by default. `listEvents` doesn't page today, and this already-known gap carries over. A new method should page with `.range()`, the same way `performances` does at line 367.
 - Soft-deleted events: keep `.is('deleted_at', null)` so spellings from events in the trash don't come back.
@@ -59,12 +61,12 @@ The problem is real. [pipeline.ts:369](../src/server/lineup/pipeline.ts#L369) de
 
 ## PERF-02: Weather cache
 
-**Context**: weather is fetched only when you ask, and is stored on the event together with `sourceUrl` ([routes.ts:187](../src/server/events/routes.ts#L187-L193)). Asking again for the same event is rare, so the cache's hit rate will be low.
+**Context**: weather is fetched only when you ask, and is stored on the event together with `sourceUrl` ([routes.ts:187](../../src/server/events/routes.ts#L187-L193)). Asking again for the same event is rare, so the cache's hit rate will be low.
 
 **Edge cases**
 - **The data isn't immutable.** Open-Meteo first serves preliminary ERA5T data and replaces it with final ERA5 data about 2–3 months later. `ARCHIVE_LAG_DAYS = 5` only keeps out *missing* data. A 1-year TTL would pin preliminary values.
 - **The proposed key is incomplete.** `weather:${lat}:${lon}:${start}:${end}` leaves out the `daily=` variables and `timezone`. If a field is added later, the cache keeps serving the old shape. Floats in the key are also fragile (`51.5` vs `51.50`).
-- **`cachingFetcher` hard-codes `sourceType: 'ticketmaster'`** ([responseCache.ts:59](../src/server/lineup/responseCache.ts#L59)) and has one global 24 h TTL. Adding a second host as-is would mislabel its rows.
+- **`cachingFetcher` hard-codes `sourceType: 'ticketmaster'`** ([responseCache.ts:59](../../src/server/lineup/responseCache.ts#L59)) and has one global 24 h TTL. Adding a second host as-is would mislabel its rows.
 - **Status 200 with nothing in it**: the archive can answer 200 with every value null. `cachingFetcher` only checks the status, so it would cache that for a year.
 - The geocoder must **not** be cached. The "exactly one place" ambiguity check has to run on live results.
 - The cache only exists when `SOURCE_CACHE=on`.
@@ -81,7 +83,7 @@ The problem is real. [pipeline.ts:369](../src/server/lineup/pipeline.ts#L369) de
 
 ## REL-01: Queue terminal failure handler
 
-**What the code actually does**: `runJob` already wraps every stage in try/catch ([pipeline.ts:420-454](../src/server/lineup/pipeline.ts#L420-L454)). Errors other than quota errors increment `attempts`, back off `2^n` minutes, and set `failed` after `MAX_ATTEMPTS = 3`. So the only errors that escape to `queue()` come from:
+**What the code actually does**: `runJob` already wraps every stage in try/catch ([pipeline.ts:420-454](../../src/server/lineup/pipeline.ts#L420-L454)). Errors other than quota errors increment `attempts`, back off `2^n` minutes, and set `failed` after `MAX_ATTEMPTS = 3`. So the only errors that escape to `queue()` come from:
 1. `getDeps` (Supabase or config unreachable),
 2. `getJob` / the `updateJob` that sets `running` / the final `updateJob`,
 3. `LOOKUP_QUEUE.send`,
@@ -109,7 +111,7 @@ The problem is real. [pipeline.ts:369](../src/server/lineup/pipeline.ts#L369) de
 ## A11Y-02: `NoticeModal` on the shared `Dialog`
 
 **Edge cases**
-- **Stacking order.** `NoticeModal` renders *alongside* the app ([App.tsx:375](../src/App.tsx#L375-L377)), not instead of it. A deep link that opens a `Dialog` after mount (event detail, for example) is pushed onto `openDialogs` after the notice. It then takes Escape and Tab while sitting visually *under* the notice. The notice uses `z-[100]` and `Dialog` uses `z-50`, so moving it to `Dialog` without a z-override also lets the sticky header and toasts compete with it.
+- **Stacking order.** `NoticeModal` renders *alongside* the app ([App.tsx:375](../../src/App.tsx#L375-L377)), not instead of it. A deep link that opens a `Dialog` after mount (event detail, for example) is pushed onto `openDialogs` after the notice. It then takes Escape and Tab while sitting visually *under* the notice. The notice uses `z-[100]` and `Dialog` uses `z-50`, so moving it to `Dialog` without a z-override also lets the sticky header and toasts compete with it.
 - **Height.** `CENTER_PANEL` has no `max-h`/`overflow-y-auto`. On mobile, `items-end` plus this long text can push the accept button off-screen.
 - **Busy state.** The button becomes `disabled` while the request runs, so focus falls to `<body>`. `Dialog`'s Tab handler then finds no focusable items and swallows Tab, leaving focus stranded outside the panel.
 - **Errors aren't announced.** The error `<p>` has no `role="alert"`.
@@ -126,7 +128,7 @@ The problem is real. [pipeline.ts:369](../src/server/lineup/pipeline.ts#L369) de
 
 ## A11Y-03: Table keyboard navigation
 
-**What the code actually does** ([TableView.tsx:622-628](../src/components/TableView.tsx#L622-L628)): every `<tr>` already has `tabIndex={0}` and opens on Enter. The ticket's diagnosis is partly out of date. The real cost is N row stops plus the inner buttons (the series button in `DetailsCell`, and so on), and there are no arrow keys.
+**What the code actually does** ([TableView.tsx:622-628](../../src/components/TableView.tsx#L622-L628)): every `<tr>` already has `tabIndex={0}` and opens on Enter. The ticket's diagnosis is partly out of date. The real cost is N row stops plus the inner buttons (the series button in `DetailsCell`, and so on), and there are no arrow keys.
 
 **Edge cases**
 - **Today-indicator rows** are mixed in between data rows. Moving to the DOM sibling would land on them. Move by index into `rows`, never by sibling.
@@ -146,7 +148,7 @@ The problem is real. [pipeline.ts:369](../src/server/lineup/pipeline.ts#L369) de
 ## FEAT-03: setlist.fm setlist link
 
 **Blockers**
-- **A made-up fallback URL.** [details.ts:139](../src/server/events/details.ts#L139) does `s.url ?? 'https://www.setlist.fm'`, and the stage 2 adapter falls back to a search URL ([setlistfm.ts:83](../src/server/lineup/adapters/setlistfm.ts#L83)). If either is saved as "Setlist on setlist.fm", the app shows a link it invented, which breaks rules 1 and 2.
+- **A made-up fallback URL.** [details.ts:139](../../src/server/events/details.ts#L139) does `s.url ?? 'https://www.setlist.fm'`, and the stage 2 adapter falls back to a search URL ([setlistfm.ts:83](../../src/server/lineup/adapters/setlistfm.ts#L83)). If either is saved as "Setlist on setlist.fm", the app shows a link it invented, which breaks rules 1 and 2.
 - **A requirements change.** This is idea #3 in REQUIREMENTS §13. AGENTS.md requires updating REQUIREMENTS.md and ARCHITECTURE.md first, and putting the multi-step plan under `docs/`.
 
 **Edge cases**

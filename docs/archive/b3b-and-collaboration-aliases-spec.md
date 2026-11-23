@@ -1,5 +1,7 @@
 # B3B / B2B2B and Collaboration Aliases Specification
 
+> **Archived 2026-11-23.** Built: three-way sets are read in `src/server/lineup/actName.ts`, acts carry `alias`, and Manage has the collaborations card.
+
 ## 1. Overview & Goals
 
 This specification extends LiveArchive's performance slot architecture with two capabilities:

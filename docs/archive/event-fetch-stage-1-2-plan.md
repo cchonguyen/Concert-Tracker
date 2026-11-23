@@ -1,5 +1,7 @@
 # Event fetch upgrade, Stage 1.2: owner-only finder readout
 
+> **Archived 2026-11-23.** Built as Slices 20.2 and 20.4.
+
 Source: `docs/specs/event-fetch-upgrade-prd.md`, Stage 1 row 1.2.
 
 ## Goal

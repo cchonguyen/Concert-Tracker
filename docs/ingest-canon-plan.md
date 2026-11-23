@@ -1,6 +1,6 @@
 # Event ingest and self-healing canon: implementation plan
 
-Status: approved by Charlie on 2026-11-13, revised after the code review the same day (see section 7). Source: the council verdict Charlie posted on 2026-11-13, checked against the code at `9186e68` and the production database. Review packet: "Event ingest: today and planned" (Claude Doc).
+Status: built. Slices 11.0 to 11.22 are merged, with follow-ups 11.23 to 11.25. Personal-field encryption (section 4) is still on hold. Approved by Charlie on 2026-11-13, revised after the code review the same day (see section 7). Source: the council verdict Charlie posted on 2026-11-13, checked against the code at `9186e68` and the production database. Review packet: "Event ingest: today and planned" (Claude Doc).
 
 Merging this file accepts the slices in section 5. Each slice opens its own GitHub issue (labels `slice`, `status:backlog`, the project label) before it starts. Implementers: read sections 3 and 6 before any slice.
 
@@ -101,7 +101,7 @@ Every slice is under 5 files, has its own issue, and runs `npm run lint --silent
 - **11.2** `[CORE / DATA]` Parser keeps the full text; ` in ` no longer splits on its own (only ` at `, `@` and a comma mark a place); it lists up to two readings for research. Targets: `src/server/events/parse.ts`, `tests/events.test.ts`.
 - **11.3** `[UI / VISUAL]` Picker rows show name, weekday and date, venue, city and region, and a source count. Targets: `src/components/CheckDetails.tsx`, `src/services/checkDetails.ts`.
 - **11.4** `[CORE / DATA]` `reader_preflight` and `reader_settle` database functions run every guard and every ledger and log write; one AI call drops from about 16 subrequests to 3. Kill switch and breaker stay. Targets: `supabase/migrations/0040_reader_rpcs.sql` [NEW], `src/server/reader/guard.ts`, `src/server/reader/callLog.ts`, `src/server/lineup/store/supabaseStore.ts`.
-- **11.5** `[CORE / DATA]` Input ceiling and window default to 30,000 characters; default model stays `gemini-3.5-flash-lite`; mark Slice 10.17 won't-do. Targets: `src/server/reader/config.ts`, `tests/readerConfig.test.ts`, `docs/ai-reader-spec.md`.
+- **11.5** `[CORE / DATA]` Input ceiling and window default to 30,000 characters; default model stays `gemini-3.5-flash-lite`; mark Slice 10.17 won't-do. Targets: `src/server/reader/config.ts`, `tests/readerConfig.test.ts`, `docs/archive/ai-reader-spec.md`.
 - **11.6** `[CORE / DATA]` Stage 2 gates (section 3). Targets: `src/server/lineup/pipeline.ts`, `tests/pipeline.test.ts`.
 - **11.7** `[CORE / DATA]` A MusicBrainz 503 parks `resolve_artists` with a retry time; the 42 failed jobs are re-queued once. Targets: `src/server/lineup/pipeline.ts`, `src/server/lineup/musicbrainz.ts`, `tests/musicbrainzRetry.test.ts` [NEW].
 

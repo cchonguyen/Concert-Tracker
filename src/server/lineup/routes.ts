@@ -22,7 +22,7 @@ const safeJob = (job: LookupJob): LookupJob => ({
   log: job.log.map((e) => ({ ...e, message: redactSecrets(e.message) })),
 });
 
-// Owner view of the reader (docs/ai-reader-spec.md "Owner view"). Counts, sizes and codes only:
+// Owner view of the reader (docs/archive/ai-reader-spec.md "Owner view"). Counts, sizes and codes only:
 // never page text, prompts, quotes or names. Members get the summary without spend, caps, log or recent.
 export async function readerStatus(deps: PipelineDeps, owner: boolean, env: Record<string, unknown> = process.env) {
   const reader = deps.reader;

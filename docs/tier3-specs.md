@@ -1,6 +1,6 @@
 # Tier 3 Engineering Excellence: build specs
 
-> **Status:** Ready to build, written 2026-11-03. This replaces the Tier 3 entries in `docs/engineering-ticket-bank.md` and the brief in `docs/tier3-ticket-review.md`. Where they disagree, this file wins.
+> **Status:** TECH-04 and FETCH-01 built (PRs #229, #233). The other tickets are not started. Written 2026-11-03; where this file and `docs/engineering-ticket-bank.md` disagree, this file wins.
 > **Basis:** Every fact was checked against `origin/main` at `8ea4a71` (2026-11-03). The review behind it: [Tier 3 deep dive](https://claude.ai/artifact/UWKAnHqfgH1kM9awt4wEVa).
 > **Decisions accepted by Charlie (2026-11-03):** stay on Workers Free; TECH-01 output must stay byte-identical; commit the RLS migrations as applied, and drop legacy tables only after a row count; store the Clashfinder index in Workers KV.
 
