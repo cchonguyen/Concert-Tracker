@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import type { Fetcher, SourceType } from '../lineup/types';
-import { createRateLimitedFetcher, parseJson } from '../lineup/http';
+import { createRateLimitedFetcher, HttpError, parseJson } from '../lineup/http';
 import { InputError } from '../lineup/pipeline';
 import { addDays, decodeEntities, domainOf, normalizeName } from '../lineup/text';
 import { eventWords } from '../lineup/search';
 import { findDates, parseEventInput } from './parse';
 import { matchingEvents } from '../lineup/adapters/ticketmaster';
-import { clashfinderAuthQuery, LIST_MAX_BYTES, matchEdition, parseEventList } from '../lineup/adapters/clashfinder';
+import { CLASHFINDER_LIST_MEMO_MS, clashfinderAuthQuery, clashfinderEventList, matchEdition, type ClashfinderEventList } from '../lineup/adapters/clashfinder';
+// Kept for callers and tests that reset the shared Clashfinder list between runs.
+export { resetClashfinderListMemo } from '../lineup/adapters/clashfinder';
 import { cityLabel, cityPoint, eventsFromPage, metroRadiusMiles, placeFromPage, withinRadius } from './place';
 import { cityWithRegion, splitEventCity } from './regions';
 import type { Edition, EditionWeekend } from '../lineup/types';
@@ -232,32 +234,19 @@ export const setlistfmFinder: DetailFinder = {
   },
 };
 
-// Clashfinder: festival editions and their start dates.
-// The parsed list is kept in memory for a day per Worker instance, so a Check details press does not download
-// and parse the 4 MB list again each time. Memory only: nothing is written to the database or to a cache store.
-const CLASHFINDER_LIST_MEMO_MS = 24 * 60 * 60 * 1000;
-let clashfinderListMemo: { at: number; entries: ReturnType<typeof parseEventList> } | null = null;
-
-export function resetClashfinderListMemo(): void {
-  clashfinderListMemo = null;
-}
-
+// Clashfinder: festival editions and their start dates. The list comes from the shared download
+// (clashfinderEventList), reused for a day. A list Clashfinder refuses or fails to send gives no candidate; a list
+// cut at the size cap is reported.
 export const clashfinderFinder: DetailFinder = {
   id: 'clashfinder',
   enabled: () => clashfinderAuthQuery() !== null,
   async find(q, fetcher) {
-    const now = Date.now();
-    let entries: ReturnType<typeof parseEventList>;
-    if (clashfinderListMemo && now - clashfinderListMemo.at < CLASHFINDER_LIST_MEMO_MS) {
-      entries = clashfinderListMemo.entries;
-    } else {
-      // The whole list is needed to match (no search call), so it gets the same 32 MB cap as the lineup adapter.
-      const res = await fetcher.get(`https://clashfinder.com/data/events/all.json?${clashfinderAuthQuery()}`, { maxBytes: LIST_MAX_BYTES });
-      // A cut-off list is reported, not parsed.
-      if (res.truncated) throw new Error(`Clashfinder's event list is larger than ${LIST_MAX_BYTES / (1024 * 1024)} MB, so it was not read in full.`);
-      if (res.status !== 200) return [];
-      entries = parseEventList(parseJson(res));
-      clashfinderListMemo = { at: now, entries };
+    let entries: ClashfinderEventList;
+    try {
+      entries = await clashfinderEventList(fetcher, { maxAgeMs: CLASHFINDER_LIST_MEMO_MS });
+    } catch (err) {
+      if (err instanceof HttpError && err.status !== 200) return [];
+      throw err;
     }
     const match = matchEdition(entries, q.name, q.year!, q.startDate);
     if (!match) return [];

@@ -38,3 +38,15 @@ test('a failed download is not remembered, so the next check tries again', async
   await clashfinderFinder.find(q, fetcher);
   assert.equal(calls, 2);
 });
+
+test('Find the lineup always downloads a fresh list and leaves it for the next Check details', async () => {
+  const { clashfinderEventList } = await import('../src/server/lineup/adapters/clashfinder.ts');
+  resetClashfinderListMemo();
+  const { fetcher, calls } = countingFetcher();
+  await clashfinderEventList(fetcher, { maxAgeMs: 0 });
+  await clashfinderEventList(fetcher, { maxAgeMs: 0 });
+  assert.equal(calls.length, 2, 'the lookup and the picker never reuse a cached list');
+  const q = { name: 'Some Festival', year: 2026 } as Parameters<typeof clashfinderFinder.find>[0];
+  await clashfinderFinder.find(q, fetcher);
+  assert.equal(calls.length, 2, 'Check details reuses the list the lookup just downloaded');
+});
