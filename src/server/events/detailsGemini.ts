@@ -37,7 +37,7 @@ export function geminiReader(reader: GuardedReader, eventId: string, now: () => 
       let pages = urls;
       if (braveFinder.enabled()) {
         try {
-          pages = [...new Set([...urls, ...(await braveResults(q, fetcher)).map((r) => r.url)])];
+          pages = [...new Set([...urls, ...(await braveResults(q, fetcher, 'stage1_gemini')).map((r) => r.url)])];
         } catch (err) {
           notes.push(`gemini: web search failed: ${err instanceof Error ? err.message : String(err)}`);
         }
