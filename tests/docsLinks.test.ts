@@ -66,6 +66,25 @@ test('every relative Markdown link in the .spec/ notes resolves', () => {
   assert.deepEqual(dead, []);
 });
 
+// A file path quoted in code style in ARCHITECTURE.md, REQUIREMENTS.md or docs/architecture/ must exist,
+// so a moved or renamed file cannot leave the architecture pointing at nothing.
+test('every repo path quoted in the architecture docs exists', () => {
+  const archDir = path.join(docsDir, 'architecture');
+  const files = [
+    path.join(root, 'ARCHITECTURE.md'),
+    path.join(root, 'REQUIREMENTS.md'),
+    ...readdirSync(archDir).filter((name) => name.endsWith('.md')).map((name) => path.join(archDir, name)),
+  ];
+  const quoted = /`((?:src|tests|scripts|supabase|worker|public|packages)\/[^`\s*<>{}]+)`/g;
+  const missing = files.flatMap((file) =>
+    [...readFileSync(file, 'utf8').matchAll(quoted)]
+      .map((match) => match[1].replace(/[:#].*$/, '').replace(/\/$/, ''))
+      .filter((target) => !existsSync(path.join(root, target)))
+      .map((target) => `${path.relative(root, file)} -> ${target}`),
+  );
+  assert.deepEqual(missing, []);
+});
+
 test('closed tickets are not also in the open ticket bank', () => {
   const ticketId = /^### \[([A-Z0-9-]+)\]/gm;
   const openIds = [

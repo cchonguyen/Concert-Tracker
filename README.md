@@ -15,7 +15,7 @@ LiveArchive is a personal concert and festival log that helps you remember which
    ```bash
    npm install
    ```
-2. Copy [`.env.example`](.env.example) to `.env.local` and configure any optional API keys (`GEMINI_API_KEY`, `TICKETMASTER_API_KEY`, `SETLISTFM_API_KEY`, `BRAVE_SEARCH_API_KEY`, or `LOCAL_DEV_OWNER="on"` for local development). Without Supabase configured, the server uses a local file store under `./data`.
+2. Copy [`.env.example`](.env.example) to `.env` and configure any optional API keys (`GEMINI_API_KEY`, `TICKETMASTER_API_KEY`, `SETLISTFM_API_KEY`, `BRAVE_SEARCH_API_KEY`, or `LOCAL_DEV_OWNER="on"` for local development). Without Supabase configured, the server uses a local file store under `./data`.
 3. Start the local development server:
    ```bash
    npm run dev
