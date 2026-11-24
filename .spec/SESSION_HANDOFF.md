@@ -1,11 +1,11 @@
 # Session Handoff
 
-- **Last Active Platform:** Claude Code (cloud session, project thread "Clean up outdated docs and app text")
+- **Last Active Platform:** Claude Code (cloud session, project thread "Scope auto-filling venue location")
 - **Branch Owner:** Claude
-- **Active Branch / State:** `claude/project-thread-47kcgx`, off main at 09d2e5f (PR #607 merged 2026-11-24). Last slice of the docs, comments and app text cleanup (Slice 9, issue #608); all other slices merged.
-- **Files Modified in Last Turn:** `public/privacy.html`, `public/terms.html`, `src/components/AboutDialog.tsx`, `tests/uiText.test.ts`, `docs/README.md`, `docs/specs/docs-and-text-cleanup.md`, `.spec/OVERVIEW.md`, `.spec/SESSION_HANDOFF.md`.
-- **Verification Status:** Verified via finish-slice.mjs (Slice 21.608)
-- **Immediate Next Step:** merge the Slice 9 pull request when green. The cleanup is then done; nothing else is queued.
+- **Active Branch / State:** `claude/project-thread-ipjor1`, off main at 3489cbf. Spec only: `docs/specs/venue-location-fill.md` (seven slices, Charlie answered the four scope questions 2026-11-24). No code yet.
+- **Files Modified in Last Turn:** `docs/specs/venue-location-fill.md`, `docs/README.md`, `.spec/SESSION_HANDOFF.md`.
+- **Verification Status:** typecheck passed; 1456 of 1457 tests passed, the one failure (spec not in docs index) fixed and re-run green.
+- **Immediate Next Step:** Charlie approves the spec pull request, then build Slice 1 (`venueLocation` rule and store read).
 - **Open gaps:**
   - Harness: hub PR #208 (merged 2026-11-23) makes the scope check read `Approved-Tripwire:` trailers from the PR's own head commit when CI checks out GitHub's merge commit. Synced into this repo in PR #592.
   - Charlie's wording answers for the cleanup (2026-11-23) are recorded in the cleanup spec under "Decisions".
