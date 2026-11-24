@@ -1,6 +1,6 @@
 # Streamlining plan
 
-Status: approved by Charlie 2026-11-24 (he chose "Wire it in" for auto-verify). Building one slice at a time. Review doc: the "LiveArchive: redundancy and streamlining review" Claude Doc.
+Status: approved by Charlie 2026-11-24 (he chose "Wire it in" for auto-verify, and "delete the scripts" for slice 5). Built 2026-11-24: PRs #636, #639, #641, #643, #649, #652 and the tidy-up PR. Review doc: the "LiveArchive: redundancy and streamlining review" Claude Doc.
 
 ## Goal
 

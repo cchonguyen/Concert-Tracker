@@ -21,44 +21,6 @@ Feature: **Two-way reader test: Cloudflare Workers AI and paid Gemini, with an A
 - **Facts:** `src/server/lineup/gemini.ts` is the only SDK user. Call sites: pipeline.ts (stage 2), events/detailsGemini.ts (stage 1 button), search.ts geminiSearch (grounded discovery, off). No `ai` binding in wrangler.jsonc. `quota_ledger` key is text `provider:model:window`. Workers AI: 10,000 free neurons a day, error 3036 = allowance used, 3040 = busy (both HTTP 429), several models default `max_tokens` to 256, JSON schema not guaranteed. Gemini paid: HTTP 402 at zero balance. Workers Free: 50 subrequests per request, so the log is one write per call at most.
 - **Charlie applies migrations; threads only write them.** Next free number is 0038.
 
-## Prev 1b. Design system export (triaged 2026-11-12, kept for reference)
-Feature: **Design system export for onboarding new Claude Code apps** (triaged 2026-11-12, discovery brief, not yet approved).
-
-- **Core user problem:** Charlie wants a new app built with Claude Code to start with LiveArchive's design language and philosophy, without re-explaining it.
-- **What exists:** shared components in `src/components/ui/`; theme in `src/services/theme.ts` and `src/index.css` (Tailwind v4 CSS-first, accent scales, light remap, radius tokens); `docs/architecture/15-shared-ui.md` (component inventory, touch targets, reduced motion, breakpoints); AGENTS.md "Design system" section; REQUIREMENTS.md ranked principles. No token file or export exists. No typography, spacing or motion tokens exist. No voice or copy guide exists.
-- **Proposed export (docs only):** `docs/design-system/` holding a token file (JSON) and a short Markdown guide. Categories: philosophy (ranked principles), tokens (colour, accents, light/dark, radius, breakpoints), components (purpose, props, states, a11y contract), patterns (detail shell, save status, popover vs menu), accessibility rules, voice and copy (warm, inviting, never cloying; to be written), AI-agent rules (the AGENTS.md design rules, generalised), and onboarding steps for a new Claude Code repo.
-- **Files-Touched (estimate):** 2 to 4 new docs, optional AGENTS.md link. Contract-Change: no. Cross-Module: no.
-- **Open questions:** copy-by-hand or shared package later; write the voice section now; describe only what exists or also the intended direction.
-
-## Prev 1. Past-event suggestion (triaged 2026-11-11, built, kept for reference)
-Feature: **"What did you go to?" past-event suggestion** (triaged 2026-11-11, discovery brief, not yet approved).
-
-- **Core user problem (revised 2026-11-11 by Charlie):** when someone types a line for an event that already exists as a canonical edition, the bar should offer that edition, so a friend who adds it after Charlie gets the same canonical details. Searching only your own log is not enough.
-- **Proposed behavior:** as you type, the parsed line (name, venue, city via `parseEventInput`) is matched against canonical editions (`event_editions`, migration 0002). A match shows an "Is it this one?" offer under the bar. A tap links the new event to that edition (`logged_events.edition_id`, migration 0003), which brings its confirmed lineup and details. Nothing is saved or merged without a tap. Save stays first and never waits on the match.
-- **Privacy:** the search returns only canonical edition facts (name, date, place, confirmed lineup). It never reveals who else logged an event or anything from another user's personal log.
-- **Matching (proposed):** normalized exact match on series name (case, punctuation, leading "the") plus date or year. No fuzzy scoring.
-- **Architecture (proposed):** a new server search route over `event_editions` (read-only, owner-scoped auth as today), called as the user types, debounced. The client renders the offer with `SuggestInput` or a small list, and reuses `matchNames` and `suggestionsFor` (`src/services/format.ts`). No migration is expected, because `event_editions` and `logged_events.edition_id` already exist. A new route is a new API contract, so this is a contract change.
-- **Files-Touched (estimate):** about 6 to 8 (`CaptureBar.tsx`, a server search route, a store query, a pure matcher, a client hook, tests). Contract-Change: yes. Cross-Module: yes (client, server, database).
-- **Decisions (Charlie, 2026-11-11):**
-  1. A tap pre-fills the new event's fields from the canonical edition. Each filled field is sourced as the edition's source, not "you".
-  2. The same series name in a different year can match, but every suggestion shows its year.
-  3. A name alone is enough to match. Each suggestion shows its date.
-  4. Events in Recently deleted never match.
-- **R1.9 relevance:** venue and city already suggest what you have entered before, and city suggests real places as you type. Venue-to-place links apply to edition matches. Applies to typed fields only, so the suggestion feature stays separate from R1.9.
-  5. A pre-fill copies the canonical edition's date, location, venue, lineup and weather. Weather is one record per edition (`docs/archive/canonical-weather.md`).
-- **Plan:** `/mnt/project-files/canonical-autocomplete/plan.md` (stages A to C, slices A1 to B3). Open: lineup vs who you saw (AGENTS.md tap rule), members creating editions. Weather source closed: Open-Meteo archive, one record per edition.
-
-## Prev 1. Manage section (shipped, kept for reference)
-Feature: **Manage section** (triaged 2026-10-28). Full design: [../docs/manage-section-design.md](../docs/archive/manage-section-design.md).
-
-- **Core user problem:** artists, people, venues, places and series are free text copied onto each event, so fixing a spelling means editing events one by one, and the copies drift apart. Charlie wants one place to rename, merge and describe each of them once.
-- **MVP deliverables:**
-  1. **Records with permanent IDs** (migration 0014): `entities`, `entity_aliases`, `entity_links`, `entity_history`; events point at them by ID; backfill from current names (only exact matches after normalization are grouped; others become "possible duplicate" offers); old text columns kept and written alongside for one release. Sheets and CSV become one-way outputs from the app.
-  2. **Manage tab:** a list per category (Artists, People, Venues, Places, Series, Organizations), entry view with its events, Rename everywhere, Merge (old name kept as AKA), AKA, change history with undo. Series panel moves in; Organizations with "Hosted by" right after Series. Artists tab cards link to their Manage entry and back.
-  3. **Venue carries its place:** an event at a venue with a place takes that city, state and country everywhere, with no confirm step. On backfill, a venue whose events disagree stays empty and Data health asks Charlie to pick.
-- **Later slices, in order (not MVP):** people first/last name, note and width-adaptive display (full, First L., initials, longer when they would collide); labels as records (Indoor/Outdoor) with category fields, linked suggestions and the full Data health view; the "Do first" insights in the design doc.
-- **Blocking questions:** None. Assumed reading of "Sheets and CSV pull from the app": Sheet sync stops reading sheet edits back; "Import a list" stays for adding new events only.
-
 ## 2. Strictly Out of Scope ("Do NOT Build" List)
 - Automatic fallback from one provider to the other, or any retry with another model.
 - A replacement for Gemini's grounded web search (stays off; Brave path unchanged).
@@ -68,40 +30,9 @@ Feature: **Manage section** (triaged 2026-10-28). Full design: [../docs/manage-s
 - Page text or prompts in the call log (sizes and counts only).
 - Removing the Gemini code or renaming the buttons before the test result is in.
 
-## Prev 2b. Design system export Do NOT Build (kept for reference)
-Design system export:
-- No generator, build step or Style Dictionary pipeline. The export is a document.
-- No components that the app does not use yet (AGENTS.md: add only when needed).
-- No Storybook or docs site.
-- No published package or cross-repo sync. The harness engine stays hub-only.
-- No invented typography or motion tokens. Describe only what the app does.
-- No change to app code or runtime behavior.
+## Earlier features
 
-## Prev 2a. Past-event suggestion Do NOT Build (built, kept for reference)
-- No fuzzy, similarity or model matching. It would be guessing (AGENTS.md: never infer; principle 1).
-- No auto-merge, auto-fill or auto-add. Every change needs a tap (AGENTS.md: one-tap offers).
-- No waiting on the match before save (AGENTS.md: stage 1 never waits).
-- No model call or second parser. `parse.ts` stays code (AGENTS.md).
-- No new field on capture. The line stays one line.
-- No hardcoded venue or artist lists.
-- No writes to canonical lineup data from this feature. The personal log and canonical data stay separate.
-- No writes from sample mode.
-- No "I saw everyone" or other bulk tick of seen acts (Charlie, 2026-11-11). It invites ticking acts you did not see; each seen act is one tap.
-
-## Prev 2. Manage section Do NOT Build (shipped, kept for reference)
-- Anything AGENTS.md forbids (guessed data, hardcoded festival/venue/artist lists, model calls in parsing or saving, demo data, AXS scraping).
-- Manage section:
-  - Venue location lookup (finding a venue's address or city from a source). It is a separate, later requirement.
-  - Artist genres and anything from music-story, until that data has been checked.
-  - Showing a venue's name as it was on the night. Always show the current name; old names are AKA only.
-  - Contact links for people.
-  - Reading edits back from Google Sheets or CSV into existing events.
-  - Automatic merges of names that only look alike. These are offers only.
-  - Dropping the old text columns in the same release as the ID backfill.
-  - No Labels category, category-attribute gap prompts or linked label suggestions in the MVP (step 5).
-  - No People first/last name split or adaptive display in the MVP (step 4). In the MVP a person is one record with a single name plus AKA, like the other kinds.
-  - No hard delete of entities. A record goes away only by being merged into another one.
-  - The "hidden complexity" ideas (discovery story, MusicBrainz home city, lineup source per series, timezones, sourced capacity/status) and the "Do next" ideas (home city distance, spend per organization, crew view, B2B network).
+The scope and "Do NOT Build" notes for earlier features (Manage section, past-event suggestion, design system export) were removed on 2026-11-24: all three are built. The Manage section design is in `docs/archive/manage-section-design.md`, and the git history keeps the old notes.
 
 ## 3. Data Models & Module Boundaries
 

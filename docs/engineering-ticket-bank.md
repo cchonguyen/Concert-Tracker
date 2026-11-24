@@ -4,6 +4,7 @@
 > **Status**: Planning & Backlog. Ready for independent assignment across parallel engineering agents or contributors.
 > **Guiding Documents**: [REQUIREMENTS.md](../REQUIREMENTS.md), [ARCHITECTURE.md](../ARCHITECTURE.md), and [AGENTS.md](../AGENTS.md).
 > **Revised 2026-11-02**: SEC-01, PERF-01, PERF-02, REL-01, A11Y-02, A11Y-03 and FEAT-03 were rewritten after a code-checked peer review ([tier2-ticket-review.md](archive/tier2-ticket-review.md)). FEAT-03 is blocked.
+> **Trimmed 2026-11-24**: the eleven tickets that `docs/tier3-specs.md` specifies again (SEC-03, SEC-04, PERF-03, PERF-04, PERF-05, REL-02, REF-02, TECH-01 to TECH-03, LINEUP-05) now point there instead of repeating it.
 > **Checked 2026-11-04**: six closed tickets from the first pass plus three from the second pass (REL-01, LINEUP-02, LINEUP-03) moved to [docs/archive/engineering-ticket-bank-closed.md](archive/engineering-ticket-bank-closed.md). Ten open tickets carry a verdict line from the 2026-11-04 code audit.
 
 ---
@@ -50,36 +51,12 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
 ## Track 1: Security & Defense-in-Depth
 
 ### [SEC-03] Enforce RLS on Legacy & Base Tables (`0002_source_first_lineups.sql`)
-- **Audit 2026-11-04**: OPEN. 0029_enforce_rls_base_tables.sql does not exist; 0002 has no ENABLE ROW LEVEL SECURITY. Later migrations not checked.
-- **Classification**: Security Hardening / Database Hygiene
-- **Priority**: P1 (High)
-- **Files**: [`supabase/migrations/`](../supabase/migrations)
-- **Problem**:
-  Tables defined in `0002_source_first_lineups.sql` (`canonical_artists`, `performances`, `source_documents`, `performer_claims`, `quota_ledger`, `source_stats`, `corrections`, `extraction_examples`, `attendance`, `seen_sets`) do not have `ALTER TABLE ... ENABLE ROW LEVEL SECURITY;`.
-  Specifically, `attendance` and `seen_sets` are legacy tables from pre-0003 single-step flow that may still retain personal fields (`notes`, `companions`, `rating`, `ticket_price`) if an older installation was migrated.
-- **Implementation Strategy**:
-  1. Create migration `0029_enforce_rls_base_tables.sql`:
-     - Enable RLS on all remaining shared/canonical tables: `canonical_artists`, `event_series`, `event_editions`, `performances`, `source_documents`, `performer_claims`, `quota_ledger`, `artist_aliases`, `extraction_blocklist`, `source_stats`, `corrections`, `extraction_examples`.
-     - Add read-only policies for `authenticated` where needed (e.g. reading canonical lineups, editions), and restrict inserts/updates to `service_role`.
-     - Explicitly drop or secure legacy tables `attendance` and `seen_sets`: verify if data was already migrated into `logged_events` (via 0003), drop tables if confirmed empty/legacy or lock with strict RLS.
-- **Invariants**: Canonical editions are shared facts about the world; personal logs stay private. Service key continues full access.
-- **Test Plan**: Execute `npm run test:rls` against scratch Postgres.
 
----
+The build spec for this ticket is [tier3-specs.md](tier3-specs.md#sec-03-reconcile-row-level-security-with-the-live-database-parallel-lane), checked against the code on 2026-11-03. It replaced the text that was here, so this ticket is described once.
 
 ### [SEC-04] Add IP & Member Rate Limiting on Mutation Endpoints
-- **Classification**: Security / Abuse Prevention
-- **Priority**: P2 (Medium)
-- **Files**: [`src/server/auth/gate.ts`](../src/server/auth/gate.ts), [`src/server/app.ts`](../src/server/app.ts)
-- **Problem**:
-  Gemini quota is meticulously tracked via `quota_ledger`, but unmetered API endpoints such as `POST /api/events` (bulk additions), `POST /api/access-requests`, and `POST /api/events/:id/details` (triggering external HTTP requests) have no per-IP or per-member rate limiter. An automated client could trigger upstream provider throttling or exhaust Workers CPU limits.
-- **Implementation Strategy**:
-  1. Add an in-memory sliding window or token bucket rate limiter in `src/server/auth/rateLimit.ts` (planned, not yet created) for isolate-level protection (e.g. max 60 mutation requests per minute per member/IP).
-  2. Return standard HTTP 429 with `Retry-After` header when threshold is breached.
-- **Invariants**: Must not affect single-owner local dev; must not block background queue operations.
-- **Test Plan**: Integration test sending bursts of requests; assert 429 response on burst exceedance.
 
----
+The build spec for this ticket is [tier3-specs.md](tier3-specs.md#sec-04-rate-limits-on-public-and-research-endpoints), checked against the code on 2026-11-03. It replaced the text that was here, so this ticket is described once.
 
 ## Track 2: Performance, Scalability & Reliability
 
@@ -132,67 +109,18 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
 ---
 
 ### [PERF-03] Worker Subrequest Budgeting Guard in Stage 1 Research
-- **Audit 2026-11-04**: OPEN. researchEvent in src/server/events/details.ts has no Stage 1 fetch cap; the per-invocation budget in src/server/lineup/budget.ts is only a partial guard.
-- **Classification**: Reliability / Resource Management
-- **Priority**: P2 (Medium)
-- **Files**: [`src/server/events/details.ts`](../src/server/events/details.ts), [`src/server/events/service.ts`](../src/server/events/service.ts)
-- **Problem**:
-  On Cloudflare Workers Free plan, a request is restricted to 50 subrequests. During Stage 1 research (`researchEvent`), setlist.fm, Ticketmaster, Brave Search, and multiple web result pages are fetched. If an event has complex date queries or web search matches multiple pages, the execution can approach or exceed 50 subrequests, causing Worker runtime termination.
-- **Implementation Strategy**:
-  1. Introduce a subrequest counter abstraction passed into `researchEvent`.
-  2. Enforce an upper bound (e.g. max 15 external fetches in Stage 1).
-  3. Prioritize primary structured finders (Ticketmaster, setlist.fm) and cap secondary web page fetches.
-- **Invariants**: Stage 1 must complete within a single request; empty/partial result is always valid.
-- **Test Plan**: Run simulated Stage 1 research with mock finders asserting subrequest count <= 15.
 
----
+The build spec for this ticket is [tier3-specs.md](tier3-specs.md#perf-03-stage-1-research-budget), checked against the code on 2026-11-03. It replaced the text that was here, so this ticket is described once.
 
 ### [REL-02] Extraction Prompt & Model Regression Test Runner
-- **Classification**: Developer Tooling / Quality Assurance
-- **Priority**: P2 (Medium)
-- **Files**: [`scripts/regression-extract.ts`](../scripts) (planned, not yet created), [`ARCHITECTURE.md`](../ARCHITECTURE.md)
-- **Problem**:
-  ARCHITECTURE.md Roadmap specifies: *"A regression command that re-runs extraction over stored documents and compares against confirmed lineups when the model or prompt changes."*
-  Currently, changing `EXTRACTION_PROMPT_VERSION` or upgrading Gemini model versions requires manual testing without a regression benchmark over historical `source_documents`.
-- **Implementation Strategy**:
-  1. Create `scripts/regression-extract.ts` (planned, not yet created) runnable via `npm run test:regression`.
-  2. Load historical editions from DB/fixtures that have confirmed lineups and stored `source_documents`.
-  3. Re-run Gemini extraction on dry-run mode against those stored HTML/text documents.
-  4. Compare extracted names against the confirmed lineup; calculate recall, precision, and flag any hallucinated/unquoted names (`isVerbatim`).
-  5. Print a regression summary report.
-- **Invariants**: Deterministic evaluation; no production data modified.
-- **Test Plan**: Execute dry run on test fixtures; verify report accurately computes match metrics.
 
----
+The build spec for this ticket (REL-02A and REL-02B) is [tier3-specs.md](tier3-specs.md#rel-02a-golden-fixtures-for-html-to-text), checked against the code on 2026-11-03. It replaced the text that was here, so this ticket is described once.
 
 ## Track 3: Code Architecture & Modular Refactoring
 
 ### [REF-02] Decompose Monolithic `EventDetail.tsx` (1,552 LOC)
-- **Classification**: Refactor / Maintainability
-- **Priority**: P2 (Medium/Large)
-- **Files**: [`src/components/EventDetail.tsx`](../src/components/EventDetail.tsx), `src/components/event-detail/*` (planned, not yet created)
-- **Problem**:
-  `EventDetail.tsx` has grown to 1,552 lines of code. It bundles together:
-  - Form field debouncing and flashing (`Field`)
-  - Autocomplete chip inputs (`ChipInput`)
-  - Days attended logic (`DaysWent`)
-  - Notes encryption and vault interaction (`NotesField`)
-  - Lineup review, billing roles, and performer listing
-  - Weather presentation, set times, and rating stars
-  This makes regression testing difficult and hinders concurrent development.
-- **Implementation Strategy**:
-  1. Create directory `src/components/event-detail/` (planned, not yet created).
-  2. Extract distinct subcomponents:
-     - `NotesCard.tsx`: Encrypted notes field, lock/unlock indicators.
-     - `WhenWhereCard.tsx`: Dates, days attended, venue, city, region, weather badge.
-     - `WhoYouSawCard.tsx`: Seen acts, artist vs supporting, favourite set, B2B pairings.
-     - `CompanionsField.tsx`: People chips, vault encrypted person references.
-     - `EventDetailHeader.tsx`: Poster header, rating stars, series tag.
-  3. Keep `EventDetail.tsx` as a lean coordinator component (~250 LOC).
-- **Invariants**: Maintain save debounce timings (`SAVE_DELAY_MS = 500`), blur-save semantics for iOS Safari, and all existing test coverage.
-- **Test Plan**: Manual verification of editing all fields; pass all existing detail tests.
 
----
+The build spec for this ticket is [tier3-specs.md](tier3-specs.md#ref-02-split-the-event-detail-view), checked against the code on 2026-11-03. It replaced the text that was here, so this ticket is described once.
 
 ### [REF-03] Migrate Inline Status Badges to Shared `Pill` Component
 - **Audit 2026-11-04**: OPEN. TableView.tsx uses Pill, but KindBadge (around line 170) keeps its own span; Pill has no matching tone.
@@ -374,95 +302,30 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
 ---
 
 ### [LINEUP-05] Canonical Edition Re-Sync / Freshness Protocol
-- **Classification**: Architecture / Cache Evolution
-- **Priority**: P2 (Medium)
-- **Files**: [`src/server/lineup/pipeline.ts`](../src/server/lineup/pipeline.ts), [`src/server/lineup/service.ts`](../src/server/lineup/service.ts)
-- **Status**: **BLOCKED / REQUIRES ARCHITECTURAL ALIGNMENT**
-- **Problem**:
-  Invariant 5 mandates: *"Resolve once, reuse forever."* If an edition is resolved early (e.g. Phase 1), later lookups reuse the cached edition with zero network calls, preventing users from seeing final timetables.
-- **Required Alignment**:
-  - Requires updating ARCHITECTURE.md to define the conditions for edition re-sync (e.g. only when requested on events that were resolved prior to the event's end date).
-  - Must specify behavior for `logged_events.seen` acts that users already marked as seen.
 
----
+The build spec for this ticket is [tier3-specs.md](tier3-specs.md#lineup-05-edition-re-sync-blocked), checked against the code on 2026-11-03. It replaced the text that was here, so this ticket is described once.
 
 ## Track 8: Engineering Excellence, Performance & Tech Debt
 
 ### [PERF-04] Clashfinder `all.json` Worker Caching & Memory Guard
-- **Audit 2026-11-04**: OPEN. clashfinder.ts fetches all.json with no cache and no size guard.
-- **Classification**: Performance & Worker Stability
-- **Priority**: P2 (Medium)
-- **Files**: [`src/server/lineup/adapters/clashfinder.ts`](../src/server/lineup/adapters/clashfinder.ts), [`src/server/lineup/http.ts`](../src/server/lineup/http.ts)
-- **Problem**:
-  When a festival slug is unknown, the adapter fetches `https://clashfinder.com/data/events/all.json`. This endpoint contains the full history of all Clashfinder events. Repeatedly parsing this multi-megabyte payload in a Cloudflare Worker risks exceeding the isolate memory and CPU execution limits.
-- **Implementation Strategy**:
-  1. Cache the parsed event list in memory / KV with a 24-hour TTL, keyed by date.
-  2. Abort gracefully with a log entry if `all.json` exceeds 10MB or fetch timeout exceeds 10 seconds.
-- **Invariants**: Never bypass rate limiting on `clashfinder.com` (1 req/sec).
-- **Test Plan**: Mock `all.json` response; verify subsequent lookups within 24 hours hit cache without repeating the HTTP GET.
 
----
+The build spec for this ticket is [tier3-specs.md](tier3-specs.md#perf-04-clashfinder-index-in-workers-kv), checked against the code on 2026-11-03. It replaced the text that was here, so this ticket is described once.
 
 ### [PERF-05] Client Bundle Code-Splitting for Heavy Sub-Views
-- **Classification**: Performance & Mobile Optimization
-- **Priority**: P2 (Medium)
-- **Files**: [`src/App.tsx`](../src/App.tsx), [`vite.config.ts`](../vite.config.ts)
-- **Problem**:
-  `npm run build` generates a single monolithic client bundle of 883 kB (`app-*.js`), triggering Vite's chunk size warning. All views—including `MapView` (which pulls in Leaflet), `TimelineTab` (River, Month, Heatmap, Agenda), and `ManageView`—are loaded synchronously on the initial visit. For mobile phone users capturing events on cellular connections, this hurts time-to-interactive.
-- **Implementation Strategy**:
-  1. Wrap non-critical top-level views in `React.lazy()` with a lightweight fallback:
-     ```typescript
-     const MapView = React.lazy(() => import('./components/MapView'));
-     const TimelineTab = React.lazy(() => import('./components/timeline/TimelineTab'));
-     const ManageView = React.lazy(() => import('./components/ManageView'));
-     ```
-  2. Configure Vite `build.rollupOptions.output.manualChunks` to split large vendor dependencies (`leaflet`, `lucide-react`) into standalone cached chunks.
-- **Invariants**: Capture bar and Events Home must remain instantly available without loading delays.
-- **Test Plan**: `npm run build`; assert main vendor entry point drops below 350 kB; verify Map and Timeline tabs load on demand.
 
----
+The build spec for this ticket is [tier3-specs.md](tier3-specs.md#perf-05-code-split-the-client-bundle-parallel-lane), checked against the code on 2026-11-03. It replaced the text that was here, so this ticket is described once.
 
 ### [TECH-01] Safe HTML-to-Text Parser (Eliminate Catastrophic Regex Backtracking)
-- **Audit 2026-11-04**: OPEN. htmlToText in text.ts still uses the regex strip chain and has no input size cap.
-- **Classification**: Performance & Reliability
-- **Priority**: P2 (Medium)
-- **Files**: [`src/server/lineup/text.ts`](../src/server/lineup/text.ts)
-- **Problem**:
-  `htmlToText` executes global regexes with greedy dot-matching across raw HTML bodies (`replace(/<script[\s\S]*?<\/script>/gi, ' ')`). On malformed or unclosed tags in large scraped documents (1–3 MB), `[\s\S]*?` causes catastrophic backtracking in V8, locking the Worker thread and throwing CPU limit exceptions.
-- **Implementation Strategy**:
-  1. Replace nested multiline regexes with a safe single-pass parser or non-backtracking tokenizer.
-  2. Enforce a hard maximum input size before processing (e.g. `body.slice(0, 1_000_000)`).
-- **Test Plan**: Benchmark with an unclosed `<script>` tag across a 2MB payload; assert completion in < 15 ms without regex timeout.
 
----
+The build spec for this ticket is [tier3-specs.md](tier3-specs.md#tech-01-fast-html-to-text-byte-identical), checked against the code on 2026-11-03. It replaced the text that was here, so this ticket is described once.
 
 ### [TECH-02] Strict Typing for Source Adapters (Eliminate `any` in Parsers)
-- **Audit 2026-11-04**: OPEN. any remains in clashfinder.ts (read) and details.ts:135-137; parseEventData was renamed parseEventList.
-- **Classification**: Type Safety & Tech Debt
-- **Priority**: P3 (Low)
-- **Files**: [`src/server/lineup/adapters/clashfinder.ts`](../src/server/lineup/adapters/clashfinder.ts), [`src/server/events/details.ts`](../src/server/events/details.ts)
-- **Problem**:
-  Multiple adapter entry points use `any` for parsed payloads (e.g., `parseEventData(json: any)` in `clashfinder.ts:126`, `parseJson<any>(res)` in `details.ts:135`, and `read(slug: unknown, v: any)` in `clashfinder.ts:62`). This disables TypeScript strict checks across raw external JSON contracts.
-- **Implementation Strategy**:
-  1. Define explicit TypeScript interfaces for Clashfinder event payloads (`ClashfinderLocation`, `ClashfinderEvent`, `ClashfinderApiEventList`).
-  2. Use runtime type guards (`isRecord`, `isString`) instead of raw type assertions.
-- **Test Plan**: `npm run lint` and `npm test` with strict null checks.
 
----
+The build spec for this ticket is [tier3-specs.md](tier3-specs.md#tech-02-strict-types-for-source-adapters), checked against the code on 2026-11-03. It replaced the text that was here, so this ticket is described once.
 
 ### [TECH-03] Subrequest Budget Guard for Worker Pipeline Runs
-- **Audit 2026-11-04**: OPEN (partial). src/server/lineup/budget.ts guards at 46 calls; the ticket's pause-and-requeue at about 40 was not found.
-- **Classification**: Cloudflare Worker Hardening
-- **Priority**: P2 (Medium)
-- **Files**: [`src/server/lineup/pipeline.ts`](../src/server/lineup/pipeline.ts), [`src/server/lineup/http.ts`](../src/server/lineup/http.ts)
-- **Problem**:
-  Cloudflare Workers have a hard ceiling of 50 subrequests (external `fetch` or Supabase REST queries) per invocation. A single lookup run that triggers first-wave adapters (Clashfinder, Ticketmaster, Wayback checks, redirects) + Gemini extraction + search discovery can hit the 50-call limit, crashing the queue worker unhandled.
-- **Implementation Strategy**:
-  1. Introduce a subrequest counter on `Fetcher`.
-  2. If subrequests approach 40 within a single job execution, pause the job, persist current state, and re-enqueue the next stage to be picked up in a fresh Worker invocation.
-- **Test Plan**: Simulate an invocation with 42 mock subrequests → assert job pauses with status `running` and yields without throwing Worker limit error.
 
----
+The build spec for this ticket is [tier3-specs.md](tier3-specs.md#tech-03-stage-2-pipeline-budget), checked against the code on 2026-11-03. It replaced the text that was here, so this ticket is described once.
 
 ## Multi-Threaded Development Plan & Dependencies
 
