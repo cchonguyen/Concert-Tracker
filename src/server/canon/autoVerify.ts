@@ -1,6 +1,7 @@
 // Auto-verify rules for shared acts and editions (docs/auto-verify-spec.md).
 // Pure functions: no model call, no store, no writes. Callers pass the evidence they
 // already fetched and stored, and apply the result through writeEdition.
+import { normalizeName } from '../lineup/normalizeName';
 
 export type EvidenceKind =
   // A ticket email the person imported (a verified source for name, date, venue, city and state).
@@ -44,21 +45,17 @@ export interface ActVerdict {
 // Kinds that can carry a name and date on their own.
 const USABLE: ReadonlySet<EvidenceKind> = new Set<EvidenceKind>(['ticket_email', 'fetched_page', 'api_record']);
 
-// Lower-case, accents removed, punctuation and spacing collapsed. Used only for comparing names.
-export function normalizeActName(raw: string): string {
-  return raw
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
+// The app's one name rule (lowercase, accents removed, punctuation and spacing collapsed, letters of
+// every script kept). Used only for comparing names.
+export const normalizeActName = normalizeName;
 
 // Decides whether an act is verified for one edition. A trusted usable source is enough.
 // Otherwise two distinct usable sources that agree are needed. Member ticks, external IDs
 // and disagreeing or duplicate sources never verify.
 export function verifyAct(evidence: readonly ActEvidence[], expected: ActExpectation): ActVerdict {
   const want = normalizeActName(expected.name);
+  // A name with nothing left to compare never matches anything.
+  if (!want) return { status: 'candidate', verifiedBy: 'none', sourceCount: 0 };
   const agreeing = evidence.filter(
     (e) =>
       USABLE.has(e.kind) &&
