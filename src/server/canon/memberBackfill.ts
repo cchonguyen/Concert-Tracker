@@ -4,7 +4,7 @@
 // Who is walked: members with a user id, role 'member' and not blocked, who accepted notice version NOTICE_VERSION.
 // Anyone else is counted as skipped and their events are never read. Each walked member's dated events are read
 // through that member's scoped store (forUser). Only the event's name, full YYYY-MM-DD start date, typed end date,
-// typed venue and typed city are passed on (venue/city/endDate only when the person typed them, as in
+// typed venue, city and state are passed on (venue/city/state/endDate only when the person typed them, as in
 // persistOwnEntry). Attendance, price, notes, companions, rating and ids never leave the member's store, and no user
 // id, email or event id goes into an edition, a change reason, a trace or a log line.
 //
@@ -148,13 +148,14 @@ export async function runMemberBackfill(
       items++;
       didWork = true;
       try {
-        const typed = (f: 'venue' | 'city') => (event.sources?.[f]?.sourceType === 'user' ? event[f] : undefined);
+        const typed = (f: 'venue' | 'city' | 'region') => (event.sources?.[f]?.sourceType === 'user' ? event[f] : undefined);
         const r = await upsertOccurrence(service, {
           name: event.name,
           startDate: event.startDate as string,
           ...(event.endDate && event.sources?.endDate?.sourceType === 'user' ? { endDate: event.endDate } : {}),
           venue: typed('venue'),
           city: typed('city'),
+          region: typed('region'),
           subjectKey: seriesSlugFor(event.name),
           externalIds: [],
           trust: 'provisional',

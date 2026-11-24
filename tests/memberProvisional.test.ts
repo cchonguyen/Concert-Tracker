@@ -53,3 +53,19 @@ test('a verified catalog hit is not written over', async () => {
   assert.equal((await s.listEditionChanges(before.id)).length, 1);
   assert.ok(!out.details.notes.some((n) => n.includes('your entry')));
 });
+
+test('member entry shares the state the person typed (notice version 3), and only a typed one', async () => {
+  const s = await store();
+  const base = newEvent('Porter Robinson at Moody Center, Austin, Oct 5 2024', NOW);
+  const typed = { ...base, region: 'TX', sources: { ...base.sources, region: { sourceType: 'user' } } } as any;
+  await run(s, typed);
+  const rows = await s.listEditions(10);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].city, 'Austin');
+  assert.equal(rows[0].region, 'TX');
+
+  const s2 = await store();
+  const found = { ...base, region: 'TX', sources: { ...base.sources, region: { sourceType: 'web' } } } as any;
+  await run(s2, found);
+  assert.equal((await s2.listEditions(10))[0].region, undefined);
+});
