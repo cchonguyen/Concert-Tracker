@@ -38,6 +38,7 @@ import { seriesSlugFor } from '../lineup/text';
 import type { Edition, SeriesKind, SeriesRecord, SourceType } from '../lineup/types';
 import { addEditionAct, writeEdition } from '../canon/editions';
 import { venueLocation } from '../canon/venueLocation';
+import { applyVenueFill, planVenueFill } from '../canon/venueFill';
 import { lineupProposalPayload, matchEditionName, offersForEditions, prepareCatalog } from '../canon/nameArtists';
 import { normalizeName } from '../lineup/normalizeName';
 import {
@@ -622,6 +623,40 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     } catch (err) {
       if (err instanceof ManageError) return res.status(err.status).json({ error: err.message, conflict: err.conflict });
       if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Bulk fill of editions' empty city, state and country from their own "City, ST" text and their venue's one known
+  // location (docs/specs/venue-location-fill.md). Preview, then apply; each write is logged and can be undone.
+  router.get('/manage/canonical/venue-fill', ownerOnly as any, async (_req, res) => {
+    try {
+      res.json(await planVenueFill(store));
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  router.post('/manage/canonical/venue-fill', ownerOnly as any, async (req, res) => {
+    try {
+      const body = (req.body ?? {}) as { editionIds?: unknown; picks?: unknown };
+      const editionIds = Array.isArray(body.editionIds) ? body.editionIds.filter((x): x is string => typeof x === 'string').slice(0, 500) : [];
+      const picks = Array.isArray(body.picks)
+        ? body.picks
+            .filter((p: any) => p && typeof p.editionId === 'string' && p.location && typeof p.location.city === 'string')
+            .slice(0, 500)
+            .map((p: any) => ({
+              editionId: p.editionId as string,
+              location: {
+                city: String(p.location.city),
+                ...(typeof p.location.region === 'string' ? { region: p.location.region } : {}),
+                ...(typeof p.location.country === 'string' ? { country: p.location.country } : {}),
+              },
+            }))
+        : [];
+      if (!editionIds.length && !picks.length) return res.status(400).json({ error: 'editionIds or picks is required.' });
+      res.json(await applyVenueFill(store, { editionIds, picks }));
+    } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });

@@ -26,7 +26,7 @@ const sameRegion = (a: string, b: string) => (regionCode(a) ?? normalizeName(a))
 
 // Two locations are the same place when the city matches and neither state nor country disagrees. One that only
 // adds a state or country to the same city is the same place.
-function samePlace(a: VenueLocation, b: VenueLocation): boolean {
+export function samePlace(a: VenueLocation, b: VenueLocation): boolean {
   if (normalizeName(a.city) !== normalizeName(b.city)) return false;
   if (a.region && b.region && !sameRegion(a.region, b.region)) return false;
   if (a.country && b.country && !sameCountry(a.country, b.country)) return false;
