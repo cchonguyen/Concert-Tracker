@@ -512,3 +512,41 @@ test('gate: a page over the reader input ceiling is skipped with a note, never c
   assert.equal(state.calls, 0);
   assert.ok(done!.log.some((l) => l.message.includes('input_too_large')));
 });
+
+// A Clashfinder edition the series already has: a failed read retries the job instead of
+// building a lineup without its stages, and nothing from the other sources is stored twice.
+test('a known Clashfinder edition that fails to load retries the job, keeping nothing half-built', async () => {
+  const { store, deps } = await setup();
+  await store.upsertSeries({ slug: 'fest', name: 'Fest', clashfinderSlugs: { '2025': 'fest25' } });
+  const failing: SourceAdapter = {
+    id: 'clashfinder',
+    enabled: () => true,
+    async collect() {
+      throw new Error('Invalid JSON from https://clashfinder.com/data/event/fest25.json');
+    },
+  };
+  deps.adapters = [failing, crowdSource];
+  const job = await createLookup(deps, { eventName: 'Fest', year: 2025 });
+  const out = (await runJob(deps, job.id))!;
+  assert.equal(out.status, 'queued');
+  assert.equal(out.attempts, 1);
+  assert.ok(out.log.some((l) => /trying again so the lineup keeps its stages/.test(l.message)));
+  assert.equal((await store.listPerformerClaims(job.id)).length, 0);
+});
+
+test('a Clashfinder failure on a series with no known edition still builds from the other sources', async () => {
+  const { store, deps } = await setup();
+  const failing: SourceAdapter = {
+    id: 'clashfinder',
+    enabled: () => true,
+    async collect() {
+      throw new Error('Invalid JSON');
+    },
+  };
+  deps.adapters = [failing, crowdSource, promoterSource];
+  const job = await createLookup(deps, { eventName: 'Fest', year: 2025 });
+  const out = (await runJob(deps, job.id))!;
+  assert.notEqual(out.status, 'queued');
+  assert.ok(out.log.some((l) => /clashfinder failed: Invalid JSON/.test(l.message)));
+  assert.ok((await store.listPerformerClaims(job.id)).length > 0);
+});

@@ -12,7 +12,7 @@ import {
   SeriesRecord,
   SourceAdapter,
 } from './types';
-import { isStaleRun, LineupStore } from './store/types';
+import { ArtistIdTakenError, isStaleRun, LineupStore } from './store/types';
 import { GeminiClient, EXTRACTION_PROMPT_VERSION } from './gemini';
 import { QuotaExhaustedError, QuotaLedger } from './quota';
 import { appendFacts, mergeLineup } from './merge';
@@ -204,6 +204,16 @@ async function runAdapters(
       a.collect({ input, editionKey: job.editionKey, series, now, fetcher: deps.fetcher }),
     ),
   );
+  // A Clashfinder edition this series already has (its slug is stored for this year): when reading it fails,
+  // retry the job instead of building a lineup without Clashfinder's stages and days. Checked before anything
+  // is saved, so a retry never stores the other sources twice.
+  const knownSlug = series?.clashfinderSlugs?.[String(input.year)];
+  const clashfinderAt = enabled.findIndex((a) => a.id === 'clashfinder');
+  const clashfinder = clashfinderAt >= 0 ? settled[clashfinderAt] : undefined;
+  if (knownSlug && clashfinder?.status === 'rejected') {
+    const msg = clashfinder.reason instanceof Error ? clashfinder.reason.message : String(clashfinder.reason);
+    throw new Error(`Clashfinder could not be read for "${knownSlug}" (${msg}); trying again so the lineup keeps its stages.`);
+  }
   let hints: Partial<SeriesRecord> = {};
   for (let i = 0; i < settled.length; i++) {
     const outcome = settled[i];
@@ -495,7 +505,16 @@ async function runResolveArtists(deps: PipelineDeps, job: LookupJob, now: Date):
   let done = 0;
   for (const artist of pending) {
     try {
-      await deps.store.upsertArtist(await resolveArtist(deps.fetcher, artist));
+      const resolved = await resolveArtist(deps.fetcher, artist);
+      try {
+        await deps.store.upsertArtist(resolved);
+      } catch (err) {
+        if (!(err instanceof ArtistIdTakenError)) throw err;
+        // Another artist already holds this MusicBrainz ID (often a spelling or alias of the same act).
+        // Save it as checked, without the ID, so one clash never stops the rest of the list.
+        await deps.store.upsertArtist({ ...resolved, mbid: undefined });
+        log(job, `MusicBrainz ID for "${artist.name}" already belongs to another artist; saved without it.`, now);
+      }
       done++;
     } catch (err) {
       if (!(err instanceof MusicBrainzUnavailableError)) throw err;

@@ -258,13 +258,21 @@ export const clashfinderAdapter: SourceAdapter = {
     }
 
     const url = `${BASE}/data/event/${slug}.json?${auth}`;
-    const res = await ctx.fetcher.get(url);
+    let res = await ctx.fetcher.get(url);
     if (res.status === 401) throw new HttpError(401, url, 'Clashfinder rejected the credentials (401). Check CLASHFINDER_* settings.');
     if (res.status === 404) {
       result.notes.push(`Clashfinder: edition "${slug}" not found.`);
       return result;
     }
-    const data = parseEventData(parseJson(res));
+    // Clashfinder now and then answers 200 with a page that is not the event data. Ask once more before failing.
+    let raw: unknown;
+    try {
+      raw = parseJson(res);
+    } catch {
+      res = await ctx.fetcher.get(url);
+      raw = parseJson(res);
+    }
+    const data = parseEventData(raw as Parameters<typeof parseEventData>[0]);
     const publicUrl = `${BASE}/s/${slug}/`;
     const doc = makeDocument(publicUrl, 'clashfinder', res.body, 'json');
     result.documents.push(doc);
