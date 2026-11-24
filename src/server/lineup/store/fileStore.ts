@@ -1316,6 +1316,12 @@ export class FileLineupStore implements LineupStore {
     return venue ? clone(venue) : null;
   }
 
+  async listVenuesByAlias(aliasNormalized: string) {
+    const state = await this.load();
+    const ids = [...new Set((state.venueAliases ?? []).filter((a) => a.aliasNormalized === aliasNormalized).map((a) => a.venueId))];
+    return ids.map((id) => state.venues?.[id]).filter((v): v is CanonicalVenue => Boolean(v)).map((v) => clone(v));
+  }
+
   async addVenueAlias(venueId: string, aliasNormalized: string, source?: string, externalId?: string) {
     const state = await this.load();
     if (!state.venues?.[venueId]) throw new Error(`addVenueAlias: venue ${venueId} not found`);

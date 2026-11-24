@@ -1897,6 +1897,14 @@ export class SupabaseLineupStore implements LineupStore {
     return rowToVenue(row);
   }
 
+  async listVenuesByAlias(aliasNormalized: string): Promise<CanonicalVenue[]> {
+    const hits = this.check(await this.db.from('venue_aliases').select('venue_id').eq('alias_normalized', aliasNormalized), 'listVenuesByAlias (apply 0041_shared_occurrences.sql)') as any[] | null;
+    const ids = [...new Set((hits ?? []).map((r) => r.venue_id as string))];
+    if (!ids.length) return [];
+    const rows = this.check(await this.db.from('canonical_venues').select('*').in('id', ids), 'listVenuesByAlias') as any[] | null;
+    return (rows ?? []).map(rowToVenue);
+  }
+
   async findVenueByAlias(aliasNormalized: string): Promise<CanonicalVenue | null> {
     const hits = this.check(await this.db.from('venue_aliases').select('venue_id').eq('alias_normalized', aliasNormalized), 'findVenueByAlias (apply 0041_shared_occurrences.sql)') as any[] | null;
     const ids = [...new Set((hits ?? []).map((r) => r.venue_id as string))];
