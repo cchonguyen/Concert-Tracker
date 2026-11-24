@@ -1,5 +1,6 @@
 // The source rows of the Check details card. Pure, so the rows can be tested against the reply alone.
 import type { DetailCandidate, DetailsStatus } from '../server/events/types';
+import { MONTH_SHORT } from '../server/lineup/months';
 
 export const CHECK_SOURCES = [
   { type: 'ticketmaster', label: 'Ticketmaster' },
@@ -43,7 +44,7 @@ export function checkedLabel(checkedAt: string | undefined, now: number): string
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTHS = MONTH_SHORT;
 
 // Shows only what the date says: a full date gets its weekday (worked out from that date alone), a month or a year
 // shows as given with no weekday, anything else is missing.

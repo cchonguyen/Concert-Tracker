@@ -4,6 +4,7 @@ import { createRateLimitedFetcher, HttpError, parseJson } from '../lineup/http';
 import { InputError } from '../lineup/pipeline';
 import { addDays, decodeEntities, domainOf, normalizeName } from '../lineup/text';
 import { braveWebSearch, eventWords } from '../lineup/search';
+import { MONTH_NAMES } from '../lineup/months';
 import { findDates, parseEventInput } from './parse';
 import { matchingEvents, ticketmasterEvents, type TmEvent } from '../lineup/adapters/ticketmaster';
 import { setlistfmSearch } from '../lineup/adapters/setlistfm';
@@ -244,7 +245,6 @@ export const clashfinderFinder: DetailFinder = {
   },
 };
 
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export function webQuery(q: DetailQuery): string {
   const when = q.startDate

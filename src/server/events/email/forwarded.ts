@@ -1,4 +1,5 @@
 import type { RawEmail } from './types';
+import { monthIndex } from '../../lineup/months';
 
 // A ticket email someone forwarded to you. Gmail ("---------- Forwarded
 // message ---------") and iPhone Mail ("Begin forwarded message:") put the
@@ -9,7 +10,6 @@ import type { RawEmail } from './types';
 
 const MARKER = /^(?:-+\s*Forwarded message\s*-+|Begin forwarded message:?)$/i;
 const HEADER = /^(From|Date|Sent|Subject|To|Cc|Reply-To):\s*(.*)$/i;
-const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 // "Wed, Apr 1, 2026 at 10:06 AM", "July 14, 2023 at 12:39:07 PM PDT", "Tue, Feb 7, 2023, 3:52 PM"
 const HEADER_DATE = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+((?:19|20)\d{2})\b/i;
 
@@ -23,7 +23,7 @@ export interface Forwarded {
 function headerDay(value: string): string | undefined {
   const m = value.match(HEADER_DATE);
   if (!m) return undefined;
-  const month = MONTHS.indexOf(m[1].toLowerCase());
+  const month = monthIndex(m[1]) - 1;
   const d = new Date(Date.UTC(Number(m[3]), month, Number(m[2]), 12));
   return d.getUTCDate() === Number(m[2]) ? d.toISOString() : undefined;
 }

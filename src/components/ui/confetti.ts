@@ -51,8 +51,3 @@ export function burstConfetti() {
   };
 }
 
-// A burst of confetti, unless reduced motion is set. The canvas removes itself when the burst ends.
-export function celebrate() {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  burstConfetti();
-}

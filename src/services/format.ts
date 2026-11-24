@@ -7,6 +7,7 @@ import { norm } from './listImport';
 import { seenSlots, slotLabel, normalizeSet } from '../server/events/seen';
 import { cityWithRegion } from '../server/events/regions';
 import { attendanceOf, AttendanceState } from '../server/events/attendance';
+import { MONTH_SHORT } from '../server/lineup/months';
 
 const day = (iso: string, opts: Intl.DateTimeFormatOptions) =>
   new Date(`${iso}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', ...opts });
@@ -123,7 +124,6 @@ export function suggestionsFor(query: string, suggestions: string[], limit = 8):
   return matchNames(query, suggestions, new Set([norm(query)]), limit);
 }
 
-export const favouriteOf = (seen: SeenAct[]) => seen.find((s) => s.favourite);
 export const favouritesOf = (seen: SeenAct[]) => seen.filter((s) => s.favourite);
 
 // WMO weather codes, as Open-Meteo reports them.
@@ -254,7 +254,7 @@ export function dateConfirmations(e: LoggedEvent): LoggedEvent['details']['candi
   return covers ? c.sources.filter((s) => s.fields.includes('startDate')) : [];
 }
 
-const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const SHORT_MONTHS = MONTH_SHORT;
 
 // Compact UTC date range without year: "Apr 12–14", "May 30–Jun 1", or "Apr 12".
 export function shortDateRange(startDate?: string | null, endDate?: string | null): string | null {

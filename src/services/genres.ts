@@ -30,9 +30,6 @@ export function missingGenreKeys(events: LoggedEvent[], rows: ArtistGenres[]): s
 export const topStyles = (g: ArtistGenres | undefined, max = 3): string[] =>
   (g?.genres ?? []).slice(0, max).map((x) => x.style);
 
-// The main parent genre of an act, or undefined when unknown.
-export const mainGenre = (g: ArtistGenres | undefined): string | undefined => g?.genres[0]?.parent;
-
 export interface GenreCount {
   name: string;
   sets: number; // seen sets, each split across its act's genres by weight
