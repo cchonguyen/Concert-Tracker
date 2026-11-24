@@ -18,6 +18,7 @@ import { QuotaExhaustedError, QuotaLedger } from './quota';
 import { appendFacts, mergeLineup } from './merge';
 import { domainOf, editionKeyFor, htmlToText, isVerbatim, normalizeName, seriesSlugFor } from './text';
 import { findVerifiedEdition } from '../canon/match';
+import { autoVerifyAfterLookup } from '../canon/autoVerifyRun';
 import { isBilling,quoteBacksBilling } from './billing';
 import { makeDocument } from './adapters/common';
 import { MusicBrainzUnavailableError, resolveArtist } from './musicbrainz';
@@ -471,6 +472,14 @@ async function stageMerge(deps: PipelineDeps, job: LookupJob, now: Date): Promis
   if (job.candidate.performers.length > 0) {
     job.status = 'needs_review';
     log(job, `Lineup ready for review: ${job.candidate.performers.length} act(s).`, now);
+    // Auto-verify runs here, in the lookup, never on save. It never fails the lookup.
+    try {
+      const av = await autoVerifyAfterLookup(deps.store, job);
+      if (av.acts.length) log(job, `Auto-verified ${av.acts.length} act(s) on the shared edition.`, now);
+      if (av.edition) log(job, 'Auto-verified the shared edition: every fact comes from a verified source.', now);
+    } catch (err) {
+      log(job, `Auto-verify skipped: ${redactSecrets(err instanceof Error ? err.message : String(err))}`, now);
+    }
   } else {
     job.status = 'no_data';
     log(job, 'No source listed a lineup. Add a lineup URL or enter acts by hand.', now);
