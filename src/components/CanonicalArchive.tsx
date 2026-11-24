@@ -23,6 +23,7 @@ import { CanonicalArtistEntry, ORIGIN_LABEL, type SavedChange } from './Canonica
 import { CheckDetails, type Suggestion } from './CheckDetails';
 import { LineupReview } from './LineupReview';
 import { EditionNameGaps } from './EditionNameGaps';
+import { VenueFillPanel } from './VenueFillPanel';
 import { MergeEditionModal } from './MergeEditionModal';
 import { usePlaceAutofill } from './PlaceFields';
 import { SuggestInput } from './SuggestInput';
@@ -1362,6 +1363,7 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
     <section className="space-y-2">
       {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
       <EditionNameGaps />
+      <VenueFillPanel />
       {page === null ? (
         <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
       ) : page.editions.length === 0 ? (

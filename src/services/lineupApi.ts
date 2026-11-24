@@ -1,4 +1,5 @@
-import type { VenueLocationResult } from '../server/canon/venueLocation';
+import type { VenueLocation, VenueLocationResult } from '../server/canon/venueLocation';
+import type { VenueFillPlan, VenueFillResult } from '../server/canon/venueFill';
 import type { Edition, EditionWeekend, LookupJob, SeriesKind, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
 import type { ShareSettings } from '../server/share/types';
 import type { NameIndex } from '../server/entities/link';
@@ -630,6 +631,10 @@ export class UndoConflictError extends Error {
 // Global Archive (owner only): the shared catalog, not your log.
 export const canonicalApi = {
   // A venue's known location from the shared venue records: one location, the choices, or none.
+  // Bulk fill of editions' empty city, state and country from their "City, ST" text and their venue (owner only).
+  venueFillPlan: () => request<VenueFillPlan>('/api/manage/canonical/venue-fill'),
+  venueFillApply: (body: { editionIds?: string[]; picks?: Array<{ editionId: string; location: VenueLocation }> }) =>
+    request<VenueFillResult>('/api/manage/canonical/venue-fill', post(body)),
   venueLocation: (name: string, signal?: AbortSignal) =>
     request<VenueLocationResult>(`/api/canon/venue-location?${new URLSearchParams({ name }).toString()}`, signal ? { signal } : undefined),
   artists: () => request<{ artists: CanonicalArtistRecord[] }>('/api/manage/canonical/artists'),
