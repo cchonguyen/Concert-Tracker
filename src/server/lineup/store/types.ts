@@ -529,6 +529,8 @@ export interface LineupStore {
   upsertVenue(v: { name: string; city?: string; region?: string; country?: string }): Promise<CanonicalVenue>;
   // The one venue holding this normalized alias; null when none, or when more than one venue holds it (never guessed).
   findVenueByAlias(aliasNormalized: string): Promise<CanonicalVenue | null>;
+  // Every venue holding this normalized alias (empty when none). For the venue location rule, which reads all of them.
+  listVenuesByAlias(aliasNormalized: string): Promise<CanonicalVenue[]>;
   // Idempotent on (alias, venue). A source's external ID already held by another venue throws ExternalIdConflictError.
   addVenueAlias(venueId: string, aliasNormalized: string, source?: string, externalId?: string): Promise<void>;
   findEditionByExternalId(source: string, externalId: string): Promise<Edition | null>;
