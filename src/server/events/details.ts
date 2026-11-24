@@ -3,9 +3,10 @@ import type { Fetcher, SourceType } from '../lineup/types';
 import { createRateLimitedFetcher, HttpError, parseJson } from '../lineup/http';
 import { InputError } from '../lineup/pipeline';
 import { addDays, decodeEntities, domainOf, normalizeName } from '../lineup/text';
-import { eventWords } from '../lineup/search';
+import { braveWebSearch, eventWords } from '../lineup/search';
 import { findDates, parseEventInput } from './parse';
-import { matchingEvents } from '../lineup/adapters/ticketmaster';
+import { matchingEvents, ticketmasterEvents, type TmEvent } from '../lineup/adapters/ticketmaster';
+import { setlistfmSearch } from '../lineup/adapters/setlistfm';
 import { CLASHFINDER_LIST_MEMO_MS, clashfinderAuthQuery, clashfinderEventList, matchEdition, type ClashfinderEventList } from '../lineup/adapters/clashfinder';
 // Kept for callers and tests that reset the shared Clashfinder list between runs.
 export { resetClashfinderListMemo } from '../lineup/adapters/clashfinder';
@@ -108,18 +109,10 @@ export const ticketmasterFinder: DetailFinder = {
       }
     }
     const w = searchWindow(q);
-    const params = new URLSearchParams({
-      apikey: process.env.TICKETMASTER_API_KEY!,
-      keyword: q.name,
-      startDateTime: `${w.from}T00:00:00Z`,
-      endDateTime: `${w.to}T23:59:59Z`,
-      classificationName: 'music',
-      size: '50',
-    });
-    const data = parseJson<any>(await fetcher.get(`https://app.ticketmaster.com/discovery/v2/events.json?${params}`));
+    const listed = await ticketmasterEvents(fetcher, { keyword: q.name, from: w.from, to: w.to });
     // A festival is listed once per day or ticket type: group by name and venue.
-    const groups = new Map<string, any[]>();
-    for (const e of matchingEvents(data?._embedded?.events ?? [], q.name)) {
+    const groups = new Map<string, TmEvent[]>();
+    for (const e of matchingEvents(listed, q.name)) {
       const v = e._embedded?.venues?.[0];
       const key = `${normalizeName(e.name)}|${normalizeName(v?.name ?? '')}`;
       groups.set(key, [...(groups.get(key) ?? []), e]);
@@ -151,7 +144,7 @@ export const ticketmasterFinder: DetailFinder = {
       const endDate = startDate && lastEnd && lastEnd !== startDate ? lastEnd : undefined;
       const v = events[0]._embedded?.venues?.[0];
       const url = events[0].url ?? `https://www.ticketmaster.com/event/${events[0].id}`;
-      const names = [...new Set<string>(events.flatMap((e) => (e._embedded?.attractions ?? []).map((a: any) => String(a.name ?? '').trim())))];
+      const names = [...new Set<string>(events.flatMap((e) => (e._embedded?.attractions ?? []).map((a) => String(a.name ?? '').trim())))];
       const c = candidate('ticketmaster', url, {
         name: events[0].name,
         startDate,
@@ -207,18 +200,14 @@ export const setlistfmFinder: DetailFinder = {
       return { ...c, performers: [{ name: String(s.artist.name), sourceType: 'setlistfm' as const, sourceUrl: url }] };
     };
     const page = async (p: number): Promise<any[]> => {
-      const params = new URLSearchParams({ artistName: q.name, p: String(p) });
+      const params: Record<string, string> = { artistName: q.name, p: String(p) };
       if (q.startDate && !q.endDate) {
         const [y, m, d] = q.startDate.split('-');
-        params.set('date', `${d}-${m}-${y}`);
+        params.date = `${d}-${m}-${y}`;
       } else if (q.year) {
-        params.set('year', String(q.year));
+        params.year = String(q.year);
       }
-      const res = await fetcher.get(`https://api.setlist.fm/rest/1.0/search/setlists?${params}`, {
-        headers: { 'x-api-key': process.env.SETLISTFM_API_KEY!, Accept: 'application/json' },
-      });
-      if (res.status === 404) return []; // setlist.fm answers 404 when nothing matches
-      return parseJson<any>(res)?.setlist ?? [];
+      return (await setlistfmSearch(fetcher, params)).setlist ?? [];
     };
     const collect = (rows: any[]) =>
       rows
@@ -280,12 +269,9 @@ const stripTags = (html: string) => decodeEntities(html.replace(/<[^>]+>/g, ' ')
 // The Brave results whose own title and description name every word of the
 // event (and, without a year, the place you gave).
 export async function braveResults(q: DetailQuery, fetcher: Fetcher): Promise<Array<{ url: string; text: string }>> {
-  const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(webQuery(q))}&count=10`;
-  const res = await fetcher.get(url, {
-    headers: { Accept: 'application/json', 'X-Subscription-Token': process.env.BRAVE_SEARCH_API_KEY! },
-  });
-  if (res.status === 429) throw new Error('Brave Search limit reached; look again later.');
-  const results: Array<{ url?: string; title?: string; description?: string }> = parseJson<any>(res)?.web?.results ?? [];
+  const reply = await braveWebSearch(fetcher, webQuery(q), process.env.BRAVE_SEARCH_API_KEY!);
+  if (reply.limited) throw new Error('Brave Search limit reached; look again later.');
+  const results = reply.results;
   const words = [...eventWords(q.name), ...placeWords(q)];
   const out: Array<{ url: string; text: string }> = [];
   for (const r of results) {

@@ -13,19 +13,38 @@ import { billingFromTitle } from '../billing';
 // support, quoting the listing name.
 const VERSION = 'ticketmaster@2';
 
-interface TmEvent {
+export interface TmEvent {
   id: string;
   name: string;
   url?: string;
   dates?: { start?: { localDate?: string } };
   _embedded?: {
-    venues?: Array<{ name?: string; city?: { name?: string }; country?: { name?: string } }>;
+    venues?: Array<{ name?: string; city?: { name?: string }; state?: { stateCode?: string }; country?: { name?: string; countryCode?: string } }>;
     attractions?: Array<{ id: string; name: string }>;
   };
 }
 
 interface TmSearch {
   _embedded?: { events?: TmEvent[] };
+}
+
+// The Ticketmaster client, shared by Check details and Find the lineup: one search of music listings in a date
+// window (yyyy-mm-dd, whole days in UTC), at most 50 listings. Stage logic (grouping, matching) stays with each caller.
+export async function ticketmasterEvents(
+  fetcher: AdapterContext['fetcher'],
+  q: { keyword: string; from: string; to: string; city?: string },
+): Promise<TmEvent[]> {
+  const params = new URLSearchParams({
+    apikey: process.env.TICKETMASTER_API_KEY!,
+    keyword: q.keyword,
+    startDateTime: `${q.from}T00:00:00Z`,
+    endDateTime: `${q.to}T23:59:59Z`,
+    classificationName: 'music',
+    size: '50',
+  });
+  if (q.city) params.set('city', q.city);
+  const data = parseJson<TmSearch>(await fetcher.get(`https://app.ticketmaster.com/discovery/v2/events.json?${params}`));
+  return data?._embedded?.events ?? [];
 }
 
 export function matchingEvents(events: TmEvent[], eventName: string): TmEvent[] {
@@ -45,18 +64,13 @@ export const ticketmasterAdapter: SourceAdapter = {
     const { input } = ctx;
     const start = input.startDate ? addDays(input.startDate, -3) : `${input.year}-01-01`;
     const end = input.endDate ? addDays(input.endDate, 3) : input.startDate ? addDays(input.startDate, 7) : `${input.year}-12-31`;
-    const params = new URLSearchParams({
-      apikey: process.env.TICKETMASTER_API_KEY!,
+    const listed = await ticketmasterEvents(ctx.fetcher, {
       keyword: input.eventName.replace(/\b(19|20)\d{2}\b/g, '').trim(),
-      startDateTime: `${start}T00:00:00Z`,
-      endDateTime: `${end}T23:59:59Z`,
-      classificationName: 'music',
-      size: '50',
+      from: start,
+      to: end,
+      city: input.city,
     });
-    if (input.city) params.set('city', input.city);
-    const url = `https://app.ticketmaster.com/discovery/v2/events.json?${params}`;
-    const data = parseJson<TmSearch>(await ctx.fetcher.get(url));
-    const events = matchingEvents(data._embedded?.events ?? [], input.eventName);
+    const events = matchingEvents(listed, input.eventName);
     if (events.length === 0) {
       result.notes.push('Ticketmaster: no matching event listing (past events are often removed).');
       return result;

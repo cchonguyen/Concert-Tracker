@@ -35,7 +35,29 @@ export function pageMentionsEvent(text: string, input: LookupInput): boolean {
 }
 
 interface BraveResponse {
-  web?: { results?: Array<{ url?: string }> };
+  web?: { results?: BraveResult[] };
+}
+
+export interface BraveResult {
+  url?: string;
+  title?: string;
+  description?: string;
+}
+
+export type BraveReply = { limited: true; resetSeconds: number } | { limited: false; results: BraveResult[] };
+
+// The Brave Search client, shared by Check details and Find the lineup: one web search, at most 10 results. A 429
+// comes back as `limited` with the seconds until Brave's longest window resets (its "x-ratelimit-reset" header lists
+// one value per window), so each stage handles its own limit. A rejected key throws HttpError with its reason.
+export async function braveWebSearch(fetcher: Fetcher, query: string, apiKey: string): Promise<BraveReply> {
+  const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10`;
+  const res = await fetcher.get(url, { headers: { Accept: 'application/json', 'X-Subscription-Token': apiKey } });
+  if (res.status === 429) {
+    const resets = (res.headers['x-ratelimit-reset'] ?? '').split(',').map((v) => Number(v.trim())).filter((v) => v > 0);
+    return { limited: true, resetSeconds: resets.length ? Math.max(...resets) : 3600 };
+  }
+  if (res.status === 401 || res.status === 403) throw new HttpError(res.status, url, `Brave Search rejected the key (HTTP ${res.status}). Check BRAVE_SEARCH_API_KEY.`);
+  return { limited: false, results: parseJson<BraveResponse>(res)?.web?.results ?? [] };
 }
 
 // Brave Search API (https://brave.com/search/api/). Free plan; the key goes in
@@ -45,17 +67,12 @@ export function braveSearch(fetcher: Fetcher, apiKey: string, now: () => Date = 
     id: 'brave',
     usesGeminiQuota: false,
     async findLineupUrls(input) {
-      const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(searchQuery(input))}&count=10`;
-      const res = await fetcher.get(url, { headers: { Accept: 'application/json', 'X-Subscription-Token': apiKey } });
-      if (res.status === 429) {
-        // "x-ratelimit-reset" lists seconds until each window resets (per second, per month).
-        const resets = (res.headers['x-ratelimit-reset'] ?? '').split(',').map((v) => Number(v.trim())).filter((v) => v > 0);
-        const seconds = resets.length ? Math.max(...resets) : 3600;
+      const reply = await braveWebSearch(fetcher, searchQuery(input), apiKey);
+      if (reply.limited) {
+        const seconds = reply.resetSeconds;
         throw new QuotaExhaustedError(new Date(now().getTime() + (seconds + 1) * 1000), `Brave Search limit reached; retrying in ${Math.ceil(seconds / 60)} min.`);
       }
-      if (res.status === 401 || res.status === 403) throw new HttpError(res.status, url, `Brave Search rejected the key (HTTP ${res.status}). Check BRAVE_SEARCH_API_KEY.`);
-      const data = parseJson<BraveResponse>(res);
-      const urls = (data.web?.results ?? []).map((r) => r.url).filter((u): u is string => typeof u === 'string');
+      const urls = reply.results.map((r) => r.url).filter((u): u is string => typeof u === 'string');
       return [...new Set(urls)];
     },
   };
