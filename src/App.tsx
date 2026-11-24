@@ -286,7 +286,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
       return;
     }
     setResearching((s) => new Set(s).add(event.id));
-    // The server queued research (Slice 11.15): show "Looking up details" and pick up the result by polling.
+    // The server queued research: show "Looking up details" and pick up the result by polling.
     const outcome = takeResearchOutcome(event.id);
     if (outcome === 'queued') {
       pollTicks.current = 0;

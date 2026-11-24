@@ -1,4 +1,4 @@
-// Pure helpers for the owner inbox (slice 11.22). No personal fields are read or shown.
+// Pure helpers for the owner inbox. No personal fields are read or shown.
 import type { InboxEdition, InboxItem, InboxTrace } from './lineupApi';
 
 export type InboxKind = InboxItem['kind'];

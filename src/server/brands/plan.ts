@@ -1,4 +1,4 @@
-// Brand rename, merge and organization change as plans (Global Editions slice 2).
+// Brand rename, merge and organization change as plans (Global Editions).
 // Pure functions: they take the current rows and return what would change, plus the
 // manifest needed to undo it. The store applies a plan and writes brand_history; nothing
 // here touches the database. Shared data only: no personal fields.

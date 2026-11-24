@@ -1,4 +1,4 @@
-// Matching shared editions (occurrences) and the one upsert that uses it (slice 11.11).
+// Matching shared editions (occurrences) and the one upsert that uses it.
 //
 // Matching order (docs/ingest-canon-plan.md):
 //   1. A stored external ID: the same edition.

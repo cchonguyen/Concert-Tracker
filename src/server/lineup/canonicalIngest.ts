@@ -669,7 +669,7 @@ export async function autoMergeZeroLineupGroup(
   return { keep: mergeRes.edition, droppedIds: drops.map((d) => d.id) };
 }
 
-// Clashfinder "Find lineup" (slice 2.10): only a festival edition with no lineup can ask for one. The request is
+// Clashfinder "Find lineup": only a festival edition with no lineup can ask for one. The request is
 // the edition's own name and year, so the existing ingest adapter ranks the Clashfinder versions. Its result still
 // waits for review under Lookups and is written by the usual confirm path.
 export type FindLineupRequest =

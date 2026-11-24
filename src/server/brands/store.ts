@@ -1,4 +1,4 @@
-// Applies and undoes brand changes through a small store (Global Editions slice 2).
+// Applies and undoes brand changes through a small store (Global Editions).
 // The plans come from plan.ts; this file loads the rows, writes them and records history.
 // Owner-only callers use these; nothing here writes a personal field.
 import type { SupabaseClient } from '@supabase/supabase-js';

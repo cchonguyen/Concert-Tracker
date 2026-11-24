@@ -4,7 +4,7 @@
 - **Branch Owner:** Claude
 - **Active Branch / State:** `claude/project-thread-47kcgx`, off main at a93e43b (PR #592 merged 2026-11-24). Working the docs, comments and app text cleanup ([docs/specs/docs-and-text-cleanup.md](../docs/specs/docs-and-text-cleanup.md)), Slice 2 of 10 (issue #593).
 - **Files Modified in Last Turn:** `.spec/OVERVIEW.md`, `.spec/SESSION_HANDOFF.md`, `.spec/PROGRESS.md`, `.spec/SYSTEM_SPEC.md`, `.spec/DECISIONS.md`, `docs/specs/docs-and-text-cleanup.md`.
-- **Verification Status:** Verified via finish-slice.mjs (Slice 21.597)
+- **Verification Status:** Verified via finish-slice.mjs (Slice 21.600)
 - **Immediate Next Step:** finish Slice 2, then run Slices 3 to 10 of the cleanup spec in order, merging each pull request when green.
 - **Open gaps:**
   - Harness: hub PR #208 (merged 2026-11-23) makes the scope check read `Approved-Tripwire:` trailers from the PR's own head commit when CI checks out GitHub's merge commit. Synced into this repo in PR #592.

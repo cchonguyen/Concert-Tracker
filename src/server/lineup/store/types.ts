@@ -93,7 +93,7 @@ export function canonicalEditionPage<T extends CanonicalEditionListRow>(
   return { editions, total: matching.length, hasMore: matching.length > editions.length };
 }
 
-// Canonical edition suggestions (slice 9.1). Confirmed editions only. Each typed word must be a word prefix of a
+// Canonical edition suggestions. Confirmed editions only. Each typed word must be a word prefix of a
 // word in the edition name, series slug, series name, series brand, or series aliases. Years typed in the query
 // are not matched; they only rank equal-year editions first. Both stores call this so their results agree.
 export const EDITION_SUGGEST_MAX_LIMIT = 8;
@@ -210,7 +210,7 @@ export function suggestEditionMatches(
     .map(toEditionSuggestion);
 }
 
-// Canonical history feed (slice 8.9): only canonical operations, newest first, paged by a keyset cursor on
+// Canonical history feed: only canonical operations, newest first, paged by a keyset cursor on
 // (createdAt, id) descending. The operation filter runs in the store query before the limit, never after it.
 export const CANONICAL_HISTORY_DEFAULT_LIMIT = 50;
 export const CANONICAL_HISTORY_MAX_LIMIT = 100;
@@ -388,7 +388,7 @@ export interface LineupStore {
   // The Global Archive: filters and counts the full catalog before returning
   // at most 200 editions in year-descending/name-ascending order.
   listCanonicalEditionsPage(options: CanonicalEditionPageOptions): Promise<CanonicalEditionPage>;
-  // Confirmed editions matching the typed words (slice 9.1); see suggestEditionMatches. Never drafts.
+  // Confirmed editions matching the typed words; see suggestEditionMatches. Never drafts.
   suggestEditions(query: string, opts: SuggestEditionOptions): Promise<EditionSuggestion[]>;
   // Size of each confirmed lineup, by edition id, for Concert or Festival.
   editionLineupFacts(ids: string[]): Promise<Record<string, LineupFacts>>;
@@ -502,7 +502,7 @@ export interface LineupStore {
   getEntityHistory(id: string): Promise<HistoryEntry | null>;
   // Newest first.
   listEntityHistory(limit: number): Promise<HistoryEntry[]>;
-  // Canonical operations only, newest first, one page (slice 8.9). Owner only. Does not change listEntityHistory.
+  // Canonical operations only, newest first, one page. Owner only. Does not change listEntityHistory.
   listCanonicalHistoryPage(options?: CanonicalHistoryPageOptions): Promise<CanonicalHistoryPage>;
 
   // Share page links (0015, src/server/share/). Optional: only the share
@@ -519,12 +519,12 @@ export interface LineupStore {
   listAiCalls(limit: number): Promise<AiCallRow[]>;
   // Returns how many rows were deleted.
   deleteAiCallsBefore(cutoff: Date): Promise<number>;
-  // Ingest traces (migration 0043; slice 11.20). One row per message. Counts, status words and ids only.
+  // Ingest traces (migration 0043). One row per message. Counts, status words and ids only.
   addIngestTrace(row: IngestTraceRow): Promise<void>;
   // Newest first.
   listIngestTraces(limit: number): Promise<IngestTraceRow[]>;
 
-  // Shared occurrences (0041, 0042; slice 11.9). Service key only. Same behavior in both stores.
+  // Shared occurrences (0041, 0042). Service key only. Same behavior in both stores.
   // Returns the canonical venue for this name and place, creating it once; also records the normalized name as an alias.
   upsertVenue(v: { name: string; city?: string; region?: string; country?: string }): Promise<CanonicalVenue>;
   // The one venue holding this normalized alias; null when none, or when more than one venue holds it (never guessed).

@@ -238,7 +238,7 @@ export const eventsApi = {
     ).then((r) => r.point),
 };
 
-// Canonical editions matching the capture line's name (slice 9.1 route). Read-only; the caller handles errors.
+// Canonical editions matching the capture line's name. Read-only; the caller handles errors.
 export const suggestEditions = (q: string, signal?: AbortSignal) =>
   request<{ editions: EditionSuggestion[] }>(`/api/editions/suggest?q=${encodeURIComponent(q)}`, signal ? { signal } : undefined).then(
     (r) => r.editions,
@@ -375,7 +375,7 @@ export const membersApi = {
     request<{ ok: boolean; emailSent?: boolean; emailReason?: string }>('/api/members', post({ email, ...opts })),
   // Deletes the member's account and data. The server wants the email again as `confirm`.
   remove: (email: string) => request<unknown>(`/api/members/${encodeURIComponent(email)}`, { method: 'DELETE', body: JSON.stringify({ confirm: email }) }),
-  // Slice 3.4: whether the event research batch also runs for accepted members. Off by default.
+  // Whether the event research batch also runs for accepted members. Off by default.
   researchBatch: () => request<{ on: boolean }>('/api/members/research-batch'),
   setResearchBatch: (on: boolean) => request<{ on: boolean }>('/api/members/research-batch', { method: 'PUT', body: JSON.stringify({ on }) }),
 };
@@ -565,7 +565,7 @@ export const collaborationsApi = {
     request<{ entry: HistoryEntry }>(`/api/collaborations/${encodeURIComponent(alias)}`, { method: 'DELETE' }),
 };
 
-// Catalog artist change (slice 8.7): one operation, discriminated by `op`. Same shape as the server body.
+// Catalog artist change: one operation, discriminated by `op`. Same shape as the server body.
 export type CanonicalArtistOperation =
   | { op: 'rename'; name: string }
   | { op: 'alias-add'; name: string }
@@ -593,7 +593,7 @@ export const previewCanonicalArtistChange = (key: string, body: CanonicalArtistO
 export const applyCanonicalArtistChange = (key: string, body: CanonicalArtistOperation, previewFingerprint: string) =>
   request<CanonicalArtistApplied>(`/api/manage/canonical/artists/${encodeURIComponent(key)}/apply`, post({ ...body, previewFingerprint }));
 
-// The Changes list (slice 8.10): canonical operations, newest first, one page per call.
+// The Changes list: canonical operations, newest first, one page per call.
 export interface CanonicalChangeRow {
   id: string;
   operation: CanonicalOperation;
@@ -629,7 +629,7 @@ export class UndoConflictError extends Error {
 // Global Archive (owner only): the shared catalog, not your log.
 export const canonicalApi = {
   artists: () => request<{ artists: CanonicalArtistRecord[] }>('/api/manage/canonical/artists'),
-  // Find gaps: editions named for a catalog artist who is not on their lineup yet (slice 3).
+  // Find gaps: editions named for a catalog artist who is not on their lineup yet.
   nameMatches: () => request<{ matches: Array<{ editionId: string; editionName: string; artistKey: string; artistName: string }> }>('/api/manage/canonical/name-matches'),
   addLineupAct: (editionId: string, artistKey: string) =>
     request<{ ok: boolean; changeId: string | null }>(`/api/manage/canonical/editions/${encodeURIComponent(editionId)}/lineup`, post({ artistKey })),
@@ -805,7 +805,7 @@ export const canonicalApi = {
     }),
 };
 
-// Owner inbox (slice 11.22): the review queue and recent ingest traces. Ids, field names and public edition facts only.
+// Owner inbox: the review queue and recent ingest traces. Ids, field names and public edition facts only.
 export interface InboxEdition { id: string; name: string; startDate: string | null; endDate: string | null; venue: string | null; city: string | null; country: string | null; status: string }
 export interface InboxItem {
   id: string;
@@ -873,7 +873,7 @@ export function isActive(status: LookupJob['status'] | undefined): boolean {
   return status === 'queued' || status === 'running';
 }
 
-// Member lineup offers (slice 5): the catalog acts named in linked editions' names that their lineups lack, and the one-tap proposal.
+// Member lineup offers: the catalog acts named in linked editions' names that their lineups lack, and the one-tap proposal.
 export const memberLineupApi = {
   offers: (editionIds: string[]) =>
     request<{ offers: Array<{ editionId: string; artistKey: string; artistName: string }> }>(

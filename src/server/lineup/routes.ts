@@ -22,7 +22,7 @@ const safeJob = (job: LookupJob): LookupJob => ({
   log: job.log.map((e) => ({ ...e, message: redactSecrets(e.message) })),
 });
 
-// Owner view of the reader (docs/ai-reader-spec.md "Owner view"). Counts, sizes and codes only:
+// Owner view of the reader (docs/archive/ai-reader-spec.md "Owner view"). Counts, sizes and codes only:
 // never page text, prompts, quotes or names. Members get the summary without spend, caps, log or recent.
 export async function readerStatus(deps: PipelineDeps, owner: boolean, env: Record<string, unknown> = process.env) {
   const reader = deps.reader;
@@ -145,7 +145,7 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
     }
   });
 
-  // One-time repair (slice 11.7): artist-resolution jobs that failed on a MusicBrainz 503 go back to waiting.
+  // One-time repair: artist-resolution jobs that failed on a MusicBrainz 503 go back to waiting.
   // Owner only and idempotent: a job already re-queued once is skipped.
   router.post('/manage/requeue-resolve-artists', async (_req, res) => {
     if (!isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
@@ -181,7 +181,7 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
     }
   });
 
-  // Clashfinder "Find lineup" on one festival edition (slice 2.10). Owner only. Starts the same owner lookup as
+  // Clashfinder "Find lineup" on one festival edition. Owner only. Starts the same owner lookup as
   // the ingest route, with no event attached, so the result goes to Lookups for review.
   router.post('/manage/canonical/editions/:id/find-lineup', async (req, res) => {
     if (!isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
@@ -266,7 +266,7 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
     }
   });
 
-  // Canonical edition suggestions for the capture bar (slice 9.1). Any signed-in member. Editions linked to
+  // Canonical edition suggestions for the capture bar. Any signed-in member. Editions linked to
   // the caller's live events are left out; deleted events are not in listEvents(), so they do not hide one.
   router.get('/editions/suggest', async (req, res) => {
     try {
@@ -285,7 +285,7 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
     }
   });
 
-  // Slice 4 (canonical weather): the owner refreshes an edition's weather record. The change is in the
+  // The owner refreshes an edition's weather record. The change is in the
   // edition history, so it can be undone there. Under /manage/canonical like the other owner-only edition calls.
   router.post('/manage/canonical/editions/:id/weather/refresh', async (req, res) => {
     try {

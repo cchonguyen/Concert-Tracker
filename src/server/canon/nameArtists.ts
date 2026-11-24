@@ -1,4 +1,4 @@
-// Matches a shared edition's name to catalog artists (docs/edition-lineup-from-name-spec.md, slice 1).
+// Matches a shared edition's name to catalog artists (docs/archive/edition-lineup-from-name-spec.md).
 // Pure: no store, no network, no model. Only the catalog list passed in is considered, never personal entities.
 import { normalizeName } from '../lineup/normalizeName';
 
@@ -65,7 +65,7 @@ export function matchEditionName(
   return { artistKey: best.artist.key, artistName: best.artist.name, quote: editionName };
 }
 
-// The payload a member's lineup proposal stores (slice 4). Only the act and the edition's name: never a user id or a personal field.
+// The payload a member's lineup proposal stores. Only the act and the edition's name: never a user id or a personal field.
 export interface LineupProposalPayload {
   artistKey: string;
   artistName: string;
@@ -77,7 +77,7 @@ export function lineupProposalPayload(editionName: string, artist: CatalogArtist
   return { artistKey: artist.key, artistName: artist.name, editionName, quote: editionName };
 }
 
-// The catalog acts each edition's name offers that its lineup does not have yet (slice 5). Pure: the caller passes the editions and catalog.
+// The catalog acts each edition's name offers that its lineup does not have yet. Pure: the caller passes the editions and catalog.
 export interface EditionNameOffer {
   editionId: string;
   artistKey: string;

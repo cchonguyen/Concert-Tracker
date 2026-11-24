@@ -1,8 +1,8 @@
-// Slice 11.19: a cron step that researches events still 'pending' (saved before queue research existed, or whose
+// A cron step that researches events still 'pending' (saved before queue research existed, or whose
 // queue message failed). At most RESEARCH_BATCH_SIZE events per run (the cron fires every minute).
 //
 // Ladder rungs 1 to 3: the catalog lookup, the structured finders (Ticketmaster, setlist.fm, Clashfinder) and, since
-// Slice 3.3, Brave (rung 3) only when the free finders leave a gap (researchEvent, leavesGap). No reader model (rung 4).
+// Brave (rung 3) only when the free finders leave a gap (researchEvent, leavesGap). No reader model (rung 4).
 // The monthly Brave counter (200 queries a month, braveBudget.ts) now gates the live Brave calls: braveCapFetcher
 // wraps the fetcher in createDeps (lineup/service.ts), so Brave requests made by queued research are counted there.
 //
@@ -35,7 +35,7 @@ export type { BraveCount } from './braveBudget';
 
 export const RESEARCH_BATCH_SIZE = 5;
 export const RESEARCH_SETTING = 'research_backfill';
-// Slice 3.4: the batch runs for members too once this app setting is { "on": true }. Off by default, so the owner
+// The batch runs for members too once this app setting is { "on": true }. Off by default, so the owner
 // batch runs alone until it has worked in production.
 export const RESEARCH_MEMBERS_SETTING = 'research_batch_members';
 export function membersResearchOn(value: { on?: boolean } | null | undefined): boolean {
@@ -46,7 +46,7 @@ const FIXED_COST = 3;
 const ITEM_COST = 27;
 const FULL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// Slice 3.1: an event with a full date is researched as before. So is one with a year and a city but no date:
+// An event with a full date is researched as before. So is one with a year and a city but no date:
 // the structured finders search that year in that city, and what they find is a candidate for your tap, never
 // filled on its own (a year-only event has no full date for researchEvent to match). A year alone is not enough.
 export function batchable(e: LoggedEvent): boolean {
@@ -112,14 +112,14 @@ export async function runResearchBackfill(
   const next: Attempts = { at: Object.fromEntries(Object.entries(attempts.at).filter(([, t]) => recent(t))) };
   let changed = Object.keys(next.at).length !== Object.keys(attempts.at).length;
 
-  // Slice 3.3: Brave is allowed here too while interactive reserve remains; researchEvent calls it only when free finders leave a gap.
+  // Brave is allowed here too while interactive reserve remains; researchEvent calls it only when free finders leave a gap.
   const globalStore = opts.catalogStore ?? store;
   const hasBrave = finders.some((f) => f.id === 'discovered');
   let allowBrave = hasBrave ? await braveHasBatchBudget(globalStore, now) : false;
   const catalog = researchCatalogFor(opts.role, opts.userId, opts.catalogStore ?? store);
   const batch = opts.batchSize ?? RESEARCH_BATCH_SIZE;
   const room = (n: number) => budgetLeft() >= ITEM_COST + n;
-  // Slice 4.3: hosts that refused in the last 30 days are kept globally in catalog/app_settings and skipped across members.
+  // Hosts that refused in the last 30 days are kept globally in catalog/app_settings and skipped across members.
   const refusedBefore = await loadRefusals(globalStore, now);
   const refusals = { ...refusedBefore };
   const guarded = refusalFetcher(fetcher, refusals, now);

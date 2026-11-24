@@ -54,7 +54,7 @@ import {
   venuePlaceConflicts,
 } from './manage';
 
-// Canonical artist preview and apply (slice 8.7). The body is one operation. Unknown ops, missing
+// Canonical artist preview and apply. The body is one operation. Unknown ops, missing
 // name/into and extra fields are refused with 400. The apply body also takes previewFingerprint.
 const ARTIST_OPS = ['rename', 'alias-add', 'alias-remove', 'merge'] as const;
 const PREVIEW_STALE = 'Preview is out of date; review it again';
@@ -267,9 +267,9 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     }
   });
 
-  // Owner verifies a provisional shared edition (slice 12.4). Goes through writeEdition, so undo works.
+  // Owner verifies a provisional shared edition. Goes through writeEdition, so undo works.
   // Normalized names of series (name, brand, aliases), venues and organizations: a name remainder equal to one of
-  // these blocks a lineup match (docs/edition-lineup-from-name-spec.md, Matching rule 4).
+  // these blocks a lineup match (docs/archive/edition-lineup-from-name-spec.md, Matching rule 4).
   const NAME_MATCH_EDITION_LIMIT = 5000;
   async function namedPlaceRemainders(s: typeof store): Promise<Set<string>> {
     const out = new Set<string>();
@@ -287,7 +287,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     return out;
   }
 
-  // Find gaps (slice 3): every edition whose name starts with a catalog artist who is not on its lineup yet.
+  // Find gaps: every edition whose name starts with a catalog artist who is not on its lineup yet.
   router.get(
     '/manage/canonical/name-matches',
     ownerOnly as any,
@@ -313,7 +313,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     }),
   );
 
-  // Member proposal (slice 4): a signed-in member proposes a catalog artist named in a shared edition's name. The owner
+  // Member proposal: a signed-in member proposes a catalog artist named in a shared edition's name. The owner
   // approves or rejects it in the Changes queue. Stored as a review item with no user id and no personal field.
   router.post('/canon/lineup-proposals', (_req: any, res: Response, next: () => void) =>
     currentMember() ? next() : res.status(401).json({ error: 'Sign in to propose an act.' }), async (req, res) => {
@@ -342,7 +342,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     }
   });
 
-  // Member lineup offers (slice 5): the catalog acts named in the given linked editions' names that their lineups lack.
+  // Member lineup offers: the catalog acts named in the given linked editions' names that their lineups lack.
   // Returns catalog names and edition ids only, never a personal field. The member tap uses POST /canon/lineup-proposals.
   router.get('/canon/lineup-offers', (_req: any, res: Response, next: () => void) =>
     currentMember() ? next() : res.status(401).json({ error: 'Sign in to see offers.' }), async (req, res) => {
@@ -361,7 +361,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     }
   });
 
-  // Owner approves a member's lineup proposal (slice 4). The match is re-checked, the act goes through addEditionAct.
+  // Owner approves a member's lineup proposal. The match is re-checked, the act goes through addEditionAct.
   router.post('/manage/canonical/proposals/:id/approve', ownerOnly as any, async (req, res) => {
     try {
       const item = (await store.listReviewItems({ kind: 'lineup_proposal' })).find((r) => r.id === String(req.params.id));
@@ -395,7 +395,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     }
   });
 
-  // Owner taps an artist named in the edition's name onto its lineup (slice 2). The server re-checks the match.
+  // Owner taps an artist named in the edition's name onto its lineup. The server re-checks the match.
   router.post('/manage/canonical/editions/:id/lineup', ownerOnly as any, async (req, res) => {
     try {
       const edition = await store.getEdition(String(req.params.id));
@@ -820,7 +820,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     }
   });
 
-  // Brands under organizations (Global Editions slice 2.8). Owner only.
+  // Brands under organizations (Global Editions). Owner only.
   router.use(brandsRouter({ isOwner: () => isOwner(currentMember()) }));
   return router;
 }

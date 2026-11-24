@@ -464,7 +464,7 @@ export function hasGap(e: LoggedEvent, gap: Gap, lineup?: LineupSummary, facts?:
     case 'review':
       return lineup?.status === 'needs_review' && !e.editionId;
     case 'lineup':
-      // The server offers a catalog act named in the edition's name that its lineup lacks (slice 5).
+      // The server offers a catalog act named in the edition's name that its lineup lacks.
       return Boolean(e.editionId && offered?.has(e.editionId));
   }
 }
@@ -500,7 +500,7 @@ export function placePatch(
   return Object.keys(patch).length ? patch : null;
 }
 
-// Slice 3.2: events whose research (a batch run, or "Look again") is waiting for your tap: a year and a city, no full
+// Events whose research (a batch run, or "Look again") is waiting for your tap: a year and a city, no full
 // date, and candidates the sources found. Nothing is applied until you pick one.
 const FULL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export function batchResultsWaiting(events: LoggedEvent[]): LoggedEvent[] {

@@ -1,4 +1,4 @@
-// Member tick as candidate (auto-verify slice 5, docs/auto-verify-spec.md).
+// Member tick as candidate (auto-verify, docs/auto-verify-spec.md).
 // A person's "Who I Saw" act on an event linked to a shared edition adds that act to the edition's lineup as a
 // `candidate`, sourced "your entry" with the typed name as the quoted span. The shared row holds no user id, no
 // event id and no personal field. The change record carries the system actor and a fixed reason only.

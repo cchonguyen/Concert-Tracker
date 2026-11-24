@@ -283,7 +283,7 @@ export class FileLineupStore implements LineupStore {
   }
 
   private normalizeSeriesRecord(s: SeriesRecord): SeriesRecord {
-    // No type stays empty: a series is never typed festival by default (series type fix, slice 3).
+    // No type stays empty: a series is never typed festival by default (series type fix).
     const out: SeriesRecord = clone(s);
     if (s.kind === 'tour' || s.kind === 'festival') out.kind = s.kind;
     else delete out.kind;
@@ -1119,7 +1119,7 @@ export class FileLineupStore implements LineupStore {
     return clone(all.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit));
   }
 
-  // Owner's canonical history (slice 8.9). Two sources, merged by id: entityHistory rows with a canonical operation,
+  // Owner's canonical history. Two sources, merged by id: entityHistory rows with a canonical operation,
   // and canonicalChanges, where applyCanonicalArtistChange (the 8.6 apply path) keeps its changes. The filter
   // runs on the full set before the cursor and the limit, so an older canonical entry is never skipped.
   async listCanonicalHistoryPage(options: CanonicalHistoryPageOptions = {}): Promise<CanonicalHistoryPage> {

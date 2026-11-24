@@ -87,7 +87,7 @@ export function geminiReader(reader: GuardedReader, eventId: string, now: () => 
   };
 }
 
-// Rung 4 (Slice 11.17): the reader without a button press, after the save, in its own queue message per page.
+// Rung 4: the reader without a button press, after the save, in its own queue message per page.
 // - Runs only when the event has a full date and venue or city is still empty (rung4Wanted).
 // - At most RUNG4_MAX_PAGES pages (rung4Urls), taken from the pages rung 3 already found; no new search here.
 // - One message reads one page: it must be under RUNG4_MAX_CHARS characters, else it is skipped (never cut up).

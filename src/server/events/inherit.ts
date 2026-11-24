@@ -1,4 +1,4 @@
-// Inheritance for events linked to a shared edition (slice 11.12; docs/ingest-canon-plan.md).
+// Inheritance for events linked to a shared edition (docs/ingest-canon-plan.md).
 //
 // A linked event shows the edition's value for a shared field unless the person overrode that field.
 // What they first typed is kept in `captured` (written once, never deleted). The event's own columns
