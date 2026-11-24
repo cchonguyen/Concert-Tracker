@@ -23,19 +23,16 @@ test('docs do not link to machine-specific file:// paths', () => {
   assert.deepEqual(offenders, []);
 });
 
-// Relative links in root, docs/ and the .spec/ notes must point at files that exist. Code spans
+// Relative links in root and docs/ must point at files that exist. Code spans
 // are skipped, anchors and query strings are ignored, external links and
 // mailto: are not checked.
-test('every relative Markdown link in root, docs/ and .spec/ resolves', () => {
+test('every relative Markdown link in root and docs/ resolves', () => {
   const rootDocs = readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
     .map((entry) => path.join(root, entry.name));
   const linkPattern = /\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
   const dead: string[] = [];
-  const specNotes = readdirSync(path.join(root, '.spec'), { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
-    .map((entry) => path.join(root, '.spec', entry.name));
-  for (const file of [...rootDocs, ...markdownFiles(docsDir), ...specNotes]) {
+  for (const file of [...rootDocs, ...markdownFiles(docsDir)]) {
     const text = readFileSync(file, 'utf8').replace(/`[^`\n]*`/g, '');
     const targets = [...text.matchAll(linkPattern)].map((match) => match[1]);
     for (const raw of targets) {
@@ -48,6 +45,24 @@ test('every relative Markdown link in root, docs/ and .spec/ resolves', () => {
       if (!existsSync(resolved)) dead.push(`${path.relative(root, file)} -> ${target}`);
     }
   }
+  assert.deepEqual(dead, []);
+});
+
+// The harness notes in .spec/ link into docs/ too; a moved spec must not leave them dangling.
+test('every relative Markdown link in the .spec/ notes resolves', () => {
+  const linkPattern = /\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+  const specDir = path.join(root, '.spec');
+  const dead = readdirSync(specDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+    .flatMap((entry) => {
+      const file = path.join(specDir, entry.name);
+      const text = readFileSync(file, 'utf8').replace(/`[^`\n]*`/g, '');
+      return [...text.matchAll(linkPattern)]
+        .map((match) => match[1].split(/[#?]/)[0])
+        .filter((target) => target && !/^(https?:|mailto:)/.test(target))
+        .filter((target) => !existsSync(path.resolve(specDir, target)))
+        .map((target) => `.spec/${entry.name} -> ${target}`);
+    });
   assert.deepEqual(dead, []);
 });
 
