@@ -264,7 +264,7 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
             </h2>
             <p className="text-xs text-zinc-400">
               A CSV of events you went to, from Notion, a spreadsheet or this app's export. Nothing is saved until you press Import.
-              The file only adds: new events, and empty fields, acts and people on events you already have. It never changes what your
+              It only adds new events and fills empty fields, acts and people on events you already have. It never changes what your
               log already says.
             </p>
           </div>

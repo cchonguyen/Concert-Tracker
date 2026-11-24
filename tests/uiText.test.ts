@@ -16,3 +16,7 @@ test('the deep search button names no AI brand', () => {
 test('member screens say Edition, not Canonical edition', () => {
   assert.ok(!read('src/components/EventDetail.tsx').includes('Canonical edition'));
 });
+
+test('member screens never show server setting names', () => {
+  assert.ok(!/GOOGLE_CLIENT_(ID|SECRET)/.test(read('src/components/SheetSync.tsx').replace(/^\s*\/\/.*$/gm, '')));
+});
