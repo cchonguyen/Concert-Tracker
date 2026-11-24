@@ -45,6 +45,7 @@ These rules change, so AGENTS.md and ARCHITECTURE.md change first, in the same P
 - An act is `verified` when at least one trusted source has it for the same edition: a ticket email, a promoter or lineup page the app fetched, or an API that has the name and date (MusicBrainz, setlist.fm id only). Two independent fetched sources agreeing also verify it, and the act shows "2 sources".
 - A `your entry` tick is `candidate`. A second member's tick for the same act counts as a second source only once a fetched source agrees. Two ticks alone do not verify.
 - An edition is `verified` in code when name, act, location, venue and date are all filled and every fact comes from a verified source. A provisional edition with a missing field stays provisional.
+- A location filled by the venue fill (`system:venue-location`, `docs/specs/venue-location-fill.md`) counts as a location from a verified source (Charlie, 2026-11-24): `locationVerifiedBy` in `src/server/canon/autoVerify.ts`.
 - Auto-verify never overwrites a value the owner typed. It fills empty fields and changes status only.
 - No demotion. A later disagreeing source adds a candidate note for the owner to review.
 

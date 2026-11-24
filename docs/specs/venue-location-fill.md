@@ -1,6 +1,6 @@
 # Venue fills location (spec)
 
-Status: proposed 2026-11-24, waiting for Charlie's approval. Thread: "Scope auto-filling venue location".
+Status: approved 2026-11-24 (PR #616); built 2026-11-24 in PRs #619, #621, #623, #625, #627, #629, #631 and the slice 7 pull request. Thread: "Scope auto-filling venue location".
 
 ## Ask
 
@@ -15,6 +15,8 @@ automatically, in the event Details screen and in Global Editions, and fill exis
 | 2 | Same venue name known in more than one city? | Fill nothing. Show each known location as a one-tap choice. |
 | 3 | Does a location filled from the venue count toward an edition becoming verified? | Yes, it counts as a verified location. |
 | 4 | Fill existing editions in bulk? | Yes. |
+| 5 | Backfill the state too? | Yes, whenever possible: only a state already stored or split from "City, ST" in code. |
+| 6 | Share the state with the city when editions are saved? | Yes, for your events, ticket emails and web research. Member entries wait on whether the member notice is updated (it promises name, date, venue and city only). |
 
 ## How it works today (2026-11-24, main at 3489cbf)
 
