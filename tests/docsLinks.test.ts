@@ -23,16 +23,19 @@ test('docs do not link to machine-specific file:// paths', () => {
   assert.deepEqual(offenders, []);
 });
 
-// Relative links in root and docs/ must point at files that exist. Code spans
+// Relative links in root, docs/ and the .spec/ notes must point at files that exist. Code spans
 // are skipped, anchors and query strings are ignored, external links and
 // mailto: are not checked.
-test('every relative Markdown link in root and docs/ resolves', () => {
+test('every relative Markdown link in root, docs/ and .spec/ resolves', () => {
   const rootDocs = readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
     .map((entry) => path.join(root, entry.name));
   const linkPattern = /\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
   const dead: string[] = [];
-  for (const file of [...rootDocs, ...markdownFiles(docsDir)]) {
+  const specNotes = readdirSync(path.join(root, '.spec'), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+    .map((entry) => path.join(root, '.spec', entry.name));
+  for (const file of [...rootDocs, ...markdownFiles(docsDir), ...specNotes]) {
     const text = readFileSync(file, 'utf8').replace(/`[^`\n]*`/g, '');
     const targets = [...text.matchAll(linkPattern)].map((match) => match[1]);
     for (const raw of targets) {
