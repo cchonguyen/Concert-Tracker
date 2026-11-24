@@ -61,7 +61,7 @@ function setup(list: FakeMember[]) {
   };
 }
 
-test('a member who accepted v2 creates a provisional edition from a dated event: typed venue and city only', async () => {
+test('a member who accepted the current notice creates a provisional edition from a dated event: typed venue and city only', async () => {
   const s = await fresh();
   const m = accepted('member-user-Zq92', [
     event('mev-Zq81', {
@@ -95,7 +95,7 @@ test('a member who accepted v2 creates a provisional edition from a dated event:
   assert.equal(b.city, undefined, 'a city the person did not type is not stored');
 });
 
-test('a member who has not accepted v2 is not read and creates nothing', async () => {
+test('a member who has not accepted the current notice is not read and creates nothing', async () => {
   const s = await fresh();
   const old = accepted('member-user-old1', [event('mev-old1', { name: 'Band A', startDate: '2026-06-01' })]);
   old.settings.set(NOTICE_SETTING, { version: 1 });

@@ -780,14 +780,14 @@ async function persistOccurrence(event: LoggedEvent, raw: DetailCandidate[], cat
 }
 
 // A member's (or the owner's) own entry may create a `provisional` shared edition. Only the typed
-// name, a full YYYY-MM-DD start date, venue and city (venue/city only if the person typed them); no external ids,
+// name, a full YYYY-MM-DD start date, venue, city and state (each only if the person typed it; notice version 3); no external ids,
 // no country, no end date, never personal fields. Actor 'member:entry' carries no user id. A provisional source
 // only fills empty fields of a matched edition, so it never changes another edition. Runs only inside the
 // research queue message, never in save. Worst case 8 store calls: 3 match + venue + key check + 3 write
 // (no external ids, no suggestion beyond the 2 queued ones counted in persistOccurrence's 11).
 async function persistOwnEntry(event: LoggedEvent, catalog: ResearchCatalog, notes: string[]): Promise<void> {
   if (!catalog.persistOwn || !event.startDate || !/^\d{4}-\d{2}-\d{2}$/.test(event.startDate) || !event.name.trim()) return;
-  const typed = (f: 'venue' | 'city') => (event.sources[f]?.sourceType === 'user' ? event[f] : undefined);
+  const typed = (f: 'venue' | 'city' | 'region') => (event.sources[f]?.sourceType === 'user' ? event[f] : undefined);
   try {
     const r = await upsertOccurrence(catalog.store, {
       name: event.name,
@@ -795,6 +795,7 @@ async function persistOwnEntry(event: LoggedEvent, catalog: ResearchCatalog, not
       ...(event.endDate && event.sources.endDate?.sourceType === 'user' ? { endDate: event.endDate } : {}),
       venue: typed('venue'),
       city: typed('city'),
+      region: typed('region'),
       subjectKey: seriesSlugFor(event.name),
       externalIds: [],
       trust: 'provisional',
