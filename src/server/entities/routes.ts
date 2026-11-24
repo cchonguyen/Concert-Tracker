@@ -37,6 +37,7 @@ import {
 import { seriesSlugFor } from '../lineup/text';
 import type { Edition, SeriesKind, SeriesRecord, SourceType } from '../lineup/types';
 import { addEditionAct, writeEdition } from '../canon/editions';
+import { venueLocation } from '../canon/venueLocation';
 import { lineupProposalPayload, matchEditionName, offersForEditions, prepareCatalog } from '../canon/nameArtists';
 import { normalizeName } from '../lineup/normalizeName';
 import {
@@ -337,6 +338,18 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
         payload: lineupProposalPayload(edition.name, { key: artist.key, name: artist.name }) as unknown as Record<string, unknown>,
       });
       res.json({ ok: true, duplicate: false, id: item.id });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // A venue's known location from the shared venue records (docs/specs/venue-location-fill.md): one location, the
+  // choices when the records name more than one place, or none. Location fields only, never a personal field.
+  router.get('/canon/venue-location', (_req: any, res: Response, next: () => void) =>
+    currentMember() ? next() : res.status(401).json({ error: 'Sign in to look up a venue.' }), async (req, res) => {
+    try {
+      const name = String(req.query?.name ?? '').slice(0, 200);
+      res.json(await venueLocation(store, name));
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }

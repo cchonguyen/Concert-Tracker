@@ -526,6 +526,7 @@ export interface LineupStore {
 
   // Shared occurrences (0041, 0042). Service key only. Same behavior in both stores.
   // Returns the canonical venue for this name and place, creating it once; also records the normalized name as an alias.
+  // A state given for a record without one is filled in; a state already stored is never changed.
   upsertVenue(v: { name: string; city?: string; region?: string; country?: string }): Promise<CanonicalVenue>;
   // The one venue holding this normalized alias; null when none, or when more than one venue holds it (never guessed).
   findVenueByAlias(aliasNormalized: string): Promise<CanonicalVenue | null>;
@@ -623,8 +624,10 @@ export function assertNoPersonalFields(value: unknown): void {
 }
 
 // Stable id for a canonical venue: same normalized name and place, same id, in both stores.
+// The state is left out (its slot stays empty) so a venue saved with and without its state is one record and the ids
+// made before venues kept a state do not change. The state is stored on the record instead.
 export function venueIdFor(v: { name: string; city?: string; region?: string; country?: string }, normalize: (s: string) => string): string {
-  return 'venue:' + [v.name, v.city, v.region, v.country].map((x) => normalize(x ?? '').replace(/ /g, '-')).join('|');
+  return 'venue:' + [v.name, v.city, undefined, v.country].map((x) => normalize(x ?? '').replace(/ /g, '-')).join('|');
 }
 
 export type IngestTraceTrigger = 'save' | 'research' | 'research_reader' | 'backfill' | 'research_backfill' | 'lookup';

@@ -1289,7 +1289,14 @@ export class FileLineupStore implements LineupStore {
     const id = venueIdFor(v, normalizeName);
     state.venues ??= {};
     const existing = state.venues[id];
-    if (existing) return clone(existing);
+    if (existing) {
+      const region = v.region?.trim();
+      if (region && !existing.region?.trim()) {
+        existing.region = region;
+        await this.save();
+      }
+      return clone(existing);
+    }
     const venue: CanonicalVenue = { id, name: v.name, city: v.city, region: v.region, country: v.country, createdAt: new Date().toISOString() };
     state.venues[id] = venue;
     this.putAlias(state, id, normalizeName(v.name));
