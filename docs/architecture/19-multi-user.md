@@ -3,7 +3,7 @@
 Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
 
 
-Built on the branch `claude/multi-user`, **off by default and not applied to the live database**. Multi-user is the only mode that admits anyone but the owner (spec: `multi-user/multi-user-spec-v2-ON-HOLD.md` in the project files; counsel's sign-off and the owner's go-ahead are still needed before turning it on). Code in `src/server/auth/`.
+Merged on 2026-10-29 (PR #87) after counsel's sign-off. It runs only when `MULTI_USER=on`; with it off the app admits the owner alone. Multi-user is the only mode that admits anyone but the owner (spec: `multi-user/multi-user-spec-v2-ON-HOLD.md` in the project files). Code in `src/server/auth/`.
 
 **Access gate (fail closed).** Every `/api` request except `GET /api/health` passes one check, in both modes (`accessGateFromEnv` in `src/server/auth/config.ts`):
 - `MULTI_USER=on` (exactly, after trimming): members, as above.

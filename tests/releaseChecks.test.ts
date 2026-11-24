@@ -42,11 +42,10 @@ test('release checks cite the share page rule that is enforced in code', () => {
   assert.match(page, /default-src 'none'/);
 });
 
-test('release checks name migration files that exist, and the next free number', () => {
+test('release checks name migration files that exist, and say how to find the next free number', () => {
   const section = releaseSection();
   assert.ok(fs.existsSync(path.join(root, 'supabase/migrations/0015_share_links.sql')));
   assert.match(section, /0015/);
-  assert.match(section, /0036/);
-  const taken = fs.readdirSync(path.join(root, 'supabase/migrations')).filter((f) => f.startsWith('0036_'));
-  assert.equal(taken.length, 0, 'migration 0036 is still free');
+  // A fixed "next free number" goes stale with every migration, so the section points at the folder instead.
+  assert.match(section, /next free number is the one after the highest file in `supabase\/migrations\/`/);
 });
