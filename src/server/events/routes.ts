@@ -22,7 +22,7 @@ import { weatherForEdition } from './editionWeather';
 import { undoActivity } from './undo';
 import { currentMember } from '../auth/requestScope';
 
-// Slice 11.15: a runner that can also run stage 1 research off the request (the Cloudflare queue).
+// A runner that can also run stage 1 research off the request (the Cloudflare queue).
 // The Node runner has no such method; the browser then asks for research itself, as before.
 // actor: the member who saved the event, so the consumer reads and writes that member's rows.
 export interface ResearchActor {

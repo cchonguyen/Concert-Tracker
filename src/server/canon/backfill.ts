@@ -1,4 +1,4 @@
-// Backfill of shared editions from what the owner already has (slice 11.14). A batch step run from the cron:
+// Backfill of shared editions from what the owner already has. A batch step run from the cron:
 //   (c) existing editions get a venue_id (from their venue text, via upsertVenue + alias) and a subject_key
 //       (the edition's own series slug) where missing;
 //   (b) ticket email imports that became events (status 'added') become verified editions

@@ -1,4 +1,4 @@
-// The one door for writing a shared edition (slice 11.10). Everything that saves an edition goes through
+// The one door for writing a shared edition. Everything that saves an edition goes through
 // writeEdition so each change is recorded with old value, new value, who and why. Nothing outside this file
 // and the store implementations may call store.upsertEdition (tests/editionChanges.test.ts checks it).
 //
@@ -130,7 +130,7 @@ export async function undoEditionChange(store: LineupStore, editionId: string, c
   if (typeof addedAct === 'string') return undoLineupAct(store, edition, change, addedAct, actor);
   const tickAct = (change.after as Snapshot | null)?.[MEMBER_TICK_KEY];
   if (typeof tickAct === 'string') return undoMemberTick(store, edition, change, tickAct, actor);
-  // weather is recorded with the field edits (slice 4). It is restored to null when the change had none.
+  // weather is recorded with the field edits. It is restored to null when the change had none.
   const fields = Object.keys(change.after ?? {}).filter((k): k is Field | 'weather' => (FIELDS as readonly string[]).includes(k) || k === 'weather');
   const before = change.before ?? {};
   // The edition's first write (name was empty before) and summary-only changes cannot be rolled back as a field edit.
@@ -165,7 +165,7 @@ export async function undoEditionChange(store: LineupStore, editionId: string, c
   return { ok: true, change: written.change ?? change };
 }
 
-// Shared lineup from the edition's name (slice 2). An act added this way is the only performance with a
+// Shared lineup from the edition's name. An act added this way is the only performance with a
 // single 'edition name' source. The change record carries its artist key so undo can remove that act.
 export const LINEUP_NAME_KEY = 'lineupActAdded';
 
@@ -212,7 +212,7 @@ export async function addEditionAct(store: LineupStore, input: AddEditionActInpu
   return { ok: true, changeId: written.change?.id ?? null };
 }
 
-// Member tick (slice 5): undo removes only a candidate act still sourced from a single "your entry" tick.
+// Member tick: undo removes only a candidate act still sourced from a single "your entry" tick.
 // An act that an owner or a source has since changed is left alone.
 export const MEMBER_TICK_KEY = 'memberTickAct';
 
@@ -252,7 +252,7 @@ async function undoLineupAct(store: LineupStore, edition: Edition, change: Editi
   return { ok: true, change: written.change ?? change };
 }
 
-// Auto-verify of an act already on a shared edition (docs/auto-verify-spec.md, slice 3b). Only a candidate
+// Auto-verify of an act already on a shared edition (docs/auto-verify-spec.md). Only a candidate
 // act becomes verified, and only when verifyAct says so. The change records the act and its previous
 // status, so undo puts it back. Nothing is added here and no personal field is written.
 export const AUTO_VERIFY_KEY = 'autoVerifiedAct';
@@ -312,7 +312,7 @@ async function undoAutoVerify(store: LineupStore, edition: Edition, change: Edit
   return { ok: true, change: written.change ?? change };
 }
 
-// Auto-verify of a provisional edition (docs/auto-verify-spec.md, slice 3c). The edition becomes verified
+// Auto-verify of a provisional edition (docs/auto-verify-spec.md). The edition becomes verified
 // only when name, act, location, venue and date each come from a verified source. The change records the
 // previous status, so undo puts the edition back to provisional.
 export const AUTO_EDITION_KEY = 'autoVerifiedEdition';

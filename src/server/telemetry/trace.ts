@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { IngestTraceRow, IngestTraceTrigger } from '../lineup/store/types';
 
-// Ingest trace collector (slice 11.20; docs/ingest-canon-plan.md, "Review queue and traces").
+// Ingest trace collector (docs/ingest-canon-plan.md, "Review queue and traces").
 // Steps collect in memory and are written in ONE insert at the end of a message. Counts, status words,
 // source names and ids only: never page text, quotes, prompts, or personal fields (AGENTS.md).
 

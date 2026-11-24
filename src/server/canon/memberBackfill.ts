@@ -1,5 +1,5 @@
-// Member backfill (slice 12.6). A cron batch that turns existing members' dated events into `provisional` shared
-// editions, the same shape as a member's own entry (Slice 11.23, persistOwnEntry in events/details.ts).
+// Member backfill. A cron batch that turns existing members' dated events into `provisional` shared
+// editions, the same shape as a member's own entry (persistOwnEntry in events/details.ts).
 //
 // Who is walked: members with a user id, role 'member' and not blocked, who accepted notice version NOTICE_VERSION.
 // Anyone else is counted as skipped and their events are never read. Each walked member's dated events are read
@@ -15,7 +15,7 @@
 // A member with `complete` costs one settings read per run. A few items per run (default 5, across all members),
 // and only while the subrequest budget allows. An item cut off by the budget is not marked done.
 //
-// Owner override (Slice 12.10): an owner-set app setting MEMBER_BACKFILL_OVERRIDE_SETTING `{ until }` lets the walk
+// Owner override: an owner-set app setting MEMBER_BACKFILL_OVERRIDE_SETTING `{ until }` lets the walk
 // include members of any notice version while `until` is a future ISO time. It is time-boxed and expires by itself.
 // It changes nothing else: owners, blocked members, users without an id, the field list and the cursor rules stay.
 //
@@ -53,7 +53,7 @@ export interface MemberBackfillReport {
 export interface MemberBackfillOptions {
   budgetLeft?: () => number;
   batchSize?: number;
-  anyNotice?: boolean; // owner override (Slice 12.10): walk members whatever notice version they accepted
+  anyNotice?: boolean; // owner override: walk members whatever notice version they accepted
 }
 
 // True only while `until` is a valid ISO date strictly after `now`. Missing, garbage or past values are off.

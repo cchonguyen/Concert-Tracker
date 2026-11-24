@@ -13,7 +13,7 @@ export type SourceType =
   | 'discovered'
   | 'email' // your own ticket emails (stage 1 only, never lineup evidence)
   | 'user'
-  | 'edition name'; // the shared edition's own name, matched to a catalog artist (docs/edition-lineup-from-name-spec.md)
+  | 'edition name'; // the shared edition's own name, matched to a catalog artist (docs/archive/edition-lineup-from-name-spec.md)
 
 // billed: announced on a lineup; performed: a post-show record says they played;
 // crowd: a crowd-sourced listing (Clashfinder).
@@ -287,7 +287,7 @@ export interface Edition {
   country?: string;
   weekends?: EditionWeekend[];
   // 'confirmed' means 'verified'. Migration 0041 accepts both and converts nothing; a later step converts the
-  // rows. It stays in the union so code written before slice 11.9 compiles; read it as 'verified'.
+  // rows. It stays in the union so older code still compiles; read it as 'verified'.
   status: EditionStatus | 'confirmed';
   venueId?: string; // canonical_venues.id (0041)
   subjectKey?: string; // shared artist key for a headline show, series slug for a festival (0041)
@@ -298,7 +298,7 @@ export interface Edition {
   // Admin-curated fact provenance (migration 0034): the owner's note for name, dates, venue, city.
   factSourceNote?: string;
   // One weather record shared by the edition's members (migration 0049). undefined keeps the stored value,
-  // null clears it. See docs/specs/canonical-weather.md.
+  // null clears it. See docs/archive/canonical-weather.md.
   weather?: EventWeather | null;
 }
 
@@ -424,7 +424,7 @@ export interface CapturedFields {
 // logged_events.overrides: the fields the person changed while linked to an edition.
 export type EventOverrides = Partial<CapturedFields>;
 
-// Optional extra columns of logged_events (0041), for the stores in slice 11.9 onward.
+// Optional extra columns of logged_events (0041), for the shared-occurrence store methods.
 export interface LoggedEventInheritance {
   captured?: CapturedFields | null;
   overrides?: EventOverrides;

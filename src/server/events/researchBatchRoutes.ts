@@ -3,7 +3,7 @@ import type { LineupStore } from '../lineup/store/types';
 import { currentMember } from '../auth/requestScope';
 import { membersResearchOn, RESEARCH_MEMBERS_SETTING } from './backfillResearch';
 
-// Slice 3.4 owner control: whether the event research batch also runs for accepted members. Off by default.
+// Whether the event research batch also runs for accepted members. Off by default.
 // The owner switches it in Manage (MembersPanel); a member gets 403.
 export function researchBatchRouter(store: LineupStore): Router {
   const router = Router();

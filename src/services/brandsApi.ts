@@ -1,4 +1,4 @@
-// Owner-only brand calls for the Brands tab in Global Editions (slice 2.9). Shapes match
+// Owner-only brand calls for the Brands tab in Global Editions. Shapes match
 // src/server/brands/routes.ts. Errors come back as thrown Error messages from the server's `error` field.
 
 export interface BrandRecord {

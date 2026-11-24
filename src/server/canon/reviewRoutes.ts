@@ -1,4 +1,4 @@
-// Owner routes for the review queue (slice 11.21). Owner only. Every edition write goes through writeEdition.
+// Owner routes for the review queue. Owner only. Every edition write goes through writeEdition.
 // Responses carry ids, field names and public edition facts only; never a personal field. No model calls.
 import { Router } from 'express';
 import { currentMember } from '../auth/requestScope';

@@ -46,7 +46,7 @@ export function newEvent(line: string, now: Date): LoggedEvent {
 // Starts from newEvent, then copies only the edition's known facts, each sourced
 // 'edition' and linked by editionId. Missing facts stay missing. Nothing personal
 // is copied: seen, companions, rating, price, notes, format, series and kind stay empty.
-// Slice 11.13: the event is linked (editionId) and keeps only what was typed, in its own columns and in
+// The event is linked (editionId) and keeps only what was typed, in its own columns and in
 // `captured` (written once). The edition's facts are not copied; they show through inheritance on read
 // (inherit.ts resolveEvent), so a later edition correction reaches this event.
 export function newEventFromEdition(

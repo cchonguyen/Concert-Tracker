@@ -277,7 +277,7 @@ const parseAliasText = (raw: string): string[] =>
     .map((s) => s.trim())
     .filter(Boolean);
 
-// Brands (Global Editions slice 2.9): one table of brands with rename, merge into another brand,
+// Brands (Global Editions): one table of brands with rename, merge into another brand,
 // organization, and undo of the last change. Owner only; shared data, so no personal fields.
 const ArchiveBrands: React.FC<{ query: string }> = ({ query }) => {
   const [brands, setBrands] = useState<BrandRecord[] | null>(null);
@@ -806,7 +806,7 @@ const SeriesDetail: React.FC<{
   const [notice, setNotice] = useState<string | null>(null);
 
   const [editing, setEditing] = useState(false);
-  // null = Not set: a series with no type yet is saved without one, never as festival (series type fix, slice 5).
+  // null = Not set: a series with no type yet is saved without one, never as festival (series type fix).
   const [kind, setKind] = useState<SeriesKind | null>(null);
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
@@ -1599,7 +1599,7 @@ const ArchiveLookups: React.FC = () => {
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
-// The Changes list (slice 8.10, owner only): canonical changes, newest first, 50 a page through Load more.
+// The Changes list (owner only): canonical changes, newest first, 50 a page through Load more.
 // Undo is offered while a change is not undone. A refused Undo (409) leaves the row as it was and shows the server's message.
 type ChangesList = { rows: CanonicalChangeRow[]; nextCursor: string | null; hasMore: boolean };
 
@@ -1754,7 +1754,7 @@ const EditionDetail: React.FC<{
       setVerifying(false);
     }
   };
-  // Clashfinder "Find lineup" (slice 2.10): festival editions with no lineup only. The job goes to Lookups for review.
+  // Clashfinder "Find lineup": festival editions with no lineup only. The job goes to Lookups for review.
   const [findingLineup, setFindingLineup] = useState(false);
   const [lineupNote, setLineupNote] = useState<{ editionId: string; text: string } | null>(null);
   const canFindLineup = edition.seriesKind === 'festival' && edition.performances.length === 0;
@@ -1778,7 +1778,7 @@ const EditionDetail: React.FC<{
   };
   const lineupStatus = lineupNote?.editionId === edition.id ? lineupNote : null;
   const note = verifyNote?.editionId === edition.id ? verifyNote : null;
-  // Owner refresh of the edition's weather (slice 4 API). A change is in the edition history, so Undo is there.
+  // Owner refresh of the edition's weather. A change is in the edition history, so Undo is there.
   const [weatherBusy, setWeatherBusy] = useState(false);
   const [weatherStatus, setWeatherStatus] = useState<{ editionId: string; text: string } | null>(null);
   const refreshWeather = async () => {

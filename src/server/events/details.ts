@@ -276,7 +276,7 @@ export function webQuery(q: DetailQuery): string {
       : q.year
         ? String(q.year)
         : undefined;
-  // Slice 4.1: the bare city ("Los Angeles", not "Los Angeles, CA"), the same rule the setlist.fm finder uses.
+  // The bare city ("Los Angeles", not "Los Angeles, CA"), the same rule the setlist.fm finder uses.
   const bareCity = q.city?.split(',')[0].trim();
   return [`"${q.name}"`, when, q.venue, bareCity].filter(Boolean).join(' ');
 }
@@ -353,7 +353,7 @@ export const braveFinder: DetailFinder = {
         seen.add(d.startDate);
         hits.push(d);
       }
-      // Slice 4.2: the snippet names the event but gives no full date, so read the page's own event data (JSON-LD).
+      // The snippet names the event but gives no full date, so read the page's own event data (JSON-LD).
       // At most one page a search (the page budget is shared with addPlaces: MAX_PLACE_PAGES), never AXS.
       if (!hits.length && pageReads < PAGE_READS_PER_SEARCH && w && !/(^|\.)axs\.com$/.test(domainOf(r.url))) {
         pageReads++;
@@ -612,7 +612,7 @@ export function groupWeekendCandidates(candidates: DetailCandidate[], eventName?
   return out;
 }
 
-const MAX_PLACE_PAGES = 2; // Slice 4.2: 1 page for the Brave finder plus 2 for addPlaces keeps the shared total at 3
+const MAX_PLACE_PAGES = 2; // 1 page for the Brave finder plus 2 for addPlaces keeps the shared total at 3
 const PAGE_READS_PER_SEARCH = 1;
 
 // Search results give a date but rarely a place. For candidates without a
@@ -673,14 +673,14 @@ export interface DetailReader {
   read(q: DetailQuery, urls: string[], fetcher: Fetcher, notes: string[]): Promise<DetailCandidate[]>;
 }
 
-// The shared catalog (slice 11.16). Optional: callers without it behave exactly as before.
+// The shared catalog. Optional: callers without it behave exactly as before.
 // persist: rung 2 may write dated occurrences to shared editions. It is off unless the caller turns it on
 // (owner or system path), because a member's notice for shared editions is not approved yet.
 export interface ResearchCatalog {
   store: LineupStore;
   persist?: boolean;
-  // persistOwn: the person's own typed name, full date, venue and city may create a `provisional` shared edition
-  // (Slice 11.23). On for everyone (member notice version 2); see persistOwnEntry.
+  // persistOwn: the person's own typed name, full date, venue and city may create a `provisional` shared edition.
+  // On for everyone (member notice version 2); see persistOwnEntry.
   persistOwn?: boolean;
   actor?: string;
   skipCanon?: boolean;
@@ -744,7 +744,7 @@ function editionCandidate(e: Edition, weekend?: number): DetailCandidate {
   };
 }
 
-// Rung 2 persistence (docs/architecture/08-sources.md, Slice 11.1): only Ticketmaster and Clashfinder results,
+// Rung 2 persistence (docs/architecture/08-sources.md): only Ticketmaster and Clashfinder results,
 // only name, date, venue, city and the source link as external id, as `provisional`. Never setlist.fm, never
 // the member's typed values (the data comes from the candidate), never personal fields. At most ONE occurrence
 // per message: the first Ticketmaster/Clashfinder candidate covering the event's own date (used only to choose,
@@ -778,7 +778,7 @@ async function persistOccurrence(event: LoggedEvent, raw: DetailCandidate[], cat
   }
 }
 
-// Slice 11.23: a member's (or the owner's) own entry may create a `provisional` shared edition. Only the typed
+// A member's (or the owner's) own entry may create a `provisional` shared edition. Only the typed
 // name, a full YYYY-MM-DD start date, venue and city (venue/city only if the person typed them); no external ids,
 // no country, no end date, never personal fields. Actor 'member:entry' carries no user id. A provisional source
 // only fills empty fields of a matched edition, so it never changes another edition. Runs only inside the
@@ -820,7 +820,7 @@ async function timedFind(f: DetailFinder, query: DetailQuery, fetcher: Fetcher, 
   }
 }
 
-// Slice 3.3: the free finders leave a gap when, without a full date, none of their candidates gives a date, or, with a
+// The free finders leave a gap when, without a full date, none of their candidates gives a date, or, with a
 // full date, a field you left empty (venue or city) is answered by none of them. Only then is web search worth its call.
 export function leavesGap(event: LoggedEvent, found: DetailCandidate[]): boolean {
   if (!event.startDate) return !found.some((c) => c.startDate);
@@ -906,7 +906,7 @@ export async function researchEvent(
       }
     });
   };
-  // Slice 3.3: the free finders run first. Web search (Brave, id 'discovered') runs only when they leave a gap.
+  // The free finders run first. Web search (Brave, id 'discovered') runs only when they leave a gap.
   const search = async (query: DetailQuery) => {
     await runFinders(enabled.filter((f) => f.id !== 'discovered'), query);
     const web = enabled.filter((f) => f.id === 'discovered');
@@ -948,7 +948,7 @@ export async function researchEvent(
   return done({ status: 'choose', candidates: shown, notes });
 }
 
-// Slice 11.15: the queued research message for a freshly saved event (ladder rungs 1 to 3: structured APIs
+// The queued research message for a freshly saved event (ladder rungs 1 to 3: structured APIs
 // and web search results read in code; never the reader model, which is rung 4).
 // It runs only while the event is still waiting ('pending'): "Look again" or Fill gaps may have finished it
 // first, and a second run must not overwrite that. Results follow researchEvent's rules (candidates; typed
@@ -957,9 +957,9 @@ export async function researchEvent(
 // Worst-case subrequests of one message: 2 store calls (getEvent, putEvent) + finders 4 (Ticketmaster,
 // setlist.fm, Clashfinder, Brave) + 4 again when the first name finds nothing and the typed name differs
 // + 3 place pages (addPlaces) = 13 without a catalog.
-// Slice 11.16 with a catalog: + rung 1 (up to 3 store calls: one external-id lookup, listEditions, venue alias)
+// With a catalog: + rung 1 (up to 3 store calls: one external-id lookup, listEditions, venue alias)
 // + rung 2 persistence of at most one occurrence (up to 11 store calls, see persistOccurrence) = 27 worst case
-// // Slice 11.23 adds persistOwnEntry, at most 8 more store calls (35 worst case).
+// persistOwnEntry adds at most 8 more store calls (35 worst case).
 // (the plan's figure is 26; 1 over, dropping the external-id lookup would meet it). Both are zero when no catalog is passed. The consumer's budget (50) holds.
 export async function runQueuedResearch(
   store: {

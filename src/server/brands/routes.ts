@@ -1,4 +1,4 @@
-// Owner-only brand routes (Global Editions slice 2.8). The actions are plain functions over a
+// Owner-only brand routes (Global Editions). The actions are plain functions over a
 // BrandStore so tests can call them directly; the router only maps them to HTTP.
 import { Router, Request, Response } from 'express';
 import { getSupabaseClient } from '../supabase';

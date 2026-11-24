@@ -1,7 +1,7 @@
 import type { Fetcher, FetchResponse } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
 
-// Slice 4.3: a host that answered 403 to the Worker in the last 30 days is skipped before a fetch is spent on it.
+// A host that answered 403 to the Worker in the last 30 days is skipped before a fetch is spent on it.
 // The list is learned from responses and kept in app_settings (never typed in by hand). It is read at the start of a
 // research run and saved at its end, so a host refused once is not asked again for a month.
 export const REFUSED_SETTING = 'refused_hosts';

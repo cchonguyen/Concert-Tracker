@@ -385,7 +385,7 @@ export class SupabaseLineupStore implements LineupStore {
   }
 
   async upsertSeries(s: SeriesRecord) {
-    // No type stays empty (NULL, "Not set"): a series is never typed festival by default (series type fix, slice 3).
+    // No type stays empty (NULL, "Not set"): a series is never typed festival by default (series type fix).
     const kind: SeriesKind | null = s.kind === 'tour' || s.kind === 'festival' ? s.kind : null;
     const isTour = kind === 'tour';
     const brandPatch = await this.brandIdPatch(s);
@@ -1704,7 +1704,7 @@ export class SupabaseLineupStore implements LineupStore {
     return (rows ?? []).map((r: any) => r.manifest as HistoryEntry);
   }
 
-  // Canonical operations only, newest first (slice 8.9). The operation filter and the keyset condition are
+  // Canonical operations only, newest first. The operation filter and the keyset condition are
   // part of the same query as the limit, so the page is filled from canonical rows only. Named columns only.
   async listCanonicalHistoryPage(options: CanonicalHistoryPageOptions = {}): Promise<CanonicalHistoryPage> {
     const limit = normalizeCanonicalHistoryLimit(options.limit);

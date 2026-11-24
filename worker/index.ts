@@ -43,11 +43,11 @@ import { currentBudget, makeBudget, runWithBudget } from '../src/server/lineup/b
 // Each message runs one stage and sends the job back to the queue for the
 // next, so every invocation stays within the Workers subrequest limit.
 
-// type is absent on messages queued before Slice 11.15: they are lookups.
+// type is absent on messages queued before research moved to the queue: they are lookups.
 type LookupMessage =
   | { type?: 'lookup'; jobId: string; force?: boolean }
   | { type: 'research'; eventId: string; userId?: string; role?: 'owner' | 'member' }
-  // Slice 11.17, rung 4: the reader reads ONE page for the event, after rung 1 to 3 research.
+  // Rung 4: the reader reads ONE page for the event, after rung 1 to 3 research.
   | { type: 'research_reader'; eventId: string; url: string; userId?: string; role?: 'owner' | 'member' };
 
 interface Env {
@@ -82,7 +82,7 @@ const serverOnce = settledOnce(async (env: Env): Promise<void> => {
       kick: async (jobId, force) => {
         await env.LOOKUP_QUEUE?.send({ jobId, force });
       },
-      // Slice 11.15: stage 1 research for a saved event runs from the queue (rungs 1 to 3, no reader model).
+      // Stage 1 research for a saved event runs from the queue (rungs 1 to 3, no reader model).
       kickResearch: async (eventId, actor) => {
         await env.LOOKUP_QUEUE?.send({ type: 'research', eventId, userId: actor?.userId, role: actor?.role });
       },
@@ -164,9 +164,9 @@ async function runCron(env: Env): Promise<void> {
       console.error('Artist-resolution re-queue failed:', err instanceof Error ? err.message : String(err));
     }
   }
-  // Runs before the owner backfill (Slice 12.14): that backfill spends the whole subrequest budget every minute, so a
+  // Runs before the owner backfill: that backfill spends the whole subrequest budget every minute, so a
   // member backfill placed after it never got a call through.
-  // Slice 12.6: backfill provisional shared editions from members' existing dated events (accepted notice v2 only),
+  // Backfill provisional shared editions from members' existing dated events (accepted notice v2 only),
   // a few per run, cursor per member in that member's settings. Multi-user only; counts are all that is logged.
   try {
     // Every fifth minute (minute 1): a finished member still costs two settings reads, so the idle cost stays low.
@@ -192,7 +192,7 @@ async function runCron(env: Env): Promise<void> {
         if (b) trace.subrequests(b.used);
         await trace.finish(deps.store); // +1 subrequest, only when the run did something
       } else if (anyNotice) {
-        // Slice 12.12: while the override is on, a run that did nothing still leaves counts (no ids) so the cause shows.
+        // While the override is on, a run that did nothing still leaves counts (no ids) so the cause shows.
         const walkable = members.filter((m) => m.role !== 'owner' && !m.blocked && m.userId).length;
         const detail = { listed: members.length, walkable, budgetUsed: b?.used ?? -1, budgetLimit: b?.limit ?? -1 };
         console.log(`Member backfill idle: ${JSON.stringify(detail)}`);
@@ -205,7 +205,7 @@ async function runCron(env: Env): Promise<void> {
     const message = err instanceof Error ? err.message : String(err);
     console.error('Member backfill failed:', message);
     try {
-      // Slice 12.12: leave the error text (no ids; store errors name tables, not people) where it can be read.
+      // Leave the error text (no ids; store errors name tables, not people) where it can be read.
       const t = startTrace('backfill');
       t.step('member_backfill_error', { message: message.slice(0, 200) } as any);
       const b = currentBudget();
@@ -215,7 +215,7 @@ async function runCron(env: Env): Promise<void> {
       // Best effort: the budget may be spent.
     }
   }
-  // Slice 11.14: backfill shared editions from the owner's events and email imports, up to 20 a run (fewer when
+  // Backfill shared editions from the owner's events and email imports, up to 20 a run (fewer when
   // the subrequest budget is short). Owner only: with multi-user on it reads the owner's scoped store.
   // Throttled to every 5 minutes to keep idle cost low.
   if (now.getUTCMinutes() % 5 === 0) {
@@ -240,7 +240,7 @@ async function runCron(env: Env): Promise<void> {
       console.error('Canon backfill failed:', err instanceof Error ? err.message : String(err));
     }
   }
-  // Slice 11.19: research up to 5 events still 'pending' (rungs 1 and 2, no Brave, no reader), owner only, as many
+  // Research up to 5 events still 'pending' (rungs 1 and 2, no Brave, no reader), owner only, as many
   // as the subrequest budget allows (worst case 3 + 5 * 25 = 128; backfillResearch.ts).
   // Throttled to every 5 minutes (minute 2) to stagger subrequest budget against backfills.
   if (now.getUTCMinutes() % 5 === 2) {
@@ -272,7 +272,7 @@ async function runCron(env: Env): Promise<void> {
     } catch (err) {
       console.error('Research backfill failed:', redactSecrets(err instanceof Error ? err.message : String(err)));
     }
-    // Slice 3.4: once the owner batch has worked, the same batch runs for each accepted member, scoped to that member's
+    // Once the owner batch has worked, the same batch runs for each accepted member, scoped to that member's
     // own store, only while the setting is on. Members get no shared-catalog writes beyond their own entry (role 'member').
     try {
       const membersOn =
@@ -363,7 +363,7 @@ export default {
           const trace = startTrace('research', { eventId });
           try {
             const store = userId && deps.store.forUser ? deps.store.forUser({ userId, role: role ?? 'member' }) : deps.store;
-            // Slice 4.3: a host that refused in the last 30 days is skipped; a new refusal is saved for later runs.
+            // A host that refused in the last 30 days is skipped; a new refusal is saved for later runs.
             const nowQ = deps.now();
             const refusedBefore = await loadRefusals(deps.store, nowQ);
             const refusals = { ...refusedBefore };

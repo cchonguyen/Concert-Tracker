@@ -308,7 +308,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Slice 5: catalog acts named in a linked edition's name that its lineup lacks, and the ones this member has proposed.
+  // Catalog acts named in a linked edition's name that its lineup lacks, and the ones this member has proposed.
   const [offers, setOffers] = useState<Record<string, Array<{ artistKey: string; artistName: string }>>>({});
   const [proposed, setProposed] = useState<Set<string>>(new Set());
   const offeredIds = useMemo(() => new Set(Object.keys(offers).filter((id) => offers[id].length > 0)), [offers]);
@@ -346,14 +346,14 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
     }
   };
 
-  // Slice 11.19: events waiting on research with a year and no full date. Never researched into a date by the
+  // Events waiting on research with a year and no full date. Never researched into a date by the
   // background step; you add it here. Same test as yearOnlyEvents (server/events/backfillResearch.ts, which is
   // server-only and so not imported into the browser bundle).
   const yearOnly = useMemo(
     () => all.filter((e) => (e.details.status === 'pending' || e.details.status === 'needs_date') && !/^\d{4}-\d{2}-\d{2}$/.test(e.startDate ?? '') && Boolean(e.year)),
     [all],
   );
-  // Slice 3.2: research results waiting for a tap (a batch run found a candidate for a year and a city).
+  // Research results waiting for a tap (a batch run found a candidate for a year and a city).
   const batchWaiting = useMemo(() => batchResultsWaiting(all), [all]);
   const [picking, setPicking] = useState<string | null>(null);
   const pickBatch = async (id: string, candidateId: string) => {

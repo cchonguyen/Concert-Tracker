@@ -1,6 +1,6 @@
-// Auto-verify rules for shared acts and editions (docs/auto-verify-spec.md, slice 2).
+// Auto-verify rules for shared acts and editions (docs/auto-verify-spec.md).
 // Pure functions: no model call, no store, no writes. Callers pass the evidence they
-// already fetched and stored, and apply the result through writeEdition (slice 3).
+// already fetched and stored, and apply the result through writeEdition.
 
 export type EvidenceKind =
   // A ticket email the person imported (a verified source for name, date, venue, city).
