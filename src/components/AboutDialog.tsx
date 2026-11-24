@@ -53,7 +53,7 @@ export function AboutDialog({ status, onClose, onShowTips }: { status: LineupSta
           <p>
             Sources: {status.sources.map((s) => `${SOURCE_LABELS[s.id]}${s.enabled ? '' : ' (off)'}`).join(' · ')}
           </p>
-          <p>Gemini {status.gemini ? `${status.quota?.used ?? 0}/${status.quota?.limit ?? '?'} today` : '(off)'}</p>
+          <p>AI reads: {status.gemini ? `${status.quota?.used ?? 0} of ${status.quota?.limit ?? '?'} used today` : 'off'}</p>
           {owner && status.reader && <p className="break-words">Reader: {readerLine(status.reader)}</p>}
         </section>
       )}

@@ -8,6 +8,7 @@
 
 ## Current Build Status (as of 2026-11-23, main at PR #592)
 - **Live:** two-stage capture and lineup lookup, ticket-email import, share page, Manage section, the shared catalog (Global Archive with series, brands, editions, weekends and edition weather), invites and member accounts, the guarded AI reader with its call log and spend guards, event fetch Stages 0 to 4 (setlist.fm by city, batch research, web results), auto-verify of acts and editions, the series type fix, and the DB and logs improvement pass (PRs #587, #589).
-- **In progress:** the docs, comments and app text cleanup ([docs/specs/docs-and-text-cleanup.md](../docs/specs/docs-and-text-cleanup.md)), one slice at a time.
+- **Done 2026-11-24:** the docs, comments and app text cleanup ([docs/specs/docs-and-text-cleanup.md](../docs/specs/docs-and-text-cleanup.md)). The event check button is now "Deep search with AI".
+- **In progress:** nothing.
 - **Not started:** event fetch Stage 4b and Stage 5, Global Editions admin Slice 5, the open tickets in [docs/engineering-ticket-bank.md](../docs/engineering-ticket-bank.md) and [docs/tier3-specs.md](../docs/tier3-specs.md), social features.
 - **Specs:** index and statuses in [docs/README.md](../docs/README.md). Decisions: [DECISIONS.md](DECISIONS.md).
