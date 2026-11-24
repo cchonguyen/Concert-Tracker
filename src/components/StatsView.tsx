@@ -5,6 +5,7 @@ import { whenLabel } from '../services/format';
 import { attendanceOf } from '../server/events/attendance';
 import { facts, pastEvents, perYear, RankBy, Ranked, seriesStats, SeriesStat, top, yearInReview } from '../services/stats';
 import { EventTitle } from './EventTitle';
+import { MONTH_NAMES } from '../server/lineup/months';
 
 interface StatsViewProps {
   events: LoggedEvent[];
@@ -12,7 +13,7 @@ interface StatsViewProps {
   onOpenTable: (query: string) => void;
 }
 
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const MONTHS = MONTH_NAMES;
 const card = 'rounded-xl border border-zinc-900 bg-zinc-900/40 p-4';
 const title = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;

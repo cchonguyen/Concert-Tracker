@@ -2,6 +2,7 @@ import type { EventKind, LoggedEvent } from '../server/events/types';
 import { eventScale, LineupFacts } from '../server/events/scale';
 import { attendanceOf } from '../server/events/attendance';
 import { eventTitle } from './series';
+import { MONTH_NAMES } from '../server/lineup/months';
 
 // The Timeline tab's data: every view (Agenda, Month, Heatmap, River) reads
 // this model and none of them works dates out on its own. Read-only; nothing
@@ -195,7 +196,7 @@ export function actsStep(acts: number): 1 | 2 | 3 | 4 {
 // The four timeline views. Each is an Explore page (see nav.ts).
 export type TimelineMode = 'agenda' | 'month' | 'heatmap' | 'river';
 
-export const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+export { MONTH_NAMES };
 export const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 // Agenda: oldest first, grouped by month under each year, with a Today line.

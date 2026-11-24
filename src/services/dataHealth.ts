@@ -39,12 +39,6 @@ export function labelGroups(entities: Entity[]): Map<string, Entity[]> {
   return out;
 }
 
-// The record's label in this group, if any.
-export function labelIn(input: HealthInput, recordId: string, group: string): Entity | undefined {
-  const byId = new Map(input.entities.map((e) => [e.id, e]));
-  return (labelsOn(input).get(recordId) ?? []).map((id) => byId.get(id)).find((l) => l && norm(groupOf(l)) === norm(group));
-}
-
 // A label group used on one record of a kind becomes a field for every
 // record of that kind; these are the records still without it.
 export interface CategoryGap {

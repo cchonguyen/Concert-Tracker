@@ -5,6 +5,7 @@ import { eventYear, formatsOf } from './format';
 import { eventTitle } from './series';
 import { cityWithRegion, NORTH_AMERICA } from '../server/events/regions';
 import { attendanceOf, AttendanceState } from '../server/events/attendance';
+import { MONTH_SHORT } from '../server/lineup/months';
 
 // The Table view: filters, sorting and a summary over the event list the app
 // already loaded. Read-only; nothing here is stored. An empty field is a gap,
@@ -88,7 +89,7 @@ function hasField(e: LoggedEvent, f: HasField): boolean {
   }
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTHS = MONTH_SHORT;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 // A date cell split into parts, so day, month and year line up in their own
