@@ -16,7 +16,7 @@ Statuses were checked against the code on 2026-11-23.
 | [specs/streamlining-plan.md](specs/streamlining-plan.md) | Built 2026-11-24: duplicate code removed and auto-verify switched on. |
 | [specs/docs-and-text-cleanup.md](specs/docs-and-text-cleanup.md) | Done 2026-11-24 (all ten slices merged). |
 | [specs/venue-location-fill.md](specs/venue-location-fill.md) | Built 2026-11-24 (all slices merged). Member entries sharing the state waits on Charlie's notice decision. |
-| [specs/pasted-set-times.md](specs/pasted-set-times.md) | Proposed 2026-11-24, waiting for Charlie's OK. Not started. |
+| [specs/pasted-set-times.md](specs/pasted-set-times.md) | Approved 2026-11-24. Slice 1 next. |
 | [tier3-specs.md](tier3-specs.md) | TECH-04 and FETCH-01 built. The other Tier 3 tickets not started. |
 | [engineering-ticket-bank.md](engineering-ticket-bank.md) | Backlog of open tickets. Closed ones are in [archive/engineering-ticket-bank-closed.md](archive/engineering-ticket-bank-closed.md). |
 | [social-features-spec.md](social-features-spec.md) | Not started. Discussion draft. |
