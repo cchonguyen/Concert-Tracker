@@ -48,6 +48,24 @@ test('every relative Markdown link in root and docs/ resolves', () => {
   assert.deepEqual(dead, []);
 });
 
+// The harness notes in .spec/ link into docs/ too; a moved spec must not leave them dangling.
+test('every relative Markdown link in the .spec/ notes resolves', () => {
+  const linkPattern = /\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+  const specDir = path.join(root, '.spec');
+  const dead = readdirSync(specDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+    .flatMap((entry) => {
+      const file = path.join(specDir, entry.name);
+      const text = readFileSync(file, 'utf8').replace(/`[^`\n]*`/g, '');
+      return [...text.matchAll(linkPattern)]
+        .map((match) => match[1].split(/[#?]/)[0])
+        .filter((target) => target && !/^(https?:|mailto:)/.test(target))
+        .filter((target) => !existsSync(path.resolve(specDir, target)))
+        .map((target) => `.spec/${entry.name} -> ${target}`);
+    });
+  assert.deepEqual(dead, []);
+});
+
 test('closed tickets are not also in the open ticket bank', () => {
   const ticketId = /^### \[([A-Z0-9-]+)\]/gm;
   const openIds = [

@@ -1,26 +1,12 @@
 # Session Handoff
 
-- **Last Active Platform:** Claude Code (cloud session)
-- **Active Branch / State:** main at bde7e41 (PR #457 merged, 2026-11-18): harness engine synced from hub slices 19.1 to 19.5. Hook warnings now reach the model, the Stop hook blocks only on an `[IN_PROGRESS]` slice, sessions write receipts (`node .harness/scripts/receipt.mjs block` prints the PR-body block), and merged PRs append receipts to the `harness-telemetry` branch. The PR gate is now `Harness gate / Harness gate` (hub reusable workflow); Charlie still has to make it a required check in branch protection.
-- **Canon review (2026-11-14, PRs #365, #371, #373, #375, #379, #382; scope in `.spec/CANON_REVIEW_SCOPE.md`):** verified editions autofill for members (12.1); Editions list filters and labels Verified, Provisional, Draft (12.2, 12.3); owner "Verify for everyone" with undo on a provisional edition (12.4, 12.5); cron backfill of provisional editions from members' existing dated events, accepted notice v2 only (12.8, `src/server/canon/memberBackfill.ts`). No migration. Not built: anonymous candidate list, agreement counting, "not verified" picker label. Production before the backfill: 74 verified, 0 provisional editions. Next check: cron logs for "Member backfill", then Charlie reviews Provisional in Global archive > Editions. Raising `SUBREQUEST_LIMIT` speeds the backfill.
-- **Done this session (ingest canon, PRs #308 to #353):**
-  - Phase 0 and 1 (11.0 to 11.10): rules, source terms, parser, picker rows, reader RPCs and config, stage 2 gates, MusicBrainz retry, migrations 0040 to 0042, store methods, `writeEdition` and undo.
-  - 11.11 to 11.14: `match.ts` and `upsertOccurrence`, inheritance on read (`captured`, `overrides`), suggestion tap links the edition, backfill of editions from the owner's events and email imports (also fixed `supabaseStore` not saving `venue_id`, `subject_key`, `has_lineup`).
-  - Phase 2 (11.15 to 11.19): save enqueues a `research` message on `LOOKUP_QUEUE`; rung 1 catalog lookup and rung 2 owner-only occurrence persistence; rung 4 reader in its own `research_reader` messages; picker grouping; cron research backfill and the Confirm dates list.
-  - Phase 3 (11.20 to 11.22): `ingest_traces` and the trace writer (migration 0043 written), owner review-queue routes, owner inbox in the Global archive.
-- **Verification Status:** Verified via finish-slice.mjs (Slice 21.591)
-- **Verification Status:** Verified via finish-slice.mjs (Slice 12.13)
-- **Open gaps:** (items for Charlie first, then follow-ups)
-  - Apply migration 0043 (`supabase/migrations/0043_ingest_traces.sql`). Until then traces are skipped quietly and the inbox shows "Activity appears once the traces table is set up".
-  - Approve the new member notice text. Provisional editions from a member's own entry are NOT built: rung 2 persistence runs only for the owner or single-user mode (`researchCatalogFor`). Phase 2 for members waits on this.
-  - `SUBREQUEST_LIMIT` defaults to 50, so the edition backfill and the research backfill run about 1 to 2 items a minute; raising it (about 130 to 340) speeds them up.
-  - `.env.example` comments still say 200000/180000 for the reader limits (now 30000); left on purpose because of the env-file tripwire.
-  - Follow-ups:
-  - Code that reads venue, date or city of a linked event straight from the store (stats, export, map, email scan, import) gets only what was typed; audit them to use `resolveEvent`.
-  - The picker (11.18) and the owner inbox (11.22) were not seen in a browser.
-  - Matching needs a stored `subjectKey`; editions get one from the backfill.
-  - A later step converts legacy `confirmed` editions to `verified` (commented block at the bottom of 0041).
-  - Brave monthly counter (`takeBrave`, cap 200) is built but nothing calls it yet.
-  - Personal-field encryption stays on hold (docs/ingest-canon-plan.md section 4).
-- **Older items still open:** the design system export (branch claude/project-thread-ad7gr8, docs only) awaited Charlie's review; member-created editions were deferred ("friends first").
-- **Immediate Next Step:** Charlie's pick. The AI reader two-way test slices 10.1 to 10.20 (docs/archive/ai-reader-spec.md) are separate and not started.
+- **Last Active Platform:** Claude Code (cloud session, project thread "Clean up outdated docs and app text")
+- **Branch Owner:** Claude
+- **Active Branch / State:** `claude/project-thread-47kcgx`, off main at a93e43b (PR #592 merged 2026-11-24). Working the docs, comments and app text cleanup ([docs/specs/docs-and-text-cleanup.md](../docs/specs/docs-and-text-cleanup.md)), Slice 2 of 10 (issue #593).
+- **Files Modified in Last Turn:** `.spec/OVERVIEW.md`, `.spec/SESSION_HANDOFF.md`, `.spec/PROGRESS.md`, `.spec/SYSTEM_SPEC.md`, `.spec/DECISIONS.md`, `docs/specs/docs-and-text-cleanup.md`.
+- **Verification Status:** Verified via finish-slice.mjs (Slice 21.593)
+- **Immediate Next Step:** finish Slice 2, then run Slices 3 to 10 of the cleanup spec in order, merging each pull request when green.
+- **Open gaps:**
+  - Harness: hub PR #208 (merged 2026-11-23) makes the scope check read `Approved-Tripwire:` trailers from the PR's own head commit when CI checks out GitHub's merge commit. Synced into this repo in PR #592.
+  - Charlie's wording answers for the cleanup (2026-11-23) are recorded in the cleanup spec under "Decisions".
+  - Older follow-ups not rechecked in this session: code that reads a linked event's venue, date or city straight from the store (stats, export, map, email scan, import) may still skip `resolveEvent`; `.env.example` comments still give old reader limits (left because of the env-file tripwire); `SUBREQUEST_LIMIT` defaults to 50, which slows the backfills; personal-field encryption is on hold ([docs/ingest-canon-plan.md](../docs/ingest-canon-plan.md) section 4).

@@ -1,13 +1,15 @@
 # System Specification & Contracts
 
+> Status (2026-11-23): every feature in this file is built. This file keeps the contracts as they were agreed. For how the app works today, read [ARCHITECTURE.md](../ARCHITECTURE.md); migration numbers here are historical.
+
 The full spec already lives in the project docs. This file holds only what `/triage` and the `architect` subagent add for the feature in progress; it must not contradict them.
 
 - Requirements and ranked principles: [REQUIREMENTS.md](../REQUIREMENTS.md)
 - Architecture, data model and module boundaries: [ARCHITECTURE.md](../ARCHITECTURE.md)
 - Hard rules for every change: [AGENTS.md](../AGENTS.md)
 
-## 1. Core Scope & MVP Boundaries
-Feature: **Two-way reader test: Cloudflare Workers AI and paid Gemini, with an AI call log and spend guards** (triaged 2026-11-12, scope confirmed by Charlie 2026-11-12). Full spec: [docs/archive/ai-reader-spec.md](../docs/ai-reader-spec.md). Research: `/mnt/project-files/ai-provider/Gemini free tier replacement options.md`.
+## 1. Core Scope & MVP Boundaries (AI reader: built as Slices 10.1 to 10.20)
+Feature: **Two-way reader test: Cloudflare Workers AI and paid Gemini, with an AI call log and spend guards** (triaged 2026-11-12, scope confirmed by Charlie 2026-11-12). Full spec: [docs/archive/ai-reader-spec.md](../docs/archive/ai-reader-spec.md). Research: `/mnt/project-files/ai-provider/Gemini free tier replacement options.md`.
 
 - **Core problem:** the Gemini free tier refuses reads far below its stated limit (6 calls on 2026-11-02), so lineup reading and "Look again with Gemini" fail often. Volume is small: about 200 reads a month, peak 50 a day, typical page 2,000 tokens, largest 43,000.
 - **Confirmed scope (Charlie):**
@@ -28,7 +30,7 @@ Feature: **Design system export for onboarding new Claude Code apps** (triaged 2
 - **Files-Touched (estimate):** 2 to 4 new docs, optional AGENTS.md link. Contract-Change: no. Cross-Module: no.
 - **Open questions:** copy-by-hand or shared package later; write the voice section now; describe only what exists or also the intended direction.
 
-## Prev 1. Past-event suggestion (triaged 2026-11-11, awaiting approval)
+## Prev 1. Past-event suggestion (triaged 2026-11-11, built, kept for reference)
 Feature: **"What did you go to?" past-event suggestion** (triaged 2026-11-11, discovery brief, not yet approved).
 
 - **Core user problem (revised 2026-11-11 by Charlie):** when someone types a line for an event that already exists as a canonical edition, the bar should offer that edition, so a friend who adds it after Charlie gets the same canonical details. Searching only your own log is not enough.
@@ -47,7 +49,7 @@ Feature: **"What did you go to?" past-event suggestion** (triaged 2026-11-11, di
 - **Plan:** `/mnt/project-files/canonical-autocomplete/plan.md` (stages A to C, slices A1 to B3). Open: lineup vs who you saw (AGENTS.md tap rule), members creating editions. Weather source closed: Open-Meteo archive, one record per edition.
 
 ## Prev 1. Manage section (shipped, kept for reference)
-Feature: **Manage section** (triaged 2026-10-28). Full design: [../docs/manage-section-design.md](../docs/manage-section-design.md).
+Feature: **Manage section** (triaged 2026-10-28). Full design: [../docs/manage-section-design.md](../docs/archive/manage-section-design.md).
 
 - **Core user problem:** artists, people, venues, places and series are free text copied onto each event, so fixing a spelling means editing events one by one, and the copies drift apart. Charlie wants one place to rename, merge and describe each of them once.
 - **MVP deliverables:**
@@ -75,7 +77,7 @@ Design system export:
 - No invented typography or motion tokens. Describe only what the app does.
 - No change to app code or runtime behavior.
 
-## Prev 2a. Past-event suggestion Do NOT Build (awaiting approval)
+## Prev 2a. Past-event suggestion Do NOT Build (built, kept for reference)
 - No fuzzy, similarity or model matching. It would be guessing (AGENTS.md: never infer; principle 1).
 - No auto-merge, auto-fill or auto-add. Every change needs a tap (AGENTS.md: one-tap offers).
 - No waiting on the match before save (AGENTS.md: stage 1 never waits).
@@ -103,7 +105,7 @@ Design system export:
 
 ## 3. Data Models & Module Boundaries
 
-**AI reader** (full spec: [docs/archive/ai-reader-spec.md](../docs/ai-reader-spec.md); slices 10.1 to 10.20; 10.15 to 10.17 are gated)
+**AI reader** (full spec: [docs/archive/ai-reader-spec.md](../docs/archive/ai-reader-spec.md); slices 10.1 to 10.20; 10.15 to 10.17 are gated)
 - Module `src/server/reader/` (`types.ts`, `schemas.ts`, `geminiAdapter.ts`, `workersAiAdapter.ts`, `config.ts`, `pricing.ts`, `guard.ts`, `callLog.ts`, `guardedReader.ts`, `recall.ts`). `src/server/lineup/gemini.ts` stays the only `@google/genai` user in `src/`. Pipeline, details route and discovery hold only a `GuardedReader`. `recall.ts` is pure scoring used by the local CLI `scripts/recall-test.ts` (outside `src/`, never deployed, never writes to lineups or the database).
 - `ReaderClient { provider, model, extractPerformers, extractEventDetails }` returns `ReaderResult<T>` = `{ ok: true, value, usage: { provider, model, inputTokens, outputTokens, durationMs } }` or `{ ok: false, reason: 'invalid_json' | 'input_too_large', usage }`. Quota throws `QuotaExhaustedError` (park; `scope: 'global' | 'job'`); Workers AI 3040 throws `ReaderBusyError` (the job's normal attempts path). No fallback between providers, no repair call.
 - Reasoning: Gemini models starting `gemini-2.5` get `thinkingConfig { thinkingBudget: 0 }`; all others get `thinkingConfig { thinkingLevel }` from `READER_THINKING_LEVEL` (`OFF` as `LOW`; never `thinkingBudget` on 3+, never default `MINIMAL`). No `temperature`, `topP`, `topK`, `frequencyPenalty` or `presencePenalty`; `contents` never ends with a `model` turn. Workers AI sends `reasoning_effort: 'low'` and `chat_template_kwargs: { enable_thinking: false }` and reads either response envelope. Empty Gemini balance (HTTP 402, or 429 "prepayment credits are depleted") throws `QuotaExhaustedError(now + 6h)`.
