@@ -16,7 +16,9 @@ import { emptyPlaceFields, venueLocationOf, type PlaceFieldName, type VenueLocat
 export const VENUE_FILL_ACTOR = 'system:venue-location';
 const SCAN_LIMIT = 5000;
 const LOOKUP_COST = 2; // venue_aliases + canonical_venues
-const WRITE_COST = 4; // getEdition, upsert, change record, margin
+// getEdition (edition row + its acts) 2, upsertEdition up to 5 (series check, edition row, artists,
+// clear and re-insert acts), change record 1. Counted low (4) this ran out mid-write on 2026-11-24.
+export const WRITE_COST = 8;
 
 type Place = Partial<Record<PlaceFieldName, string>>;
 

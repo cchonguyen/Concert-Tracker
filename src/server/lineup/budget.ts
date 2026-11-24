@@ -54,9 +54,17 @@ export function currentBudget(): Budget | undefined {
   return storage.getStore();
 }
 
+// Calls made inside fn may use the reserve: a write that must follow one already made
+// (an edition's change record after the edition itself was saved).
+const reserved = new AsyncLocalStorage<boolean>();
+
+export function runReserved<T>(fn: () => Promise<T>): Promise<T> {
+  return reserved.run(true, fn);
+}
+
 // The fetch Supabase uses (src/server/supabase.ts). Counts one call against the
 // current budget, if there is one, then calls the global fetch.
 export const countingFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-  currentBudget()?.take();
+  currentBudget()?.take(1, { reserved: reserved.getStore() === true });
   return globalThis.fetch(input, init);
 }) as typeof fetch;

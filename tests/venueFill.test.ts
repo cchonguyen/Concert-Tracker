@@ -11,6 +11,7 @@ import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import type { Edition } from '../src/server/lineup/types.ts';
 import { writeEdition, undoEditionChange } from '../src/server/canon/editions.ts';
 import { applyVenueFill, planVenueFill, VENUE_FILL_ACTOR } from '../src/server/canon/venueFill.ts';
+import { BudgetExhausted, countingFetch, makeBudget, runWithBudget } from '../src/server/lineup/budget.ts';
 
 const fresh = async () => new FileLineupStore(await mkdtemp(join(tmpdir(), 'venuefill-')));
 const ed = (id: string, extra: Partial<Edition>): Edition => ({
@@ -96,4 +97,60 @@ test('the routes are owner only', async () => {
   const owner = await dispatch(app('owner'), { method: 'GET', url: '/api/manage/canonical/venue-fill' });
   assert.equal(owner.status, 200);
   assert.ok(owner.json().fills.length >= 2);
+});
+
+// A store whose calls each cost subrequests through countingFetch, as the Supabase store's do.
+function costed(s: FileLineupStore, cost: Record<string, number>) {
+  return new Proxy(s, {
+    get(target, prop, recv) {
+      const v = Reflect.get(target, prop, recv);
+      if (typeof v !== 'function' || !(String(prop) in cost)) return v;
+      return async (...args: unknown[]) => {
+        for (let i = 0; i < cost[String(prop)]; i++) await countingFetch('http://x.invalid/');
+        return v.apply(target, args);
+      };
+    },
+  });
+}
+
+test('a spent budget never leaves a saved edition without its change record', async () => {
+  const s = await seeded();
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response('{}')) as typeof fetch;
+  try {
+    const budget = makeBudget();
+    const store = costed(s, { upsertEdition: 5, recordEditionChange: 1 });
+    // Only the edition save fits under the ordinary ceiling; the change record needs the reserve.
+    budget.used = budget.limit - budget.reserve - 5;
+    const edition = (await s.getEdition('a'))!;
+    const w = await runWithBudget(budget, () =>
+      writeEdition(store as any, { edition: { ...edition, city: 'Morrison' }, before: edition, actor: VENUE_FILL_ACTOR, reason: 'test' }),
+    );
+    assert.equal(w.changed, true);
+    assert.ok(w.change);
+    assert.equal(budget.used, budget.limit - budget.reserve + 1);
+    // Outside the change record, the reserve stays closed.
+    await assert.rejects(runWithBudget(budget, async () => countingFetch('http://x.invalid/')), BudgetExhausted);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('bulk fill counts the real cost of each write and stops before the budget runs out', async () => {
+  const s = await seeded();
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response('{}')) as typeof fetch;
+  try {
+    const budget = makeBudget();
+    // The Supabase store's worst case: edition + acts, alias + venues, a save that rewrites the acts, the record.
+    const store = costed(s, { getEdition: 2, listVenuesByAlias: 2, upsertEdition: 5, recordEditionChange: 1 });
+    budget.used = 10; // the request's own calls before the fill (sign-in, settings)
+    const r = await runWithBudget(budget, () => applyVenueFill(store as any, { editionIds: ['a', 'b', 'c', 'd', 'e'] }));
+    assert.equal(r.filled.length, 2);
+    assert.ok(budget.used <= budget.limit - budget.reserve, `used ${budget.used}`);
+    const changes = await s.listEditionChanges('a');
+    assert.ok(changes.some((c) => c.actor === VENUE_FILL_ACTOR));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

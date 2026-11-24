@@ -7,6 +7,7 @@
 // write is never rolled back silently; a missing change record is reported by the log, not hidden.
 import type { Edition, EditionChange, EditionPerformance, EditionWeekend } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
+import { runReserved } from '../lineup/budget';
 import { editionVerified, verifyAct, type ActEvidence, type ActExpectation, type ActVerdict, type EditionFieldFacts } from './autoVerify';
 
 const FIELDS = [
@@ -95,12 +96,15 @@ export async function writeEdition(store: LineupStore, input: WriteEditionInput)
     before: { ...b, ...(input.extra?.before ?? {}) },
     after: { ...a, ...(input.extra?.after ?? {}) },
   };
+  // The edition is already saved, so its change record may use the request budget's reserve:
+  // a spent budget must not leave a saved change without its history row.
+  const record = () => runReserved(() => store.recordEditionChange(rec));
   try {
-    return { changed: true, change: await store.recordEditionChange(rec) };
+    return { changed: true, change: await record() };
   } catch (err) {
     if (isPersonal(err)) throw err;
     try {
-      return { changed: true, change: await store.recordEditionChange(rec) };
+      return { changed: true, change: await record() };
     } catch (err2) {
       console.error(`writeEdition: edition ${input.edition.id} saved but its change record failed twice`, err2);
       throw err2;
