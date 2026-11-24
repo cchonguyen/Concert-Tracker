@@ -28,7 +28,7 @@ import { currentBudget } from '../lineup/budget';
 import { researchCatalogFor, runQueuedResearch, type DetailFinder } from './details';
 import type { Fetcher } from '../lineup/types';
 import { loadRefusals, refusalFetcher, saveRefusals } from './refusedHosts';
-import { braveHasBatchBudget } from './braveBudget';
+import { braveHasBatchBudget, tagBraveFetcher } from './braveBudget';
 
 export { BRAVE_INTERACTIVE_RESERVE, BRAVE_MONTHLY_CAP, BRAVE_SETTING, braveBatchRemaining, braveHasBatchBudget, braveUsed, takeBrave, monthOf } from './braveBudget';
 export type { BraveCount } from './braveBudget';
@@ -122,7 +122,7 @@ export async function runResearchBackfill(
   // Hosts that refused in the last 30 days are kept globally in catalog/app_settings and skipped across members.
   const refusedBefore = await loadRefusals(globalStore, now);
   const refusals = { ...refusedBefore };
-  const guarded = refusalFetcher(fetcher, refusals, now);
+  const guarded = tagBraveFetcher(refusalFetcher(fetcher, refusals, now), 'stage1_batch');
   for (const e of pending) {
     if (report.researched >= batch || !room(1)) break;
     if (!batchable(e)) continue; // a year with no city, or no year: listed, never researched

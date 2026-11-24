@@ -4,7 +4,7 @@
 - **Branch Owner:** Claude
 - **Active Branch / State:** `claude/project-thread-ipjor1`. Venue location fill: all 7 slices merged (#619 to #633). Members share the state (notice version 3): PR #637.
 - **Files Modified in Last Turn:** NoticeModal.tsx, auth/routes.ts, events/details.ts, canon/memberBackfill.ts, AGENTS.md, REQUIREMENTS.md, docs/architecture 02 and 12, member tests.
-- **Verification Status:** Verified via finish-slice.mjs (Slice 21.642)
+- **Verification Status:** Verified via finish-slice.mjs (Slice 21.644)
 - **Immediate Next Step:** None for venue fill once #637 merges. Members accept the notice again on next sign-in.
 - **Streamlining (`claude/project-thread-47kcgx`, `docs/specs/streamlining-plan.md`):** slice 1 merged (#636), slice 2 auto-verify wired into the lookup (#639). Next: slice 3, one Clashfinder list download shared by both stages, then shared Ticketmaster, setlist.fm and Brave clients.
 - **Open gaps:**

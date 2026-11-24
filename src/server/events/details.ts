@@ -268,8 +268,8 @@ const stripTags = (html: string) => decodeEntities(html.replace(/<[^>]+>/g, ' ')
 // on a date merge into one candidate with several sources.
 // The Brave results whose own title and description name every word of the
 // event (and, without a year, the place you gave).
-export async function braveResults(q: DetailQuery, fetcher: Fetcher): Promise<Array<{ url: string; text: string }>> {
-  const reply = await braveWebSearch(fetcher, webQuery(q), process.env.BRAVE_SEARCH_API_KEY!);
+export async function braveResults(q: DetailQuery, fetcher: Fetcher, source = 'stage1_details'): Promise<Array<{ url: string; text: string }>> {
+  const reply = await braveWebSearch(fetcher, webQuery(q), process.env.BRAVE_SEARCH_API_KEY!, source);
   if (reply.limited) throw new Error('Brave Search limit reached; look again later.');
   const results = reply.results;
   const words = [...eventWords(q.name), ...placeWords(q)];
