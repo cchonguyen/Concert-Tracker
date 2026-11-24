@@ -3,7 +3,6 @@
 // imported only by src/demo/ (tests/demo.test.ts checks that), so it is never
 // part of the app's build (scripts/check-demo-isolation.mjs).
 import type { LoggedEvent, SeenAct } from '../server/events/types';
-import type { LineupFacts } from '../server/events/scale';
 import type { LineupSummary } from '../services/lineupApi';
 import type { CityPoint } from '../server/events/place';
 
@@ -146,10 +145,6 @@ export const sampleEvents: LoggedEvent[] = [
 // sample sources are "example.com" pages; no lineup is looked up.
 export const sampleLineups: Record<string, LineupSummary> = Object.fromEntries(
   sampleEvents.map((e) => [e.id, { jobId: `demo-${e.id}`, status: 'done' as LineupSummary['status'], actCount: e.seen.length }]),
-);
-
-export const sampleEditions: Record<string, LineupFacts> = Object.fromEntries(
-  sampleEvents.map((e) => [e.id, { acts: e.seen.length, clashfinder: e.sources.startDate?.sourceType === 'clashfinder' }]),
 );
 
 // Coordinates for the cities in the sample, so the map does not ask the server.

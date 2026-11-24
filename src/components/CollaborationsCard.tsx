@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Edit2, Loader2, Plus, Trash2, Users, X } fro
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
 import { Pill } from './ui/Pill';
+import { Confirm } from './ui/Confirm';
 import { SuggestInput } from './SuggestInput';
 import { collaborationsApi, type CollaborationItem } from '../services/lineupApi';
 import type { HistoryEntry } from '../server/entities/types';
@@ -30,6 +31,7 @@ export const CollaborationsCard: React.FC<Props> = ({
   const [partners, setPartners] = useState<string[]>([]);
   const [newPartner, setNewPartner] = useState('');
   const [busy, setBusy] = useState(false);
+  const [removing, setRemoving] = useState<CollaborationItem | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const artistNames = useMemo(() => allArtists.map((a) => a.name), [allArtists]);
@@ -126,7 +128,7 @@ export const CollaborationsCard: React.FC<Props> = ({
   };
 
   const handleDelete = async (collab: CollaborationItem) => {
-    if (!window.confirm(`Remove collaboration moniker "${collab.alias}"?`)) return;
+    setRemoving(null);
     setBusy(true);
     try {
       const res = await collaborationsApi.remove(collab.alias);
@@ -301,7 +303,7 @@ export const CollaborationsCard: React.FC<Props> = ({
                         icon={Trash2}
                         label={`Delete ${item.alias}`}
                         size="chip"
-                        onClick={() => handleDelete(item)}
+                        onClick={() => setRemoving(item)}
                       />
                     </div>
                   </div>
@@ -310,6 +312,15 @@ export const CollaborationsCard: React.FC<Props> = ({
             </div>
           )}
         </div>
+      )}
+      {removing && (
+        <Confirm
+          title="Remove collaboration"
+          message={`Remove the collaboration moniker "${removing.alias}"?`}
+          confirmLabel="Remove collaboration"
+          onCancel={() => setRemoving(null)}
+          onConfirm={() => void handleDelete(removing)}
+        />
       )}
     </div>
   );
