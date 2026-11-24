@@ -1,7 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import type { AiCallRow, IngestTraceRow, MergeSummary } from './types';
 import type { CanonicalVenue, EditionChange, ReviewQueueItem, ReviewQueueKind } from '../types';
-import { assertNoPersonalFields, ExternalIdConflictError, venueIdFor } from './types';
+import { ArtistIdTakenError, assertNoPersonalFields, ExternalIdConflictError, venueIdFor } from './types';
 import {
   ArtistIdentity,
   BlocklistEntry,
@@ -1336,12 +1336,12 @@ export class SupabaseLineupStore implements LineupStore {
   }
 
   async upsertArtist(a: ArtistIdentity) {
-    this.check(
-      await this.db
-        .from('canonical_artists')
-        .upsert({ key: a.key, name: a.name, mbid: a.mbid ?? null, resolved_at: a.resolvedAt ?? null }),
-      'upsertArtist',
-    );
+    const res = await this.db
+      .from('canonical_artists')
+      .upsert({ key: a.key, name: a.name, mbid: a.mbid ?? null, resolved_at: a.resolvedAt ?? null });
+    const err = res.error as { code?: string; message: string } | null;
+    if (err && a.mbid && err.code === '23505' && /mbid/.test(err.message)) throw new ArtistIdTakenError(a.key, a.mbid);
+    this.check(res, 'upsertArtist');
   }
 
   // Counts come from the canonical_community_counts() function (migration 0033),

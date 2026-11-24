@@ -131,3 +131,19 @@ test('the hourly re-queue runs only on the minute-0 cron run', () => {
   assert.equal(isRequeueTime(new Date('2026-11-13T12:01:00Z')), false);
   assert.equal(isRequeueTime(new Date('2026-11-13T12:59:00Z')), false);
 });
+
+test('an artist whose MusicBrainz ID another artist holds is saved without it, and the run goes on', async () => {
+  const body = (name: string) => JSON.stringify({ artists: [{ id: name === 'Kaskade' ? 'MB-TAKEN' : 'MB-DOM', name, score: 100 }] });
+  const { deps, store } = await setup((url) => ({ body: body(decodeURIComponent(url).includes('Kaskade') ? 'Kaskade' : 'Dom Dolla') }));
+  // A different record (an alias spelling) already holds Kaskade's ID.
+  await store.upsertArtist({ key: 'kaskade (dj)', name: 'Kaskade (DJ)', mbid: 'MB-TAKEN', resolvedAt: T0.toISOString() });
+  const out = (await runJob(deps, (await jobOf(deps)).id))!;
+  assert.equal(out.status, 'confirmed');
+  assert.ok(out.log.some((l) => /already belongs to another artist/.test(l.message)));
+  const artists = await store.listArtists();
+  const kaskade = artists.find((a) => a.key === 'kaskade')!;
+  assert.equal(kaskade.mbid, undefined);
+  assert.ok(kaskade.resolvedAt);
+  assert.equal(artists.find((a) => a.key === 'dom dolla')!.mbid, 'MB-DOM');
+  assert.equal((await store.listUnresolvedArtists(10)).length, 0);
+});

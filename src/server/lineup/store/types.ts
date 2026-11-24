@@ -591,6 +591,14 @@ export class ExternalIdConflictError extends Error {
   }
 }
 
+// A MusicBrainz ID that another canonical artist already holds (canonical_artists_mbid_key).
+export class ArtistIdTakenError extends Error {
+  constructor(readonly key: string, readonly mbid: string) {
+    super(`MusicBrainz ID ${mbid} for "${key}" already belongs to another artist`);
+    this.name = 'ArtistIdTakenError';
+  }
+}
+
 export class PersonalFieldError extends Error {
   constructor(readonly field: string) {
     super(`Shared data must not hold the personal field "${field}"`);

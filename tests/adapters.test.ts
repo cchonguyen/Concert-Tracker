@@ -197,3 +197,26 @@ test('search: a result on the event domain is the organiser page', () => {
   assert.ok(!isEventDomain('https://www.jambase.com/festival/zedd-in-the-park-2026', 'Zedd in the Park'));
   assert.ok(!isEventDomain('https://edc.example.com/', 'EDC')); // too short to tell
 });
+
+test('clashfinder: a 200 that is not event data is asked once more', async () => {
+  process.env.CLASHFINDER_USERNAME = 'me';
+  process.env.CLASHFINDER_PUBLIC_KEY = 'k';
+  const data = { name: 'EDC Las Vegas 2025', locations: [{ name: 'kineticFIELD', events: [{ name: 'Kaskade', start: '2025-05-16 23:00', end: '2025-05-17 00:30' }] }] };
+  let calls = 0;
+  const fetcher = {
+    async get(url: string) {
+      calls++;
+      const body = calls === 1 ? '<html>Please wait</html>' : JSON.stringify(data);
+      return { url, status: 200, headers: {}, body };
+    },
+  };
+  const result = await clashfinderAdapter.collect({
+    input: { eventName: 'EDC Las Vegas', year: 2025, lineupUrl: 'https://clashfinder.com/s/edc2025/' },
+    editionKey: 'edc-las-vegas/2025',
+    series: null,
+    now: new Date('2025-06-01'),
+    fetcher,
+  });
+  assert.equal(calls, 2);
+  assert.deepEqual(result.performers.map((p) => [p.name, p.stage]), [['Kaskade', 'kineticFIELD']]);
+});

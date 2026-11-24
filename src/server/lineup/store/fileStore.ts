@@ -43,7 +43,7 @@ import type { ShareLink } from '../../share/types';
 import { shareEventOnly } from '../../share/types';
 import type { AiCallRow, IngestTraceRow, MergeSummary } from './types';
 import type { CanonicalVenue, EditionChange, ReviewQueueItem, ReviewQueueKind, VenueAlias, EditionExternalId } from '../types';
-import { assertNoPersonalFields, EditionOccurrenceConflictError, ExternalIdConflictError, venueIdFor } from './types';
+import { ArtistIdTakenError, assertNoPersonalFields, EditionOccurrenceConflictError, ExternalIdConflictError, venueIdFor } from './types';
 import { normalizeName } from '../normalizeName';
 import type { CachedResponse } from '../responseCache';
 import {
@@ -821,7 +821,12 @@ export class FileLineupStore implements LineupStore {
   }
 
   async upsertArtist(artist: ArtistIdentity) {
-    (await this.load()).artists[artist.key] = clone(artist);
+    const state = await this.load();
+    // Same rule as the database's unique MusicBrainz ID (canonical_artists_mbid_key).
+    if (artist.mbid && Object.values(state.artists).some((a) => a.key !== artist.key && a.mbid === artist.mbid)) {
+      throw new ArtistIdTakenError(artist.key, artist.mbid);
+    }
+    state.artists[artist.key] = clone(artist);
     await this.save();
   }
 
