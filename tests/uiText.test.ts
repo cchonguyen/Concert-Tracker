@@ -28,3 +28,10 @@ test('owner screens drop "canonical" and "ingest" from the text a person reads',
     assert.ok(!/(title|placeholder)="[^"]*\b(canonical|[Ii]ngest)\b/.test(s), f);
   }
 });
+
+test('the privacy page and About box name the current deep search button and no AI brand on screen', () => {
+  const privacy = read('public/privacy.html');
+  assert.ok(privacy.includes('"Deep search with AI"'));
+  assert.ok(!privacy.includes('Look again with Gemini'));
+  assert.ok(!/<p>Gemini /.test(read('src/components/AboutDialog.tsx')));
+});

@@ -23,7 +23,7 @@
     <main>
       <p><a href="/">LiveArchive</a> · <a href="/terms">Terms</a></p>
       <h1>Privacy</h1>
-      <p class="muted">Last updated 2026-11-01. This describes what the code does today. It is not legal advice.</p>
+      <p class="muted">Last updated 2026-11-24. This describes what the code does today. It is not legal advice.</p>
 
       <h2>What LiveArchive stores</h2>
       <p>For each event you add: its name, dates, venue, city, the acts you saw, ratings, prices, and any notes. Companions (the people you went with) and notes can be encrypted in your browser with a passphrase you choose. When that vault is on, the server holds only the encrypted text and the salts. It never holds your passphrase or the key.</p>
@@ -40,8 +40,8 @@
 
       <h2>What other services receive</h2>
       <ul>
-        <li><strong>Lookup sources</strong> (Clashfinder, promoter pages, Ticketmaster, MusicBrainz, setlist.fm, Brave Search) receive the names, dates and places of the events you look up.</li>
-        <li><strong>Gemini</strong> reads only web pages the app fetched, and only when you press "Look again with Gemini" on an event. It never receives your email text or your personal notes.</li>
+        <li><strong>Lookup sources</strong> (Clashfinder, promoter pages, Ticketmaster, MusicBrainz, setlist.fm, Brave Search) receive the names, dates and places of the events you look up. <strong>Open-Meteo</strong> receives the city and dates of an event when its weather is looked up.</li>
+        <li><strong>Gemini</strong> (Google's AI model) reads only web pages the app fetched: lineup pages when you find a lineup, the pages found for an event when you press "Deep search with AI", and, after you save an event whose date, venue or city is still missing, up to 2 of those pages on its own. It never receives your email text or your personal notes.</li>
         <li><strong>Email delivery</strong>: when account emails are turned on, Resend receives the recipient email address and the invite, approval or request-digest message to deliver it.</li>
         <li><strong>Hosting and database</strong>: the app runs on Cloudflare Workers and stores its data in Supabase.</li>
       </ul>
@@ -50,7 +50,7 @@
       <p>A share link you create shows the events and figures you choose to include, to anyone with the link. Turn it off to stop the page from being served. Share pages are not indexed by search engines.</p>
 
       <h2>Your data</h2>
-      <p>You can download your events as a CSV file from the Table view. Deleting an event moves it to Recently deleted; it is erased after 90 days. To ask for anything else, contact the person who invited you.</p>
+      <p>You can download your events as a CSV file from the Table view. Deleting an event moves it to Recently deleted; it is erased after 90 days. You can download or delete all your data in Your account. To ask for anything else, contact the person who invited you.</p>
 
       <h2>Changes</h2>
       <p>When this page changes, its date at the top changes too.</p>

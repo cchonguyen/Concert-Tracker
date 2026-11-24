@@ -1,6 +1,6 @@
 # Docs, comments and app text cleanup
 
-Status: scope approved by Charlie 2026-11-23 ("Yes move to archive. Plain words as well."). Building one slice at a time. Wording choices are in "Decisions" below.
+Status: done 2026-11-24. Scope approved by Charlie 2026-11-23 ("Yes move to archive. Plain words as well."). All ten slices merged (PRs #592, #594, #596, #599, #601, #603, #605, #607 and the slice 9 PR). Wording choices are in "Decisions" below.
 
 ## Goal
 
