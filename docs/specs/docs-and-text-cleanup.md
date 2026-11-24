@@ -12,7 +12,13 @@ Make every doc say what is true today, file away finished or replaced specs, rem
 - Plain words on every screen, owner screens included.
 - Ideas that were never started stay in `docs/` with a "Not started" status line.
 - Code comments drop slice numbers. A date stays when it explains why a rule exists.
-- Wording questions put to Charlie on 2026-11-23 (app name, the "edition" label, status words, naming Gemini, tooltip length, screenshots): answers recorded here when given. Until then the screen slices use these defaults: keep "LiveArchive"; keep "Gemini" on buttons that use it; one-sentence tooltips that say what pressing does.
+- Wording answers from Charlie, 2026-11-23:
+  - The app's name stays "LiveArchive" (no s).
+  - Keep the word "Edition". Drop "Canonical" where a person reads it.
+  - Keep the status words Verified, Provisional, Draft and Candidate: one word each, and distinct.
+  - No AI brand name on buttons. "Look again with Gemini" and the like become wording such as "Deep search with AI" that says the search goes deeper. AGENTS.md names that button, so its wording changes in the AGENTS.md pull request.
+  - Tooltips are one sentence about what pressing does.
+  - Before and after screenshots on the three screen slices (6, 7, 8).
 
 ## Out of scope
 
