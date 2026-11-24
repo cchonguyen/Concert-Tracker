@@ -25,7 +25,7 @@ export interface GeminiClient {
   }): Promise<ExtractedName[]>;
   // Grounded search used only to find candidate lineup URLs.
   discoverLineupUrls(input: LookupInput): Promise<string[]>;
-  // Stage 1, only when you ask for it ("Look again with Gemini"): the words a
+  // Stage 1, only when you ask for it ("Deep search with AI"): the words a
   // page uses for the event's date and place. Values are checked against the
   // page, and dates are read from the quote in code (events/detailsGemini.ts).
   extractEventDetails(args: { text: string; eventName: string; year?: number }): Promise<ExtractedDetails>;

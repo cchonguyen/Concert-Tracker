@@ -19,11 +19,11 @@ const ICONS: Record<SourceType, LucideIcon> = {
 };
 
 // A source's glyph and name, with its label as the tooltip. Pass `readBy` to add
-// "(read by Gemini)" the way the candidate lists already do.
+// "(read by AI)" the way the candidate lists already do.
 export function SourceIcon({ source, readBy }: { source: SourceType; readBy?: string }) {
   const Icon = ICONS[source] ?? Globe;
   const label = SOURCE_LABELS[source] ?? source;
-  const suffix = readBy === 'gemini' ? ' (read by Gemini)' : '';
+  const suffix = readBy === 'gemini' ? ' (read by AI)' : '';
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap" title={`${label}${suffix}`}>
       <Icon className="h-3 w-3 shrink-0 text-zinc-400" aria-hidden="true" />

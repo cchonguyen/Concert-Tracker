@@ -538,7 +538,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                             <Button
                               variant="secondary"
                               className="shrink-0 text-xs py-1 px-2 h-auto text-zinc-400 hover:text-zinc-200"
-                              title="Make B2B: pairs this act with another artist"
+                              title="Pairs this act with another artist as a B2B set."
                               onClick={() => {
                                 const idx = slot.items[0].index;
                                 update(idx, { name: `${slot.items[0].item.name} b2b ` });
@@ -555,7 +555,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                               <Button
                                 variant="secondary"
                                 className="text-xs py-0.5 px-2 h-auto text-zinc-400 hover:text-zinc-200"
-                                title="Add another partner to this set (B3B/B4B)"
+                                title="Adds another partner to this set, for a B3B or B4B."
                                 onClick={() => {
                                   const slotId = slot.items[0].item.slotId || crypto.randomUUID();
                                   const newPartner: Row = {
@@ -615,10 +615,10 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                                   const alias = e.target.value.trim() || undefined;
                                   slot.items.forEach((it) => update(it.index, { alias }));
                                 }}
-                                placeholder="AKA (e.g. Subjohnics)"
+                                placeholder="Shared name, e.g. Subjohnics"
                                 className={`${input} max-w-[150px] py-0.5 text-xs text-sky-300 placeholder:text-zinc-600`}
-                                title="Set collaborative project moniker (AKA)"
-                                aria-label="Collaboration Alias"
+                                title="Sets the name they play under together."
+                                aria-label="Name they play under together"
                               />
                             </div>
                           </div>
@@ -634,7 +634,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                           {uniqueSources.some((src) => src.sourceType !== 'user') && (
                             <span
                               className="text-zinc-400"
-                              title="Sources that list the act, weighted by how often each has been right in your reviews; a full lineup that leaves it out lowers it."
+                              title="Worked out from the sources that list this act and how often each was right in your past reviews."
                             >
                               {Math.round(slot.confidence * 100)}% confidence
                             </span>
@@ -694,7 +694,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                             const billing = e.target.value as Row['billing'];
                             slot.items.forEach((it) => update(it.index, { billing }));
                           }}
-                          title="Artist: headliner, or no lead stated. Supporting: billed as support."
+                          title="Headliner or Supporting needs a source that bills the act that way; otherwise it stays Artist."
                           aria-label={`Role for ${slot.name}`}
                         >
                           <option value="">Artist</option>

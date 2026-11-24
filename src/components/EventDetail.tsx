@@ -637,7 +637,7 @@ const SeenActs: React.FC<{
         <button
           type="button"
           onClick={() => setEditing(instanceId)}
-          title="Edit this act"
+          title="Opens this act's billing, set type and B2B partners."
           className="flex min-h-11 min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 py-2 pr-3 text-left hover:bg-zinc-800/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400 sm:min-h-0"
         >
           <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
@@ -824,7 +824,7 @@ const ActEditor: React.FC<{
             <button
               type="button"
               onClick={() => patchAct({ set: null })}
-              title="Clear set"
+              title="Clears the set type."
               aria-label="Clear set"
               className="inline-flex items-center gap-1 rounded-full border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
             >
@@ -885,7 +885,7 @@ const ActEditor: React.FC<{
       </section>
       {partners.length > 0 && (
         <section className="space-y-1.5">
-          <h4 className={sectionTitle}>Collaboration Alias / Moniker</h4>
+          <h4 className={sectionTitle}>Name they play under together</h4>
           <input
             className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-violet-500 focus:outline-none"
             placeholder="e.g. Subjohnics, Kx5, ISOKNOCK"
@@ -896,7 +896,7 @@ const ActEditor: React.FC<{
               onChange(toPatch(seen.map((s) => (partnerKeys.has(s.key) ? { ...s, alias: val } : s))));
             }}
           />
-          <p className="text-xs text-zinc-400">Optional project name (e.g. Subjohnics for John Summit B2B Subtronics).</p>
+          <p className="text-xs text-zinc-400">Optional, e.g. Subjohnics for John Summit B2B Subtronics.</p>
         </section>
       )}
       {partners.length > 0 && (
@@ -1012,7 +1012,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const [error, setError] = useState<string | null>(null);
   const [lineupUrl, setLineupUrl] = useState('');
   // Whether Gemini is set up and how much of today's budget is left, for
-  // "Look again with Gemini".
+  // "Deep search with AI".
   const [lineupStatus, setLineupStatus] = useState<LineupStatus | null>(null);
   useEffect(() => {
     lineupApi.status().then(setLineupStatus, () => setLineupStatus(null));
@@ -1549,7 +1549,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                       {worked.kind === 'festival' ? 'From festival series' : 'From tour series'}
                     </span>
                   ) : (
-                    <span title="Worked out from the lineup. Tap a type to change it." aria-label="Guessed from the lineup" className="text-violet-300">
+                    <span title="Worked out from the lineup; tap a type to change it." aria-label="Worked out from the lineup" className="text-violet-300">
                       ✦
                     </span>
                   )
@@ -1606,7 +1606,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           <label className="block space-y-1">
             <span className="text-[11px] font-semibold text-zinc-400">Went with</span>
             {event.peopleLocked ? (
-              <span className="block rounded-md border border-zinc-800 px-2.5 py-1.5 text-xs text-amber-300">🔒 Vault Locked</span>
+              <span className="block rounded-md border border-zinc-800 px-2.5 py-1.5 text-xs text-amber-300">🔒 Vault locked</span>
             ) : (
               <ChipInput items={event.companions} placeholder="Add a name" past={pastCompanions} label="Add who you went with" onChange={(companions) => save({ companions })} />
             )}
@@ -1658,7 +1658,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                   }}
                   className="rounded-full border border-zinc-800 px-2 py-0.5 text-zinc-300 hover:text-violet-300"
                 >
-                  Canonical edition
+                  Edition
                 </a>
               )}
             </p>
@@ -2047,9 +2047,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
 
       {confirmingDelete && (
         <Confirm
-          title="Delete show"
+          title="Delete event"
           message={`"${eventTitle(event)}" moves to Recently deleted in the Log, where you can restore it for 90 days.`}
-          confirmLabel="Delete show"
+          confirmLabel="Delete event"
           onCancel={() => setConfirmingDelete(false)}
           onConfirm={() => {
             setConfirmingDelete(false);

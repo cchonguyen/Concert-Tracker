@@ -71,7 +71,7 @@ test('checkedCandidate keeps only values written on the page, and reads the date
   assert.deepEqual(noPlace?.sources[0].fields, ['startDate']);
 });
 
-test('Look again with Gemini reads the page a search found and fills the place your date matches', async () => {
+test('Deep search with AI reads the page a search found and fills the place your date matches', async () => {
   process.env.BRAVE_SEARCH_API_KEY = 'k';
   try {
     const calls = { n: 0 };
@@ -108,7 +108,7 @@ test('a page that does not name the event is never sent to Gemini', async () => 
     const ev = newEvent('Porter Robinson Oct 5 2024', NOW);
     const out = await researchEvent(ev, [braveFinder], fetcher, NOW, geminiReader((await readerFor(gemini)).reader, ev.id, () => NOW));
     assert.equal(calls.n, 0);
-    assert.ok(out.details.notes.some((n) => n.includes('no Gemini call')));
+    assert.ok(out.details.notes.some((n) => n.includes('nothing was sent to the AI')));
   } finally {
     delete process.env.BRAVE_SEARCH_API_KEY;
   }

@@ -22,7 +22,7 @@ import { DetailCandidate, DetailsStatus, EventDetails, EventField, EVENT_FIELDS,
 
 // Stage 1 research: find and verify an event's date and place from structured
 // sources and web search results. No Gemini here unless you ask for it with
-// "Look again with Gemini" (a DetailReader, events/detailsGemini.ts), so it
+// "Deep search with AI" (a DetailReader, events/detailsGemini.ts), so it
 // never waits on quota (REQUIREMENTS.md, principle 8).
 // Results are candidates with sources; applying one is decided in code below
 // and never overwrites what you typed.
@@ -1049,7 +1049,7 @@ export async function researchEditionFacts(
 
   let reader = options?.detailReader;
   if (options?.useGemini === true && !reader) {
-    if (!options?.reader) throw new InputError('Gemini is not set up on this server.');
+    if (!options?.reader) throw new InputError('Deep search is not set up on this server.');
     if ('read' in options.reader && typeof options.reader.read === 'function') {
       reader = options.reader as DetailReader;
     } else {
