@@ -613,7 +613,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                               {i > 0 && <span className="text-zinc-700">/</span>}
                               <button
                                 onClick={() => sortBy(s.key)}
-                                title="Click to sort up, then down, then turn sorting off"
+                                title="Sorts by this column; press again to reverse it, and a third time to stop sorting."
                                 className={`inline-flex items-center gap-1 uppercase hover:text-zinc-200 ${filters.sort === s.key ? 'text-zinc-200' : ''}`}
                               >
                                 {s.label}

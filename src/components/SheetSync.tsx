@@ -120,7 +120,7 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ notice, onClose }) => {
           <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
         ) : !status.configured ? (
           <p className="text-sm text-zinc-400">
-            Google sign-in isn't set up on the server (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, the same as Check email).
+            Google sign-in isn't set up on this server yet, so the app can't reach Google Sheets.
           </p>
         ) : !status.connected ? (
           <div className="space-y-2">
