@@ -8,7 +8,7 @@ Review is where the system improves (`src/server/lineup/learning.ts`). Nothing r
 | Your action | What is stored | Effect on the next lookup |
 | --- | --- | --- |
 | Rename an act | `artist_aliases`: old spelling to your spelling, plus a `renamed` correction | Variants merge in code, no AI call |
-| Reject as "not an act" | `extraction_blocklist` per site, plus a `rejected` correction | After 2 rejections on a site, that string is dropped before review |
+| Reject as "not an act" | `extraction_blocklist` per site, plus a `rejected` correction | After 2 rejections on a site, that string is dropped before review. Clashfinder is the exception: its rejections are not applied, because each clash is one edition (`isBlocked` in `merge.ts`) |
 | Reject as "wrong event" | `rejected` correction, source penalized | Source reliability drops |
 | Reject as "cancelled" | Performance kept with status `cancelled` | Sources are not penalized for billing it |
 | Accept | `source_stats` accepted count per source, per series and globally | Reliability rises; confidence uses measured accuracy (Beta prior, weight 10) |

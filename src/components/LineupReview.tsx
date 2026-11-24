@@ -56,7 +56,8 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
   const canonical = (mode ?? (event ? 'personal' : 'canonical')) === 'canonical';
   const seenSource = event?.seen ?? [];
   const candidate = job.candidate;
-  const replacing = !canonical && pendingReplacement(job, edition);
+  // Canonical reviews show a diff before saving, so a new version starts ticked there too.
+  const replacing = pendingReplacement(job, edition);
   // A role you set on a seen act wins over the sources'.
   const yourSet = new Map(seenSource.filter((s) => s.set).map((s) => [s.key, s.set!]));
   const yourRole = new Map(seenSource.filter((s) => s.roleFrom === 'you').map((s) => [s.key, s.role ?? '']));
