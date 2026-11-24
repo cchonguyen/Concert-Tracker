@@ -765,6 +765,7 @@ async function persistOccurrence(event: LoggedEvent, raw: DetailCandidate[], cat
       endDate: c.endDate,
       venue: c.venue,
       city: c.city,
+      region: c.region,
       country: c.country,
       subjectKey: seriesSlugFor(c.name!),
       externalIds: src.sourceUrl ? [{ source: src.sourceType, externalId: src.sourceUrl }] : [],

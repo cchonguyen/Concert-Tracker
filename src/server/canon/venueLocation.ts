@@ -4,7 +4,7 @@
 import type { CanonicalVenue } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
 import { normalizeName } from '../lineup/text';
-import { regionCode, sameCountry } from '../events/regions';
+import { regionCode, sameCountry, splitCity } from '../events/regions';
 
 export interface VenueLocation {
   city: string;
@@ -36,7 +36,9 @@ function samePlace(a: VenueLocation, b: VenueLocation): boolean {
 // The distinct locations held by these venue records. A record without a city adds nothing.
 export function venueLocations(venues: readonly Pick<CanonicalVenue, 'city' | 'region' | 'country'>[]): VenueLocation[] {
   const out: VenueLocation[] = [];
-  for (const v of venues) {
+  for (const raw of venues) {
+    // A record saved with "City, ST" in its city is read as that city and state (splitCity, in code).
+    const v = splitCity({ city: clean(raw.city), region: clean(raw.region), country: clean(raw.country) });
     const city = clean(v.city);
     if (!city) continue;
     const loc: VenueLocation = { city, ...(clean(v.region) ? { region: clean(v.region) } : {}), ...(clean(v.country) ? { country: clean(v.country) } : {}) };

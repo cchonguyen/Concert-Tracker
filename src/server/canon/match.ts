@@ -6,6 +6,7 @@
 //   3. Same date and city but a different or unknown venue: never merged. A merge_suggestion row asks the owner.
 // Nothing here guesses: an unknown venue, a missing date or two equal candidates is "no match" or "ambiguous".
 // Every edition write goes through writeEdition.
+import { splitCity } from '../events/regions';
 import { randomUUID } from 'node:crypto';
 import type { Edition, EditionHeader } from '../lineup/types';
 import { isVerifiedStatus, type LineupStore } from '../lineup/store/types';
@@ -232,6 +233,7 @@ export async function findSeriesEditionMatches(store: LineupStore, q: SeriesEdit
 export interface UpsertOccurrenceInput extends OccurrenceQuery {
   name: string;
   endDate?: string;
+  region?: string; // the state or province, as given or split from "City, ST" in code
   country?: string;
   hasLineup?: boolean;
   // 'verified' for a ticket email import or canonical ingest; 'provisional' for a member's own entry.
@@ -276,7 +278,11 @@ export async function upsertOccurrence(store: LineupStore, input: UpsertOccurren
     return { action: 'ambiguous', suggestedWith: m.editions.map((e) => e.id) };
   }
 
-  const getVenue = async () => (input.venue?.trim() ? store.upsertVenue({ name: input.venue.trim(), city: input.city, country: input.country }) : null);
+  // "City, ST" is split in code (splitCity), so the edition gets the bare city and its state. The venue record keeps
+  // the city as given, so its id does not change; it stores the state beside it.
+  const place = splitCity({ city: input.city?.trim() || undefined, region: input.region?.trim() || undefined, country: input.country?.trim() || undefined });
+  const getVenue = async () =>
+    input.venue?.trim() ? store.upsertVenue({ name: input.venue.trim(), city: input.city, region: place.region, country: input.country }) : null;
 
   if (m.kind === 'same') {
     const cur = m.edition;
@@ -284,15 +290,17 @@ export async function upsertOccurrence(store: LineupStore, input: UpsertOccurren
     const venueRow = cur.venueId ? null : await getVenue();
     const next: Edition = { ...cur, updatedAt: now };
     const replace = input.trust === 'verified' && !isVerified(cur);
-    const put = <K extends 'name' | 'venue' | 'city' | 'country' | 'endDate' | 'venueId' | 'subjectKey' | 'hasLineup'>(k: K, v: Edition[K]) => {
+    const put = <K extends 'name' | 'venue' | 'city' | 'region' | 'country' | 'endDate' | 'venueId' | 'subjectKey' | 'hasLineup'>(k: K, v: Edition[K]) => {
       if (empty(v)) return;
       if (empty(cur[k]) || (replace && k !== 'subjectKey' && k !== 'hasLineup')) next[k] = v;
     };
     put('name', name);
     put('endDate', input.endDate);
     put('venue', input.venue?.trim());
-    put('city', input.city?.trim());
-    put('country', input.country?.trim());
+    put('city', place.city);
+    // A state goes only with its own city: on an edition with no city yet or the same city (or when a verified source replaces).
+    if (replace || !cur.city?.trim() || normalizeName(splitCity({ city: cur.city }).city ?? '') === normalizeName(place.city ?? '')) put('region', place.region);
+    put('country', place.country);
     put('venueId', venueRow?.id);
     put('subjectKey', input.subjectKey);
     put('hasLineup', input.hasLineup);
@@ -316,8 +324,9 @@ export async function upsertOccurrence(store: LineupStore, input: UpsertOccurren
     startDate: input.startDate,
     ...(input.endDate ? { endDate: input.endDate } : {}),
     ...(input.venue?.trim() ? { venue: input.venue.trim() } : {}),
-    ...(input.city?.trim() ? { city: input.city.trim() } : {}),
-    ...(input.country?.trim() ? { country: input.country.trim() } : {}),
+    ...(place.city ? { city: place.city } : {}),
+    ...(place.region ? { region: place.region } : {}),
+    ...(place.country ? { country: place.country } : {}),
     status: input.trust,
     ...(venueRow ? { venueId: venueRow.id } : {}),
     ...(input.subjectKey ? { subjectKey: input.subjectKey } : {}),
