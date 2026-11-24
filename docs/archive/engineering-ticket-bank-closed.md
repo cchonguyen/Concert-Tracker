@@ -4,7 +4,7 @@ Moved from docs/engineering-ticket-bank.md. Each ticket was checked against the 
 
 ### [SEC-01] Single-Promise Worker Server Bootstrap
 - **Closed**: DONE (verified 2026-11-04)
-- **Classification**: Hardening / Cleanup (not a live bug; see [tier2-ticket-review.md](../tier2-ticket-review.md#sec-01-cold-start-concurrency-race-in-ensureserver))
+- **Classification**: Hardening / Cleanup (not a live bug; see [tier2-ticket-review.md](tier2-ticket-review.md#sec-01-cold-start-concurrency-race-in-ensureserver))
 - **Priority**: P3 (Low)
 - **Files**: [`worker/index.ts`](../../worker/index.ts)
 - **Problem**:
@@ -118,7 +118,7 @@ Moved from docs/engineering-ticket-bank.md. Each ticket was checked against the 
 
 ### [REL-01] Per-Message Queue Error Handling & Dead-Letter Visibility
 - **Closed**: DONE (verified 2026-11-04 by code audit; the ticket's tests were not re-run).
-- **Classification**: Reliability / Observability (revised after [tier2-ticket-review.md](../tier2-ticket-review.md))
+- **Classification**: Reliability / Observability (revised after [tier2-ticket-review.md](tier2-ticket-review.md))
 - **Priority**: P2 (Medium)
 - **Files**: [`worker/index.ts`](../../worker/index.ts), [`wrangler.jsonc`](../../wrangler.jsonc), [`ARCHITECTURE.md`](../../ARCHITECTURE.md)
 - **Problem**:
@@ -177,4 +177,19 @@ Moved from docs/engineering-ticket-bank.md. Each ticket was checked against the 
 - **Invariants**: `isVerbatim` check must still pass against the raw stored document.
 - **Test Plan**: Test against a synthetic HTML page with a 10kb navigation/FAQ header and a 50kb roster → verify names from the end of the alphabet (e.g. "Zedd") are preserved in the extraction window.
 
+### [TECH-04] In-Memory Express Request Dispatcher for Integration Tests
+
+- **Closed**: built in Tier 3 Slice 3 (PR #229) as `tests/helpers/testApp.ts`.
+- **Audit 2026-11-04**: OPEN (partial). tests/helpers/testApp.ts exists and dispatches in memory; migrating tests/shareApi.test.ts and tests/sheets.test.ts is not confirmed.
+- **Classification**: Engineering Excellence & Test Speed
+- **Priority**: P2 (Medium)
+- **Files**: `tests/helpers/testApp.ts`, integration test files
+- **Problem**:
+  13 test files currently spin up a real HTTP server with `app.listen(0)` and make real TCP requests to `127.0.0.1`. This introduces port-binding race conditions, slows down the test suite by several seconds, and causes `connect EPERM` failures in isolated sandboxes.
+- **Implementation Strategy**:
+  1. Create a lightweight test helper `dispatch(app, requestInit)` that passes a `Request` through Express middleware in memory via Node's `http.IncomingMessage` / `http.ServerResponse` mocks without opening real OS network sockets.
+  2. Migrate `tests/shareApi.test.ts` and `tests/sheets.test.ts` onto this in-memory caller.
+- **Test Plan**: Run all migrated test files in a restricted sandbox without loopback permissions → assert 100% pass rate in < 200 ms.
+
 ---
+

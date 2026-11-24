@@ -3,7 +3,7 @@
 > **Role & Purpose**: Authored by the Principal Engineering Lead. This document represents a comprehensive architectural audit, gap analysis, and ticket repository for future multi-threaded development on LiveArchive.  
 > **Status**: Planning & Backlog. Ready for independent assignment across parallel engineering agents or contributors.
 > **Guiding Documents**: [REQUIREMENTS.md](../REQUIREMENTS.md), [ARCHITECTURE.md](../ARCHITECTURE.md), and [AGENTS.md](../AGENTS.md).
-> **Revised 2026-11-02**: SEC-01, PERF-01, PERF-02, REL-01, A11Y-02, A11Y-03 and FEAT-03 were rewritten after a code-checked peer review ([tier2-ticket-review.md](tier2-ticket-review.md)). FEAT-03 is blocked.
+> **Revised 2026-11-02**: SEC-01, PERF-01, PERF-02, REL-01, A11Y-02, A11Y-03 and FEAT-03 were rewritten after a code-checked peer review ([tier2-ticket-review.md](archive/tier2-ticket-review.md)). FEAT-03 is blocked.
 > **Checked 2026-11-04**: six closed tickets from the first pass plus three from the second pass (REL-01, LINEUP-02, LINEUP-03) moved to [docs/archive/engineering-ticket-bank-closed.md](archive/engineering-ticket-bank-closed.md). Ten open tickets carry a verdict line from the 2026-11-04 code audit.
 
 ---
@@ -44,7 +44,6 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
 | **TECH-01** | Reliability | Eliminate Catastrophic Backtracking in `htmlToText` | P2 | Medium | `src/server/lineup/text.ts` |
 | **TECH-02** | Tech Debt | Strict Typing for Source Adapters (Eliminate `any`) | P3 | Small | `src/server/lineup/adapters/` |
 | **TECH-03** | Reliability | Subrequest Budget Guard for Worker Pipeline Runs | P2 | Medium | `src/server/lineup/pipeline.ts` |
-| **TECH-04** | Tooling | In-Memory Express Request Dispatcher for Integration Tests | P2 | Medium | `tests/helpers/testApp.ts` |
 
 ---
 
@@ -54,7 +53,7 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
 - **Audit 2026-11-04**: OPEN. 0029_enforce_rls_base_tables.sql does not exist; 0002 has no ENABLE ROW LEVEL SECURITY. Later migrations not checked.
 - **Classification**: Security Hardening / Database Hygiene
 - **Priority**: P1 (High)
-- **Files**: [`supabase/migrations/`](../supabase/migrations/)
+- **Files**: [`supabase/migrations/`](../supabase/migrations)
 - **Problem**:
   Tables defined in `0002_source_first_lineups.sql` (`canonical_artists`, `performances`, `source_documents`, `performer_claims`, `quota_ledger`, `source_stats`, `corrections`, `extraction_examples`, `attendance`, `seen_sets`) do not have `ALTER TABLE ... ENABLE ROW LEVEL SECURITY;`.
   Specifically, `attendance` and `seen_sets` are legacy tables from pre-0003 single-step flow that may still retain personal fields (`notes`, `companions`, `rating`, `ticket_price`) if an older installation was migrated.
@@ -85,7 +84,7 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
 ## Track 2: Performance, Scalability & Reliability
 
 ### [PERF-01] Scoped, Paged `listSeenArtistNames` for Spelling Resolution in `stageMerge`
-- **Classification**: Performance Optimization (revised after [tier2-ticket-review.md](tier2-ticket-review.md))
+- **Classification**: Performance Optimization (revised after [tier2-ticket-review.md](archive/tier2-ticket-review.md))
 - **Priority**: P1 (High)
 - **Files**: [`src/server/lineup/pipeline.ts`](../src/server/lineup/pipeline.ts), [`src/server/lineup/store/types.ts`](../src/server/lineup/store/types.ts), [`src/server/lineup/store/supabaseStore.ts`](../src/server/lineup/store/supabaseStore.ts), [`src/server/lineup/store/fileStore.ts`](../src/server/lineup/store/fileStore.ts)
 - **Problem**:
@@ -111,7 +110,7 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
 ---
 
 ### [PERF-02] Per-Host Cache Policy for the Open-Meteo Archive
-- **Classification**: Performance / Caching (revised after [tier2-ticket-review.md](tier2-ticket-review.md); low value, can be deferred)
+- **Classification**: Performance / Caching (revised after [tier2-ticket-review.md](archive/tier2-ticket-review.md); low value, can be deferred)
 - **Priority**: P3 (Low)
 - **Files**: [`src/server/lineup/responseCache.ts`](../src/server/lineup/responseCache.ts), [`src/server/lineup/service.ts`](../src/server/lineup/service.ts), [`ARCHITECTURE.md`](../ARCHITECTURE.md)
 - **Problem**:
@@ -151,7 +150,7 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
 ### [REL-02] Extraction Prompt & Model Regression Test Runner
 - **Classification**: Developer Tooling / Quality Assurance
 - **Priority**: P2 (Medium)
-- **Files**: [`scripts/regression-extract.ts`](../scripts/) (planned, not yet created), [`ARCHITECTURE.md`](../ARCHITECTURE.md)
+- **Files**: [`scripts/regression-extract.ts`](../scripts) (planned, not yet created), [`ARCHITECTURE.md`](../ARCHITECTURE.md)
 - **Problem**:
   ARCHITECTURE.md Roadmap specifies: *"A regression command that re-runs extraction over stored documents and compares against confirmed lineups when the model or prompt changes."*
   Currently, changing `EXTRACTION_PROMPT_VERSION` or upgrading Gemini model versions requires manual testing without a regression benchmark over historical `source_documents`.
@@ -254,7 +253,7 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
 
 ### [A11Y-03] Arrow-Key Row Navigation & Fewer Tab Stops in Table View
 - **Audit 2026-11-04**: OPEN. nextRowId and arrow keys exist; rows still have tabIndex 0 each, no roving tabindex, no scrollIntoView.
-- **Classification**: Accessibility & Power UX (revised after [tier2-ticket-review.md](tier2-ticket-review.md))
+- **Classification**: Accessibility & Power UX (revised after [tier2-ticket-review.md](archive/tier2-ticket-review.md))
 - **Priority**: P2 (Medium)
 - **Files**: [`src/components/TableView.tsx`](../src/components/TableView.tsx)
 - **Problem**:
@@ -316,7 +315,7 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
 - **Priority**: P2 (Medium)
 - **Files**: [`src/server/events/details.ts`](../src/server/events/details.ts), [`src/components/EventDetail.tsx`](../src/components/EventDetail.tsx)
 - **Spec Reference**: REQUIREMENTS.md Section 13 #3: *"Setlists: for a seen act at a single-artist show, link the setlist.fm setlist for that night."*
-- **Status**: **BLOCKED** (see [tier2-ticket-review.md](tier2-ticket-review.md)). Unblock by: (a) updating REQUIREMENTS.md and ARCHITECTURE.md to move this from an idea to a requirement; (b) removing the made-up fallback URLs, `s.url ?? 'https://www.setlist.fm'` in `details.ts` and `s.url ?? doc.url` (a search URL) in `adapters/setlistfm.ts`, so neither can ever be stored as a setlist link.
+- **Status**: **BLOCKED** (see [tier2-ticket-review.md](archive/tier2-ticket-review.md)). Unblock by: (a) updating REQUIREMENTS.md and ARCHITECTURE.md to move this from an idea to a requirement; (b) removing the made-up fallback URLs, `s.url ?? 'https://www.setlist.fm'` in `details.ts` and `s.url ?? doc.url` (a search URL) in `adapters/setlistfm.ts`, so neither can ever be stored as a setlist link.
 - **Required constraints once unblocked**:
   - Accept only an API-provided URL matching `^https://www\.setlist\.fm/setlist/[^/]+/\d{4}/.+\.html$`; otherwise store nothing.
   - Attach a link only when the setlist's `eventDate` equals the event's stored `startDate` exactly (the finder's ±1 day window is not enough), the venue matches, there's exactly one setlist for that artist that day, the artist's normalized name equals one seen act, and the event's scale is Concert (`scale.ts`). Only from the candidate that was applied or picked.
@@ -462,20 +461,6 @@ This backlog organizes **23 granular, self-contained engineering tickets** acros
   1. Introduce a subrequest counter on `Fetcher`.
   2. If subrequests approach 40 within a single job execution, pause the job, persist current state, and re-enqueue the next stage to be picked up in a fresh Worker invocation.
 - **Test Plan**: Simulate an invocation with 42 mock subrequests → assert job pauses with status `running` and yields without throwing Worker limit error.
-
----
-
-### [TECH-04] In-Memory Express Request Dispatcher for Integration Tests
-- **Audit 2026-11-04**: OPEN (partial). tests/helpers/testApp.ts exists and dispatches in memory; migrating tests/shareApi.test.ts and tests/sheets.test.ts is not confirmed.
-- **Classification**: Engineering Excellence & Test Speed
-- **Priority**: P2 (Medium)
-- **Files**: `tests/helpers/testApp.ts`, integration test files
-- **Problem**:
-  13 test files currently spin up a real HTTP server with `app.listen(0)` and make real TCP requests to `127.0.0.1`. This introduces port-binding race conditions, slows down the test suite by several seconds, and causes `connect EPERM` failures in isolated sandboxes.
-- **Implementation Strategy**:
-  1. Create a lightweight test helper `dispatch(app, requestInit)` that passes a `Request` through Express middleware in memory via Node's `http.IncomingMessage` / `http.ServerResponse` mocks without opening real OS network sockets.
-  2. Migrate `tests/shareApi.test.ts` and `tests/sheets.test.ts` onto this in-memory caller.
-- **Test Plan**: Run all migrated test files in a restricted sandbox without loopback permissions → assert 100% pass rate in < 200 ms.
 
 ---
 

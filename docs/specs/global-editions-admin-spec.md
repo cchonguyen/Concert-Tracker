@@ -1,6 +1,6 @@
 # Global Editions as the admin version of event details (draft spec)
 
-Status: draft for Charlie's yes. Nothing here is built or committed yet.
+Status: approved 2026-11-17. Slices 1 to 4 built (Slices 2.7 to 2.10 and 2.12). Slice 5 (component reuse) is not planned yet.
 Source: project thread "Scope Clashfinder in Global Editions", 2026-11-17.
 
 ## Goal

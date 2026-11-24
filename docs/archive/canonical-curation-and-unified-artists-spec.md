@@ -1,5 +1,7 @@
 # Canonical Curation, Unified Artists & Lineup Ingestion Spec
 
+> **Archived 2026-11-23.** Built in Slices 1 to 8 (shared catalog and Manage).
+
 **Status:** Draft Architecture Specification  
 **Document Owner:** Antigravity (The Elephant) / Core Architecture  
 **Target Audience:** Core Contributors, Admin Curators, AI Agents  

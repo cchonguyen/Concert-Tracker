@@ -8,7 +8,7 @@
   - 11.11 to 11.14: `match.ts` and `upsertOccurrence`, inheritance on read (`captured`, `overrides`), suggestion tap links the edition, backfill of editions from the owner's events and email imports (also fixed `supabaseStore` not saving `venue_id`, `subject_key`, `has_lineup`).
   - Phase 2 (11.15 to 11.19): save enqueues a `research` message on `LOOKUP_QUEUE`; rung 1 catalog lookup and rung 2 owner-only occurrence persistence; rung 4 reader in its own `research_reader` messages; picker grouping; cron research backfill and the Confirm dates list.
   - Phase 3 (11.20 to 11.22): `ingest_traces` and the trace writer (migration 0043 written), owner review-queue routes, owner inbox in the Global archive.
-- **Verification Status:** Verified via finish-slice.mjs (Slice 21.5)
+- **Verification Status:** Verified via finish-slice.mjs (Slice 21.591)
 - **Verification Status:** Verified via finish-slice.mjs (Slice 12.13)
 - **Open gaps:** (items for Charlie first, then follow-ups)
   - Apply migration 0043 (`supabase/migrations/0043_ingest_traces.sql`). Until then traces are skipped quietly and the inbox shows "Activity appears once the traces table is set up".
@@ -23,4 +23,4 @@
   - Brave monthly counter (`takeBrave`, cap 200) is built but nothing calls it yet.
   - Personal-field encryption stays on hold (docs/ingest-canon-plan.md section 4).
 - **Older items still open:** the design system export (branch claude/project-thread-ad7gr8, docs only) awaited Charlie's review; member-created editions were deferred ("friends first").
-- **Immediate Next Step:** Charlie's pick. The AI reader two-way test slices 10.1 to 10.20 (docs/ai-reader-spec.md) are separate and not started.
+- **Immediate Next Step:** Charlie's pick. The AI reader two-way test slices 10.1 to 10.20 (docs/archive/ai-reader-spec.md) are separate and not started.

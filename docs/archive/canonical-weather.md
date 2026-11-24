@@ -1,5 +1,7 @@
 # Canonical weather (one record per edition)
 
+> **Archived 2026-11-23.** All five slices built (the last in PRs #512, #514 and #517).
+
 Status: spec, approved by Charlie 2026-11-18 ("Go"). Not built. Migration not applied.
 
 ## Decision

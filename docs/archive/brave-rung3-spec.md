@@ -1,5 +1,7 @@
 # Brave Search as research rung 3: feasibility and spec
 
+> **Archived 2026-11-23.** Slices 1, 3 and 4 built (Slice 12.2); Charlie dropped Slice 2.
+
 Status: Slices 1, 3 and 4 built (slice 12.2, issue #376); Slice 2 dropped by Charlie (snippet quote stays). Written 2026-11-14 for Charlie's decision.
 
 ## Verdict

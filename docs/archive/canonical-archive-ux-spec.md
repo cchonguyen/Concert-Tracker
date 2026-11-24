@@ -1,7 +1,9 @@
 # Global Archive UX spec (second pass)
 
+> **Archived 2026-11-23.** Replaced for the Global archive by [global-archive-rework-spec.md](global-archive-rework-spec.md).
+
 Status: proposed 2026-11-03; revised 2026-11-04 after cross-vendor review. Charlie agreed with the direction and UX choices. The slice order follows dependencies; level estimates describe complexity, not build order. Each slice is built and verified (lint, tests, typecheck) before the next one starts.
-Base: `docs/global-archive-rework-spec.md` (GA1–GA4, built). AGENTS.md rules apply unchanged.
+Base: `docs/archive/global-archive-rework-spec.md` (GA1–GA4, built). AGENTS.md rules apply unchanged.
 
 ## Problem
 

@@ -1,5 +1,7 @@
 # Global Archive: Series, Multi-Weekend Editions & Egress Optimization
 
+> **Archived 2026-11-23.** Built as Slices 2.1 to 2.4, with edition merging and the weekend prompt.
+
 Approved design specification (2026-11-15; see `DECISIONS.md` ADR-005, ADR-006, and `.spec/SYSTEM_SPEC.md` section 3).
 
 ---

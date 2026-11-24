@@ -1,6 +1,6 @@
 # Series type fix: tours typed as festivals
 
-Status: draft for Charlie's confirmation (2026-11-18). No code changed yet.
+Status: Charlie approved A and B on 2026-11-18. Slices 1, 2, 3 and 5 merged (PRs #565, #567, #569, #572). Slice 4 (setting the nine tours) is not recorded as done.
 
 ## Problem
 

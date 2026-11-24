@@ -1,5 +1,7 @@
 # Edition lineup from the edition name
 
+> **Archived 2026-11-23.** Slices 1, 2, 3 and 5 built (Slices 2.16, 2.19, 20.3). Member proposals (Slice 4) were replaced by member ticks in [auto-verify](../auto-verify-spec.md).
+
 Status: draft for review (2026-11-17). Scope confirmed by Charlie in thread "Auto-add artist named in edition".
 
 ## Goal

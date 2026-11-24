@@ -1,5 +1,7 @@
 # AI reader: two providers, call log and spend guards
 
+> **Archived 2026-11-23.** Built as Slices 10.1 to 10.20. The app reads pages with the paid Gemini key; the two-way test with Workers AI is finished.
+
 Status: spec, scope confirmed by Charlie (2026-11-12), revised after his audit (2026-11-12). Slices 10.1 to 10.20 in `.spec/PROGRESS.md`. Research: `/mnt/project-files/ai-provider/Gemini free tier replacement options.md`.
 
 ## Why

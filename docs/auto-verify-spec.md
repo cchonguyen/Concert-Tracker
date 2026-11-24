@@ -28,17 +28,17 @@ These rules change, so AGENTS.md and ARCHITECTURE.md change first, in the same P
 
 ## Conflicts (decided by Charlie, 2026-11-18: all three yes)
 
-1. **Brave Search.** Brave may point to a page. The app fetches and stores that page, and the verified fact comes from the stored page. Brave's own result is never stored in shared data, per `docs/brave-rung3-spec.md`.
+1. **Brave Search.** Brave may point to a page. The app fetches and stores that page, and the verified fact comes from the stored page. Brave's own result is never stored in shared data, per `docs/archive/brave-rung3-spec.md`.
 2. **setlist.fm.** Its terms bar keeping copies and putting data in shared storage. Reading: setlist.fm is checked live in code and stores only a source ID, a link and the verified flag. The stored name and date come from a fetched page or a ticket email, so setlist.fm alone cannot write an act's name or date into a shared edition. This follows `docs/ingest-canon-plan.md` rule C6.
 3. **Gemini search.** Not a source. The reader may read a fetched page, and its quote counts only if the name occurs verbatim in it.
 
 ## Overlap with prior planned work (checked 2026-11-18)
 
-- **Edition-lineup-from-name spec (`docs/edition-lineup-from-name-spec.md`).** Its member proposals (Changes queue, `lineup_proposal`) are superseded by member ticks as candidates, as Charlie said ("no double confirmation"). Its owner tap, undo branch and catalog matcher still apply. Its slice 4 is retired when slice 2 starts.
+- **Edition-lineup-from-name spec (`docs/archive/edition-lineup-from-name-spec.md`).** Its member proposals (Changes queue, `lineup_proposal`) are superseded by member ticks as candidates, as Charlie said ("no double confirmation"). Its owner tap, undo branch and catalog matcher still apply. Its slice 4 is retired when slice 2 starts.
 - **Ingest plan (`docs/ingest-canon-plan.md`, approved).** `upsertOccurrence` already promotes provisional to verified on a ticket email, and rule 3 already makes ticket emails a verified source. Auto-verify of complete editions extends that rule. The owner's "Verify for everyone" (slices 12.4 and 12.5) stays as the manual path for incomplete editions.
 - **Confidence (`AGENTS.md`).** Confidence is computed in code (`src/server/lineup/merge.ts`). The threshold must reuse that path, not add a second scheme.
 - **Migration.** Act status needs a column on `performances`, because its current status holds only billed, performed or cancelled. The next free number is 0052, since 0051 exists.
-- **Global Archive (`docs/global-archive-rework-spec.md`).** Slice 4 extends Editions & Lineups; it does not replace it.
+- **Global Archive (`docs/archive/global-archive-rework-spec.md`).** Slice 4 extends Editions & Lineups; it does not replace it.
 
 ## Verification rules (in code, no model call)
 

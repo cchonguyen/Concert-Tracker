@@ -1,6 +1,6 @@
 # LiveArchive Social Features Specification & Architectural RFC
 
-**Status:** Preliminary Draft / Discussion Proposal for Claude & Team Review  
+**Status:** Not started. A discussion draft only.  
 **Date:** November 2026  
 **Document Owner:** Antigravity / Product & Engineering  
 **Target Audience:** Core Contributors, Architecture Reviewers, Claude  
