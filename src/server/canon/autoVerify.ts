@@ -3,7 +3,7 @@
 // already fetched and stored, and apply the result through writeEdition.
 
 export type EvidenceKind =
-  // A ticket email the person imported (a verified source for name, date, venue, city).
+  // A ticket email the person imported (a verified source for name, date, venue, city and state).
   | 'ticket_email'
   // A promoter or lineup page the app fetched and stored, quoting the act.
   | 'fetched_page'
@@ -84,6 +84,16 @@ export type EditionField = (typeof EDITION_FIELDS)[number];
 
 // Each field's value and whether a verified source supplied it.
 export type EditionFieldFacts = Partial<Record<EditionField, { value?: string; verified: boolean }>>;
+
+// Actors whose location writes count as a location from a verified source (Charlie, 2026-11-24): the venue fill copies
+// a location already stored on the shared venue records, or splits the edition's own "City, ST" text, in code.
+// Kept as a literal so this file stays free of imports; it must equal VENUE_FILL_ACTOR in venueFill.ts (tested).
+export const VERIFIED_LOCATION_ACTORS: ReadonlySet<string> = new Set(['system:venue-location']);
+
+// True when the edition's location was last written by an actor whose location counts as verified.
+export function locationVerifiedBy(actor: string | undefined | null): boolean {
+  return !!actor && VERIFIED_LOCATION_ACTORS.has(actor);
+}
 
 // An edition is verified in code only when all five fields have a value from a verified source.
 export function editionVerified(facts: EditionFieldFacts): boolean {

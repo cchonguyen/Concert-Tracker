@@ -117,3 +117,11 @@ test('auto-verify: an incoming value never replaces a value already set', () => 
   assert.deepEqual(filled, []);
   assert.equal(current.venue, 'Bayfront Park');
 });
+
+test('a location from the venue fill counts as verified; other actors and none do not', async () => {
+  const { locationVerifiedBy } = await import('../src/server/canon/autoVerify.ts');
+  const { VENUE_FILL_ACTOR } = await import('../src/server/canon/venueFill.ts');
+  assert.equal(locationVerifiedBy(VENUE_FILL_ACTOR), true);
+  assert.equal(locationVerifiedBy('member:entry'), false);
+  assert.equal(locationVerifiedBy(undefined), false);
+});

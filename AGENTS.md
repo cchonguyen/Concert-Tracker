@@ -19,7 +19,7 @@ Read [REQUIREMENTS.md](REQUIREMENTS.md) first: it says what the app is for (reme
 - Keep the canonical lineup and the personal event log (`logged_events`) separate.
 - Shared-edition rules (approved 2026-11-13, built in Slices 11.8 to 11.23):
   - A member's own entry may create a `provisional` shared edition (name, date, venue, city only; never personal fields). Built in Slice 11.23; the member notice version is now 2 and members accept it again.
-  - A ticket email import that became an event is a `verified` source for an edition's name, date, venue and city.
+  - A ticket email import that became an event is a `verified` source for an edition's name, date, venue, city and state (the state is split from "City, ST" in code).
   - A linked event shows the edition's value unless the person overrode that field; what they first typed is kept as `captured` and never deleted.
   - Every change to a shared edition is recorded (old value, new value, who or what, why) and can be undone.
   - Shared tables, traces, logs and the review queue never hold personal fields (companions, notes, rating, price, attendance).
@@ -27,6 +27,7 @@ Read [REQUIREMENTS.md](REQUIREMENTS.md) first: it says what the app is for (reme
   - An act is `verified` when a usable source has its name and date for the same edition: a ticket email, a promoter or lineup page the app fetched and stored, or an API record. One trusted source is enough. Two distinct fetched sources that agree also verify it. Setlist.fm IDs alone never verify an act.
   - A member's own tick enters as a `candidate` with source `your entry` (the typed text as the quoted span). Ticks never verify an act, alone or in pairs.
   - An edition becomes `verified` in code only when its name, act, location, venue and date all have values from verified sources. A value the owner typed is never overwritten, and no status is demoted automatically.
+  - Venue fill (approved 2026-11-24, `docs/specs/venue-location-fill.md`): a known venue fills only an edition's or event's empty city, state and country, from one place on the shared venue records (several places are only offered) or from its own "City, ST" text. A location written by the venue fill counts as a location from a verified source.
   - Every automatic change goes through `writeEdition` with a system actor and a reason, is recorded in `edition_changes`, and can be undone.
 - Artist genres come only from the music-story export, MusicBrainz read through music-story's genre map when asked, or you (`src/server/events/genres.ts`); yours win. Never infer a genre from a name, an event or a model; an act with none stays without one.
 - Ticket emails are read by per-seller code under `src/server/events/email/`, never by Gemini. An imported show becomes an event only when you tick it, or is merged into an event you entered only when you pick that event (filling only its empty fields, undoable), and never fills personal fields, except a ticket price worked out from the same email's dollar total and ticket count, and only where the event has no price you set or cleared.
