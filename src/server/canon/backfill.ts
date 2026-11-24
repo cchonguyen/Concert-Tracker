@@ -8,7 +8,7 @@
 //
 // Every edition goes through upsertOccurrence / writeEdition. No model call, no new queue, no new binding.
 // Never in an edition, change record or review row: companions, notes, rating, price, attendance. Only name,
-// date(s), venue, city and country are passed on. A date, venue or subject is never inferred: an item without a full
+// date(s), venue, city, state and country are passed on. A date, venue or subject is never inferred: an item without a full
 // date is skipped, an edition without venue text gets no venue_id, and the subject is the edition's stored series slug.
 //
 // Idempotent two ways. The upsert of an already-matched item changes nothing, so a repeat is a no-op. And a cursor
@@ -334,6 +334,7 @@ async function fromEvent(store: LineupStore, event: LoggedEvent, prior: Map<stri
     endDate: event.endDate,
     venue: event.venue,
     city: event.city,
+    region: event.region,
     country: event.country,
     reason: 'backfill: owner event with a date',
   });
@@ -343,7 +344,7 @@ async function place(
   store: LineupStore,
   prior: Map<string, string>,
   report: BackfillReport,
-  f: { name: string; startDate: string; endDate?: string; venue?: string; city?: string; country?: string; reason: string },
+  f: { name: string; startDate: string; endDate?: string; venue?: string; city?: string; region?: string; country?: string; reason: string },
 ) {
   // Only these facts go in; nothing personal is read from the event.
   const r = await upsertOccurrence(store, {
@@ -352,6 +353,7 @@ async function place(
     ...(f.endDate ? { endDate: f.endDate } : {}),
     ...(f.venue ? { venue: f.venue } : {}),
     ...(f.city ? { city: f.city } : {}),
+    ...(f.region ? { region: f.region } : {}),
     ...(f.country ? { country: f.country } : {}),
     subjectKey: seriesSlugFor(f.name),
     trust: 'verified',

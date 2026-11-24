@@ -45,7 +45,9 @@ test('same date, venue alias and subject matches; verified replaces provisional 
   assert.equal(b.edition!.id, a.edition!.id);
   assert.equal(b.edition!.status, 'verified');
   assert.equal(b.edition!.name, 'Band A');
-  assert.equal(b.edition!.city, 'Austin, TX');
+  // "City, ST" is split in code: the bare city and its state (venue fills location spec).
+  assert.equal(b.edition!.city, 'Austin');
+  assert.equal(b.edition!.region, 'TX');
   assert.equal((await s.listEditions(10)).length, 1);
 });
 
