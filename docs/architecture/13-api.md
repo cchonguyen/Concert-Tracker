@@ -10,7 +10,7 @@ Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
 | `GET /api/editions/suggest?q=` | Up to 5 confirmed editions matching typed words across edition `name`, series `name`, `brand` and `aliases` (`{ editions: EditionSuggestion[] }`, `q` under 2 letters gives `[]`, debounced >=300ms on the client); single-weekend editions already logged are excluded while multi-weekend editions remain re-selectable |
 | `GET /api/events/:id` | The event with its lineup job, confirmed edition and acts suggested from its name |
 | `PATCH /api/events/:id`, `DELETE /api/events/:id` | Edit or delete an event |
-| `POST /api/events/:id/details` | Run stage 1 research; `{ useGemini: true }` also has Gemini read the pages found (Check details, then "Read with Gemini"). Canonical editions also research multi-weekend dates (`researchEditionFacts`) |
+| `POST /api/events/:id/details` | Run stage 1 research; `{ useGemini: true }` also has Gemini read the pages found (Check details, then "Deep search with AI"). Canonical editions also research multi-weekend dates (`researchEditionFacts`) |
 | `POST /api/events/:id/details/pick` | Pick a suggestion (`{ candidateId }`) or dismiss them (`{}`) |
 | `POST /api/events/:id/lineup` | Start stage 2 for the event (`{ lineupUrl? }`) |
 | `POST /api/events/lineups` | Queue stage 2 for up to 5 events per request (`{ ids }`; Fill gaps sends up to 50 in chunks); skips events with a confirmed lineup, a lookup that is not `failed`, or no date. Jobs are not kicked: the worker or the Cloudflare cron runs them one at a time |

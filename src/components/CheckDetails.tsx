@@ -74,7 +74,7 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
   const [city, setCity] = useState<string | null>(null);
   const [month, setMonth] = useState<string | null>(null);
   const view = buildPickerView(candidates, { city, month, search }, (c) =>
-    [...new Set(c.sources.map((s) => SOURCE_LABELS[s.sourceType] + (s.readBy === 'gemini' ? ' (read by Gemini)' : '')))].join(', '),
+    [...new Set(c.sources.map((s) => SOURCE_LABELS[s.sourceType] + (s.readBy === 'gemini' ? ' (read by AI)' : '')))].join(', '),
   );
   const renderCandidate = (c: DetailCandidate) => {
     const row = candidateRowParts(c);
@@ -252,18 +252,18 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
       {gemini && lineupStatus && (
         <div className="space-y-2 border-t border-zinc-800 pt-3">
           <p className="text-xs text-zinc-300">
-            Still missing something? Read the found pages with Gemini.
-            {left !== null && lineupStatus.quota ? ` Uses up to 3 of the ${left} left today (of ${lineupStatus.quota.limit}).` : ''}
+            Still missing something? Deep search has AI read the pages found above for details the quick check missed.
+            {left !== null && lineupStatus.quota ? ` Uses up to 3 of the ${left} AI reads left today (of ${lineupStatus.quota.limit}).` : ''}
           </p>
           <Button onClick={onGemini} disabled={busy || geminiBusy || left === 0}>
-            {geminiBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />} Read with Gemini
+            {geminiBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />} Deep search with AI
           </Button>
-          {left === 0 && <p className="text-xs text-amber-300/90">No Gemini reads left today{lineupStatus.quota?.exhaustedUntil ? `; the limit resets ${new Date(lineupStatus.quota.exhaustedUntil).toLocaleString()}` : ''}.</p>}
+          {left === 0 && <p className="text-xs text-amber-300/90">No AI reads left today{lineupStatus.quota?.exhaustedUntil ? `; the limit resets ${new Date(lineupStatus.quota.exhaustedUntil).toLocaleString()}` : ''}.</p>}
           {geminiNotes.length > 0 && (
             <ul className="space-y-0.5 text-[11px] text-zinc-400">
               {geminiNotes.map((n, i) => (
                 <li key={i} className="break-all">
-                  {n.replace(/^gemini: /, 'Gemini: ')}
+                  {n.replace(/^gemini: /, 'Deep search: ')}
                 </li>
               ))}
             </ul>

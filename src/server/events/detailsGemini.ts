@@ -8,7 +8,7 @@ import { findDates } from './parse';
 import { applyCandidate, braveFinder, braveResults, DetailQuery, DetailReader, mergeCandidates, searchWindow } from './details';
 import { DetailCandidate, EventField, LoggedEvent } from './types';
 
-// "Look again with Gemini": stage 1 research that you asked to spend Gemini
+// "Deep search with AI": stage 1 research that you asked to spend Gemini
 // calls on. Gemini reads whole pages the search found, where a result's two
 // lines rarely give the place. It is still only a reader:
 // - every value must be written on the page, inside a quote that is on the page;
@@ -81,7 +81,7 @@ export function geminiReader(reader: GuardedReader, eventId: string, now: () => 
         notes.push(`gemini: read ${url}${c ? `: ${c.sources[0].fields.join(', ')}` : ', nothing found on the page'}.`);
         if (c) out.push(c);
       }
-      if (!read) notes.push('gemini: none of the pages found named this event; no Gemini call made.');
+      if (!read) notes.push('gemini: none of the pages found named this event, so nothing was sent to the AI.');
       return out;
     },
   };
@@ -140,7 +140,7 @@ export async function runReaderPage(
   }
   if (text === null) notes.push(`gemini (auto): could not fetch ${url}.`);
   else if (text.length >= RUNG4_MAX_CHARS) notes.push(`gemini (auto): skipped ${url}, the page is 30,000 characters or more.`);
-  else if (!namesEvent(text, q)) notes.push(`gemini (auto): ${url} does not name this event; no Gemini call made.`);
+  else if (!namesEvent(text, q)) notes.push(`gemini (auto): ${url} does not name this event, so nothing was sent to the AI.`);
   else {
     try {
       const res = await reader.extractEventDetails(

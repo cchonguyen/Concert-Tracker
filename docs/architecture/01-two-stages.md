@@ -8,7 +8,7 @@ Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
 | Started by | Typing a line and pressing Add, or ticking shows found in your ticket emails | "Find who played" on a saved event |
 | Code | `src/server/events/` | `src/server/lineup/` |
 | Sources | Ticketmaster, setlist.fm, Clashfinder, Brave web search and the event markup on the pages it found, your ticket emails (all read in code) | Clashfinder, promoter pages, Ticketmaster, setlist.fm, web search |
-| Gemini | Only on Check details, then "Read with Gemini": reads up to 3 found pages | Reads fetched pages |
+| Gemini | Only on Check details, then "Deep search with AI": reads up to 3 found pages | Reads fetched pages |
 | Runs | Inside the request, a few seconds | A background job (queue), can wait for quota |
 | Stores | `logged_events` (your log) | Canonical edition, evidence, learning data; links the event to the edition |
 
