@@ -2,6 +2,8 @@
 
 Status: decisions recorded 2026-11-18; slices approved 2026-11-18 and built (slices 2 to 5 merged, PRs #543, #544, #546, #549, #552, #557). AGENTS.md rules approved and added in this change. Scope confirmed by Charlie in thread "Scope auto-adding Who I Saw artists to lineup".
 
+Running since 2026-11-24 (streamlining plan, slice 2): the verification functions had no caller until then. `src/server/canon/autoVerifyRun.ts` now runs when a lineup lookup finishes with a lineup (`stageMerge` in `src/server/lineup/pipeline.ts`), with actor `system:auto-verify`. A failure there is logged on the lookup and never fails it.
+
 ## Goal
 
 A lineup act is verified in code when an external source has its name and date, and an edition is verified in code when its canonical facts are complete. Member ticks feed the same lineup as candidates. The owner still sees everything in Global Archive. Nothing is verified by a model's say-so.
@@ -48,6 +50,14 @@ These rules change, so AGENTS.md and ARCHITECTURE.md change first, in the same P
 - A location filled by the venue fill (`system:venue-location`, `docs/specs/venue-location-fill.md`) counts as a location from a verified source (Charlie, 2026-11-24): `locationVerifiedBy` in `src/server/canon/autoVerify.ts`.
 - Auto-verify never overwrites a value the owner typed. It fills empty fields and changes status only.
 - No demotion. A later disagreeing source adds a candidate note for the owner to review.
+
+## How the lookup counts its sources (2026-11-24)
+
+- Trusted, one is enough: a promoter page or Clashfinder list the app fetched, a Ticketmaster or MusicBrainz record.
+- Counted, two distinct ones must agree: a page found by web search, a Wayback Machine copy.
+- Never counts: a setlist.fm ID, a member's tick, the edition's own name, an act the lookup flagged as low evidence.
+- The lookup's start date must equal the edition's start date.
+- Edition facts count as verified when the newest change that set them came from the owner, a confirmed lookup (`system:learning`), a canonical ingest, or a ticket email import (`system:canon-backfill`), or, for the location, the venue fill. Undone changes do not count. A member's own entry and stage 1 research do not count.
 
 ## Data and writes
 
