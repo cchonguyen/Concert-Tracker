@@ -1,3 +1,4 @@
+import type { VenueLocationResult } from '../server/canon/venueLocation';
 import type { Edition, EditionWeekend, LookupJob, SeriesKind, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
 import type { ShareSettings } from '../server/share/types';
 import type { NameIndex } from '../server/entities/link';
@@ -628,6 +629,9 @@ export class UndoConflictError extends Error {
 
 // Global Archive (owner only): the shared catalog, not your log.
 export const canonicalApi = {
+  // A venue's known location from the shared venue records: one location, the choices, or none.
+  venueLocation: (name: string, signal?: AbortSignal) =>
+    request<VenueLocationResult>(`/api/canon/venue-location?${new URLSearchParams({ name }).toString()}`, signal ? { signal } : undefined),
   artists: () => request<{ artists: CanonicalArtistRecord[] }>('/api/manage/canonical/artists'),
   // Find gaps: editions named for a catalog artist who is not on their lineup yet.
   nameMatches: () => request<{ matches: Array<{ editionId: string; editionName: string; artistKey: string; artistName: string }> }>('/api/manage/canonical/name-matches'),
