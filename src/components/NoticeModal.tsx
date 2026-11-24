@@ -39,7 +39,7 @@ export const NoticeModal: React.FC<{ onAccepted: () => void }> = ({ onAccepted }
           keep each member's rows apart, so you see only yours.
         </li>
         <li>
-          <b>What is shared.</b> When you save an event with a full date, the event's name, date, venue and city may be added to a
+          <b>What is shared.</b> When you save an event with a full date, the event's name, date, venue, city and state may be added to a
           shared list of editions, so the next person who adds the same show gets the details filled in. It is marked provisional
           until it is checked. Your notes, companions, rating, price and attendance are never shared.
         </li>

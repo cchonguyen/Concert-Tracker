@@ -2,10 +2,11 @@
 
 - **Last Active Platform:** Claude Code (cloud session, project thread "Scope auto-filling venue location")
 - **Branch Owner:** Claude
-- **Active Branch / State:** `claude/project-thread-ipjor1`, off main at 3489cbf. Spec only: `docs/specs/venue-location-fill.md` (seven slices, Charlie answered the four scope questions 2026-11-24). No code yet.
-- **Files Modified in Last Turn:** `docs/specs/venue-location-fill.md`, `docs/README.md`, `.spec/SESSION_HANDOFF.md`.
-- **Verification Status:** Verified via finish-slice.mjs (Slice 21.638)
-- **Immediate Next Step:** Charlie approves the spec pull request, then build Slice 1 (`venueLocation` rule and store read).
+- **Active Branch / State:** `claude/project-thread-ipjor1`. Venue location fill: all 7 slices merged (#619 to #633). Members share the state (notice version 3): PR #637.
+- **Files Modified in Last Turn:** NoticeModal.tsx, auth/routes.ts, events/details.ts, canon/memberBackfill.ts, AGENTS.md, REQUIREMENTS.md, docs/architecture 02 and 12, member tests.
+- **Verification Status:** Verified via finish-slice.mjs (Slice 21.635); lint passed, 1477 of 1477 tests passed.
+- **Immediate Next Step:** None for venue fill once #637 merges. Members accept the notice again on next sign-in.
+- **Streamlining (`claude/project-thread-47kcgx`, `docs/specs/streamlining-plan.md`):** slice 1 merged (#636), slice 2 auto-verify wired into the lookup (#639). Next: slice 3, one Clashfinder list download shared by both stages, then shared Ticketmaster, setlist.fm and Brave clients.
 - **Open gaps:**
   - Harness: hub PR #208 (merged 2026-11-23) makes the scope check read `Approved-Tripwire:` trailers from the PR's own head commit when CI checks out GitHub's merge commit. Synced into this repo in PR #592.
   - Charlie's wording answers for the cleanup (2026-11-23) are recorded in the cleanup spec under "Decisions".
