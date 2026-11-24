@@ -244,11 +244,7 @@ export const clashfinderAdapter: SourceAdapter = {
       slugFromClashfinderUrl(ctx.input.lineupUrl) ?? ctx.series?.clashfinderSlugs?.[year] ?? null;
 
     if (!slug) {
-      const listUrl = `${BASE}/data/events/all.json?${auth}`;
-      const res = await ctx.fetcher.get(listUrl, { maxBytes: LIST_MAX_BYTES });
-      listTruncatedCheck(res, listUrl);
-      if (res.status === 401) throw new HttpError(401, listUrl, 'Clashfinder rejected the credentials (401). Check CLASHFINDER_* settings.');
-      const match = matchEdition(parseEventList(parseJson(res)), ctx.input.eventName, ctx.input.year, ctx.input.startDate);
+      const match = matchEdition(await clashfinderEventList(ctx.fetcher, { maxAgeMs: 0 }), ctx.input.eventName, ctx.input.year, ctx.input.startDate);
       if (!match) {
         result.notes.push('Clashfinder: no matching edition in the event list.');
         return result;
@@ -322,13 +318,8 @@ export async function clashfinderCandidates(
   fetcher: AdapterContext['fetcher'],
   input: { eventName: string; year: number; startDate?: string },
 ): Promise<ClashfinderCandidate[]> {
-  const auth = clashfinderAuthQuery();
-  if (!auth) return [];
-  const listUrl = `${BASE}/data/events/all.json?${auth}`;
-  const res = await fetcher.get(listUrl, { maxBytes: LIST_MAX_BYTES });
-  listTruncatedCheck(res, listUrl);
-  if (res.status === 401) throw new HttpError(401, listUrl, 'Clashfinder rejected the credentials (401). Check CLASHFINDER_* settings.');
-  return rankEditions(parseEventList(listJson(res, listUrl)), input.eventName, input.year, input.startDate).map((e) => ({
+  if (!clashfinderAuthQuery()) return [];
+  return rankEditions(await clashfinderEventList(fetcher, { maxAgeMs: 0 }), input.eventName, input.year, input.startDate).map((e) => ({
     slug: e.slug,
     name: e.name,
     startDate: e.startDate,
@@ -364,4 +355,32 @@ function listTruncatedCheck(res: FetchResponse, listUrl: string): void {
   if (res.truncated) {
     throw new HttpError(res.status, listUrl, `Clashfinder's event list is larger than ${LIST_MAX_BYTES / (1024 * 1024)} MB, so it was not read in full.`);
   }
+}
+
+// Clashfinder's event list: the one place it is downloaded, for Check details, Find the lineup and the clash picker.
+// The parsed list is kept in memory for a day per Worker instance, so a Check details press does not download and
+// parse the 4 MB list each time. Memory only: nothing is written to the database or to a cache store. Find the lineup
+// and the picker ask for a fresh copy (maxAgeMs 0) and leave it here for the next Check details.
+// Failures throw HttpError with their reason: a list cut at the cap, rejected credentials, any other HTTP status, or
+// a reply that is not JSON. A failed download is never remembered.
+export type ClashfinderEventList = ReturnType<typeof parseEventList>;
+export const CLASHFINDER_LIST_MEMO_MS = 24 * 60 * 60 * 1000;
+let listMemo: { at: number; entries: ClashfinderEventList } | null = null;
+
+export function resetClashfinderListMemo(): void {
+  listMemo = null;
+}
+
+export async function clashfinderEventList(fetcher: AdapterContext['fetcher'], opts: { maxAgeMs: number }): Promise<ClashfinderEventList> {
+  const now = Date.now();
+  if (listMemo && opts.maxAgeMs > 0 && now - listMemo.at < opts.maxAgeMs) return listMemo.entries;
+  // Callers check clashfinderAuthQuery() first (each finder and adapter is enabled only with credentials).
+  const listUrl = `${BASE}/data/events/all.json?${clashfinderAuthQuery() ?? ''}`;
+  const res = await fetcher.get(listUrl, { maxBytes: LIST_MAX_BYTES });
+  listTruncatedCheck(res, listUrl);
+  if (res.status === 401) throw new HttpError(401, listUrl, 'Clashfinder rejected the credentials (401). Check CLASHFINDER_* settings.');
+  if (res.status < 200 || res.status >= 300) throw new HttpError(res.status, listUrl);
+  const entries = parseEventList(listJson(res, listUrl));
+  listMemo = { at: now, entries };
+  return entries;
 }
