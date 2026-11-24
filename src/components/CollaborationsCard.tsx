@@ -166,7 +166,7 @@ export const CollaborationsCard: React.FC<Props> = ({
         >
           {open ? <ChevronDown className="h-4 w-4 text-zinc-400" /> : <ChevronRight className="h-4 w-4 text-zinc-400" />}
           <Users className="h-4 w-4 text-violet-400" />
-          <span>Collaborations & Group Projects</span>
+          <span>Collaborations and group projects</span>
           <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-xs text-zinc-400 font-normal">
             {items.length}
           </span>
@@ -174,7 +174,7 @@ export const CollaborationsCard: React.FC<Props> = ({
 
         {!isNew && !editing && (
           <Button variant="ghost" className="text-xs py-1 px-2.5 h-auto text-violet-300" onClick={startNew}>
-            <Plus className="h-3.5 w-3.5 mr-1" /> New Collaboration
+            <Plus className="h-3.5 w-3.5 mr-1" /> New collaboration
           </Button>
         )}
       </div>
@@ -191,7 +191,7 @@ export const CollaborationsCard: React.FC<Props> = ({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs text-zinc-400">Collaboration Moniker (AKA)</label>
+                <label className="text-xs text-zinc-400">Name they play under together (AKA)</label>
                 <input
                   className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-violet-500 focus:outline-none"
                   placeholder="e.g. Subjohnics, Kx5, ISOKNOCK, Everything Always"
@@ -202,7 +202,7 @@ export const CollaborationsCard: React.FC<Props> = ({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs text-zinc-400">Partner Artists ({partners.length})</label>
+                <label className="text-xs text-zinc-400">Partner artists ({partners.length})</label>
                 <div className="flex flex-wrap items-center gap-1.5 min-h-[32px] p-1.5 rounded-lg border border-zinc-800 bg-zinc-900/60">
                   {partners.map((partner, idx) => (
                     <span
@@ -232,7 +232,7 @@ export const CollaborationsCard: React.FC<Props> = ({
                   </div>
                 </div>
                 <p className="text-[11px] text-zinc-400">
-                  Type or pick 2+ artists. In Lineup Review, typing "{aliasInput || 'the moniker'}" will auto-expand into these artists.
+                  Type or pick 2+ artists. In lineup review, typing "{aliasInput || 'the moniker'}" will auto-expand into these artists.
                 </p>
               </div>
 

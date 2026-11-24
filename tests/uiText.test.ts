@@ -20,3 +20,11 @@ test('member screens say Edition, not Canonical edition', () => {
 test('member screens never show server setting names', () => {
   assert.ok(!/GOOGLE_CLIENT_(ID|SECRET)/.test(read('src/components/SheetSync.tsx').replace(/^\s*\/\/.*$/gm, '')));
 });
+
+test('owner screens drop "canonical" and "ingest" from the text a person reads', () => {
+  for (const f of ['src/components/CanonicalArchive.tsx', 'src/components/MergeEditionModal.tsx', 'src/components/ManageView.tsx']) {
+    const s = read(f);
+    assert.ok(!/>[^<{}\n]*\b(canonical|[Ii]ngest)\b[^<{}\n]*</.test(s.replace(/^\s*\/\/.*$/gm, "")), f);
+    assert.ok(!/(title|placeholder)="[^"]*\b(canonical|[Ii]ngest)\b/.test(s), f);
+  }
+});

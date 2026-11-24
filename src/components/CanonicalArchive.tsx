@@ -626,7 +626,7 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
       {creating && (
         <form onSubmit={(e) => void createNewSeries(e)} className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-zinc-100">Create canonical series</h3>
+            <h3 className="text-sm font-semibold text-zinc-100">Create series</h3>
             <div className="flex items-center gap-2">
               <span className="text-[11px] uppercase text-zinc-500">Type</span>
               <Segmented
@@ -756,7 +756,7 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
       {seriesList === null ? (
         <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
       ) : seriesList.length === 0 ? (
-        <p className="text-sm text-zinc-400">{query || brandFilter ? 'No series match.' : 'No canonical series yet.'}</p>
+        <p className="text-sm text-zinc-400">{query || brandFilter ? 'No series match.' : 'No series yet.'}</p>
       ) : (
         <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
           {seriesList.map((s) => {
@@ -1364,7 +1364,7 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
       {page === null ? (
         <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
       ) : page.editions.length === 0 ? (
-        <p className="text-sm text-zinc-400">{query || status !== 'all' ? 'No editions match.' : 'No editions yet. Ingest one under Lookups.'}</p>
+        <p className="text-sm text-zinc-400">{query || status !== 'all' ? 'No editions match.' : 'No editions yet. Find a lineup under Lineup lookups to add one.'}</p>
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1545,7 +1545,7 @@ const ArchiveLookups: React.FC = () => {
   return (
     <div className="space-y-4">
       <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
-        <h3 className="text-sm font-semibold text-zinc-100">Ingest a canonical lineup</h3>
+        <h3 className="text-sm font-semibold text-zinc-100">Find a lineup for the catalog</h3>
         <p className="text-xs text-zinc-400">Finds the lineup for an event you did not attend. Nothing is added to your log.</p>
         <div className="flex flex-wrap gap-2">
           <input aria-label="Event or festival name" className={`${field} min-w-[12rem] flex-1`} placeholder="Event or festival name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -1559,18 +1559,18 @@ const ArchiveLookups: React.FC = () => {
             />
           )}
           <button onClick={ingest} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50">
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />} Ingest
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />} Find lineup
           </button>
         </div>
         {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
       </div>
 
       <section className="space-y-2" aria-labelledby="lookups-heading">
-        <h3 id="lookups-heading" className="text-sm font-semibold text-zinc-100">Lookups</h3>
+        <h3 id="lookups-heading" className="text-sm font-semibold text-zinc-100">Lineup lookups</h3>
         {lookups === null ? (
           <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
         ) : lookups.length === 0 ? (
-          <p className="text-sm text-zinc-400">No lookups yet. An ingest shows here at once.</p>
+          <p className="text-sm text-zinc-400">No lineup lookups yet. A new one shows here as soon as it starts.</p>
         ) : (
           <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
             {lookups.map((j) => (
