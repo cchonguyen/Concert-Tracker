@@ -3,6 +3,7 @@ import type { EmailImport } from '../server/events/email/types';
 import type { LoggedEvent } from '../server/events/types';
 import { toSeenInput } from '../server/events/seen';
 import { splitCity } from '../server/events/regions';
+import { normalizeName } from '../server/lineup/normalizeName';
 import type { NameIndex } from '../server/entities/link';
 
 // A list of past events you kept elsewhere (a Notion export, a spreadsheet,
@@ -125,17 +126,8 @@ export function parseCsv(text: string): string[][] {
   return rows;
 }
 
-// Same rule as normalizeName on the server (src/server/lineup/text.ts),
-// which cannot be bundled for the browser.
-export function norm(value: string): string {
-  return value
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim();
-}
+// The app's one name rule (src/server/lineup/normalizeName.ts, safe in the browser).
+export const norm = normalizeName;
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 

@@ -125,3 +125,16 @@ test('a location from the venue fill counts as verified; other actors and none d
   assert.equal(locationVerifiedBy('member:entry'), false);
   assert.equal(locationVerifiedBy(undefined), false);
 });
+
+test('names in non-Latin scripts keep their letters, so different ones never match', () => {
+  assert.equal(normalizeActName('Кино'), 'кино');
+  assert.notEqual(normalizeActName('Кино'), normalizeActName('きゃりーぱみゅぱみゅ'));
+  const ev = [{ kind: 'fetched_page' as const, editionKey: 'e', date: '2025-06-01', name: 'Кино', sourceId: 's1', trusted: true }];
+  assert.equal(verifyAct(ev, { name: 'きゃりーぱみゅぱみゅ', editionKey: 'e', date: '2025-06-01' }).status, 'candidate');
+  assert.equal(verifyAct(ev, { name: 'Кино', editionKey: 'e', date: '2025-06-01' }).status, 'verified');
+});
+
+test('a name that is only punctuation never verifies', () => {
+  const ev = [{ kind: 'fetched_page' as const, editionKey: 'e', date: '2025-06-01', name: '!!!', sourceId: 's1', trusted: true }];
+  assert.equal(verifyAct(ev, { name: '???', editionKey: 'e', date: '2025-06-01' }).status, 'candidate');
+});
