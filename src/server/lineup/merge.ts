@@ -80,9 +80,16 @@ export const DISSENT_WEIGHT = 0.4;
 export const FULL_LINEUP_SOURCES: SourceType[] = ['clashfinder', 'promoter', 'wayback'];
 export const FULL_LINEUP_MIN_ACTS = 5;
 
+// Clashfinder lists one clash per edition, so "not an act" on one clash says
+// nothing about the same name on another (2026 Dreamstate SoCal rejected
+// Hausman and Paul van Dyk, and the 2026 clash lost them). The blocklist keys
+// on domain only, so Clashfinder rows are not applied across editions.
+const PER_EDITION_DOMAINS = new Set(['clashfinder.com']);
+
 export function isBlocked(name: string, sourceUrl: string, blocklist: BlocklistEntry[]): boolean {
   const n = normalizeName(name);
   const domain = domainOf(sourceUrl);
+  if (PER_EDITION_DOMAINS.has(domain)) return false;
   return blocklist.some(
     (b) => b.rejections >= BLOCKLIST_THRESHOLD && b.normalized === n && (b.domain === domain || b.domain === '*'),
   );

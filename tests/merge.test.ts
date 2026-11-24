@@ -66,8 +66,11 @@ test('aliases and the blocklist apply before review', () => {
   const lineup = mergeLineup({
     ...base,
     aliases: { tiesto: 'Tiësto' },
-    blocklist: [{ domain: 'clashfinder.com', normalized: 'main stage', rejections: 2 }],
-    claims: [claim({ name: 'Tiesto' }), claim({ name: 'Main Stage' })],
+    blocklist: [{ domain: 'promoter.example', normalized: 'main stage', rejections: 2 }],
+    claims: [
+      claim({ name: 'Tiesto' }),
+      claim({ name: 'Main Stage', sourceType: 'promoter', sourceUrl: 'https://promoter.example/lineup', evidence: 'billed' }),
+    ],
   });
   assert.deepEqual(lineup.performers.map((p) => p.name), ['Tiësto']);
   assert.equal(lineup.droppedCount, 1);
