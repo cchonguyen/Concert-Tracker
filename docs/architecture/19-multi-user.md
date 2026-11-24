@@ -48,4 +48,4 @@ A broken or missing setting therefore locks the app rather than opening it.
 - **First sign-in notice** (`NoticeModal`, `/api/me`, `/api/me/notice`): a member accepts the notice once per `NOTICE_VERSION`; it is stored as their `notice_accepted` setting.
 - **Response cache**: only Ticketmaster responses, key = hash of host, path and query with the API key removed, 24 hours at most (`0022_cache_ttl_guard.sql` enforces it in the database). Brave is never cached.
 - **Quota lanes**: `GEMINI_OWNER_RESERVE=20`, `GEMINI_USER_DAILY=5` interactive, 3 a day per member for backfill round-robin.
-- **Checking the token bridge**: `scripts/verify-jwt-mint.ts` mints a 60-second token and checks against the real project that PostgREST reads `auth.uid()` and RLS limits rows to that user. Run it before turning `MULTI_USER` on.
+- **Checking the token bridge**: a one-off script (verify-jwt-mint) checked, before `MULTI_USER` went on, that PostgREST reads `auth.uid()` from a minted token and RLS limits rows to that user. It was removed on 2026-11-24 once multi-user was live; it is in the git history if the bridge ever needs checking again.
