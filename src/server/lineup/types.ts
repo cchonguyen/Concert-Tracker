@@ -116,7 +116,7 @@ export interface FetchResponse {
 export interface Fetcher {
   get(
     url: string,
-    init?: { headers?: Record<string, string>; timeoutMs?: number; maxRetries?: number; maxBytes?: number },
+    init?: { headers?: Record<string, string>; timeoutMs?: number; maxRetries?: number; maxBytes?: number; braveSource?: string },
   ): Promise<FetchResponse>;
 }
 

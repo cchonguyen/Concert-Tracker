@@ -6,7 +6,7 @@
 - **Files Modified in Last Turn:** NoticeModal.tsx, auth/routes.ts, events/details.ts, canon/memberBackfill.ts, AGENTS.md, REQUIREMENTS.md, docs/architecture 02 and 12, member tests.
 - **Verification Status:** Verified via finish-slice.mjs (Slice 21.654)
 - **Immediate Next Step:** None for venue fill once #637 merges. Members accept the notice again on next sign-in.
-- **Streamlining (`claude/project-thread-47kcgx`, `docs/specs/streamlining-plan.md`):** slice 1 merged (#636), slice 2 auto-verify wired into the lookup (#639). Next: slice 3, one Clashfinder list download shared by both stages, then shared Ticketmaster, setlist.fm and Brave clients.
+- **Streamlining (`claude/project-thread-47kcgx`, `docs/specs/streamlining-plan.md`):** all five slices built 2026-11-24 (#636, #639, #641, #643, #649, #652, and the last tidy-up PR). Charlie signed off deleting the four one-off scripts and the two unused packages.
 - **Open gaps:**
   - Harness: hub PR #208 (merged 2026-11-23) makes the scope check read `Approved-Tripwire:` trailers from the PR's own head commit when CI checks out GitHub's merge commit. Synced into this repo in PR #592.
   - Charlie's wording answers for the cleanup (2026-11-23) are recorded in the cleanup spec under "Decisions".

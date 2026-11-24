@@ -85,6 +85,14 @@ function isBraveUrl(url: string): boolean {
   }
 }
 
+export function tagBraveFetcher(inner: Fetcher, source: string): Fetcher {
+  return {
+    get(url, init) {
+      return inner.get(url, { ...init, braveSource: source });
+    },
+  };
+}
+
 // Every Brave request takes one query before it leaves. Over the cap: 429 with the reset time, inner not called.
 export function braveCapFetcher(
   inner: Fetcher,
@@ -95,7 +103,7 @@ export function braveCapFetcher(
     async get(url, init) {
       if (!isBraveUrl(url)) return inner.get(url, init);
       const at = now();
-      if (!(await takeBrave(store, at))) {
+      if (!(await takeBrave(store, at, 1, init?.braveSource))) {
         const response: FetchResponse = {
           url,
           status: 429,

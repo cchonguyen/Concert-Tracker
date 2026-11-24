@@ -49,9 +49,12 @@ export type BraveReply = { limited: true; resetSeconds: number } | { limited: fa
 // The Brave Search client, shared by Check details and Find the lineup: one web search, at most 10 results. A 429
 // comes back as `limited` with the seconds until Brave's longest window resets (its "x-ratelimit-reset" header lists
 // one value per window), so each stage handles its own limit. A rejected key throws HttpError with its reason.
-export async function braveWebSearch(fetcher: Fetcher, query: string, apiKey: string): Promise<BraveReply> {
+export async function braveWebSearch(fetcher: Fetcher, query: string, apiKey: string, source?: string): Promise<BraveReply> {
   const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10`;
-  const res = await fetcher.get(url, { headers: { Accept: 'application/json', 'X-Subscription-Token': apiKey } });
+  const res = await fetcher.get(url, {
+    headers: { Accept: 'application/json', 'X-Subscription-Token': apiKey },
+    ...(source ? { braveSource: source } : {}),
+  });
   if (res.status === 429) {
     const resets = (res.headers['x-ratelimit-reset'] ?? '').split(',').map((v) => Number(v.trim())).filter((v) => v > 0);
     return { limited: true, resetSeconds: resets.length ? Math.max(...resets) : 3600 };
@@ -67,7 +70,7 @@ export function braveSearch(fetcher: Fetcher, apiKey: string, now: () => Date = 
     id: 'brave',
     usesGeminiQuota: false,
     async findLineupUrls(input) {
-      const reply = await braveWebSearch(fetcher, searchQuery(input), apiKey);
+      const reply = await braveWebSearch(fetcher, searchQuery(input), apiKey, 'stage2_lineup');
       if (reply.limited) {
         const seconds = reply.resetSeconds;
         throw new QuotaExhaustedError(new Date(now().getTime() + (seconds + 1) * 1000), `Brave Search limit reached; retrying in ${Math.ceil(seconds / 60)} min.`);
