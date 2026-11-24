@@ -188,7 +188,7 @@ export const MergeEditionModal: React.FC<MergeEditionModalProps> = ({ initialEdi
 
   return (
     <Dialog
-      title="Merge canonical editions"
+      title="Merge editions"
       placement="center"
       onClose={saving ? undefined : onClose}
       panelClassName="w-full max-w-3xl max-h-[90vh] overflow-y-auto space-y-4 rounded-t-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-2xl sm:rounded-2xl"

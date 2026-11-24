@@ -384,7 +384,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
         <h1 className="text-lg font-bold text-zinc-50">Manage</h1>
         <p className="text-xs text-zinc-400">
           {archive
-            ? 'The shared catalog: lineups you ingest, the editions they make up, and the artists in them. Nothing here is added to your log.'
+            ? 'The shared catalog: lineups you look up, the editions they make up, and the artists in them. Nothing here is added to your log.'
             : 'The names on your events, one record each. Rename one to change it on every event, merge two that are the same, and keep other spellings as AKAs. Every change can be undone from History.'}
         </p>
       </div>
