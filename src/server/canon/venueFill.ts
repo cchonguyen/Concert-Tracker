@@ -11,7 +11,7 @@ import { normalizeName } from '../lineup/text';
 import { currentBudget } from '../lineup/budget';
 import { splitCity } from '../events/regions';
 import { writeEdition } from './editions';
-import { emptyPlaceFields, samePlace, venueLocationOf, type PlaceFieldName, type VenueLocation, type VenueLocationResult } from './venueLocation';
+import { emptyPlaceFields, venueLocationOf, type PlaceFieldName, type VenueLocation, type VenueLocationResult } from './venueLocation';
 
 export const VENUE_FILL_ACTOR = 'system:venue-location';
 const SCAN_LIMIT = 5000;
@@ -151,7 +151,7 @@ export async function applyVenueFill(
       : { kind: 'none' };
     // A pick must be one of the places the venue records hold for this venue; anything else is ignored.
     const picked = picks.get(id);
-    const pick = picked && looked.kind === 'several' ? looked.choices.find((c) => samePlace(c, picked)) : undefined;
+    const pick = picked && looked.kind === 'several' ? looked.choices.find((c) => venueLocationOf([c, picked]).kind === 'one') : undefined;
     const found: VenueLocationResult = pick ? { kind: 'one', location: pick } : looked;
     const { fill } = fillFor(edition, found);
     if (!fill) {
