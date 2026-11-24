@@ -2,6 +2,8 @@
 
 Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
 
+Deploy: a merge to `main` is meant to start a Cloudflare Workers Build for `concert-tracker` (check run "Workers Builds: concert-tracker"). A build that fails within a second has not run the app's build.
+
 
 The `/api` routes live in `src/server/app.ts` and take a `JobRunner` that starts a job without waiting for it. Two hosts wire them up:
 
