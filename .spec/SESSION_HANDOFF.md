@@ -4,7 +4,7 @@
 - **Branch Owner:** Claude
 - **Active Branch / State:** `claude/project-thread-ipjor1`, off main at 3489cbf. Spec only: `docs/specs/venue-location-fill.md` (seven slices, Charlie answered the four scope questions 2026-11-24). No code yet.
 - **Files Modified in Last Turn:** `docs/specs/venue-location-fill.md`, `docs/README.md`, `.spec/SESSION_HANDOFF.md`.
-- **Verification Status:** Verified via finish-slice.mjs (Slice 21.624)
+- **Verification Status:** Verified via finish-slice.mjs (Slice 21.626)
 - **Immediate Next Step:** Charlie approves the spec pull request, then build Slice 1 (`venueLocation` rule and store read).
 - **Open gaps:**
   - Harness: hub PR #208 (merged 2026-11-23) makes the scope check read `Approved-Tripwire:` trailers from the PR's own head commit when CI checks out GitHub's merge commit. Synced into this repo in PR #592.

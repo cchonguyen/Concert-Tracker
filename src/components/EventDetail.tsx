@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Check, ChevronDown, CircleHelp, CloudSun, ExternalLink, FolderCog, Heart, History, Loader2, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import {
   ArtistSuggestion,
+  canonicalApi,
   DetailCandidate,
   Edition,
   EventField,
@@ -26,6 +27,9 @@ import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
 import { groupReviewSlots, pendingReplacement } from '../services/reviewRows';
 import { norm } from '../services/listImport';
+import { placeForVenue } from '../services/venuePlace';
+import { emptyPlaceFields, type VenueLocation } from '../server/canon/venueLocation';
+import { isSampleMode } from '../services/sampleMode';
 import { leaveB2b, pairB2b, seenSlots, SET_LABELS, setSolo, SlotAct, slotId, toSeenInput } from '../server/events/seen';
 import { eventTitle, seriesList, seriesOffers } from '../services/series';
 import { SuggestInput } from './SuggestInput';
@@ -994,11 +998,6 @@ function pastValues(events: LoggedEvent[], field: 'venue' | 'city'): string[] {
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([v]) => v);
 }
 
-// The city you gave every other time at this venue, if there is exactly one.
-function cityForVenue(events: LoggedEvent[], venue: string): string | undefined {
-  const cities = new Set(events.filter((e) => e.venue?.trim().toLowerCase() === venue.toLowerCase() && e.city).map((e) => e.city!));
-  return cities.size === 1 ? [...cities][0] : undefined;
-}
 
 export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChange, onDeleted, onClose, rows, onOpen, onManage, onOpenHistory }) => {
   const onChangeRef = useRef(onChange);
@@ -1033,6 +1032,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   }, [event.id]);
 
   const others = events.filter((e) => e.id !== event.id);
+  const [venueChoices, setVenueChoices] = useState<VenueLocation[]>([]);
   const pastVenues = pastValues(others, 'venue');
   // Cities you gave before, as "Las Vegas, NV": picking one brings its state
   // and, when none is stored, its country.
@@ -1493,12 +1493,43 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               value={event.venue}
               source={event.sources.venue}
               suggestions={pastVenues}
-              onSave={(v) => {
+              onSave={async (v) => {
                 const venue = text(v);
-                const city = venue && !event.city ? cityForVenue(others, venue) : undefined;
-                return save(city ? { venue, city } : { venue });
+                setVenueChoices([]);
+                // A known venue fills only the empty city, state and country: from the place your other events
+                // there agree on, else from the shared venue records (one place only; several are offered).
+                let patch: Partial<Record<'city' | 'region' | 'country', string>> = {};
+                const own = venue ? placeForVenue(others, venue) : undefined;
+                if (own) patch = emptyPlaceFields(event, own);
+                else if (venue && (!event.city || !event.region || !event.country) && !isSampleMode()) {
+                  try {
+                    const found = await canonicalApi.venueLocation(venue);
+                    if (found.kind === 'one') patch = emptyPlaceFields(event, found.location);
+                    else if (found.kind === 'several') setVenueChoices(found.choices.filter((c) => Object.keys(emptyPlaceFields(event, c)).length));
+                  } catch {
+                    // No lookup: the venue is saved alone, as before.
+                  }
+                }
+                return save({ venue, ...patch });
               }}
             />
+            {venueChoices.length > 0 && (
+              <div className="space-y-1">
+                {venueChoices.map((c) => (
+                  <button
+                    key={[c.city, c.region, c.country].join('|')}
+                    type="button"
+                    onClick={() => {
+                      setVenueChoices([]);
+                      void save(emptyPlaceFields(event, c));
+                    }}
+                    className="block text-left text-xs text-violet-300 hover:underline"
+                  >
+                    Use “{[c.city, c.region, c.country].filter(Boolean).join(', ')}” from venue records
+                  </button>
+                ))}
+              </div>
+            )}
             <Field
               label="City"
               field="city"
