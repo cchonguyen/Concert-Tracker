@@ -18,6 +18,7 @@ import type { Edition, EditionPerformance, EditionWeekend, SeriesKind, SeriesRec
 import type { DetailCandidate, EventDetails } from '../server/events/types';
 import type { ArtistAppearance, CanonicalArtistRecord, CanonicalEditionSummary } from '../server/entities/canonicalManage';
 import { sameCountry } from '../server/events/regions';
+import { emptyPlaceFields, type VenueLocation } from '../server/canon/venueLocation';
 import { CanonicalArtistEntry, ORIGIN_LABEL, type SavedChange } from './CanonicalArtistEntry';
 import { CheckDetails, type Suggestion } from './CheckDetails';
 import { LineupReview } from './LineupReview';
@@ -2044,6 +2045,40 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
       : '';
   const editionPlaceEmpty = !values.city?.trim() && !values.region?.trim() && !values.country?.trim();
 
+  // A venue with one known location fills the empty City, Region and Country (blanks only); several are offered.
+  // Each venue text is looked up once, so a field you cleared is not filled again for the same venue.
+  const [venueFilled, setVenueFilled] = useState<string[]>([]);
+  const [venueChoices, setVenueChoices] = useState<VenueLocation[]>([]);
+  const venueLooked = useRef<string>((edition.venue ?? '').trim().toLowerCase());
+  const venueText = values.venue ?? '';
+  useEffect(() => {
+    const name = venueText.trim();
+    const key = name.toLowerCase();
+    if (!name || key === venueLooked.current) return;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => {
+      venueLooked.current = key;
+      setVenueChoices([]);
+      setVenueFilled([]);
+      canonicalApi.venueLocation(name, ctrl.signal).then(
+        (r) => {
+          if (r.kind === 'several') setVenueChoices(r.choices);
+          if (r.kind !== 'one') return;
+          setValues((v) => {
+            const patch = emptyPlaceFields({ city: v.city, region: v.region, country: v.country }, r.location);
+            setVenueFilled(Object.keys(patch));
+            return { ...v, ...patch };
+          });
+        },
+        () => undefined,
+      );
+    }, 400);
+    return () => {
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [venueText]);
+
   useEffect(() => {
     let alive = true;
     lineupApi.status().then(
@@ -2357,6 +2392,22 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
                     Use “{mapOffer.value}” from {mapOffer.from}
                   </button>
                 )}
+                {venueFilled.length > 0 && (
+                  <p className="text-xs text-zinc-500">Filled from venue records: {venueFilled.map((k) => (k === 'region' ? 'region' : k)).join(', ')}.</p>
+                )}
+                {venueChoices.map((c) => (
+                  <button
+                    key={formatPlaceLabel(c)}
+                    type="button"
+                    onClick={() => {
+                      setValues((v) => ({ ...v, ...emptyPlaceFields({ city: v.city, region: v.region, country: v.country }, c) }));
+                      setVenueChoices([]);
+                    }}
+                    className="block text-left text-xs text-violet-300 hover:underline"
+                  >
+                    Use “{formatPlaceLabel(c)}” from venue records
+                  </button>
+                ))}
                 {effectiveSeriesKind !== 'tour' && editionPlaceEmpty && seriesPlaceLabel && (
                   <button
                     type="button"
