@@ -1891,8 +1891,13 @@ export class SupabaseLineupStore implements LineupStore {
       ),
       'upsertVenue (apply 0041_shared_occurrences.sql)',
     );
-    const row = this.check(await this.db.from('canonical_venues').select('*').eq('id', id).maybeSingle(), 'upsertVenue');
+    let row = this.check(await this.db.from('canonical_venues').select('*').eq('id', id).maybeSingle(), 'upsertVenue');
     if (!row) throw new Error('Supabase upsertVenue failed: venue not found after insert');
+    const region = v.region?.trim();
+    if (region && !(typeof row.region === 'string' && row.region.trim())) {
+      this.check(await this.db.from('canonical_venues').update({ region }).eq('id', id).is('region', null), 'upsertVenue region');
+      row = { ...row, region };
+    }
     await this.addVenueAlias(id, normalizeName(v.name));
     return rowToVenue(row);
   }
