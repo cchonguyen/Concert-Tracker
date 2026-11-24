@@ -4,10 +4,11 @@
 // the email gives. Without a weekday there is no year and no date; the words
 // are kept for you to read. Nothing here guesses.
 
-const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+import { MONTH_PATTERN, monthIndex } from '../../lineup/months';
+
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const WEEKDAY = '(sun|mon|tue|wed|thu|fri|sat)[a-z]*\\.?';
-const MONTH = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\.?';
+const MONTH = MONTH_PATTERN;
 const DAY = '(\\d{1,2})(?:st|nd|rd|th)?';
 const YEAR = '((?:19|20)\\d{2})';
 // [weekday] Month Day [year] | [weekday] Day Month [year]
@@ -48,7 +49,7 @@ function tokens(text: string): Token[] {
     const dayWord = m[3] ?? m[4];
     out.push({
       weekday: m[1] ? DAYS.indexOf(m[1].slice(0, 3).toLowerCase()) : undefined,
-      month: MONTHS.indexOf(monthWord.slice(0, 3).toLowerCase()) + 1,
+      month: monthIndex(monthWord),
       day: Number(dayWord),
       year: m[6] ? Number(m[6]) : undefined,
       at: m.index!,

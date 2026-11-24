@@ -4,6 +4,8 @@
 // browser (live preview) and on the server (the saved result), so it must not
 // import Node modules.
 
+import { isoDate, MONTH_PATTERN, monthIndex } from '../lineup/months';
+
 // One way research may read the line: words taken from what was typed, never
 // anything added.
 export interface Reading {
@@ -27,19 +29,9 @@ export interface ParsedInput {
   city?: string;
 }
 
-const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-const MONTH = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\.?';
+const MONTH = MONTH_PATTERN;
 const DAY = '(\\d{1,2})(?:st|nd|rd|th)?';
 const YEAR = '((?:19|20)\\d{2})';
-
-const monthIndex = (m: string) => MONTHS.indexOf(m.slice(0, 3).toLowerCase()) + 1;
-
-function isoDate(year: number, month: number, day: number): string | undefined {
-  if (month < 1 || month > 12 || day < 1) return undefined;
-  const d = new Date(Date.UTC(year, month - 1, day));
-  if (d.getUTCMonth() !== month - 1) return undefined; // e.g. Feb 30
-  return d.toISOString().slice(0, 10);
-}
 
 type DateHit = Pick<ParsedInput, 'year' | 'month' | 'startDate' | 'endDate'>;
 

@@ -5,6 +5,7 @@ import { toSeenInput } from '../server/events/seen';
 import { splitCity } from '../server/events/regions';
 import { normalizeName } from '../server/lineup/normalizeName';
 import type { NameIndex } from '../server/entities/link';
+import { isoDate, monthIndex } from '../server/lineup/months';
 
 // A list of past events you kept elsewhere (a Notion export, a spreadsheet,
 // this app's own CSV export) read into rows you review in the Table view.
@@ -129,14 +130,6 @@ export function parseCsv(text: string): string[][] {
 // The app's one name rule (src/server/lineup/normalizeName.ts, safe in the browser).
 export const norm = normalizeName;
 
-const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-
-function isoDate(year: number, month: number, day: number): string | undefined {
-  if (month < 1 || month > 12 || day < 1) return undefined;
-  const d = new Date(Date.UTC(year, month - 1, day));
-  if (d.getUTCMonth() !== month - 1) return undefined;
-  return d.toISOString().slice(0, 10);
-}
 
 // One full date: 2024-05-17, or May 17, 2024 / 17 May 2024. Nothing else:
 // 05/06/2024 could be either month first or day first.
@@ -145,9 +138,9 @@ export function readDate(text: string): string | undefined {
   let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
   if (m) return isoDate(Number(m[1]), Number(m[2]), Number(m[3]));
   m = /^([A-Za-z]+)\.? (\d{1,2})(?:st|nd|rd|th)?,? (\d{4})$/.exec(s);
-  if (m) return isoDate(Number(m[3]), MONTHS.indexOf(m[1].slice(0, 3).toLowerCase()) + 1, Number(m[2]));
+  if (m) return isoDate(Number(m[3]), monthIndex(m[1]), Number(m[2]));
   m = /^(\d{1,2}) ([A-Za-z]+)\.? (\d{4})$/.exec(s);
-  if (m) return isoDate(Number(m[3]), MONTHS.indexOf(m[2].slice(0, 3).toLowerCase()) + 1, Number(m[1]));
+  if (m) return isoDate(Number(m[3]), monthIndex(m[2]), Number(m[1]));
   return undefined;
 }
 
