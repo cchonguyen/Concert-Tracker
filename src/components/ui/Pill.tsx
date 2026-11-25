@@ -7,6 +7,7 @@ const TONES = {
   warn: 'border-amber-400/40 text-amber-300',
   info: 'border-sky-400/40 bg-sky-400/10 text-sky-300', // How a set was played (DJ, Live).
   highlight: 'border-amber-400/40 bg-amber-400/10 text-amber-200', // Billing, such as Headliner.
+  inferred: 'border-dashed border-zinc-500 text-zinc-400 italic', // A value worked out from a stated reason, not typed or verified.
 };
 
 // A small rounded label for a short fact, such as a series name or a status. Good and warn always carry words too,
