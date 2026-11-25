@@ -27,13 +27,13 @@ export function FinderReadoutPanel() {
 
   if (failed || rows === null) return null;
   return (
-    <section className="mt-6 space-y-3 text-sm text-zinc-300" aria-label="Finders">
-      <h3 className="font-semibold text-zinc-100">Finders, last 30 days</h3>
+    <section className="mt-6 space-y-3 text-sm text-text-muted" aria-label="Finders">
+      <h3 className="font-semibold text-text">Finders, last 30 days</h3>
       {rows.length === 0 ? (
         <p>No research runs in the last 30 days.</p>
       ) : (
         <table className="w-full text-left">
-          <thead className="text-zinc-400">
+          <thead className="text-text-muted">
             <tr>
               <th className="py-1 font-normal">Finder</th>
               <th className="py-1 font-normal">Runs</th>
@@ -46,7 +46,7 @@ export function FinderReadoutPanel() {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.finder} className="border-t border-zinc-800">
+              <tr key={r.finder} className="border-t border-line">
                 <td className="py-1">{r.finder}</td>
                 <td className="py-1">{r.runs}</td>
                 <td className="py-1">{r.hits}</td>

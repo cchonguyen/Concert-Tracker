@@ -117,10 +117,10 @@ const DayPanel: React.FC<{
   const day = model.days[date];
   if (!day) return null;
   return (
-    <div className="mt-2 space-y-1.5 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2">
-      <div className="flex items-center justify-between px-1 text-xs font-semibold text-zinc-400">
+    <div className="mt-2 space-y-1.5 rounded-card border border-line bg-surface-1 p-2">
+      <div className="flex items-center justify-between px-1 text-xs font-semibold text-text-muted">
         {longDate(date)}
-        <button onClick={onClose} aria-label="Close" className="text-zinc-400 hover:text-zinc-200">
+        <button onClick={onClose} aria-label="Close" className="inline-flex min-h-11 items-center sm:min-h-9 text-text-muted hover:text-text">
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -129,13 +129,13 @@ const DayPanel: React.FC<{
           <li key={s.id}>
             <button
               onClick={() => onOpen(s.id)}
-              className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left hover:border-zinc-600 ${ATTENDANCE_STYLE[s.attendance]}`}
+              className={`min-h-11 sm:min-h-9 flex w-full items-center gap-3 rounded-control border px-3 py-2 text-left hover:border-line-strong ${ATTENDANCE_STYLE[s.attendance]}`}
             >
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-zinc-100">
+                <span className="block truncate text-sm font-medium text-text">
                   <EventTitle event={s.event} />
                 </span>
-                {placeLabel(s.event) && <span className="block truncate text-xs text-zinc-400">{placeLabel(s.event)}</span>}
+                {placeLabel(s.event) && <span className="block truncate text-xs text-text-muted">{placeLabel(s.event)}</span>}
               </span>
               {s.attendance === 'confirm' ? <ConfirmMark /> : s.attendance === 'went' ? <Rating rating={s.event.rating} /> : null}
             </button>
@@ -216,7 +216,7 @@ const YearCard: React.FC<{
 
 export const HeatmapView: React.FC<TimelineViewProps> = ({ model, range, selectedDate, onSelectDate, onOpen }) => {
   const rows = useMemo(() => heatmapRows(model, range), [model, range]);
-  if (!rows.length) return <p className="py-10 text-center text-sm text-zinc-400">No dated events match these filters.</p>;
+  if (!rows.length) return <p className="py-10 text-center text-sm text-text-muted">No dated events match these filters.</p>;
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3 text-xs text-text-muted">
@@ -240,7 +240,7 @@ export const HeatmapView: React.FC<TimelineViewProps> = ({ model, range, selecte
       </div>
       {rows.map((row) =>
         row.kind === 'gap' ? (
-          <p key={`gap-${row.to}`} className="border-l-2 border-zinc-800 py-1 pl-3 text-xs text-zinc-400">
+          <p key={`gap-${row.to}`} className="border-l-2 border-line py-1 pl-3 text-xs text-text-muted">
             No events, {row.from === row.to ? row.from : `${row.from} – ${row.to}`}
           </p>
         ) : (
