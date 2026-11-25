@@ -4,7 +4,7 @@ import { Equalizer } from './ui/Equalizer';
 import type { RejectReason } from '../server/lineup/learning';
 import { lineupApi, collaborationsApi, type CollaborationItem, LoggedEvent, LookupJob, SOURCE_LABELS } from '../services/lineupApi';
 import { EventTitle } from './EventTitle';
-import { filterOptions, groupReviewSlots, pendingReplacement, startRows, type ReviewSubject } from '../services/reviewRows';
+import { filterOptions, groupReviewSlots, pendingReplacement, splitAddedActs, startRows, type ReviewSubject } from '../services/reviewRows';
 import { hasUnambiguousB2bMark, readActName } from '../server/lineup/actName';
 import { normalizeName } from '../server/lineup/text';
 import { normalizeSet } from '../server/events/seen';
@@ -229,70 +229,67 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
   };
 
   const addAct = () => {
-    const name = newAct.trim();
-    if (!name) return;
+    const names = splitAddedActs(newAct);
+    if (names.length === 0) return;
 
-    const matchingCollab = collabs.find((c) => normalizeName(c.alias) === normalizeName(name));
-    if (matchingCollab) {
-      const slotId = crypto.randomUUID();
-      const allKeys = matchingCollab.partners.map(normalizeName).filter(Boolean);
-      const newRows: Row[] = matchingCollab.partners.map((part) => {
-        const key = normalizeName(part);
-        return {
-          key,
-          slotId,
-          alias: matchingCollab.alias,
-          b2b: allKeys.filter((k) => k !== key),
-          name: part,
-          accepted: true,
-          rejectReason: 'not_an_act',
-          seen: true,
-          billing: '',
-          set: '',
-          days: [],
-          stages: [],
-          confidence: 1,
-          flagged: false,
-          missingFrom: [],
-          status: 'billed',
-          sources: [],
-        };
-      });
-      setRows((rs) => [...rs, ...newRows]);
-      setNewAct('');
-      return;
-    }
+    const addedRows: Row[] = [];
+    for (const name of names) {
+      const matchingCollab = collabs.find((c) => normalizeName(c.alias) === normalizeName(name));
+      if (matchingCollab) {
+        const slotId = crypto.randomUUID();
+        const allKeys = matchingCollab.partners.map(normalizeName).filter(Boolean);
+        for (const part of matchingCollab.partners) {
+          const key = normalizeName(part);
+          addedRows.push({
+            key,
+            slotId,
+            alias: matchingCollab.alias,
+            b2b: allKeys.filter((k) => k !== key),
+            name: part,
+            accepted: true,
+            rejectReason: 'not_an_act',
+            seen: true,
+            billing: '',
+            set: '',
+            days: [],
+            stages: [],
+            confidence: 1,
+            flagged: false,
+            missingFrom: [],
+            status: 'billed',
+            sources: [],
+          });
+        }
+        continue;
+      }
 
-    const read = readActName(name);
-    if (read.parts.length > 1) {
-      const slotId = crypto.randomUUID();
-      const allKeys = read.parts.map(normalizeName).filter(Boolean);
-      const newRows: Row[] = read.parts.map((part) => {
-        const key = normalizeName(part);
-        return {
-          key,
-          slotId,
-          b2b: allKeys.filter((k) => k !== key),
-          name: part,
-          accepted: true,
-          rejectReason: 'not_an_act',
-          seen: true,
-          billing: '',
-          set: read.set || '',
-          days: [],
-          stages: [],
-          confidence: 1,
-          flagged: false,
-          missingFrom: [],
-          status: 'billed',
-          sources: [],
-        };
-      });
-      setRows((rs) => [...rs, ...newRows]);
-    } else {
-      setRows((rs) => [
-        ...rs,
-        {
+      const read = readActName(name);
+      if (read.parts.length > 1) {
+        const slotId = crypto.randomUUID();
+        const allKeys = read.parts.map(normalizeName).filter(Boolean);
+        for (const part of read.parts) {
+          const key = normalizeName(part);
+          addedRows.push({
+            key,
+            slotId,
+            b2b: allKeys.filter((k) => k !== key),
+            name: part,
+            accepted: true,
+            rejectReason: 'not_an_act',
+            seen: true,
+            billing: '',
+            set: read.set || '',
+            days: [],
+            stages: [],
+            confidence: 1,
+            flagged: false,
+            missingFrom: [],
+            status: 'billed',
+            sources: [],
+          });
+        }
+      } else {
+        addedRows.push({
           name: read.parts[0] || name,
           accepted: true,
           rejectReason: 'not_an_act',
@@ -306,9 +303,11 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
           missingFrom: [],
           status: 'billed',
           sources: [],
-        },
-      ]);
+        });
+      }
     }
+
+    setRows((rs) => [...rs, ...addedRows]);
     setNewAct('');
   };
 
@@ -749,9 +748,9 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
           </div>
 
           <div className="flex gap-2">
-            <input aria-label="Add an act the sources missed"
+            <input aria-label="Add acts the sources missed (comma-separated)"
               className={`${input} max-w-sm`}
-              placeholder="Add an act the sources missed"
+              placeholder="Add acts the sources missed (comma-separated)"
               value={newAct}
               onChange={(e) => setNewAct(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addAct())}

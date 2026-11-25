@@ -391,3 +391,10 @@ export function pendingReplacement(
 ): boolean {
   return Boolean(job && edition && job.status === 'needs_review' && !job.candidate?.cached);
 }
+
+// Splits a comma-separated list of acts entered by hand, trimming each and dropping blanks.
+export const splitAddedActs = (raw: string): string[] =>
+  raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
