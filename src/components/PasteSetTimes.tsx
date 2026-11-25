@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { ClipboardPaste, Loader2 } from 'lucide-react';
+import { ClipboardPaste } from 'lucide-react';
+import { Equalizer } from './ui/Equalizer';
 import { Button } from './ui/Button';
 import { parsePastedSets } from '../server/lineup/pasted';
 
@@ -7,7 +8,7 @@ import { parsePastedSets } from '../server/lineup/pasted';
 // its link. The text is read in code, here for the preview and again on the server; the app never visits the link.
 
 const field =
-  'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
+  'w-full rounded-control border border-line bg-surface-1 px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none';
 
 const clock = (stamp?: string) => stamp?.slice(11, 16);
 
@@ -31,15 +32,15 @@ export function PasteSetTimes({
 
   if (!open) {
     return (
-      <button type="button" className="text-xs text-violet-300 hover:underline" onClick={() => setOpen(true)}>
+      <button type="button" className="inline-flex min-h-11 items-center sm:min-h-9 text-xs text-accent hover:underline" onClick={() => setOpen(true)}>
         Paste set times from a page
       </button>
     );
   }
 
   return (
-    <div className="space-y-2 rounded-lg border border-zinc-800 p-3">
-      <p className="text-xs text-zinc-400">
+    <div className="space-y-2 rounded-control border border-line p-3">
+      <p className="text-xs text-text-muted">
         Copy the set times from a page you can open (for example Festival Dust) and paste them here with the page's link. The app reads each name and time and never visits the link.
       </p>
       <input className={field} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Link of the page you copied from" aria-label="Page link" />
@@ -52,12 +53,12 @@ export function PasteSetTimes({
       />
       {read && (
         <div className="space-y-1 text-xs">
-          <p className="text-zinc-300">
+          <p className="text-text-muted">
             Read {read.sets.length} {read.sets.length === 1 ? 'act' : 'acts'}, {timed} with a time.
             {read.sets.length > 0 && !read.sets.some((s) => s.set?.stage) && ' No stages: the text does not say which act played where.'}
           </p>
           {read.sets.length > 0 && (
-            <ul className="max-h-40 overflow-y-auto text-zinc-400">
+            <ul className="max-h-40 overflow-y-auto text-text-muted">
               {read.sets.map((s, i) => (
                 <li key={i}>
                   {s.name}
@@ -67,7 +68,7 @@ export function PasteSetTimes({
             </ul>
           )}
           {read.unread.length > 0 && (
-            <details className="text-zinc-500">
+            <details className="text-text-muted">
               <summary className="cursor-pointer">{read.unread.length} lines not read</summary>
               <ul className="max-h-32 overflow-y-auto">
                 {read.unread.map((l, i) => (
@@ -83,11 +84,11 @@ export function PasteSetTimes({
           Cancel
         </Button>
         <Button variant="primary" onClick={() => onSubmit(url.trim(), text)} disabled={busy || !linkOk || !read || read.sets.length === 0}>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardPaste className="h-4 w-4" />}
+          {busy ? <Equalizer /> : <ClipboardPaste className="h-4 w-4" />}
           Review these acts
         </Button>
       </div>
-      {!linkOk && url.trim() && <p className="text-xs text-amber-300/90">The link should start with https://.</p>}
+      {!linkOk && url.trim() && <p className="text-xs text-warn">The link should start with https://.</p>}
     </div>
   );
 }
