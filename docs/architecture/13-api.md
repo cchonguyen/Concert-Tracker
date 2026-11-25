@@ -22,6 +22,7 @@ Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
 | `GET /api/imports` | Review rows from your email, newest first |
 | `POST /api/imports/add` | Add the ticked rows as events (`{ ids }`); rows already in your log are not added again, and rows still ahead are added as upcoming (`attendance: 'planned'`) |
 | `POST /api/imports/merge` | Merge a row into an event you entered (`{ id, eventId }`): fills only the event's empty date, venue, city and price from the email and links the row; returns `{ event, import, filled, kept }` |
+| `GET /api/imports/facts/:eventId` | Ticket facts for one event's ticket stub, from the email import it came from or was merged into: `{ facts: { seller?, orderLast4?, tickets? } \| null }`. Never the total, price, names or messages |
 | `POST /api/imports/unmerge` | Undo a merge (`{ id }`): clears the fields it filled that still hold the email's value and puts the row back on the list |
 | `POST /api/imports/skip` | Leave rows out: not attended or not a show (`{ ids }`), or put them back (`{ ids, restore: true }`) |
 | `GET /api/imports/scan` | Check email: whether it is set up and Gmail connected, the account, and how far mail has been read |

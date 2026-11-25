@@ -15,6 +15,7 @@ import type { DetailCandidate, EventDetails, EventField, EventWeather, LineupSum
 import type { EventPatch } from '../server/events/service';
 import type { ActivityEntry } from '../server/events/activityLog';
 import type { EmailImport, MergeField } from '../server/events/email/types';
+import type { TicketFacts } from '../server/events/email/ticketFacts';
 import type { ArtistSuggestion } from '../server/events/artists';
 import type { LineupFacts } from '../server/events/scale';
 import type { CityPoint, PlaceGuess } from '../server/events/place';
@@ -291,6 +292,9 @@ export const importsApi = {
   proposals: (body: { proposals: unknown[]; messages: unknown[]; updatedCursors?: { streamA?: string; streamB?: string } }) =>
     request<{ changed: number; added: number; cursorsSaved: boolean }>('/api/imports/proposals', post(body)),
   list: () => request<{ imports: EmailImport[] }>('/api/imports').then((r) => r.imports),
+  // Seller, order last 4 and tickets of the email an event came from or was merged into.
+  facts: (eventId: string) =>
+    request<{ facts: TicketFacts | null }>(`/api/imports/facts/${encodeURIComponent(eventId)}`).then((r) => r.facts),
   add: (ids: string[]) => request<{ events: LoggedEvent[]; imports: EmailImport[] }>('/api/imports/add', post({ ids })),
   skip: (ids: string[], restore = false) =>
     request<{ imports: EmailImport[] }>('/api/imports/skip', post({ ids, restore })).then((r) => r.imports),
