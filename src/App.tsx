@@ -611,14 +611,14 @@ export default function App({ initialMe }: { initialMe?: Me }) {
 
       <PeopleProvider events={events} version={events}>
       <main className={`mx-auto w-full ${width} flex-1 space-y-6 px-4 py-6`}>
-        {section && <p className="text-xs text-zinc-400 sm:hidden">{`${SECTIONS[section].label} › ${PAGE_LABELS[shown]}`}</p>}
+        {section && <p className="text-xs text-text-muted sm:hidden">{`${SECTIONS[section].label} › ${PAGE_LABELS[shown]}`}</p>}
         {HEADED.includes(shown) && (
           <div>
-            <h1 className="text-lg font-bold text-zinc-50">{PAGE_LABELS[shown]}</h1>
-            <p className="text-xs text-zinc-400">{PAGE_BLURB[shown as SubPage]}</p>
+            <h1 className="font-display text-2xl font-normal text-text">{PAGE_LABELS[shown]}</h1>
+            <p className="text-xs text-text-muted">{PAGE_BLURB[shown as SubPage]}</p>
           </div>
         )}
-        {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-3 text-sm text-rose-200">{error}</p>}
+        {error && <p className="rounded-card border border-bad/45 bg-bad/10 p-3 text-sm text-bad">{error}</p>}
         {shown in copy.callouts && <Callout id={shown}>{copy.callouts[shown as keyof typeof copy.callouts]}</Callout>}
         {shown === 'home' && (
           <HomePage
@@ -703,21 +703,21 @@ export default function App({ initialMe }: { initialMe?: Me }) {
       </main>
       </PeopleProvider>
 
-      <footer className="border-t border-zinc-900 py-5 text-xs text-zinc-400">
+      <footer className="border-t border-line py-5 text-xs text-text-muted">
         <nav className="mx-auto flex max-w-3xl flex-wrap items-center gap-x-4 gap-y-2 px-4">
-          <a href="/?public=1" className="font-medium text-zinc-300 hover:text-zinc-100">
+          <a href="/?public=1" className="inline-flex min-h-11 items-center font-medium text-text-muted hover:text-text sm:min-h-9">
             Home
           </a>
-          <button onClick={() => setAbout(true)} className="font-medium text-zinc-300 hover:text-zinc-100">
+          <button onClick={() => setAbout(true)} className="inline-flex min-h-11 items-center font-medium text-text-muted hover:text-text sm:min-h-9">
             About
           </button>
-          <a href="/demo" className="font-medium text-zinc-300 hover:text-zinc-100">
+          <a href="/demo" className="inline-flex min-h-11 items-center font-medium text-text-muted hover:text-text sm:min-h-9">
             Demo
           </a>
-          <a href="/privacy" className="font-medium text-zinc-300 hover:text-zinc-100">
+          <a href="/privacy" className="inline-flex min-h-11 items-center font-medium text-text-muted hover:text-text sm:min-h-9">
             Privacy
           </a>
-          <a href="/terms" className="font-medium text-zinc-300 hover:text-zinc-100">
+          <a href="/terms" className="inline-flex min-h-11 items-center font-medium text-text-muted hover:text-text sm:min-h-9">
             Terms
           </a>
           <span>© 2026 Charlie Cho Nguyen</span>

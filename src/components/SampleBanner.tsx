@@ -22,9 +22,9 @@ export function SampleBanner({ mode, email, signedIn }: { mode: SampleMode; emai
 
   if (mode === 'demo') {
     return (
-      <div role="note" className="flex flex-wrap items-center justify-between gap-2 bg-violet-600/20 px-4 py-2 text-sm">
+      <div role="note" className="flex flex-wrap items-center justify-between gap-2 border-b border-accent-tint-line bg-accent-tint px-4 py-1 text-sm text-text">
         <span>Sample data. Nothing here is real.</span>
-        <a href="/app" className="font-medium text-violet-200 underline">
+        <a href="/app" className="inline-flex min-h-11 items-center font-medium text-text underline sm:min-h-9">
           {signedIn ? 'Go to your archive →' : 'Log in (invite only)'}
         </a>
       </div>
@@ -44,7 +44,7 @@ export function SampleBanner({ mode, email, signedIn }: { mode: SampleMode; emai
   };
 
   return (
-    <div role="note" className="flex flex-wrap items-center justify-between gap-2 bg-violet-600/20 px-4 py-2 text-sm">
+    <div role="note" className="flex flex-wrap items-center justify-between gap-2 border-b border-accent-tint-line bg-accent-tint px-4 py-1 text-sm text-text">
       <span>
         Signed in as <span className="break-all font-medium">{email}</span>. This account isn't invited yet. Sample data only.
       </span>
@@ -54,13 +54,13 @@ export function SampleBanner({ mode, email, signedIn }: { mode: SampleMode; emai
             Request access
           </Button>
         )}
-        {ask === 'sent' && <span className="text-violet-100">Your request is in.</span>}
-        {ask === 'closed' && <span className="text-violet-100">Requests are closed for now.</span>}
-        <a href="/cdn-cgi/access/logout" className="font-medium text-violet-200 underline">
+        {ask === 'sent' && <span className="text-text">Your request is in.</span>}
+        {ask === 'closed' && <span className="text-text">Requests are closed for now.</span>}
+        <a href="/cdn-cgi/access/logout" className="inline-flex min-h-11 items-center font-medium text-text underline sm:min-h-9">
           Switch account
         </a>
       </span>
-      {error && <p className="w-full text-xs text-rose-300">{error}</p>}
+      {error && <p className="w-full text-xs text-bad">{error}</p>}
     </div>
   );
 }
