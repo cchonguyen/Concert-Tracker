@@ -42,7 +42,7 @@ const ActGenres: React.FC<{
   return (
     <li className="space-y-1 py-1.5">
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="w-28 shrink-0 truncate text-sm text-zinc-200" title={act.name}>
+        <span className="w-28 shrink-0 truncate text-sm text-text" title={act.name}>
           {act.name}
         </span>
         {styles.map((s) => (
@@ -50,27 +50,27 @@ const ActGenres: React.FC<{
             key={s}
             title={own ? 'Set by you' : `From ${SOURCE_NAMES[shown!.source]}`}
             className={`inline-flex items-center gap-1 rounded-full py-0.5 pl-2 pr-1 text-xs ${
-              own ? 'bg-violet-600/25 text-violet-100' : 'bg-zinc-800 text-zinc-300'
+              own ? 'bg-accent-tint text-accent' : 'bg-surface-2 text-text-muted'
             }`}
           >
             {s}
             <button
               onClick={() => save(styles.filter((x) => x !== s))}
               aria-label={`Remove ${s} from ${act.name}`}
-              className="text-zinc-400 hover:text-zinc-200"
+              className="inline-flex min-h-11 items-center sm:min-h-9 text-text-muted hover:text-text"
             >
               <X className="h-3 w-3" />
             </button>
           </span>
         ))}
-        {!styles.length && <span className="text-xs text-zinc-400">{own ? 'None, as you set' : 'No genre yet'}</span>}
+        {!styles.length && <span className="text-xs text-text-muted">{own ? 'None, as you set' : 'No genre yet'}</span>}
         <div className="w-36">
           <SuggestInput
             value={draft}
             suggestions={offers}
             placeholder="Add genre"
             aria-label={`Add a genre to ${act.name}`}
-            className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-xs text-zinc-200 placeholder-zinc-600 focus:border-violet-500 focus:outline-none"
+            className="w-full rounded-control border border-line bg-page px-2 py-0.5 text-xs text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
             onChange={(e) => setDraft(e.target.value)}
             onPick={add}
             onKeyDown={(e) => {
@@ -85,13 +85,13 @@ const ActGenres: React.FC<{
           <button
             onClick={() => save(null)}
             title={`Show the genres from ${SOURCE_NAMES[found.source]} again: ${found.genres.map((g) => g.style).join(', ')}`}
-            className="text-[11px] text-zinc-400 hover:text-zinc-300"
+            className="inline-flex min-h-11 items-center sm:min-h-9 text-[11px] text-text-muted hover:text-text-muted"
           >
             Use {SOURCE_NAMES[found.source]}'s
           </button>
         ) : null}
       </div>
-      {error && <p className="text-xs text-rose-300">{error}</p>}
+      {error && <p className="text-xs text-bad">{error}</p>}
     </li>
   );
 };
@@ -132,16 +132,16 @@ export const SeenGenres: React.FC<{ event: LoggedEvent }> = ({ event }) => {
   };
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2">
-      <button onClick={() => setOpen(!open)} className="flex w-full items-center gap-1.5 text-left text-xs text-zinc-400 hover:text-zinc-200">
+    <div className="rounded-control border border-line bg-surface-1 p-2">
+      <button onClick={() => setOpen(!open)} className="min-h-11 sm:min-h-9 flex w-full items-center gap-1.5 text-left text-xs text-text-muted hover:text-text">
         {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         <Tags className="h-3.5 w-3.5" /> Genres
-        <span className="text-zinc-400">
+        <span className="text-text-muted">
           {withGenre} of {acts.length} {acts.length === 1 ? 'act' : 'acts'}
         </span>
       </button>
       {open && (
-        <ul className="divide-y divide-zinc-800/60 pt-1">
+        <ul className="divide-y divide-line pt-1">
           {acts.map((a) => (
             <ActGenres key={a.key} act={a} own={own.get(a.key)} found={found.get(a.key)} known={known} onSave={onSave} />
           ))}

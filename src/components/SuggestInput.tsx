@@ -72,7 +72,7 @@ export const SuggestInput: React.FC<
       {matches.length > 0 && (
         <ul
           role="listbox"
-          className="absolute left-0 right-0 top-full z-30 mt-1 max-h-60 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl"
+          className="absolute left-0 right-0 top-full z-30 mt-1 max-h-60 overflow-y-auto rounded-control border border-line-strong bg-surface-1 py-1 shadow-xl"
         >
           {matches.map((s, i) => (
             <li key={s} role="option" aria-selected={i === active}>
@@ -82,8 +82,8 @@ export const SuggestInput: React.FC<
                 onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => pick(s)}
-                className={`block w-full truncate px-3 py-2 text-left text-sm ${
-                  i === active ? 'bg-violet-600/30 text-violet-100' : 'text-zinc-200 hover:bg-zinc-800'
+                className={`min-h-11 sm:min-h-9 block w-full truncate px-3 py-2 text-left text-sm ${
+                  i === active ? 'bg-accent-tint text-accent' : 'text-text hover:bg-surface-2'
                 }`}
               >
                 {s}
