@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GitMerge, Loader2, Plus, X } from 'lucide-react';
+import { GitMerge, Plus, X } from 'lucide-react';
 import {
   applyCanonicalArtistChange,
   canonicalApi,
@@ -13,7 +13,9 @@ import { normalizeName } from '../server/lineup/text';
 import { buildManageUrl, editionUrl, isModifiedClick, rememberManageSearch } from '../services/manageNav';
 import { Button } from './ui/Button';
 import { Callout } from './ui/Callout';
+import { Equalizer } from './ui/Equalizer';
 import { IconButton } from './ui/IconButton';
+import { Ledger } from './ui/Ledger';
 import { Notice } from './ui/Notice';
 import { Pill } from './ui/Pill';
 import { SaveStatus } from './ui/SaveStatus';
@@ -31,12 +33,12 @@ export const ORIGIN_LABEL: Record<CanonicalArtistRecord['origins'][number], stri
 };
 
 const control =
-  'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
+  'min-h-11 sm:min-h-9 w-full rounded-control border border-line-strong bg-surface-1 px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none';
 const primary =
-  'inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent-fill px-3 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40';
+  'inline-flex min-h-11 sm:min-h-9 shrink-0 items-center gap-1.5 rounded-control bg-accent-fill px-3 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40';
 const quiet =
-  'inline-flex shrink-0 items-center gap-1 rounded-lg border border-zinc-800 px-2.5 py-1.5 text-sm text-zinc-300 hover:text-zinc-100 disabled:opacity-40';
-const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
+  'inline-flex min-h-11 sm:min-h-9 shrink-0 items-center gap-1 rounded-control border border-line-strong px-2.5 py-1.5 text-sm text-text-muted hover:text-text disabled:opacity-40';
+const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-text-muted';
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
 // The server's 409 when the fingerprint no longer matches the current state (the apply route).
@@ -81,20 +83,20 @@ export interface CanonicalArtistEntryProps {
 const ImpactCounts: React.FC<{ impact: ArtistChangeImpact }> = ({ impact }) => (
   <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
     <div>
-      <dt className="text-zinc-500">Editions changed</dt>
-      <dd className="text-zinc-100">{impact.editionsAffected}</dd>
+      <dt className="text-text-muted">Editions changed</dt>
+      <dd className="font-mono tabular-nums text-text">{impact.editionsAffected}</dd>
     </div>
     <div>
-      <dt className="text-zinc-500">Performances moved</dt>
-      <dd className="text-zinc-100">{impact.performancesMoved}</dd>
+      <dt className="text-text-muted">Performances moved</dt>
+      <dd className="font-mono tabular-nums text-text">{impact.performancesMoved}</dd>
     </div>
     <div>
-      <dt className="text-zinc-500">Your records changed</dt>
-      <dd className="text-zinc-100">{impact.ownerRecordsAffected}</dd>
+      <dt className="text-text-muted">Your records changed</dt>
+      <dd className="font-mono tabular-nums text-text">{impact.ownerRecordsAffected}</dd>
     </div>
     <div>
-      <dt className="text-zinc-500">Community names changed</dt>
-      <dd className="text-zinc-100">{impact.communityNameKeysAffected ?? 'Not available'}</dd>
+      <dt className="text-text-muted">Community names changed</dt>
+      <dd className="font-mono tabular-nums text-text">{impact.communityNameKeysAffected ?? 'Not available'}</dd>
     </div>
   </dl>
 );
@@ -167,13 +169,13 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
   // The preview for one section, shown directly above its apply action.
   const pendingPanel = (section: Section) =>
     pending && pending.section === section ? (
-      <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 text-sm">
-        <p className="text-zinc-100">{pending.label}</p>
+      <div className="space-y-2 rounded-card border border-line bg-surface-1 p-3 text-sm">
+        <p className="text-text">{pending.label}</p>
         {pending.stale ? (
           <Notice tone="warning">This preview is out of date, so nothing was saved. Preview again to see the current impact.</Notice>
         ) : (
           <div className="space-y-1">
-            <p className="text-[11px] uppercase text-zinc-500">Impact</p>
+            <p className="text-[11px] uppercase text-text-muted">Impact</p>
             <ImpactCounts impact={pending.preview.impact} />
           </div>
         )}
@@ -225,7 +227,7 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
           e.preventDefault();
           onBack();
         }}
-        className="text-sm text-violet-300 hover:text-violet-200"
+        className="inline-flex min-h-11 items-center text-sm text-accent hover:underline sm:min-h-9"
       >
         ← Back to artists
       </a>
@@ -235,13 +237,13 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
       </Callout>
 
       <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-zinc-50">{artist.name}</h3>
+        <h3 className="font-display text-xl font-normal text-text">{artist.name}</h3>
         <div className="flex flex-wrap gap-1.5">
           {artist.origins.map((o) => (
             <Pill key={o} tone="neutral">{ORIGIN_LABEL[o]}</Pill>
           ))}
         </div>
-        <p className="text-xs text-zinc-400">
+        <p className="font-mono text-xs tabular-nums text-text-muted">
           {artist.mbid ? `MusicBrainz ${artist.mbid}` : 'No MusicBrainz id yet'} · {artist.editionsCount} billed{' '}
           {artist.editionsCount === 1 ? 'edition' : 'editions'} ·{' '}
           {artist.communityCount === null ? 'Community count not available' : `${artist.communityCount} community`}
@@ -249,7 +251,7 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
       </div>
 
       {problem && (
-        <div role="alert" className="space-y-2 rounded-lg border border-rose-900 bg-rose-950/40 p-3 text-sm text-rose-200">
+        <div role="alert" className="space-y-2 rounded-card border border-bad/45 bg-bad/10 p-3 text-sm text-bad">
           <p>{problem.message}</p>
           {problem.with && (
             <button onClick={() => { setMerging(true); setTarget(artists.find((a) => a.key === problem.with!.id) ?? null); }} className={quiet}>
@@ -278,11 +280,11 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
             aria-label="Name"
           />
           <button type="submit" disabled={!renamed || Boolean(busy)} className={primary}>
-            {busy === 'preview' && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Preview rename
+            {busy === 'preview' && <Equalizer size="sm" />} Preview rename
           </button>
         </form>
         {renamed && (
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-text-muted">
             Changes the shared catalog only; member events keep the names they typed. “{artist.name}” is kept as an AKA.
           </p>
         )}
@@ -294,7 +296,7 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
         {artist.akas.length > 0 ? (
           <ul className="flex flex-wrap gap-1.5">
             {artist.akas.map((a) => (
-              <li key={a} className="inline-flex items-center gap-1 rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300">
+              <li key={a} className="inline-flex items-center gap-1 rounded-full border border-line-strong px-2 py-0.5 text-xs text-text-muted">
                 {a}
                 <IconButton
                   icon={X}
@@ -307,7 +309,7 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
             ))}
           </ul>
         ) : (
-          <p className="text-xs text-zinc-500">No AKAs yet.</p>
+          <p className="text-xs text-text-muted">No AKAs yet.</p>
         )}
         <form
           className="flex gap-2"
@@ -330,7 +332,7 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
             <Plus className="h-3.5 w-3.5" /> Preview
           </button>
         </form>
-        <p className="text-xs text-zinc-400">Lineups that name this artist by an AKA are matched to it.</p>
+        <p className="text-xs text-text-muted">Lineups that name this artist by an AKA are matched to it.</p>
         {pendingPanel('aka')}
       </div>
 
@@ -343,24 +345,25 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
         ) : (
           <div className="space-y-2">
             <input className={control} value={pick} onChange={(e) => setPick(e.target.value)} placeholder="Find the artist to keep" aria-label="Find the artist to keep" />
-            <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+            <Ledger>
               {candidates.map((a) => (
-                <li key={a.key}>
-                  <button
-                    onClick={() => {
-                      setTarget(a);
-                      clearPending('merge');
-                    }}
-                    className={`flex w-full items-center gap-2 p-2 text-left text-sm hover:bg-zinc-900/60 ${target?.key === a.key ? 'text-violet-200' : 'text-zinc-200'}`}
-                  >
-                    {a.name}
-                    <span className="ml-auto text-xs text-zinc-500">{a.mbid ? 'MusicBrainz' : 'No MusicBrainz id'}</span>
-                  </button>
-                </li>
+                <Ledger.Row
+                  key={a.key}
+                  edge="none"
+                  selected={target?.key === a.key}
+                  onOpen={() => {
+                    setTarget(a);
+                    clearPending('merge');
+                  }}
+                  className="min-h-11 px-3 py-2 text-sm sm:min-h-9"
+                >
+                  <span className={target?.key === a.key ? 'font-medium text-accent' : 'text-text'}>{a.name}</span>
+                  <span className="ml-auto text-xs text-text-faint">{a.mbid ? 'MusicBrainz' : 'No MusicBrainz id'}</span>
+                </Ledger.Row>
               ))}
-            </ul>
+            </Ledger>
             {target && (
-              <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 text-sm text-zinc-300">
+              <div className="space-y-2 rounded-card border border-line bg-surface-1 p-3 text-sm text-text-muted">
                 <p>
                   “{artist.name}” merges into “{target.name}”, and “{artist.name}” becomes an AKA. Its editions and performances move to “{target.name}”.
                   Your own record of this artist follows too, when you have one. Member events are not changed. {mbidNote} You can undo it.
@@ -373,7 +376,7 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
                       disabled={Boolean(busy)}
                       className={primary}
                     >
-                      {busy === 'preview' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitMerge className="h-3.5 w-3.5" />} Preview merge
+                      {busy === 'preview' ? <Equalizer size="sm" /> : <GitMerge className="h-3.5 w-3.5" />} Preview merge
                     </button>
                   </div>
                 )}
@@ -397,13 +400,13 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
       <div className="space-y-2">
         <h3 className={sectionTitle}>Appearances</h3>
         {appearances.length === 0 ? (
-          <p className="text-sm text-zinc-400">Not in any edition in the archive yet.</p>
+          <p className="text-sm text-text-muted">Not in any edition in the archive yet.</p>
         ) : (
-          <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+          <Ledger>
             {appearances.map((a) => {
               const url = editionUrl(a.editionId);
               return (
-                <li key={`${a.editionId}-${a.billing ?? ''}-${a.set ?? ''}`} className="p-2.5 text-sm">
+                <Ledger.Row key={`${a.editionId}-${a.billing ?? ''}-${a.set ?? ''}`} edge="none" className="min-h-11 px-3 py-2.5 text-sm sm:min-h-9">
                   <a
                     href={url}
                     onClick={(e) => {
@@ -413,15 +416,17 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
                       rememberManageSearch(new URL(url, window.location.origin).search);
                       window.dispatchEvent(new PopStateEvent('popstate'));
                     }}
-                    className="font-medium text-zinc-100 hover:text-violet-300 hover:underline"
+                    className="font-medium text-text hover:text-accent hover:underline"
                   >
                     {a.editionName}
                   </a>
-                  <span className="ml-2 text-xs text-zinc-400">{[a.billing ?? 'Artist', a.set, a.startDate, a.venue].filter(Boolean).join(' · ')}</span>
-                </li>
+                  <span className="ml-2 font-mono text-xs tabular-nums text-text-muted">
+                    {[a.billing ?? 'Artist', a.set, a.startDate, a.venue].filter(Boolean).join(' · ')}
+                  </span>
+                </Ledger.Row>
               );
             })}
-          </ul>
+          </Ledger>
         )}
       </div>
     </div>
