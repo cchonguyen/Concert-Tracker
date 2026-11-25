@@ -7,7 +7,10 @@ import { LoggedEvent } from '../services/lineupApi';
 import { EmailCard } from './EmailCard';
 import { FeatureTiles } from './FeatureTiles';
 import { YearTile } from './YearTile';
+import { Ticket as TicketCard, TicketEventLine, TicketHeadline, TicketKicker, TicketSmallLine, StubBarcode, StubShortDate } from './ui/Ticket';
 import type { YearReview } from '../services/stats';
+import { barcodeBars, shortDate, ticketLines, type TicketAct } from '../services/ticket';
+import { placeLabel, whenLabel } from '../services/format';
 
 interface HomePageProps {
   canManage: boolean;
@@ -16,6 +19,11 @@ interface HomePageProps {
   artistCount: number;
   yearReview: YearReview | null;
   yearCities: number;
+  yearMonths: number[]; // shows per month this year, Jan to Dec
+  lastShow: LoggedEvent | null;
+  onThisDay: LoggedEvent | null;
+  today: string; // YYYY-MM-DD
+  onOpenEvent: (id: string) => void;
   needs: { confirm: number; email: number; researching: number };
   emailCheck: boolean;
   onCaptured: (event: LoggedEvent) => void;
@@ -35,6 +43,53 @@ const TINT: Record<Section, string> = {
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
+// A small ticket for one show on Home. Only the name, acts (with stored roles), date and place.
+function SmallShowTicket({
+  event,
+  kicker,
+  onOpen,
+}: {
+  event: LoggedEvent;
+  kicker: string;
+  onOpen: (id: string) => void;
+}) {
+  const acts: TicketAct[] = event.seen.map((s) => ({ name: s.name, role: s.role }));
+  const lines = ticketLines(event.name, acts);
+  const parts = shortDate(event);
+  const where = [whenLabel(event), placeLabel(event)].filter(Boolean).join(' · ');
+  const body = (
+    <>
+      <TicketKicker items={[kicker]} />
+      <TicketHeadline names={lines.big} />
+      {lines.showEventLine && <TicketEventLine>{event.name}</TicketEventLine>}
+      {(lines.small.length > 0 || lines.moreHeadliners > 0) && (
+        <TicketSmallLine>
+          {[lines.small.join(', '), lines.moreHeadliners > 0 ? `+${lines.moreHeadliners} more` : ''].filter(Boolean).join(' · ')}
+        </TicketSmallLine>
+      )}
+      {where && <TicketSmallLine>{where}</TicketSmallLine>}
+    </>
+  );
+  const stub = (
+    <div className="flex h-full flex-col justify-between gap-3">
+      {parts && <StubShortDate parts={parts} />}
+      <StubBarcode bars={barcodeBars(event.id)} height={28} />
+    </div>
+  );
+  return (
+    <div className="group relative">
+      <TicketCard layout="columns" size="small" label={`Ticket for ${event.name}`} body={body} stub={stub} />
+      <button
+        type="button"
+        onClick={() => onOpen(event.id)}
+        className="absolute inset-0 rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        <span className="sr-only">Open {event.name}</span>
+      </button>
+    </div>
+  );
+}
+
 // The landing page: the add box, what needs you, and one card per page.
 export const HomePage: React.FC<HomePageProps> = ({
   canManage,
@@ -43,6 +98,11 @@ export const HomePage: React.FC<HomePageProps> = ({
   artistCount,
   yearReview,
   yearCities,
+  yearMonths,
+  lastShow,
+  onThisDay,
+  today,
+  onOpenEvent,
   needs,
   emailCheck,
   onCaptured,
@@ -52,6 +112,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   onOpenSummary,
   onOpen,
 }) => {
+  const yearsAgo = onThisDay ? Number(today.slice(0, 4)) - Number(onThisDay.startDate!.slice(0, 4)) : 0;
   const empty = eventCount === 0;
   const live = (p: SubPage): { n: number; unit: string } | null => {
     if (p === 'summary') return { n: eventCount, unit: eventCount === 1 ? 'event' : 'events' };
@@ -89,7 +150,20 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       {emailCheck && <EmailCard waiting={needs.email} onCheck={onReviewEmail} />}
 
-      {yearReview && <YearTile review={yearReview} cities={yearCities} onOpen={() => onOpen('stats')} />}
+      {yearReview && <YearTile review={yearReview} cities={yearCities} months={yearMonths} onOpen={() => onOpen('stats')} />}
+
+      {(lastShow || onThisDay) && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {lastShow && <SmallShowTicket event={lastShow} kicker="Last show" onOpen={onOpenEvent} />}
+          {onThisDay && (
+            <SmallShowTicket
+              event={onThisDay}
+              kicker={`On this day · ${yearsAgo === 1 ? '1 year ago' : `${yearsAgo} years ago`}`}
+              onOpen={onOpenEvent}
+            />
+          )}
+        </div>
+      )}
 
       <FeatureTiles eventCount={eventCount} onOpen={onOpen} onImport={onImport} onShare={onShare} />
 

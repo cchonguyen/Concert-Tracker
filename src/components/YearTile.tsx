@@ -1,38 +1,89 @@
-import React from 'react';
-import { Archive } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import type { YearReview } from '../services/stats';
-import { Button } from './ui/Button';
+import { barcodeBars } from '../services/ticket';
+import { StubBarcode, StubSerial, Ticket, TicketKicker, TicketSmallLine } from './ui/Ticket';
 
 interface YearTileProps {
   review: YearReview;
   cities: number;
+  months: number[]; // shows per month, Jan to Dec (length 12)
   onOpen: () => void;
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
+const WIDE = '(min-width: 640px)';
+
+// Columns from 640px, rows on phones. Reads matchMedia so one ticket is rendered (no duplicate ids).
+function useWide(): boolean {
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.matchMedia(WIDE).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(WIDE);
+    const onChange = () => setWide(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return wide;
+}
+
+// Twelve thin bars, one per month, scaled to the busiest month. Decorative.
+function SparkBars({ months }: { months: number[] }) {
+  const max = Math.max(1, ...months);
+  return (
+    <div aria-hidden="true" className="flex h-10 items-end gap-1">
+      {months.map((n, i) => (
+        <span
+          key={i}
+          className={`block min-w-0 flex-1 ${n > 0 ? 'bg-accent' : 'bg-perf'}`}
+          style={{ height: n > 0 ? `${Math.max(4, Math.round((n / max) * 40))}px` : '3px' }}
+        />
+      ))}
+    </div>
+  );
+}
+
 // "See your year" on Home: this year's shows, acts and cities, worked out from the same events as Stats.
 // The share link is made in Stats (SharePanel), and it shares your whole history, not one year.
-export const YearTile: React.FC<YearTileProps> = ({ review, cities, onOpen }) => {
-  const line = [plural(review.events, 'show', 'shows'), plural(review.artists, 'act', 'acts'), plural(cities, 'city', 'cities')];
-  if (review.topArtist) line.push(`most seen: ${review.topArtist.label}`);
+export const YearTile: React.FC<YearTileProps> = ({ review, cities, months, onOpen }) => {
+  const wide = useWide();
+  const line = [plural(review.events, 'show', 'shows'), plural(review.artists, 'act', 'acts'), plural(cities, 'city', 'cities')].join(' · ');
+
+  const body = (
+    <>
+      <TicketKicker items={['Admit one', `Your ${review.year}`]} />
+      <h2
+        id="year-tile-title"
+        className="font-display text-[28px] leading-none tracking-[-0.02em] text-text [text-wrap:balance] sm:text-[34px]"
+      >
+        {line}
+      </h2>
+      {review.topArtist && <TicketSmallLine>Most seen: {review.topArtist.label}</TicketSmallLine>}
+      <SparkBars months={months} />
+    </>
+  );
+
+  const stub = (
+    <div className="flex h-full flex-col justify-between gap-3">
+      <StubSerial text={`No. ${review.events}`} />
+      <StubBarcode bars={barcodeBars(`year-${review.year}`)} height={34} />
+      <button
+        type="button"
+        onClick={onOpen}
+        className="min-h-11 self-start text-sm font-semibold text-accent hover:underline sm:min-h-9"
+      >
+        See your year ›
+      </button>
+    </div>
+  );
+
   return (
-    <section
-      aria-labelledby="year-tile-title"
-      className="flex flex-wrap items-center gap-4 rounded-card border border-accent-tint-line bg-surface-1 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] transition-[border-color,box-shadow] duration-150 hover:border-accent hover:shadow-[0_0_0_1px_var(--la-accent-tint-line),0_0_20px_-4px_var(--la-accent-tint)] motion-reduce:transition-none"
-    >
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-control border border-accent-tint-line bg-accent-tint text-accent">
-        <Archive className="h-6 w-6" strokeWidth={1.75} aria-hidden="true" />
-      </span>
-      <div className="min-w-0 flex-1 space-y-1">
-        <h2 id="year-tile-title" className="font-display text-xl font-normal text-text">
-          See your {review.year}
-        </h2>
-        <p className="text-sm text-text-muted">{line.join(' · ')}</p>
-      </div>
-      <Button variant="secondary" onClick={onOpen}>
-        Open Stats to share
-      </Button>
-    </section>
+    <Ticket
+      layout={wide ? 'columns' : 'rows'}
+      size="hero"
+      stubWidth={150}
+      label={`Your ${review.year} so far`}
+      body={body}
+      stub={stub}
+    />
   );
 };
