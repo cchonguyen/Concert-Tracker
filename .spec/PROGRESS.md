@@ -47,7 +47,7 @@ Track C (Claude) and the Gemini package "Back Office" run in parallel. Claude's 
 - [ ] **Slice 29.4: Event detail hero and bar (after 28.4)** [UI / VISUAL] Target files: src/components/PosterHeader.tsx, src/components/HeroBar.tsx, src/components/EventDetail.tsx | Verify: npm run lint --silent
 - [x] **Slice 29.5: Stub headers on lists** [UI / VISUAL] Target files: src/components/ArtistsView.tsx, src/components/StatsView.tsx, src/components/EventsHome.tsx, src/components/ui/StubHeader.tsx | Issue: #819 | Verify: npm run lint --silent
 - [x] **Slice 29.6: Home anchor** [UI / VISUAL] Target files: src/components/YearTile.tsx, src/components/HomePage.tsx, src/App.tsx | Issue: #821 | Verify: npm run lint --silent
-- [ ] **Slice 29.7: Stats year header** [UI / VISUAL] Target files: src/components/StatsView.tsx | Verify: npm run lint --silent
+- [ ] **Slice 29.7: Stats year header** [IN_PROGRESS] [UI / VISUAL] Target files: src/components/StatsView.tsx | Issue: #823 | Verify: npm run lint --silent
 - [ ] **Slice 29.8: Share page in Library** [UI / VISUAL] Target files: src/services/nav.ts, src/components/pageIcons.ts, src/App.tsx, src/components/AppHeaderMenu.tsx, src/components/SharePage.tsx | Verify: npm run lint --silent && npm test --silent
 - [ ] **Slice 29.9: Event cards** [CORE / DATA] Target files: src/components/ShareCards.tsx, src/services/shareCard.ts, tests/shareCard.test.ts | Verify: npm run lint --silent && npm test --silent
 ## Inferred values (docs/specs/inferred-values.md, Charlie said "start building" 2026-11-25)
