@@ -42,7 +42,7 @@ Track C (Claude) and the Gemini package "Back Office" run in parallel. Claude's 
 
 ## Ticket stub (docs/specs/ticket-stub.md, design approved by Charlie 2026-11-25 PT; waiting on his go for the plan)
 - [x] **Slice 29.1: Ticket rules in code** [CORE / DATA] Target files: src/services/ticket.ts, tests/ticket.test.ts | Issue: #811 | Verify: npm run lint --silent && npm test --silent
-- [ ] **Slice 29.2: Ticket facts for an event** [CORE / DATA] Target files: src/server/events/importRoutes.ts, src/services/lineupApi.ts, tests/ticketFacts.test.ts | Verify: npm run lint --silent && npm test --silent
+- [ ] **Slice 29.2: Ticket facts for an event** [IN_PROGRESS] [CORE / DATA] Target files: src/server/events/email/ticketFacts.ts, src/server/events/importRoutes.ts, src/services/lineupApi.ts, tests/ticketFacts.test.ts | Issue: #814 | Verify: npm run lint --silent && npm test --silent
 - [ ] **Slice 29.3: Ticket and StubHeader components** [UI / VISUAL] Target files: src/components/ui/Ticket.tsx, src/components/ui/StubHeader.tsx, src/index.css | Verify: npm run lint --silent
 - [ ] **Slice 29.4: Event detail hero and bar (after 28.4)** [UI / VISUAL] Target files: src/components/PosterHeader.tsx, src/components/HeroBar.tsx, src/components/EventDetail.tsx | Verify: npm run lint --silent
 - [ ] **Slice 29.5: Stub headers on lists** [UI / VISUAL] Target files: src/components/ArtistsView.tsx, src/components/StatsView.tsx, src/components/EventsHome.tsx | Verify: npm run lint --silent
