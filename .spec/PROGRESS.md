@@ -50,7 +50,6 @@ Track C (Claude) and the Gemini package "Back Office" run in parallel. Claude's 
 - [ ] **Slice 29.7: Stats year header** [UI / VISUAL] Target files: src/components/StatsView.tsx | Verify: npm run lint --silent
 - [ ] **Slice 29.8: Share page in Library** [UI / VISUAL] Target files: src/services/nav.ts, src/components/pageIcons.ts, src/App.tsx, src/components/AppHeaderMenu.tsx, src/components/SharePage.tsx | Verify: npm run lint --silent && npm test --silent
 - [ ] **Slice 29.9: Event cards** [CORE / DATA] Target files: src/components/ShareCards.tsx, src/services/shareCard.ts, tests/shareCard.test.ts | Verify: npm run lint --silent && npm test --silent
-
 ## Inferred values (docs/specs/inferred-values.md, Charlie said "start building" 2026-11-25)
 - [x] **Slice 27.1: Inferred values storage** [CORE / DATA] Target files: supabase/migrations/0055_edition_inferences.sql, src/server/lineup/types.ts, src/server/lineup/store/types.ts, src/server/lineup/store/fileStore.ts, src/server/lineup/store/supabaseStore.ts, tests/editionInferences.test.ts | Issue: #748 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 27.2: Inferred values rules (record, heal, undo)** [CORE / DATA] Target files: src/server/canon/inferences.ts, src/server/canon/editions.ts, tests/inferenceRules.test.ts | Issue: #749 | Verify: npm run lint --silent && npm test --silent
