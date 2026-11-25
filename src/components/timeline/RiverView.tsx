@@ -26,9 +26,9 @@ interface RiverProps extends TimelineViewProps {
 }
 
 const MARK_CLASS = (item: RiverItem) => {
-  if (item.span.attendance === 'confirm') return 'fill-transparent stroke-amber-400';
-  if (item.span.attendance === 'upcoming') return 'fill-transparent stroke-violet-400';
-  return item.span.kind === 'festival' ? 'fill-violet-400' : 'fill-violet-600';
+  if (item.span.attendance === 'confirm') return 'fill-transparent stroke-warn';
+  if (item.span.attendance === 'upcoming') return 'fill-transparent stroke-accent';
+  return item.span.kind === 'festival' ? 'fill-accent' : 'fill-accent-fill';
 };
 
 export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda }) => {
@@ -53,23 +53,28 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
     setZoom(Math.max(0, Math.min(RIVER_ZOOMS.length - 1, next)));
   };
 
-  if (!layout) return <p className="py-10 text-center text-sm text-zinc-400">No dated events match these filters.</p>;
+  if (!layout) return <p className="py-10 text-center text-sm text-text-muted">No dated events match these filters.</p>;
   const height = AXIS + Math.max(1, layout.lanes) * LANE + 8;
   const y = (lane: number) => AXIS + lane * LANE + LANE / 2;
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between text-xs text-zinc-400">
+      <div className="flex items-center justify-between text-xs text-text-muted">
         <span>Drag or scroll sideways. Tap a mark to open it.</span>
         <span className="flex items-center gap-1">
-          <button onClick={() => zoomTo(zoom - 1)} disabled={zoom === 0} aria-label="Zoom out" className="rounded-lg border border-zinc-800 p-1 hover:border-zinc-600 disabled:opacity-40">
+          <button
+            onClick={() => zoomTo(zoom - 1)}
+            disabled={zoom === 0}
+            aria-label="Zoom out"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-control border border-line-strong bg-surface-1 text-text-muted hover:border-accent-tint-line hover:text-text disabled:opacity-40 sm:min-h-9 sm:min-w-9"
+          >
             <Minus className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={() => zoomTo(zoom + 1)}
             disabled={zoom === RIVER_ZOOMS.length - 1}
             aria-label="Zoom in"
-            className="rounded-lg border border-zinc-800 p-1 hover:border-zinc-600 disabled:opacity-40"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-control border border-line-strong bg-surface-1 text-text-muted hover:border-accent-tint-line hover:text-text disabled:opacity-40 sm:min-h-9 sm:min-w-9"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
@@ -77,7 +82,7 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
       </div>
       <div
         ref={box}
-        className="cursor-grab overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/30 active:cursor-grabbing"
+        className="cursor-grab overflow-x-auto rounded-card border border-line-strong bg-surface-1 active:cursor-grabbing"
         onWheel={() => (moved.current = true)}
         onTouchStart={() => (moved.current = true)}
         onPointerDown={(e) => {
@@ -95,21 +100,21 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
         <svg width={layout.width} height={height} className="block select-none" role="img" aria-label="Events along a time axis">
           {layout.ticks.map((t) => (
             <g key={`${t.label}-${t.x}`}>
-              <line x1={t.x} x2={t.x} y1={t.major ? 4 : 14} y2={height} className={t.major ? 'stroke-zinc-700' : 'stroke-zinc-800/70'} strokeWidth={1} />
-              <text x={t.x + 3} y={t.major ? 14 : 20} className={t.major ? 'fill-zinc-300 text-[11px] font-bold' : 'fill-zinc-500 text-[9px]'}>
+              <line x1={t.x} x2={t.x} y1={t.major ? 4 : 14} y2={height} className={t.major ? 'stroke-line-strong' : 'stroke-line'} strokeWidth={1} />
+              <text x={t.x + 3} y={t.major ? 14 : 20} className={t.major ? 'fill-text-muted font-mono text-[11px] font-bold' : 'fill-text-faint font-mono text-[9px]'}>
                 {t.label}
               </text>
             </g>
           ))}
-          <line x1={layout.todayX} x2={layout.todayX} y1={4} y2={height} className="stroke-violet-400" strokeWidth={1.5} strokeDasharray="3 3" />
-          <text x={layout.todayX + 3} y={height - 4} className="fill-violet-300 text-[9px] font-bold uppercase">
+          <line x1={layout.todayX} x2={layout.todayX} y1={4} y2={height} className="stroke-accent" strokeWidth={1.5} strokeDasharray="3 3" />
+          <text x={layout.todayX + 3} y={height - 4} className="fill-accent font-mono text-[9px] font-bold uppercase">
             Today
           </text>
           {layout.items.map((item) => {
             const cy = y(item.lane);
             const outlined = item.span.attendance !== 'went';
             const common = {
-              className: `${MARK_CLASS(item)} cursor-pointer hover:brightness-125`,
+              className: `${MARK_CLASS(item)} cursor-pointer hover:brightness-110`,
               strokeWidth: outlined ? 1.5 : 0,
               strokeDasharray: outlined ? '3 2' : undefined,
             };
@@ -125,7 +130,7 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
                   <circle cx={item.x + item.r} cy={cy} r={item.r} {...common} />
                 )}
                 {item.label && (
-                  <text x={item.x + Math.max(item.w, item.r * 2) + 5} y={cy + 4} className="pointer-events-none fill-zinc-200 text-[11px]">
+                  <text x={item.x + Math.max(item.w, item.r * 2) + 5} y={cy + 4} className="pointer-events-none fill-text text-[11px]">
                     {item.span.attendance === 'confirm' ? '? ' : ''}
                     {item.span.title}
                   </text>
@@ -165,20 +170,20 @@ const Stretch: React.FC<{ shown: TimelineSpan[]; more: number; onOpen: (id: stri
         const place = placeLabel(s.event);
         return (
           <li key={s.id}>
-            <button type="button" onClick={() => onOpen(s.id)} className="w-full rounded-md px-1.5 py-1 text-left hover:bg-zinc-800">
-              <span className="block truncate font-medium text-zinc-100">{s.title}</span>
-              <span className="block truncate text-xs text-zinc-400">
+            <button type="button" onClick={() => onOpen(s.id)} className="w-full rounded-control px-1.5 py-1 text-left hover:bg-surface-2">
+              <span className="block truncate font-medium text-text">{s.title}</span>
+              <span className="block truncate font-mono text-xs tabular-nums text-text-muted">
                 {dateChip(s)}
                 {place ? ` · ${place}` : ''}
               </span>
-              <span className="block text-xs text-zinc-400">{ATTENDANCE_LABEL[s.attendance]}</span>
+              <span className="block text-xs text-text-muted">{ATTENDANCE_LABEL[s.attendance]}</span>
             </button>
           </li>
         );
       })}
     </ul>
     {more > 0 && (
-      <button type="button" onClick={onMore} className="px-1.5 text-xs font-medium text-violet-300 hover:text-violet-200">
+      <button type="button" onClick={onMore} className="px-1.5 text-xs font-medium text-accent hover:underline">
         and {more} more
       </button>
     )}
