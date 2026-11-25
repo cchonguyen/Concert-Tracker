@@ -3,7 +3,7 @@ import { useIsOwner } from './MeContext';
 import { noteView } from '../services/vaultSession';
 import { draftAfterStoredChange } from '../services/fieldDraft';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Check, ChevronDown, CircleHelp, CloudSun, ExternalLink, FolderCog, Heart, History, Loader2, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, ChevronDown, CircleHelp, CloudSun, ExternalLink, FolderCog, Heart, History, ListMusic, Loader2, Plus, RefreshCw, Search, Trash2, Users, X } from 'lucide-react';
 import {
   ArtistSuggestion,
   canonicalApi,
@@ -45,6 +45,7 @@ import { Burst } from './ui/Burst';
 import { burstConfetti } from './ui/confetti';
 import { PosterHeader, ThingsLeft } from './PosterHeader';
 import { Stars } from './ui/Stars';
+import { Tabs } from './ui/Tabs';
 import { cityWithRegion, sameCountry } from '../server/events/regions';
 import { attendanceOf } from '../server/events/attendance';
 import type { EditionPerformance } from '../server/lineup/types';
@@ -139,6 +140,8 @@ const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-text-muted'
 // A card's own title, as in the design: plain words, not small capitals.
 const cardTitle = 'text-base font-semibold text-text';
 const card = 'scroll-mt-16 space-y-3 rounded-card border border-line bg-surface-1 p-4';
+// A card under folder tabs: square on top, with the tab row's stronger line.
+const tabbedCard = 'scroll-mt-16 space-y-3 rounded-b-card border border-t-0 border-line-strong bg-surface-1 p-4';
 
 // A "?" beside a section title, with two or three sentences on how the section works.
 const SectionHelp: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -1264,9 +1267,19 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const state = attendanceOf(event, new Date().toISOString().slice(0, 10));
   const gapsLeft = thingsLeft(event, (e, g) => hasGap(e, g, undefined, edition ? lineupFacts(edition) : undefined));
   // Scrolls to the section a gap is filled in and highlights it for a moment.
+  const [rightTab, setRightTab] = useState<'seen' | 'lineup'>('seen');
   const showGap = (gap: Gap) => {
-    const el = document.getElementById(GAP_SECTION[gap]);
     setGuide(gap);
+    // Open the Who you saw tab first, so its card is on screen to scroll to.
+    if (GAP_SECTION[gap] === 'who-you-saw' && rightTab !== 'seen') {
+      setRightTab('seen');
+      window.requestAnimationFrame(() => revealGap(gap));
+      return;
+    }
+    revealGap(gap);
+  };
+  const revealGap = (gap: Gap) => {
+    const el = document.getElementById(GAP_SECTION[gap]);
     if (!el) return;
     el.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
     el.classList.add('ring-2', 'ring-accent/70', 'rounded-xl');
@@ -1699,9 +1712,20 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         </details>
 
           </div>
-          <div className="min-w-0 space-y-5">
+          <div className="min-w-0">
+          {/* Who you saw and the full lineup share the column as folder tabs joined to their card. */}
+          <Tabs
+            label="Who you saw and lineup"
+            value={rightTab}
+            onChange={setRightTab}
+            panel="surface-1"
+            items={[
+              { value: 'seen', label: 'Who you saw', icon: Users, count: event.seen.length },
+              { value: 'lineup', label: 'Lineup', icon: ListMusic, ...(edition ? { count: lineupActs.length } : {}) },
+            ]}
+          />
         {/* Who you saw */}
-        <section id="who-you-saw" className={card}>
+        <section id="who-you-saw" hidden={rightTab !== 'seen'} className={tabbedCard}>
           <div className="flex items-center justify-between gap-2">
             <h3 className={cardTitle}>
               Who you saw{event.seen.length > 0 && <span className="font-normal text-text-muted"> · {event.seen.length}</span>}
@@ -1738,7 +1762,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         </section>
 
         {/* Stage 2: the lineup */}
-        <section id="lineup" className={card}>
+        <section id="lineup" hidden={rightTab !== 'lineup'} className={tabbedCard}>
           <h3 className={`${cardTitle} flex items-baseline gap-1.5`}>
             Full lineup
             {edition && <span className="font-normal text-text-muted">· {lineupActs.length}</span>}
