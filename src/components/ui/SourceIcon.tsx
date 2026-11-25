@@ -27,7 +27,7 @@ export function SourceIcon({ source, readBy }: { source: SourceType; readBy?: st
   const suffix = readBy === 'gemini' ? ' (read by AI)' : '';
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap" title={`${label}${suffix}`}>
-      <Icon className="h-3 w-3 shrink-0 text-zinc-400" aria-hidden="true" />
+      <Icon className="h-3 w-3 shrink-0 text-text-muted" aria-hidden="true" />
       <span>{label}{suffix}</span>
     </span>
   );

@@ -32,7 +32,7 @@ export function Callout({ id, tone = 'info', children }: { id: string; tone?: No
         type="button"
         onClick={dismiss}
         aria-label="Dismiss this tip"
-        className="absolute right-1 top-1 flex h-10 w-10 items-center justify-center rounded-control text-zinc-400 hover:text-zinc-100"
+        className="absolute right-1 top-1 flex h-10 w-10 items-center justify-center rounded-control text-text-muted hover:bg-surface-2 hover:text-text"
       >
         <X className="h-3.5 w-3.5" aria-hidden="true" />
       </button>

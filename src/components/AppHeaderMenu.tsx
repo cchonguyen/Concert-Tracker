@@ -43,7 +43,7 @@ export function AppHeaderMenu({ theme, canMembers, canAccount, canSheets, pendin
     action();
   };
 
-  const item = 'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-800';
+  const item = 'flex w-full items-center gap-2 min-h-11 rounded-control px-2.5 py-2 text-left text-sm text-text-muted hover:bg-surface-2 hover:text-text sm:min-h-9';
   const actions = [
     { icon: FileUp, name: 'Import', label: 'Import a list (CSV)', run: onImport },
     { icon: Download, name: 'Export', label: 'Export all as CSV', run: onExport },
@@ -57,14 +57,14 @@ export function AppHeaderMenu({ theme, canMembers, canAccount, canSheets, pendin
         onClick={() => setOpen((o) => !o)}
         aria-label="Menu"
         aria-expanded={open}
-        className={`flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 transition-colors ${
-          open ? 'text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
+        className={`flex h-11 w-11 items-center justify-center rounded-control border border-line bg-surface-1 transition-colors sm:h-9 sm:w-9 ${
+          open ? 'text-text' : 'text-text-muted hover:text-text'
         }`}
       >
         <Menu className="h-4 w-4" />
       </button>
       {open && (
-        <div className="fixed inset-x-0 bottom-0 z-40 max-h-[80vh] space-y-4 overflow-y-auto rounded-t-2xl border-t border-zinc-800 bg-zinc-900 p-4 shadow-xl shadow-black/30 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-11 sm:max-h-none sm:w-64 sm:overflow-visible sm:rounded-xl sm:border sm:p-3">
+        <div className="fixed inset-x-0 bottom-0 z-40 max-h-[80vh] space-y-4 overflow-y-auto rounded-t-card border-t border-line bg-surface-1 p-4 shadow-xl shadow-black/30 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-11 sm:max-h-none sm:w-64 sm:overflow-visible sm:rounded-card sm:border sm:p-3">
           {(canMembers || canAccount) && (
             <div className="space-y-1">
               {canAccount && (
@@ -82,8 +82,8 @@ export function AppHeaderMenu({ theme, canMembers, canAccount, canSheets, pendin
               )}
             </div>
           )}
-          <div className="space-y-2 border-t border-zinc-800 pt-3">
-            <p className="px-1 text-xs font-medium uppercase tracking-wide text-zinc-400">Your data</p>
+          <div className="space-y-2 border-t border-line pt-3">
+            <p className="px-1 text-xs font-medium uppercase tracking-wide text-text-muted">Your data</p>
             <div className="grid grid-cols-4 gap-1">
               {actions.map(({ icon: Icon, name, label, run }) => (
                 <button
@@ -91,7 +91,7 @@ export function AppHeaderMenu({ theme, canMembers, canAccount, canSheets, pendin
                   type="button"
                   onClick={() => choose(run)}
                   aria-label={label}
-                  className="flex w-full flex-col items-center gap-1 rounded-lg px-1 py-2 text-xs text-zinc-300 hover:bg-zinc-800"
+                  className="flex w-full flex-col items-center gap-1 rounded-control px-1 py-2 text-xs text-text-muted hover:bg-surface-2 hover:text-text"
                 >
                   <Icon className="h-4 w-4" aria-hidden="true" />
                   {name}
@@ -99,11 +99,11 @@ export function AppHeaderMenu({ theme, canMembers, canAccount, canSheets, pendin
               ))}
             </div>
           </div>
-          <div className="space-y-2 border-t border-zinc-800 pt-3">
-            <p className="px-1 text-xs font-medium uppercase tracking-wide text-zinc-400">Theme</p>
+          <div className="space-y-2 border-t border-line pt-3">
+            <p className="px-1 text-xs font-medium uppercase tracking-wide text-text-muted">Theme</p>
             <ThemeControls theme={theme} />
           </div>
-          <div className="border-t border-zinc-800 pt-3">
+          <div className="border-t border-line pt-3">
             <button onClick={() => choose(onShowTips)} className={item}>
               <Lightbulb className="h-3.5 w-3.5" />
               Show tips again
