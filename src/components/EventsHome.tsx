@@ -7,6 +7,7 @@ import { eventScale } from '../server/events/scale';
 import { EventTitle } from './EventTitle';
 import { Tabs } from './ui/Tabs';
 import { Ledger, type LedgerEdge } from './ui/Ledger';
+import { StubHeader } from './ui/StubHeader';
 import { KindPill } from './ui/KindPill';
 import { HintPill, type HintTone } from './ui/HintPill';
 
@@ -241,25 +242,36 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
       {(shown.length > 0 || tabItems.length > 1) && (
         <section>
           <Tabs label="Event lists" items={tabItems} value={open} onChange={setTab} panel="surface-1" />
-          <Ledger className="border-t-0">
-            {shown.length === 0 && <p className="px-3.5 py-4 text-sm text-text-muted">Nothing here yet.</p>}
+          {shown.length === 0 && (
+            <Ledger className="border-t-0">
+              <p className="px-3.5 py-4 text-sm text-text-muted">Nothing here yet.</p>
+            </Ledger>
+          )}
+          <div className="flex flex-col gap-5">
             {byYear(shown).map(([year, list]) => (
-              <React.Fragment key={year}>
-                <Ledger.Separator label={year} count={list.length} />
-                {list.map((e) => (
-                  <Row
-                    key={e.id}
-                    event={e}
-                    lineup={lineups[e.id]}
-                    researching={open === 'confirm' ? false : researching.has(e.id)}
-                    ask={open === 'confirm'}
-                    fresh={e.id === freshId}
-                    onOpen={() => onOpen(e.id)}
-                  />
-                ))}
-              </React.Fragment>
+              <StubHeader
+                key={year}
+                title={<h2 className="m-0 inline font-normal">{year}</h2>}
+                titleSize="large"
+                kicker={`ADMIT ${list.length}`}
+                segments={[{ k: 'SHOWS', v: list.length }]}
+              >
+                <Ledger bare>
+                  {list.map((e) => (
+                    <Row
+                      key={e.id}
+                      event={e}
+                      lineup={lineups[e.id]}
+                      researching={open === 'confirm' ? false : researching.has(e.id)}
+                      ask={open === 'confirm'}
+                      fresh={e.id === freshId}
+                      onOpen={() => onOpen(e.id)}
+                    />
+                  ))}
+                </Ledger>
+              </StubHeader>
             ))}
-          </Ledger>
+          </div>
         </section>
       )}
 

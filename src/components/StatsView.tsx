@@ -6,6 +6,7 @@ import { whenLabel } from '../services/format';
 import { attendanceOf } from '../server/events/attendance';
 import { facts, pastEvents, perYear, RankBy, Ranked, seriesStats, SeriesStat, top, yearInReview } from '../services/stats';
 import { EventTitle } from './EventTitle';
+import { StubHeader } from './ui/StubHeader';
 import { MONTH_NAMES } from '../server/lineup/months';
 
 // Bars grow in once per visit to Stats (design-refresh-2.md, section 4): only while the page has just opened,
@@ -107,28 +108,36 @@ const Ranking: React.FC<{ name: string; rows: Ranked[]; empty: string; onPick: (
   const growX = useGrow('x');
   const max = Math.max(1, ...rows.map((r) => r.count));
   return (
-    <div className={`${card} space-y-2`}>
-      <h3 className={title}>{name}</h3>
-      {rows.length === 0 ? (
-        <p className="text-sm text-text-muted">{empty}</p>
-      ) : (
-        <ol className="space-y-1.5">
-          {rows.map((r) => (
-            <li key={r.key}>
-              <button onClick={() => onPick(r)} className="group block min-h-11 w-full space-y-0.5 py-1 text-left sm:min-h-9" title={`${r.label}: ${plural(r.count, 'event')}`}>
-                <span className="flex items-baseline justify-between gap-2 text-sm">
-                  <span className="truncate text-text group-hover:text-accent">{r.label}</span>
-                  <span className="shrink-0 text-xs text-text-muted">{r.count}</span>
-                </span>
-                <span className="block h-1.5 w-full rounded-full bg-surface-2">
-                  <motion.span {...growX} className="block h-full rounded-full bg-accent-fill group-hover:brightness-125" style={{ ...growX.style, width: `${(r.count / max) * 100}%` }} />
-                </span>
-              </button>
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
+    <StubHeader
+      title={<h3 className="m-0 inline font-normal">{name}</h3>}
+      kicker="RANKING"
+      segments={rows.length > 0 ? [{ k: 'MOST', v: `${rows[0].count}×` }] : []}
+    >
+      <div className="px-4 py-3">
+        {rows.length === 0 ? (
+          <p className="text-sm text-text-muted">{empty}</p>
+        ) : (
+          <ol className="space-y-1.5">
+            {rows.map((r, i) => (
+              <li key={r.key}>
+                <button onClick={() => onPick(r)} className="group block min-h-11 w-full space-y-0.5 py-1 text-left sm:min-h-9" title={`${r.label}: ${plural(r.count, 'event')}`}>
+                  <span className="flex items-baseline justify-between gap-2 text-sm">
+                    <span className="flex min-w-0 items-baseline gap-2">
+                      <span className="shrink-0 font-mono text-xs font-bold text-accent">{String(i + 1).padStart(2, '0')}</span>
+                      <span className="truncate text-text group-hover:text-accent">{r.label}</span>
+                    </span>
+                    <span className="shrink-0 text-xs text-text-muted">{r.count}</span>
+                  </span>
+                  <span className="block h-1.5 w-full rounded-full bg-surface-2">
+                    <motion.span {...growX} className="block h-full rounded-full bg-accent-fill group-hover:brightness-125" style={{ ...growX.style, width: `${(r.count / max) * 100}%` }} />
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </StubHeader>
   );
 };
 

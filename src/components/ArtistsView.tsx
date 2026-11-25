@@ -6,6 +6,7 @@ import { artistGaps, spanLabel } from '../services/insights';
 import { whenLabel } from '../services/format';
 import { EventTitle } from './EventTitle';
 import { Ledger } from './ui/Ledger';
+import { StubHeader } from './ui/StubHeader';
 import { Pill as UiPill } from './ui/Pill';
 import { Tooltip } from './ui/Tooltip';
 import { ARTIST_SORTS, artistSummaries, ArtistSort, ArtistSummary, groupArtists, jumpTargets } from '../services/artists';
@@ -475,20 +476,18 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
         </p>
       ) : (
         groups.map((g) => (
-          <section key={g.label} id={groupId(g.label)} style={{ scrollMarginTop: headerHeight + barHeight }} className="space-y-2">
-            <h2 style={{ top: headerHeight + barHeight }} className="sticky z-10 -mx-1 flex items-baseline gap-2 bg-page px-1 py-1 text-xs font-bold uppercase tracking-wide text-text-muted backdrop-blur">
-              {g.label}
-              <span className="font-mono font-medium normal-case tracking-normal tabular-nums text-text-muted">{g.artists.length}</span>
-            </h2>
-            <Ledger>
-              {g.artists.map((a) =>
-                density === 'compact' ? (
-                  <ArtistRow key={a.key} artist={a} genre={genres.get(a.key)} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} onManage={onManage} />
-                ) : (
-                  <ArtistCard key={a.key} artist={a} genre={genres.get(a.key)} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} onManage={onManage} />
-                ),
-              )}
-            </Ledger>
+          <section key={g.label} id={groupId(g.label)} style={{ scrollMarginTop: headerHeight + barHeight }}>
+            <StubHeader title={<h2 className="m-0 inline font-normal">{g.label}</h2>} segments={[{ k: 'ARTISTS', v: g.artists.length }]}>
+              <Ledger bare>
+                {g.artists.map((a) =>
+                  density === 'compact' ? (
+                    <ArtistRow key={a.key} artist={a} genre={genres.get(a.key)} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} onManage={onManage} />
+                  ) : (
+                    <ArtistCard key={a.key} artist={a} genre={genres.get(a.key)} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} onManage={onManage} />
+                  ),
+                )}
+              </Ledger>
+            </StubHeader>
           </section>
         ))
       )}

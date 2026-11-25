@@ -35,9 +35,9 @@ export function StubHeader({
       <div className="ticket-paper flex min-w-0 items-stretch">
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5 px-4 py-5 min-[560px]:px-7 min-[560px]:py-[26px]">
           {kicker && <span className="font-mono text-[10.5px] tracking-[0.16em] text-text-muted uppercase">{kicker}</span>}
-          <span className={`min-w-0 font-display leading-none text-text [overflow-wrap:anywhere] ${titleClass}`}>
+          <div className={`min-w-0 font-display leading-none text-text [overflow-wrap:anywhere] ${titleClass}`}>
             {title}
-          </span>
+          </div>
         </div>
         {segments.map((s) => (
           <div
