@@ -9,7 +9,7 @@ Mockups: https://claude.ai/artifact/2eTeWGL5SgNCHSAZMbY2eg (round 3 boards "Even
 - **Goal.** A facelift across the app: the Bound Archive look. It uses Editorial typography and Bento icons and colour, puts rows in joined ledgers, and keeps the information density people rely on.
 - **Not in scope.**
   - The Harness UI restyle waits until 2.0 is built and proven.
-  - The ticket stub is parked.
+  - The ticket stub was parked here; it is now planned in `docs/specs/ticket-stub.md` (approved 25 Nov 2026).
   - A dotted "Guess" style waits on the separate never-guess decision.
   - No change to capture, lookup, storage or review behaviour.
 - **Product rules stay as they are.**
