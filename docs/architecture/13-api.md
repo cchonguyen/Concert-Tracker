@@ -13,6 +13,7 @@ Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
 | `POST /api/events/:id/details` | Run stage 1 research; `{ useGemini: true }` also has Gemini read the pages found (Check details, then "Deep search with AI"). Canonical editions also research multi-weekend dates (`researchEditionFacts`) |
 | `POST /api/events/:id/details/pick` | Pick a suggestion (`{ candidateId }`) or dismiss them (`{}`) |
 | `POST /api/events/:id/lineup` | Start stage 2 for the event (`{ lineupUrl? }`) |
+| `POST /api/events/:id/lineup/paste` | Stage 2 from a set-times page the owner pasted (`{ url, text }`, owner only; the event needs a full date). Runs only the `pasted` source; the link is never requested |
 | `POST /api/events/lineups` | Queue stage 2 for up to 5 events per request (`{ ids }`; Fill gaps sends up to 50 in chunks); skips events with a confirmed lineup, a lookup that is not `failed`, or no date. Jobs are not kicked: the worker or the Cloudflare cron runs them one at a time |
 | `GET /api/events/:id/name-artists` | Parts of the event's name that MusicBrainz knows as artists, as suggestions |
 | `POST /api/events/name-artists` | The suggestions from `GET /api/events/:id` for up to 500 events (`{ ids }`), from stored data only (`storedNameSuggestions`); returns `{ suggestions: { [eventId]: [...] } }` |

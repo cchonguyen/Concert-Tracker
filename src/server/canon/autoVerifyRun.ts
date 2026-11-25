@@ -18,6 +18,8 @@ export const AUTO_VERIFY_ACTOR = 'system:auto-verify';
 const KIND: Partial<Record<CandidateSource['sourceType'], { kind: EvidenceKind; trusted: boolean }>> = {
   promoter: { kind: 'fetched_page', trusted: true },
   clashfinder: { kind: 'fetched_page', trusted: true },
+  // A set-times page the owner pasted with its link (Charlie, 2026-11-24: pasted acts count as verified).
+  pasted: { kind: 'fetched_page', trusted: true },
   ticketmaster: { kind: 'api_record', trusted: true },
   musicbrainz: { kind: 'api_record', trusted: true },
   discovered: { kind: 'fetched_page', trusted: false },

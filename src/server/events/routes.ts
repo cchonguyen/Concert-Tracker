@@ -560,6 +560,26 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
     }
   });
 
+  // Stage 2 from a set-times page the owner pasted: { url, text }. The link is never requested; the lookup runs only
+  // the pasted source (docs/specs/pasted-set-times.md). Owner only until Charlie widens it.
+  router.post('/events/:id/lineup/paste', async (req, res) => {
+    try {
+      const member = currentMember();
+      if (member && member.role !== 'owner') return res.status(403).json({ error: 'Only the owner can paste set times for now.' });
+      const url = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+      const text = typeof req.body?.text === 'string' ? req.body.text : '';
+      if (!/^https?:\/\/\S+$/i.test(url)) throw new InputError('Add the link of the page you copied the set times from.');
+      if (!text.trim()) throw new InputError('Paste the set times text.');
+      const event = await load(req.params.id, res);
+      if (!event) return;
+      const result = await startLineupLookup(deps, event, undefined, { pasted: { url, text } });
+      if (result.job.status === 'queued') await runner.kick(result.job.id);
+      res.status(201).json(result);
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
   // Stage 2: every Clashfinder version that matches, for the "Not this version?" pick.
   router.get('/events/:id/lineup/versions', async (req, res) => {
     try {

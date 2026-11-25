@@ -21,6 +21,7 @@ import { findVerifiedEdition } from '../canon/match';
 import { autoVerifyAfterLookup } from '../canon/autoVerifyRun';
 import { isBilling,quoteBacksBilling } from './billing';
 import { makeDocument } from './adapters/common';
+import { pastedAdapter } from './adapters/pasted';
 import { MusicBrainzUnavailableError, resolveArtist } from './musicbrainz';
 import { redactSecrets } from './http';
 import { currentBudget } from './budget';
@@ -75,7 +76,20 @@ export function validateInput(raw: Partial<LookupInput>): LookupInput {
     country: text(raw.country),
     lineupUrl: text(raw.lineupUrl),
     notes: text(raw.notes),
+    ...(pastedInput(raw.pasted) ? { pasted: pastedInput(raw.pasted) } : {}),
   };
+}
+
+// A pasted set-times page: an http(s) link and the text the owner copied from it. The link is never requested.
+export const MAX_PASTED_CHARS = 100_000;
+function pastedInput(raw: unknown): LookupInput['pasted'] | undefined {
+  const p = raw as { url?: unknown; text?: unknown } | undefined;
+  if (!p || typeof p.url !== 'string' || typeof p.text !== 'string') return undefined;
+  const url = p.url.trim();
+  const body = p.text.trim();
+  if (!/^https?:\/\/\S+$/i.test(url) || !body) return undefined;
+  if (body.length > MAX_PASTED_CHARS) throw new InputError(`The pasted text is too long (at most ${MAX_PASTED_CHARS.toLocaleString('en-US')} characters).`);
+  return { url, text: body };
 }
 
 function log(job: LookupJob, message: string, now: Date): void {
@@ -116,6 +130,24 @@ export function candidateFromEdition(edition: Edition): CandidateLineup {
   };
 }
 
+// A paste adds to the edition's lineup rather than replacing it: every act the edition has stays, an act the paste
+// also lists gains the pasted source (and its set times), and acts only the paste lists are added.
+export function withEditionActs(pasted: CandidateLineup, edition: CandidateLineup): CandidateLineup {
+  const fromPaste = new Map(pasted.performers.map((p) => [p.key, p]));
+  const kept = edition.performers.map((p) => {
+    const add = fromPaste.get(p.key);
+    if (!add) return p;
+    fromPaste.delete(p.key);
+    return {
+      ...p,
+      days: [...new Set([...(p.days ?? []), ...(add.days ?? [])])],
+      stages: [...new Set([...(p.stages ?? []), ...(add.stages ?? [])])],
+      sources: [...p.sources, ...add.sources],
+    };
+  });
+  return { ...pasted, cached: false, performers: [...kept, ...fromPaste.values()] };
+}
+
 // A verified edition for this event, found by the shared matcher (date and subject), not by key.
 async function findConfirmedEdition(deps: PipelineDeps, input: LookupInput): Promise<Edition | null> {
   return findVerifiedEdition(deps.store, input);
@@ -134,7 +166,8 @@ export async function createLookup(
   const existing = await findConfirmedEdition(deps, input);
   // A verified edition with no acts is not a confirmed lineup. Shortcutting on it returned an empty
   // result and never searched (Find lineup, 2026-11-17), so only a populated edition short-circuits.
-  const cached = opts.replaceConfirmed || !existing || existing.performances.length === 0 ? null : existing;
+  // A paste always runs: its acts and times are added to the edition's lineup in review (stageMerge).
+  const cached = opts.replaceConfirmed || input.pasted || !existing || existing.performances.length === 0 ? null : existing;
   const editionKey = existing?.key ?? editionKeyFor(input.eventName, input.year, input.startDate);
   const job: LookupJob = {
     id: randomUUID(),
@@ -236,6 +269,14 @@ async function stageCollect(deps: PipelineDeps, job: LookupJob, now: Date): Prom
   const slug = seriesSlugFor(job.input.eventName);
   const series = await deps.store.getSeries(slug);
   const disabled = [...deps.adapters, ...deps.lateAdapters].filter((a) => !a.enabled()).map((a) => a.id);
+  // A paste run reads only the pasted page: no other source, no reader model, no web search, so it never waits on a limit.
+  if (job.input.pasted) {
+    await runAdapters(deps, job, [pastedAdapter], job.input, series, now);
+    job.pendingExtraction = [];
+    job.discoveryDone = true;
+    job.stage = 'merge';
+    return;
+  }
   if (disabled.length) log(job, `Not configured, skipped: ${disabled.join(', ')}.`, now);
 
   let hints = await runAdapters(deps, job, deps.adapters, job.input, series, now);
@@ -468,6 +509,10 @@ async function stageMerge(deps: PipelineDeps, job: LookupJob, now: Date): Promis
     // Catalog artist casing first, then the spellings of the member who started the lookup win.
     spellings: { ...catalogSpellings, ...memberSpellings },
   });
+  if (job.input.pasted) {
+    const existing = await findConfirmedEdition(deps, job.input);
+    if (existing && existing.performances.length > 0) job.candidate = withEditionActs(job.candidate, candidateFromEdition(existing));
+  }
   job.stage = 'done';
   if (job.candidate.performers.length > 0) {
     job.status = 'needs_review';

@@ -13,7 +13,8 @@ export type SourceType =
   | 'discovered'
   | 'email' // your own ticket emails (stage 1 only, never lineup evidence)
   | 'user'
-  | 'edition name'; // the shared edition's own name, matched to a catalog artist (docs/archive/edition-lineup-from-name-spec.md)
+  | 'edition name' // the shared edition's own name, matched to a catalog artist (docs/archive/edition-lineup-from-name-spec.md)
+  | 'pasted'; // a set-times page the owner pasted with its link (docs/specs/pasted-set-times.md)
 
 // billed: announced on a lineup; performed: a post-show record says they played;
 // crowd: a crowd-sourced listing (Clashfinder).
@@ -29,6 +30,8 @@ export interface LookupInput {
   country?: string;
   lineupUrl?: string; // promoter lineup page or a Clashfinder URL
   notes?: string;
+  // A set-times page the owner pasted (docs/specs/pasted-set-times.md). The lookup then runs only the pasted source.
+  pasted?: { url: string; text: string };
 }
 
 export interface SourceDocument {
