@@ -19,7 +19,9 @@ import { artistSuggestions, eventPerformers, nameArtistSuggestions, MAX_BULK_SUG
 import type { LineupFacts } from './scale';
 import { lookupWeather } from './weather';
 import { weatherForEdition } from './editionWeather';
-import { inferredFieldsFor, storeReaderInferences } from '../canon/inferences';
+import { inferredFieldsFor, storeReaderInferences, type InferredField } from '../canon/inferences';
+import { inferenceStanding, type InferenceStanding, voteInference } from '../canon/inferenceReview';
+import type { InferenceVote } from '../lineup/types';
 import { inferredBillingFor, type InferredBilling } from '../canon/inferredBilling';
 import { undoActivity } from './undo';
 import { currentMember } from '../auth/requestScope';
@@ -309,18 +311,49 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
       const suggestions = artistSuggestions(event, [...eventPerformers(event, job, edition), ...past]);
       const resolved = resolveEvent(event, edition);
       // Inferred values are a display aid: a failed lookup shows none and never fails the request.
-      let inferred: ReturnType<typeof inferredFieldsFor> = {};
+      let inferred: Record<string, InferredField & { votes: number; standing: InferenceStanding }> = {};
       let inferredBilling: Record<string, InferredBilling> = {};
       if (edition) {
         try {
           const rows = await deps.store.listEditionInferences(edition.id);
-          inferred = inferredFieldsFor(resolved, rows);
+          const shown = Object.entries(inferredFieldsFor(resolved, rows)).flatMap(([field, f]) => {
+            const inf = f ? rows.find((r) => r.id === f.inferenceId) : undefined;
+            return f && inf ? [{ field, f, inf }] : [];
+          });
+          // One read for every shown value. Before migration 0057 the votes table is missing, so they count as 0.
+          let votes: InferenceVote[] = [];
+          try {
+            votes = await deps.store.listInferenceVotesFor(shown.map((s) => s.inf.id));
+          } catch (err) {
+            console.warn('inference votes not loaded', err instanceof Error ? err.name : 'error');
+          }
+          for (const { field, f, inf } of shown) {
+            const own = votes.filter((v) => v.inferenceId === inf.id);
+            inferred[field] = { ...f, votes: new Set(own.map((v) => v.memberId)).size, standing: inferenceStanding(inf, own) };
+          }
           inferredBilling = inferredBillingFor(rows);
         } catch (err) {
           console.warn('inferred values not loaded', err instanceof Error ? err.name : 'error');
         }
       }
       res.json({ event: resolved, job, edition, suggestions, inferred, inferredBilling });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // A member's Verify tap on an inferred value of the event's linked edition. Two different members verify it.
+  router.post('/events/:id/inferences/:inferenceId/verify', async (req, res) => {
+    try {
+      const event = await load(req.params.id, res);
+      if (!event) return;
+      const member = currentMember();
+      if (!member?.userId) return res.status(403).json({ error: 'Sign in to verify a value.' });
+      if (member.role === 'owner') return res.status(400).json({ error: 'The owner confirms an inferred value instead.' });
+      if (!event.editionId) return res.status(400).json({ error: 'That event is not linked to an edition.' });
+      const r = await voteInference(deps.store, req.params.inferenceId, member.userId, event.editionId);
+      if (!r.ok) return res.status(409).json({ error: r.reason });
+      res.json({ votes: r.votes, verified: r.verified });
     } catch (err) {
       fail(res, err);
     }

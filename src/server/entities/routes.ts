@@ -39,6 +39,7 @@ import type { Edition, SeriesKind, SeriesRecord, SourceType } from '../lineup/ty
 import { addEditionAct, writeEdition } from '../canon/editions';
 import { venueLocation } from '../canon/venueLocation';
 import { applyVenueFill, inferVenuePlaces, planVenueFill } from '../canon/venueFill';
+import { confirmInference, rejectReviewedInference } from '../canon/inferenceReview';
 import { lineupProposalPayload, matchEditionName, offersForEditions, prepareCatalog } from '../canon/nameArtists';
 import { normalizeName } from '../lineup/normalizeName';
 import {
@@ -664,6 +665,46 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
         console.error('venue infer failed', err);
       }
       res.json({ ...result, inferred });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Inferred values on shared editions, for the owner's review in Fill gaps (docs/specs/inferred-values.md).
+  router.get('/manage/inferences', ownerOnly as any, async (_req, res) => {
+    try {
+      const rows = await store.listActiveInferences();
+      // One edition read and one vote read for the whole list.
+      const editionIds = [...new Set(rows.map((r) => r.editionId))];
+      const editions = editionIds.length ? await store.getEditions(editionIds) : [];
+      const names = new Map(editions.map((e) => [e.id, e.name ?? '']));
+      const votes = rows.length ? await store.listInferenceVotesFor(rows.map((r) => r.id)) : [];
+      const inferences = rows.map((inf) => ({
+        ...inf,
+        editionName: names.get(inf.editionId) ?? '',
+        votes: new Set(votes.filter((v) => v.inferenceId === inf.id).map((v) => v.memberId)).size,
+      }));
+      res.json({ inferences });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  router.post('/manage/inferences/:id/confirm', ownerOnly as any, async (req, res) => {
+    try {
+      const r = await confirmInference(store, req.params.id, 'owner');
+      if (!r.ok) return res.status(409).json({ error: r.reason });
+      res.json({ inference: r.inference });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  router.post('/manage/inferences/:id/reject', ownerOnly as any, async (req, res) => {
+    try {
+      const r = await rejectReviewedInference(store, req.params.id, 'owner');
+      if (!r.ok) return res.status(409).json({ error: r.reason });
+      res.json({ rows: r.rows });
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
