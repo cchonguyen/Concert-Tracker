@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Check, Monitor, Moon, Sun } from 'lucide-react';
 import { Tooltip } from './ui/Tooltip';
+import { Switch } from './ui/Switch';
+import { parseTintOn, TINT_KEY } from '../services/eventTint';
 import {
   ACCENT_KEY,
   ACCENTS,
@@ -39,6 +41,8 @@ export interface Theme {
   accent: Accent;
   pickMode: (m: ThemeMode) => void;
   pickAccent: (a: Accent) => void;
+  tintOn: boolean;
+  setTint: (on: boolean) => void;
 }
 
 // Mode and accent, saved on this device and applied to <html> (see index.css).
@@ -46,6 +50,7 @@ export interface Theme {
 export function useTheme(): Theme {
   const [mode, setMode] = useState<ThemeMode>(() => parseMode(read(MODE_KEY)));
   const [accent, setAccent] = useState<Accent>(() => parseAccent(read(ACCENT_KEY)));
+  const [tintOn, setTintOn] = useState<boolean>(() => parseTintOn(read(TINT_KEY)));
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: light)');
@@ -64,6 +69,11 @@ export function useTheme(): Theme {
     document.documentElement.dataset.accent = accent;
   }, [accent]);
 
+  // index.css hides the poster wash and series dots when this is "off".
+  useEffect(() => {
+    document.documentElement.dataset.eventTint = tintOn ? 'on' : 'off';
+  }, [tintOn]);
+
   const pickMode = (m: ThemeMode) => {
     setMode(m);
     write(MODE_KEY, m);
@@ -73,12 +83,17 @@ export function useTheme(): Theme {
     write(ACCENT_KEY, a);
   };
 
-  return { mode, accent, pickMode, pickAccent };
+  const setTint = (on: boolean) => {
+    setTintOn(on);
+    write(TINT_KEY, on ? 'on' : 'off');
+  };
+
+  return { mode, accent, pickMode, pickAccent, tintOn, setTint };
 }
 
 // The theme choices, shown inline inside the menu.
 export function ThemeControls({ theme }: { theme: Theme }) {
-  const { mode, accent, pickMode, pickAccent } = theme;
+  const { mode, accent, pickMode, pickAccent, tintOn, setTint } = theme;
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-3 gap-1">
@@ -89,7 +104,7 @@ export function ThemeControls({ theme }: { theme: Theme }) {
             aria-pressed={mode === m}
             onClick={() => pickMode(m)}
             className={`flex w-full flex-col items-center gap-1 rounded-lg px-1 py-2 text-xs transition-colors ${
-              mode === m ? 'bg-accent-fill text-on-accent' : 'text-zinc-300 hover:bg-zinc-800'
+              mode === m ? 'bg-accent-fill text-on-accent' : 'text-text-muted hover:bg-surface-2 hover:text-text'
             }`}
           >
             <Icon className="h-4 w-4" aria-hidden="true" />
@@ -97,7 +112,7 @@ export function ThemeControls({ theme }: { theme: Theme }) {
           </button>
         ))}
       </div>
-      <div className="flex justify-between border-t border-zinc-800 pt-3">
+      <div className="flex justify-between border-t border-line pt-3">
         {ACCENTS.map((a) => (
           <Tooltip key={a} label={a[0].toUpperCase() + a.slice(1)}>
             <button
@@ -106,12 +121,15 @@ export function ThemeControls({ theme }: { theme: Theme }) {
               aria-pressed={accent === a}
               data-accent={a}
               style={{ background: 'var(--accent-500)' }}
-              className="flex h-7 w-7 items-center justify-center rounded-full ring-offset-2 ring-offset-zinc-900 hover:ring-2 hover:ring-zinc-600"
+              className="flex h-7 w-7 items-center justify-center rounded-full ring-offset-2 ring-offset-surface-1 hover:ring-2 hover:ring-line-strong"
             >
               {accent === a && <Check className="h-4 w-4 text-white" />}
             </button>
           </Tooltip>
         ))}
+      </div>
+      <div className="border-t border-line pt-2">
+        <Switch checked={tintOn} onChange={setTint} label="Tint posters by event" helper="A soft colour on each poster, the same for every year of a series." />
       </div>
     </div>
   );
