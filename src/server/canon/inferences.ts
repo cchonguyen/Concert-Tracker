@@ -4,6 +4,7 @@
 // Every change goes through recordEditionNote so it lands in edition_changes and can be undone.
 import type { Edition, EditionInference, InferenceField, InferenceInput } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
+import type { LoggedEvent } from '../events/types';
 import { INFERENCE_ADDED_KEY, INFERENCE_FIELDS, isEmptyValue, recordEditionNote } from './editions';
 
 export { INFERENCE_ADDED_KEY, INFERENCE_FIELDS };
@@ -155,4 +156,25 @@ export function shownValue(edition: Edition, field: InferenceField, inferences: 
   const active = inferences.find((i) => i.field === field && i.status === 'active');
   if (active) return { value: active.value, inferred: true, reason: active.reason, inferenceId: active.id };
   return null;
+}
+
+// An inferred value to show on an event whose own field is still empty. Never written into the event.
+export interface InferredField {
+  value: unknown;
+  reason: string;
+  inferenceId: string;
+}
+
+// `event` is the resolved event (inherited values filled in), so a field the person typed always wins.
+export function inferredFieldsFor(
+  event: LoggedEvent,
+  inferences: EditionInference[],
+): Partial<Record<InferenceField, InferredField>> {
+  const out: Partial<Record<InferenceField, InferredField>> = {};
+  for (const inf of inferences) {
+    if (inf.status !== 'active' || out[inf.field]) continue;
+    if (!isEmptyValue(event[inf.field])) continue;
+    out[inf.field] = { value: inf.value, reason: inf.reason, inferenceId: inf.id };
+  }
+  return out;
 }

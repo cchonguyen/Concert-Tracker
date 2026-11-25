@@ -10,7 +10,7 @@ import { runAsMember } from '../src/server/auth/requestScope.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import type { Edition } from '../src/server/lineup/types.ts';
 import { writeEdition, undoEditionChange } from '../src/server/canon/editions.ts';
-import { applyVenueFill, planVenueFill, VENUE_FILL_ACTOR } from '../src/server/canon/venueFill.ts';
+import { applyVenueFill, inferVenuePlaces, leadingPlace, planVenueFill, VENUE_FILL_ACTOR, VENUE_INFER_ACTOR, VENUE_INFER_RULE } from '../src/server/canon/venueFill.ts';
 import { BudgetExhausted, countingFetch, makeBudget, runWithBudget } from '../src/server/lineup/budget.ts';
 
 const fresh = async () => new FileLineupStore(await mkdtemp(join(tmpdir(), 'venuefill-')));
@@ -153,4 +153,66 @@ test('bulk fill counts the real cost of each write and stops before the budget r
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+const D = { city: 'Denver', region: 'CO', country: 'United States' };
+const B = { city: 'Boulder', region: 'CO', country: 'United States' };
+const at = (id: string, city?: string, region?: string) => ({ id, city, region, country: undefined });
+
+test('leadingPlace needs a clear majority of at least two editions', () => {
+  const won = leadingPlace([D, B], [at('1', 'Denver', 'CO'), at('2', 'Denver', 'CO'), at('3', 'Denver'), at('4', 'Boulder', 'CO'), at('5')]);
+  assert.equal(won?.location.city, 'Denver');
+  assert.equal(won?.count, 3);
+  assert.equal(won?.total, 4); // the edition with no city counts for nothing
+  assert.deepEqual(won?.editionIds, ['1', '2', '3']);
+  assert.equal(leadingPlace([D, B], [at('1', 'Denver'), at('2', 'Denver'), at('3', 'Boulder'), at('4', 'Boulder')]), null);
+  assert.equal(leadingPlace([D], [at('1', 'Denver')]), null);
+  assert.equal(leadingPlace([D, B], [at('1', 'Austin', 'TX')]), null);
+});
+
+async function mileHall() {
+  const s = await fresh();
+  await s.upsertVenue({ name: 'Mile Hall', ...D });
+  await s.upsertVenue({ name: 'Mile Hall', ...B });
+  await put(s, ed('p1', { venue: 'Mile Hall', city: 'Denver' }));
+  await put(s, ed('p2', { venue: 'Mile Hall', city: 'Denver', region: 'CO' }));
+  await put(s, ed('p3', { venue: 'Mile Hall', city: 'Denver', region: 'CO', country: 'United States' }));
+  await put(s, ed('p4', { venue: 'Mile Hall', city: 'Boulder', region: 'CO' }));
+  await put(s, ed('q1', { venue: 'Mile Hall' })); // all place fields empty
+  await put(s, ed('q2', { venue: 'Mile Hall', country: 'United States' })); // country set: not inferred
+  return s;
+}
+
+test('inferVenuePlaces infers the leading place for empty fields only, labelled with the count and its inputs', async () => {
+  const s = await mileHall();
+  const r = await inferVenuePlaces(s, { budgetLeft: () => 1000 });
+  assert.deepEqual(r.inferred.map((x) => x.editionId).sort(), ['q1', 'q2']);
+  assert.deepEqual(r.inferred.find((x) => x.editionId === 'q1')?.fields, ['city', 'region', 'country']);
+  assert.deepEqual(r.inferred.find((x) => x.editionId === 'q2')?.fields, ['city', 'region']);
+  const infs = await s.listEditionInferences('q1');
+  const city = infs.find((i) => i.field === 'city');
+  assert.equal(city?.value, 'Denver');
+  assert.equal(city?.rule, VENUE_INFER_RULE);
+  assert.equal(city?.actor, VENUE_INFER_ACTOR);
+  assert.match(city?.reason ?? '', /\(3 of 4\)/);
+  assert.deepEqual(city?.inputs, [
+    { kind: 'record', table: 'event_editions', id: 'p1' },
+    { kind: 'record', table: 'event_editions', id: 'p2' },
+    { kind: 'record', table: 'event_editions', id: 'p3' },
+  ]);
+  const own = await s.getEdition('q1');
+  assert.equal(own?.city, undefined);
+  assert.equal(own?.region, undefined);
+  assert.equal(own?.country, undefined);
+  const q2 = await s.getEdition('q2');
+  assert.equal(q2?.country, 'United States');
+  assert.equal((await s.listEditionInferences('q2')).some((i) => i.field === 'country'), false);
+});
+
+test('running the inference twice does not duplicate it', async () => {
+  const s = await mileHall();
+  await inferVenuePlaces(s, { budgetLeft: () => 1000 });
+  const again = await inferVenuePlaces(s, { budgetLeft: () => 1000 });
+  assert.deepEqual(again.inferred, []);
+  assert.equal((await s.listEditionInferences('q1')).length, 3);
 });
