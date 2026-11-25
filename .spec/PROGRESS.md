@@ -46,7 +46,7 @@ Stage 0 (Claude) goes first. After it, Track A (Claude) and the Gemini package "
 - [x] **Slice 22.1: Tokens, fonts, phone bar colour and contrast test** [CORE / DATA] Target files: src/index.css, src/services/theme.ts, app.html, tests/themeContrast.test.ts | Issue: #672 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 22.2: Ink on accent, part 1** [UI / VISUAL] Target files: src/components/ui/Button.tsx, src/components/CaptureBar.tsx, src/components/PosterHeader.tsx, src/App.tsx | Issue: #674 | Verify: npm run lint --silent
 - [x] **Slice 22.3: Ink on accent, the remaining screens** [UI / VISUAL] Target files: src/components/ | Issue: #676 | Verify: npm run lint --silent
-- [ ] **Slice 22.4: Reduced-motion sweep** [UI / VISUAL] Target files: spinners by area, src/components/ui/BackToTop.tsx, src/components/ui/SaveStatus.tsx | Verify: npm run lint --silent
+- [x] **Slice 22.4: Reduced-motion sweep** [CORE / DATA] Target files: src/index.css, src/services/motion.ts, src/components/, tests/motion.test.ts | Issue: #678 | Verify: npm run lint --silent && npm test --silent
 - [ ] **Slice 22.5: Shared Tabs** [UI / VISUAL] Target files: src/components/ui/Tabs.tsx, docs/design-system/ | Verify: npm run lint --silent
 - [ ] **Slice 22.6: Shared Ledger, KindPill, HintPill** [UI / VISUAL] Target files: src/components/ui/Ledger.tsx, src/components/ui/KindPill.tsx, src/components/ui/HintPill.tsx, docs/design-system/ | Verify: npm run lint --silent
 - [ ] **Slice 22.7: Shared Stars and Equalizer** [UI / VISUAL] Target files: src/components/ui/Stars.tsx, src/components/ui/Equalizer.tsx, docs/design-system/ | Verify: npm run lint --silent

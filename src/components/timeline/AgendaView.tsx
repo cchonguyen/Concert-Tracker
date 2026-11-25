@@ -17,6 +17,7 @@ import {
 import { EventTitle } from '../EventTitle';
 import { BackToTop } from '../ui/BackToTop';
 import { ATTENDANCE_STYLE, ConfirmMark, DayDots, Rating } from './parts';
+import { scrollBehavior } from '../../services/motion';
 
 // Agenda: one line per event under year and month headers, newest first unless
 // you picked oldest first (remembered on this device), opening at the Today
@@ -136,7 +137,7 @@ export const AgendaView: React.FC<TimelineViewProps> = ({ model, range, selected
 
   // A selected event (from the "to confirm" chip, or another view later) is scrolled to.
   useEffect(() => {
-    if (selectedEventId) document.getElementById(rowId(selectedEventId))?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (selectedEventId) document.getElementById(rowId(selectedEventId))?.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
   }, [selectedEventId]);
 
   if (!blocks.length) return <p className="py-10 text-center text-sm text-zinc-400">No dated events match these filters.</p>;
