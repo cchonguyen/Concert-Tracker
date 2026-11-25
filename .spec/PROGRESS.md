@@ -45,7 +45,7 @@ Finished slices move to `.spec/archive/HISTORY.md`. Earlier feature sections (sh
 Stage 0 (Claude) goes first. After it, Track A (Claude) and the Gemini package "Ledger & Lobby" (`docs/specs/design-refresh-2-ledger-and-lobby.md`) run in parallel. Each slice gets its issue when it starts.
 - [x] **Slice 22.1: Tokens, fonts, phone bar colour and contrast test** [CORE / DATA] Target files: src/index.css, src/services/theme.ts, app.html, tests/themeContrast.test.ts | Issue: #672 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 22.2: Ink on accent, part 1** [UI / VISUAL] Target files: src/components/ui/Button.tsx, src/components/CaptureBar.tsx, src/components/PosterHeader.tsx, src/App.tsx | Issue: #674 | Verify: npm run lint --silent
-- [ ] **Slice 22.3: Ink on accent, parts 2 to 6** [UI / VISUAL] Target files: one area per slice (Manage, Import, Timeline, Stats and Artists, panels) | Verify: npm run lint --silent
+- [ ] **Slice 22.3: Ink on accent, the remaining screens** [IN_PROGRESS] [UI / VISUAL] Target files: src/components/ | Issue: #676 | Verify: npm run lint --silent
 - [ ] **Slice 22.4: Reduced-motion sweep** [UI / VISUAL] Target files: spinners by area, src/components/ui/BackToTop.tsx, src/components/ui/SaveStatus.tsx | Verify: npm run lint --silent
 - [ ] **Slice 22.5: Shared Tabs** [UI / VISUAL] Target files: src/components/ui/Tabs.tsx, docs/design-system/ | Verify: npm run lint --silent
 - [ ] **Slice 22.6: Shared Ledger, KindPill, HintPill** [UI / VISUAL] Target files: src/components/ui/Ledger.tsx, src/components/ui/KindPill.tsx, src/components/ui/HintPill.tsx, docs/design-system/ | Verify: npm run lint --silent
