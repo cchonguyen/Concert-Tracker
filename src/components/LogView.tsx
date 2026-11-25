@@ -10,7 +10,17 @@ import { useVault } from './VaultContext';
 
 // The Log: shows in Recently deleted (Restore brings one back) and every change you have made.
 // Undo writes a field back; a notes or companions change is undone only with the vault unlocked.
-export function LogView({ eventId, onShowAll }: { eventId?: string | null; onShowAll?: () => void }) {
+export function LogView({
+  eventId,
+  onShowAll,
+  compact = false,
+  onOpenFull,
+}: {
+  eventId?: string | null;
+  onShowAll?: () => void;
+  compact?: boolean;
+  onOpenFull?: () => void;
+}) {
   const vault = useVault();
   const locked = vault.status !== 'unlocked';
   const [trash, setTrash] = useState<LoggedEvent[] | null>(null);
@@ -23,7 +33,11 @@ export function LogView({ eventId, onShowAll }: { eventId?: string | null; onSho
 
   const load = async () => {
     try {
-      const [active, deleted, log] = await Promise.all([eventsApi.list(), eventsApi.deleted(), eventsApi.activity()]);
+      const [active, deleted, log] = await Promise.all([
+        eventsApi.list(),
+        compact ? Promise.resolve([] as LoggedEvent[]) : eventsApi.deleted(),
+        eventsApi.activity(),
+      ]);
       setTrash(deleted);
       setActivity(log);
       setNames(Object.fromEntries([...active.events, ...deleted].map((e) => [e.id, e.name])));
@@ -89,11 +103,14 @@ export function LogView({ eventId, onShowAll }: { eventId?: string | null; onSho
   const nameOf = (id: string | null) => (id && names[id]) || 'a show';
   const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
+  const filteredActivity = (activity ?? []).filter((a) => !eventId || a.eventId === eventId);
+  const visibleActivity = compact ? filteredActivity.slice(0, 20) : filteredActivity;
+
   return (
-    <div className="space-y-8">
+    <div className={compact ? 'space-y-4' : 'space-y-8'}>
       {error && <Notice tone="warning">{error}</Notice>}
 
-      {eventId && (
+      {!compact && eventId && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-line bg-surface-1 px-4 py-2.5 text-sm text-text-muted">
           <span>
             Showing the history of <span className="font-semibold text-text">{nameOf(eventId)}</span>
@@ -106,43 +123,45 @@ export function LogView({ eventId, onShowAll }: { eventId?: string | null; onSho
         </div>
       )}
 
-      <section className="space-y-3">
-        <div>
-          <h2 className="font-display text-xl font-normal text-text">Recently deleted</h2>
-          <p className="text-xs text-text-muted">Deleted shows stay here for 90 days. Restore brings one back with everything it had.</p>
-        </div>
-        {trash !== null && trash.length > 0 && (
-          <div className="flex justify-end">
-            <Button variant="danger" onClick={() => setErasing('all')} disabled={busy !== null}>
-              Empty recently deleted
-            </Button>
+      {!compact && (
+        <section className="space-y-3">
+          <div>
+            <h2 className="font-display text-xl font-normal text-text">Recently deleted</h2>
+            <p className="text-xs text-text-muted">Deleted shows stay here for 90 days. Restore brings one back with everything it had.</p>
           </div>
-        )}
-        {trash === null ? null : trash.length === 0 ? (
-          <p className="text-sm text-text-muted">Nothing here. Shows you delete appear here for 90 days.</p>
-        ) : (
-          <Ledger>
-            {trash.filter((e) => !eventId || e.id === eventId).map((e) => (
-              <Ledger.Row key={e.id} edge="none" className="justify-between px-4 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm text-text">{e.name}</p>
-                  {e.deletedAt && <p className="font-mono text-xs tabular-nums text-text-muted">Deleted {when(e.deletedAt)}</p>}
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <Button variant="ghost" onClick={() => setErasing(e.id)} disabled={busy === e.id}>
-                    Delete permanently
-                  </Button>
-                  <Button onClick={() => void restore(e.id)} disabled={busy === e.id}>
-                    Restore
-                  </Button>
-                </div>
-              </Ledger.Row>
-            ))}
-          </Ledger>
-        )}
-      </section>
+          {trash !== null && trash.length > 0 && (
+            <div className="flex justify-end">
+              <Button variant="danger" onClick={() => setErasing('all')} disabled={busy !== null}>
+                Empty recently deleted
+              </Button>
+            </div>
+          )}
+          {trash === null ? null : trash.length === 0 ? (
+            <p className="text-sm text-text-muted">Nothing here. Shows you delete appear here for 90 days.</p>
+          ) : (
+            <Ledger>
+              {trash.filter((e) => !eventId || e.id === eventId).map((e) => (
+                <Ledger.Row key={e.id} edge="none" className="justify-between px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-text">{e.name}</p>
+                    {e.deletedAt && <p className="font-mono text-xs tabular-nums text-text-muted">Deleted {when(e.deletedAt)}</p>}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button variant="ghost" onClick={() => setErasing(e.id)} disabled={busy === e.id}>
+                      Delete permanently
+                    </Button>
+                    <Button onClick={() => void restore(e.id)} disabled={busy === e.id}>
+                      Restore
+                    </Button>
+                  </div>
+                </Ledger.Row>
+              ))}
+            </Ledger>
+          )}
+        </section>
+      )}
 
-      {erasing !== null && (
+      {!compact && erasing !== null && (
         <Confirm
           title={erasing === 'all' ? 'Empty recently deleted' : 'Delete permanently'}
           message={
@@ -157,15 +176,17 @@ export function LogView({ eventId, onShowAll }: { eventId?: string | null; onSho
       )}
 
       <section className="space-y-3">
-        <div>
-          <h2 className="font-display text-xl font-normal text-text">Changes</h2>
-          <p className="text-xs text-text-muted">Every save, delete and restore, newest first. Kept for a year. Notes and companions show that they changed, not what they say.</p>
-        </div>
-        {activity === null ? null : activity.length === 0 ? (
+        {!compact && (
+          <div>
+            <h2 className="font-display text-xl font-normal text-text">Changes</h2>
+            <p className="text-xs text-text-muted">Every save, delete and restore, newest first. Kept for a year. Notes and companions show that they changed, not what they say.</p>
+          </div>
+        )}
+        {activity === null ? null : visibleActivity.length === 0 ? (
           <p className="text-sm text-text-muted">No changes yet.</p>
         ) : (
           <Ledger>
-            {activity.filter((a) => !eventId || a.eventId === eventId).map((a) => (
+            {visibleActivity.map((a) => (
               <Ledger.Row key={a.id} edge="none" className="justify-between px-4 py-2.5">
                 <div className="min-w-0">
                   <p className="text-sm text-text">{describeEntry(a, nameOf(a.eventId))}</p>
@@ -183,6 +204,17 @@ export function LogView({ eventId, onShowAll }: { eventId?: string | null; onSho
               </Ledger.Row>
             ))}
           </Ledger>
+        )}
+        {compact && onOpenFull && (
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={onOpenFull}
+              className="inline-flex min-h-11 items-center text-xs text-accent hover:underline sm:min-h-9"
+            >
+              See the full log
+            </button>
+          </div>
         )}
       </section>
     </div>

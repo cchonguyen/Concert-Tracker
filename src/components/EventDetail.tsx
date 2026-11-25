@@ -27,6 +27,7 @@ import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
 import { LineupTable } from './LineupTable';
 import { EventSources, sourceHighlightKey } from './EventSources';
+import { LogView } from './LogView';
 import { pendingReplacement } from '../services/reviewRows';
 import { norm } from '../services/listImport';
 import { placeForVenue } from '../services/venuePlace';
@@ -1366,7 +1367,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const state = attendanceOf(event, new Date().toISOString().slice(0, 10));
   const gapsLeft = thingsLeft(event, (e, g) => hasGap(e, g, undefined, edition ? lineupFacts(edition) : undefined));
   // Scrolls to the section a gap is filled in and highlights it for a moment.
-  const [rightTab, setRightTab] = useState<'seen' | 'lineup'>('seen');
+  const [rightTab, setRightTab] = useState<'lineup' | 'seen' | 'changes'>('seen');
   const showGap = (gap: Gap) => {
     setGuide(gap);
     // Open the Who you saw tab first, so its card is on screen to scroll to.
@@ -1817,15 +1818,16 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
 
           </div>
           <div className="min-w-0">
-          {/* Who you saw and the full lineup share the column as folder tabs joined to their card. */}
+          {/* Lineup, Who you saw and Changes share the column as folder tabs joined to their card. */}
           <Tabs
-            label="Who you saw and lineup"
+            label="Lineup, who you saw and changes"
             value={rightTab}
             onChange={setRightTab}
             panel="surface-1"
             items={[
-              { value: 'seen', label: 'Who you saw', icon: Users, count: event.seen.length },
               { value: 'lineup', label: 'Lineup', icon: ListMusic, ...(edition ? { count: lineupActs.length } : {}) },
+              { value: 'seen', label: 'You saw', icon: Users, count: event.seen.length },
+              { value: 'changes', label: 'Changes', icon: History },
             ]}
           />
         {/* Who you saw */}
@@ -1993,16 +1995,23 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           )}
         </section>
 
+        {/* Changes */}
+        <section id="changes" hidden={rightTab !== 'changes'} className={tabbedCard}>
+          <h3 className={cardTitle}>Changes</h3>
+          {rightTab === 'changes' && (
+            <LogView
+              eventId={event.id}
+              compact
+              onOpenFull={onOpenHistory ? () => onOpenHistory(event.id) : undefined}
+            />
+          )}
+        </section>
+
           </div>
         </div>
 
         <div className="flex items-center justify-between border-t border-line pt-4">
           <div className="flex items-center gap-4">
-            {onOpenHistory && (
-              <button onClick={() => onOpenHistory(event.id)} className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-accent">
-                <History className="h-3.5 w-3.5" /> History
-              </button>
-            )}
             <button
               onClick={() => setConfirmingDelete(true)}
               className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-bad"
