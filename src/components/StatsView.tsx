@@ -1,12 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Fragment, useEffect, useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { genresApi, LoggedEvent } from '../services/lineupApi';
 import { ArtistGenres, GenreCount, genreMix, genresByArtist } from '../services/genres';
 import { whenLabel } from '../services/format';
 import { attendanceOf } from '../server/events/attendance';
-import { facts, pastEvents, perYear, RankBy, Ranked, seriesStats, SeriesStat, top, yearInReview } from '../services/stats';
+import { facts, pastEvents, perYear, RankBy, Ranked, seriesStats, SeriesStat, top, YearReview, yearInReview } from '../services/stats';
+import { barcodeBars } from '../services/ticket';
 import { EventTitle } from './EventTitle';
 import { StubHeader } from './ui/StubHeader';
+import { StubBarcode, StubSentence, StubSerial, Ticket, TicketKicker, TicketSmallLine } from './ui/Ticket';
 import { MONTH_NAMES } from '../server/lineup/months';
 
 // Bars grow in once per visit to Stats (design-refresh-2.md, section 4): only while the page has just opened,
@@ -186,12 +188,77 @@ const GenreCard: React.FC<{ events: LoggedEvent[]; rows: ArtistGenres[] }> = ({ 
   );
 };
 
-const Tile: React.FC<{ value: React.ReactNode; label: string }> = ({ value, label }) => (
-  <div>
-    <div className="text-xl font-extrabold tracking-tight text-text">{value}</div>
-    <div className="text-xs text-text-muted">{label}</div>
-  </div>
-);
+const WIDE = '(min-width: 640px)';
+
+// Columns from 640px, rows on phones. Reads matchMedia so one ticket is rendered (no duplicate ids).
+function useWide(): boolean {
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.matchMedia(WIDE).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(WIDE);
+    const onChange = () => setWide(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return wide;
+}
+
+// The framing ticket for the picked year. Its numbers are the same as the list below it.
+// prevEvents is the previous year's shows, given only when that year has shows; otherwise the change is left off.
+const YearTicket: React.FC<{ review: YearReview; prevEvents?: number }> = ({ review, prevEvents }) => {
+  const wide = useWide();
+  const { year, events, artists, newArtists, rated, averageRating } = review;
+  const change = prevEvents === undefined ? null : events - prevEvents;
+  const changeText = change === null ? null : change > 0 ? `+${change}` : change < 0 ? `−${-change}` : 'Same';
+  const sentence =
+    change === null
+      ? null
+      : change === 0
+        ? `${plural(events, 'show')} in ${year}, the same number as ${year - 1}.`
+        : `${plural(events, 'show')} in ${year}, ${Math.abs(change)} ${change > 0 ? 'more' : 'fewer'} than ${year - 1}.`;
+
+  const body = (
+    <>
+      <TicketKicker items={['Admit one', `Your ${year}`]} />
+      <p className="font-display text-[28px] leading-none tracking-[-0.02em] text-text [text-wrap:balance] sm:text-[34px]">
+        {[plural(events, 'show'), plural(artists, 'act'), plural(newArtists.length, 'first-timer')].map((part, i, all) => (
+          <Fragment key={part}>
+            <span className="whitespace-nowrap">{i < all.length - 1 ? `${part} ·` : part}</span>
+            {i < all.length - 1 ? ' ' : ''}
+          </Fragment>
+        ))}
+      </p>
+      {rated > 0 && averageRating !== undefined && <TicketSmallLine>{`Average rating ${averageRating} (${rated} rated)`}</TicketSmallLine>}
+    </>
+  );
+
+  const stub = (
+    <div className="flex h-full flex-col justify-between gap-3">
+      {changeText !== null && (
+        <div aria-hidden="true" className="flex flex-col gap-px">
+          <span className="font-mono text-[9.5px] tracking-[0.16em] text-text-faint">{`vs ${year - 1}`}</span>
+          <span className="flex items-baseline gap-1.5">
+            <span className="font-sans text-xl font-bold text-text">{changeText}</span>
+            <span className="font-mono text-[10px] text-text-muted">shows</span>
+          </span>
+        </div>
+      )}
+      <StubSerial text={`No. ${events}`} />
+      <StubBarcode bars={barcodeBars(`stats-year-${year}`)} height={34} />
+      {sentence && <StubSentence text={sentence} />}
+    </div>
+  );
+
+  return (
+    <Ticket
+      layout={wide ? 'columns' : 'rows'}
+      size="hero"
+      stubWidth={150}
+      label={`Your ${year} in numbers`}
+      body={body}
+      stub={stub}
+    />
+  );
+};
 
 // Your series: editions, years in a row, cities, and acts you keep seeing
 // there. A row opens that series in the Table.
@@ -264,6 +331,10 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
   const reviewYears = years.filter((y) => y.events > 0).map((y) => y.year).reverse();
   const year = pickedYear ?? reviewYears[0];
   const review = useMemo(() => (year ? yearInReview(past, year) : null), [past, year]);
+  const prevEvents = useMemo(
+    () => (year && years.some((y) => y.year === year - 1 && y.events > 0) ? yearInReview(past, year - 1).events : undefined),
+    [past, years, year],
+  );
   const f = useMemo(() => facts(past), [past]);
   const ranks = useMemo(
     () => Object.fromEntries((['artist', 'venue', 'city', 'companion'] as RankBy[]).map((by) => [by, top(past, by, 8)])) as Record<RankBy, Ranked[]>,
@@ -353,15 +424,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
               )}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Tile value={review.events} label="Events" />
-            <Tile value={review.artists} label="Artists seen" />
-            <Tile value={review.newArtists.length} label="First-time artists" />
-            <Tile
-              value={review.averageRating ?? <span className="text-text-muted">–</span>}
-              label={review.rated ? `Average rating (${review.rated} rated)` : 'No ratings yet'}
-            />
-          </div>
+          <YearTicket review={review} prevEvents={prevEvents} />
           <ul className="space-y-1 text-sm text-text-muted">
             {review.topArtist && (
               <li>
