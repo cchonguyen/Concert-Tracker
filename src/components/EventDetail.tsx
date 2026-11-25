@@ -3,7 +3,7 @@ import { useIsOwner } from './MeContext';
 import { noteView } from '../services/vaultSession';
 import { draftAfterStoredChange } from '../services/fieldDraft';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Calendar, CalendarCheck, CalendarRange, Check, ChevronDown, CircleHelp, CloudSun, ExternalLink, FolderCog, Globe, Heart, History, Layers, ListFilter, ListMusic, Loader2, MapPin, Plus, RefreshCw, Search, Star, StickyNote, Tag, Ticket, Trash2, Type, Users, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Calendar, CalendarCheck, CalendarRange, Check, ChevronDown, CircleHelp, CloudSun, ExternalLink, FolderCog, Globe, Heart, History, Layers, ListFilter, ListMusic, Loader2, MapPin, Plus, RefreshCw, Search, StickyNote, Tag, Ticket, Trash2, Type, Users, X } from 'lucide-react';
 import {
   ArtistSuggestion,
   canonicalApi,
@@ -13,6 +13,7 @@ import {
   EventPatch,
   eventsApi,
   isActive,
+  importsApi,
   lineupApi,
   LineupStatus,
   LoggedEvent,
@@ -46,8 +47,10 @@ import { rememberSection, sectionOpen } from '../services/sectionMemory';
 import { Popover } from './ui/Popover';
 import { Burst } from './ui/Burst';
 import { burstConfetti } from './ui/confetti';
-import { PosterHeader, ThingsLeft } from './PosterHeader';
-import { Stars } from './ui/Stars';
+import { PosterHeader, type TearState } from './PosterHeader';
+import { HeroBar } from './HeroBar';
+import type { TicketFacts } from '../server/events/email/ticketFacts';
+import { showNumber as showNumberFor } from '../services/ticket';
 import { Tabs } from './ui/Tabs';
 import { cityWithRegion, sameCountry } from '../server/events/regions';
 import { attendanceOf } from '../server/events/attendance';
@@ -687,8 +690,9 @@ const WentCard: React.FC<{
   canReview: boolean;
   onSave: (patch: EventPatch) => void;
   onReview: () => void;
-}> = ({ event, lineupActs, days, canReview, onSave, onReview }) => {
-  const [offered, setOffered] = useState<Offered[] | null>(null);
+  offered: Offered[] | null;
+  setOffered: (offered: Offered[] | null) => void;
+}> = ({ event, lineupActs, days, canReview, onSave, onReview, offered, setOffered }) => {
   const state = attendanceOf(event, new Date().toISOString().slice(0, 10));
   const seenKeys = new Set(event.seen.map((s) => s.key));
   const box = 'space-y-2 rounded-xl border p-4 text-sm';
@@ -752,26 +756,8 @@ const WentCard: React.FC<{
     );
   }
 
-  if (state !== 'confirm') return null;
-  const went = () => {
-    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) burstConfetti();
-    onSave({ attendance: null });
-    const acts: Offered[] = [
-      ...event.seen.map((s) => ({ key: s.key, name: s.name, from: s.from, role: s.role })),
-      ...lineupActs.filter((p) => !seenKeys.has(p.artistKey)).map((p) => ({ key: p.artistKey, name: p.name, from: 'lineup' as const, role: p.billing })),
-    ];
-    if (acts.length || days.length > 1 || canReview) setOffered(acts);
-  };
-  return (
-    <div className={`${box} border-accent-tint-line bg-accent-tint`}>
-      <p className="font-semibold text-text">Did you go?</p>
-      <p className="text-xs text-text-muted">It's over, and it stays out of Stats, Artists and the Map until you say.</p>
-      <div className="flex flex-wrap gap-2">
-        <Button variant="primary" onClick={went}>Yes, I went</Button>
-        <Button onClick={() => onSave({ attendance: 'missed' })}>No, I didn't go</Button>
-      </div>
-    </div>
-  );
+  // "Did you go?" is in the hero bar. "Yes, I went" there opens the picker above.
+  return null;
 };
 
 // Who you saw. Each act is a row that shows only what is stored about it; a tap on the row opens its editor in a Sheet.
@@ -1535,6 +1521,47 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const current = guide && gapsLeft.includes(guide) ? guide : (gapsLeft[0] ?? null);
   const at = current ? gapsLeft.indexOf(current) : -1;
   const [notesOpen] = useState(() => sectionOpen('notes', true));
+  // The stub tears on "Yes, I went" and then stays torn. Reduced motion skips straight to the torn stub.
+  const [picking, setPicking] = useState<Offered[] | null>(null);
+  const [tear, setTear] = useState<TearState>('idle');
+  const [facts, setFacts] = useState<TicketFacts | null>(null);
+  useEffect(() => {
+    setTear('idle');
+  }, [event.id]);
+  useEffect(() => {
+    if (tear !== 'tearing') return;
+    const t = window.setTimeout(() => setTear('torn'), 600);
+    return () => window.clearTimeout(t);
+  }, [tear]);
+  // The ticket email facts for this show (owner only). A failed read leaves them out.
+  useEffect(() => {
+    setFacts(null);
+    if (isSampleMode()) return;
+    let live = true;
+    importsApi.facts(event.id).then(
+      (f) => {
+        if (live) setFacts(f);
+      },
+      () => {
+        if (live) setFacts(null);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [event.id]);
+  // "Yes, I went": counts the show, tears the stub unless reduced motion is on, and offers who you saw.
+  const wentHere = () => {
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!still) burstConfetti();
+    setTear(still ? 'torn' : 'tearing');
+    void save({ attendance: null });
+    const acts: Offered[] = [
+      ...event.seen.map((s) => ({ key: s.key, name: s.name, from: s.from, role: s.role })),
+      ...lineupActs.filter((p) => !seenKeys.has(p.artistKey)).map((p) => ({ key: p.artistKey, name: p.name, from: 'lineup' as const, role: p.billing })),
+    ];
+    if (acts.length || days.length > 1 || Boolean(job && job.status === "needs_review" && !edition)) setPicking(acts);
+  };
   // While the lineup review is open, Escape and an outside press do not close the panel behind it.
   return (
     <DetailShell
@@ -1544,16 +1571,37 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
       closeDisabled={reviewing}
       status={<SaveStatus track={track} onRetry={retrySaves} hint={hint} />}
       hero={
-        <PosterHeader
-          title={eventTitle(event)}
-          label={[dateText(event), event.venue, cityWithRegion(event.city, event.region)].filter(Boolean).join(' · ') || 'No date yet'}
-          event={event}
-          state={state}
-          seen={event.seen}
-          cited={edition ? edition.performances.filter((p) => p.status !== 'cancelled').map((p) => p.artistKey) : []}
-          confirmedBy={confirmations.length}
-          onRate={(rating) => void save({ rating })}
-        />
+        <>
+          <PosterHeader
+            title={eventTitle(event)}
+            dateLine={dateText(event)}
+            placeLine={[event.venue, cityWithRegion(event.city, event.region)].filter(Boolean).join(' · ')}
+            kind={event.kind ?? worked.kind}
+            event={event}
+            state={state}
+            seen={event.seen}
+            inferredBilling={inferredBilling}
+            facts={facts}
+            showNumber={state === 'went' ? showNumberFor(event.id, events, new Date().toISOString().slice(0, 10)) : null}
+            tear={tear}
+            onWhoSaw={() => showGap('seen')}
+          />
+          <HeroBar
+            state={state}
+            confirmedBy={confirmations.length}
+            lineupCount={edition ? edition.performances.filter((p) => p.status !== 'cancelled').length : 0}
+            rating={event.rating ?? null}
+            onRate={(rating) => void save({ rating })}
+            onShowSources={() => document.getElementById("event-sources")?.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" })}
+            onWent={wentHere}
+            onMissed={() => void save({ attendance: 'missed' })}
+            gaps={gapsLeft}
+            current={current}
+            needsWeekend={needsWeekendPrompt(event, edition)}
+            onPick={showGap}
+            onNext={() => showGap(gapsLeft[(at + 1) % gapsLeft.length])}
+          />
+        </>
       }
       onGo={(id) => void goTo(id)}
       onClose={() => void requestClose()}
@@ -1561,14 +1609,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
       <FlashContext.Provider value={flashing}>
         <EditionIdContext.Provider value={event.editionId}>
           <SourceHighlightContext.Provider value={setHighlightedSource}>
-          <ThingsLeft
-          gaps={gapsLeft}
-          current={current}
-          needsWeekend={needsWeekendPrompt(event, edition)}
-          onPick={showGap}
-          onNext={() => showGap(gapsLeft[(at + 1) % gapsLeft.length])}
-        />
-        {error && <p className="rounded-lg border border-bad/40 bg-bad/10 p-2 text-sm text-bad">{error}</p>}
+        {error &&<p className="rounded-lg border border-bad/40 bg-bad/10 p-2 text-sm text-bad">{error}</p>}
         <div className="grid min-w-0 gap-5 @[760px]:grid-cols-[1.15fr_1fr] @[760px]:items-start">
           <div className="min-w-0 space-y-5">
         <WentCard
@@ -1578,6 +1619,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           canReview={Boolean(job && job.status === "needs_review" && !edition)}
           onSave={(patch) => void save(patch)}
           onReview={() => setReviewing(true)}
+          offered={picking}
+          setOffered={setPicking}
         />
 
         {/* The edition */}
@@ -1995,20 +2038,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             />
           </ReadList>
 
-          {confirmations.length > 0 && (
-            <p className="text-xs">
-              <a
-                href="#event-sources"
-                onClick={(e) => {
-                  e.preventDefault();
-                  document.getElementById("event-sources")?.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" });
-                }}
-                className="inline-flex items-center gap-1 text-good hover:underline"
-              >
-                <Check className="h-3.5 w-3.5" /> Date confirmed by {confirmations.length} source{confirmations.length === 1 ? "" : "s"}
-              </a>
-            </p>
-          )}
           {details.status === "none" && <p className="text-xs text-text-muted">No listing found. It's saved as you typed it.</p>}
           {details.status === "needs_date" && <p className="text-xs text-warn">Add when it was (a year is enough), then look again.</p>}
           {details.status === "off" && <p className="text-xs text-text-muted">No event source is set up, so details are as you typed them.</p>}
@@ -2047,10 +2076,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                 />
               )}
             />
-
-            <ReadRow icon={Star} label="Rating" alwaysOpen>
-              <Stars value={event.rating ?? null} onChange={(rating) => save({ rating })} size="md" className="-ml-1.5 flex" />
-            </ReadRow>
 
             <ReadRow
               icon={Tag}
