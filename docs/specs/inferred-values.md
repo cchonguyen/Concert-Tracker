@@ -85,7 +85,7 @@ Store methods (`LineupStore`, file and Supabase): `addEditionInference`, `listEd
 | 27.6 | Inferred lineup acts and billing roles (poster order), dotted in the lineup; who you saw still needs your tap | migration (performances verification gains `inferred`), `src/server/lineup/billing.ts`, `src/server/lineup/gemini.ts`, lineup UI, AGENTS.md billing line |
 | 27.7 | Review: an "Inferred" view in Fill gaps to confirm or reject; a member's Verify tap lifts the value to Candidate, and two members agreeing verifies | `src/components/FillGaps.tsx`, `src/server/canon/autoVerify.ts`, routes, AGENTS.md auto-verify line |
 
-Built so far: 27.1 to 27.5. In 27.5, `checkedInferences` and `storeReaderInferences` store reader inferences on the shared edition (see `docs/architecture/12-data-model.md`), and the AGENTS.md reader line is changed.
+Built: 27.1 to 27.7 (27.6 as billing roles only; inferred acts deferred). 27.7 follows the plan Charlie approved 2026-11-25: owner Confirm or Reject in Fill gaps, member Verify taps, two members agreeing verifies (migration 0057). In 27.5, `checkedInferences` and `storeReaderInferences` store reader inferences on the shared edition (see `docs/architecture/12-data-model.md`), and the AGENTS.md reader line is changed.
 
 ### 27.6 in detail (proposed 2026-11-25)
 

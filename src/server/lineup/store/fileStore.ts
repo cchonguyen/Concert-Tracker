@@ -42,7 +42,7 @@ import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../e
 import type { ShareLink } from '../../share/types';
 import { shareEventOnly } from '../../share/types';
 import type { AiCallRow, IngestTraceRow, MergeSummary } from './types';
-import type { CanonicalVenue, EditionChange, EditionInference, InferenceStatus, NewEditionInference, ReviewQueueItem, ReviewQueueKind, VenueAlias, EditionExternalId } from '../types';
+import type { CanonicalVenue, EditionChange, EditionInference, InferenceStatus, InferenceVote, NewEditionInference, ReviewQueueItem, ReviewQueueKind, VenueAlias, EditionExternalId } from '../types';
 import { ArtistIdTakenError, assertNoPersonalFields, EditionOccurrenceConflictError, ExternalIdConflictError, venueIdFor } from './types';
 import { normalizeName } from '../normalizeName';
 import type { CachedResponse } from '../responseCache';
@@ -111,6 +111,7 @@ interface FileState {
   editionExternalIds?: EditionExternalId[];
   editionChanges?: EditionChange[];
   editionInferences?: EditionInference[];
+  inferenceVotes?: InferenceVote[];
   reviewQueue?: ReviewQueueItem[];
   owners?: Record<string, string>;
   userSettings?: Record<string, Record<string, unknown>>;
@@ -1422,6 +1423,53 @@ export class FileLineupStore implements LineupStore {
     row.resolvedReason = r.reason;
     await this.save();
     return clone(row);
+  }
+
+  async getEditionInference(id: string): Promise<EditionInference | null> {
+    const row = ((await this.load()).editionInferences ?? []).find((x) => x.id === id);
+    return row ? clone(row) : null;
+  }
+
+  async reactivateEditionInference(id: string, r: { by: string; reason: string }): Promise<EditionInference | null> {
+    const state = await this.load();
+    const rows = state.editionInferences ?? [];
+    const row = rows.find((x) => x.id === id);
+    if (!row || row.status !== 'confirmed') return null;
+    const sameSlot = (x: EditionInference) => x.editionId === row.editionId && x.field === row.field && (x.subject ?? '') === (row.subject ?? '');
+    if (rows.some((x) => x.id !== id && x.status === 'active' && sameSlot(x))) return null;
+    row.status = 'active';
+    delete row.resolvedAt;
+    delete row.resolvedBy;
+    delete row.resolvedReason;
+    await this.save();
+    return clone(row);
+  }
+
+  async listActiveInferences(): Promise<EditionInference[]> {
+    const rows = ((await this.load()).editionInferences ?? []).filter((r) => r.status === 'active');
+    return clone(rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 200));
+  }
+
+  async addInferenceVote(inferenceId: string, memberId: string): Promise<InferenceVote> {
+    const state = await this.load();
+    const existing = (state.inferenceVotes ?? []).find((v) => v.inferenceId === inferenceId && v.memberId === memberId);
+    if (existing) return clone(existing);
+    const row: InferenceVote = { id: crypto.randomUUID(), inferenceId, memberId, createdAt: new Date().toISOString() };
+    (state.inferenceVotes ??= []).push(row);
+    await this.save();
+    return clone(row);
+  }
+
+  async listInferenceVotesFor(inferenceIds: string[]): Promise<InferenceVote[]> {
+    const ids = new Set(inferenceIds);
+    if (!ids.size) return [];
+    const rows = ((await this.load()).inferenceVotes ?? []).filter((v) => ids.has(v.inferenceId));
+    return clone(rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+  }
+
+  async listInferenceVotes(inferenceId: string): Promise<InferenceVote[]> {
+    const rows = ((await this.load()).inferenceVotes ?? []).filter((v) => v.inferenceId === inferenceId);
+    return clone(rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
   }
 
   async addReviewItem(i: { kind: ReviewQueueKind; editionId?: string; eventId?: string; payload: Record<string, unknown> }) {

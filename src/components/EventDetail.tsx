@@ -50,6 +50,8 @@ import { cityWithRegion, sameCountry } from '../server/events/regions';
 import { attendanceOf } from '../server/events/attendance';
 import type { EditionPerformance, InferenceField } from '../server/lineup/types';
 import type { InferredField } from '../server/canon/inferences';
+// The inferred value with its member votes and standing, as GET /events/:id returns it.
+type InferredView = InferredField & { votes?: number; standing?: 'inferred' | 'candidate' };
 import type { InferredBilling } from '../server/canon/inferredBilling';
 import type { ManageTarget } from './ManageView';
 import { DetailShell, type DetailRow } from './ui/DetailShell';
@@ -164,18 +166,48 @@ const FlashContext = React.createContext<string[]>([]);
 const EditionIdContext = React.createContext<string | undefined>(undefined);
 
 // An inferred value beside an empty field (never in the input). Its reason opens on hover or tap.
-const InferredNote: React.FC<{ inferred: InferredField; type: string }> = ({ inferred, type }) => {
+// A member's Verify counts toward it; the owner's Confirm writes it into the event as theirs.
+const InferredNote: React.FC<{ inferred: InferredView; type: string; onAct?: (inferenceId: string) => Promise<void> }> = ({ inferred, type, onAct }) => {
+  const isOwner = useIsOwner();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const raw = String(inferred.value);
   const shown = type === 'date' ? (whenLabel({ startDate: raw }) ?? raw) : raw;
   const reason = inferred.reason.replace(/[.\s]+$/, '');
+  const votes = inferred.votes ?? 0;
+  const label = inferred.standing === 'candidate' ? `Candidate, ${votes} member${votes === 1 ? '' : 's'}` : 'Inferred';
+  const act = async () => {
+    if (!onAct) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onAct(inferred.inferenceId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save that.');
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm italic text-text-muted">
       <span>{shown}</span>
       <Popover label="Why this is inferred" content={<p className="max-w-xs text-xs leading-relaxed text-text">{`Inferred: ${reason}.`}</p>}>
         <button type="button" aria-label="Why this is inferred" className="rounded-full">
-          <Pill tone="inferred">Inferred</Pill>
+          <Pill tone="inferred">{label}</Pill>
         </button>
       </Popover>
+      {onAct && (
+        <button
+          type="button"
+          onClick={act}
+          disabled={busy}
+          title={isOwner ? 'Writes this value into the event as yours.' : 'Your Verify counts toward this value. Two members make it verified.'}
+          className="not-italic inline-flex min-h-9 items-center rounded-control border border-line px-3 text-xs text-text hover:bg-surface-2 disabled:opacity-50"
+        >
+          {isOwner ? 'Confirm' : 'Verify'}
+        </button>
+      )}
+      {error && <span role="alert" className="not-italic text-xs text-bad">{error}</span>}
     </div>
   );
 };
@@ -209,8 +241,9 @@ const Field: React.FC<{
   // The event field this saves, so a save of it flashes.
   field?: keyof EventPatch;
   // Shown only while the stored value is empty; never put into the input or saved.
-  inferred?: InferredField;
-}> = ({ label, value, type = 'text', placeholder, source, onSave, onType, suggestions, offer, min, className, field, inferred }) => {
+  inferred?: InferredView;
+  onInferredAct?: (inferenceId: string) => Promise<void>;
+}> = ({ label, value, type = 'text', placeholder, source, onSave, onType, suggestions, offer, min, className, field, inferred, onInferredAct }) => {
   const flashing = React.useContext(FlashContext);
   const isOwner = useIsOwner();
   const editionId = React.useContext(EditionIdContext);
@@ -346,7 +379,7 @@ const Field: React.FC<{
           />
         )}
       </label>
-      {inferred && (value === undefined || String(value).trim() === '') && <InferredNote inferred={inferred} type={type} />}
+      {inferred && (value === undefined || String(value).trim() === '') && <InferredNote inferred={inferred} type={type} onAct={onInferredAct} />}
       {offer && (
         <button
           type="button"
@@ -1061,7 +1094,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const canManageEdition = isOwner || Boolean(onManage);
   const [job, setJob] = useState<LookupJob | null>(null);
   const [edition, setEdition] = useState<Edition | null>(null);
-  const [inferred, setInferred] = useState<Partial<Record<InferenceField, InferredField>>>({});
+  const [inferred, setInferred] = useState<Partial<Record<InferenceField, InferredView>>>({});
   const [inferredBilling, setInferredBilling] = useState<Record<string, InferredBilling>>({});
   const [suggestions, setSuggestions] = useState<ArtistSuggestion[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -1111,6 +1144,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const pastArtists = useMemo(() => pastArtistNames(others), [events, event.id]);
   const pastCompanions = useMemo(() => pastCompanionNames(others), [events, event.id]);
   const pastSetsList = useMemo(() => pastSets(events), [events]);
+
+  // A member's Verify, or the owner's Confirm, on an inferred value of this event. Reloads to show the result.
+  const verifyInferred = async (inferenceId: string) => {
+    if (isOwner) await canonicalApi.confirmInference(inferenceId);
+    else await eventsApi.verifyInference(event.id, inferenceId);
+    await load();
+  };
 
   const load = useCallback(async () => {
     try {
@@ -1537,7 +1577,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             dismissBusy={busy === 'dismiss-canon'}
           />
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Date" field="startDate" type="date" value={event.startDate} source={event.sources.startDate} inferred={inferred.startDate} onSave={(v) => save({ startDate: text(v) })} />
+            <Field label="Date" field="startDate" type="date" value={event.startDate} source={event.sources.startDate} onInferredAct={verifyInferred} inferred={inferred.startDate} onSave={(v) => save({ startDate: text(v) })} />
             {/* Shows the start date until you change it, so the picker opens on the
                 right month; stored only when it differs (a single-day event has no last day). */}
             <Field
@@ -1547,7 +1587,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               value={event.endDate ?? event.startDate}
               min={event.startDate}
               source={event.endDate ? event.sources.endDate : undefined}
-              inferred={inferred.endDate}
+              onInferredAct={verifyInferred} inferred={inferred.endDate}
               
               onSave={(v) => save({ endDate: v && v !== event.startDate ? v : null })}
             />
@@ -1562,7 +1602,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               field="venue"
               value={event.venue}
               source={event.sources.venue}
-              inferred={inferred.venue}
+              onInferredAct={verifyInferred} inferred={inferred.venue}
               suggestions={pastVenues}
               onSave={async (v) => {
                 const venue = text(v);
@@ -1607,7 +1647,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               value={event.city}
               placeholder="City"
               source={event.sources.city}
-              inferred={inferred.city}
+              onInferredAct={verifyInferred} inferred={inferred.city}
               suggestions={citySuggestions}
               onType={setCityQuery}
               onSave={(v) => saveCity(v)}
@@ -1618,7 +1658,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               value={event.region}
               placeholder="NV, or the region"
               source={event.sources.region}
-              inferred={inferred.region}
+              onInferredAct={verifyInferred} inferred={inferred.region}
               offer={
                 mapOffer
                   ? { value: mapOffer.value, from: mapOffer.from, onUse: () => void save(mapOffer.patch) }
@@ -1626,7 +1666,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               }
               onSave={(v) => save({ region: text(v) })}
             />
-            <Field label="Country" field="country" value={event.country} source={event.sources.country} inferred={inferred.country} onSave={(v) => save({ country: text(v) })} />
+            <Field label="Country" field="country" value={event.country} source={event.sources.country} onInferredAct={verifyInferred} inferred={inferred.country} onSave={(v) => save({ country: text(v) })} />
             <div className="col-span-2 space-y-1">
               <span className="block text-[11px] font-semibold text-text-muted">Type</span>
               <div className="flex flex-wrap items-center gap-1.5">

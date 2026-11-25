@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import type { AiCallRow, IngestTraceRow, MergeSummary } from './types';
-import type { CanonicalVenue, EditionChange, EditionInference, InferenceStatus, NewEditionInference, ReviewQueueItem, ReviewQueueKind } from '../types';
+import type { CanonicalVenue, EditionChange, EditionInference, InferenceStatus, InferenceVote, NewEditionInference, ReviewQueueItem, ReviewQueueKind } from '../types';
 import { ArtistIdTakenError, assertNoPersonalFields, ExternalIdConflictError, venueIdFor } from './types';
 import {
   ArtistIdentity,
@@ -75,6 +75,10 @@ function mapEditionInference(r: any): EditionInference {
     inputs: r.inputs ?? [], parents: r.parents ?? [], status: r.status, actor: r.actor, createdAt: r.created_at,
     resolvedAt: r.resolved_at ?? undefined, resolvedBy: r.resolved_by ?? undefined, resolvedReason: r.resolved_reason ?? undefined,
   };
+}
+
+function mapInferenceVote(r: any): InferenceVote {
+  return { id: r.id, inferenceId: r.inference_id, memberId: r.member_id, createdAt: r.created_at };
 }
 
 export class SupabaseLineupStore implements LineupStore {
@@ -2017,6 +2021,65 @@ export class SupabaseLineupStore implements LineupStore {
       'resolveEditionInference (apply 0055_edition_inferences.sql)',
     ) as any[] | null;
     return rows && rows.length ? mapEditionInference(rows[0]) : null;
+  }
+
+  async getEditionInference(id: string): Promise<EditionInference | null> {
+    const rows = this.check(await this.db.from('edition_inferences').select('*').eq('id', id).limit(1), 'getEditionInference (apply 0055_edition_inferences.sql)') as any[] | null;
+    return rows && rows.length ? mapEditionInference(rows[0]) : null;
+  }
+
+  async reactivateEditionInference(id: string, r: { by: string; reason: string }): Promise<EditionInference | null> {
+    // The unique index refuses a second active row for the same slot; that error is raised to the caller.
+    const rows = this.check(
+      await this.db.from('edition_inferences').update({ status: 'active', resolved_at: null, resolved_by: null, resolved_reason: null })
+        .eq('id', id).eq('status', 'confirmed').select('*'),
+      `reactivateEditionInference (apply 0055_edition_inferences.sql) ${r.reason}`,
+    ) as any[] | null;
+    return rows && rows.length ? mapEditionInference(rows[0]) : null;
+  }
+
+  async listActiveInferences(): Promise<EditionInference[]> {
+    const rows = this.check(
+      await this.db.from('edition_inferences').select('*').eq('status', 'active').order('created_at', { ascending: false }).limit(200),
+      'listActiveInferences (apply 0055_edition_inferences.sql)',
+    ) as any[] | null;
+    return (rows ?? []).map(mapEditionInference);
+  }
+
+  async addInferenceVote(inferenceId: string, memberId: string): Promise<InferenceVote> {
+    const row = { id: crypto.randomUUID(), inference_id: inferenceId, member_id: memberId, created_at: new Date().toISOString() };
+    // Upsert on the unique pair: a repeat tap changes nothing and returns the first vote.
+    const rows = this.check(
+      await this.db.from('inference_votes').upsert(row, { onConflict: 'inference_id,member_id', ignoreDuplicates: true }).select('*'),
+      'addInferenceVote (apply 0057_inference_votes.sql)',
+    ) as any[] | null;
+    if (rows && rows.length) return mapInferenceVote(rows[0]);
+    const existing = this.check(
+      await this.db.from('inference_votes').select('*').eq('inference_id', inferenceId).eq('member_id', memberId).limit(1),
+      'addInferenceVote (apply 0057_inference_votes.sql)',
+    ) as any[] | null;
+    return mapInferenceVote(existing![0]);
+  }
+
+  async listInferenceVotesFor(inferenceIds: string[]): Promise<InferenceVote[]> {
+    const ids = [...new Set(inferenceIds)];
+    const out: InferenceVote[] = [];
+    for (let i = 0; i < ids.length; i += 100) {
+      const rows = this.check(
+        await this.db.from('inference_votes').select('*').in('inference_id', ids.slice(i, i + 100)).order('created_at', { ascending: true }),
+        'listInferenceVotesFor (apply 0057_inference_votes.sql)',
+      ) as any[] | null;
+      out.push(...(rows ?? []).map(mapInferenceVote));
+    }
+    return out;
+  }
+
+  async listInferenceVotes(inferenceId: string): Promise<InferenceVote[]> {
+    const rows = this.check(
+      await this.db.from('inference_votes').select('*').eq('inference_id', inferenceId).order('created_at', { ascending: true }),
+      'listInferenceVotes (apply 0057_inference_votes.sql)',
+    ) as any[] | null;
+    return (rows ?? []).map(mapInferenceVote);
   }
 
   async addReviewItem(i: { kind: ReviewQueueKind; editionId?: string; eventId?: string; payload: Record<string, unknown> }): Promise<ReviewQueueItem> {

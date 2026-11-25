@@ -1,5 +1,5 @@
 import { Dialog } from './ui/Dialog';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, CloudSun, ExternalLink, Heart, MapPin, Plus, RefreshCw, Search, Star, Type, X } from 'lucide-react';
 import { Equalizer } from './ui/Equalizer';
 import {
@@ -22,6 +22,9 @@ import { regionCode } from '../server/events/regions';
 import { EventTitle } from './EventTitle';
 import { SuggestInput } from './SuggestInput';
 import { memberLineupApi } from '../services/lineupApi';
+import { canonicalApi, type ReviewInference } from '../services/lineupApi';
+import { useIsOwner } from './MeContext';
+import { Pill } from './ui/Pill';
 
 interface FillGapsProps {
   events: LoggedEvent[]; // the rows the Table shows
@@ -53,6 +56,11 @@ const GAP_LABELS: Record<Gap, string> = {
 
 // Matches MAX_BULK_LOOKUPS on the server.
 const LOOKUPS_PER_REQUEST = 5;
+
+// Labels for an inferred value's field on the owner's review list.
+const INFERRED_FIELD_LABELS: Record<string, string> = {
+  startDate: 'Date', endDate: 'End date', venue: 'Venue', city: 'City', region: 'State or region', country: 'Country', billing: 'Billing',
+};
 
 const control =
   'w-full rounded-control border border-line bg-surface-1 px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none';
@@ -309,6 +317,29 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Inferred values on shared events: owner only (docs/specs/inferred-values.md, step 7).
+  const isOwner = useIsOwner();
+  const [inferences, setInferences] = useState<ReviewInference[]>([]);
+  const loadInferences = useCallback(() => {
+    if (!isOwner) return;
+    canonicalApi
+      .inferencesForReview()
+      .then((r) => setInferences(r.inferences))
+      .catch(() => setInferences([]));
+  }, [isOwner]);
+  useEffect(() => {
+    loadInferences();
+  }, [loadInferences]);
+  const reviewInference = async (id: string, action: 'confirm' | 'reject') => {
+    setError(null);
+    try {
+      if (action === 'confirm') await canonicalApi.confirmInference(id);
+      else await canonicalApi.rejectInference(id);
+      loadInferences();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save that.');
+    }
+  };
   // Catalog acts named in a linked edition's name that its lineup lacks, and the ones this member has proposed.
   const [offers, setOffers] = useState<Record<string, Array<{ artistKey: string; artistName: string }>>>({});
   const [proposed, setProposed] = useState<Set<string>>(new Set());
@@ -765,6 +796,37 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
                   <span className="shrink-0 text-xs text-text-muted">{whenLabel(e) ?? e.year}</span>
                 </div>
                 <GapEditor event={e} gap="date" suggestions={[]} onSave={(patch) => save(e.id, patch)} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {inferences.length > 0 && (
+        <section className="space-y-2 rounded-card border border-dashed border-line p-3" aria-label="Inferred values">
+          <h3 className="font-display text-base font-normal text-text">Inferred ({inferences.length})</h3>
+          <p className="text-xs text-text-muted">Placeholders, not verified data. Confirm writes the value into the event as yours. Reject removes it and anything built on it.</p>
+          <ul className="divide-y divide-line">
+            {inferences.map((inf) => (
+              <li key={inf.id} className="space-y-1.5 py-2">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-sm font-medium text-text">{inf.editionName || 'Untitled event'}</span>
+                  <Pill tone="inferred">{inf.votes ? `Candidate, ${inf.votes} member${inf.votes === 1 ? '' : 's'}` : 'Inferred'}</Pill>
+                </div>
+                <p className="text-sm text-text">
+                  {INFERRED_FIELD_LABELS[inf.field] ?? inf.field}: {String(inf.value)}
+                  {inf.subject ? <span className="text-text-muted"> (act {inf.subject})</span> : null}
+                </p>
+                <p className="text-xs text-text-muted">{inf.reason}</p>
+                <div className="flex gap-2">
+                  {inf.field !== 'billing' && (
+                    <button type="button" onClick={() => reviewInference(inf.id, 'confirm')} className="inline-flex min-h-9 items-center rounded-control border border-line px-3 text-xs text-text hover:bg-surface-2">
+                      Confirm
+                    </button>
+                  )}
+                  <button type="button" onClick={() => reviewInference(inf.id, 'reject')} className="inline-flex min-h-9 items-center rounded-control border border-line px-3 text-xs text-text hover:bg-surface-2">
+                    Reject
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

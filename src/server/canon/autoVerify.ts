@@ -84,8 +84,9 @@ export type EditionFieldFacts = Partial<Record<EditionField, { value?: string; v
 
 // Actors whose location writes count as a location from a verified source (Charlie, 2026-11-24): the venue fill copies
 // a location already stored on the shared venue records, or splits the edition's own "City, ST" text, in code.
-// Kept as a literal so this file stays free of imports; it must equal VENUE_FILL_ACTOR in venueFill.ts (tested).
-export const VERIFIED_LOCATION_ACTORS: ReadonlySet<string> = new Set(['system:venue-location']);
+// Two different members verifying an inferred location (system:member-verify) also counts.
+// Kept as literals so this file stays free of imports; the first must equal VENUE_FILL_ACTOR in venueFill.ts (tested).
+export const VERIFIED_LOCATION_ACTORS: ReadonlySet<string> = new Set(['system:venue-location', 'system:member-verify']);
 
 // True when the edition's location was last written by an actor whose location counts as verified.
 export function locationVerifiedBy(actor: string | undefined | null): boolean {

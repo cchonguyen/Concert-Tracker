@@ -424,6 +424,14 @@ export interface EditionInference {
 }
 export type NewEditionInference = Omit<EditionInference, 'id' | 'status' | 'createdAt' | 'resolvedAt' | 'resolvedBy' | 'resolvedReason'>;
 
+// A member's Verify tap on an active inferred value (docs/specs/inferred-values.md). Holds no personal fields.
+export interface InferenceVote {
+  id: string;
+  inferenceId: string;
+  memberId: string;
+  createdAt: string;
+}
+
 export type ReviewQueueKind = 'override' | 'merge_suggestion' | 'provisional' | 'formatting' | 'failed_lookup' | 'lineup_proposal';
 
 // Payloads hold edition facts and field names only, never personal fields.

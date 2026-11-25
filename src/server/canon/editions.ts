@@ -33,6 +33,8 @@ type ChangeRecord = Parameters<LineupStore['recordEditionChange']>[0];
 
 // Inferred values (docs/specs/inferred-values.md). Re-exported by inferences.ts.
 export const INFERENCE_ADDED_KEY = 'inferenceAdded';
+// Set on a change that wrote an inferred value into a field because the owner or two members confirmed it. Undo sets the inference back to active.
+export const INFERENCE_CONFIRMED_KEY = 'inferenceConfirmed';
 export const INFERENCE_FIELDS: readonly InferenceField[] = ['startDate', 'endDate', 'venue', 'city', 'region', 'country'];
 
 export function isEmptyValue(v: unknown): boolean {
@@ -168,6 +170,18 @@ async function undoInference(store: LineupStore, edition: Edition, change: Editi
   return { ok: true, change };
 }
 
+// Undo of a confirmed write: the inference goes back to active (its votes stay). Recorded like other resolutions.
+async function reactivateConfirmed(store: LineupStore, editionId: string, inferenceId: string, actor: string, changeId: string): Promise<void> {
+  const row = await store.reactivateEditionInference(inferenceId, { by: actor, reason: `undo of ${changeId}` });
+  if (!row) return;
+  await recordEditionNote(store, {
+    editionId,
+    actor,
+    reason: `inferred ${row.field}: back to inferred after undo of ${changeId}`,
+    after: { inferenceReactivated: inferenceId },
+  });
+}
+
 export type UndoResult =
   | { ok: true; change: EditionChange }
   | { ok: false; reason: 'unknown' | 'already_undone' | 'stale' | 'not_undoable' };
@@ -220,6 +234,8 @@ export async function undoEditionChange(store: LineupStore, editionId: string, c
   }
   const written = await writeEdition(store, { edition: restored, actor, reason: `undo of ${changeId}` });
   await store.markChangeUndone(changeId);
+  const confirmed = (change.after as Snapshot | null)?.[INFERENCE_CONFIRMED_KEY];
+  if (typeof confirmed === 'string') await reactivateConfirmed(store, editionId, confirmed, actor, changeId);
   return { ok: true, change: written.change ?? change };
 }
 

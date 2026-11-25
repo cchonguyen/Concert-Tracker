@@ -9,6 +9,7 @@ import {
   EditionHeader,
   EditionInference,
   InferenceStatus,
+  InferenceVote,
   NewEditionInference,
   EditionPerformance,
   EditionWeekend,
@@ -555,6 +556,17 @@ export interface LineupStore {
   listInferenceChildren(id: string): Promise<EditionInference[]>;
   // Only an active row can be resolved; returns null otherwise.
   resolveEditionInference(id: string, r: { status: Exclude<InferenceStatus, 'active'>; by: string; reason: string }): Promise<EditionInference | null>;
+  // One inference by id, any status. Null when unknown.
+  getEditionInference(id: string): Promise<EditionInference | null>;
+  // Only a 'confirmed' row goes back to 'active' (undo of a confirm). Clears its resolution. Null otherwise.
+  reactivateEditionInference(id: string, r: { by: string; reason: string }): Promise<EditionInference | null>;
+  // Active inferences across all editions, newest first, capped at 200 (the owner's review list).
+  listActiveInferences(): Promise<EditionInference[]>;
+  // Idempotent per inference and member: a second tap returns the existing vote.
+  addInferenceVote(inferenceId: string, memberId: string): Promise<InferenceVote>;
+  listInferenceVotes(inferenceId: string): Promise<InferenceVote[]>;
+  // Votes for many inferences in one read (chunks of 100 ids in the Supabase store). Empty input gives [].
+  listInferenceVotesFor(inferenceIds: string[]): Promise<InferenceVote[]>;
   // Throws PersonalFieldError when the payload holds a personal field at any depth.
   addReviewItem(i: { kind: ReviewQueueKind; editionId?: string; eventId?: string; payload: Record<string, unknown> }): Promise<ReviewQueueItem>;
   enqueueReview?(i: { kind: ReviewQueueKind; editionId?: string; eventId?: string; payload: Record<string, unknown> }): Promise<ReviewQueueItem>;

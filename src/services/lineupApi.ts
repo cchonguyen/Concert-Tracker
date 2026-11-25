@@ -1,6 +1,6 @@
 import type { VenueLocation, VenueLocationResult } from '../server/canon/venueLocation';
 import type { VenueFillPlan, VenueFillResult } from '../server/canon/venueFill';
-import type { Edition, EditionWeekend, InferenceField, LookupJob, SeriesKind, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
+import type { Edition, EditionInference, EditionWeekend, InferenceField, LookupJob, SeriesKind, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
 import type { InferredField } from '../server/canon/inferences';
 import type { InferredBilling } from '../server/canon/inferredBilling';
 import type { ShareSettings } from '../server/share/types';
@@ -169,6 +169,9 @@ export const takeResearchOutcome = (id: string): 'queued' | 'pending' | undefine
 };
 
 // Your event log: capture and details (stage 1), lineup lookups (stage 2).
+// An active inferred value for the owner's review (the edition it sits on, and its member votes).
+export type ReviewInference = EditionInference & { editionName: string; votes: number };
+
 export const eventsApi = {
   list: () =>
     request<{ events: LoggedEvent[]; lineups: Record<string, LineupSummary>; editions: Record<string, LineupFacts> }>('/api/events'),
@@ -178,6 +181,8 @@ export const eventsApi = {
     ),
   pollOne: (id: string) =>
     request<{ job: LookupJob | null; detailsStatus?: EventDetails['status'] }>(`/api/events/${encodeURIComponent(id)}/poll`),
+  verifyInference: (eventId: string, inferenceId: string) =>
+    request<{ votes: number; verified: boolean }>(`/api/events/${encodeURIComponent(eventId)}/inferences/${encodeURIComponent(inferenceId)}/verify`, post({})),
   get: (id: string) =>
     request<{
       event: LoggedEvent;
@@ -644,6 +649,9 @@ export class UndoConflictError extends Error {
 export const canonicalApi = {
   // A venue's known location from the shared venue records: one location, the choices, or none.
   // Bulk fill of editions' empty city, state and country from their "City, ST" text and their venue (owner only).
+  inferencesForReview: () => request<{ inferences: ReviewInference[] }>('/api/manage/inferences'),
+  confirmInference: (id: string) => request<{ inference: EditionInference }>(`/api/manage/inferences/${encodeURIComponent(id)}/confirm`, post({})),
+  rejectInference: (id: string) => request<{ rows: EditionInference[] }>(`/api/manage/inferences/${encodeURIComponent(id)}/reject`, post({})),
   venueFillPlan: () => request<VenueFillPlan>('/api/manage/canonical/venue-fill'),
   venueFillApply: (body: { editionIds?: string[]; picks?: Array<{ editionId: string; location: VenueLocation }> }) =>
     request<VenueFillResult>('/api/manage/canonical/venue-fill', post(body)),
