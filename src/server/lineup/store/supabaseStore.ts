@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import type { AiCallRow, IngestTraceRow, MergeSummary } from './types';
-import type { CanonicalVenue, EditionChange, ReviewQueueItem, ReviewQueueKind } from '../types';
+import type { CanonicalVenue, EditionChange, EditionInference, InferenceStatus, NewEditionInference, ReviewQueueItem, ReviewQueueKind } from '../types';
 import { ArtistIdTakenError, assertNoPersonalFields, ExternalIdConflictError, venueIdFor } from './types';
 import {
   ArtistIdentity,
@@ -67,6 +67,15 @@ import type { CachedResponse } from '../responseCache';
 // supabase/migrations/0002_source_first_lineups.sql, 0003_event_log.sql and
 // 0004_email_imports.sql (optional: only email import needs it).
 export { EditionOccurrenceConflictError, type EditionConflictInfo };
+
+
+function mapEditionInference(r: any): EditionInference {
+  return {
+    id: r.id, editionId: r.edition_id, field: r.field, value: r.value, reason: r.reason, rule: r.rule,
+    inputs: r.inputs ?? [], parents: r.parents ?? [], status: r.status, actor: r.actor, createdAt: r.created_at,
+    resolvedAt: r.resolved_at ?? undefined, resolvedBy: r.resolved_by ?? undefined, resolvedReason: r.resolved_reason ?? undefined,
+  };
+}
 
 export class SupabaseLineupStore implements LineupStore {
   readonly kind = 'supabase' as const;
@@ -1974,6 +1983,40 @@ export class SupabaseLineupStore implements LineupStore {
       'markChangeUndone (apply 0041_shared_occurrences.sql)',
     ) as any[] | null;
     return (rows ?? []).length > 0;
+  }
+
+  async addEditionInference(i: NewEditionInference): Promise<EditionInference> {
+    if (!i.reason || !i.reason.trim()) throw new Error('An inference needs a reason.');
+    assertNoPersonalFields(i.value);
+    assertNoPersonalFields(i.inputs);
+    const row: EditionInference = { ...i, id: crypto.randomUUID(), status: 'active', createdAt: new Date().toISOString() };
+    this.check(
+      await this.db.from('edition_inferences').insert({
+        id: row.id, edition_id: row.editionId, field: row.field, value: row.value ?? null, reason: row.reason, rule: row.rule,
+        inputs: row.inputs, parents: row.parents, status: 'active', actor: row.actor, created_at: row.createdAt,
+      }),
+      'addEditionInference (apply 0055_edition_inferences.sql)',
+    );
+    return row;
+  }
+
+  async listEditionInferences(editionId: string): Promise<EditionInference[]> {
+    const rows = this.check(await this.db.from('edition_inferences').select('*').eq('edition_id', editionId).order('created_at', { ascending: false }), 'listEditionInferences (apply 0055_edition_inferences.sql)') as any[] | null;
+    return (rows ?? []).map(mapEditionInference);
+  }
+
+  async listInferenceChildren(id: string): Promise<EditionInference[]> {
+    const rows = this.check(await this.db.from('edition_inferences').select('*').contains('parents', [id]).order('created_at', { ascending: false }), 'listInferenceChildren (apply 0055_edition_inferences.sql)') as any[] | null;
+    return (rows ?? []).map(mapEditionInference);
+  }
+
+  async resolveEditionInference(id: string, r: { status: Exclude<InferenceStatus, 'active'>; by: string; reason: string }): Promise<EditionInference | null> {
+    const rows = this.check(
+      await this.db.from('edition_inferences').update({ status: r.status, resolved_at: new Date().toISOString(), resolved_by: r.by, resolved_reason: r.reason })
+        .eq('id', id).eq('status', 'active').select('*'),
+      'resolveEditionInference (apply 0055_edition_inferences.sql)',
+    ) as any[] | null;
+    return rows && rows.length ? mapEditionInference(rows[0]) : null;
   }
 
   async addReviewItem(i: { kind: ReviewQueueKind; editionId?: string; eventId?: string; payload: Record<string, unknown> }): Promise<ReviewQueueItem> {

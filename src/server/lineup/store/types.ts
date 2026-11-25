@@ -7,6 +7,9 @@ import {
   EditionArtistRef,
   EditionChange,
   EditionHeader,
+  EditionInference,
+  InferenceStatus,
+  NewEditionInference,
   EditionPerformance,
   EditionWeekend,
   ExtractionExample,
@@ -544,6 +547,14 @@ export interface LineupStore {
   listEditionChanges(editionId: string): Promise<EditionChange[]>;
   // Sets undone_at once. False when the change is unknown or was already undone.
   markChangeUndone(changeId: string): Promise<boolean>;
+  // Refuses (throws) an empty reason, and a second active inference for the same edition and field.
+  addEditionInference(i: NewEditionInference): Promise<EditionInference>;
+  // Newest first.
+  listEditionInferences(editionId: string): Promise<EditionInference[]>;
+  // Rows whose parents include this inference ID.
+  listInferenceChildren(id: string): Promise<EditionInference[]>;
+  // Only an active row can be resolved; returns null otherwise.
+  resolveEditionInference(id: string, r: { status: Exclude<InferenceStatus, 'active'>; by: string; reason: string }): Promise<EditionInference | null>;
   // Throws PersonalFieldError when the payload holds a personal field at any depth.
   addReviewItem(i: { kind: ReviewQueueKind; editionId?: string; eventId?: string; payload: Record<string, unknown> }): Promise<ReviewQueueItem>;
   enqueueReview?(i: { kind: ReviewQueueKind; editionId?: string; eventId?: string; payload: Record<string, unknown> }): Promise<ReviewQueueItem>;

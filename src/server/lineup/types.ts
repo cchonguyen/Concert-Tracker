@@ -396,6 +396,31 @@ export interface EditionChange {
   undoneAt?: string;
 }
 
+// Inferred values for a shared edition. The rules are in docs/specs/inferred-values.md.
+export type InferenceField = 'startDate' | 'endDate' | 'venue' | 'city' | 'region' | 'country';
+export type InferenceStatus = 'active' | 'confirmed' | 'replaced' | 'rejected';
+export type InferenceInput =
+  | { kind: 'source'; url: string; quote: string }
+  | { kind: 'record'; table: string; id: string }
+  | { kind: 'inference'; id: string };
+export interface EditionInference {
+  id: string;
+  editionId: string;
+  field: InferenceField;
+  value: unknown;
+  reason: string;
+  rule: string;
+  inputs: InferenceInput[];
+  parents: string[];
+  status: InferenceStatus;
+  actor: string;
+  createdAt: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  resolvedReason?: string;
+}
+export type NewEditionInference = Omit<EditionInference, 'id' | 'status' | 'createdAt' | 'resolvedAt' | 'resolvedBy' | 'resolvedReason'>;
+
 export type ReviewQueueKind = 'override' | 'merge_suggestion' | 'provisional' | 'formatting' | 'failed_lookup' | 'lineup_proposal';
 
 // Payloads hold edition facts and field names only, never personal fields.
