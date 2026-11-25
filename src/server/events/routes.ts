@@ -20,6 +20,7 @@ import type { LineupFacts } from './scale';
 import { lookupWeather } from './weather';
 import { weatherForEdition } from './editionWeather';
 import { inferredFieldsFor, storeReaderInferences } from '../canon/inferences';
+import { inferredBillingFor, type InferredBilling } from '../canon/inferredBilling';
 import { undoActivity } from './undo';
 import { currentMember } from '../auth/requestScope';
 
@@ -309,14 +310,17 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
       const resolved = resolveEvent(event, edition);
       // Inferred values are a display aid: a failed lookup shows none and never fails the request.
       let inferred: ReturnType<typeof inferredFieldsFor> = {};
+      let inferredBilling: Record<string, InferredBilling> = {};
       if (edition) {
         try {
-          inferred = inferredFieldsFor(resolved, await deps.store.listEditionInferences(edition.id));
+          const rows = await deps.store.listEditionInferences(edition.id);
+          inferred = inferredFieldsFor(resolved, rows);
+          inferredBilling = inferredBillingFor(rows);
         } catch (err) {
           console.warn('inferred values not loaded', err instanceof Error ? err.name : 'error');
         }
       }
-      res.json({ event: resolved, job, edition, suggestions, inferred });
+      res.json({ event: resolved, job, edition, suggestions, inferred, inferredBilling });
     } catch (err) {
       fail(res, err);
     }

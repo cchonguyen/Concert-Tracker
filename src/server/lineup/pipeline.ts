@@ -19,6 +19,7 @@ import { appendFacts, mergeLineup } from './merge';
 import { domainOf, editionKeyFor, htmlToText, isVerbatim, normalizeName, seriesSlugFor } from './text';
 import { findVerifiedEdition } from '../canon/match';
 import { autoVerifyAfterLookup } from '../canon/autoVerifyRun';
+import { inferBillingRoles } from '../canon/inferredBilling';
 import { isBilling,quoteBacksBilling } from './billing';
 import { makeDocument } from './adapters/common';
 import { pastedAdapter } from './adapters/pasted';
@@ -541,6 +542,13 @@ async function stageMerge(deps: PipelineDeps, job: LookupJob, now: Date): Promis
       if (av.edition) log(job, 'Auto-verified the shared edition: every fact comes from a verified source.', now);
     } catch (err) {
       log(job, `Auto-verify skipped: ${redactSecrets(err instanceof Error ? err.message : String(err))}`, now);
+    }
+    // Inferred billing roles on the stored shared edition. A lookup never fails because of them.
+    try {
+      const stored = job.editionId ? await deps.store.getEdition(job.editionId) : await deps.store.getEditionByKey(job.editionKey);
+      if (stored) await inferBillingRoles(deps.store, stored);
+    } catch (err) {
+      console.warn('inferred billing not stored', err instanceof Error ? err.name : 'error');
     }
   } else {
     job.status = 'no_data';

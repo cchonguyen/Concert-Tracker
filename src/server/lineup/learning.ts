@@ -16,6 +16,7 @@ import { LoggedEvent, SeenAct, SetKind } from '../events/types';
 import { isSetKind, withB2b } from '../events/seen';
 import { Billing, isBilling } from './billing';
 import { writeEdition } from '../canon/editions';
+import { inferBillingRoles } from '../canon/inferredBilling';
 
 // Review is where the system learns. Every decision is stored as data that the
 // next lookup reads: aliases, a per-site blocklist, measured source accuracy
@@ -364,6 +365,12 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
     updatedAt: now,
   };
   await writeEdition(store, { edition, actor: 'system:learning', reason: 'lineup confirmed' });
+  try {
+    const stored = await store.getEdition(edition.id);
+    if (stored) await inferBillingRoles(store, stored);
+  } catch (err) {
+    console.warn('inferred billing not stored', err instanceof Error ? err.name : 'error');
+  }
 
   if (fresh) await learnFromSources(store, job, acceptedByDoc, slug);
 

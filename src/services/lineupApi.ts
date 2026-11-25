@@ -2,6 +2,7 @@ import type { VenueLocation, VenueLocationResult } from '../server/canon/venueLo
 import type { VenueFillPlan, VenueFillResult } from '../server/canon/venueFill';
 import type { Edition, EditionWeekend, InferenceField, LookupJob, SeriesKind, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
 import type { InferredField } from '../server/canon/inferences';
+import type { InferredBilling } from '../server/canon/inferredBilling';
 import type { ShareSettings } from '../server/share/types';
 import type { NameIndex } from '../server/entities/link';
 import { norm } from './listImport';
@@ -184,6 +185,7 @@ export const eventsApi = {
       edition: Edition | null;
       suggestions: ArtistSuggestion[];
       inferred?: Partial<Record<InferenceField, InferredField>>;
+      inferredBilling?: Record<string, InferredBilling>;
     }>(`/api/events/${id}`),
   // research: true (the capture bar) asks the server to research the new event from its queue. The answer is
   // remembered by event id (takeQueuedResearch). Imports leave it off and are never researched.

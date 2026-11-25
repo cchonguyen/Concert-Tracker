@@ -547,7 +547,7 @@ export interface LineupStore {
   listEditionChanges(editionId: string): Promise<EditionChange[]>;
   // Sets undone_at once. False when the change is unknown or was already undone.
   markChangeUndone(changeId: string): Promise<boolean>;
-  // Refuses (throws) an empty reason, and a second active inference for the same edition and field.
+  // Refuses (throws) an empty reason, and a second active inference for the same edition, field and subject.
   addEditionInference(i: NewEditionInference): Promise<EditionInference>;
   // Newest first.
   listEditionInferences(editionId: string): Promise<EditionInference[]>;
