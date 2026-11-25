@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Loader2, MapPin, Plus } from 'lucide-react';
+import { CalendarDays, MapPin, Plus } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { parseEventInput } from '../server/events/parse';
 import { eventsApi, EditionSuggestion, LoggedEvent, suggestEditions } from '../services/lineupApi';
 import { suggestionPlaceLabel, suggestionWhenLabel, whenLabel } from '../services/format';
 import { isAhead } from '../server/events/attendance';
 import { isSampleMode } from '../services/sampleMode';
-import { Pill } from './ui/Pill';
+import { Equalizer } from './ui/Equalizer';
+import { HintPill } from './ui/HintPill';
 
 interface CaptureBarProps {
   onCaptured: (event: LoggedEvent) => void;
@@ -36,6 +38,7 @@ export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured, compact, lab
   const [listOpen, setListOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
+  const still = useReducedMotion();
   const parsed = useMemo(() => (text.trim() ? parseEventInput(text) : null), [text]);
   const when = parsed && whenLabel(parsed);
   const ahead = parsed ? isAhead(parsed, new Date().toISOString().slice(0, 10)) : false;
@@ -129,11 +132,11 @@ export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured, compact, lab
 
   return (
     <form onSubmit={submit} className="space-y-2">
-      <label className="block text-sm font-semibold text-zinc-300" htmlFor="capture">
+      <label className="block text-sm font-semibold text-text-muted" htmlFor="capture">
         {label ?? (compact ? 'Add an event, past or upcoming' : 'What did you go to?')}
       </label>
       <div className="relative">
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 rounded-card border border-line-strong bg-surface-1 p-1.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] transition-[border-color,box-shadow] focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25">
           <input
             id="capture"
             ref={inputRef}
@@ -157,73 +160,93 @@ export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured, compact, lab
             }}
             onKeyDown={onKeyDown}
             placeholder="Porter Robinson at the Greek, Oct 5 2024"
-            className="min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-base text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none"
+            className="min-h-11 min-w-0 flex-1 bg-transparent px-3 py-1.5 text-base text-text placeholder:text-text-faint focus:outline-none sm:min-h-10"
           />
           <button
             type="submit"
             disabled={!text.trim() || saving}
             aria-label="Add event"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-accent-fill px-4 text-sm font-semibold text-on-accent hover:brightness-110 disabled:opacity-40"
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control bg-accent-fill px-4 text-sm font-semibold text-on-accent hover:brightness-110 disabled:opacity-40 sm:min-h-10"
           >
-            {saving ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Plus aria-hidden="true" className="h-4 w-4" />}
+            {saving ? <Equalizer size="sm" /> : <Plus aria-hidden="true" className="h-4 w-4" />}
             <span className="hidden sm:inline">Add</span>
           </button>
         </div>
-        {rows.length > 0 && (
-          <ul
-            id="capture-editions"
-            role="listbox"
-            aria-label="Matching editions"
-            className="absolute left-0 right-0 top-full z-30 mt-1 max-h-60 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl"
-          >
-            {rows.map((s, i) => {
-              const facts = editionFacts(s, parsed?.weekend);
-              return (
-                <li key={s.id} id={rowId(i)} role="option" aria-selected={i === active}>
-                  <button
-                    type="button"
-                    // Keep focus in the input, so its blur doesn't close the list before the tap lands.
-                    onPointerDown={(e) => e.preventDefault()}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => pickEdition(s)}
-                    className={`block w-full px-3 py-2 text-left text-sm ${
-                      i === active ? 'bg-violet-600/30 text-violet-100' : 'text-zinc-200 hover:bg-zinc-800'
-                    }`}
-                  >
-                    <span className="flex flex-wrap items-center gap-1.5">
-                      <span className="truncate font-semibold">{s.name}</span>
-                      {(s.seriesName || s.seriesBrand) && (
-                        <Pill tone="neutral">{[s.seriesName, s.seriesBrand].filter(Boolean).join(' · ')}</Pill>
-                      )}
-                    </span>
-                    {facts.length > 0 && <span className="block truncate text-xs text-zinc-400">{facts.join(' · ')}</span>}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        <AnimatePresence>
+          {rows.length > 0 && (
+            <motion.ul
+              id="capture-editions"
+              role="listbox"
+              aria-label="Matching editions"
+              initial={still ? false : { opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={still ? undefined : { opacity: 0, y: -4 }}
+              transition={{ duration: still ? 0 : 0.15, ease: 'easeOut' }}
+              className="absolute left-0 right-0 top-full z-30 mt-1.5 max-h-60 overflow-y-auto rounded-card border border-line-strong bg-surface-1 py-1 shadow-xl"
+            >
+              {rows.map((s, i) => {
+                const facts = editionFacts(s, parsed?.weekend);
+                return (
+                  <li key={s.id} id={rowId(i)} role="option" aria-selected={i === active}>
+                    <button
+                      type="button"
+                      // Keep focus in the input, so its blur doesn't close the list before the tap lands.
+                      onPointerDown={(e) => e.preventDefault()}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => pickEdition(s)}
+                      className={`block w-full px-3.5 py-2 text-left text-sm ${
+                        i === active ? 'bg-accent-tint text-accent' : 'text-text hover:bg-surface-2'
+                      }`}
+                    >
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <span className="truncate font-semibold">{s.name}</span>
+                        {(s.seriesName || s.seriesBrand) && (
+                          <span className="rounded-control border border-line bg-surface-2 px-1.5 py-0.5 text-[11px] text-text-muted">
+                            {[s.seriesName, s.seriesBrand].filter(Boolean).join(' · ')}
+                          </span>
+                        )}
+                      </span>
+                      {facts.length > 0 && <span className="block truncate text-xs text-text-muted">{facts.join(' · ')}</span>}
+                    </button>
+                  </li>
+                );
+              })}
+            </motion.ul>
+          )}
+        </AnimatePresence>
       </div>
-      {parsed && (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="rounded-full bg-zinc-800 px-2.5 py-1 font-semibold text-zinc-100">{parsed.name || '…'}</span>
-          {parsed.weekend && <Pill tone="accent">Weekend {parsed.weekend}</Pill>}
-          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 ${when ? 'bg-zinc-800 text-zinc-200' : 'text-zinc-400'}`}>
-            <CalendarDays className="h-3 w-3" /> {when ?? 'no date yet (that’s fine)'}
-          </span>
-          {ahead && (
-            <span className="rounded-full bg-sky-500/10 px-2.5 py-1 text-sky-300" title="Counted once you say you went">
-              Upcoming: you'll be asked if you went
+      <AnimatePresence>
+        {parsed && (
+          <motion.div
+            initial={still ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={still ? undefined : { opacity: 0 }}
+            transition={{ duration: still ? 0 : 0.14 }}
+            className="flex flex-wrap items-center gap-2 text-xs"
+          >
+            <span className="rounded-control border border-line bg-surface-2 px-2.5 py-1 font-semibold text-text">{parsed.name || '…'}</span>
+            {parsed.weekend && <HintPill tone="info">Weekend {parsed.weekend}</HintPill>}
+            <span
+              className={`inline-flex items-center gap-1 rounded-control px-2.5 py-1 ${
+                when ? 'border border-line bg-surface-2 font-mono tabular-nums text-text' : 'text-text-muted'
+              }`}
+            >
+              <CalendarDays className="h-3 w-3" aria-hidden="true" /> {when ?? 'no date yet (that’s fine)'}
             </span>
-          )}
-          {(parsed.venue || parsed.city) && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-zinc-800 px-2.5 py-1 text-zinc-200">
-              <MapPin className="h-3 w-3" /> {[parsed.venue, parsed.city].filter(Boolean).join(', ')}
-            </span>
-          )}
-        </div>
-      )}
-      {error && <p className="text-sm text-rose-300">{error}</p>}
+            {ahead && (
+              <span title="Counted once you say you went">
+                <HintPill tone="info">Upcoming: you'll be asked if you went</HintPill>
+              </span>
+            )}
+            {(parsed.venue || parsed.city) && (
+              <span className="inline-flex items-center gap-1 rounded-control border border-line bg-surface-2 px-2.5 py-1 text-text">
+                <MapPin className="h-3 w-3" aria-hidden="true" /> {[parsed.venue, parsed.city].filter(Boolean).join(', ')}
+              </span>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {error && <p className="text-sm text-bad">{error}</p>}
     </form>
   );
 };
