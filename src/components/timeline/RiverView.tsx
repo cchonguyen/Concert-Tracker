@@ -1,4 +1,4 @@
-import React, { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { placeLabel } from '../../services/format';
 import { dateChip, RIVER_ZOOMS, riverLayout, RiverItem, riverStretch, TimelineSpan, TimelineViewProps } from '../../services/timeline';
@@ -7,14 +7,14 @@ import { Popover } from '../ui/Popover';
 // River: events along a vertical top-to-bottom time axis you drag or scroll
 // through, zoomed from about a decade down to a month, with a light grid in
 // the background. Concerts are dots, runs of days are vertical bars, sized in
-// steps by acts you logged (none logged draws like one act), with a line for
-// today. Names show beside the marks once zoomed in. A mark opens a short list
-// of the events on its days (hover with a mouse, tap on a touch screen, Enter
-// on a keyboard); the marks also carry the browser's title as the screen-reader
-// name. Only the large size is built so far.
+// steps by acts you logged (none logged draws like one act) and spread from
+// left to right across the full width, with a line for today. Names show beside
+// the marks once zoomed in. A mark opens a short list of the events on its days
+// (hover with a mouse, tap on a touch screen, Enter on a keyboard); the marks
+// also carry the browser's title as the screen-reader name.
 
 const AXIS_X = 76;
-const PAD_Y = 20;
+const PAD_Y = 24;
 const GRID_SIZE = 24;
 
 const ATTENDANCE_LABEL: Record<TimelineSpan['attendance'], string> = {
@@ -27,6 +27,14 @@ interface RiverProps extends TimelineViewProps {
   onShowInAgenda?: (eventId: string) => void; // "and N more": Agenda opens at this event
 }
 
+interface PlacedItem {
+  item: RiverItem;
+  cx: number;
+  cy: number;
+  vr: number;
+  barH: number;
+}
+
 const MARK_CLASS = (item: RiverItem) => {
   if (item.span.attendance === 'confirm') return 'fill-transparent stroke-warn';
   if (item.span.attendance === 'upcoming') return 'fill-transparent stroke-accent';
@@ -35,12 +43,27 @@ const MARK_CLASS = (item: RiverItem) => {
 
 export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda }) => {
   const [zoom, setZoom] = useState(1);
+  const [containerWidth, setContainerWidth] = useState(800);
   const gridId = useId();
   const layout = useMemo(() => riverLayout(model, RIVER_ZOOMS[zoom]), [model, zoom]);
   const box = useRef<HTMLDivElement>(null);
   const centre = useRef<number | null>(null); // the share of the height at the middle of the screen, kept across zooms
   const drag = useRef<{ y: number; top: number } | null>(null);
   const moved = useRef(false); // you scrolled or dragged; until then zooming stays on today
+
+  const hasLayout = Boolean(layout);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const sync = () => {
+      if (el.clientWidth > 0) setContainerWidth(el.clientWidth);
+    };
+    sync();
+    if (typeof ResizeObserver === 'undefined') return;
+    const obs = new ResizeObserver(sync);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasLayout]);
 
   const totalHeight = layout ? layout.width + PAD_Y * 2 : 0;
 
@@ -62,12 +85,52 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
     setZoom(Math.max(0, Math.min(RIVER_ZOOMS.length - 1, next)));
   };
 
+  const placed = useMemo<PlacedItem[]>(() => {
+    if (!layout) return [];
+    const hasLabels = layout.items.some((i) => i.label);
+    const plotLeft = AXIS_X + 24;
+    const plotRight = Math.max(containerWidth - 16, plotLeft + 180);
+    const plotWidth = plotRight - plotLeft;
+    const cols = hasLabels
+      ? Math.max(1, Math.floor(plotWidth / 190))
+      : Math.max(2, Math.min(10, Math.floor(plotWidth / 76)));
+    const colWidth = plotWidth / cols;
+    const colBottoms = new Array<number>(cols).fill(-Infinity);
+    let nextCol = 0;
+
+    return layout.items.map((item) => {
+      const vr = Math.round(item.r * 1.75 + 2);
+      const cy = PAD_Y + item.x;
+      const barH = Math.max(item.w, vr * 2);
+
+      let chosen = -1;
+      for (let offset = 0; offset < cols; offset++) {
+        const c = (nextCol + offset) % cols;
+        if (colBottoms[c] < cy - 6) {
+          chosen = c;
+          break;
+        }
+      }
+      if (chosen < 0) {
+        chosen = 0;
+        for (let c = 1; c < cols; c++) {
+          if (colBottoms[c] < colBottoms[chosen]) chosen = c;
+        }
+      }
+
+      colBottoms[chosen] = cy + barH;
+      nextCol = (chosen + 1) % cols;
+
+      const cx = hasLabels
+        ? plotLeft + chosen * colWidth + vr + 8
+        : plotLeft + (chosen + 0.5) * colWidth;
+
+      return { item, cx, cy, vr, barH };
+    });
+  }, [layout, containerWidth]);
+
   if (!layout) return <p className="py-10 text-center text-sm text-text-muted">No dated events match these filters.</p>;
 
-  const hasLabels = layout.items.some((i) => i.label);
-  const laneStep = hasLabels ? 176 : 36;
-  const minWidth = AXIS_X + 24 + Math.max(1, layout.lanes) * laneStep + (hasLabels ? 140 : 40);
-  const laneX = (lane: number) => AXIS_X + 24 + lane * laneStep;
   const todayY = PAD_Y + layout.todayX;
 
   return (
@@ -95,7 +158,7 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
       </div>
       <div
         ref={box}
-        className="h-[65vh] min-h-[420px] max-h-[760px] cursor-grab overflow-x-auto overflow-y-auto rounded-card border border-line-strong bg-surface-1 active:cursor-grabbing"
+        className="h-[65vh] min-h-[420px] max-h-[760px] cursor-grab overflow-x-hidden overflow-y-auto rounded-card border border-line-strong bg-surface-1 active:cursor-grabbing"
         onWheel={() => (moved.current = true)}
         onTouchStart={() => (moved.current = true)}
         onPointerDown={(e) => {
@@ -109,11 +172,10 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
         onPointerUp={() => (drag.current = null)}
         onPointerLeave={() => (drag.current = null)}
       >
-        <div className="relative w-full" style={{ minWidth, height: totalHeight }}>
+        <div className="relative w-full" style={{ height: totalHeight }}>
           <svg
             width="100%"
             height={totalHeight}
-            style={{ minWidth }}
             className="block select-none"
             role="img"
             aria-label="Events along a vertical time axis"
@@ -158,15 +220,12 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
             <text x={AXIS_X - 8} y={todayY - 4} textAnchor="end" className="fill-accent font-mono text-[9px] font-bold uppercase">
               Today
             </text>
-            {layout.items.map((item) => {
-              const cy = PAD_Y + item.x;
-              const cx = laneX(item.lane);
-              const barH = Math.max(item.w, item.r * 2);
+            {placed.map(({ item, cx, cy, vr, barH }) => {
               const outlined = item.span.attendance !== 'went';
               const common = {
                 className: `${MARK_CLASS(item)} cursor-pointer hover:brightness-110`,
-                strokeWidth: outlined ? 1.5 : 0,
-                strokeDasharray: outlined ? '3 2' : undefined,
+                strokeWidth: outlined ? 2 : 0,
+                strokeDasharray: outlined ? '4 3' : undefined,
               };
               return (
                 <g key={item.span.id}>
@@ -175,12 +234,12 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
                     {item.span.attendance === 'confirm' ? ' (did you go?)' : item.span.attendance === 'upcoming' ? ' (upcoming)' : ''}
                   </title>
                   {item.w > 0 ? (
-                    <rect x={cx - item.r} y={cy} width={item.r * 2} height={barH} rx={item.r} {...common} />
+                    <rect x={cx - vr} y={cy} width={vr * 2} height={barH} rx={vr} {...common} />
                   ) : (
-                    <circle cx={cx} cy={cy + item.r} r={item.r} {...common} />
+                    <circle cx={cx} cy={cy + vr} r={vr} {...common} />
                   )}
                   {item.label && (
-                    <text x={cx + item.r + 8} y={cy + item.r + 4} className="pointer-events-none fill-text text-[11px]">
+                    <text x={cx + vr + 8} y={cy + vr + 4} className="pointer-events-none fill-text text-xs">
                       {item.span.attendance === 'confirm' ? '? ' : ''}
                       {item.span.title}
                     </text>
@@ -189,10 +248,7 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
               );
             })}
           </svg>
-          {layout.items.map((item) => {
-            const cy = PAD_Y + item.x;
-            const cx = laneX(item.lane);
-            const barH = Math.max(item.w, item.r * 2);
+          {placed.map(({ item, cx, cy, vr, barH }) => {
             const pad = 4;
             const { shown, more } = riverStretch(model, item.span);
             return (
@@ -200,7 +256,7 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
                 key={item.span.id}
                 data-mark
                 className="absolute"
-                style={{ left: cx - item.r - pad, top: cy - pad, width: item.r * 2 + pad * 2, height: barH + pad * 2 }}
+                style={{ left: cx - vr - pad, top: cy - pad, width: vr * 2 + pad * 2, height: barH + pad * 2 }}
               >
                 <Popover
                   label={`${item.span.title}, ${dateChip(item.span)}`}
