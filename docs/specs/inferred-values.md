@@ -82,7 +82,17 @@ Store methods (`LineupStore`, file and Supabase): `addEditionInference`, `listEd
 | 27.3 | Display: "Inferred" pill with dotted border and the reason on tap, on event Details for linked events; the inferences API; on-screen "never guesses" text updated | `src/components/ui/Pill.tsx`, `src/components/EventDetail.tsx`, `src/services/lineupApi.ts`, the events routes, `src/components/FeatureTiles.tsx` |
 | 27.4 | First code rule: a venue known in several places infers the place most of its editions use, when one place clearly leads. It runs with the owner's Venue fill and is shown as choices too. (The map rule, a city named by several places inferring the biggest, waits for a later slice: it costs a map lookup per edition.) | `src/server/canon/venueFill.ts`, `src/server/entities/routes.ts`, test |
 | 27.5 | Reader inferences: deep search may return a field it infers from a fetched page, with its quote and reason (never from memory) | `src/server/events/detailsGemini.ts`, `src/server/canon/inferences.ts`, AGENTS.md reader line, test |
-
-Slice 27.5 is built: `checkedInferences` and `storeReaderInferences` store reader inferences on the shared edition (see `docs/architecture/12-data-model.md`). The AGENTS.md reader line is not yet changed (outside this slice's edit).
 | 27.6 | Inferred lineup acts and billing roles (poster order), dotted in the lineup; who you saw still needs your tap | migration (performances verification gains `inferred`), `src/server/lineup/billing.ts`, `src/server/lineup/gemini.ts`, lineup UI, AGENTS.md billing line |
 | 27.7 | Review: an "Inferred" view in Fill gaps to confirm or reject; a member's Verify tap lifts the value to Candidate, and two members agreeing verifies | `src/components/FillGaps.tsx`, `src/server/canon/autoVerify.ts`, routes, AGENTS.md auto-verify line |
+
+Built so far: 27.1 to 27.5. In 27.5, `checkedInferences` and `storeReaderInferences` store reader inferences on the shared edition (see `docs/architecture/12-data-model.md`), and the AGENTS.md reader line is changed.
+
+### 27.6 in detail (proposed 2026-11-25)
+
+Billing roles first. Inferred acts wait until there is a rule that can be argued for, because every stored act still needs a source and a verbatim quote.
+
+- Rule `billing-named-after-act`: a concert edition (not a festival, per `scale.ts`) whose stored lineup source lists 2 or more acts, and whose name is exactly one of those acts after normalization. That act is inferred Headliner and the others inferred Support. Reason: "The event is named after X and the source lists N other acts."
+- Never over a role a source stated (`billing.ts` markers), and never on a festival.
+- Storage: migration `0056_inferred_billing.sql` lets `edition_inferences.field` be `billing` with a `subject` (the act's key), one active per edition, field and subject. Healing works as for other fields: a stated role replaces or confirms it.
+- Display: the role pill in the lineup shows dotted with "Inferred" and the reason on tap. Who you saw still needs your tap.
+- AGENTS.md billing line: "List order, font size or position never make a headliner" gains "except as an inferred role under `docs/specs/inferred-values.md`, never a stored one".
