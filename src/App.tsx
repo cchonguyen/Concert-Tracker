@@ -527,7 +527,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
     <VaultProvider events={events} onChanged={refresh}>
     <div
       inert={Boolean(notice)}
-      className="min-h-screen bg-zinc-950 font-sans text-zinc-100 selection:bg-violet-600 selection:text-white flex flex-col"
+      className="min-h-screen bg-zinc-950 font-sans text-zinc-100 selection:bg-accent-fill selection:text-on-accent flex flex-col"
     >
       {sampleMe?.sample && (
         <SampleBanner mode={sampleMe.sample} email={sampleMe.email} signedIn={document.documentElement.hasAttribute('data-signed-in')} />
@@ -558,7 +558,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
                     aria-label={label}
                     aria-current={active ? 'page' : undefined}
                     className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 font-medium transition-colors sm:px-3 ${
-                      active ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                      active ? 'bg-accent-fill text-on-accent' : 'text-zinc-400 hover:text-zinc-200'
                     }`}
                   >
                     <Icon className="h-3.5 w-3.5" />

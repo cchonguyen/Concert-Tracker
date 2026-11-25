@@ -163,7 +163,7 @@ export const CaptureBar: React.FC<CaptureBarProps> = ({ onCaptured, compact, lab
             type="submit"
             disabled={!text.trim() || saving}
             aria-label="Add event"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-accent-fill px-4 text-sm font-semibold text-on-accent hover:brightness-110 disabled:opacity-40"
           >
             {saving ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Plus aria-hidden="true" className="h-4 w-4" />}
             <span className="hidden sm:inline">Add</span>
