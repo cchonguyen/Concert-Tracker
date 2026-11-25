@@ -97,6 +97,23 @@ function log(job: LookupJob, message: string, now: Date): void {
   job.log = [...job.log, entry].slice(-100);
 }
 
+// Stop a lookup that has not started or is parked (queued or waiting for quota), so it never runs again on its own,
+// for example a web search that is no longer needed. It becomes `failed` with a note; Retry still works.
+export async function stopJob(deps: Pick<PipelineDeps, 'store' | 'now'>, jobId: string): Promise<LookupJob | null> {
+  const job = await deps.store.getJob(jobId);
+  if (!job) return null;
+  if (!['queued', 'waiting_quota'].includes(job.status)) throw new InputError('Only a lookup that is queued or waiting can be stopped.');
+  const now = deps.now();
+  job.status = 'failed';
+  job.lastError = 'Stopped by you.';
+  job.waitingReason = undefined;
+  job.nextAttemptAt = undefined;
+  job.updatedAt = now.toISOString();
+  log(job, 'Stopped by the owner before it ran again.', now);
+  await deps.store.updateJob(job);
+  return job;
+}
+
 export function candidateFromEdition(edition: Edition): CandidateLineup {
   return {
     editionKey: edition.key,
