@@ -1518,6 +1518,19 @@ const ArchiveLookups: React.FC = () => {
     }
   };
 
+  const stop = async (id: string) => {
+    setError(null);
+    setRetrying(id);
+    try {
+      const latest = await lineupApi.stop(id);
+      setLookups((prev) => (prev ?? []).map((j) => (j.id === id ? latest : j)));
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setRetrying(null);
+    }
+  };
+
   const retry = async (id: string) => {
     setError(null);
     setRetrying(id);
@@ -1586,6 +1599,11 @@ const ArchiveLookups: React.FC = () => {
                 {j.status === 'waiting_quota' && j.waitingReason && <span className="basis-full text-xs text-amber-200">{j.waitingReason}</span>}
                 <span className="ml-auto flex gap-2">
                   {j.status === 'needs_review' && <Button variant="primary" onClick={() => setReviewing(j)}>Review</Button>}
+                  {(j.status === 'queued' || j.status === 'waiting_quota') && (
+                    <Button variant="ghost" onClick={() => void stop(j.id)} disabled={retrying === j.id}>
+                      Stop
+                    </Button>
+                  )}
                   {canRetry(j) && (
                     <Button onClick={() => void retry(j.id)} disabled={retrying === j.id}>
                       {retrying === j.id && <Loader2 className="h-4 w-4 animate-spin" />} Retry

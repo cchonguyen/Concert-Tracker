@@ -855,6 +855,7 @@ export const lineupApi = {
   // Owner only (Stage 1.2): research finders over the last 30 days.
   finderReadout: () => request<{ days: number; finders: FinderReadoutRow[] }>('/api/lineup/finder-readout'),
   retry: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}/run`, post()).then((r) => r.job),
+  stop: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}/stop`, post()).then((r) => r.job),
   job: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}`).then((r) => r.job),
   confirm: (id: string, body: ConfirmRequest) =>
     request<{ edition: Edition; event: LoggedEvent | null }>(`/api/lookups/${id}/confirm`, post(body)),
