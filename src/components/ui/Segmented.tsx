@@ -42,7 +42,7 @@ export function Segmented<T extends string>({ label, options, value, onChange, c
   };
 
   return (
-    <div role="radiogroup" aria-label={label} className={`inline-flex flex-wrap gap-1 rounded-lg border border-zinc-800 bg-zinc-900 p-1 ${className}`}>
+    <div role="radiogroup" aria-label={label} className={`inline-flex flex-wrap gap-1 rounded-control border border-line bg-surface-1 p-1 ${className}`}>
       {options.map((o, i) => {
         const on = i === chosen;
         return (
@@ -58,8 +58,8 @@ export function Segmented<T extends string>({ label, options, value, onChange, c
             disabled={o.disabled}
             onClick={() => onChange(o.value)}
             onKeyDown={(e) => onKeyDown(e, i)}
-            className={`inline-flex min-h-11 items-center gap-1 rounded-md px-3 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-8 ${
-              on ? 'bg-violet-600/30 font-semibold text-violet-100' : 'text-zinc-400 hover:text-zinc-200'
+            className={`inline-flex min-h-11 items-center gap-1 rounded-control px-3 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-9 ${
+              on ? 'bg-accent-tint font-semibold text-text' : 'text-text-muted hover:text-text'
             }`}
           >
             {on && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
