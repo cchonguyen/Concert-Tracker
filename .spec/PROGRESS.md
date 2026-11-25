@@ -40,6 +40,17 @@ Track C (Claude) and the Gemini package "Back Office" run in parallel. Claude's 
 - [x] **Slice 26.758: Merge Gemini's Back Office slices 25.1, 25.5 to 25.8 after review** [UI / VISUAL] On-the-fly: Claude's review of Gemini slices 25.1, 25.5 to 25.8 (Charlie asked Claude to review and merge them) Target files: src/components/ArtistsView.tsx, src/components/MapView.tsx, .spec/SESSION_HANDOFF.md | Issue: #758 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 26.746: Stop button for parked lineup lookups** [CORE / DATA] On-the-fly: Charlie chose Add a Stop button to Lookups, 2026-11-25 Target files: src/server/lineup/, src/services/lineupApi.ts, src/components/CanonicalArchive.tsx, tests/stopLookup.test.ts | Issue: #746 | Verify: npm run lint --silent && npm test --silent
 
+## Ticket stub (docs/specs/ticket-stub.md, design approved by Charlie 2026-11-25 PT; waiting on his go for the plan)
+- [ ] **Slice 29.1: Ticket rules in code** [CORE / DATA] Target files: src/services/ticket.ts, tests/ticket.test.ts | Verify: npm run lint --silent && npm test --silent
+- [ ] **Slice 29.2: Ticket facts for an event** [CORE / DATA] Target files: src/server/events/importRoutes.ts, src/services/lineupApi.ts, tests/ticketFacts.test.ts | Verify: npm run lint --silent && npm test --silent
+- [ ] **Slice 29.3: Ticket and StubHeader components** [UI / VISUAL] Target files: src/components/ui/Ticket.tsx, src/components/ui/StubHeader.tsx, src/index.css | Verify: npm run lint --silent
+- [ ] **Slice 29.4: Event detail hero and bar (after 28.4)** [UI / VISUAL] Target files: src/components/PosterHeader.tsx, src/components/HeroBar.tsx, src/components/EventDetail.tsx | Verify: npm run lint --silent
+- [ ] **Slice 29.5: Stub headers on lists** [UI / VISUAL] Target files: src/components/ArtistsView.tsx, src/components/StatsView.tsx, src/components/EventsHome.tsx | Verify: npm run lint --silent
+- [ ] **Slice 29.6: Home anchor** [UI / VISUAL] Target files: src/components/YearTile.tsx, src/components/HomePage.tsx | Verify: npm run lint --silent
+- [ ] **Slice 29.7: Stats year header** [UI / VISUAL] Target files: src/components/StatsView.tsx | Verify: npm run lint --silent
+- [ ] **Slice 29.8: Share page in Library** [UI / VISUAL] Target files: src/services/nav.ts, src/components/pageIcons.ts, src/App.tsx, src/components/AppHeaderMenu.tsx, src/components/SharePage.tsx | Verify: npm run lint --silent && npm test --silent
+- [ ] **Slice 29.9: Event cards** [CORE / DATA] Target files: src/components/ShareCards.tsx, src/services/shareCard.ts, tests/shareCard.test.ts | Verify: npm run lint --silent && npm test --silent
+
 ## Inferred values (docs/specs/inferred-values.md, Charlie said "start building" 2026-11-25)
 - [x] **Slice 27.1: Inferred values storage** [CORE / DATA] Target files: supabase/migrations/0055_edition_inferences.sql, src/server/lineup/types.ts, src/server/lineup/store/types.ts, src/server/lineup/store/fileStore.ts, src/server/lineup/store/supabaseStore.ts, tests/editionInferences.test.ts | Issue: #748 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 27.2: Inferred values rules (record, heal, undo)** [CORE / DATA] Target files: src/server/canon/inferences.ts, src/server/canon/editions.ts, tests/inferenceRules.test.ts | Issue: #749 | Verify: npm run lint --silent && npm test --silent
