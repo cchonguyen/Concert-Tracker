@@ -34,14 +34,16 @@ interface RowProps extends HTMLAttributes<HTMLElement> {
   // A row that opens something is a button; one that only shows data is a plain block.
   onOpen?: () => void;
   selected?: boolean;
+  // Just added: the row slides in and glows for 1.5 s (still under reduced motion).
+  fresh?: boolean;
   children: ReactNode;
 }
 
 // Hover lifts the row one shade and widens the edge bar from 3 to 4 px (instant, no motion).
-function Row({ edge = 'none', onOpen, selected = false, className = '', children, ...rest }: RowProps) {
+function Row({ edge = 'none', onOpen, selected = false, fresh = false, className = '', children, ...rest }: RowProps) {
   const look = `group flex w-full min-h-14 items-center gap-3 border-b border-l-[3px] border-b-line text-left ${EDGE[edge]} ${
     selected ? 'bg-surface-2' : ''
-  } ${onOpen ? 'cursor-pointer hover:border-l-4 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent' : ''} ${className}`;
+  } ${fresh ? 'ledger-fresh' : ''} ${onOpen ? 'cursor-pointer hover:border-l-4 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent' : ''} ${className}`;
   if (onOpen) {
     return (
       <button type="button" onClick={onOpen} aria-current={selected ? 'true' : undefined} className={look} {...(rest as HTMLAttributes<HTMLButtonElement>)}>
