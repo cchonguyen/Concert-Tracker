@@ -36,21 +36,21 @@ export function DemoPrompt({ action, notInvited, onBack }: { action?: string; no
   };
 
   return (
-    <div className="space-y-4 text-sm text-zinc-200">
+    <div className="space-y-4 text-sm text-text">
       <p>{(action && DEMO_ACTIONS[action]) || GENERIC}</p>
       <div className="flex flex-wrap items-center gap-2">
         {notInvited ? (
           state === 'sent' ? (
-            <span className="text-zinc-300">Your request is in.</span>
+            <span className="text-text-muted">Your request is in.</span>
           ) : state === 'closed' ? (
-            <span className="text-zinc-300">Requests are closed for now.</span>
+            <span className="text-text-muted">Requests are closed for now.</span>
           ) : (
             <Button variant="primary" onClick={ask} disabled={busy}>
               Request access
             </Button>
           )
         ) : (
-          <a href="/app" className="rounded-lg bg-accent-fill px-3 py-1.5 font-medium text-on-accent">
+          <a href="/app" className="inline-flex min-h-11 items-center rounded-control bg-accent-fill px-3 py-1.5 font-medium text-on-accent sm:min-h-9">
             Log in (invite only)
           </a>
         )}
@@ -58,7 +58,7 @@ export function DemoPrompt({ action, notInvited, onBack }: { action?: string; no
           Back
         </Button>
       </div>
-      {state === 'error' && <p className="text-xs text-rose-300">The request did not go through. Try again.</p>}
+      {state === 'error' && <p className="text-xs text-bad">The request did not go through. Try again.</p>}
     </div>
   );
 }

@@ -77,11 +77,11 @@ export function MenuButton<T extends string>({ label, value, options, onChange, 
             setOpen(true);
           }
         }}
-        className="flex h-9 items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200 hover:border-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400"
+        className="flex min-h-11 items-center gap-2 rounded-control border border-line bg-surface-1 px-3 text-sm text-text hover:border-line-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent sm:min-h-9"
       >
         {CurrentIcon && <CurrentIcon className="h-4 w-4" />}
         <span>{current?.label}</span>
-        <ChevronDown className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
+        <ChevronDown className="h-3.5 w-3.5 text-text-muted" aria-hidden="true" />
       </button>
       {open && (
         <ul
@@ -90,7 +90,7 @@ export function MenuButton<T extends string>({ label, value, options, onChange, 
           role="listbox"
           aria-label={label}
           onKeyDown={onListKey}
-          className="absolute right-0 top-11 z-30 w-56 space-y-0.5 rounded-xl border border-zinc-800 bg-zinc-900 p-1.5 shadow-xl shadow-black/30"
+          className="absolute right-0 top-full z-30 mt-1.5 w-56 space-y-0.5 rounded-card border border-line bg-surface-1 p-1.5 shadow-xl shadow-black/30"
         >
           {options.map((o) => {
             const Icon = o.icon;
@@ -104,8 +104,8 @@ export function MenuButton<T extends string>({ label, value, options, onChange, 
                   setOpen(false);
                   onChange(o.value);
                 }}
-                className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-zinc-800 ${
-                  selected ? 'text-zinc-100' : 'text-zinc-400'
+                className={`flex w-full items-center gap-2 min-h-11 rounded-control px-2.5 py-2 text-left text-sm hover:bg-surface-2 sm:min-h-9 ${
+                  selected ? 'text-text' : 'text-text-muted'
                 }`}
               >
                 {Icon && <Icon className="h-3.5 w-3.5" />}
