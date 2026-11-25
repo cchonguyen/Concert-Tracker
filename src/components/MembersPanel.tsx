@@ -173,7 +173,7 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
             className={`-mb-px border-b-2 px-3 py-2 text-sm ${tab === t ? 'border-violet-400 text-zinc-100' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}
           >
             {t === 'requests' ? 'Requests' : 'Members'}
-            {t === 'requests' && pendingRows.length > 0 && <span className="ml-1.5 rounded-full bg-violet-500 px-1.5 text-[10px] text-white">{pendingRows.length}</span>}
+            {t === 'requests' && pendingRows.length > 0 && <span className="ml-1.5 rounded-full bg-accent-fill px-1.5 text-[10px] text-on-accent">{pendingRows.length}</span>}
           </button>
         ))}
       </div>

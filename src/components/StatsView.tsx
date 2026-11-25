@@ -280,7 +280,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
                 <button
                   key={y}
                   onClick={() => setPickedYear(y)}
-                  className={`rounded-md px-2 py-0.5 text-xs ${y === year ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                  className={`rounded-md px-2 py-0.5 text-xs ${y === year ? 'bg-accent-fill text-on-accent' : 'text-zinc-400 hover:text-zinc-200'}`}
                 >
                   {y}
                 </button>

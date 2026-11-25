@@ -89,7 +89,7 @@ export function ThemeControls({ theme }: { theme: Theme }) {
             aria-pressed={mode === m}
             onClick={() => pickMode(m)}
             className={`flex w-full flex-col items-center gap-1 rounded-lg px-1 py-2 text-xs transition-colors ${
-              mode === m ? 'bg-violet-600 text-white' : 'text-zinc-300 hover:bg-zinc-800'
+              mode === m ? 'bg-accent-fill text-on-accent' : 'text-zinc-300 hover:bg-zinc-800'
             }`}
           >
             <Icon className="h-4 w-4" aria-hidden="true" />

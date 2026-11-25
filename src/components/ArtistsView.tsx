@@ -415,7 +415,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
               aria-checked={sort === s.value}
               onClick={() => setSort(s.value)}
               className={`flex-1 whitespace-nowrap rounded-lg px-2.5 py-1.5 font-medium ${
-                sort === s.value ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                sort === s.value ? 'bg-accent-fill text-on-accent' : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
               {s.label}
@@ -435,7 +435,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
                 aria-checked={density === value}
                 aria-label={label}
                 onClick={() => setDensity(value)}
-                className={`rounded-lg px-2 py-1.5 ${density === value ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                className={`rounded-lg px-2 py-1.5 ${density === value ? 'bg-accent-fill text-on-accent' : 'text-zinc-400 hover:text-zinc-200'}`}
               >
                 <Icon className="h-3.5 w-3.5" />
               </button>
@@ -461,7 +461,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
                 !j.group
                   ? 'text-zinc-700'
                   : j.group === current
-                    ? 'bg-violet-600 text-white'
+                    ? 'bg-accent-fill text-on-accent'
                     : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100'
               }`}
             >
