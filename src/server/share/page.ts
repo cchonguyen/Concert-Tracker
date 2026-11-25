@@ -20,22 +20,24 @@ export const SHARE_HEADERS: Record<string, string> = {
 };
 
 const STYLE = `
-:root{color-scheme:light dark;--bg:#0f1115;--card:#181b22;--ink:#eef0f4;--quiet:#a3a9b6;--line:#2a2f3a;--accent:#8b7cf6}
-@media (prefers-color-scheme:light){:root{--bg:#f6f7f9;--card:#fff;--ink:#14161b;--quiet:#5d6472;--line:#e3e6ec;--accent:#5b4bd6}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+:root{color-scheme:light dark;--bg:#0e0e11;--card:#141418;--ink:#ededf0;--quiet:#a1a1aa;--line:#2a2a31;--line-strong:#3d3d46;--accent:#c4b5fd;--accent-fill:#a78bfa}
+@media (prefers-color-scheme:light){:root{--bg:#f7f7f8;--card:#ffffff;--ink:#18181b;--quiet:#52525b;--line:#e4e4e7;--line-strong:#c4c4cc;--accent:#6d28d9;--accent-fill:#7c3aed}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 'Plus Jakarta Sans',system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 main{max-width:720px;margin:0 auto;padding:24px 16px 48px}
-h1{font-size:26px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 12px}h3{font-size:16px;margin:20px 0 8px;color:var(--quiet)}
+h1,h2{font-family:'Newsreader',Georgia,serif;font-weight:400;letter-spacing:-0.015em}
+h1{font-size:28px;margin:0 0 4px}h2{font-size:20px;margin:32px 0 12px}h3{font-size:16px;font-weight:800;margin:20px 0 8px;color:var(--ink)}
 .sub{color:var(--quiet);margin:0 0 20px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}
-.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
-.tile b{display:block;font-size:22px}.tile span{color:var(--quiet);font-size:13px}
+.tile{background:var(--card);border:1px solid var(--line-strong);border-radius:12px;padding:10px 12px}
+.tile b{display:block;font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}.tile span{color:var(--quiet);font-size:13px}
 ol,ul{margin:0;padding:0;list-style:none}
-.rank li,.cities li,.series li{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)}
-.n{color:var(--quiet);white-space:nowrap}
-.ev{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 8px}
-.ev .t{font-weight:600}.ev .m{color:var(--quiet);font-size:13px}.ev .a{font-size:14px;margin-top:4px}
-.kind{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--accent);margin-left:6px}
-nav{display:flex;flex-wrap:wrap;gap:6px 12px;margin:8px 0 0}nav a{color:var(--accent);text-decoration:none}
+.rank li,.cities li,.series li{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}
+.n{color:var(--quiet);white-space:nowrap;font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;font-variant-numeric:tabular-nums}
+.ev{background:var(--card);border:1px solid var(--line-strong);border-left:3px solid var(--accent-fill);border-radius:0;padding:10px 12px;margin:0}
+.ev+.ev{border-top:0}
+.ev .t{font-weight:600}.ev .m{color:var(--quiet);font-size:12.5px;font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}.ev .a{font-size:14px;margin-top:4px}
+.kind{font-size:11px;font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.04em;color:var(--accent);margin-left:6px}
+nav{display:flex;flex-wrap:wrap;gap:6px 12px;margin:8px 0 0}nav a{color:var(--accent);text-decoration:none;font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
 footer{margin-top:40px;color:var(--quiet);font-size:13px}
 `;
 
