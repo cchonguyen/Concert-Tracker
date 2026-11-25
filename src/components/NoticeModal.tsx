@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Equalizer } from './ui/Equalizer';
 import { meApi } from '../services/lineupApi';
 import { Dialog } from './ui/Dialog';
 
@@ -26,10 +26,10 @@ export const NoticeModal: React.FC<{ onAccepted: () => void }> = ({ onAccepted }
       placement="center"
       dismissible={false}
       layer="top"
-      panelClassName="max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-950 p-5"
+      panelClassName="max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-card border border-line bg-page p-5"
     >
-      <h2 className="text-lg font-bold">Before you start</h2>
-      <ul className="space-y-3 text-sm text-zinc-300">
+      <h2 className="font-display text-xl font-normal">Before you start</h2>
+      <ul className="space-y-3 text-sm text-text-muted">
         <li>
           <b>What this is.</b> A personal hobby project run by Charlie, not a business. It is offered as is, with no promise it stays
           up, keeps working or keeps your data.
@@ -52,13 +52,13 @@ export const NoticeModal: React.FC<{ onAccepted: () => void }> = ({ onAccepted }
           copies until they age out on their normal schedule.
         </li>
       </ul>
-      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+      {error && <p role="alert" className="text-sm text-bad">{error}</p>}
       <button
         onClick={busy ? undefined : accept}
         aria-disabled={busy}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-accent-fill px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill aria-disabled:opacity-40 disabled:opacity-40"
+        className="inline-flex min-h-11 items-center gap-1.5 rounded-control bg-accent-fill px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill aria-disabled:opacity-40 disabled:opacity-40 sm:min-h-9"
       >
-        {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />} I understand and accept
+        {busy && <Equalizer size="sm" />} I understand and accept
       </button>
     </Dialog>
   );

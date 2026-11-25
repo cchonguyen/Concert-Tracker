@@ -1,6 +1,7 @@
 import { Dialog } from './ui/Dialog';
 import React, { useEffect, useState } from 'react';
 import { Download, Lock, Mail, Unlock, X } from 'lucide-react';
+import { IconButton } from './ui/IconButton';
 import { accountApi, emailPrefsApi, type EmailPrefsView } from '../services/lineupApi';
 import { hasCiphertext, type ExportBundle } from '../services/exportBundle';
 import { useMe } from './MeContext';
@@ -11,8 +12,8 @@ import { Confirm } from './ui/Confirm';
 // Multi-user only: the private-notes vault and "Download / delete my data".
 // The recovery key is shown once and the server never sees it.
 
-const button = 'inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:text-zinc-100 disabled:opacity-40';
-const field = 'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100';
+const button = 'inline-flex min-h-11 items-center gap-1.5 rounded-control border border-line-strong px-3 py-2 text-sm text-text-muted hover:bg-surface-2 hover:text-text disabled:opacity-40 sm:min-h-9';
+const field = 'min-h-11 w-full rounded-control border border-line-strong bg-surface-1 px-3 py-2 text-sm text-text sm:min-h-9';
 
 export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const me = useMe();
@@ -62,23 +63,21 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
   const secret = () => (useRecovery ? { recoveryKey: passphrase } : { passphrase });
 
   return (
-    <Dialog title="Your account" onClose={onClose} panelClassName="h-full w-full max-w-md space-y-5 overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-5">
+    <Dialog title="Your account" onClose={onClose} panelClassName="h-full w-full max-w-md space-y-5 overflow-y-auto border-l border-line bg-page p-5">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold">Your account</h2>
-        <button onClick={onClose} aria-label="Close" className="text-zinc-400 hover:text-zinc-200">
-          <X className="h-5 w-5" />
-        </button>
+        <h2 className="font-display text-xl font-normal">Your account</h2>
+        <IconButton icon={X} label="Close" onClick={onClose} />
       </div>
-      {error && <p className="text-xs text-rose-300">{error}</p>}
-      {done && <p className="text-xs text-emerald-300">{done}</p>}
+      {error && <p className="text-xs text-bad">{error}</p>}
+      {done && <p className="text-xs text-good">{done}</p>}
 
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold">Private notes</h3>
+        <h3 className="font-display text-base font-normal">Private notes</h3>
         {vault.status === 'unavailable' || vault.status === 'loading' ? (
-          <p className="text-xs text-zinc-400">Not available.</p>
+          <p className="text-xs text-text-muted">Not available.</p>
         ) : vault.status === 'off' && !recoveryKey ? (
           <>
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-text-muted">
               Encrypts your notes in this browser, so the server (and the owner) only ever stores unreadable text. Lose both the passphrase and the recovery key and the notes are gone.
             </p>
             <input aria-label="Passphrase (8+ characters)" type="password" className={field} placeholder="Passphrase (8+ characters)" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />
@@ -97,8 +96,8 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
           </>
         ) : recoveryKey ? (
           <>
-            <p className="text-xs text-amber-300">Save this recovery key somewhere safe. It is shown once and is the only way back in if you forget the passphrase.</p>
-            <code className="block select-all break-all rounded-lg bg-zinc-900 p-3 text-xs">{recoveryKey}</code>
+            <p className="text-xs text-warn">Save this recovery key somewhere safe. It is shown once and is the only way back in if you forget the passphrase.</p>
+            <code className="block select-all break-all rounded-control bg-surface-1 p-3 text-xs">{recoveryKey}</code>
             <button className={button} onClick={() => setRecoveryKey(null)}>
               I have saved it
             </button>
@@ -133,7 +132,7 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
           </>
         ) : (
           <>
-            <p className="text-xs text-emerald-300">Unlocked in this tab. Reloading locks it again.</p>
+            <p className="text-xs text-good">Unlocked in this tab. Reloading locks it again.</p>
             <button className={button} onClick={() => vault.lock()}>
               <Lock className="h-3.5 w-3.5" /> Lock now
             </button>
@@ -156,16 +155,16 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
         )}
       </section>
 
-      <section className="space-y-2 border-t border-zinc-900 pt-4">
-        <h3 className="text-sm font-semibold">Email notifications</h3>
-        <p className="text-xs text-zinc-400">
+      <section className="space-y-2 border-t border-line pt-4">
+        <h3 className="font-display text-base font-normal">Email notifications</h3>
+        <p className="text-xs text-text-muted">
           {me.role === 'owner'
             ? 'Receive at most one daily digest email when new access requests arrive.'
             : 'Receive account invite and approval confirmation emails. Every email also has a one-click unsubscribe link.'}
         </p>
         {emailPrefs ? (
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-zinc-300">
+            <span className="text-xs text-text-muted">
               {emailPrefs.optedOut ? 'Opted out of all emails' : 'Subscribed to account emails'}
             </span>
             <button
@@ -185,17 +184,17 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
             </button>
           </div>
         ) : (
-          <p className="text-xs text-zinc-500">Loading email settings…</p>
+          <p className="text-xs text-text-muted">Loading email settings…</p>
         )}
       </section>
 
-      <section className="space-y-2 border-t border-zinc-900 pt-4">
-        <h3 className="text-sm font-semibold">Your data</h3>
+      <section className="space-y-2 border-t border-line pt-4">
+        <h3 className="font-display text-base font-normal">Your data</h3>
         <button className={button} disabled={busy} onClick={() => act(downloadReadable)}>
           <Download className="h-3.5 w-3.5" /> Download my data
         </button>
         {vault.status === 'locked' && (
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-text-muted">
             Your vault is locked, so notes and the people who went would be unreadable in the file. Unlock it above for a readable copy, or{' '}
             <a className="underline" href={accountApi.exportUrl} download>
               download the encrypted copy
@@ -205,8 +204,8 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
         )}
         {me.role === 'member' && (
           <>
-            <p className="text-xs text-zinc-400">Deleting removes your events, imports and share links. Backups keep deleted rows until they expire.</p>
-            <button className={`${button} border-rose-500/40 text-rose-300`} disabled={busy} onClick={() => setDeleting(true)}>
+            <p className="text-xs text-text-muted">Deleting removes your events, imports and share links. Backups keep deleted rows until they expire.</p>
+            <button className={`${button} border-bad/45 text-bad`} disabled={busy} onClick={() => setDeleting(true)}>
               Delete my account
             </button>
             {deleting && (
@@ -229,8 +228,8 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
         )}
       </section>
 
-      <section className="space-y-2 border-t border-zinc-900 pt-4">
-        <h3 className="text-sm font-semibold">Session</h3>
+      <section className="space-y-2 border-t border-line pt-4">
+        <h3 className="font-display text-base font-normal">Session</h3>
         <LogOutLink className={button} />
       </section>
     </Dialog>
