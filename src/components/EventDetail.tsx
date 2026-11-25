@@ -26,6 +26,7 @@ import { actSets, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
 import { LineupTable } from './LineupTable';
+import { EventSources, sourceHighlightKey } from './EventSources';
 import { pendingReplacement } from '../services/reviewRows';
 import { norm } from '../services/listImport';
 import { placeForVenue } from '../services/venuePlace';
@@ -165,6 +166,7 @@ const HINT_KEY = 'liveArchive.saveHint';
 // The fields a save has just written; each one flashes for a moment.
 const FlashContext = React.createContext<string[]>([]);
 const EditionIdContext = React.createContext<string | undefined>(undefined);
+const SourceHighlightContext = React.createContext<(key: string | null) => void>(() => undefined);
 
 // An inferred value beside an empty field (never in the input). Its reason opens on hover or tap.
 // A member's Verify counts toward it; the owner's Confirm writes it into the event as theirs.
@@ -248,6 +250,8 @@ const Field: React.FC<{
   const flashing = React.useContext(FlashContext);
   const isOwner = useIsOwner();
   const editionId = React.useContext(EditionIdContext);
+  const setHighlightedSource = React.useContext(SourceHighlightContext);
+  const highlightKey = sourceHighlightKey(source);
   const flash = field !== undefined && flashing.includes(field);
   const [draft, setDraft] = useState(value === undefined ? '' : String(value));
   const [settled, setSettled] = useState(0);
@@ -314,6 +318,10 @@ const Field: React.FC<{
             isOwner && editionId ? (
               <a
                 href={editionUrl(editionId)}
+                onMouseEnter={() => setHighlightedSource(highlightKey)}
+                onMouseLeave={() => setHighlightedSource(null)}
+                onFocus={() => setHighlightedSource(highlightKey)}
+                onBlur={() => setHighlightedSource(null)}
                 onClick={(e) => {
                   if (isModifiedClick(e)) return;
                   e.preventDefault();
@@ -336,6 +344,10 @@ const Field: React.FC<{
               target="_blank"
               rel="noreferrer"
               title={source.quote ? `“${source.quote}”` : undefined}
+              onMouseEnter={() => setHighlightedSource(highlightKey)}
+              onMouseLeave={() => setHighlightedSource(null)}
+              onFocus={() => setHighlightedSource(highlightKey)}
+              onBlur={() => setHighlightedSource(null)}
               className="inline-flex items-center gap-0.5 font-normal text-text-muted hover:text-accent"
             >
               {source.sourceType === 'venue' ? 'from' : 'via'} {FIELD_SOURCE_LABELS[source.sourceType]} <ExternalLink className="h-2.5 w-2.5" />
@@ -1110,10 +1122,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const [showLog, setShowLog] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [weekendPromptDismissed, setWeekendPromptDismissed] = useState(false);
+  const [highlightedSource, setHighlightedSource] = useState<string | null>(null);
   const whenWhereRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     setWeekendPromptDismissed(false);
+    setHighlightedSource(null);
   }, [event.id]);
 
   const others = events.filter((e) => e.id !== event.id);
@@ -1408,6 +1422,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     >
       <FlashContext.Provider value={flashing}>
         <EditionIdContext.Provider value={event.editionId}>
+          <SourceHighlightContext.Provider value={setHighlightedSource}>
           <ThingsLeft
           gaps={gapsLeft}
           current={current}
@@ -1695,26 +1710,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           </div>
 
           {confirmations.length > 0 && (
-            <div className="space-y-1 text-xs">
-              <p className="inline-flex items-center gap-1 text-good">
+            <p className="text-xs">
+              <a
+                href="#event-sources"
+                onClick={(e) => {
+                  e.preventDefault();
+                  document.getElementById('event-sources')?.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
+                }}
+                className="inline-flex items-center gap-1 text-good hover:underline"
+              >
                 <Check className="h-3.5 w-3.5" /> Date confirmed by {confirmations.length} source{confirmations.length === 1 ? '' : 's'}
-              </p>
-              <ul className="space-y-0.5 text-text-muted">
-                {confirmations.map((s, i) => (
-                  <li key={i} className="truncate">
-                    <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="hover:text-accent">
-                      {SOURCE_LABELS[s.sourceType]}
-                      {s.quote && (
-                        <>
-                          : <q className="font-display text-[13px] italic text-text">{s.quote}</q>
-                        </>
-                      )}{' '}
-                      <ExternalLink className="inline h-2.5 w-2.5" />
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
+              </a>
+            </p>
           )}
           {details.status === 'none' && <p className="text-xs text-text-muted">No listing found. It's saved as you typed it.</p>}
           {details.status === 'needs_date' && <p className="text-xs text-warn">Add when it was (a year is enough), then look again.</p>}
@@ -1799,6 +1806,14 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </p>
           )}
         </details>
+
+        <EventSources
+          event={event}
+          confirmations={confirmations}
+          lineupActs={lineupActs}
+          editionId={event.editionId}
+          highlightedKey={highlightedSource}
+        />
 
           </div>
           <div className="min-w-0">
@@ -1996,6 +2011,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </button>
           </div>
         </div>
+          </SourceHighlightContext.Provider>
         </EditionIdContext.Provider>
       </FlashContext.Provider>
 
