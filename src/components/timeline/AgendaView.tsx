@@ -11,6 +11,7 @@ import {
   dateChip,
   daysBetween,
   gapLabel,
+  MONTH_NAMES,
   TimelineViewProps,
 } from '../../services/timeline';
 import { EventTitle } from '../EventTitle';
@@ -42,6 +43,9 @@ const writeOrder = (order: AgendaOrder) => {
 
 const rowId = (id: string) => `timeline-${id}`;
 
+// Rows sit under year separators only, so each date carries its month.
+const monthShort = (m: number) => MONTH_NAMES[m - 1].slice(0, 3);
+
 const kindOfEvent = (kind?: string): EventKind =>
   kind === 'festival' ? 'festival' : kind === 'concert' ? 'show' : 'unknown';
 
@@ -67,7 +71,7 @@ const Row: React.FC<{ row: AgendaRow; selected: boolean; onOpen: (id: string) =>
   const event = item.event;
   const place = placeLabel(event);
   const multi = row.kind === 'span' && row.span.last !== row.span.first;
-  const eventKind = kindOfEvent(event.kind);
+  const eventKind = kindOfEvent(item.kind);
   const edge: LedgerEdge =
     item.attendance === 'confirm' ? 'needs' : eventKind === 'festival' ? 'festival' : eventKind === 'show' ? 'show' : 'none';
 
@@ -75,7 +79,11 @@ const Row: React.FC<{ row: AgendaRow; selected: boolean; onOpen: (id: string) =>
     <div id={rowId(item.id)}>
       <Ledger.Row edge={edge} selected={selected} onOpen={() => onOpen(item.id)} className="items-start px-3.5 py-2.5 sm:items-center">
         <span className="w-20 shrink-0 font-mono text-xs tabular-nums text-text-muted sm:w-32">
-          {row.kind === 'span' ? dateChip(row.span) : row.partial.month ? 'Day unknown' : 'Month unknown'}
+          {row.kind === 'span'
+            ? `${monthShort(Number(row.span.first.slice(5, 7)))} · ${dateChip(row.span)}`
+            : row.partial.month
+              ? `${monthShort(row.partial.month)} · day unknown`
+              : 'Month unknown'}
           {multi && (
             <span className="mt-1 block">
               <DayDots all={daysBetween(row.span.first, row.span.last)} went={row.span.days} />

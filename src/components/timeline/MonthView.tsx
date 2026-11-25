@@ -5,11 +5,12 @@ import { eventTitle } from '../../services/series';
 
 // Month: a calendar page. One-day events sit in their day; a run of days is a
 // bar across them, with the days you went solid and the ones you skipped
-// faint. Arrows and the pickers move the page and report it up, so the
+// hatched. Arrows and the pickers move the page and report it up, so the
 // address keeps the month. Only the large size is built so far.
 
 const SEGMENT_STYLE: Record<MonthSegment['span']['attendance'], { went: string; skipped: string; text: string }> = {
-  went: { went: 'bg-accent-fill', skipped: 'bg-accent-tint', text: 'text-on-accent' },
+  // A skipped day keeps the fill under thin hatching, so the label stays readable across the whole bar.
+  went: { went: 'bg-accent-fill', skipped: 'bg-accent-fill bg-[repeating-linear-gradient(135deg,transparent_0_3px,var(--la-page)_3px_5px)]', text: 'text-on-accent' },
   upcoming: { went: 'border border-dashed border-accent-tint-line bg-accent-tint', skipped: 'border border-dashed border-accent-tint-line/50', text: 'text-accent' },
   confirm: { went: 'border border-dashed border-warn/70 bg-warn/10', skipped: 'border border-dashed border-warn/30', text: 'text-warn' },
 };
