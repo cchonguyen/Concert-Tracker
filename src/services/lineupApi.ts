@@ -1,6 +1,7 @@
 import type { VenueLocation, VenueLocationResult } from '../server/canon/venueLocation';
 import type { VenueFillPlan, VenueFillResult } from '../server/canon/venueFill';
-import type { Edition, EditionWeekend, LookupJob, SeriesKind, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
+import type { Edition, EditionWeekend, InferenceField, LookupJob, SeriesKind, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
+import type { InferredField } from '../server/canon/inferences';
 import type { ShareSettings } from '../server/share/types';
 import type { NameIndex } from '../server/entities/link';
 import { norm } from './listImport';
@@ -177,7 +178,13 @@ export const eventsApi = {
   pollOne: (id: string) =>
     request<{ job: LookupJob | null; detailsStatus?: EventDetails['status'] }>(`/api/events/${encodeURIComponent(id)}/poll`),
   get: (id: string) =>
-    request<{ event: LoggedEvent; job: LookupJob | null; edition: Edition | null; suggestions: ArtistSuggestion[] }>(`/api/events/${id}`),
+    request<{
+      event: LoggedEvent;
+      job: LookupJob | null;
+      edition: Edition | null;
+      suggestions: ArtistSuggestion[];
+      inferred?: Partial<Record<InferenceField, InferredField>>;
+    }>(`/api/events/${id}`),
   // research: true (the capture bar) asks the server to research the new event from its queue. The answer is
   // remembered by event id (takeQueuedResearch). Imports leave it off and are never researched.
   create: (text: string, editionId?: string, research = false, weekend?: number) =>
@@ -855,6 +862,7 @@ export const lineupApi = {
   // Owner only (Stage 1.2): research finders over the last 30 days.
   finderReadout: () => request<{ days: number; finders: FinderReadoutRow[] }>('/api/lineup/finder-readout'),
   retry: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}/run`, post()).then((r) => r.job),
+  stop: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}/stop`, post()).then((r) => r.job),
   job: (id: string) => request<{ job: LookupJob }>(`/api/lookups/${id}`).then((r) => r.job),
   confirm: (id: string, body: ConfirmRequest) =>
     request<{ edition: Edition; event: LoggedEvent | null }>(`/api/lookups/${id}/confirm`, post(body)),

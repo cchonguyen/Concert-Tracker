@@ -58,6 +58,7 @@ Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
 | `POST /api/manage/canonical/artists/:key/aliases` | Owner only. Add an AKA (`name`) |
 | `DELETE /api/manage/canonical/artists/:key/aliases?name=` | Owner only. Remove an AKA |
 | `POST /api/lookups/:id/run` | Retry now |
+| `POST /api/lookups/:id/stop` | Owner only: stop a queued or waiting lookup (it becomes `failed`, "Stopped by you."); Retry still works |
 | `POST /api/lookups/:id/confirm` | Save the reviewed lineup and learning data, and the event's seen acts |
 | `GET /api/manage/brands` | Owner only. Brands with `seriesCount` and `editionCount` for each (`{ brands }`) |
 | `PATCH /api/manage/brands/:id` | Owner only. Rename a brand (`{ name }`); its old name stays as an alias. Returns the change, which can be undone |

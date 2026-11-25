@@ -40,11 +40,47 @@ Replace "never guess" with "always verify, and label every inference". The old r
 - Auto-verify: "Ticks never verify an act" (item 10: two or more members agreeing will verify).
 - On-screen text that says the app never guesses (landing page `FeatureTiles.tsx`, Find the lineup help in `EventDetail.tsx`) changes when the label ships, not before.
 
-## Proposed slices (to be confirmed before building)
+## Build plan (Charlie said "start building", 2026-11-25)
 
-1. Storage: an `inferences` record with the fields above and links between them (migration; held until Charlie applies it).
-2. Display: the "Inferred" label, dotted style and reason popover (shared `Pill`), plus a Fill gaps view to confirm or reject inferred values.
-3. Code rules on shared editions: first candidates are the venue's most-used place and a month-only event's date range.
-4. Reader inferences from fetched pages, with quote and reason.
-5. Inferred lineup acts and billing roles.
-6. Healing: a verified source replaces an inference and re-checks everything linked to it.
+Slices 27.1 to 27.7 in `.spec/PROGRESS.md`, one issue and one pull request each. Inferred values live in their own shared table, never in the edition's own columns, so verified data stays clean. A shown value is the edition's own value, else its active inference.
+
+### Storage (27.1)
+
+Migration `0055_edition_inferences.sql` (held until Charlie applies it):
+
+| Column | Meaning |
+|---|---|
+| `id` uuid | primary key |
+| `edition_id` text | the shared edition (`event_editions.id`, cascade on delete) |
+| `field` text | `startDate`, `endDate`, `venue`, `city`, `region` or `country` (lineup acts come in 27.6) |
+| `value` jsonb | the inferred value |
+| `reason` text | one line in plain words, never empty |
+| `rule` text | the code rule's name, or `reader` |
+| `inputs` jsonb | what it was built from: `{kind:'source', url, quote}`, `{kind:'record', table, id}` or `{kind:'inference', id}` |
+| `parents` uuid[] | the inferences it was built from (the lineage), for healing |
+| `status` text | `active`, `confirmed`, `replaced` or `rejected` |
+| `actor` text | who or what made it |
+| `created_at`, `resolved_at`, `resolved_by`, `resolved_reason` | when made and how it ended |
+
+One `active` inference per edition and field (partial unique index). Row level security on, owner reads only (the Worker serves members). No personal fields.
+
+Store methods (`LineupStore`, file and Supabase): `addEditionInference`, `listEditionInferences(editionId)`, `listInferenceChildren(id)`, `resolveEditionInference(id, {status, by, reason})`.
+
+### Rules (27.2)
+
+`src/server/canon/inferences.ts`:
+- `inferEditionField` writes an inference only when the edition's field is empty, the reason is not empty and every parent is an active inference. Each write is recorded through `writeEdition` with a system actor and reason (`after.inferenceAdded`), and undo rejects it.
+- `healEdition` runs after a verified or typed value lands on a field. The field's active inference becomes `replaced` (or `confirmed` when the values match), and every inference built on it, directly or further down, is set to `replaced` with the reason "its input was replaced".
+- `shownValue` returns `{value, inferred, reason}` for display.
+
+### Slices
+
+| Slice | What | Files |
+|---|---|---|
+| 27.1 | Storage: migration, types, store methods | migration 0055, `src/server/lineup/types.ts`, `src/server/lineup/store/{types,fileStore,supabaseStore}.ts`, test |
+| 27.2 | Rules: record, heal, undo, shown value | `src/server/canon/inferences.ts`, `src/server/canon/editions.ts`, test |
+| 27.3 | Display: "Inferred" pill with dotted border and the reason on tap, on event Details for linked events; the inferences API; on-screen "never guesses" text updated | `src/components/ui/Pill.tsx`, `src/components/EventDetail.tsx`, `src/services/lineupApi.ts`, the events routes, `src/components/FeatureTiles.tsx` |
+| 27.4 | First code rule: a venue known in several places infers the place most of its editions use, when one place clearly leads. It runs with the owner's Venue fill and is shown as choices too. (The map rule, a city named by several places inferring the biggest, waits for a later slice: it costs a map lookup per edition.) | `src/server/canon/venueFill.ts`, `src/server/entities/routes.ts`, test |
+| 27.5 | Reader inferences: deep search may return a field it infers from a fetched page, with its quote and reason (never from memory) | `src/server/events/detailsGemini.ts`, `src/server/canon/inferences.ts`, AGENTS.md reader line, test |
+| 27.6 | Inferred lineup acts and billing roles (poster order), dotted in the lineup; who you saw still needs your tap | migration (performances verification gains `inferred`), `src/server/lineup/billing.ts`, `src/server/lineup/gemini.ts`, lineup UI, AGENTS.md billing line |
+| 27.7 | Review: an "Inferred" view in Fill gaps to confirm or reject; a member's Verify tap lifts the value to Candidate, and two members agreeing verifies | `src/components/FillGaps.tsx`, `src/server/canon/autoVerify.ts`, routes, AGENTS.md auto-verify line |

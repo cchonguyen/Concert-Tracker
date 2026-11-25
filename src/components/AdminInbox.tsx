@@ -5,6 +5,7 @@ import { change, editionLine, failedReason, groupByKind, mergeChoices, traceSumm
 import { editionUrl, isModifiedClick, rememberManageSearch } from '../services/manageNav';
 import { useIsOwner, useMe } from './MeContext';
 import { Button } from './ui/Button';
+import { Ledger } from './ui/Ledger';
 import { Pill } from './ui/Pill';
 
 interface Result { text: string; undo?: { changeId: string; editionId: string } }
@@ -71,40 +72,40 @@ export const AdminInbox: React.FC = () => {
   const done = Object.entries(results).filter(([id]) => !(items ?? []).some((i) => i.id === id));
 
   return (
-    <section className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3" aria-label="Owner inbox">
+    <section className="space-y-4 rounded-card border border-line bg-surface-1 p-3" aria-label="Owner inbox">
       <h2>
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          className="inline-flex items-center gap-2 text-base font-semibold text-zinc-100 hover:text-zinc-50"
+          className="inline-flex min-h-11 items-center gap-2 font-display text-lg font-normal text-text hover:text-accent sm:min-h-9"
         >
-          {open ? <ChevronDown className="h-4 w-4 text-zinc-400" /> : <ChevronRight className="h-4 w-4 text-zinc-400" />}
+          {open ? <ChevronDown className="h-4 w-4 text-text-muted" /> : <ChevronRight className="h-4 w-4 text-text-muted" />}
           <span>Inbox</span>
-          {Boolean(items && items.length > 0) && <Pill tone="accent">{items!.length}</Pill>}
+          {Boolean(items && items.length > 0) && <Pill tone="accent"><span className="font-mono tabular-nums">{items!.length}</span></Pill>}
         </button>
       </h2>
       {open && (
         <>
-          {error && <p className="text-sm text-amber-300">Could not load the inbox. {error} <button className="underline" onClick={() => void load()}>Try again</button></p>}
-          {items && !error && groups.length === 0 && <p className="text-sm text-zinc-400">Nothing waiting for you.</p>}
+          {error && <p className="text-sm text-warn">Could not load the inbox. {error} <button className="underline" onClick={() => void load()}>Try again</button></p>}
+          {items && !error && groups.length === 0 && <p className="text-sm text-text-muted">Nothing waiting for you.</p>}
           {groups.map((g) => (
             <div key={g.kind} className="space-y-2">
-              <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-200">{g.label} <Pill tone="accent">{g.items.length}</Pill></h3>
-              <ul className="space-y-2">
+              <h3 className="flex items-center gap-2 text-sm font-medium text-text">{g.label} <Pill tone="accent"><span className="font-mono tabular-nums">{g.items.length}</span></Pill></h3>
+              <Ledger>
                 {g.items.map((it) => (
                   <InboxRow key={it.id} item={it} busy={busy === it.id} onRun={run} />
                 ))}
-              </ul>
+              </Ledger>
             </div>
           ))}
           {done.length > 0 && (
             <ul className="space-y-1">
               {done.map(([id, r]) => (
-                <li key={id} className="flex flex-wrap items-center gap-3 text-sm text-zinc-300">
+                <li key={id} className="flex flex-wrap items-center gap-3 text-sm text-text-muted">
                   <span className="min-w-0 flex-1">{r.text}</span>
                   {r.undo && (
-                    <button onClick={() => void undo(id, r.undo!)} disabled={busy === id} className="inline-flex items-center gap-1 text-violet-300 hover:text-violet-200 disabled:opacity-40">
+                    <button onClick={() => void undo(id, r.undo!)} disabled={busy === id} className="inline-flex min-h-11 items-center gap-1 rounded-control px-1.5 text-accent hover:underline disabled:opacity-40 sm:min-h-9">
                       <Undo2 className="h-3.5 w-3.5" /> Undo
                     </button>
                   )}
@@ -114,26 +115,26 @@ export const AdminInbox: React.FC = () => {
           )}
 
           <div className="space-y-2">
-            <h3 className="text-sm font-medium text-zinc-200">Recent activity</h3>
+            <h3 className="text-sm font-medium text-text">Recent activity</h3>
             {tableMissing ? (
-              <p className="text-sm text-zinc-400">Activity appears once the traces table is set up.</p>
+              <p className="text-sm text-text-muted">Activity appears once the traces table is set up.</p>
             ) : traces.length === 0 ? (
-              <p className="text-sm text-zinc-400">No activity yet.</p>
+              <p className="text-sm text-text-muted">No activity yet.</p>
             ) : (
-              <ul className="space-y-1.5">
+              <Ledger>
                 {traces.map((t) => {
                   const s = traceSummary(t);
                   return (
-                    <li key={t.id} className="rounded-lg border border-zinc-800 p-2 text-xs text-zinc-400">
-                      <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-200">
+                    <Ledger.Row key={t.id} edge="none" className="flex-col items-stretch gap-1 p-2.5 text-xs text-text-muted">
+                      <div className="flex flex-wrap items-center gap-2 text-sm text-text">
                         <span>{s.title}</span>
-                        <span className="text-xs text-zinc-400">{new Date(t.createdAt).toLocaleString()}</span>
+                        <span className="font-mono text-xs tabular-nums text-text-muted">{new Date(t.createdAt).toLocaleString()}</span>
                       </div>
                       <div>For {s.target}. {s.steps}. {s.requests}.</div>
-                    </li>
+                    </Ledger.Row>
                   );
                 })}
-              </ul>
+              </Ledger>
             )}
           </div>
         </>
@@ -152,8 +153,8 @@ const InboxRow: React.FC<{
   const editionId = item.editionId || item.edition?.id;
   const line = editionLine(item.edition);
   return (
-    <li className="space-y-2 rounded-lg border border-zinc-800 p-2.5">
-      <p className="break-words text-sm text-zinc-100">
+    <Ledger.Row edge="needs" className="flex-col items-stretch gap-2 p-2.5">
+      <p className="break-words text-sm text-text">
         {editionId ? (
           <a
             href={editionUrl(editionId)}
@@ -165,7 +166,7 @@ const InboxRow: React.FC<{
               rememberManageSearch(new URL(url, window.location.origin).search);
               window.dispatchEvent(new PopStateEvent('popstate'));
             }}
-            className="hover:text-violet-300 hover:underline"
+            className="hover:text-accent hover:underline"
           >
             {line}
           </a>
@@ -173,8 +174,8 @@ const InboxRow: React.FC<{
           line
         )}
       </p>
-      {c && <p className="break-words text-sm text-zinc-300">{c.field}: {c.oldValue} became {c.newValue}.</p>}
-      {item.kind === 'failed_lookup' && <p className="text-sm text-zinc-300">{failedReason(item)}</p>}
+      {c && <p className="break-words text-sm text-text-muted">{c.field}: {c.oldValue} became {c.newValue}.</p>}
+      {item.kind === 'failed_lookup' && <p className="text-sm text-text-muted">{failedReason(item)}</p>}
       <div className="flex flex-wrap gap-2">
         {item.kind === 'override' && (
           <>
@@ -193,7 +194,7 @@ const InboxRow: React.FC<{
         {item.kind === 'formatting' && dismiss('Got it', 'Noted.')}
         {item.kind === 'failed_lookup' && dismiss('Dismiss', 'Dismissed.')}
       </div>
-    </li>
+    </Ledger.Row>
   );
 };
 
@@ -212,9 +213,9 @@ const MergePicker: React.FC<{ item: InboxItem; busy: boolean; onRun: (item: Inbo
   if (ids.length < 2) return null;
   return (
     <div className="flex w-full flex-wrap items-center gap-2">
-      <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-zinc-300">
+      <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-text-muted">
         Keep
-        <select value={keep} onChange={(e) => setKeep(e.target.value)} className="min-w-0 flex-1 rounded-control border border-zinc-700 bg-zinc-900 p-1.5 text-sm text-zinc-100">
+        <select value={keep} onChange={(e) => setKeep(e.target.value)} className="min-h-11 min-w-0 flex-1 rounded-control border border-line-strong bg-surface-1 p-1.5 text-sm text-text sm:min-h-9">
           {ids.map((id) => <option key={id} value={id}>{names[id] ?? id}</option>)}
         </select>
       </label>

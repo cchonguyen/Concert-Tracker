@@ -5,7 +5,7 @@
 // Atomicity: the row is written first, then its change. There is no Supabase function that does both in one
 // call and this slice adds no migration, so a failed change write is retried once, then logged loudly. The row
 // write is never rolled back silently; a missing change record is reported by the log, not hidden.
-import type { Edition, EditionChange, EditionPerformance, EditionWeekend } from '../lineup/types';
+import type { Edition, EditionChange, EditionPerformance, EditionWeekend, InferenceField } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
 import { runReserved } from '../lineup/budget';
 import { editionVerified, verifyAct, type ActEvidence, type ActExpectation, type ActVerdict, type EditionFieldFacts } from './autoVerify';
@@ -29,6 +29,15 @@ type Field = (typeof FIELDS)[number];
 const SUMMARY = 'performanceCount';
 
 type Snapshot = Record<string, unknown>;
+type ChangeRecord = Parameters<LineupStore['recordEditionChange']>[0];
+
+// Inferred values (docs/specs/inferred-values.md). Re-exported by inferences.ts.
+export const INFERENCE_ADDED_KEY = 'inferenceAdded';
+export const INFERENCE_FIELDS: readonly InferenceField[] = ['startDate', 'endDate', 'venue', 'city', 'region', 'country'];
+
+export function isEmptyValue(v: unknown): boolean {
+  return v === null || v === undefined || (typeof v === 'string' && v.trim() === '');
+}
 
 function normalizeWeekends(weekends: EditionWeekend[] | undefined): EditionWeekend[] | null {
   if (!weekends || weekends.length === 0) return null;
@@ -98,22 +107,65 @@ export async function writeEdition(store: LineupStore, input: WriteEditionInput)
   };
   // The edition is already saved, so its change record may use the request budget's reserve:
   // a spent budget must not leave a saved change without its history row.
+  const change = await recordChange(store, rec);
+  await healAfterWrite(store, input.edition, existing, input.actor);
+  return { changed: true, change };
+}
+
+// Writes one change record. A personal-field refusal is not retried; any other failure is retried once.
+async function recordChange(store: LineupStore, rec: ChangeRecord): Promise<EditionChange> {
+  // The edition is already saved, so its change record may use the request budget's reserve:
+  // a spent budget must not leave a saved change without its history row.
   const record = () => runReserved(() => store.recordEditionChange(rec));
   try {
-    return { changed: true, change: await record() };
+    return await record();
   } catch (err) {
     if (isPersonal(err)) throw err;
     try {
-      return { changed: true, change: await record() };
+      return await record();
     } catch (err2) {
-      console.error(`writeEdition: edition ${input.edition.id} saved but its change record failed twice`, err2);
+      console.error(`change record for edition ${rec.editionId} failed twice`, err2);
       throw err2;
     }
   }
 }
 
+// Records a change that writes no shared field (an inference added, resolved or rejected). The edition row is not touched.
+export interface EditionNoteInput {
+  editionId: string;
+  actor: string;
+  reason: string;
+  after: Snapshot;
+}
+
+export async function recordEditionNote(store: LineupStore, input: EditionNoteInput): Promise<EditionChange> {
+  return recordChange(store, { editionId: input.editionId, actor: input.actor, reason: input.reason, before: {}, after: input.after });
+}
+
+// A value that lands on an empty inferred field re-checks the inferences on that field (docs/specs/inferred-values.md).
+// It is best-effort: a store without the inference methods, or a missing table, must never fail the save.
+async function healAfterWrite(store: LineupStore, edition: Edition, existing: Edition | null | undefined, actor: string): Promise<void> {
+  const filled = INFERENCE_FIELDS.some((f) => isEmptyValue(existing?.[f]) && !isEmptyValue(edition[f]));
+  if (!filled) return;
+  try {
+    const { healEdition } = await import('./inferences');
+    await healEdition(store, edition.id, edition, actor);
+  } catch (err) {
+    console.error(`inferred values of edition ${edition.id} were not re-checked after a save`, err);
+  }
+}
+
 function isPersonal(err: unknown) {
   return err instanceof Error && err.name === 'PersonalFieldError';
+}
+
+// Undo of an inference: the inference is rejected and what was built on it is replaced.
+async function undoInference(store: LineupStore, edition: Edition, change: EditionChange, inferenceId: string, actor: string): Promise<UndoResult> {
+  const { rejectInference } = await import('./inferences');
+  const rejected = await rejectInference(store, inferenceId, edition.id, actor, `undo of ${change.id}`);
+  if (!rejected.ok) return { ok: false, reason: 'stale' };
+  await store.markChangeUndone(change.id);
+  return { ok: true, change };
 }
 
 export type UndoResult =
@@ -126,6 +178,8 @@ export async function undoEditionChange(store: LineupStore, editionId: string, c
   if (change.undoneAt) return { ok: false, reason: 'already_undone' };
   const edition = await store.getEdition(editionId);
   if (!edition) return { ok: false, reason: 'unknown' };
+  const inferred = (change.after as Snapshot | null)?.[INFERENCE_ADDED_KEY];
+  if (typeof inferred === 'string') return undoInference(store, edition, change, inferred, actor);
   const autoEdition = (change.after as Snapshot | null)?.[AUTO_EDITION_KEY];
   if (typeof autoEdition === 'string') return undoAutoEdition(store, edition, change, actor);
   const autoAct = (change.after as Snapshot | null)?.[AUTO_VERIFY_KEY];

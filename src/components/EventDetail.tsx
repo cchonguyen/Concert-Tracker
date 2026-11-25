@@ -48,7 +48,8 @@ import { Stars } from './ui/Stars';
 import { Tabs } from './ui/Tabs';
 import { cityWithRegion, sameCountry } from '../server/events/regions';
 import { attendanceOf } from '../server/events/attendance';
-import type { EditionPerformance } from '../server/lineup/types';
+import type { EditionPerformance, InferenceField } from '../server/lineup/types';
+import type { InferredField } from '../server/canon/inferences';
 import type { ManageTarget } from './ManageView';
 import { DetailShell, type DetailRow } from './ui/DetailShell';
 import { Confirm } from './ui/Confirm';
@@ -66,6 +67,7 @@ import { Segmented } from './ui/Segmented';
 import { SaveStatus } from './ui/SaveStatus';
 import { beginSave, emptyTrack, failSave, hintVisit, succeedSave, takeFailed, type SaveTrack } from '../services/saveStatus';
 import { scrollBehavior } from '../services/motion';
+import { motion, useReducedMotion } from 'motion/react';
 
 interface EventDetailProps {
   event: LoggedEvent;
@@ -160,6 +162,23 @@ const HINT_KEY = 'liveArchive.saveHint';
 const FlashContext = React.createContext<string[]>([]);
 const EditionIdContext = React.createContext<string | undefined>(undefined);
 
+// An inferred value beside an empty field (never in the input). Its reason opens on hover or tap.
+const InferredNote: React.FC<{ inferred: InferredField; type: string }> = ({ inferred, type }) => {
+  const raw = String(inferred.value);
+  const shown = type === 'date' ? (whenLabel({ startDate: raw }) ?? raw) : raw;
+  const reason = inferred.reason.replace(/[.\s]+$/, '');
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm italic text-text-muted">
+      <span>{shown}</span>
+      <Popover label="Why this is inferred" content={<p className="max-w-xs text-xs leading-relaxed text-text">{`Inferred: ${reason}.`}</p>}>
+        <button type="button" aria-label="Why this is inferred" className="rounded-full">
+          <Pill tone="inferred">Inferred</Pill>
+        </button>
+      </Popover>
+    </div>
+  );
+};
+
 // A text field that saves when you leave it, and 500 ms after you stop typing.
 const Field: React.FC<{
   label: string;
@@ -176,7 +195,9 @@ const Field: React.FC<{
   className?: string;
   // The event field this saves, so a save of it flashes.
   field?: keyof EventPatch;
-}> = ({ label, value, type = 'text', placeholder, source, onSave, onType, suggestions, offer, min, className, field }) => {
+  // Shown only while the stored value is empty; never put into the input or saved.
+  inferred?: InferredField;
+}> = ({ label, value, type = 'text', placeholder, source, onSave, onType, suggestions, offer, min, className, field, inferred }) => {
   const flashing = React.useContext(FlashContext);
   const isOwner = useIsOwner();
   const editionId = React.useContext(EditionIdContext);
@@ -312,6 +333,7 @@ const Field: React.FC<{
           />
         )}
       </label>
+      {inferred && (value === undefined || String(value).trim() === '') && <InferredNote inferred={inferred} type={type} />}
       {offer && (
         <button
           type="button"
@@ -454,6 +476,16 @@ const DaysWent: React.FC<{ days: string[]; attended: string[]; onChange: (days: 
   );
 };
 
+// The seen tick draws itself (design-refresh-2.md, section 4); under reduced motion it is simply there.
+const DrawnTick: React.FC<{ className?: string }> = ({ className = 'h-4 w-4' }) => {
+  const still = useReducedMotion();
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <motion.path d="M20 6 9 17l-5-5" initial={still ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.28, ease: 'easeOut' }} />
+    </svg>
+  );
+};
+
 type Seen = LoggedEvent['seen'][number];
 type SeenPatch = NonNullable<EventPatch['seen']>;
 
@@ -488,7 +520,7 @@ const WentCard: React.FC<{
     return (
       <div className={`${box} border-good/45 bg-good/10`}>
         <p className="inline-flex items-center gap-1 font-semibold text-good">
-          <Check className="h-4 w-4" /> Counted. Who did you see?
+          <DrawnTick /> Counted. Who did you see?
         </p>
         {offered.length > 0 && (
           <>
@@ -504,8 +536,9 @@ const WentCard: React.FC<{
                     key={o.key}
                     onClick={() => toggle(o)}
                     aria-pressed={on}
-                    className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-accent bg-accent-tint text-text' : 'border-line text-text-muted hover:text-text'}`}
+                    className={`inline-flex min-h-11 items-center gap-1 rounded-full border px-2.5 py-1 text-xs sm:min-h-9 ${on ? 'border-accent bg-accent-tint text-text' : 'border-line text-text-muted hover:text-text'}`}
                   >
+                    {on && <DrawnTick className="h-3 w-3 text-accent" />}
                     {o.name}
                   </button>
                 );
@@ -1012,6 +1045,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const canManageEdition = isOwner || Boolean(onManage);
   const [job, setJob] = useState<LookupJob | null>(null);
   const [edition, setEdition] = useState<Edition | null>(null);
+  const [inferred, setInferred] = useState<Partial<Record<InferenceField, InferredField>>>({});
   const [suggestions, setSuggestions] = useState<ArtistSuggestion[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1066,6 +1100,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
       const data = await eventsApi.get(event.id);
       setJob(data.job);
       setEdition(data.edition);
+      setInferred(data.inferred ?? {});
       setSuggestions(data.suggestions ?? []);
       // Slower: parts of the name MusicBrainz knows as artists.
       eventsApi
@@ -1484,7 +1519,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             dismissBusy={busy === 'dismiss-canon'}
           />
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Date" field="startDate" type="date" value={event.startDate} source={event.sources.startDate} onSave={(v) => save({ startDate: text(v) })} />
+            <Field label="Date" field="startDate" type="date" value={event.startDate} source={event.sources.startDate} inferred={inferred.startDate} onSave={(v) => save({ startDate: text(v) })} />
             {/* Shows the start date until you change it, so the picker opens on the
                 right month; stored only when it differs (a single-day event has no last day). */}
             <Field
@@ -1494,6 +1529,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               value={event.endDate ?? event.startDate}
               min={event.startDate}
               source={event.endDate ? event.sources.endDate : undefined}
+              inferred={inferred.endDate}
               
               onSave={(v) => save({ endDate: v && v !== event.startDate ? v : null })}
             />
@@ -1508,6 +1544,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               field="venue"
               value={event.venue}
               source={event.sources.venue}
+              inferred={inferred.venue}
               suggestions={pastVenues}
               onSave={async (v) => {
                 const venue = text(v);
@@ -1552,6 +1589,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               value={event.city}
               placeholder="City"
               source={event.sources.city}
+              inferred={inferred.city}
               suggestions={citySuggestions}
               onType={setCityQuery}
               onSave={(v) => saveCity(v)}
@@ -1562,6 +1600,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               value={event.region}
               placeholder="NV, or the region"
               source={event.sources.region}
+              inferred={inferred.region}
               offer={
                 mapOffer
                   ? { value: mapOffer.value, from: mapOffer.from, onUse: () => void save(mapOffer.patch) }
@@ -1569,7 +1608,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               }
               onSave={(v) => save({ region: text(v) })}
             />
-            <Field label="Country" field="country" value={event.country} source={event.sources.country} onSave={(v) => save({ country: text(v) })} />
+            <Field label="Country" field="country" value={event.country} source={event.sources.country} inferred={inferred.country} onSave={(v) => save({ country: text(v) })} />
             <div className="col-span-2 space-y-1">
               <span className="block text-[11px] font-semibold text-text-muted">Type</span>
               <div className="flex flex-wrap items-center gap-1.5">

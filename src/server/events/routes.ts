@@ -19,6 +19,7 @@ import { artistSuggestions, eventPerformers, nameArtistSuggestions, MAX_BULK_SUG
 import type { LineupFacts } from './scale';
 import { lookupWeather } from './weather';
 import { weatherForEdition } from './editionWeather';
+import { inferredFieldsFor } from '../canon/inferences';
 import { undoActivity } from './undo';
 import { currentMember } from '../auth/requestScope';
 
@@ -305,7 +306,17 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
         .filter((name) => normalizeName(name).length >= 4)
         .map((name) => ({ name, sourceType: 'user' as const }));
       const suggestions = artistSuggestions(event, [...eventPerformers(event, job, edition), ...past]);
-      res.json({ event: resolveEvent(event, edition), job, edition, suggestions });
+      const resolved = resolveEvent(event, edition);
+      // Inferred values are a display aid: a failed lookup shows none and never fails the request.
+      let inferred: ReturnType<typeof inferredFieldsFor> = {};
+      if (edition) {
+        try {
+          inferred = inferredFieldsFor(resolved, await deps.store.listEditionInferences(edition.id));
+        } catch (err) {
+          console.warn('inferred values not loaded', err instanceof Error ? err.name : 'error');
+        }
+      }
+      res.json({ event: resolved, job, edition, suggestions, inferred });
     } catch (err) {
       fail(res, err);
     }

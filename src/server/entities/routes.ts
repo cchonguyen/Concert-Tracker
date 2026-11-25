@@ -38,7 +38,7 @@ import { seriesSlugFor } from '../lineup/text';
 import type { Edition, SeriesKind, SeriesRecord, SourceType } from '../lineup/types';
 import { addEditionAct, writeEdition } from '../canon/editions';
 import { venueLocation } from '../canon/venueLocation';
-import { applyVenueFill, planVenueFill } from '../canon/venueFill';
+import { applyVenueFill, inferVenuePlaces, planVenueFill } from '../canon/venueFill';
 import { lineupProposalPayload, matchEditionName, offersForEditions, prepareCatalog } from '../canon/nameArtists';
 import { normalizeName } from '../lineup/normalizeName';
 import {
@@ -655,7 +655,15 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
             }))
         : [];
       if (!editionIds.length && !picks.length) return res.status(400).json({ error: 'editionIds or picks is required.' });
-      res.json(await applyVenueFill(store, { editionIds, picks }));
+      const result = await applyVenueFill(store, { editionIds, picks });
+      // Inferences for venues with several places never fail the fill.
+      let inferred: Awaited<ReturnType<typeof inferVenuePlaces>>['inferred'] = [];
+      try {
+        inferred = (await inferVenuePlaces(store)).inferred;
+      } catch (err) {
+        console.error('venue infer failed', err);
+      }
+      res.json({ ...result, inferred });
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
