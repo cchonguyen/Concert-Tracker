@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
+// The one look for anchored panels and hover cards (heatmap days, stats bars).
+export const POPOVER_PANEL = 'rounded-card border border-line bg-surface-2 p-3 text-left text-sm text-text shadow-xl shadow-black/30';
+
 interface Props {
   content: ReactNode;
   label: string; // The trigger's name for screen readers.
@@ -56,12 +59,12 @@ export function Popover({ content, label, children, className = '' }: Props) {
             setPinned(true);
           }
         }}
-        className="inline-flex h-full w-full cursor-pointer rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400"
+        className="inline-flex h-full w-full cursor-pointer rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
       >
         {children}
       </span>
       {open && (
-        <span role="dialog" aria-label={label} className="absolute left-1/2 top-full z-30 mt-1 w-64 -translate-x-1/2 rounded-xl border border-zinc-800 bg-zinc-900 p-3 text-left text-sm text-zinc-200 shadow-xl shadow-black/30">
+        <span role="dialog" aria-label={label} className={`absolute left-1/2 top-full z-30 mt-1 w-64 -translate-x-1/2 ${POPOVER_PANEL}`}>
           {content}
         </span>
       )}
