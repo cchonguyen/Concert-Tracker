@@ -5,6 +5,13 @@ import type { ReaderClient, ReaderResult, ReaderUsage, ThinkingLevel } from './t
 
 const DETAIL_FIELDS = ['dateQuote', 'venue', 'city', 'country', 'placeQuote'] as const;
 const EMPTY_BALANCE_WAIT_MS = 6 * 60 * 60 * 1000;
+const INFERRED_KEYS = ['field', 'value', 'quote', 'reason'] as const;
+
+function isInferredItem(item: unknown): item is { field: string; value: string; quote: string; reason: string } {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+  const r = item as Record<string, unknown>;
+  return INFERRED_KEYS.every((k) => typeof r[k] === 'string' && (r[k] as string).trim().length > 0);
+}
 
 export function thinkingConfigFor(model: string, level: ThinkingLevel): { thinkingBudget: number } | { thinkingLevel: string } {
   if (model.startsWith('gemini-2.5')) return { thinkingBudget: 0 };
@@ -81,6 +88,11 @@ export function createGeminiReader(client: GeminiGenerator, thinkingLevel: Think
           if (wq !== undefined && wq !== null) {
             if (!Array.isArray(wq) || wq.some((item) => typeof item !== 'string')) return null;
             out.weekendQuotes = wq;
+          }
+          // Inferences: a bad item is dropped, the rest of the answer is kept.
+          const inf = record.inferred;
+          if (Array.isArray(inf)) {
+            out.inferred = inf.filter(isInferredItem);
           }
           return out;
         },

@@ -38,9 +38,11 @@ export interface ExtractedDetails {
   city?: string;
   country?: string;
   placeQuote?: string;
+  // Places the page does not state outright but that follow from its words. Checked in code (events/detailsGemini.ts).
+  inferred?: Array<{ field: string; value: string; quote: string; reason: string }>;
 }
 
-export const DETAILS_PROMPT_VERSION = 'details@2';
+export const DETAILS_PROMPT_VERSION = 'details@3';
 
 export const DETAILS_SYSTEM = `You copy where and when one event took place out of a web page. Rules:
 - Use only the PAGE TEXT provided. Never use outside knowledge and never guess.
@@ -49,6 +51,7 @@ export const DETAILS_SYSTEM = `You copy where and when one event took place out 
 - "weekendQuotes": when the page explicitly lists separate Weekend 1 / Weekend 2 (etc.) date ranges for this event, an array of exact substrings of the page text (each up to 120 characters), one per weekend. Omit when the event does not list separate weekends.
 - "venue", "city", "country": copied exactly as written on the page, each only if the page states it for this event.
 - "placeQuote": an exact substring of the page text (up to 200 characters) that contains every place value you gave.
+- "inferred": a list, only for "venue", "city", "region" (state or province) or "country" of THIS event that the page does not state outright but that follows from words on the page (for example a street address line that names the city, or "Austin, TX" giving the region TX). Each item has "field", "value", "quote" (an exact substring of the page text, up to 200 characters, containing the words the inference rests on) and "reason" (one short sentence naming those words). Never infer a date. Never use outside knowledge about the venue or event. Leave a field out instead of guessing. Do not repeat a field you already gave as stated.
 - If the page is not about this event, return an empty object.`;
 
 export const DETAILS_SCHEMA = {
@@ -60,6 +63,18 @@ export const DETAILS_SCHEMA = {
     city: { type: Type.STRING },
     country: { type: Type.STRING },
     placeQuote: { type: Type.STRING },
+    inferred: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          field: { type: Type.STRING },
+          value: { type: Type.STRING },
+          quote: { type: Type.STRING },
+          reason: { type: Type.STRING },
+        },
+      },
+    },
   },
 };
 
