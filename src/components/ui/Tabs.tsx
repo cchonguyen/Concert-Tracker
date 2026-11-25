@@ -23,6 +23,8 @@ interface Props<T extends string> {
   panel?: 'page' | 'surface-1' | 'surface-2';
   className?: string;
   end?: ReactNode; // Anything that sits at the far end of the row (a button, a count).
+  // false when the row sits on a line its container already draws (the app header).
+  line?: boolean;
 }
 
 const PANEL_BG = { page: 'bg-page', 'surface-1': 'bg-surface-1', 'surface-2': 'bg-surface-2' } as const;
@@ -32,7 +34,7 @@ const PANEL_BORDER = { page: 'border-b-page', 'surface-1': 'border-b-surface-1',
 // Square corners and straight borders, never the solid Add colour. The open tab is also
 // bold, raised and marked with aria-current, so the state is never shown by colour alone.
 // The cap or underline slides between tabs; with reduced motion it moves at once.
-export function Tabs<T extends string>({ label, items, value, onChange, variant = 'folder', panel = 'surface-1', className = '', end }: Props<T>) {
+export function Tabs<T extends string>({ label, items, value, onChange, variant = 'folder', panel = 'surface-1', className = '', end, line = true }: Props<T>) {
   const id = useId();
   const still = useReducedMotion();
   const slide = still ? { duration: 0 } : { type: 'spring' as const, stiffness: 520, damping: 42, mass: 0.6 };
@@ -41,7 +43,7 @@ export function Tabs<T extends string>({ label, items, value, onChange, variant 
   return (
     <nav
       aria-label={label}
-      className={`flex items-end gap-0.5 overflow-x-auto ${folder ? 'border-b border-line-strong px-1.5' : 'border-b border-line'} ${className}`}
+      className={`flex items-end gap-0.5 overflow-x-auto ${line ? (folder ? 'border-b border-line-strong' : 'border-b border-line') : ''} ${folder ? 'px-1.5' : ''} ${className}`}
     >
       {items.map((t) => {
         const on = t.value === value;
