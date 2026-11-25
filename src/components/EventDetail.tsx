@@ -51,6 +51,7 @@ import type { ManageTarget } from './ManageView';
 import { DetailShell, type DetailRow } from './ui/DetailShell';
 import { Confirm } from './ui/Confirm';
 import { VersionPicker } from './ui/VersionPicker';
+import { PasteSetTimes } from './PasteSetTimes';
 import { useToast } from './ui/Toast';
 import { Switch } from './ui/Switch';
 import { Sheet } from './ui/Sheet';
@@ -2007,6 +2008,17 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                 confirmedActs={edition ? lineupActs.length : undefined}
                 busy={busy === 'lineup'}
                 onPick={(v, replace) => void run('lineup', async () => (await eventsApi.findLineup(event.id, v.url, replace)).event)}
+              />
+            </div>
+          )}
+
+          {isOwner && event.startDate && !isActive(job?.status) && (
+            <div className="mt-2">
+              <PasteSetTimes
+                startDate={event.startDate}
+                endDate={event.endDate}
+                busy={busy === 'lineup'}
+                onSubmit={(url, text) => void run('lineup', async () => (await eventsApi.pasteSetTimes(event.id, url, text)).event)}
               />
             </div>
           )}

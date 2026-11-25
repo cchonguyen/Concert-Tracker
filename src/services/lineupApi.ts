@@ -225,6 +225,9 @@ export const eventsApi = {
     request<{ started: string[]; skipped: Array<{ id: string; reason: string }> }>('/api/events/lineups', post({ ids })),
   findLineup: (id: string, lineupUrl?: string, replaceConfirmed?: boolean) =>
     request<{ event: LoggedEvent; job: LookupJob }>(`/api/events/${id}/lineup`, post({ lineupUrl, replaceConfirmed: replaceConfirmed || undefined })),
+  // Owner only: a set-times page pasted with its link (docs/specs/pasted-set-times.md).
+  pasteSetTimes: (id: string, url: string, text: string) =>
+    request<{ event: LoggedEvent; job: LookupJob }>(`/api/events/${id}/lineup/paste`, post({ url, text })),
   lineupVersions: (id: string) =>
     request<{ versions: Array<{ slug: string; name: string; startDate?: string; lastEdit?: string; edits?: number; numActs?: number; url: string }> }>(
       `/api/events/${id}/lineup/versions`,
