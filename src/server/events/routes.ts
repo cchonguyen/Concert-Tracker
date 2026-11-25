@@ -3,7 +3,7 @@ import { startTrace } from '../telemetry/trace';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
 import { JobRunner } from '../lineup/service';
 import { DetailFinder, defaultFinders, pickCandidate, researchCatalogFor, researchEvent } from './details';
-import { geminiReader } from './detailsGemini';
+import { geminiReader, type ReaderInference } from './detailsGemini';
 import { cityPoint, citySuggestions, placeGuess } from './place';
 import { applyLinkedPatch, editionPlaceValue, ensureCaptured, recordOverrides, resolveEvent, resolveEvents, unlinkEvent } from './inherit';
 import { clashfinderChoices, EventPatch, lineupSummary, newEvent, newEventFromEdition, sortEvents, startBulkLookups, startLineupLookup } from './service';
@@ -19,7 +19,7 @@ import { artistSuggestions, eventPerformers, nameArtistSuggestions, MAX_BULK_SUG
 import type { LineupFacts } from './scale';
 import { lookupWeather } from './weather';
 import { weatherForEdition } from './editionWeather';
-import { inferredFieldsFor } from '../canon/inferences';
+import { inferredFieldsFor, storeReaderInferences } from '../canon/inferences';
 import { undoActivity } from './undo';
 import { currentMember } from '../auth/requestScope';
 
@@ -372,14 +372,26 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
       const event = await load(req.params.id, res);
       if (!event) return;
       let reader;
+      const inferred: ReaderInference[] = [];
       if (req.body?.useGemini === true) {
         if (!deps.reader) throw new InputError('Gemini is not set up on this server.');
-        reader = geminiReader(deps.reader, event.id, deps.now);
+        reader = geminiReader(deps.reader, event.id, deps.now, { onInferences: (list) => inferred.push(...list) });
       }
       const trace = startTrace('research', { eventId: event.id });
       const updated = await researchEvent(event, finders, deps.fetcher, deps.now(), reader, undefined, { trace });
       await trace.finish(deps.store);
-      res.json({ event: await saveEvent(updated) });
+      const saved = await saveEvent(updated);
+      // Reader inferences go to the shared edition, so only the owner (or a single-user install) writes them.
+      const member = currentMember();
+      if (inferred.length && saved.editionId && (!member || member.role === 'owner')) {
+        try {
+          const edition = await deps.store.getEdition(saved.editionId);
+          if (edition) await storeReaderInferences(deps.store, edition, inferred);
+        } catch (err) {
+          console.warn('reader inferences not stored', err instanceof Error ? err.name : 'error');
+        }
+      }
+      res.json({ event: saved });
     } catch (err) {
       fail(res, err);
     }

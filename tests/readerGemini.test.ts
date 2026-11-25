@@ -65,7 +65,7 @@ test('bad JSON, wrong shape and MAX_TOKENS are invalid_json', async () => {
 });
 
 test('details: DETAILS_SYSTEM, only string fields and optional weekendQuotes string array', async () => {
-  assert.equal(DETAILS_PROMPT_VERSION, 'details@2');
+  assert.equal(DETAILS_PROMPT_VERSION, 'details@3');
   assert.ok('weekendQuotes' in DETAILS_SCHEMA.properties);
   const f = fake('m', { text: '{"venue":"Hall","city":"Oslo"}' });
   const reader = createGeminiReader(f.client);
@@ -89,6 +89,27 @@ test('details: DETAILS_SYSTEM, only string fields and optional weekendQuotes str
     assert.equal(res.ok, false);
     assert.equal(res.reason, 'invalid_json');
   }
+});
+
+test('details: inferred keeps only well-formed items and drops the rest, not the whole answer', async () => {
+  const good = { field: 'country', value: 'Norway', quote: 'Oslo, Norway', reason: 'the line names Norway' };
+  const reply = {
+    venue: 'Hall',
+    inferred: [
+      { field: 'city', value: 'Oslo' }, // missing keys
+      'junk',
+      null,
+      { field: 'region', value: '', quote: 'q', reason: 'r' }, // empty value
+      good,
+    ],
+  };
+  const r: any = await createGeminiReader(fake('m', { text: JSON.stringify(reply) }).client).extractEventDetails({ text: 'x', eventName: 'E', maxOutputTokens: 100 });
+  assert.equal(r.ok, true);
+  assert.equal(r.value.venue, 'Hall');
+  assert.deepEqual(r.value.inferred, [good]);
+  const absent: any = await createGeminiReader(fake('m', { text: '{"venue":"Hall"}' }).client).extractEventDetails({ text: 'x', eventName: 'E', maxOutputTokens: 100 });
+  assert.equal('inferred' in absent.value, false);
+  assert.ok(DETAILS_SCHEMA.properties.inferred);
 });
 
 test('402 and prepay-depleted 429 park for 6 hours', async () => {

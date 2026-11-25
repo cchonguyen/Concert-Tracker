@@ -6,8 +6,20 @@ import type { Edition, EditionInference, InferenceField, InferenceInput } from '
 import type { LineupStore } from '../lineup/store/types';
 import type { LoggedEvent } from '../events/types';
 import { INFERENCE_ADDED_KEY, INFERENCE_FIELDS, isEmptyValue, recordEditionNote } from './editions';
+import { domainOf } from '../lineup/text';
 
 export { INFERENCE_ADDED_KEY, INFERENCE_FIELDS };
+
+export const READER_INFER_ACTOR = 'system:reader-infer';
+
+// Structurally the same as ReaderInference in events/detailsGemini.ts (kept here to avoid an import cycle).
+export interface ReaderInferenceInput {
+  field: 'venue' | 'city' | 'region' | 'country';
+  value: string;
+  quote: string;
+  reason: string;
+  url: string;
+}
 
 export interface InferEditionFieldInput {
   edition: Edition;
@@ -60,6 +72,31 @@ export async function inferEditionField(store: LineupStore, input: InferEditionF
     throw err;
   }
   return { ok: true, inference };
+}
+
+// Stores reader inferences (rule 'reader') on an edition. A refused one (field has a value, already inferred, ...) is skipped.
+export async function storeReaderInferences(
+  store: LineupStore,
+  edition: Edition,
+  list: ReaderInferenceInput[],
+  actor: string = READER_INFER_ACTOR,
+): Promise<EditionInference[]> {
+  const out: EditionInference[] = [];
+  for (const item of list) {
+    const domain = domainOf(item.url);
+    const reason = domain && domain !== '*' ? `${item.reason} (read from ${domain})` : item.reason;
+    const r = await inferEditionField(store, {
+      edition,
+      field: item.field,
+      value: item.value,
+      reason,
+      rule: 'reader',
+      inputs: [{ kind: 'source', url: item.url, quote: item.quote }],
+      actor,
+    });
+    if (r.ok) out.push(r.inference);
+  }
+  return out;
 }
 
 function sameInferred(field: InferenceField, own: unknown, inferred: unknown): boolean {

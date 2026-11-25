@@ -30,7 +30,12 @@ function namesEvent(text: string, q: DetailQuery): boolean {
 // Calls go through the guarded reader (feature details_extract, one job per
 // event per day, one call per page read, at most MAX_GEMINI_PAGES a press).
 // Guard blocks and quota errors stop the press the same way: no fallback.
-export function geminiReader(reader: GuardedReader, eventId: string, now: () => Date): DetailReader {
+export function geminiReader(
+  reader: GuardedReader,
+  eventId: string,
+  now: () => Date,
+  opts?: { onInferences?: (list: ReaderInference[]) => void },
+): DetailReader {
   const jobKey = () => `details:${eventId}:${now().toISOString().slice(0, 10)}`;
   return {
     async read(q, urls, fetcher: Fetcher, notes) {
@@ -80,6 +85,11 @@ export function geminiReader(reader: GuardedReader, eventId: string, now: () => 
         const c = checkedCandidate(q, url, text, got);
         notes.push(`gemini: read ${url}${c ? `: ${c.sources[0].fields.join(', ')}` : ', nothing found on the page'}.`);
         if (c) out.push(c);
+        const inferred = checkedInferences(url, text, got, c);
+        if (inferred.length) {
+          opts?.onInferences?.(inferred);
+          notes.push(`gemini: inferred ${inferred.map((i) => i.field).join(', ')} from ${url}.`);
+        }
       }
       if (!read) notes.push('gemini: none of the pages found named this event, so nothing was sent to the AI.');
       return out;
@@ -216,6 +226,50 @@ function verifiedWeekends(
   }
   assigned.sort((a, b) => a.weekend - b.weekend);
   return assigned;
+}
+
+// A place the reader inferred from words on a fetched page (docs/specs/inferred-values.md).
+// Stored only as an inferred value on the shared edition, never as a candidate field.
+export interface ReaderInference {
+  field: 'venue' | 'city' | 'region' | 'country';
+  value: string;
+  quote: string;
+  reason: string;
+  url: string;
+}
+
+const INFERRED_FIELDS: readonly ReaderInference['field'][] = ['venue', 'city', 'region', 'country'];
+const MAX_INFERENCES = 4;
+const MAX_INFERENCE_REASON = 200;
+
+// Keeps only the inferences the page supports. Needs a checked candidate: the page must be about this event's date.
+// Exported for tests.
+export function checkedInferences(
+  url: string,
+  pageText: string,
+  got: { inferred?: unknown },
+  candidate: DetailCandidate | null,
+): ReaderInference[] {
+  if (!candidate || !Array.isArray(got.inferred)) return [];
+  const page = normalizeName(pageText);
+  const out: ReaderInference[] = [];
+  const seen = new Set<ReaderInference['field']>();
+  for (const item of got.inferred) {
+    if (out.length >= MAX_INFERENCES) break;
+    if (!item || typeof item !== 'object') continue;
+    const r = item as Record<string, unknown>;
+    const field = INFERRED_FIELDS.find((f) => f === r.field);
+    if (!field || seen.has(field)) continue; // dates and any other field are dropped
+    if (candidate[field]) continue; // the page already states this field
+    const value = typeof r.value === 'string' ? r.value.trim() : '';
+    const reason = typeof r.reason === 'string' ? r.reason.trim() : '';
+    const quote = typeof r.quote === 'string' ? r.quote.trim() : '';
+    if (!value || !reason || reason.length > MAX_INFERENCE_REASON) continue;
+    if (!quote || !isVerbatim(quote, quote, page)) continue;
+    seen.add(field);
+    out.push({ field, value, quote, reason, url });
+  }
+  return out;
 }
 
 // Keeps only what the page itself says. Exported for tests.
