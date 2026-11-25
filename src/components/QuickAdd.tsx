@@ -2,6 +2,7 @@ import { Dialog } from './ui/Dialog';
 import React from 'react';
 
 import { FileUp, Mail, Plus, X } from 'lucide-react';
+import { IconButton } from './ui/IconButton';
 import { CaptureBar } from './CaptureBar';
 import { LoggedEvent } from '../services/lineupApi';
 
@@ -23,25 +24,23 @@ export const QuickAdd: React.FC<QuickAddProps> = ({ open, onClose, onCaptured, o
   return (
     <Dialog title="Quick add" onClose={onClose} placement="center">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-bold text-zinc-100">Quick add</h2>
-        <button onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-zinc-400 hover:text-zinc-200">
-          <X className="h-4 w-4" />
-        </button>
+        <h2 className="font-display text-xl font-normal text-text">Quick add</h2>
+        <IconButton icon={X} label="Close" onClick={onClose} />
       </div>
       <CaptureBar onCaptured={onCaptured} />
-      <div className="flex flex-wrap gap-2 border-t border-zinc-800 pt-4">
+      <div className="flex flex-wrap gap-2 border-t border-line pt-4">
         {emailCheck && (
           <button
             onClick={() => {
               onClose();
               onReviewEmail();
             }}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-control border border-line-strong px-3 py-2 text-sm text-text-muted hover:bg-surface-2 hover:text-text sm:min-h-9"
           >
             <Mail className="h-3.5 w-3.5" /> Check ticket email
           </button>
         )}
-        <button onClick={onImport} className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
+        <button onClick={onImport} className="inline-flex min-h-11 items-center gap-1.5 rounded-control border border-line-strong px-3 py-2 text-sm text-text-muted hover:bg-surface-2 hover:text-text sm:min-h-9">
           <FileUp className="h-3.5 w-3.5" /> Import a list (CSV)
         </button>
       </div>
@@ -54,7 +53,7 @@ export const QuickAddButton: React.FC<{ onClick: () => void }> = ({ onClick }) =
   <button
     onClick={onClick}
     title="Quick add (N)"
-    className="hidden items-center gap-1.5 rounded-xl bg-accent-fill px-3 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill sm:inline-flex"
+    className="hidden min-h-9 items-center gap-1.5 rounded-control bg-accent-fill px-3 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill sm:inline-flex"
   >
     <Plus className="h-4 w-4" /> Quick add
   </button>
