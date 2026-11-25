@@ -153,7 +153,7 @@ export const AgendaView: React.FC<TimelineViewProps> = ({ model, range, selected
               type="button"
               aria-pressed={order === o}
               onClick={() => choose(o)}
-              className={`rounded-md px-2.5 py-1 font-medium transition-colors ${order === o ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+              className={`rounded-md px-2.5 py-1 font-medium transition-colors ${order === o ? 'bg-accent-fill text-on-accent' : 'text-zinc-400 hover:text-zinc-200'}`}
             >
               {o === 'newest' ? 'Newest first' : 'Oldest first'}
             </button>

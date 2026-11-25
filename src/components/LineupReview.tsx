@@ -770,7 +770,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
           <button
             onClick={save}
             disabled={saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg bg-good px-4 py-2 text-sm font-semibold text-on-accent hover:bg-good disabled:opacity-50"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             {canonical

@@ -50,7 +50,7 @@ export function DemoPrompt({ action, notInvited, onBack }: { action?: string; no
             </Button>
           )
         ) : (
-          <a href="/app" className="rounded-lg bg-violet-500 px-3 py-1.5 font-medium text-white">
+          <a href="/app" className="rounded-lg bg-accent-fill px-3 py-1.5 font-medium text-on-accent">
             Log in (invite only)
           </a>
         )}

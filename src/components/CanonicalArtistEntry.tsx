@@ -33,7 +33,7 @@ export const ORIGIN_LABEL: Record<CanonicalArtistRecord['origins'][number], stri
 const control =
   'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
 const primary =
-  'inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40';
+  'inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent-fill px-3 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40';
 const quiet =
   'inline-flex shrink-0 items-center gap-1 rounded-lg border border-zinc-800 px-2.5 py-1.5 text-sm text-zinc-300 hover:text-zinc-100 disabled:opacity-40';
 const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';

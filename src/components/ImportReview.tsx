@@ -132,7 +132,7 @@ const CheckEmail: React.FC<{ onFound: (imports: EmailImport[]) => void }> = ({ o
               ) : (
                 <a
                   href="/api/gmail/connect"
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent-fill px-3 py-1.5 text-xs font-semibold text-on-accent hover:bg-accent-fill"
                 >
                   <Mail className="h-3.5 w-3.5" /> Connect Gmail
                 </a>
@@ -170,7 +170,7 @@ const Row: React.FC<{ row: EmailImport; ticked?: boolean; onTick?: () => void; a
           aria-pressed={ticked}
           aria-label={ticked ? 'I went (ticked)' : 'I went'}
           className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
-            ticked ? 'border-violet-500 bg-violet-600 text-white' : 'border-zinc-700 text-transparent hover:border-zinc-500'
+            ticked ? 'border-violet-500 bg-accent-fill text-on-accent' : 'border-zinc-700 text-transparent hover:border-zinc-500'
           }`}
         >
           <Check className="h-3.5 w-3.5" />
@@ -495,7 +495,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
           <button
             onClick={add}
             disabled={busy || !chosen.length}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-accent-fill px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40"
           >
             {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             Add {chosen.length || ''} event{chosen.length === 1 ? '' : 's'}

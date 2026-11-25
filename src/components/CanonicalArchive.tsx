@@ -1561,7 +1561,7 @@ const ArchiveLookups: React.FC = () => {
               onPick={(v) => setUrl(v.url)}
             />
           )}
-          <button onClick={ingest} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50">
+          <button onClick={ingest} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-accent-fill px-3 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-50">
             {busy && <Loader2 className="h-4 w-4 animate-spin" />} Find lineup
           </button>
         </div>
