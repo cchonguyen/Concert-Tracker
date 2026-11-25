@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
+import { prefersReducedMotion } from '../../services/motion';
 
 const MARKS = 6;
 const MOVE_MS = 1000;
@@ -9,7 +10,7 @@ const MOVE_MS = 1000;
 export function Burst({ icon: Icon, trigger }: { icon: LucideIcon; trigger: number }) {
   const [live, setLive] = useState(false);
   useEffect(() => {
-    if (!trigger || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!trigger || prefersReducedMotion()) return;
     setLive(true);
     const t = window.setTimeout(() => setLive(false), MOVE_MS);
     return () => window.clearTimeout(t);
@@ -21,7 +22,7 @@ export function Burst({ icon: Icon, trigger }: { icon: LucideIcon; trigger: numb
       {Array.from({ length: MARKS }, (_, i) => (
         <span key={i} className="absolute inset-0 flex items-start justify-center" style={{ transform: `rotate(${(360 / MARKS) * i}deg)` }}>
           <span className="mt-[18%]">
-            <Icon className="motion-safe:animate-ping h-3 w-3 text-rose-300" />
+            <Icon className="motion-safe:animate-ping h-3 w-3 text-accent" />
           </span>
         </span>
       ))}
