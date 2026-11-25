@@ -53,11 +53,12 @@ function hint(e: LoggedEvent, lineup: LineupSummary | undefined, researching: bo
   return null;
 }
 
-const Row: React.FC<{ event: LoggedEvent; lineup?: LineupSummary; researching: boolean; ask?: boolean; onOpen: () => void }> = ({
+const Row: React.FC<{ event: LoggedEvent; lineup?: LineupSummary; researching: boolean; ask?: boolean; fresh?: boolean; onOpen: () => void }> = ({
   event,
   lineup,
   researching,
   ask,
+  fresh,
   onOpen,
 }) => {
   // Over and not confirmed: the one thing it needs is your answer.
@@ -74,7 +75,7 @@ const Row: React.FC<{ event: LoggedEvent; lineup?: LineupSummary; researching: b
     </>
   );
   return (
-    <Ledger.Row edge={edge} onOpen={onOpen} className="px-3 py-2.5">
+    <Ledger.Row edge={edge} onOpen={onOpen} fresh={fresh} className="px-3 py-2.5">
       <span className="w-24 shrink-0 self-start pt-0.5 font-mono text-[11.5px] leading-snug tabular-nums text-text-muted sm:w-32">
         {whenLabel(event) ?? 'Date unknown'}
         {dateConfirmations(event).length > 0 && <Check className="ml-1 inline h-3 w-3 text-good" aria-label="Date confirmed" />}
@@ -130,6 +131,18 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
     if (added.length > addedCount.current) setTab('added');
     addedCount.current = added.length;
   }, [added.length]);
+
+  // The event captured while this page is open glows once; what was there on arrival does not.
+  const newest = justAdded[0];
+  const seenNewest = useRef(newest);
+  const [freshId, setFreshId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!newest || newest === seenNewest.current) return;
+    seenNewest.current = newest;
+    setFreshId(newest);
+    const t = window.setTimeout(() => setFreshId(null), 1600);
+    return () => window.clearTimeout(t);
+  }, [newest]);
 
   const yearsAgo = (e: LoggedEvent) => {
     const n = Number(today.slice(0, 4)) - Number(e.startDate!.slice(0, 4));
@@ -240,6 +253,7 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
                     lineup={lineups[e.id]}
                     researching={open === 'confirm' ? false : researching.has(e.id)}
                     ask={open === 'confirm'}
+                    fresh={e.id === freshId}
                     onOpen={() => onOpen(e.id)}
                   />
                 ))}

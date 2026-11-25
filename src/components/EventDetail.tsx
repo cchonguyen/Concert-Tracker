@@ -66,6 +66,7 @@ import { Segmented } from './ui/Segmented';
 import { SaveStatus } from './ui/SaveStatus';
 import { beginSave, emptyTrack, failSave, hintVisit, succeedSave, takeFailed, type SaveTrack } from '../services/saveStatus';
 import { scrollBehavior } from '../services/motion';
+import { motion, useReducedMotion } from 'motion/react';
 
 interface EventDetailProps {
   event: LoggedEvent;
@@ -454,6 +455,16 @@ const DaysWent: React.FC<{ days: string[]; attended: string[]; onChange: (days: 
   );
 };
 
+// The seen tick draws itself (design-refresh-2.md, section 4); under reduced motion it is simply there.
+const DrawnTick: React.FC<{ className?: string }> = ({ className = 'h-4 w-4' }) => {
+  const still = useReducedMotion();
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <motion.path d="M20 6 9 17l-5-5" initial={still ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.28, ease: 'easeOut' }} />
+    </svg>
+  );
+};
+
 type Seen = LoggedEvent['seen'][number];
 type SeenPatch = NonNullable<EventPatch['seen']>;
 
@@ -488,7 +499,7 @@ const WentCard: React.FC<{
     return (
       <div className={`${box} border-good/45 bg-good/10`}>
         <p className="inline-flex items-center gap-1 font-semibold text-good">
-          <Check className="h-4 w-4" /> Counted. Who did you see?
+          <DrawnTick /> Counted. Who did you see?
         </p>
         {offered.length > 0 && (
           <>
@@ -504,8 +515,9 @@ const WentCard: React.FC<{
                     key={o.key}
                     onClick={() => toggle(o)}
                     aria-pressed={on}
-                    className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-accent bg-accent-tint text-text' : 'border-line text-text-muted hover:text-text'}`}
+                    className={`inline-flex min-h-11 items-center gap-1 rounded-full border px-2.5 py-1 text-xs sm:min-h-9 ${on ? 'border-accent bg-accent-tint text-text' : 'border-line text-text-muted hover:text-text'}`}
                   >
+                    {on && <DrawnTick className="h-3 w-3 text-accent" />}
                     {o.name}
                   </button>
                 );
