@@ -515,8 +515,18 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   const yearEvents = useMemo(() => pastEvents(events, today).filter((e) => eventYear(e) === thisYear), [events, today, thisYear]);
   const yearReview = useMemo(() => (yearEvents.length ? yearInReview(yearEvents, thisYear) : null), [yearEvents, thisYear]);
   const yearCities = new Set(yearEvents.map((e) => cityOf(e)).filter(Boolean)).size;
-  // Needs you on Home: shows waiting for a yes or no, and lineups still being looked up.
-  const confirmCount = homeSummary(events, lineups, today).toConfirm.length;
+  // Shows per month this year, for the sparkbars on the year ticket (counted as yearInReview counts them).
+  const yearMonths = useMemo(() => {
+    const counts = Array<number>(12).fill(0);
+    for (const e of yearEvents) if (e.startDate) counts[Number(e.startDate.slice(5, 7)) - 1] += 1;
+    return counts;
+  }, [yearEvents]);
+  // Needs you on Home: shows waiting for a yes or no, and lineups still being looked up. The Home
+  // shows (last show, on this day) come from the same summary; both count only shows you went to.
+  const homeSum = useMemo(() => homeSummary(events, lineups, today), [events, lineups, today]);
+  const confirmCount = homeSum.toConfirm.length;
+  const lastShow = homeSum.recent[0] ?? null;
+  const onThisDay = homeSum.onThisDay[0] ?? null;
   const researchingCount = Object.values(lineups).filter((l) => isActive(l.status)).length;
   const notice = Boolean(me.multiUser && me.noticeAccepted === false);
 
@@ -628,6 +638,11 @@ export default function App({ initialMe }: { initialMe?: Me }) {
             artistCount={seenCount}
             yearReview={yearReview}
             yearCities={yearCities}
+            yearMonths={yearMonths}
+            lastShow={lastShow}
+            onThisDay={onThisDay}
+            today={today}
+            onOpenEvent={openEvent}
             needs={{ confirm: confirmCount, email: toReview, researching: researchingCount }}
             emailCheck={emailCheck}
             onCaptured={handleCaptured}
