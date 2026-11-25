@@ -5,12 +5,12 @@
 export type Section = 'library' | 'explore';
 // The four Timeline views are pages of their own now, so the Explore strip
 // lists them next to Map, Stats and Ranking.
-export type Page = 'home' | 'summary' | 'table' | 'manage' | 'log' | 'agenda' | 'month' | 'heatmap' | 'river' | 'map' | 'stats' | 'ranking';
+export type Page = 'home' | 'summary' | 'table' | 'manage' | 'log' | 'share' | 'agenda' | 'month' | 'heatmap' | 'river' | 'map' | 'stats' | 'ranking';
 export type SubPage = Exclude<Page, 'home'>;
 
 // Subtabs in the order the strip shows them.
 export const SECTIONS: Record<Section, { label: string; pages: SubPage[]; first: SubPage }> = {
-  library: { label: 'Library', pages: ['summary', 'table', 'manage', 'log'], first: 'summary' },
+  library: { label: 'Library', pages: ['summary', 'table', 'manage', 'log', 'share'], first: 'summary' },
   explore: { label: 'Explore', pages: ['agenda', 'month', 'heatmap', 'river', 'map', 'stats', 'ranking'], first: 'agenda' },
 };
 
@@ -19,6 +19,7 @@ const PAGE_SECTION: Record<SubPage, Section> = {
   table: 'library',
   manage: 'library',
   log: 'library',
+  share: 'library',
   agenda: 'explore',
   month: 'explore',
   heatmap: 'explore',
@@ -28,7 +29,7 @@ const PAGE_SECTION: Record<SubPage, Section> = {
   ranking: 'explore',
 };
 
-export const PAGES: Page[] = ['home', 'summary', 'table', 'manage', 'log', 'agenda', 'month', 'heatmap', 'river', 'map', 'stats', 'ranking'];
+export const PAGES: Page[] = ['home', 'summary', 'table', 'manage', 'log', 'share', 'agenda', 'month', 'heatmap', 'river', 'map', 'stats', 'ranking'];
 
 export const PAGE_LABELS: Record<Page, string> = {
   home: 'Home',
@@ -36,6 +37,7 @@ export const PAGE_LABELS: Record<Page, string> = {
   table: 'Table',
   manage: 'Manage',
   log: 'Log',
+  share: 'Share',
   agenda: 'Agenda',
   month: 'Month',
   heatmap: 'Heatmap',
@@ -51,6 +53,7 @@ export const PAGE_BLURB: Record<SubPage, string> = {
   table: 'Sort, filter and edit your shows in bulk.',
   manage: 'Rename and merge artists, venues and series.',
   log: 'Every change you have made, and what you deleted.',
+  share: 'Make a link or a card to show your shows.',
   agenda: 'Your shows in order, newest first.',
   month: 'One calendar month at a time.',
   heatmap: 'How often you went out, day by day.',

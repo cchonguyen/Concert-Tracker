@@ -1,17 +1,19 @@
-import { Dialog } from './ui/Dialog';
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Check, Copy, ExternalLink, Share2, X } from 'lucide-react';
+import { AlertTriangle, Check, Copy, ExternalLink } from 'lucide-react';
 import { Equalizer } from './ui/Equalizer';
 import { ShareLinkView, shareApi } from '../services/lineupApi';
 import type { ShareSettings } from '../server/share/types';
 
-// "Share" in the Stats view: make a read-only link to your history, choose
+// "Your link" on the Share page: make a read-only link to your history, choose
 // what it shows, preview it, and turn it off. The page shows only events that
 // are over, and never who you went with, notes, ratings or prices. See
 // ARCHITECTURE.md ("Share page").
+//
+// In sample mode (`sample` set) nothing reaches the server: every action calls
+// `sample` instead, which opens the sample explainer.
 
 interface SharePanelProps {
-  onClose: () => void;
+  sample?: () => void;
 }
 
 const button =
@@ -48,7 +50,7 @@ const browserTimeZone = () => {
 
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
 
-export const SharePanel: React.FC<SharePanelProps> = ({ onClose }) => {
+export const SharePanel: React.FC<SharePanelProps> = ({ sample }) => {
   const [link, setLink] = useState<ShareLinkView | null | undefined>(undefined);
   const [url, setUrl] = useState<string | null>(null);
   const [settings, setSettings] = useState<ShareSettings>({
@@ -63,6 +65,11 @@ export const SharePanel: React.FC<SharePanelProps> = ({ onClose }) => {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    // The sample never asks the server for a link.
+    if (sample) {
+      setLink(null);
+      return;
+    }
     shareApi
       .status()
       .then((l) => {
@@ -79,6 +86,7 @@ export const SharePanel: React.FC<SharePanelProps> = ({ onClose }) => {
   }, []);
 
   const run = async (what: string, fn: () => Promise<void>) => {
+    if (sample) return sample();
     setBusy(what);
     setError(null);
     try {
@@ -101,6 +109,7 @@ export const SharePanel: React.FC<SharePanelProps> = ({ onClose }) => {
     });
 
   const change = (patch: Partial<ShareSettings>) => {
+    if (sample) return sample();
     const next = { ...settings, ...patch };
     setSettings(next);
     // Switches apply at once; the name is saved with its own button.
@@ -138,103 +147,91 @@ export const SharePanel: React.FC<SharePanelProps> = ({ onClose }) => {
   const nameChanged = link && settings.displayName.trim() !== link.settings.displayName;
 
   return (
-    <Dialog title="Share" onClose={onClose}>
-      <div className="flex-1 space-y-5 overflow-y-auto p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="flex items-center gap-2 font-display text-xl font-normal text-text">
-              <Share2 className="h-4 w-4 text-accent" /> Share
-            </h2>
-            <p className="text-xs text-text-muted">
-              A read-only page of the events you went to, for anyone with the link. It shows events only once they are over, and never who you
-              went with, notes, ratings, prices or upcoming plans.
-            </p>
-          </div>
-          <button onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control text-text-muted hover:text-text" aria-label="Close">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+    <div className="space-y-5" role="region" aria-label="Your link">
+      <p className="text-xs text-text-muted">
+        A read-only page of the events you went to, for anyone with the link. It shows events only once they are over, and never who you went
+        with, notes, ratings, prices or upcoming plans.
+      </p>
 
-        {error && (
-          <p className="flex items-start gap-2 rounded-card border border-warn/45 bg-warn/10 p-3 text-sm text-warn">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
-          </p>
-        )}
+      {error && (
+        <p className="flex items-start gap-2 rounded-card border border-warn/45 bg-warn/10 p-3 text-sm text-warn">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
+        </p>
+      )}
 
-        {link === undefined ? (
-          <p className="flex items-center gap-2 text-sm text-text-muted">
-            <Equalizer /> Loading…
-          </p>
-        ) : (
-          <>
-            <section className="space-y-2">
-              <label className="block text-sm text-text-muted" htmlFor="share-name">
-                Name on the page
-              </label>
-              <div className="flex gap-2">
-                <input
-                  id="share-name"
-                  value={settings.displayName}
-                  maxLength={60}
-                  onChange={(e) => change({ displayName: e.target.value })}
-                  placeholder="Your name"
-                  className="min-h-11 min-w-0 flex-1 rounded-control border border-line-strong bg-surface-1 px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none sm:min-h-9"
-                />
-                {nameChanged && (
-                  <button
-                    className={button}
-                    disabled={!!busy || !settings.displayName.trim()}
-                    onClick={() => run('save', async () => setLink(await shareApi.update(settings)))}
-                  >
-                    Save
-                  </button>
-                )}
-              </div>
-            </section>
+      {link === undefined ? (
+        <p className="flex items-center gap-2 text-sm text-text-muted">
+          <Equalizer /> Loading…
+        </p>
+      ) : (
+        <>
+          <section className="space-y-2">
+            <label className="block text-sm text-text-muted" htmlFor="share-name">
+              Name on the page
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="share-name"
+                value={settings.displayName}
+                maxLength={60}
+                onChange={(e) => change({ displayName: e.target.value })}
+                placeholder="Your name"
+                className="min-h-11 min-w-0 flex-1 rounded-control border border-line-strong bg-surface-1 px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none sm:min-h-9"
+              />
+              {nameChanged && (
+                <button
+                  className={button}
+                  disabled={!!busy || !settings.displayName.trim()}
+                  onClick={() => run('save', async () => setLink(await shareApi.update(settings)))}
+                >
+                  Save
+                </button>
+              )}
+            </div>
+          </section>
 
-            <section className="space-y-3">
-              {toggle('showDates', 'Show exact dates', 'Off: years only, and events in a year listed A to Z.')}
-              {toggle('showVenues', 'Show venues', 'Off: city only.')}
-              {toggle('showFormat', 'Show format', 'Club night, warehouse party and the like.')}
-            </section>
+          <section className="space-y-3">
+            {toggle('showDates', 'Show exact dates', 'Off: years only, and events in a year listed A to Z.')}
+            {toggle('showVenues', 'Show venues', 'Off: city only.')}
+            {toggle('showFormat', 'Show format', 'Club night, warehouse party and the like.')}
+          </section>
 
-            {link ? (
-              <section className="space-y-3 rounded-card border border-line bg-surface-1 p-4">
-                <p className="text-sm text-text-muted">Link active since <span className="font-mono tabular-nums text-text">{day(link.createdAt)}</span>.</p>
-                {url ? (
-                  <div className="flex gap-2">
-                    <input readOnly value={url} onFocus={(e) => e.target.select()} className="min-h-11 min-w-0 flex-1 rounded-control border border-line-strong bg-page px-3 py-2 font-mono text-xs text-text sm:min-h-9" />
-                    <button className={button} onClick={copy}>
-                      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? 'Copied' : 'Copy'}
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-xs text-text-muted">
-                    For safety only a fingerprint of the link is kept, so it can't be shown again here. Make a new link to copy one (the old one stops
-                    working).
-                  </p>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  <a className={button} href={shareApi.previewUrl} target="_blank" rel="noreferrer">
-                    <ExternalLink className="h-4 w-4" /> Preview
-                  </a>
-                  <button className={button} disabled={!!busy} onClick={create}>
-                    {busy === 'create' && <Equalizer size="sm" />} New link
-                  </button>
-                  <button className={button} disabled={!!busy} onClick={turnOff}>
-                    {busy === 'off' && <Equalizer size="sm" />} Turn off
+          {link ? (
+            <section className="space-y-3 rounded-card border border-line bg-surface-1 p-4">
+              <p className="text-sm text-text-muted">Link active since <span className="font-mono tabular-nums text-text">{day(link.createdAt)}</span>.</p>
+              {url ? (
+                <div className="flex gap-2">
+                  <input readOnly value={url} onFocus={(e) => e.target.select()} className="min-h-11 min-w-0 flex-1 rounded-control border border-line-strong bg-page px-3 py-2 font-mono text-xs text-text sm:min-h-9" />
+                  <button className={button} onClick={copy}>
+                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? 'Copied' : 'Copy'}
                   </button>
                 </div>
-                <p className="text-xs text-text-muted">New link and Turn off stop the current link at once. Anyone you sent it to sees "This link isn't active".</p>
-              </section>
-            ) : (
-              <button className={primary} disabled={!!busy || !settings.displayName.trim()} onClick={create}>
-                {busy === 'create' && <Equalizer size="sm" />} Create link
-              </button>
-            )}
-          </>
-        )}
-      </div>
-    </Dialog>
+              ) : (
+                <p className="text-xs text-text-muted">
+                  For safety only a fingerprint of the link is kept, so it can't be shown again here. Make a new link to copy one (the old one stops
+                  working).
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <a className={button} href={shareApi.previewUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-4 w-4" /> Preview
+                </a>
+                <button className={button} disabled={!!busy} onClick={create}>
+                  {busy === 'create' && <Equalizer size="sm" />} New link
+                </button>
+                <button className={button} disabled={!!busy} onClick={turnOff}>
+                  {busy === 'off' && <Equalizer size="sm" />} Turn off
+                </button>
+              </div>
+              <p className="text-xs text-text-muted">New link and Turn off stop the current link at once. Anyone you sent it to sees "This link isn't active".</p>
+            </section>
+          ) : (
+            <button className={primary} disabled={!!busy || !settings.displayName.trim()} onClick={create}>
+              {busy === 'create' && <Equalizer size="sm" />} Create link
+            </button>
+          )}
+        </>
+      )}
+    </div>
   );
 };

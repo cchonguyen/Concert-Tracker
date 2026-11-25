@@ -25,7 +25,7 @@ import { MapView } from './components/MapView';
 import { TimelineTab } from './components/timeline/TimelineTab';
 import { useTheme } from './components/ThemePicker';
 import { AppHeaderMenu } from './components/AppHeaderMenu';
-import { SharePanel } from './components/SharePanel';
+import { SharePage } from './components/SharePage';
 import { QuickAdd, QuickAddButton, QuickAddFab } from './components/QuickAdd';
 import { useToast } from './components/ui/Toast';
 import { AboutDialog } from './components/AboutDialog';
@@ -70,7 +70,7 @@ import { homeSummary } from './services/home';
 const FILTERED: Page[] = ['table', 'agenda', 'month', 'heatmap', 'river', 'map'];
 const TIMELINE_PAGES: Page[] = ['agenda', 'month', 'heatmap', 'river'];
 // Pages with a title line, and long pages that get Back to top (Agenda and Table have their own).
-const HEADED: Page[] = ['stats', 'map', 'ranking'];
+const HEADED: Page[] = ['stats', 'map', 'ranking', 'share'];
 const BACK_TO_TOP: Page[] = ['summary', 'month', 'heatmap', 'stats', 'map', 'ranking', 'manage'];
 
 // Remembered subtabs live on this device; a browser that blocks storage just forgets them.
@@ -121,7 +121,6 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   // Single-owner installs answer owner; until /api/me answers, assume owner so nothing flickers away.
   const [me, setMe] = useState<Me>(() => initialMe ?? sampleMe ?? { multiUser: false, role: 'owner', email: null });
   const [members, setMembers] = useState(false);
-  const [sharing, setSharing] = useState(false);
   const [account, setAccount] = useState(false);
   const theme = useTheme();
   const [quickAdd, setQuickAdd] = useState(false);
@@ -584,7 +583,6 @@ export default function App({ initialMe }: { initialMe?: Me }) {
               onImport={openImport}
               onExport={() => exportCsv(events, editions)}
               onSheets={openSheets}
-              onShare={() => (readOnly ? askSample('share') : setSharing(true))}
               onShowTips={() => void showTipsAgain()}
             />
           </div>
@@ -616,7 +614,6 @@ export default function App({ initialMe }: { initialMe?: Me }) {
       </header>
 
       {members && <MembersPanel onClose={() => setMembers(false)} onChanged={refreshMe} />}
-      {sharing && <SharePanel onClose={() => setSharing(false)} />}
       {account && <AccountPanel onClose={() => setAccount(false)} />}
 
       <PeopleProvider events={events} version={events}>
@@ -647,7 +644,6 @@ export default function App({ initialMe }: { initialMe?: Me }) {
             emailCheck={emailCheck}
             onCaptured={handleCaptured}
             onImport={openImport}
-            onShare={() => (readOnly ? askSample('share') : setSharing(true))}
             onReviewEmail={openReview}
             onOpenSummary={() => openTab('summary')}
             onOpen={openTab}
@@ -703,6 +699,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
           <ArtistsView events={went} onOpenEvent={openEvent} onOpenTable={openTable} onManage={(key) => openManage({ kind: 'artist', name: key })} />
         )}
         {shown === 'log' && <LogView eventId={logFor} onShowAll={() => setLogFor(null)} />}
+        {shown === 'share' && <SharePage sample={readOnly ? () => askSample('share') : undefined} />}
         {shown === 'manage' && (
           <ManageView
             events={events}

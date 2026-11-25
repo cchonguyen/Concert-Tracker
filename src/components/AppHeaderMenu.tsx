@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Download, FileUp, Lightbulb, Menu, Share2, Sheet, UserCog, Users } from 'lucide-react';
+import { Download, FileUp, Lightbulb, Menu, Sheet, UserCog, Users } from 'lucide-react';
 import { Theme, ThemeControls } from './ThemePicker';
 import { LogOutLink } from './LogOutLink';
 
@@ -14,14 +14,13 @@ interface Props {
   onImport: () => void;
   onExport: () => void; // every event, as CSV
   onSheets: () => void;
-  onShare: () => void;
   onShowTips: () => void;
 }
 
 // App header menu for everything about you and the app. A dropdown on desktop and a
-// bottom sheet on phone. Import, Export, Google Sheets and Share sit in one row
+// bottom sheet on phone. Import, Export and Google Sheets sit in one row
 // of icons, and the theme modes in another. Both rows show each icon with its name below.
-export function AppHeaderMenu({ theme, canMembers, canAccount, canSheets, pendingRequests = 0, onMembers, onAccount, onImport, onExport, onSheets, onShare, onShowTips }: Props) {
+export function AppHeaderMenu({ theme, canMembers, canAccount, canSheets, pendingRequests = 0, onMembers, onAccount, onImport, onExport, onSheets, onShowTips }: Props) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
 
@@ -48,7 +47,6 @@ export function AppHeaderMenu({ theme, canMembers, canAccount, canSheets, pendin
     { icon: FileUp, name: 'Import', label: 'Import a list (CSV)', run: onImport },
     { icon: Download, name: 'Export', label: 'Export all as CSV', run: onExport },
     ...(canSheets ? [{ icon: Sheet, name: 'Sheets', label: 'Google Sheets', run: onSheets }] : []),
-    { icon: Share2, name: 'Share', label: 'Share', run: onShare },
   ];
 
   return (
@@ -84,7 +82,7 @@ export function AppHeaderMenu({ theme, canMembers, canAccount, canSheets, pendin
           )}
           <div className="space-y-2 border-t border-line pt-3">
             <p className="px-1 text-xs font-medium uppercase tracking-wide text-text-muted">Your data</p>
-            <div className="grid grid-cols-4 gap-1">
+            <div className="grid grid-cols-3 gap-1">
               {actions.map(({ icon: Icon, name, label, run }) => (
                 <button
                   key={name}
