@@ -27,7 +27,7 @@ interface TimelineTabProps {
 }
 
 const control =
-  'min-h-11 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none sm:min-h-9';
+  'min-h-11 w-full rounded-control border border-line bg-surface-1 px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none sm:min-h-9';
 const ALL: TimelineRange = { kind: 'all' };
 
 export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, focusEventId = null, events, lineups, editions, onOpen, onOpenTable, onShowInAgenda }) => {
@@ -104,10 +104,10 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, focusEventId = n
         </FilterPanel>
       )}
       {hidden > 0 && (
-        <p className="flex items-center gap-2 text-xs text-zinc-400">
+        <p className="flex items-center gap-2 text-xs text-text-muted">
           <CalendarRange className="h-3.5 w-3.5" />
           {hidden} more filter{hidden === 1 ? '' : 's'} from the Table or Map {hidden === 1 ? 'applies' : 'apply'} here.
-          <button onClick={() => setFilters({ ...EMPTY_FILTERS, q: filters.q, yearFrom: filters.yearFrom, kind: filters.kind })} className="text-violet-300 hover:text-violet-200">
+          <button onClick={() => setFilters({ ...EMPTY_FILTERS, q: filters.q, yearFrom: filters.yearFrom, kind: filters.kind })} className="inline-flex min-h-11 items-center sm:min-h-9 text-accent hover:text-accent">
             Clear them
           </button>
         </p>
