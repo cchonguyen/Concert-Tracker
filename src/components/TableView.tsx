@@ -79,7 +79,14 @@ interface TableViewProps {
 }
 
 const control =
-  'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
+  'min-h-11 sm:min-h-9 w-full rounded-control border border-line-strong bg-surface-1 px-3 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none';
+
+const WENT_FILTER_LABELS: Record<Exclude<TableFilters['went'], 'any'>, string> = {
+  went: 'Went',
+  upcoming: 'Upcoming',
+  confirm: 'To confirm',
+  missed: "Didn't go",
+};
 
 // Each "has" chip: its name, then what it reads when set to yes or no.
 const HAS_LABELS: Record<HasField, [string, string, string]> = {
@@ -362,43 +369,108 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const year = (s: string) => (s ? Number(s) : undefined);
   const list = (values: string[]) => values.map((v) => ({ value: v, label: v }));
 
+  const activeChips: Array<{ key: string; label: string; icon?: React.ReactNode; onRemove: () => void }> = [];
+  if (filters.q) activeChips.push({ key: 'q', label: `Search: ${filters.q}`, onRemove: () => set({ q: '' }) });
+  if (filters.yearFrom !== undefined) activeChips.push({ key: 'yearFrom', label: `From ${filters.yearFrom}`, onRemove: () => set({ yearFrom: undefined }) });
+  if (filters.yearTo !== undefined) activeChips.push({ key: 'yearTo', label: `To ${filters.yearTo}`, onRemove: () => set({ yearTo: undefined }) });
+  if (filters.kind !== 'any') {
+    const kindText = filters.kind === 'concert' ? 'Concerts' : filters.kind === 'festival' ? 'Festivals' : 'Type not known';
+    activeChips.push({ key: 'kind', label: kindText, onRemove: () => set({ kind: 'any' }) });
+  }
+  if (filters.format) activeChips.push({ key: 'format', label: `Format: ${filters.format}`, onRemove: () => set({ format: '' }) });
+  if (filters.series) {
+    activeChips.push({
+      key: 'series',
+      label: filters.series,
+      icon: <Layers className="h-3 w-3 shrink-0" aria-hidden="true" />,
+      onRemove: () => set({ series: '' }),
+    });
+  }
+  if (filters.artist) {
+    const artistName = options.artists.find((a) => a.key === filters.artist)?.name ?? filters.artist;
+    activeChips.push({ key: 'artist', label: `Saw: ${artistName}`, onRemove: () => set({ artist: '' }) });
+  }
+  if (filters.companion) activeChips.push({ key: 'companion', label: `With: ${filters.companion}`, onRemove: () => set({ companion: '' }) });
+  if (filters.venue) activeChips.push({ key: 'venue', label: `Venue: ${filters.venue}`, onRemove: () => set({ venue: '' }) });
+  if (filters.city) activeChips.push({ key: 'city', label: `City: ${filters.city}`, onRemove: () => set({ city: '' }) });
+  if (filters.region) activeChips.push({ key: 'region', label: `State: ${filters.region}`, onRemove: () => set({ region: '' }) });
+  if (filters.country) activeChips.push({ key: 'country', label: `Country: ${filters.country}`, onRemove: () => set({ country: '' }) });
+  if (filters.minRating !== undefined) {
+    activeChips.push({
+      key: 'minRating',
+      label: filters.minRating === 5 ? '5 stars' : `${filters.minRating}+ stars`,
+      onRemove: () => set({ minRating: undefined }),
+    });
+  }
+  for (const field of HAS_FIELDS) {
+    const v = filters.has[field];
+    if (v && v !== 'any') {
+      activeChips.push({
+        key: `has-${field}`,
+        label: HAS_LABELS[field][v === 'yes' ? 1 : 2],
+        onRemove: () => setHas(field, 'any'),
+      });
+    }
+  }
+  if (filters.needs !== 'any') {
+    activeChips.push({
+      key: 'needs',
+      label: `Needs ${NEEDS_LABELS[filters.needs].toLowerCase()}`,
+      onRemove: () => set({ needs: 'any' }),
+    });
+  }
+  if (filters.went !== 'any') {
+    activeChips.push({
+      key: 'went',
+      label: WENT_FILTER_LABELS[filters.went],
+      onRemove: () => set({ went: 'any' }),
+    });
+  }
+  if (filters.origin !== 'any') {
+    activeChips.push({
+      key: 'origin',
+      label: filters.origin === 'typed' ? 'Typed by you' : 'From ticket emails',
+      onRemove: () => set({ origin: 'any' }),
+    });
+  }
+
   const importButton = (
-    <button onClick={onImport} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+    <button onClick={onImport} className="inline-flex items-center gap-1.5 hover:text-text">
       <FileUp className="h-3.5 w-3.5" /> Import a list
     </button>
   );
   // Sheets and the music-story/MusicBrainz genre tools stay the owner's; members edit their own genres in SeenGenres.
   const owner = useIsOwner();
   const sheetButton = !owner ? null : (
-    <button onClick={onSheets} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+    <button onClick={onSheets} className="inline-flex items-center gap-1.5 hover:text-text">
       <Sheet className="h-3.5 w-3.5" /> Google Sheets
     </button>
   );
   const genresButton = !owner ? null : (
-    <button onClick={() => setGenres(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+    <button onClick={() => setGenres(true)} className="inline-flex items-center gap-1.5 hover:text-text">
       <Tags className="h-3.5 w-3.5" /> Genres
     </button>
   );
   const seriesButton = (
     <button
       onClick={() => (onManage ? onManage({ kind: 'series' }) : setLinking(true))}
-      className="inline-flex items-center gap-1.5 hover:text-zinc-200"
+      className="inline-flex items-center gap-1.5 hover:text-text"
       title={onManage ? 'Series are in the Manage tab' : undefined}
     >
       <Layers className="h-3.5 w-3.5" /> Series
     </button>
   );
   const fillButton = (
-    <button onClick={() => setFilling(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+    <button onClick={() => setFilling(true)} className="inline-flex items-center gap-1.5 hover:text-text">
       <Sparkles className="h-3.5 w-3.5" /> Fill gaps
     </button>
   );
 
   if (!events.length) {
     return (
-      <div className="space-y-2 rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-400">
+      <div className="space-y-2 rounded-card border border-dashed border-line-strong bg-surface-1 p-6 text-center text-sm text-text-muted">
         <p>Nothing to show yet. Events you add appear here as rows.</p>
-        <p className="flex justify-center gap-4 text-xs text-zinc-400">
+        <p className="flex justify-center gap-4 text-xs text-text-muted">
           {importButton}
           {sheetButton}
         </p>
@@ -445,30 +517,49 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
           value={filters.q}
           onChange={(e) => set({ q: e.target.value })}
           placeholder="Search events, venues, acts, people, notes"
-          className={`${control} min-w-0 flex-1 py-2`}
+          className={`${control} min-w-0 flex-1`}
         />
-        <MenuButton label="Sort rows" value={filters.sort} options={sortOptions} onChange={pickSort} />
-        <FilterButton open={showFilters} count={active} onClick={() => setShowFilters((s) => !s)} />
-        {filters.series && (
-          <button
-            onClick={() => set({ series: '' })}
-            className="inline-flex rounded-full hover:opacity-80"
-            aria-label={`Stop showing only ${filters.series}`}
-          >
-            <Pill tone="accent">
-              <Layers className="h-3 w-3" /> {filters.series} <X className="h-3 w-3" />
-            </Pill>
-          </button>
-        )}
-        {active > 0 && (
-          <button
-            onClick={() => setFilters({ ...EMPTY_FILTERS, sort: filters.sort, desc: filters.desc })}
-            className="inline-flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-200"
-          >
-            <X className="h-3.5 w-3.5" /> Clear
-          </button>
-        )}
+        <MenuButton
+          label="Sort rows"
+          value={filters.sort}
+          options={sortOptions}
+          onChange={pickSort}
+          className="[&>button]:h-auto [&>button]:min-h-11 [&>button]:sm:min-h-9 [&>button]:rounded-control [&>button]:border-line-strong [&>button]:bg-surface-1 [&>button]:text-text [&>button]:hover:border-accent-tint-line [&>button]:focus-visible:outline-accent"
+        />
+        <div className="[&>button]:h-auto [&>button]:min-h-11 [&>button]:sm:min-h-9 [&>button]:rounded-control [&>button]:border-line-strong [&>button]:bg-surface-1 [&>button]:text-text [&>button]:hover:border-accent-tint-line">
+          <FilterButton open={showFilters} count={active} onClick={() => setShowFilters((s) => !s)} />
+        </div>
       </div>
+
+      {(activeChips.length > 0 || rows.length < events.length) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex min-h-7 items-center rounded-control border border-line bg-surface-2 px-2 py-0.5 font-mono text-xs tabular-nums text-text-muted">
+            {rows.length} of {events.length}
+          </span>
+          {activeChips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={chip.onRemove}
+              aria-label={`Remove filter ${chip.label}`}
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-control border border-accent-tint-line bg-accent-tint px-2.5 py-1 text-xs text-accent hover:border-accent"
+            >
+              {chip.icon}
+              <span>{chip.label}</span>
+              <X className="h-3 w-3 shrink-0" aria-hidden="true" />
+            </button>
+          ))}
+          {active > 0 && (
+            <button
+              type="button"
+              onClick={() => setFilters({ ...EMPTY_FILTERS, sort: filters.sort, desc: filters.desc })}
+              className="inline-flex min-h-8 items-center gap-1 rounded-control px-2 py-1 text-xs text-text-muted hover:text-text"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" /> Clear all
+            </button>
+          )}
+        </div>
+      )}
 
       {showFilters && (
         <FilterPanel>
@@ -551,24 +642,27 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
         </FilterPanel>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-text-muted">
         <span>
-          {summary.events} event{summary.events === 1 ? '' : 's'} you went to
-          {rows.length < events.length && <span className="text-zinc-400"> ({rows.length} of {events.length} shown)</span>}
+          <span className="font-mono tabular-nums text-text">{summary.events}</span> event{summary.events === 1 ? '' : 's'} you went to
+          {rows.length < events.length && (
+            <span className="font-mono tabular-nums text-text-muted"> ({rows.length} of {events.length} shown)</span>
+          )}
           {' · '}
-          {summary.acts} act{summary.acts === 1 ? '' : 's'} seen · {summary.venues} venue{summary.venues === 1 ? '' : 's'}
+          <span className="font-mono tabular-nums">{summary.acts}</span> act{summary.acts === 1 ? '' : 's'} seen ·{' '}
+          <span className="font-mono tabular-nums">{summary.venues}</span> venue{summary.venues === 1 ? '' : 's'}
           {summary.firstYear !== undefined &&
             ` · ${summary.firstYear === summary.lastYear ? summary.firstYear : `${summary.firstYear} to ${summary.lastYear}`}`}
           {summary.averageRating !== undefined && ` · rated ${summary.averageRating} on average (${summary.rated} rated)`}
           {summary.totalPrice !== undefined && ` · ${summary.totalPrice.toLocaleString()} spent (${summary.priced} priced)`}
           {summary.upcoming > 0 && (
-            <button onClick={() => set({ went: 'upcoming' })} className="text-sky-300/90 hover:underline">
+            <button onClick={() => set({ went: 'upcoming' })} className="text-accent hover:underline">
               {' · '}
               {summary.upcoming} upcoming
             </button>
           )}
           {summary.toConfirm > 0 && (
-            <button onClick={() => set({ went: 'confirm' })} className="text-violet-300 hover:underline">
+            <button onClick={() => set({ went: 'confirm' })} className="text-accent hover:underline">
               {' · '}
               {summary.toConfirm} to confirm
             </button>
@@ -586,7 +680,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
             toast({ message: `Exported ${rows.length} ${rows.length === 1 ? 'show' : 'shows'} as CSV` });
           }}
           disabled={!rows.length}
-          className="inline-flex items-center gap-1.5 hover:text-zinc-200 disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 hover:text-text disabled:opacity-40"
         >
           <Download className="h-3.5 w-3.5" /> {rows.length < events.length ? 'Export these rows' : 'Export all'} as CSV
           </button>
@@ -594,34 +688,41 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
       </div>
 
       {rows.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-400">No events match these filters.</p>
+        <p className="rounded-card border border-dashed border-line-strong bg-surface-1 p-6 text-center text-sm text-text-muted">No events match these filters.</p>
       ) : (
         <>
-          <div className="hidden max-h-[calc(100vh-11rem)] overflow-auto rounded-xl border border-zinc-900 md:block">
+          <div className="hidden max-h-[calc(100vh-11rem)] overflow-auto border border-line-strong bg-surface-1 md:block">
             <table className="w-full border-separate border-spacing-0 text-left text-sm">
-              <thead className="text-[11px] uppercase tracking-wide text-zinc-400">
+              <thead className="font-mono text-[11px] uppercase tracking-wider text-text-faint">
                 <tr>
                   {COLUMNS.map((c) => (
                     <th
                       key={c.label}
-                      className={`sticky top-0 z-10 whitespace-nowrap border-b border-zinc-800 bg-zinc-900/95 px-4 py-2.5 font-semibold backdrop-blur ${c.className ?? ''}`}
+                      className={`sticky top-0 z-10 whitespace-nowrap border-b border-line bg-surface-2 px-4 py-2.5 font-mono text-[11px] font-medium uppercase tracking-wider text-text-faint ${c.className ?? ''}`}
                     >
                       {c.sorts ? (
                         <span className="inline-flex items-center gap-2">
-                          {c.sorts.map((s, i) => (
-                            <React.Fragment key={s.key}>
-                              {i > 0 && <span className="text-zinc-700">/</span>}
-                              <button
-                                onClick={() => sortBy(s.key)}
-                                title="Sorts by this column; press again to reverse it, and a third time to stop sorting."
-                                className={`inline-flex items-center gap-1 uppercase hover:text-zinc-200 ${filters.sort === s.key ? 'text-zinc-200' : ''}`}
-                              >
-                                {s.label}
-                                {filters.sort === s.key &&
-                                  (filters.desc ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />)}
-                              </button>
-                            </React.Fragment>
-                          ))}
+                          {c.sorts.map((s, i) => {
+                            const activeSort = filters.sort === s.key;
+                            return (
+                              <React.Fragment key={s.key}>
+                                {i > 0 && <span className="text-line-strong">/</span>}
+                                <button
+                                  onClick={() => sortBy(s.key)}
+                                  title="Sorts by this column; press again to reverse it, and a third time to stop sorting."
+                                  className={`inline-flex items-center gap-1 font-mono uppercase tracking-wider hover:text-text ${activeSort ? 'font-semibold text-text' : 'text-text-faint'}`}
+                                >
+                                  {s.label}
+                                  {activeSort &&
+                                    (filters.desc ? (
+                                      <ArrowDown className="h-3 w-3 text-accent" aria-hidden="true" />
+                                    ) : (
+                                      <ArrowUp className="h-3 w-3 text-accent" aria-hidden="true" />
+                                    ))}
+                                </button>
+                              </React.Fragment>
+                            );
+                          })}
                         </span>
                       ) : (
                         c.label
