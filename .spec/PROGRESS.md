@@ -1,5 +1,4 @@
 # Task Progress & Single-Slice Work Lock
-
 > Rule: Mark only ONE task line at a time with the active work tag.
 
 Finished slices move to `.spec/archive/HISTORY.md`. Earlier feature sections (share page, Manage, Tier 3, Global archive, ingest canon, canon review, series, Global Editions, harness rollout) have no open slices and were removed on 2026-11-23; their slices are in HISTORY.md and their specs are listed in `docs/README.md`.
@@ -50,6 +49,7 @@ Track C (Claude) and the Gemini package "Back Office" run in parallel. Claude's 
 - [x] **Slice 29.7: Stats year header** [UI / VISUAL] Target files: src/components/StatsView.tsx | Issue: #823 | Verify: npm run lint --silent
 - [x] **Slice 29.8: Share page in Library** [UI / VISUAL] Target files: src/services/nav.ts, src/components/pageIcons.ts, src/App.tsx, src/components/AppHeaderMenu.tsx, src/components/SharePage.tsx, src/components/SharePanel.tsx, src/components/FeatureTiles.tsx, src/components/HomePage.tsx, tests/nav.test.ts, tests/manageNav.test.ts | Issue: #825 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 29.9: Event cards** [CORE / DATA] Target files: src/components/ShareCards.tsx, src/services/shareCard.ts, tests/shareCard.test.ts, src/components/SharePage.tsx, src/App.tsx | Issue: #827 | Verify: npm run lint --silent && npm test --silent
+- [x] **Slice 29.10: Vertical River timeline with light background grid** [UI / VISUAL] On-the-fly: user requested vertical scrollable River with light background grid Target files: src/components/timeline/RiverView.tsx, src/services/timeline.ts, docs/architecture/12-data-model.md | Verify: npm run lint --silent && npm test --silent
 ## Inferred values (docs/specs/inferred-values.md, Charlie said "start building" 2026-11-25)
 - [x] **Slice 27.1: Inferred values storage** [CORE / DATA] Target files: supabase/migrations/0055_edition_inferences.sql, src/server/lineup/types.ts, src/server/lineup/store/types.ts, src/server/lineup/store/fileStore.ts, src/server/lineup/store/supabaseStore.ts, tests/editionInferences.test.ts | Issue: #748 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 27.2: Inferred values rules (record, heal, undo)** [CORE / DATA] Target files: src/server/canon/inferences.ts, src/server/canon/editions.ts, tests/inferenceRules.test.ts | Issue: #749 | Verify: npm run lint --silent && npm test --silent
