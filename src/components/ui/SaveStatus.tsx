@@ -32,7 +32,7 @@ export function SaveStatus<P>({ track, onRetry, hint = false }: Props<P>) {
           label
         )}
       </span>
-      {hint && <span className="text-zinc-500 max-sm:hidden">{label ? '· ' : ''}Changes save as you go</span>}
+      {hint && <span className="text-text-muted max-sm:hidden">{label ? '· ' : ''}Changes save as you go</span>}
     </div>
   );
 }
