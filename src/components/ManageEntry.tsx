@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { ArrowLeft, GitMerge, Loader2, Plus, Sparkles, Table2, X } from 'lucide-react';
+import { ArrowLeft, GitMerge, Plus, Sparkles, Table2, X } from 'lucide-react';
 import { entitiesApi, genresApi, collaborationsApi, type CollaborationItem, LoggedEvent } from '../services/lineupApi';
 import type { Entity, HistoryEntry, LinkRole } from '../server/entities/types';
 import type { KnownGenre } from '../server/events/genreTypes';
@@ -7,6 +7,8 @@ import { ArtistGenres } from '../services/genres';
 import { whenLabel } from '../services/format';
 import { norm } from '../services/listImport';
 import { normalizeName } from '../server/lineup/text';
+import { Equalizer } from './ui/Equalizer';
+import { Ledger } from './ui/Ledger';
 import { Pill } from './ui/Pill';
 import { EventTitle } from './EventTitle';
 import { personParts } from '../services/people';
@@ -35,11 +37,11 @@ interface ManageEntryProps {
 }
 
 const control =
-  'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
+  'min-h-11 sm:min-h-9 w-full rounded-control border border-line-strong bg-surface-1 px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none';
 const primary =
-  'inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent-fill px-3 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40';
-const quiet = 'inline-flex shrink-0 items-center gap-1 rounded-lg border border-zinc-800 px-2.5 py-1.5 text-sm text-zinc-300 hover:text-zinc-100 disabled:opacity-40';
-const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
+  'inline-flex min-h-11 sm:min-h-9 shrink-0 items-center gap-1.5 rounded-control bg-accent-fill px-3 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40';
+const quiet = 'inline-flex min-h-11 sm:min-h-9 shrink-0 items-center gap-1 rounded-control border border-line-strong px-2.5 py-1.5 text-sm text-text-muted hover:text-text disabled:opacity-40';
+const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-text-muted';
 
 type Conflict = { message: string; with?: { id: string; name: string } };
 
@@ -57,7 +59,7 @@ const Picker: React.FC<{
     <div className="space-y-1">
       <input className={control} value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder} aria-label={label} />
       {shown.length > 0 && (
-        <ul className="rounded-lg border border-zinc-800 bg-zinc-900/60">
+        <ul className="rounded-card border border-line bg-surface-1">
           {shown.map((o) => (
             <li key={o.id}>
               <button
@@ -65,7 +67,7 @@ const Picker: React.FC<{
                   setQ('');
                   onPick(o);
                 }}
-                className="w-full px-2.5 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+                className="min-h-11 w-full px-2.5 py-1.5 text-left text-sm text-text hover:bg-surface-2 sm:min-h-9"
               >
                 {entityLabel(o)}
               </button>
@@ -163,27 +165,27 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
           e.preventDefault();
           onBack();
         }}
-        className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200"
+        className="inline-flex min-h-11 items-center gap-1 text-xs text-text-muted hover:text-text sm:min-h-9"
       >
         <ArrowLeft className="h-3.5 w-3.5" /> All {meta.label.toLowerCase()}
       </a>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="truncate text-xl font-bold text-zinc-50">{entityLabel(entity)}</h2>
-          <p className="text-xs text-zinc-400">
+          <h2 className="truncate font-display text-2xl font-normal text-text">{entityLabel(entity)}</h2>
+          <p className="font-mono text-xs tabular-nums text-text-muted">
             {meta.one}
             {entity.kind !== 'organization' && ` · ${events.length} event${events.length === 1 ? '' : 's'}`}
           </p>
         </div>
         {tableQuery && events.length > 0 && (
-          <button onClick={() => onOpenTable(tableQuery)} className="inline-flex shrink-0 items-center gap-1 text-xs text-zinc-400 hover:text-violet-300">
+          <button onClick={() => onOpenTable(tableQuery)} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-control px-1.5 text-xs text-text-muted hover:text-accent sm:min-h-9">
             <Table2 className="h-3.5 w-3.5" /> In the Table
           </button>
         )}
       </div>
 
       {problem && (
-        <div className="space-y-2 rounded-lg border border-rose-500/30 bg-rose-950/30 p-2.5 text-sm text-rose-200">
+        <div className="space-y-2 rounded-card border border-bad/45 bg-bad/10 p-2.5 text-sm text-bad">
           <p>{problem.message}</p>
           {problem.with && (
             <button onClick={() => setMerging(byId.get(problem.with!.id) ?? null)} className={quiet}>
@@ -206,11 +208,11 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
         >
           <input className={control} value={name} onChange={(e) => setName(e.target.value)} aria-label="Name" />
           <button type="submit" disabled={!renamed || Boolean(busy)} className={primary}>
-            {busy === 'rename' && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Rename everywhere
+            {busy === 'rename' && <Equalizer size="sm" />} Rename everywhere
           </button>
         </form>
         {renamed && entity.kind !== 'organization' && (
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-text-muted">
             Changes it on {events.length} event{events.length === 1 ? '' : 's'}
             {entity.kind !== 'place' && <>; “{current}” is kept as an AKA</>}.
           </p>
@@ -223,12 +225,12 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
           {akas.length > 0 && (
             <ul className="flex flex-wrap gap-1.5">
               {akas.map((a) => (
-                <li key={a} className="inline-flex items-center gap-1 rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300">
+                <li key={a} className="inline-flex items-center gap-1 rounded-full border border-line-strong px-2 py-0.5 text-xs text-text-muted">
                   {a}
                   <button
                     onClick={() => void run(`aka:${a}`, () => entitiesApi.removeAlias(entity.id, a))}
                     disabled={Boolean(busy)}
-                    className="text-zinc-400 hover:text-rose-300"
+                    className="text-text-muted hover:text-bad"
                     aria-label={`Remove AKA ${a}`}
                   >
                     <X className="h-3 w-3" />
@@ -249,7 +251,7 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
               <Plus className="h-3.5 w-3.5" /> Add
             </button>
           </form>
-          <p className="text-xs text-zinc-400">Typed on an event, an AKA is found as this {meta.one}.</p>
+          <p className="text-xs text-text-muted">Typed on an event, an AKA is found as this {meta.one}.</p>
         </div>
       )}
 
@@ -264,14 +266,14 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
               return (
                 <div
                   key={c.aliasNormalized}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-900 bg-zinc-900/40 p-2.5"
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-line bg-surface-1 p-2.5"
                 >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm text-zinc-100">{c.alias}</span>
+                      <span className="text-sm font-semibold text-text">{c.alias}</span>
                       <Pill tone="accent">Collaboration</Pill>
                     </div>
-                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-400">
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-text-muted">
                       <span>with</span>
                       {otherPartners.map((partner) => {
                         const partnerEntity = data.entities.find(
@@ -282,7 +284,7 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
                             key={partner}
                             type="button"
                             onClick={() => onOpen(partnerEntity.id)}
-                            className="inline-flex hover:underline text-violet-300"
+                            className="inline-flex text-accent hover:underline"
                           >
                             <Pill tone="neutral">{partner}</Pill>
                           </button>
@@ -303,21 +305,21 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
         <div className="space-y-1.5">
           <h3 className={sectionTitle}>Place</h3>
           {place && byId.get(place.toId) ? (
-            <p className="flex items-center gap-2 text-sm text-zinc-200">
-              <button onClick={() => onOpen(place.toId)} className="hover:text-violet-300">
+            <p className="flex items-center gap-2 text-sm text-text">
+              <button onClick={() => onOpen(place.toId)} className="hover:text-accent">
                 {entityLabel(byId.get(place.toId)!)}
               </button>
               <button
                 onClick={() => void link(byId.get(place.toId)!, 'in', false)}
                 disabled={Boolean(busy)}
-                className="text-zinc-400 hover:text-rose-300"
+                className="text-text-muted hover:text-bad"
                 aria-label="Remove the place"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             </p>
           ) : (
-            <p className="text-xs text-zinc-400">Not set.</p>
+            <p className="text-xs text-text-muted">Not set.</p>
           )}
           <Picker options={live('place')} placeholder={place ? 'Move to another place…' : 'Find the city…'} label="Pick a place" onPick={(p) => void link(p, 'in', true)} />
         </div>
@@ -338,14 +340,14 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
             <ul className="flex flex-wrap gap-1.5">
               {labelled.map((r) => (
                 <li key={r.id}>
-                  <button onClick={() => onOpen(r.id)} className="rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300 hover:text-violet-300">
-                    {r.name} <span className="text-zinc-400">{r.kind}</span>
+                  <button onClick={() => onOpen(r.id)} className="rounded-full border border-line-strong px-2 py-0.5 text-xs text-text-muted hover:text-accent">
+                    {r.name} <span className="text-text-muted">{r.kind}</span>
                   </button>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-xs text-zinc-400">Not on any venue or series yet. Add it from a venue's or series' page.</p>
+            <p className="text-xs text-text-muted">Not on any venue or series yet. Add it from a venue's or series' page.</p>
           )}
         </div>
       )}
@@ -358,7 +360,7 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
           <ul className="flex flex-wrap gap-1.5">
             {venuesHere.map((v) => (
               <li key={v.id}>
-                <button onClick={() => onOpen(v.id)} className="rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300 hover:text-violet-300">
+                <button onClick={() => onOpen(v.id)} className="rounded-full border border-line-strong px-2 py-0.5 text-xs text-text-muted hover:text-accent">
                   {v.name}
                 </button>
               </li>
@@ -373,14 +375,14 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
           {hosts.length ? (
             <ul className="flex flex-wrap gap-1.5">
               {hosts.map((o) => (
-                <li key={o.id} className="inline-flex items-center gap-1 rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300">
-                  <button onClick={() => onOpen(o.id)} className="hover:text-violet-300">
+                <li key={o.id} className="inline-flex items-center gap-1 rounded-full border border-line-strong px-2 py-0.5 text-xs text-text-muted">
+                  <button onClick={() => onOpen(o.id)} className="hover:text-accent">
                     {o.name}
                   </button>
                   <button
                     onClick={() => void link(o, 'hosted_by', false)}
                     disabled={Boolean(busy)}
-                    className="text-zinc-400 hover:text-rose-300"
+                    className="text-text-muted hover:text-bad"
                     aria-label={`Remove host ${o.name}`}
                   >
                     <X className="h-3 w-3" />
@@ -389,7 +391,7 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
               ))}
             </ul>
           ) : (
-            <p className="text-xs text-zinc-400">Not set. Add organizations in the Organizations list first.</p>
+            <p className="text-xs text-text-muted">Not set. Add organizations in the Organizations list first.</p>
           )}
           <Picker
             options={live('organization').filter((o) => !hosts.includes(o))}
@@ -407,14 +409,14 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
             <ul className="flex flex-wrap gap-1.5">
               {hosted.map((s) => (
                 <li key={s.id}>
-                  <button onClick={() => onOpen(s.id)} className="rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300 hover:text-violet-300">
+                  <button onClick={() => onOpen(s.id)} className="rounded-full border border-line-strong px-2 py-0.5 text-xs text-text-muted hover:text-accent">
                     {s.name}
                   </button>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-xs text-zinc-400">No series yet. Open a series and add this organization under Hosted by.</p>
+            <p className="text-xs text-text-muted">No series yet. Open a series and add this organization under Hosted by.</p>
           )}
         </div>
       )}
@@ -422,24 +424,24 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
       <div className="space-y-1.5">
         <h3 className={sectionTitle}>Merge</h3>
         {duplicates.length > 0 && (
-          <p className="flex flex-wrap items-center gap-1.5 text-xs text-amber-300">
+          <p className="flex flex-wrap items-center gap-1.5 text-xs text-warn">
             Looks like:
             {duplicates.map((d) => (
-              <button key={d.id} onClick={() => setMerging(d)} className="rounded-full border border-amber-500/30 px-2 py-0.5 hover:bg-amber-950/40">
+              <button key={d.id} onClick={() => setMerging(d)} className="rounded-full border border-warn/45 px-2 py-0.5 hover:bg-warn/10">
                 {entityLabel(d)}
               </button>
             ))}
           </p>
         )}
         {merging ? (
-          <div className="space-y-2 rounded-lg border border-violet-500/30 bg-violet-950/20 p-2.5 text-sm text-zinc-200">
+          <div className="space-y-2 rounded-card border border-accent-tint-line bg-accent-tint p-2.5 text-sm text-text">
             <p>
               Merge “{entityLabel(entity)}” into “{entityLabel(merging)}”? Its {events.length} event{events.length === 1 ? '' : 's'} will show “
               {entityLabel(merging)}”{entity.kind !== 'place' && <>, and “{entity.name}” becomes an AKA</>}. You can undo it.
             </p>
             <div className="flex gap-2">
               <button onClick={() => void merge(merging)} disabled={Boolean(busy)} className={primary}>
-                {busy === 'merge' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitMerge className="h-3.5 w-3.5" />} Merge
+                {busy === 'merge' ? <Equalizer size="sm" /> : <GitMerge className="h-3.5 w-3.5" />} Merge
               </button>
               <button onClick={() => setMerging(null)} className={quiet}>
                 Cancel
@@ -460,21 +462,19 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
         <div className="space-y-1.5">
           <h3 className={sectionTitle}>Events</h3>
           {sorted.length ? (
-            <ul className="divide-y divide-zinc-900 rounded-xl border border-zinc-900">
+            <Ledger>
               {sorted.map((e) => (
-                <li key={e.id}>
-                  <button onClick={() => onOpenEvent(e.id)} className="flex w-full items-baseline gap-3 px-3 py-1.5 text-left text-sm hover:bg-zinc-900/60">
-                    <span className="w-28 shrink-0 text-xs tabular-nums text-zinc-400">{whenLabel(e) ?? 'Date unknown'}</span>
-                    <span className="min-w-0 truncate text-zinc-200">
-                      <EventTitle event={e} />
-                      {e.venue && entity.kind !== 'venue' && <span className="text-zinc-400"> · {e.venue}</span>}
-                    </span>
-                  </button>
-                </li>
+                <Ledger.Row key={e.id} edge="none" onOpen={() => onOpenEvent(e.id)} className="min-h-11 px-3 py-2 text-sm sm:min-h-9">
+                  <span className="w-28 shrink-0 font-mono text-xs tabular-nums text-text-muted">{whenLabel(e) ?? 'Date unknown'}</span>
+                  <span className="min-w-0 truncate text-text">
+                    <EventTitle event={e} />
+                    {e.venue && entity.kind !== 'venue' && <span className="text-text-muted"> · {e.venue}</span>}
+                  </span>
+                </Ledger.Row>
               ))}
-            </ul>
+            </Ledger>
           ) : (
-            <p className="text-xs text-zinc-400">No events point at it now.</p>
+            <p className="text-xs text-text-muted">No events point at it now.</p>
           )}
         </div>
       )}
@@ -521,10 +521,10 @@ const PersonDetails: React.FC<{
       />
       <div className="flex flex-wrap items-center gap-2">
         <button type="submit" disabled={!first.trim() || !changed || Boolean(busy)} className={primary}>
-          {busy === 'person' && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Save
+          {busy === 'person' && <Equalizer size="sm" />} Save
         </button>
         {name && name !== entity.name && (
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-text-muted">
             Shows as “{name}” on {events} event{events === 1 ? '' : 's'}; “{entity.name}” is kept as an AKA.
           </p>
         )}
@@ -554,7 +554,7 @@ const Details: React.FC<{
       <h3 className={sectionTitle}>Details</h3>
       {fields.map((f) => (
         <label key={f.key} className="block space-y-1">
-          <span className="text-xs text-zinc-400">{f.label}</span>
+          <span className="text-xs text-text-muted">{f.label}</span>
           {f.multiline ? (
             <textarea
               className={`${control} min-h-[4rem]`}
@@ -575,7 +575,7 @@ const Details: React.FC<{
         </label>
       ))}
       <button type="submit" disabled={!changed || Boolean(busy)} className={primary}>
-        {busy === 'details' && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Save details
+        {busy === 'details' && <Equalizer size="sm" />} Save details
       </button>
     </form>
   );
@@ -608,11 +608,11 @@ const Labels: React.FC<{
       {mine.length > 0 && (
         <ul className="flex flex-wrap gap-1.5">
           {mine.map((l) => (
-            <li key={l.id} className="inline-flex items-center gap-1 rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300">
-              <button onClick={() => onOpen(l.id)} className="hover:text-violet-300" title={group(l) || undefined}>
+            <li key={l.id} className="inline-flex items-center gap-1 rounded-full border border-line-strong px-2 py-0.5 text-xs text-text-muted">
+              <button onClick={() => onOpen(l.id)} className="hover:text-accent" title={group(l) || undefined}>
                 {l.name}
               </button>
-              <button onClick={() => void link(l, false)} disabled={Boolean(busy)} className="text-zinc-400 hover:text-rose-300" aria-label={`Remove label ${l.name}`}>
+              <button onClick={() => void link(l, false)} disabled={Boolean(busy)} className="text-text-muted hover:text-bad" aria-label={`Remove label ${l.name}`}>
                 <X className="h-3 w-3" />
               </button>
             </li>
@@ -624,20 +624,20 @@ const Labels: React.FC<{
         const because = byId.get(o.becauseId);
         if (!label || !because) return null;
         return (
-          <p key={o.labelId} className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-            <Sparkles className="h-3.5 w-3.5 text-violet-300" />
+          <p key={o.labelId} className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+            <Sparkles className="h-3.5 w-3.5 text-accent" />
             {because.name} is {label.name}.
-            <button onClick={() => void link(label, true)} disabled={Boolean(busy)} className="rounded-full border border-violet-500/40 px-2 py-0.5 text-violet-200 hover:bg-violet-950/40">
+            <button onClick={() => void link(label, true)} disabled={Boolean(busy)} className="rounded-full border border-accent-tint-line bg-accent-tint px-2 py-0.5 text-accent hover:underline">
               Add {label.name}
             </button>
           </p>
         );
       })}
       {gaps.map((g) => (
-        <p key={g.group} className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-400">
+        <p key={g.group} className="flex flex-wrap items-center gap-1.5 text-xs text-text-muted">
           Set {g.group.toLowerCase()}:
           {g.labels.map((l) => (
-            <button key={l.id} onClick={() => void link(l, true)} disabled={Boolean(busy)} className="rounded-full border border-zinc-800 px-2 py-0.5 text-zinc-200 hover:border-violet-500/60">
+            <button key={l.id} onClick={() => void link(l, true)} disabled={Boolean(busy)} className="rounded-full border border-line-strong px-2 py-0.5 text-text hover:border-accent">
               {l.name}
             </button>
           ))}
@@ -646,7 +646,7 @@ const Labels: React.FC<{
       {all.length ? (
         <Picker options={all.filter((l) => !mine.includes(l))} placeholder="Add a label…" label="Add a label" onPick={(l) => void link(l, true)} />
       ) : (
-        <p className="text-xs text-zinc-400">No labels yet. Add them in the Labels list (for example Indoor and Outdoor, group Indoor/Outdoor).</p>
+        <p className="text-xs text-text-muted">No labels yet. Add them in the Labels list (for example Indoor and Outdoor, group Indoor/Outdoor).</p>
       )}
     </div>
   );
@@ -673,21 +673,21 @@ const Insights: React.FC<{
   const today = new Date().toISOString().slice(0, 10);
   const byId = new Map(data.entities.map((e) => [e.id, e]));
   const went = wentTo(events, today);
-  const chipClass = 'inline-flex items-center gap-1 rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300';
+  const chipClass = 'inline-flex items-center gap-1 rounded-full border border-line-strong px-2 py-0.5 text-xs text-text-muted';
   const lines: React.ReactNode[] = [];
 
   if (entity.kind === 'artist') {
     const g = artistGaps(went, today);
     if (g.sinceLast !== undefined) lines.push(<>Last seen {g.sinceLast === 0 ? 'today' : `${spanLabel(g.sinceLast)} ago`} ({dayLabel(g.lastDate!)}).</>);
     if (g.longest) lines.push(<>Longest wait between shows: {spanLabel(g.longest.days)} ({dayLabel(g.longest.from)} to {dayLabel(g.longest.to)}).</>);
-    if (g.dated && g.dated < g.total) lines.push(<span className="text-zinc-400">Based on the {g.dated} of {g.total} events dated to the day.</span>);
+    if (g.dated && g.dated < g.total) lines.push(<span className="text-text-muted">Based on the {g.dated} of {g.total} events dated to the day.</span>);
     const by = data.links.filter((l) => l.toId === entity.id && l.role === 'introduced_me_to').map((l) => byId.get(l.fromId)).filter((p): p is Entity => Boolean(p));
     if (by.length)
       lines.push(
         <span className="flex flex-wrap items-center gap-1.5">
           Introduced by
           {by.map((p) => (
-            <button key={p.id} onClick={() => onOpen(p.id)} className={`${chipClass} hover:text-violet-300`}>
+            <button key={p.id} onClick={() => onOpen(p.id)} className={`${chipClass} hover:text-accent`}>
               {p.name}
             </button>
           ))}
@@ -710,10 +710,10 @@ const Insights: React.FC<{
       lines.push(
         <>
           First show together:{' '}
-          <button onClick={() => onOpenEvent(p.first!.id)} className="text-zinc-100 hover:text-violet-300">
+          <button onClick={() => onOpenEvent(p.first!.id)} className="text-text hover:text-accent">
             <EventTitle event={p.first} />
           </button>{' '}
-          <span className="text-zinc-400">{whenLabel(p.first)}</span>
+          <span className="font-mono tabular-nums text-text-muted">{whenLabel(p.first)}</span>
         </>,
       );
     if (p.onlyWith.length)
@@ -723,10 +723,10 @@ const Insights: React.FC<{
           {p.onlyWith.slice(0, 12).map((a) => (
             <span key={a.key} className={chipClass}>
               {a.name}
-              {a.times > 1 && <span className="text-zinc-400">×{a.times}</span>}
+              {a.times > 1 && <span className="font-mono tabular-nums text-text-muted">×{a.times}</span>}
             </span>
           ))}
-          {p.onlyWith.length > 12 && <span className="text-xs text-zinc-400">+{p.onlyWith.length - 12}</span>}
+          {p.onlyWith.length > 12 && <span className="font-mono text-xs tabular-nums text-text-muted">+{p.onlyWith.length - 12}</span>}
         </span>,
       );
     introduced = data.links
@@ -741,28 +741,28 @@ const Insights: React.FC<{
     <div className="space-y-1.5">
       <h3 className={sectionTitle}>Insights</h3>
       {lines.length ? (
-        <ul className="space-y-1 text-sm text-zinc-300">
+        <ul className="space-y-1 text-sm text-text-muted">
           {lines.map((l, i) => (
             <li key={i}>{l}</li>
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-zinc-400">Nothing yet: insights come from the events you went to.</p>
+        <p className="text-xs text-text-muted">Nothing yet: insights come from the events you went to.</p>
       )}
       {entity.kind === 'person' && (
         <div className="space-y-1.5 pt-1">
-          <p className="text-xs text-zinc-400">Introduced you to</p>
+          <p className="text-xs text-text-muted">Introduced you to</p>
           {introduced.length > 0 && (
             <ul className="flex flex-wrap gap-1.5">
               {introduced.map((a) => (
                 <li key={a.id} className={chipClass}>
-                  <button onClick={() => onOpen(a.id)} className="hover:text-violet-300">
+                  <button onClick={() => onOpen(a.id)} className="hover:text-accent">
                     {a.name}
                   </button>
                   <button
                     onClick={() => void link(a, 'introduced_me_to', false)}
                     disabled={Boolean(busy)}
-                    className="text-zinc-400 hover:text-rose-300"
+                    className="text-text-muted hover:text-bad"
                     aria-label={`Remove ${a.name}`}
                   >
                     <X className="h-3 w-3" />
@@ -890,8 +890,8 @@ const ArtistGenresEditor: React.FC<{
               title={own ? 'Set by you' : `From ${SOURCE_NAMES[shown!.source]}`}
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
                 own
-                  ? 'border-violet-500/40 bg-violet-600/25 text-violet-100'
-                  : 'border-zinc-800 bg-zinc-900 text-zinc-300'
+                  ? 'border-accent-tint-line bg-accent-tint text-accent'
+                  : 'border-line-strong bg-surface-1 text-text-muted'
               }`}
             >
               {s}
@@ -899,7 +899,7 @@ const ArtistGenresEditor: React.FC<{
                 type="button"
                 onClick={() => void save(styles.filter((x) => x !== s))}
                 disabled={busy}
-                className="text-zinc-400 hover:text-rose-300"
+                className="text-text-muted hover:text-bad"
                 aria-label={`Remove genre ${s}`}
               >
                 <X className="h-3 w-3" />
@@ -913,7 +913,7 @@ const ArtistGenresEditor: React.FC<{
                 onClick={() => void save(null)}
                 disabled={busy}
                 title={`Show the genres from ${SOURCE_NAMES[found.source]} again: ${found.genres.map((g) => g.style).join(', ')}`}
-                className="text-xs text-zinc-400 hover:text-violet-300"
+                className="text-xs text-text-muted hover:text-accent"
               >
                 Use {SOURCE_NAMES[found.source]}'s
               </button>
@@ -922,14 +922,14 @@ const ArtistGenresEditor: React.FC<{
         </ul>
       )}
       {!styles.length && (
-        <p className="text-xs text-zinc-400">
+        <p className="text-xs text-text-muted">
           {own ? 'None, as you set.' : found?.source === 'musicbrainz' ? 'Checked on MusicBrainz: no genre found.' : 'No genre yet.'}
           {own && found?.genres.length ? (
             <button
               type="button"
               onClick={() => void save(null)}
               disabled={busy}
-              className="ml-2 text-zinc-400 hover:text-violet-300"
+              className="ml-2 text-text-muted hover:text-accent"
             >
               Use {SOURCE_NAMES[found.source]}'s
             </button>
@@ -939,7 +939,7 @@ const ArtistGenresEditor: React.FC<{
               type="button"
               onClick={() => void lookupMb()}
               disabled={busy}
-              className="ml-2 text-zinc-400 hover:text-violet-300"
+              className="ml-2 text-text-muted hover:text-accent"
             >
               Look up on MusicBrainz
             </button>
@@ -972,14 +972,14 @@ const ArtistGenresEditor: React.FC<{
           <Plus className="h-3.5 w-3.5" /> Add
         </button>
       </form>
-      <p className="text-xs text-zinc-400">
+      <p className="text-xs text-text-muted">
         {own
           ? 'Set by you; overrides imported genres.'
           : shown
             ? `From ${SOURCE_NAMES[shown.source]}. Editing sets your own genres.`
             : 'Typed on an artist, your genres override any found later.'}
       </p>
-      {error && <p className="text-xs text-rose-300">{error}</p>}
+      {error && <p className="text-xs text-bad">{error}</p>}
     </div>
   );
 };
