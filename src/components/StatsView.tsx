@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
 import { genresApi, LoggedEvent } from '../services/lineupApi';
 import { ArtistGenres, GenreCount, genreMix, genresByArtist } from '../services/genres';
 import { whenLabel } from '../services/format';
@@ -6,6 +7,19 @@ import { attendanceOf } from '../server/events/attendance';
 import { facts, pastEvents, perYear, RankBy, Ranked, seriesStats, SeriesStat, top, yearInReview } from '../services/stats';
 import { EventTitle } from './EventTitle';
 import { MONTH_NAMES } from '../server/lineup/months';
+
+// Bars grow in once per visit to Stats (design-refresh-2.md, section 4): only while the page has just opened,
+// so changing the year or a filter later swaps them in place. Off with reduced motion.
+let openedAt = 0;
+const GROW_WINDOW_MS = 1200;
+function useGrow(axis: 'x' | 'y') {
+  const still = useReducedMotion();
+  const fresh = Date.now() - openedAt < GROW_WINDOW_MS;
+  if (still || !fresh) return { initial: false as const };
+  return axis === 'y'
+    ? { initial: { scaleY: 0 }, animate: { scaleY: 1 }, transition: { duration: 0.45, ease: [0.2, 0.8, 0.2, 1] as const }, style: { originY: 1 } }
+    : { initial: { scaleX: 0 }, animate: { scaleX: 1 }, transition: { duration: 0.45, ease: [0.2, 0.8, 0.2, 1] as const }, style: { originX: 0 } };
+}
 
 interface StatsViewProps {
   events: LoggedEvent[];
@@ -20,6 +34,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // Events per year as bars; empty years stay as gaps. A bar opens that year in the Table.
 const YearChart: React.FC<{ years: ReturnType<typeof perYear>['years']; onPick: (year: number) => void }> = ({ years, onPick }) => {
+  const growY = useGrow('y');
   const [hover, setHover] = useState<number | null>(null);
   const max = Math.max(1, ...years.map((y) => y.events));
   const showLabel = (i: number) => years.length <= 12 || i === 0 || i === years.length - 1 || years[i].year % 5 === 0;
@@ -66,11 +81,12 @@ const YearChart: React.FC<{ years: ReturnType<typeof perYear>['years']; onPick: 
                   {y.events} this year
                 </span>
               )}
-              <span
+              <motion.span
+                {...growY}
                 className={`mx-auto block w-full max-w-12 rounded-t-[3px] bg-gradient-to-b transition-[filter] ${
                   now ? 'from-accent-fill to-accent-fill/70' : 'from-accent-fill/85 to-accent-fill/20'
                 } ${hover === y.year ? 'brightness-125' : 'group-hover:brightness-125'}`}
-                style={{ height: y.events ? `${(y.events / max) * 100}%` : 0 }}
+                style={{ ...growY.style, height: y.events ? `${(y.events / max) * 100}%` : 0 }}
               />
             </button>
           );
@@ -88,6 +104,7 @@ const YearChart: React.FC<{ years: ReturnType<typeof perYear>['years']; onPick: 
 };
 
 const Ranking: React.FC<{ name: string; rows: Ranked[]; empty: string; onPick: (r: Ranked) => void }> = ({ name, rows, empty, onPick }) => {
+  const growX = useGrow('x');
   const max = Math.max(1, ...rows.map((r) => r.count));
   return (
     <div className={`${card} space-y-2`}>
@@ -104,7 +121,7 @@ const Ranking: React.FC<{ name: string; rows: Ranked[]; empty: string; onPick: (
                   <span className="shrink-0 text-xs text-text-muted">{r.count}</span>
                 </span>
                 <span className="block h-1.5 w-full rounded-full bg-surface-2">
-                  <span className="block h-full rounded-full bg-accent-fill group-hover:brightness-125" style={{ width: `${(r.count / max) * 100}%` }} />
+                  <motion.span {...growX} className="block h-full rounded-full bg-accent-fill group-hover:brightness-125" style={{ ...growX.style, width: `${(r.count / max) * 100}%` }} />
                 </span>
               </button>
             </li>
@@ -118,6 +135,7 @@ const Ranking: React.FC<{ name: string; rows: Ranked[]; empty: string; onPick: (
 // What you see live by genre: each set you saw split across its act's genres.
 // Sets whose act has no genre are counted apart, not spread over the rest.
 const GenreBars: React.FC<{ name: string; rows: GenreCount[] }> = ({ name, rows }) => {
+  const growX = useGrow('x');
   const max = Math.max(...rows.map((r) => r.share), 0.01);
   return (
     <div className="space-y-1.5">
@@ -130,7 +148,7 @@ const GenreBars: React.FC<{ name: string; rows: GenreCount[] }> = ({ name, rows 
               <span className="shrink-0 text-xs tabular-nums text-text-muted">{Math.round(r.share * 100)}%</span>
             </span>
             <span className="block h-1.5 w-full rounded-full bg-surface-2">
-              <span className="block h-full rounded-full bg-accent-fill" style={{ width: `${(r.share / max) * 100}%` }} />
+              <motion.span {...growX} className="block h-full rounded-full bg-accent-fill" style={{ ...growX.style, width: `${(r.share / max) * 100}%` }} />
             </span>
           </li>
         ))}
@@ -169,6 +187,7 @@ const Tile: React.FC<{ value: React.ReactNode; label: string }> = ({ value, labe
 // Your series: editions, years in a row, cities, and acts you keep seeing
 // there. A row opens that series in the Table.
 const SeriesCard: React.FC<{ rows: SeriesStat[]; onPick: (name: string) => void }> = ({ rows, onPick }) => {
+  const growX = useGrow('x');
   const max = Math.max(1, ...rows.map((r) => r.editions));
   const best = rows.reduce<SeriesStat | undefined>((a, r) => (r.streak && (!a?.streak || r.streak.years > a.streak.years) ? r : a), undefined);
   return (
@@ -190,7 +209,7 @@ const SeriesCard: React.FC<{ rows: SeriesStat[]; onPick: (name: string) => void 
                 <span className="shrink-0 tabular-nums text-text-muted">{plural(r.editions, 'edition')}</span>
               </span>
               <span className="block h-1.5 rounded-full bg-surface-3">
-                <span className="block h-1.5 rounded-full bg-accent-fill group-hover:brightness-125" style={{ width: `${(r.editions / max) * 100}%` }} />
+                <motion.span {...growX} className="block h-1.5 rounded-full bg-accent-fill group-hover:brightness-125" style={{ ...growX.style, width: `${(r.editions / max) * 100}%` }} />
               </span>
               <span className="block text-xs text-text-muted">
                 {[
@@ -217,6 +236,10 @@ const SeriesCard: React.FC<{ rows: SeriesStat[]; onPick: (name: string) => void 
 };
 
 export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTable }) => {
+  // Marks the start of this visit before the bars first render, so they grow in once.
+  useState(() => {
+    openedAt = Date.now();
+  });
   const today = new Date().toISOString().slice(0, 10);
   const past = useMemo(() => pastEvents(events, today), [events, today]);
   // Optional: without genres (or before 0013 is applied) the card is left out.
