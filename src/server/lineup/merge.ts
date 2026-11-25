@@ -32,6 +32,7 @@ export const SOURCE_PRIOR: Record<SourceType, number> = {
   email: 0.9,
   user: 1,
   'edition name': 0.5,
+  pasted: 0.85,
 };
 
 export const DEFAULT_PRIORITY: SourceType[] = [

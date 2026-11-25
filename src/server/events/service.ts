@@ -236,10 +236,11 @@ export async function startLineupLookup(
   deps: PipelineDeps,
   event: LoggedEvent,
   lineupUrl?: string,
-  opts: { replaceConfirmed?: boolean } = {},
+  opts: { replaceConfirmed?: boolean; pasted?: { url: string; text: string } } = {},
 ): Promise<{ event: LoggedEvent; job: LookupJob }> {
   const year = event.year ?? (event.startDate ? Number(event.startDate.slice(0, 4)) : undefined);
   if (!year) throw new InputError('Add when it was (a year is enough) before looking up the lineup.');
+  if (opts.pasted && !event.startDate) throw new InputError('Add the full date before pasting set times, so each time can be placed on a day.');
   const job = await createLookup(
     deps,
     {
@@ -251,6 +252,7 @@ export async function startLineupLookup(
       city: cityWithRegion(event.city, event.region),
       country: event.country,
       lineupUrl: text(lineupUrl),
+      ...(opts.pasted ? { pasted: opts.pasted } : {}),
     },
     { eventId: event.id, replaceConfirmed: opts.replaceConfirmed === true },
   );

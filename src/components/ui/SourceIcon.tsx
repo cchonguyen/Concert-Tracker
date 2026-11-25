@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { Archive, CalendarRange, Globe, ListMusic, Mail, Megaphone, Music, Ticket, Tag, User } from 'lucide-react';
+import { Archive, CalendarRange, ClipboardPaste, Globe, ListMusic, Mail, Megaphone, Music, Ticket, Tag, User } from 'lucide-react';
 import type { SourceType } from '../../server/lineup/types';
 import { SOURCE_LABELS } from '../../services/lineupApi';
 
@@ -16,6 +16,7 @@ const ICONS: Record<SourceType, LucideIcon> = {
   email: Mail,
   user: User,
   'edition name': Tag,
+  pasted: ClipboardPaste,
 };
 
 // A source's glyph and name, with its label as the tooltip. Pass `readBy` to add
