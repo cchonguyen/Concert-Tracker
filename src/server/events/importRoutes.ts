@@ -4,6 +4,7 @@ import { listResolvedEvents } from './inherit';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
 import { eventFromImport, findLogged, mergeImports, mergeIntoEvent, pricesFromImports, readEmails, reviewList, unmergeFromEvent } from './email/imports';
 import { GmailApi, GmailAuthError, GmailBusy } from './email/gmail';
+import { ticketFactsFor } from './email/ticketFacts';
 import { GMAIL_SETTING, GmailSetting, NotConnected, SCAN_SETTING, ScanSetting, scanStep } from './email/scan';
 import { EmailImport, RawEmail } from './email/types';
 import { BROWSER_SCAN_SETTING, BrowserScanSetting, mergeProposals } from './email/proposals';
@@ -109,6 +110,15 @@ export function importsRouter(deps: PipelineDeps, gmail: GmailApi | null = null)
   router.get('/imports', async (_req, res) => {
     try {
       res.json({ imports: reviewList(await deps.store.listImports()) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // The ticket facts (seller, order last 4, tickets) of the email an event came from or was merged into.
+  router.get('/imports/facts/:eventId', async (req, res) => {
+    try {
+      res.json({ facts: ticketFactsFor(await deps.store.listImports(), req.params.eventId) });
     } catch (err) {
       fail(res, err);
     }
