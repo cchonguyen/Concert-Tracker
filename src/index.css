@@ -167,10 +167,12 @@
   --poster-base: var(--la-surface-1);
   --poster-tint: 40%;
   --poster-grain: 0.16;
+  --poster-event-tint: 0.3;
 }
 :root[data-theme='light'] {
   --poster-tint: 26%;
   --poster-grain: 0.1;
+  --poster-event-tint: 0.22;
 }
 .poster-bg {
   position: relative;
@@ -179,6 +181,24 @@
     radial-gradient(90% 140% at 12% 0%, color-mix(in oklab, var(--accent-500) var(--poster-tint), transparent), transparent 62%),
     radial-gradient(70% 120% at 100% 100%, color-mix(in oklab, var(--accent-700) 18%, transparent), transparent 60%),
     var(--poster-base);
+}
+.poster-bg::after {
+  /* Per-event tint (services/eventTint.ts): a soft wash in the far corner, away from the title and the
+     date line, so it never sits behind text that must pass contrast. Off with the theme switch. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  display: none;
+  background: radial-gradient(48% 85% at 100% 100%, oklch(0.7 0.15 var(--event-hue) / var(--poster-event-tint)), transparent 70%);
+}
+:root:not([data-event-tint='off']) .poster-bg[style*='--event-hue']::after {
+  display: block;
+}
+/* The series dot takes the same hue; with the switch off, or no hue, it keeps the accent. */
+:root:not([data-event-tint='off']) .series-dot[style*='--event-hue'] {
+  background: oklch(0.7 0.15 var(--event-hue));
 }
 .poster-bg::before {
   content: '';

@@ -1,4 +1,6 @@
 import { Check, ChevronRight } from 'lucide-react';
+import type { CSSProperties } from 'react';
+import { tintHue } from '../services/eventTint';
 import type { LoggedEvent, SeenAct } from '../server/events/types';
 import type { AttendanceState } from '../server/events/attendance';
 import { billLines, GAP_LABEL, gapQuestion } from '../services/poster';
@@ -31,8 +33,9 @@ export function PosterHeader({ title, label, event, state, seen, cited, confirme
   const bill = billLines(seen, cited);
   const small = [...bill.medium.map((a) => a.name), ...(bill.more > 0 ? [`+ ${bill.more} more`] : [])];
   const status = STATUS[state];
+  const hue = tintHue(event.series, event.name);
   return (
-    <header className="poster-bg space-y-2 border-b border-line-strong px-5 pb-5 pt-6">
+    <header className="poster-bg space-y-2 border-b border-line-strong px-5 pb-5 pt-6" style={hue == null ? undefined : ({ '--event-hue': hue } as CSSProperties)}>
       <div className="flex items-start justify-between gap-4">
         <p className="min-w-0 pt-1 font-mono text-[11.5px] font-medium uppercase tracking-[0.08em] text-text-muted">{label}</p>
         {/* Your rating: tap a star to rate, tap the current one again to clear it. */}
