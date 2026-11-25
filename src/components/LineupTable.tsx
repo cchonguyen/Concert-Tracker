@@ -274,14 +274,15 @@ export const LineupTable: React.FC<LineupTableProps> = ({
 
                 const timedSets = timedSetsForSlot(slot);
                 const stages = Array.from(new Set(timedSets.map((s) => s.stage).filter((v): v is string => Boolean(v))));
-                const fullTimes = timedSets
+                // B2B partners share one set, so each time shows once.
+                const fullTimes = [...new Set(timedSets
                   .map((s) => {
                     const start = clock(s.start);
                     const end = clock(s.end);
                     return start ? (end ? `${start}–${end}` : start) : '';
                   })
-                  .filter(Boolean);
-                const startOnly = timedSets.map((s) => clock(s.start)).filter((v): v is string => Boolean(v));
+                  .filter(Boolean))];
+                const startOnly = [...new Set(timedSets.map((s) => clock(s.start)).filter((v): v is string => Boolean(v)))];
 
                 const actDisplayName = isSolo
                   ? slot.name
