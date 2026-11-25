@@ -45,7 +45,7 @@ Track C (Claude) and the Gemini package "Back Office" run in parallel. Claude's 
 - [x] **Slice 29.2: Ticket facts for an event** [CORE / DATA] Target files: src/server/events/email/ticketFacts.ts, src/server/events/importRoutes.ts, src/services/lineupApi.ts, tests/ticketFacts.test.ts | Issue: #814 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 29.3: Ticket and StubHeader components** [UI / VISUAL] Target files: src/components/ui/Ticket.tsx, src/components/ui/StubHeader.tsx, src/index.css | Issue: #817 | Verify: npm run lint --silent
 - [ ] **Slice 29.4: Event detail hero and bar (after 28.4)** [UI / VISUAL] Target files: src/components/PosterHeader.tsx, src/components/HeroBar.tsx, src/components/EventDetail.tsx | Verify: npm run lint --silent
-- [ ] **Slice 29.5: Stub headers on lists** [IN_PROGRESS] [UI / VISUAL] Target files: src/components/ArtistsView.tsx, src/components/StatsView.tsx, src/components/EventsHome.tsx | Issue: #819 | Verify: npm run lint --silent
+- [x] **Slice 29.5: Stub headers on lists** [UI / VISUAL] Target files: src/components/ArtistsView.tsx, src/components/StatsView.tsx, src/components/EventsHome.tsx | Issue: #819 | Verify: npm run lint --silent
 - [ ] **Slice 29.6: Home anchor** [UI / VISUAL] Target files: src/components/YearTile.tsx, src/components/HomePage.tsx | Verify: npm run lint --silent
 - [ ] **Slice 29.7: Stats year header** [UI / VISUAL] Target files: src/components/StatsView.tsx | Verify: npm run lint --silent
 - [ ] **Slice 29.8: Share page in Library** [UI / VISUAL] Target files: src/services/nav.ts, src/components/pageIcons.ts, src/App.tsx, src/components/AppHeaderMenu.tsx, src/components/SharePage.tsx | Verify: npm run lint --silent && npm test --silent
