@@ -159,3 +159,39 @@ The full brief is `docs/specs/design-refresh-2-ledger-and-lobby.md`.
 **Who owns which file.** Each file belongs to one track. Gemini does not edit `src/index.css`, `src/services/theme.ts`, `src/components/ui/Tabs.tsx`, `Ledger.tsx`, `KindPill.tsx`, `HintPill.tsx`, `Stars.tsx`, `Equalizer.tsx`, `Popover.tsx`, `App.tsx`, `EventsHome.tsx`, `EventDetail.tsx`, `PosterHeader.tsx`, `DetailShell.tsx`, `StatsView.tsx` or `HeatmapView.tsx`. If a Gemini slice needs a change there, it writes the need into `.spec/SESSION_HANDOFF.md` and Claude makes it.
 
 Docs: `docs/design-system/` and `ARCHITECTURE.md` (shared UI section) are updated in the same slice as each token or component change.
+
+## 8. Stage 2: tint, motion and the remaining screens
+
+Charlie approved this on 24 Nov 2026 (Pacific), after the 2.0 review. The review found that three parts of this spec had not been built:
+- the per-event tint
+- part of the motion list
+- about 60 screens outside both halves
+
+The work is split in two, as before. Each slice is one pull request with its own issue, and stays under 5 files.
+
+**Track C (Claude):**
+1. *[CORE]* Per-event tint setting: a hue worked out in code from the series name (or the event name when there is no series), and a "Tint posters by event" switch in the theme picker, on by default. Files: `src/services/eventTint.ts`, `tests/eventTint.test.ts`, `ThemePicker.tsx`.
+2. *[UI]* Poster wash and series dot: a soft wash in the poster's far corner, never behind text, and a dot beside series names. Files: `PosterHeader.tsx`, `src/index.css`, `TableView.tsx`.
+3. *[UI]* Motion A:
+   - Stats bars grow once per visit.
+   - Toasts rise into place.
+   - Buttons press in.
+   - BackToTop moves onto tokens.
+
+   Files: `StatsView.tsx`, `ui/Toast.tsx`, `ui/Button.tsx`, `ui/BackToTop.tsx`.
+4. *[UI]* Motion B: a just-added row glows for 1.5 s and slides in, and the seen tick draws itself. Files: `EventsHome.tsx`, `ui/Ledger.tsx`, `EventDetail.tsx`.
+5. *[UI]* Shared parts onto tokens, in 4 groups of up to 4 files. This covers everything left in `src/components/ui/`. The Filters button reaches 44 px on phones.
+6. *[UI]* App shell and menus: `App.tsx`, `AppHeaderMenu.tsx`, `SampleBanner.tsx`, `Boot.tsx`, then `QuickAdd.tsx`, `AboutDialog.tsx`, `AccountPanel.tsx`, `NoticeModal.tsx`.
+7. *[UI]* Event research screens:
+   - `CheckDetails.tsx` and `FillGaps.tsx`
+   - `LineupReview.tsx`, `LineupProgress.tsx`, `PasteSetTimes.tsx` and `EditionNameGaps.tsx`
+   - `SeenGenres.tsx`, `EmailCard.tsx`, `ReaderPanel.tsx` and `SuggestInput.tsx`
+8. *[UI]* What is left: `FinderReadoutPanel.tsx`, `timeline/HeatmapView.tsx`, `timeline/TimelineTab.tsx` and `EventTitle.tsx`. This includes the faint "—" on Ranking, which is 3.98:1 in light mode.
+
+**Gemini package "Back Office":** the global archive, Manage, the admin panels, Artists and the map, the imports, and sharing and the log. The brief is `docs/specs/design-refresh-2-back-office.md`.
+
+**Done when:**
+- No file under `src/` uses a Tailwind colour name.
+- Every screen passes 4.5:1 in all 10 themes.
+- Every control meets the touch sizes in section 5.
+- The colour engine's `zinc` and `violet` remap stays in `src/index.css`, so that older code keeps working.
