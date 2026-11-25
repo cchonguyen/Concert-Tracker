@@ -17,8 +17,8 @@ export const FilterSelect: React.FC<{
     aria-label={name}
     value={value}
     onChange={(e) => onChange(e.target.value)}
-    className={`field-sizing-content max-w-[14rem] cursor-pointer truncate rounded-full border py-1 pl-3 pr-2 text-xs focus:border-violet-500 focus:outline-none ${
-      value ? 'border-violet-500/70 bg-violet-600/20 text-violet-100' : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200'
+    className={`field-sizing-content min-h-11 max-w-[14rem] cursor-pointer truncate rounded-full border py-1 pl-3 pr-2 text-xs focus:border-accent focus:outline-none sm:min-h-9 ${
+      value ? 'border-accent-tint-line bg-accent-tint text-text' : 'border-line bg-surface-1 text-text-muted hover:text-text'
     }`}
   >
     <option value="">{name}</option>
@@ -44,12 +44,12 @@ export const FilterToggle: React.FC<{
   <button
     onClick={() => onChange(NEXT[value])}
     title="Tap to cycle: any, has it, doesn't"
-    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${
+    className={`inline-flex min-h-11 items-center gap-1 rounded-full border px-2.5 py-1 text-xs sm:min-h-9 ${
       value === 'yes'
-        ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-200'
+        ? 'border-good/45 bg-good/10 text-good'
         : value === 'no'
-          ? 'border-amber-500/50 bg-amber-500/10 text-amber-200'
-          : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'
+          ? 'border-warn/45 bg-warn/10 text-warn'
+          : 'border-line text-text-muted hover:text-text'
     }`}
   >
     {value === 'yes' ? <Check className="h-3 w-3" /> : value === 'no' ? <Minus className="h-3 w-3" /> : null}
@@ -62,8 +62,8 @@ export const FilterButton: React.FC<{ open: boolean; count: number; onClick: () 
   <button
     onClick={onClick}
     aria-expanded={open}
-    className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm ${
-      open ? 'border-violet-500 text-violet-200' : 'border-zinc-800 text-zinc-300 hover:text-zinc-100'
+    className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border px-3 text-sm sm:min-h-9 ${
+      open ? 'border-accent text-accent' : 'border-line-strong text-text-muted hover:text-text'
     }`}
   >
     <SlidersHorizontal className="h-3.5 w-3.5" /> Filters{count ? ` (${count})` : ''}
@@ -72,5 +72,5 @@ export const FilterButton: React.FC<{ open: boolean; count: number; onClick: () 
 
 // The panel that holds the pills. Pills wrap, and the panel only shows when open.
 export const FilterPanel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="space-y-2.5 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">{children}</div>
+  <div className="space-y-2.5 rounded-card border border-line bg-surface-1 p-3">{children}</div>
 );
