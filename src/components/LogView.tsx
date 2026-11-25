@@ -3,6 +3,7 @@ import { eventsApi } from '../services/lineupApi';
 import { describeEntry, type ActivityEntry } from '../server/events/activityLog';
 import type { LoggedEvent } from '../server/events/types';
 import { Button } from './ui/Button';
+import { Ledger } from './ui/Ledger';
 import { Notice } from './ui/Notice';
 import { Confirm } from './ui/Confirm';
 import { useVault } from './VaultContext';
@@ -93,9 +94,9 @@ export function LogView({ eventId, onShowAll }: { eventId?: string | null; onSho
       {error && <Notice tone="warning">{error}</Notice>}
 
       {eventId && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-zinc-800 px-4 py-2.5 text-sm text-zinc-300">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-line bg-surface-1 px-4 py-2.5 text-sm text-text-muted">
           <span>
-            Showing the history of <span className="font-semibold text-zinc-100">{nameOf(eventId)}</span>
+            Showing the history of <span className="font-semibold text-text">{nameOf(eventId)}</span>
           </span>
           {onShowAll && (
             <Button variant="ghost" onClick={onShowAll}>
@@ -107,8 +108,8 @@ export function LogView({ eventId, onShowAll }: { eventId?: string | null; onSho
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-base font-bold text-zinc-100">Recently deleted</h2>
-          <p className="text-xs text-zinc-400">Deleted shows stay here for 90 days. Restore brings one back with everything it had.</p>
+          <h2 className="font-display text-xl font-normal text-text">Recently deleted</h2>
+          <p className="text-xs text-text-muted">Deleted shows stay here for 90 days. Restore brings one back with everything it had.</p>
         </div>
         {trash !== null && trash.length > 0 && (
           <div className="flex justify-end">
@@ -118,14 +119,14 @@ export function LogView({ eventId, onShowAll }: { eventId?: string | null; onSho
           </div>
         )}
         {trash === null ? null : trash.length === 0 ? (
-          <p className="text-sm text-zinc-400">Nothing here. Shows you delete appear here for 90 days.</p>
+          <p className="text-sm text-text-muted">Nothing here. Shows you delete appear here for 90 days.</p>
         ) : (
-          <ul className="divide-y divide-zinc-800 rounded-card border border-zinc-800">
+          <Ledger>
             {trash.filter((e) => !eventId || e.id === eventId).map((e) => (
-              <li key={e.id} className="flex items-center justify-between gap-3 px-4 py-3">
+              <Ledger.Row key={e.id} edge="none" className="justify-between px-4 py-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm text-zinc-100">{e.name}</p>
-                  {e.deletedAt && <p className="text-xs text-zinc-400">Deleted {when(e.deletedAt)}</p>}
+                  <p className="truncate text-sm text-text">{e.name}</p>
+                  {e.deletedAt && <p className="font-mono text-xs tabular-nums text-text-muted">Deleted {when(e.deletedAt)}</p>}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <Button variant="ghost" onClick={() => setErasing(e.id)} disabled={busy === e.id}>
@@ -135,9 +136,9 @@ export function LogView({ eventId, onShowAll }: { eventId?: string | null; onSho
                     Restore
                   </Button>
                 </div>
-              </li>
+              </Ledger.Row>
             ))}
-          </ul>
+          </Ledger>
         )}
       </section>
 
@@ -157,18 +158,18 @@ export function LogView({ eventId, onShowAll }: { eventId?: string | null; onSho
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-base font-bold text-zinc-100">Changes</h2>
-          <p className="text-xs text-zinc-400">Every save, delete and restore, newest first. Kept for a year. Notes and companions show that they changed, not what they say.</p>
+          <h2 className="font-display text-xl font-normal text-text">Changes</h2>
+          <p className="text-xs text-text-muted">Every save, delete and restore, newest first. Kept for a year. Notes and companions show that they changed, not what they say.</p>
         </div>
         {activity === null ? null : activity.length === 0 ? (
-          <p className="text-sm text-zinc-400">No changes yet.</p>
+          <p className="text-sm text-text-muted">No changes yet.</p>
         ) : (
-          <ul className="divide-y divide-zinc-800 rounded-card border border-zinc-800">
+          <Ledger>
             {activity.filter((a) => !eventId || a.eventId === eventId).map((a) => (
-              <li key={a.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+              <Ledger.Row key={a.id} edge="none" className="justify-between px-4 py-2.5">
                 <div className="min-w-0">
-                  <p className="text-sm text-zinc-200">{describeEntry(a, nameOf(a.eventId))}</p>
-                  <p className="text-xs text-zinc-400">{when(a.at)}</p>
+                  <p className="text-sm text-text">{describeEntry(a, nameOf(a.eventId))}</p>
+                  <p className="font-mono text-xs tabular-nums text-text-muted">{when(a.at)}</p>
                 </div>
                 {a.action !== 'undo' && a.eventId && (
                   <Button
@@ -179,9 +180,9 @@ export function LogView({ eventId, onShowAll }: { eventId?: string | null; onSho
                     {a.sensitive && locked ? 'Unlock vault to undo' : 'Undo'}
                   </Button>
                 )}
-              </li>
+              </Ledger.Row>
             ))}
-          </ul>
+          </Ledger>
         )}
       </section>
     </div>

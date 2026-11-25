@@ -1,6 +1,8 @@
 import { Dialog } from './ui/Dialog';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Layers, Loader2, X } from 'lucide-react';
+import { Check, Layers, X } from 'lucide-react';
+import { Equalizer } from './ui/Equalizer';
+import { Ledger } from './ui/Ledger';
 import { EventPatch, eventsApi, LoggedEvent } from '../services/lineupApi';
 import { whenLabel } from '../services/format';
 import { eventTitle, seriesList, SeriesSuggestion, seriesSuggestions, weekendFromName } from '../services/series';
@@ -20,8 +22,8 @@ interface SeriesPanelProps {
 }
 
 const control =
-  'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
-const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
+  'min-h-11 sm:min-h-9 w-full rounded-control border border-line-strong bg-surface-1 px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none';
+const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-text-muted';
 
 type Change = { event: LoggedEvent; patch: EventPatch };
 
@@ -37,7 +39,7 @@ const WeekendSelect: React.FC<{ value?: number; disabled?: boolean; onChange: (w
     disabled={disabled}
     onChange={(ev) => onChange(ev.target.value ? Number(ev.target.value) : null)}
     aria-label={label}
-    className="shrink-0 rounded-md border border-zinc-800 bg-zinc-900 px-1 py-0.5 text-[11px] text-zinc-300"
+    className="shrink-0 rounded-control border border-line-strong bg-surface-1 px-1.5 py-1 text-[11px] text-text-muted"
   >
     <option value="">Weekend</option>
     {[1, 2, 3, 4].map((w) => (
@@ -66,7 +68,7 @@ const Suggestion: React.FC<{
   const picked = s.events.filter((e) => !off.has(e.id));
   const toLink = picked.filter((e) => e.series !== name.trim() || (e.weekend ?? undefined) !== weekends[e.id]);
   return (
-    <li className="space-y-2 rounded-xl border border-zinc-800 p-3">
+    <li className="space-y-2 rounded-card border border-line bg-surface-1 p-3">
       <input className={control} value={name} onChange={(e) => setName(e.target.value)} aria-label="Series name" />
       <ul className="space-y-1">
         {s.events.map((e) => {
@@ -87,10 +89,10 @@ const Suggestion: React.FC<{
                   }
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="text-zinc-200">{e.name}</span>
-                  <span className="text-xs text-zinc-400"> · {line(e)}</span>
+                  <span className="text-text">{e.name}</span>
+                  <span className="font-mono text-xs tabular-nums text-text-muted"> · {line(e)}</span>
                   {on && name.trim() && (
-                    <span className="block text-[11px] text-violet-300/80">
+                    <span className="block text-[11px] text-accent">
                       {e.series === name.trim() && e.weekend === weekends[e.id]
                         ? 'In this series'
                         : `Shows as “${eventTitle({ ...e, series: name.trim(), weekend: weekends[e.id] })}”`}
@@ -117,9 +119,9 @@ const Suggestion: React.FC<{
           )
         }
         disabled={busy || !name.trim() || picked.length < 1 || !toLink.length}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-accent-fill px-3 py-1.5 text-xs font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40"
+        className="inline-flex min-h-11 items-center gap-1.5 rounded-control bg-accent-fill px-3 py-1.5 text-xs font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40 sm:min-h-9"
       >
-        {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Layers className="h-3 w-3" />} Link {toLink.length} as “{name.trim() || '…'}”
+        {busy ? <Equalizer size="sm" /> : <Layers className="h-3 w-3" />} Link {toLink.length} as “{name.trim() || '…'}”
       </button>
     </li>
   );
@@ -141,42 +143,42 @@ const Series: React.FC<{
   useEffect(() => setDraft(name), [name]);
   const renamed = draft.trim() && draft.trim() !== name;
   return (
-    <li className="space-y-2 rounded-xl border border-zinc-800 p-3">
+    <li className="space-y-2 rounded-card border border-line bg-surface-1 p-3">
       <div className="flex items-center gap-2">
         <input className={control} value={draft} onChange={(e) => setDraft(e.target.value)} aria-label={`Rename ${name}`} />
         {renamed && (
           <button
             onClick={() => (onRename ? onRename(draft.trim()) : onSet(draft.trim(), editions))}
             disabled={busy}
-            className="shrink-0 rounded-lg border border-violet-500/50 px-2.5 py-1.5 text-xs text-violet-200 hover:bg-violet-950/40 disabled:opacity-40"
+            className="min-h-11 shrink-0 rounded-control border border-accent-tint-line bg-accent-tint px-2.5 py-1.5 text-xs text-accent hover:underline disabled:opacity-40 sm:min-h-9"
           >
             Rename all {editions.length}
           </button>
         )}
-        <button onClick={onShow} className="shrink-0 text-xs text-zinc-400 hover:text-violet-300">
+        <button onClick={onShow} className="min-h-11 shrink-0 rounded-control px-1.5 text-xs text-text-muted hover:text-accent sm:min-h-9">
           Show in Table
         </button>
       </div>
-      <ul className="divide-y divide-zinc-900">
+      <Ledger bare>
         {editions.map((e) => (
-          <li key={e.id} className="flex items-baseline justify-between gap-2 py-1.5 text-sm">
-            <button onClick={() => onOpen(e.id)} className="min-w-0 flex-1 text-left hover:text-violet-300">
-              <span className="font-medium text-zinc-100"><EventTitle event={e} /></span>
-              <span className="text-xs text-zinc-400"> · {line(e)}</span>
-              {e.name !== eventTitle(e) && <span className="block truncate text-[11px] text-zinc-400">typed as “{e.name}”</span>}
+          <Ledger.Row key={e.id} edge="none" className="min-h-11 justify-between px-2 py-1.5 text-sm sm:min-h-9">
+            <button onClick={() => onOpen(e.id)} className="min-w-0 flex-1 text-left hover:text-accent">
+              <span className="font-medium text-text"><EventTitle event={e} /></span>
+              <span className="font-mono text-xs tabular-nums text-text-muted"> · {line(e)}</span>
+              {e.name !== eventTitle(e) && <span className="block truncate text-[11px] text-text-faint">typed as “{e.name}”</span>}
             </button>
             <WeekendSelect value={e.weekend} disabled={busy} label={`Weekend of ${e.name}`} onChange={(w) => onWeekend(e, w)} />
             <button
               onClick={() => onSet(null, [e])}
               disabled={busy}
-              className="shrink-0 text-xs text-zinc-400 hover:text-rose-300 disabled:opacity-40"
+              className="min-h-11 shrink-0 rounded-control px-1.5 text-xs text-text-muted hover:text-bad disabled:opacity-40 sm:min-h-9"
               aria-label={`Take ${e.name} out of ${name}`}
             >
               Take out
             </button>
-          </li>
+          </Ledger.Row>
         ))}
-      </ul>
+      </Ledger>
       {others.length > 0 && (
         <select
           className={control}
@@ -259,20 +261,20 @@ export const SeriesPanel: React.FC<SeriesPanelProps> = ({ events, onChanged, onO
       {!embedded && (
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-zinc-50">Series</h2>
-            <p className="text-xs text-zinc-400">
+            <h2 className="font-display text-xl font-normal text-text">Series</h2>
+            <p className="text-xs text-text-muted">
               Link the years of a festival or tour so they read the same everywhere: EDC Las Vegas 2023, 2024, 2025. The name you typed stays on
               each event.
             </p>
           </div>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200" aria-label="Close">
+          <button onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control text-text-muted hover:text-text" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
       )}
-      {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
+      {error && <p className="rounded-card border border-bad/45 bg-bad/10 p-2 text-sm text-bad">{error}</p>}
       {done && (
-        <p className="inline-flex items-center gap-1 text-sm text-emerald-300">
+        <p className="inline-flex items-center gap-1 text-sm text-good">
           <Check className="h-4 w-4" /> {done}
         </p>
       )}
@@ -291,7 +293,7 @@ export const SeriesPanel: React.FC<SeriesPanelProps> = ({ events, onChanged, onO
             ))}
           </ul>
         ) : (
-          <p className="text-xs text-zinc-400">No events left whose names match once the year is taken out.</p>
+          <p className="text-xs text-text-muted">No events left whose names match once the year is taken out.</p>
         )}
       </section>
 
@@ -317,14 +319,14 @@ export const SeriesPanel: React.FC<SeriesPanelProps> = ({ events, onChanged, onO
             ))}
           </ul>
         ) : (
-          <p className="text-xs text-zinc-400">None yet. Link a suggestion above, or type a series on an event.</p>
+          <p className="text-xs text-text-muted">None yet. Link a suggestion above, or type a series on an event.</p>
         )}
       </section>
     </>
   );
   if (embedded) return <div className="space-y-5">{body}</div>;
   return (
-    <Dialog title="Series" onClose={onClose} panelClassName="h-full w-full max-w-2xl space-y-5 overflow-y-auto border-l border-zinc-900 bg-zinc-950 p-5 shadow-2xl">
+    <Dialog title="Series" onClose={onClose} panelClassName="h-full w-full max-w-2xl space-y-5 overflow-y-auto border-l border-line bg-page p-5 shadow-2xl">
       {body}
     </Dialog>
   );

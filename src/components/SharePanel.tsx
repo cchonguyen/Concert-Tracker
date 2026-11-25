@@ -1,6 +1,7 @@
 import { Dialog } from './ui/Dialog';
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Check, Copy, ExternalLink, Loader2, Share2, X } from 'lucide-react';
+import { AlertTriangle, Check, Copy, ExternalLink, Share2, X } from 'lucide-react';
+import { Equalizer } from './ui/Equalizer';
 import { ShareLinkView, shareApi } from '../services/lineupApi';
 import type { ShareSettings } from '../server/share/types';
 
@@ -14,9 +15,9 @@ interface SharePanelProps {
 }
 
 const button =
-  'inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:text-zinc-100 disabled:opacity-40';
+  'inline-flex min-h-11 sm:min-h-9 items-center gap-1.5 rounded-control border border-line-strong px-3 py-2 text-sm text-text-muted hover:text-text disabled:opacity-40';
 const primary =
-  'inline-flex items-center gap-1.5 rounded-lg bg-accent-fill px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40';
+  'inline-flex min-h-11 sm:min-h-9 items-center gap-1.5 rounded-control bg-accent-fill px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40';
 
 // The server keeps only a hash of the link's code, so the full link can be
 // shown again only from this browser, which remembers it for the active link.
@@ -128,8 +129,8 @@ export const SharePanel: React.FC<SharePanelProps> = ({ onClose }) => {
     <label className="flex items-start gap-3 text-sm">
       <input type="checkbox" checked={settings[key]} onChange={(e) => change({ [key]: e.target.checked })} disabled={!!busy} className="mt-1" />
       <span>
-        <span className="text-zinc-200">{label}</span>
-        <span className="block text-xs text-zinc-400">{hint}</span>
+        <span className="text-text">{label}</span>
+        <span className="block text-xs text-text-muted">{hint}</span>
       </span>
     </label>
   );
@@ -141,33 +142,33 @@ export const SharePanel: React.FC<SharePanelProps> = ({ onClose }) => {
       <div className="flex-1 space-y-5 overflow-y-auto p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="flex items-center gap-2 text-lg font-bold">
-              <Share2 className="h-4 w-4 text-violet-400" /> Share
+            <h2 className="flex items-center gap-2 font-display text-xl font-normal text-text">
+              <Share2 className="h-4 w-4 text-accent" /> Share
             </h2>
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-text-muted">
               A read-only page of the events you went to, for anyone with the link. It shows events only once they are over, and never who you
               went with, notes, ratings, prices or upcoming plans.
             </p>
           </div>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200" aria-label="Close">
+          <button onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control text-text-muted hover:text-text" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {error && (
-          <p className="flex items-start gap-2 rounded-lg border border-amber-900/60 bg-amber-950/30 p-3 text-sm text-amber-200">
+          <p className="flex items-start gap-2 rounded-card border border-warn/45 bg-warn/10 p-3 text-sm text-warn">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
           </p>
         )}
 
         {link === undefined ? (
-          <p className="flex items-center gap-2 text-sm text-zinc-400">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+          <p className="flex items-center gap-2 text-sm text-text-muted">
+            <Equalizer /> Loading…
           </p>
         ) : (
           <>
             <section className="space-y-2">
-              <label className="block text-sm text-zinc-300" htmlFor="share-name">
+              <label className="block text-sm text-text-muted" htmlFor="share-name">
                 Name on the page
               </label>
               <div className="flex gap-2">
@@ -177,7 +178,7 @@ export const SharePanel: React.FC<SharePanelProps> = ({ onClose }) => {
                   maxLength={60}
                   onChange={(e) => change({ displayName: e.target.value })}
                   placeholder="Your name"
-                  className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                  className="min-h-11 min-w-0 flex-1 rounded-control border border-line-strong bg-surface-1 px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none sm:min-h-9"
                 />
                 {nameChanged && (
                   <button
@@ -198,17 +199,17 @@ export const SharePanel: React.FC<SharePanelProps> = ({ onClose }) => {
             </section>
 
             {link ? (
-              <section className="space-y-3 rounded-xl border border-zinc-900 bg-zinc-900/40 p-4">
-                <p className="text-sm text-zinc-300">Link active since {day(link.createdAt)}.</p>
+              <section className="space-y-3 rounded-card border border-line bg-surface-1 p-4">
+                <p className="text-sm text-text-muted">Link active since <span className="font-mono tabular-nums text-text">{day(link.createdAt)}</span>.</p>
                 {url ? (
                   <div className="flex gap-2">
-                    <input readOnly value={url} onFocus={(e) => e.target.select()} className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-300" />
+                    <input readOnly value={url} onFocus={(e) => e.target.select()} className="min-h-11 min-w-0 flex-1 rounded-control border border-line-strong bg-page px-3 py-2 font-mono text-xs text-text sm:min-h-9" />
                     <button className={button} onClick={copy}>
                       {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? 'Copied' : 'Copy'}
                     </button>
                   </div>
                 ) : (
-                  <p className="text-xs text-zinc-400">
+                  <p className="text-xs text-text-muted">
                     For safety only a fingerprint of the link is kept, so it can't be shown again here. Make a new link to copy one (the old one stops
                     working).
                   </p>
@@ -218,17 +219,17 @@ export const SharePanel: React.FC<SharePanelProps> = ({ onClose }) => {
                     <ExternalLink className="h-4 w-4" /> Preview
                   </a>
                   <button className={button} disabled={!!busy} onClick={create}>
-                    {busy === 'create' && <Loader2 className="h-4 w-4 animate-spin" />} New link
+                    {busy === 'create' && <Equalizer size="sm" />} New link
                   </button>
                   <button className={button} disabled={!!busy} onClick={turnOff}>
-                    {busy === 'off' && <Loader2 className="h-4 w-4 animate-spin" />} Turn off
+                    {busy === 'off' && <Equalizer size="sm" />} Turn off
                   </button>
                 </div>
-                <p className="text-xs text-zinc-400">New link and Turn off stop the current link at once. Anyone you sent it to sees "This link isn't active".</p>
+                <p className="text-xs text-text-muted">New link and Turn off stop the current link at once. Anyone you sent it to sees "This link isn't active".</p>
               </section>
             ) : (
               <button className={primary} disabled={!!busy || !settings.displayName.trim()} onClick={create}>
-                {busy === 'create' && <Loader2 className="h-4 w-4 animate-spin" />} Create link
+                {busy === 'create' && <Equalizer size="sm" />} Create link
               </button>
             )}
           </>
