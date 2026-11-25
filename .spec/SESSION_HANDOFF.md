@@ -4,7 +4,7 @@
 - **Branch Owner:** Claude owns `claude/*` branches. Gemini (Antigravity or AI Studio) works on its own `antigravity/dr2-23.N` branches.
 - **Active Branch / State:** Design refresh 2.0 (`docs/specs/design-refresh-2.md`). Stage 0 merged: slices 22.1 to 22.6 (#673, #675, #677, #679, #681, #683): tokens, fonts, contrast test, ink on accent, reduced motion, and the shared Tabs, Ledger, KindPill, HintPill, Stars and Equalizer.
 - **Files Modified in Last Turn:** .spec/PROGRESS.md, .spec/SESSION_HANDOFF.md, .spec/archive/HISTORY.md, docs/specs/design-refresh-2-ledger-and-lobby.md
-- **Verification Status:** Verified via finish-slice.mjs (Slice 24.7)
+- **Verification Status:** Verified via finish-slice.mjs (Slice 24.8)
 - **Immediate Next Step:** Two tracks now run in parallel. Gemini builds the "Ledger & Lobby" package, slices 23.1 to 23.8 (issues #684 to #691, brief `docs/specs/design-refresh-2-ledger-and-lobby.md`). Claude builds Track A (Popover, top bar and page rows, Summary, event detail poster and two-column body, DetailShell motion, Stats and heatmap) on `claude/*` branches. Neither track edits the other's files (the list is in the brief).
 - **Streamlining (`claude/project-thread-47kcgx`, `docs/specs/streamlining-plan.md`):** all five slices built 2026-11-24 (#636, #639, #641, #643, #649, #652, and the last tidy-up PR). Charlie signed off deleting the four one-off scripts and the two unused packages.
 - **Open gaps:**
