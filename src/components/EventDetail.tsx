@@ -3,7 +3,7 @@ import { useIsOwner } from './MeContext';
 import { noteView } from '../services/vaultSession';
 import { draftAfterStoredChange } from '../services/fieldDraft';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Check, ChevronDown, CircleHelp, CloudSun, ExternalLink, FolderCog, Heart, History, ListMusic, Loader2, Plus, RefreshCw, Search, Trash2, Users, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Calendar, CalendarCheck, CalendarRange, Check, ChevronDown, CircleHelp, CloudSun, ExternalLink, FolderCog, Globe, Heart, History, Layers, ListFilter, ListMusic, Loader2, MapPin, Plus, RefreshCw, Search, Star, StickyNote, Tag, Ticket, Trash2, Type, Users, X } from 'lucide-react';
 import {
   ArtistSuggestion,
   canonicalApi,
@@ -70,6 +70,7 @@ import { Pill } from './ui/Pill';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
 import { Segmented } from './ui/Segmented';
+import { ReadList, ReadRow } from './ui/ReadRow';
 import { SaveStatus } from './ui/SaveStatus';
 import { beginSave, emptyTrack, failSave, hintVisit, succeedSave, takeFailed, type SaveTrack } from '../services/saveStatus';
 import { scrollBehavior } from '../services/motion';
@@ -107,9 +108,10 @@ function manageLinks(event: LoggedEvent): Array<{ label: string; target: ManageT
 
 // Notes: plain text on a single-owner install; encrypted in the browser when
 // the member's vault is on, and read-only while it is locked.
-const NotesField: React.FC<{ stored?: string | null; onSave: (v: string | null) => void }> = ({ stored, onSave }) => {
+const NotesField: React.FC<{ stored?: string | null; onSave: (v: string | null) => void; onDone?: () => void }> = ({ stored, onSave, onDone }) => {
   const vault = useVault();
   const [shown, setShown] = useState<string | null>(stored ? null : '');
+  const skipBlur = useRef(false);
   useEffect(() => {
     let live = true;
     vault.readNote(stored ?? undefined).then((v) => live && setShown(v), () => live && setShown(null));
@@ -131,7 +133,18 @@ const NotesField: React.FC<{ stored?: string | null; onSave: (v: string | null) 
         readOnly={locked}
         placeholder={locked ? 'Vault locked: unlock it in Your account to read or edit.' : undefined}
         defaultValue={shown ?? ''}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            skipBlur.current = true;
+            e.currentTarget.value = shown ?? '';
+            onDone?.();
+          }
+        }}
         onBlur={async (e) => {
+          if (skipBlur.current) {
+            skipBlur.current = false;
+            return;
+          }
           const v = e.target.value.trim();
           if (locked || v === (shown ?? '')) return;
           if (!v) return onSave(null);
@@ -139,6 +152,39 @@ const NotesField: React.FC<{ stored?: string | null; onSave: (v: string | null) 
         }}
       />
     </label>
+  );
+};
+
+const NotesReadRow: React.FC<{
+  stored?: string | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (v: string | null) => void;
+  flash?: boolean;
+}> = ({ stored, open, onOpenChange, onSave, flash }) => {
+  const vault = useVault();
+  const [shown, setShown] = useState<string | null>(stored ? null : '');
+  useEffect(() => {
+    let live = true;
+    vault.readNote(stored ?? undefined).then((v) => live && setShown(v), () => live && setShown(null));
+    return () => {
+      live = false;
+    };
+  }, [stored, vault.status]);
+  const view = noteView(shown);
+  const locked = !view.editable;
+  return (
+    <ReadRow
+      icon={StickyNote}
+      label="Notes"
+      value={locked ? `🔒 ${view.badge}` : shown ? shown : undefined}
+      emptyText="Not set"
+      disabled={locked}
+      flash={flash}
+      open={open}
+      onOpenChange={onOpenChange}
+      editor={(close) => <NotesField stored={stored} onSave={onSave} onDone={close} />}
+    />
   );
 };
 
@@ -168,6 +214,53 @@ const HINT_KEY = 'liveArchive.saveHint';
 const FlashContext = React.createContext<string[]>([]);
 const EditionIdContext = React.createContext<string | undefined>(undefined);
 const SourceHighlightContext = React.createContext<(key: string | null) => void>(() => undefined);
+
+const SourceLink: React.FC<{ source?: LoggedEvent['sources'][keyof LoggedEvent['sources']] }> = ({ source }) => {
+  const isOwner = useIsOwner();
+  const editionId = React.useContext(EditionIdContext);
+  const setHighlightedSource = React.useContext(SourceHighlightContext);
+  const highlightKey = sourceHighlightKey(source);
+  if (!source || source.sourceType === 'user') return null;
+  if (source.sourceType === 'edition') {
+    return isOwner && editionId ? (
+      <a
+        href={editionUrl(editionId)}
+        onMouseEnter={() => setHighlightedSource(highlightKey)}
+        onMouseLeave={() => setHighlightedSource(null)}
+        onFocus={() => setHighlightedSource(highlightKey)}
+        onBlur={() => setHighlightedSource(null)}
+        onClick={(e) => {
+          if (isModifiedClick(e)) return;
+          e.preventDefault();
+          const url = editionUrl(editionId);
+          window.history.pushState({ fromManageList: false }, '', url);
+          rememberManageSearch(new URL(url, window.location.origin).search);
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        }}
+        className="font-normal text-text-muted hover:text-accent hover:underline"
+      >
+        from {FIELD_SOURCE_LABELS.edition}
+      </a>
+    ) : (
+      <span className="font-normal text-text-muted">from {FIELD_SOURCE_LABELS.edition}</span>
+    );
+  }
+  return (
+    <a
+      href={source.sourceUrl}
+      target="_blank"
+      rel="noreferrer"
+      title={source.quote ? `“${source.quote}”` : undefined}
+      onMouseEnter={() => setHighlightedSource(highlightKey)}
+      onMouseLeave={() => setHighlightedSource(null)}
+      onFocus={() => setHighlightedSource(highlightKey)}
+      onBlur={() => setHighlightedSource(null)}
+      className="inline-flex items-center gap-0.5 font-normal text-text-muted hover:text-accent"
+    >
+      {source.sourceType === 'venue' ? 'from' : 'via'} {FIELD_SOURCE_LABELS[source.sourceType]} <ExternalLink className="h-2.5 w-2.5" />
+    </a>
+  );
+};
 
 // An inferred value beside an empty field (never in the input). Its reason opens on hover or tap.
 // A member's Verify counts toward it; the owner's Confirm writes it into the event as theirs.
@@ -373,7 +466,19 @@ const Field: React.FC<{
             }}
             onFocus={() => (editing.current = true)}
             onBlur={handleBlur}
-            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              else if (e.key === 'Escape') {
+                if (pending.current !== null) {
+                  window.clearTimeout(pending.current);
+                  pending.current = null;
+                }
+                editing.current = false;
+                setDraft(value === undefined ? '' : String(value));
+                skipBlur.current = true;
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
           />
         ) : (
           <input
@@ -389,7 +494,19 @@ const Field: React.FC<{
             }}
             onFocus={() => (editing.current = true)}
             onBlur={handleBlur}
-            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              else if (e.key === 'Escape') {
+                if (pending.current !== null) {
+                  window.clearTimeout(pending.current);
+                  pending.current = null;
+                }
+                editing.current = false;
+                setDraft(value === undefined ? '' : String(value));
+                skipBlur.current = true;
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
           />
         )}
       </label>
@@ -1124,11 +1241,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const [reviewing, setReviewing] = useState(false);
   const [weekendPromptDismissed, setWeekendPromptDismissed] = useState(false);
   const [highlightedSource, setHighlightedSource] = useState<string | null>(null);
+  const [openRow, setOpenRow] = useState<string | null>(null);
   const whenWhereRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     setWeekendPromptDismissed(false);
     setHighlightedSource(null);
+    setOpenRow(null);
   }, [event.id]);
 
   const others = events.filter((e) => e.id !== event.id);
@@ -1368,8 +1487,20 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const gapsLeft = thingsLeft(event, (e, g) => hasGap(e, g, undefined, edition ? lineupFacts(edition) : undefined));
   // Scrolls to the section a gap is filled in and highlights it for a moment.
   const [rightTab, setRightTab] = useState<'lineup' | 'seen' | 'changes'>('seen');
+  const GAP_ROW: Partial<Record<Gap, string>> = {
+    date: 'date',
+    venue: 'venue',
+    city: 'place',
+    place: 'place',
+    companions: 'companions',
+    price: 'ticketPrice',
+    format: 'format',
+    review: 'notes',
+  };
   const showGap = (gap: Gap) => {
     setGuide(gap);
+    const row = GAP_ROW[gap];
+    if (row) setOpenRow(row);
     // Open the Who you saw tab first, so its card is on screen to scroll to.
     if (GAP_SECTION[gap] === 'who-you-saw' && rightTab !== 'seen') {
       setRightTab('seen');
@@ -1434,107 +1565,31 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         {error && <p className="rounded-lg border border-bad/40 bg-bad/10 p-2 text-sm text-bad">{error}</p>}
         <div className="grid min-w-0 gap-5 @[760px]:grid-cols-[1.15fr_1fr] @[760px]:items-start">
           <div className="min-w-0 space-y-5">
-        {/* What it's called */}
-        <section id="name-series" className={card}>
-          <h3 className={cardTitle}>Name and series</h3>
-          <div className="flex items-start gap-3">
-            <Field label="Event" field="name" value={event.name} onSave={(v) => save({ name: v })} className="flex-1" />
-          </div>
-          {event.input && event.input !== event.name && <p className="text-xs text-text-muted">You typed: “{event.input}”</p>}
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-end gap-2">
-              <Field
-                label="Series"
-                field="series"
-                value={event.series}
-                placeholder="Festival or tour it's one year of, e.g. EDC Las Vegas"
-                suggestions={seriesOffers(event, others)}
-                onSave={(v) => save({ series: text(v), ...(text(v) ? {} : { weekend: null }) })}
-                className="flex-1"
-              />
-              {(event.series || (edition?.weekends && edition.weekends.length > 1)) && (
-                <div className="space-y-1">
-                  <span className="block text-[11px] font-semibold text-text-muted">Weekend</span>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {edition?.weekends && edition.weekends.length > 1
-                      ? edition.weekends.map((w) => {
-                          const on = event.weekend === w.weekend;
-                          return (
-                            <button
-                              key={w.weekend}
-                              type="button"
-                              aria-pressed={on}
-                              onClick={() => void save({ weekend: w.weekend })}
-                              className={`min-h-11 rounded-control border px-3 text-sm sm:min-h-9 ${on ? 'border-accent bg-accent-tint text-text' : 'border-line-strong text-text-muted hover:border-accent'}`}
-                            >
-                              {weekendLabel(w, 'WK')}
-                            </button>
-                          );
-                        })
-                      : [1, 2].map((w) => {
-                          const on = event.weekend === w;
-                          return (
-                            <button
-                              key={w}
-                              type="button"
-                              aria-pressed={on}
-                              onClick={() => void save({ weekend: w })}
-                              className={`min-h-11 rounded-control border px-3 text-sm sm:min-h-9 ${on ? 'border-accent bg-accent-tint text-text' : 'border-line-strong text-text-muted hover:border-accent'}`}
-                            >
-                              WK{w}
-                            </button>
-                          );
-                        })}
-                    {event.weekend != null && (
-                      <button
-                        type="button"
-                        onClick={() => void save({ weekend: null })}
-                        className="min-h-11 px-2 text-xs text-text-muted hover:text-text sm:min-h-9"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-            {(event.series || eventTitle(event) !== event.name) && (
-              <p className="text-[11px] text-text-muted">
-                Shows as “<EventTitle event={event} />”
-                {(() => {
-                  const n = seriesList(events).find((g) => g.name === event.series)?.events.length ?? 1;
-                  return n > 1 ? ` · ${n} editions in your log` : '';
-                })()}
-              </p>
-            )}
-          </div>
-        </section>
-
         <WentCard
           event={event}
           lineupActs={lineupActs}
           days={days}
-          canReview={Boolean(job && job.status === 'needs_review' && !edition)}
+          canReview={Boolean(job && job.status === "needs_review" && !edition)}
           onSave={(patch) => void save(patch)}
           onReview={() => setReviewing(true)}
         />
 
-        {/* Stage 1: when and where */}
+        {/* The edition */}
         <section id="when-where" ref={whenWhereRef} className={card}>
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-0.5">
-              <h3 className={cardTitle}>When and where</h3>
-              <SectionHelp label="When and where">
+              <h3 className={cardTitle}>The edition</h3>
+              <SectionHelp label="The edition">
                 Check details searches for this date and place and lists what it finds below. Nothing you typed changes until you tap Use on a suggestion.
               </SectionHelp>
             </div>
             <button
               type="button"
-              onClick={() => void run('research', () => eventsApi.research(event.id))}
-              disabled={busy === 'research' || busy === 'research-gemini'}
+              onClick={() => void run("research", () => eventsApi.research(event.id))}
+              disabled={busy === "research" || busy === "research-gemini"}
               className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-line-strong px-2.5 text-xs text-text hover:border-accent hover:text-accent disabled:opacity-50 sm:min-h-8"
             >
-              {busy === 'research' ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
+              {busy === "research" ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
               Check details
             </button>
           </div>
@@ -1556,9 +1611,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                   type="button"
                   onClick={() => {
                     setWeekendPromptDismissed(true);
-                    window.requestAnimationFrame(() => {
-                      whenWhereRef.current?.querySelector<HTMLInputElement>('input[type="date"]')?.focus();
-                    });
+                    setOpenRow("date");
                   }}
                   className="min-h-11 px-2 text-xs text-text-muted hover:text-text hover:underline sm:min-h-9"
                 >
@@ -1569,116 +1622,335 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           )}
           <CheckDetails
             inline
-            busy={busy === 'research'}
-            geminiBusy={busy === 'research-gemini'}
+            busy={busy === "research"}
+            geminiBusy={busy === "research-gemini"}
             checkedAt={details.checkedAt}
             status={details.status}
             candidates={details.candidates}
             notes={details.notes}
             lineupStatus={lineupStatus}
             suggestions={checkOffers}
-            onCheck={() => void run('research', () => eventsApi.research(event.id))}
-            onGemini={() => void run('research-gemini', () => eventsApi.research(event.id, true))}
-            onPick={(id: string) => void run('pick', () => eventsApi.pick(event.id, id))}
-            onNone={() => void run('pick', () => eventsApi.pick(event.id))}
-            onDismissCanon={() => void run('dismiss-canon', () => eventsApi.dismissCanon(event.id))}
-            dismissBusy={busy === 'dismiss-canon'}
+            onCheck={() => void run("research", () => eventsApi.research(event.id))}
+            onGemini={() => void run("research-gemini", () => eventsApi.research(event.id, true))}
+            onPick={(id: string) => void run("pick", () => eventsApi.pick(event.id, id))}
+            onNone={() => void run("pick", () => eventsApi.pick(event.id))}
+            onDismissCanon={() => void run("dismiss-canon", () => eventsApi.dismissCanon(event.id))}
+            dismissBusy={busy === "dismiss-canon"}
           />
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Date" field="startDate" type="date" value={event.startDate} source={event.sources.startDate} onInferredAct={verifyInferred} inferred={inferred.startDate} onSave={(v) => save({ startDate: text(v) })} />
-            {/* Shows the start date until you change it, so the picker opens on the
-                right month; stored only when it differs (a single-day event has no last day). */}
-            <Field
-              label="Last day"
-              field="endDate"
-              type="date"
-              value={event.endDate ?? event.startDate}
-              min={event.startDate}
-              source={event.endDate ? event.sources.endDate : undefined}
-              onInferredAct={verifyInferred} inferred={inferred.endDate}
-              
-              onSave={(v) => save({ endDate: v && v !== event.startDate ? v : null })}
+
+          <ReadList>
+            <ReadRow
+              icon={Type}
+              label="Event"
+              value={event.name}
+              emptyText="Not set"
+              flash={flashing.includes("name")}
+              open={openRow === "name"}
+              onOpenChange={(o) => setOpenRow(o ? "name" : null)}
+              editor={() => <Field label="Event" field="name" value={event.name} onSave={(v) => save({ name: v })} />}
+              below={event.input && event.input !== event.name ? <p className="text-xs text-text-muted">You typed: “{event.input}”</p> : undefined}
             />
-            {days.length > 1 && (
-              <DaysWent days={days} attended={event.daysAttended} onChange={(daysAttended) => save({ daysAttended })} />
-            )}
-            {!event.startDate && (
-              <Field label="Year, if that's all you know" field="year" type="number" value={event.year} placeholder="2024" onSave={(v) => save({ year: v ? Number(v) : null })} />
-            )}
-            <Field
-              label="Venue"
-              field="venue"
-              value={event.venue}
-              source={event.sources.venue}
-              onInferredAct={verifyInferred} inferred={inferred.venue}
-              suggestions={pastVenues}
-              onSave={async (v) => {
-                const venue = text(v);
-                setVenueChoices([]);
-                // A known venue fills only the empty city, state and country: from the place your other events
-                // there agree on, else from the shared venue records (one place only; several are offered).
-                let patch: Partial<Record<'city' | 'region' | 'country', string>> = {};
-                const own = venue ? placeForVenue(others, venue) : undefined;
-                if (own) patch = emptyPlaceFields(event, own);
-                else if (venue && (!event.city || !event.region || !event.country) && !isSampleMode()) {
-                  try {
-                    const found = await canonicalApi.venueLocation(venue);
-                    if (found.kind === 'one') patch = emptyPlaceFields(event, found.location);
-                    else if (found.kind === 'several') setVenueChoices(found.choices.filter((c) => Object.keys(emptyPlaceFields(event, c)).length));
-                  } catch {
-                    // No lookup: the venue is saved alone, as before.
-                  }
-                }
-                return save({ venue, ...patch });
-              }}
-            />
-            {venueChoices.length > 0 && (
-              <div className="space-y-1">
-                {venueChoices.map((c) => (
-                  <button
-                    key={[c.city, c.region, c.country].join('|')}
-                    type="button"
-                    onClick={() => {
-                      setVenueChoices([]);
-                      void save(emptyPlaceFields(event, c));
-                    }}
-                    className="block text-left text-xs text-accent hover:underline"
-                  >
-                    Use “{[c.city, c.region, c.country].filter(Boolean).join(', ')}” from venue records
-                  </button>
-                ))}
-              </div>
-            )}
-            <Field
-              label="City"
-              field="city"
-              value={event.city}
-              placeholder="City"
-              source={event.sources.city}
-              onInferredAct={verifyInferred} inferred={inferred.city}
-              suggestions={citySuggestions}
-              onType={setCityQuery}
-              onSave={(v) => saveCity(v)}
-            />
-            <Field
-              label="State"
-              field="region"
-              value={event.region}
-              placeholder="NV, or the region"
-              source={event.sources.region}
-              onInferredAct={verifyInferred} inferred={inferred.region}
-              offer={
-                mapOffer
-                  ? { value: mapOffer.value, from: mapOffer.from, onUse: () => void save(mapOffer.patch) }
-                  : undefined
+
+            <ReadRow
+              icon={Layers}
+              label="Series"
+              value={event.series}
+              emptyText="Not set"
+              flash={flashing.includes("series")}
+              open={openRow === "series"}
+              onOpenChange={(o) => setOpenRow(o ? "series" : null)}
+              editor={() => (
+                <Field
+                  label="Series"
+                  field="series"
+                  value={event.series}
+                  placeholder="Festival or tour it's one year of, e.g. EDC Las Vegas"
+                  suggestions={seriesOffers(event, others)}
+                  onSave={(v) => save({ series: text(v), ...(text(v) ? {} : { weekend: null }) })}
+                />
+              )}
+              below={
+                (event.series || (edition?.weekends && edition.weekends.length > 1) || eventTitle(event) !== event.name) ? (
+                  <div className="space-y-1.5">
+                    {(event.series || (edition?.weekends && edition.weekends.length > 1)) && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11px] font-semibold text-text-muted mr-1">Weekend</span>
+                        {edition?.weekends && edition.weekends.length > 1
+                          ? edition.weekends.map((w) => {
+                              const on = event.weekend === w.weekend;
+                              return (
+                                <button
+                                  key={w.weekend}
+                                  type="button"
+                                  aria-pressed={on}
+                                  onClick={() => void save({ weekend: w.weekend })}
+                                  className={`min-h-11 rounded-control border px-3 text-sm sm:min-h-9 ${on ? "border-accent bg-accent-tint text-text" : "border-line-strong text-text-muted hover:border-accent"}`}
+                                >
+                                  {weekendLabel(w, "WK")}
+                                </button>
+                              );
+                            })
+                          : [1, 2].map((w) => {
+                              const on = event.weekend === w;
+                              return (
+                                <button
+                                  key={w}
+                                  type="button"
+                                  aria-pressed={on}
+                                  onClick={() => void save({ weekend: w })}
+                                  className={`min-h-11 rounded-control border px-3 text-sm sm:min-h-9 ${on ? "border-accent bg-accent-tint text-text" : "border-line-strong text-text-muted hover:border-accent"}`}
+                                >
+                                  WK{w}
+                                </button>
+                              );
+                            })}
+                        {event.weekend != null && (
+                          <button
+                            type="button"
+                            onClick={() => void save({ weekend: null })}
+                            className="min-h-11 px-2 text-xs text-text-muted hover:text-text sm:min-h-9"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {(event.series || eventTitle(event) !== event.name) && (
+                      <p className="text-[11px] text-text-muted">
+                        Shows as “<EventTitle event={event} />”
+                        {(() => {
+                          const n = seriesList(events).find((g) => g.name === event.series)?.events.length ?? 1;
+                          return n > 1 ? ` · ${n} editions in your log` : "";
+                        })()}
+                      </p>
+                    )}
+                  </div>
+                ) : undefined
               }
-              onSave={(v) => save({ region: text(v) })}
             />
-            <Field label="Country" field="country" value={event.country} source={event.sources.country} onInferredAct={verifyInferred} inferred={inferred.country} onSave={(v) => save({ country: text(v) })} />
-            <div className="col-span-2 space-y-1">
-              <span className="block text-[11px] font-semibold text-text-muted">Type</span>
+
+            <ReadRow
+              icon={Calendar}
+              label="Date"
+              mono
+              value={event.startDate ? (whenLabel({ startDate: event.startDate }) ?? event.startDate) : undefined}
+              emptyText="Not known yet"
+              source={<SourceLink source={event.sources.startDate} />}
+              flash={flashing.includes("startDate")}
+              open={openRow === "date"}
+              onOpenChange={(o) => setOpenRow(o ? "date" : null)}
+              editor={() => (
+                <Field
+                  label="Date"
+                  field="startDate"
+                  type="date"
+                  value={event.startDate}
+                  source={event.sources.startDate}
+                  onInferredAct={verifyInferred}
+                  inferred={inferred.startDate}
+                  onSave={(v) => save({ startDate: text(v) })}
+                />
+              )}
+              below={!event.startDate && inferred.startDate ? <InferredNote inferred={inferred.startDate} type="date" onAct={verifyInferred} /> : undefined}
+            />
+
+            {!event.startDate && (
+              <ReadRow
+                icon={Calendar}
+                label="Year"
+                mono
+                value={event.year ? String(event.year) : undefined}
+                emptyText="Not known yet"
+                flash={flashing.includes("year")}
+                open={openRow === "year"}
+                onOpenChange={(o) => setOpenRow(o ? "year" : null)}
+                editor={() => <Field label="Year, if that's all you know" field="year" type="number" value={event.year} placeholder="2024" onSave={(v) => save({ year: v ? Number(v) : null })} />}
+              />
+            )}
+
+            <ReadRow
+              icon={CalendarRange}
+              label="Last day"
+              mono
+              value={event.endDate ? (whenLabel({ startDate: event.endDate }) ?? event.endDate) : undefined}
+              emptyText="Not known yet"
+              source={event.endDate ? <SourceLink source={event.sources.endDate} /> : undefined}
+              flash={flashing.includes("endDate")}
+              open={openRow === "endDate"}
+              onOpenChange={(o) => setOpenRow(o ? "endDate" : null)}
+              editor={() => (
+                <Field
+                  label="Last day"
+                  field="endDate"
+                  type="date"
+                  value={event.endDate ?? event.startDate}
+                  min={event.startDate}
+                  source={event.endDate ? event.sources.endDate : undefined}
+                  onInferredAct={verifyInferred}
+                  inferred={inferred.endDate}
+                  onSave={(v) => save({ endDate: v && v !== event.startDate ? v : null })}
+                />
+              )}
+              below={!event.endDate && inferred.endDate ? <InferredNote inferred={inferred.endDate} type="date" onAct={verifyInferred} /> : undefined}
+            />
+
+            {days.length > 1 && (
+              <ReadRow icon={CalendarCheck} label="Days you went" alwaysOpen>
+                <DaysWent days={days} attended={event.daysAttended} onChange={(daysAttended) => save({ daysAttended })} />
+              </ReadRow>
+            )}
+
+            <ReadRow
+              icon={MapPin}
+              label="Venue"
+              value={event.venue}
+              emptyText="Not known yet"
+              source={<SourceLink source={event.sources.venue} />}
+              flash={flashing.includes("venue")}
+              open={openRow === "venue"}
+              onOpenChange={(o) => setOpenRow(o ? "venue" : null)}
+              editor={() => (
+                <Field
+                  label="Venue"
+                  field="venue"
+                  value={event.venue}
+                  source={event.sources.venue}
+                  onInferredAct={verifyInferred}
+                  inferred={inferred.venue}
+                  suggestions={pastVenues}
+                  onSave={async (v) => {
+                    const venue = text(v);
+                    setVenueChoices([]);
+                    let patch: Partial<Record<"city" | "region" | "country", string>> = {};
+                    const own = venue ? placeForVenue(others, venue) : undefined;
+                    if (own) patch = emptyPlaceFields(event, own);
+                    else if (venue && (!event.city || !event.region || !event.country) && !isSampleMode()) {
+                      try {
+                        const found = await canonicalApi.venueLocation(venue);
+                        if (found.kind === "one") patch = emptyPlaceFields(event, found.location);
+                        else if (found.kind === "several") setVenueChoices(found.choices.filter((c) => Object.keys(emptyPlaceFields(event, c)).length));
+                      } catch {
+                        // No lookup: the venue is saved alone, as before.
+                      }
+                    }
+                    return save({ venue, ...patch });
+                  }}
+                />
+              )}
+              below={
+                (venueChoices.length > 0 || (!event.venue && inferred.venue)) ? (
+                  <div className="space-y-1">
+                    {!event.venue && inferred.venue && <InferredNote inferred={inferred.venue} type="text" onAct={verifyInferred} />}
+                    {venueChoices.map((c) => (
+                      <button
+                        key={[c.city, c.region, c.country].join("|")}
+                        type="button"
+                        onClick={() => {
+                          setVenueChoices([]);
+                          void save(emptyPlaceFields(event, c));
+                        }}
+                        className="block text-left text-xs text-accent hover:underline"
+                      >
+                        Use “{[c.city, c.region, c.country].filter(Boolean).join(", ")}” from venue records
+                      </button>
+                    ))}
+                  </div>
+                ) : undefined
+              }
+            />
+
+            <ReadRow
+              icon={Globe}
+              label="Place"
+              value={[event.city, event.region, event.country].filter(Boolean).join(", ") || undefined}
+              emptyText="Not known yet"
+              source={<SourceLink source={event.sources.city ?? event.sources.region ?? event.sources.country} />}
+              flash={flashing.includes("city") || flashing.includes("region") || flashing.includes("country")}
+              open={openRow === "place"}
+              onOpenChange={(o) => setOpenRow(o ? "place" : null)}
+              editor={() => (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <Field
+                    label="City"
+                    field="city"
+                    value={event.city}
+                    placeholder="City"
+                    source={event.sources.city}
+                    onInferredAct={verifyInferred}
+                    inferred={inferred.city}
+                    suggestions={citySuggestions}
+                    onType={setCityQuery}
+                    onSave={(v) => saveCity(v)}
+                  />
+                  <Field
+                    label="State"
+                    field="region"
+                    value={event.region}
+                    placeholder="NV, or the region"
+                    source={event.sources.region}
+                    onInferredAct={verifyInferred}
+                    inferred={inferred.region}
+                    offer={
+                      mapOffer
+                        ? { value: mapOffer.value, from: mapOffer.from, onUse: () => void save(mapOffer.patch) }
+                        : undefined
+                    }
+                    onSave={(v) => save({ region: text(v) })}
+                  />
+                  <Field
+                    label="Country"
+                    field="country"
+                    value={event.country}
+                    source={event.sources.country}
+                    onInferredAct={verifyInferred}
+                    inferred={inferred.country}
+                    onSave={(v) => save({ country: text(v) })}
+                  />
+                </div>
+              )}
+              below={
+                ((!event.city && inferred.city) || (!event.region && inferred.region) || (!event.country && inferred.country) || mapOffer) ? (
+                  <div className="space-y-1">
+                    {!event.city && inferred.city && <InferredNote inferred={inferred.city} type="text" onAct={verifyInferred} />}
+                    {!event.region && inferred.region && <InferredNote inferred={inferred.region} type="text" onAct={verifyInferred} />}
+                    {!event.country && inferred.country && <InferredNote inferred={inferred.country} type="text" onAct={verifyInferred} />}
+                    {mapOffer && (
+                      <button
+                        type="button"
+                        onClick={() => void save(mapOffer.patch)}
+                        className="block w-full truncate text-left text-[11px] text-accent hover:underline"
+                      >
+                        Use “{mapOffer.value}” from {mapOffer.from}
+                      </button>
+                    )}
+                  </div>
+                ) : undefined
+              }
+            />
+
+            <ReadRow
+              icon={ListFilter}
+              label="Type"
+              alwaysOpen
+              below={
+                !event.kind && worked.kind ? (
+                  worked.by === "series" ? (
+                    <span
+                      title={`${worked.kind === "festival" ? "From festival series" : "From tour series"}. Tap a type to change it.`}
+                      className="text-xs text-text-muted"
+                    >
+                      {worked.kind === "festival" ? "From festival series" : "From tour series"}
+                    </span>
+                  ) : (
+                    <span title="Worked out from the lineup; tap a type to change it." aria-label="Worked out from the lineup" className="text-accent">
+                      ✦
+                    </span>
+                  )
+                ) : undefined
+              }
+            >
               <div className="flex flex-wrap items-center gap-1.5">
-                {(['festival', 'concert'] as const).map((k) => {
+                {(["festival", "concert"] as const).map((k) => {
                   const shown = event.kind ?? worked.kind;
                   return (
                     <button
@@ -1686,29 +1958,36 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                       type="button"
                       aria-pressed={shown === k}
                       onClick={() => save({ kind: k })}
-                      className={`min-h-11 rounded-control border px-3 text-sm sm:min-h-9 ${shown === k ? 'border-accent bg-accent-tint text-text' : 'border-line-strong text-text-muted hover:border-accent'}`}
+                      className={`min-h-11 rounded-control border px-3 text-sm sm:min-h-9 ${shown === k ? "border-accent bg-accent-tint text-text" : "border-line-strong text-text-muted hover:border-accent"}`}
                     >
                       {KIND_LABELS[k]}
                     </button>
                   );
                 })}
-                {!event.kind && worked.kind && (
-                  worked.by === 'series' ? (
-                    <span
-                      title={`${worked.kind === 'festival' ? 'From festival series' : 'From tour series'}. Tap a type to change it.`}
-                      className="text-xs text-text-muted"
-                    >
-                      {worked.kind === 'festival' ? 'From festival series' : 'From tour series'}
-                    </span>
-                  ) : (
-                    <span title="Worked out from the lineup; tap a type to change it." aria-label="Worked out from the lineup" className="text-accent">
-                      ✦
-                    </span>
-                  )
-                )}
               </div>
-            </div>
-          </div>
+            </ReadRow>
+
+            <ReadRow
+              icon={CloudSun}
+              label="Weather"
+              value={
+                event.weather
+                  ? event.weather.days
+                      .map((d) => `${event.weather!.days.length > 1 ? (whenLabel({ startDate: d.date }) ?? d.date) + ": " : ""}${weatherLine(d) || "No reading"}`)
+                      .join(" · ")
+                  : undefined
+              }
+              emptyText="Not known yet"
+              source={
+                event.weather ? (
+                  <a href={event.weather.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-text-muted hover:text-accent">
+                    Open-Meteo <ExternalLink className="h-2.5 w-2.5" />
+                  </a>
+                ) : undefined
+              }
+              below={!event.weather ? <Weather event={event} busy={busy === "weather"} note={weatherNote} onLookUp={lookUpWeather} /> : undefined}
+            />
+          </ReadList>
 
           {confirmations.length > 0 && (
             <p className="text-xs">
@@ -1716,25 +1995,24 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                 href="#event-sources"
                 onClick={(e) => {
                   e.preventDefault();
-                  document.getElementById('event-sources')?.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
+                  document.getElementById("event-sources")?.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" });
                 }}
                 className="inline-flex items-center gap-1 text-good hover:underline"
               >
-                <Check className="h-3.5 w-3.5" /> Date confirmed by {confirmations.length} source{confirmations.length === 1 ? '' : 's'}
+                <Check className="h-3.5 w-3.5" /> Date confirmed by {confirmations.length} source{confirmations.length === 1 ? "" : "s"}
               </a>
             </p>
           )}
-          {details.status === 'none' && <p className="text-xs text-text-muted">No listing found. It's saved as you typed it.</p>}
-          {details.status === 'needs_date' && <p className="text-xs text-warn">Add when it was (a year is enough), then look again.</p>}
-          {details.status === 'off' && <p className="text-xs text-text-muted">No event source is set up, so details are as you typed them.</p>}
-          <Weather event={event} busy={busy === 'weather'} note={weatherNote} onLookUp={lookUpWeather} />
+          {details.status === "none" && <p className="text-xs text-text-muted">No listing found. It's saved as you typed it.</p>}
+          {details.status === "needs_date" && <p className="text-xs text-warn">Add when it was (a year is enough), then look again.</p>}
+          {details.status === "off" && <p className="text-xs text-text-muted">No event source is set up, so details are as you typed them.</p>}
         </section>
 
         {/* Your details */}
         <details
           id="your-notes"
           open={notesOpen}
-          onToggle={(e) => rememberSection('notes', e.currentTarget.open)}
+          onToggle={(e) => rememberSection("notes", e.currentTarget.open)}
           className={`group ${card}`}
         >
           <summary className={`${cardTitle} flex cursor-pointer list-none items-center justify-between gap-2`}>
@@ -1742,40 +2020,83 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             {night && <span className="truncate text-sm font-normal text-text-muted">{night}</span>}
             <ChevronDown className="h-4 w-4 text-text-muted transition-transform group-open:rotate-180" aria-hidden="true" />
           </summary>
-          <label className="block space-y-1">
-            <span className="text-[11px] font-semibold text-text-muted">Format</span>
-            <ChipInput
-              items={formatsOf(event.format)}
-              placeholder="Club night, warehouse party, block party…"
-              past={formatSuggestions}
-              label="Add a format"
-              onChange={(formats) => save({ format: joinFormats(formats) })}
+
+          <ReadList>
+            <ReadRow
+              icon={Users}
+              label="Went with"
+              value={event.peopleLocked ? "🔒 Vault locked" : event.companions.length ? event.companions.join(", ") : undefined}
+              emptyText="Not set"
+              disabled={Boolean(event.peopleLocked)}
+              flash={flashing.includes("companions")}
+              open={openRow === "companions"}
+              onOpenChange={(o) => setOpenRow(o ? "companions" : null)}
+              editor={() => (
+                <ChipInput
+                  items={event.companions}
+                  placeholder="Add a name"
+                  past={pastCompanions}
+                  label="Add who you went with"
+                  onChange={(companions) => save({ companions })}
+                />
+              )}
             />
-          </label>
-          <label className="block space-y-1">
-            <span className="text-[11px] font-semibold text-text-muted">Went with</span>
-            {event.peopleLocked ? (
-              <span className="block rounded-md border border-line px-2.5 py-1.5 text-xs text-warn">🔒 Vault locked</span>
-            ) : (
-              <ChipInput items={event.companions} placeholder="Add a name" past={pastCompanions} label="Add who you went with" onChange={(companions) => save({ companions })} />
-            )}
-          </label>
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="space-y-1">
-              <span className="text-[11px] font-semibold text-text-muted">Rating</span>
+
+            <ReadRow icon={Star} label="Rating" alwaysOpen>
               <Stars value={event.rating ?? null} onChange={(rating) => save({ rating })} size="md" className="-ml-1.5 flex" />
-            </div>
-            <Field
-              label="Ticket price"
-              field="ticketPrice"
-              type="number"
-              value={event.ticketPrice}
-              source={event.sources.ticketPrice}
-              onSave={(v) => save({ ticketPrice: v ? Number(v) : null })}
-              className="w-32"
+            </ReadRow>
+
+            <ReadRow
+              icon={Tag}
+              label="Format"
+              value={formatsOf(event.format).length ? formatsOf(event.format).join(", ") : undefined}
+              emptyText="Not set"
+              flash={flashing.includes("format")}
+              open={openRow === "format"}
+              onOpenChange={(o) => setOpenRow(o ? "format" : null)}
+              editor={() => (
+                <ChipInput
+                  items={formatsOf(event.format)}
+                  placeholder="Club night, warehouse party, block party…"
+                  past={formatSuggestions}
+                  label="Add a format"
+                  onChange={(formats) => save({ format: joinFormats(formats) })}
+                />
+              )}
             />
-          </div>
-          <NotesField stored={event.notes} onSave={(v) => save({ notes: v })} />
+
+            <ReadRow
+              icon={Ticket}
+              label="Ticket price"
+              mono
+              value={event.ticketPrice != null ? String(event.ticketPrice) : undefined}
+              emptyText="Not set"
+              source={<SourceLink source={event.sources.ticketPrice} />}
+              flash={flashing.includes("ticketPrice")}
+              open={openRow === "ticketPrice"}
+              onOpenChange={(o) => setOpenRow(o ? "ticketPrice" : null)}
+              editor={() => (
+                <Field
+                  label="Ticket price"
+                  field="ticketPrice"
+                  type="number"
+                  value={event.ticketPrice}
+                  source={event.sources.ticketPrice}
+                  onSave={(v) => save({ ticketPrice: v ? Number(v) : null })}
+                  className="w-36"
+                />
+              )}
+            />
+
+            <NotesReadRow
+              stored={event.notes}
+              flash={flashing.includes("notes")}
+              open={openRow === "notes"}
+              onOpenChange={(o) => setOpenRow(o ? "notes" : null)}
+              onSave={(v) => save({ notes: v })}
+            />
+          </ReadList>
+
           {((onManage && manageLinks(event).length > 0) || (canManageEdition && event.editionId)) && (
             <p className="flex flex-wrap items-center gap-1.5 border-t border-line pt-3 text-[11px] text-text-muted">
               <FolderCog className="h-3 w-3" /> Edit on every event in Manage:
@@ -1795,9 +2116,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                     if (isModifiedClick(e)) return;
                     e.preventDefault();
                     const url = editionUrl(event.editionId!);
-                    window.history.pushState({ fromManageList: false }, '', url);
+                    window.history.pushState({ fromManageList: false }, "", url);
                     rememberManageSearch(new URL(url, window.location.origin).search);
-                    window.dispatchEvent(new PopStateEvent('popstate'));
+                    window.dispatchEvent(new PopStateEvent("popstate"));
                   }}
                   className="rounded-full border border-line px-2 py-0.5 text-text-muted hover:text-accent"
                 >
@@ -1807,7 +2128,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </p>
           )}
         </details>
-
         <EventSources
           event={event}
           confirmations={confirmations}
