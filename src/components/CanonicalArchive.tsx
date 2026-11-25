@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import {
   canonicalApi,
   CanonicalChangeRow,
@@ -33,6 +33,7 @@ import { seedMultiWeekends } from '../services/weekends';
 import { Button } from './ui/Button';
 import { Callout } from './ui/Callout';
 import { Equalizer } from './ui/Equalizer';
+import { HintPill, type HintTone } from './ui/HintPill';
 import { Ledger } from './ui/Ledger';
 import { Notice } from './ui/Notice';
 import { Pill } from './ui/Pill';
@@ -73,14 +74,14 @@ const STATUS_WORDS: Record<LookupJob['status'], string> = {
   confirmed: 'Saved to the archive',
   failed: 'Failed',
 };
-const STATUS_TONE: Record<LookupJob['status'], 'neutral' | 'accent' | 'warn' | 'good'> = {
-  queued: 'neutral',
-  running: 'neutral',
-  waiting_quota: 'warn',
-  needs_review: 'accent',
-  no_data: 'warn',
-  confirmed: 'good',
-  failed: 'warn',
+const STATUS_HINT: Record<LookupJob['status'], HintTone> = {
+  queued: 'busy',
+  running: 'busy',
+  waiting_quota: 'needs',
+  needs_review: 'needs',
+  no_data: 'info',
+  confirmed: 'done',
+  failed: 'needs',
 };
 const isActive = (j: LookupJob) => j.status === 'queued' || j.status === 'running' || j.status === 'waiting_quota';
 // Retry runs the job again now (POST /api/lookups/:id/run).
@@ -1349,7 +1350,7 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
             e.preventDefault();
             handleBackToEditions();
           }}
-          className="text-sm text-violet-300 hover:text-violet-200"
+          className="text-sm text-accent hover:underline"
         >
           ← Back to editions
         </a>
@@ -1379,29 +1380,29 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
 
   return (
     <section className="space-y-2">
-      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+      {error && <p role="alert" className="text-sm text-bad">{error}</p>}
       <EditionNameGaps />
       <VenueFillPanel />
       {page === null ? (
-        <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+        <Equalizer />
       ) : page.editions.length === 0 ? (
-        <p className="text-sm text-zinc-400">{query || status !== 'all' ? 'No editions match.' : 'No editions yet. Find a lineup under Lineup lookups to add one.'}</p>
+        <p className="text-sm text-text-muted">{query || status !== 'all' ? 'No editions match.' : 'No editions yet. Find a lineup under Lineup lookups to add one.'}</p>
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-zinc-400" role="status">
+            <p className="font-mono text-xs tabular-nums text-text-muted" role="status">
               {page.hasMore ? `Showing ${page.editions.length} of ${page.total}` : `${page.total} ${page.total === 1 ? 'edition' : 'editions'}`}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               {selectMode && (
                 <>
-                  <span className="text-xs text-zinc-300">{selectedIds.size} selected</span>
+                  <span className="font-mono text-xs tabular-nums text-text-muted">{selectedIds.size} selected</span>
                   <Button
                     variant="primary"
                     disabled={selectedIds.size < 2 || loadingMerge}
                     onClick={() => void startSelectedMerge()}
                   >
-                    {loadingMerge && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Merge selected…
+                    {loadingMerge && <Equalizer size="sm" />} Merge selected…
                   </Button>
                 </>
               )}
@@ -1415,15 +1416,16 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
               </Button>
             </div>
           </div>
-          <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+          <Ledger>
             {page.editions.map((e) => {
               const url = editionUrl(e.id, { status, q: query || undefined });
               const checked = selectedIds.has(e.id);
               const dateSummary = e.weekends.length > 1
                 ? `${e.weekends.length} weekends`
                 : e.startDate;
+              const placeSummary = [e.venue, e.city].filter(Boolean).join(' · ');
               return (
-                <li key={e.id} className="flex items-center">
+                <Ledger.Row key={e.id} className="flex items-center p-0">
                   {selectMode && (
                     <label className="flex cursor-pointer items-center pl-3">
                       <input
@@ -1431,7 +1433,7 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
                         checked={checked}
                         onChange={() => toggleSelect(e.id)}
                         aria-label={`Select ${e.name}`}
-                        className="h-4 w-4 accent-violet-500"
+                        className="h-4 w-4 accent-[var(--accent)]"
                       />
                     </label>
                   )}
@@ -1449,21 +1451,29 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
                       rememberManageSearch(new URL(url, window.location.origin).search);
                       window.dispatchEvent(new PopStateEvent('popstate'));
                     }}
-                    className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 p-2.5 text-left text-sm hover:bg-zinc-900/60"
+                    className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-surface-2/60"
                   >
-                    <span className="font-medium text-zinc-100">{e.name}</span>
+                    <span className="font-medium text-text">{e.name}</span>
                     {e.seriesName && (
-                      <span className="text-xs text-violet-300/90">
+                      <span className="text-xs text-accent">
                         {e.seriesName}{e.seriesBrand ? ` · ${e.seriesBrand}` : ''}
                       </span>
                     )}
-                    <span className="text-xs text-zinc-400">{[dateSummary, e.venue, e.city].filter(Boolean).join(' · ') || 'Details missing'}</span>
-                    <span className="ml-auto text-xs text-zinc-400">{e.performanceCount} billed · {editionStatusWords(e.status).split(' (')[0].toLowerCase()}{e.hasSetTimes ? ' · set times' : ''}</span>
+                    {(dateSummary || placeSummary) ? (
+                      <span className="text-xs text-text-muted">
+                        {dateSummary && <span className="font-mono tabular-nums">{dateSummary}</span>}
+                        {dateSummary && placeSummary && ' · '}
+                        {placeSummary}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-text-muted">Details missing</span>
+                    )}
+                    <span className="ml-auto font-mono text-xs tabular-nums text-text-muted">{e.performanceCount} billed · {editionStatusWords(e.status).split(' (')[0].toLowerCase()}{e.hasSetTimes ? ' · set times' : ''}</span>
                   </a>
-                </li>
+                </Ledger.Row>
               );
             })}
-          </ul>
+          </Ledger>
         </>
       )}
       {mergeEditions && (
@@ -1578,12 +1588,12 @@ const ArchiveLookups: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
-        <h3 className="text-sm font-semibold text-zinc-100">Find a lineup for the catalog</h3>
-        <p className="text-xs text-zinc-400">Finds the lineup for an event you did not attend. Nothing is added to your log.</p>
+      <div className="space-y-2 rounded-card border border-line bg-surface-1 p-3">
+        <h3 className="font-display text-base font-normal text-text">Find a lineup for the catalog</h3>
+        <p className="text-xs text-text-muted">Finds the lineup for an event you did not attend. Nothing is added to your log.</p>
         <div className="flex flex-wrap gap-2">
           <input aria-label="Event or festival name" className={`${field} min-w-[12rem] flex-1`} placeholder="Event or festival name" value={name} onChange={(e) => setName(e.target.value)} />
-          <input aria-label="Year" className={`${field} w-24`} inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value)} />
+          <input aria-label="Year" className={`${field} w-24 font-mono tabular-nums`} inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value)} />
           <input aria-label="Lineup URL (optional)" className={`${field} min-w-[12rem] flex-1`} placeholder="Lineup URL (optional)" value={url} onChange={(e) => setUrl(e.target.value)} />
           {name.trim() && /^\d{4}$/.test(year) && (
             <VersionPicker
@@ -1592,28 +1602,28 @@ const ArchiveLookups: React.FC = () => {
               onPick={(v) => setUrl(v.url)}
             />
           )}
-          <button onClick={ingest} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-accent-fill px-3 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-50">
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />} Find lineup
-          </button>
+          <Button variant="primary" onClick={ingest} disabled={busy}>
+            {busy && <Equalizer size="sm" />} Find lineup
+          </Button>
         </div>
-        {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+        {error && <p role="alert" className="text-sm text-bad">{error}</p>}
       </div>
 
       <section className="space-y-2" aria-labelledby="lookups-heading">
-        <h3 id="lookups-heading" className="text-sm font-semibold text-zinc-100">Lineup lookups</h3>
+        <h3 id="lookups-heading" className="font-display text-base font-normal text-text">Lineup lookups</h3>
         {lookups === null ? (
-          <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+          <Equalizer />
         ) : lookups.length === 0 ? (
-          <p className="text-sm text-zinc-400">No lineup lookups yet. A new one shows here as soon as it starts.</p>
+          <p className="text-sm text-text-muted">No lineup lookups yet. A new one shows here as soon as it starts.</p>
         ) : (
-          <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+          <Ledger>
             {lookups.map((j) => (
-              <li key={j.id} className="flex flex-wrap items-center gap-2 p-2.5 text-sm">
-                <span className="font-medium text-zinc-100">{j.input.eventName}</span>
-                <span className="text-xs text-zinc-400">{j.input.year}</span>
-                <Pill tone={STATUS_TONE[j.status]}>{STATUS_WORDS[j.status]}</Pill>
-                {j.status === 'failed' && j.lastError && <span className="basis-full text-xs text-rose-300">{j.lastError}</span>}
-                {j.status === 'waiting_quota' && j.waitingReason && <span className="basis-full text-xs text-amber-200">{j.waitingReason}</span>}
+              <Ledger.Row key={j.id} className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="font-medium text-text">{j.input.eventName}</span>
+                <span className="font-mono text-xs tabular-nums text-text-muted">{j.input.year}</span>
+                <HintPill tone={STATUS_HINT[j.status]}>{STATUS_WORDS[j.status]}</HintPill>
+                {j.status === 'failed' && j.lastError && <span className="basis-full text-xs text-bad">{j.lastError}</span>}
+                {j.status === 'waiting_quota' && j.waitingReason && <span className="basis-full text-xs text-warn">{j.waitingReason}</span>}
                 <span className="ml-auto flex gap-2">
                   {j.status === 'needs_review' && <Button variant="primary" onClick={() => setReviewing(j)}>Review</Button>}
                   {(j.status === 'queued' || j.status === 'waiting_quota') && (
@@ -1623,13 +1633,13 @@ const ArchiveLookups: React.FC = () => {
                   )}
                   {canRetry(j) && (
                     <Button onClick={() => void retry(j.id)} disabled={retrying === j.id}>
-                      {retrying === j.id && <Loader2 className="h-4 w-4 animate-spin" />} Retry
+                      {retrying === j.id && <Equalizer size="sm" />} Retry
                     </Button>
                   )}
                 </span>
-              </li>
+              </Ledger.Row>
             ))}
-          </ul>
+          </Ledger>
         )}
       </section>
     </div>
@@ -1714,37 +1724,37 @@ const ArchiveChanges: React.FC = () => {
       {done && <Notice tone="success">{done}</Notice>}
       {error && <Notice tone="warning">{error}</Notice>}
       {list === null ? (
-        error ? null : <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+        error ? null : <Equalizer />
       ) : rows.length === 0 ? (
-        <p className="text-sm text-zinc-400">No changes yet.</p>
+        <p className="text-sm text-text-muted">No changes yet.</p>
       ) : (
-        <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+        <Ledger>
           {rows.map((r) => (
-            <li key={r.id} className="space-y-1 p-2.5 text-sm">
+            <Ledger.Row key={r.id} className="space-y-1 text-sm">
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <span className={r.undoneAt ? 'text-zinc-500 line-through' : 'text-zinc-100'}>{r.summary}</span>
-                <span className="text-[11px] text-zinc-400">{when(r.time)}</span>
+                <span className={r.undoneAt ? 'text-text-faint line-through' : 'text-text'}>{r.summary}</span>
+                <span className="font-mono text-[11px] tabular-nums text-text-muted">{when(r.time)}</span>
                 {r.undoneAt ? (
-                  <span className="text-[11px] text-zinc-400">Undone {when(r.undoneAt)}</span>
+                  <span className="font-mono text-[11px] tabular-nums text-text-muted">Undone {when(r.undoneAt)}</span>
                 ) : (
                   <span className="ml-auto">
                     <Button onClick={() => void undo(r)} disabled={busyId !== null}>
-                      {busyId === r.id && <Loader2 className="h-4 w-4 animate-spin" />} Undo
+                      {busyId === r.id && <Equalizer size="sm" />} Undo
                     </Button>
                   </span>
                 )}
               </div>
-              <p className={`text-xs ${r.undoneAt ? 'text-zinc-500 line-through' : 'text-zinc-400'}`}>
+              <p className={`text-xs ${r.undoneAt ? 'text-text-faint line-through' : 'text-text-muted'}`}>
                 {r.before} → {r.after}
               </p>
-            </li>
+            </Ledger.Row>
           ))}
-        </ul>
+        </Ledger>
       )}
       {list?.hasMore && (
         <div>
           <Button onClick={() => void loadMore()} disabled={loadingMore}>
-            {loadingMore && <Loader2 className="h-4 w-4 animate-spin" />} Load more
+            {loadingMore && <Equalizer size="sm" />} Load more
           </Button>
         </div>
       )}
@@ -1886,25 +1896,25 @@ const EditionDetail: React.FC<{
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold text-zinc-50">{edition.name}</h3>
-          <p className="text-xs text-zinc-500">Catalog record. Your personal log is not changed.</p>
+          <h3 className="font-display text-xl font-normal text-text">{edition.name}</h3>
+          <p className="text-xs text-text-muted">Catalog record. Your personal log is not changed.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {edition.status === 'provisional' && (
             <Button variant="primary" onClick={() => void verifyEdition()} disabled={verifying}>
-              {verifying && <Loader2 className="h-4 w-4 animate-spin" />} Verify for everyone
+              {verifying && <Equalizer size="sm" />} Verify for everyone
             </Button>
           )}
           {!editingFacts && <Button onClick={() => setEditingFacts(true)}>Edit facts</Button>}
           {canFindLineup && (
             <Button onClick={() => void findLineup()} disabled={findingLineup}>
-              {findingLineup && <Loader2 className="h-4 w-4 animate-spin" />} Find lineup
+              {findingLineup && <Equalizer size="sm" />} Find lineup
             </Button>
           )}
           <Button onClick={onEditLineup}>Edit lineup</Button>
           {edition.weather && (
             <Button onClick={() => void refreshWeather()} disabled={weatherBusy}>
-              {weatherBusy && <Loader2 className="h-4 w-4 animate-spin" />} Refresh weather
+              {weatherBusy && <Equalizer size="sm" />} Refresh weather
             </Button>
           )}
           {onStartMerge && <Button onClick={onStartMerge}>Merge with…</Button>}
@@ -1912,7 +1922,7 @@ const EditionDetail: React.FC<{
       </div>
       {canFindLineup && (
         <input
-          className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none"
+          className={`${field} w-full`}
           value={lineupLink}
           onChange={(e) => setLineupLink(e.target.value)}
           placeholder="Lineup page for Find lineup, if you know one (optional)"
@@ -1922,28 +1932,28 @@ const EditionDetail: React.FC<{
       {edition.startDate && (
         <PasteSetTimes startDate={edition.startDate} endDate={edition.endDate} busy={pasting} onSubmit={(url, text) => void pasteSets(url, text)} />
       )}
-      {lineupStatus && <p className="text-sm text-zinc-300" role="status">{lineupStatus.text}</p>}
+      {lineupStatus && <p className="text-sm text-text-muted" role="status">{lineupStatus.text}</p>}
       {edition.weather && (
-        <div className="space-y-1 text-xs text-zinc-400">
-          <p className="text-zinc-300">Weather, {edition.weather.place}. Read from the Open-Meteo archive.</p>
+        <div className="space-y-1 text-xs text-text-muted">
+          <p className="text-text">Weather, {edition.weather.place}. Read from the Open-Meteo archive.</p>
           <ul className="space-y-0.5">
             {edition.weather.days.map((d) => (
               <li key={d.date}>
-                {d.date}: {weatherLine(d) || 'No reading'}
+                <span className="font-mono tabular-nums">{d.date}</span>: {weatherLine(d) || 'No reading'}
               </li>
             ))}
           </ul>
         </div>
       )}
-      {weatherNote && <p className="text-sm text-zinc-300" role="status">{weatherNote.text}</p>}
+      {weatherNote && <p className="text-sm text-text-muted" role="status">{weatherNote.text}</p>}
       {(edition.status === 'provisional' || note) && (
         <div className="flex flex-wrap items-center gap-3 text-sm">
-          {edition.status === 'provisional' && <span className="text-xs text-zinc-500">Members entered this. Verifying makes it autofill for everyone.</span>}
+          {edition.status === 'provisional' && <span className="text-xs text-text-muted">Members entered this. Verifying makes it autofill for everyone.</span>}
           {note && (
             <>
-              <span className="text-zinc-300" role="status">{note.text}</span>
+              <span className="text-text-muted" role="status">{note.text}</span>
               {note.changeId && (
-                <button onClick={() => void undoVerify(note.changeId!)} disabled={verifying} className="text-violet-300 hover:text-violet-200 disabled:opacity-40">
+                <button onClick={() => void undoVerify(note.changeId!)} disabled={verifying} className="text-accent hover:underline disabled:opacity-40">
                   Undo
                 </button>
               )}
@@ -1964,7 +1974,7 @@ const EditionDetail: React.FC<{
         <>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-[11px] uppercase text-zinc-500">Series</dt>
+              <dt className="font-mono text-[11px] uppercase tracking-wider text-text-muted">Series</dt>
               <dd className="flex flex-wrap items-center gap-1.5">
                 {edition.seriesSlug ? (
                   <>
@@ -1978,33 +1988,33 @@ const EditionDetail: React.FC<{
                           rememberManageSearch(new URL(seriesHref, window.location.origin).search);
                           window.dispatchEvent(new PopStateEvent('popstate'));
                         }}
-                        className="text-violet-300 hover:underline"
+                        className="text-accent hover:underline"
                       >
                         {edition.seriesName ?? edition.seriesSlug}
                       </a>
                     ) : (
-                      <span className="text-zinc-100">{edition.seriesName ?? edition.seriesSlug}</span>
+                      <span className="text-text">{edition.seriesName ?? edition.seriesSlug}</span>
                     )}
                     {edition.seriesBrand && <Pill tone="accent">{edition.seriesBrand}</Pill>}
                   </>
                 ) : (
-                  <span className="italic text-zinc-500">None</span>
+                  <span className="italic text-text-muted">None</span>
                 )}
               </dd>
             </div>
             {facts.map((item) => (
               <div key={item.label}>
-                <dt className="text-[11px] uppercase text-zinc-500">{item.label}</dt>
-                <dd className={item.value ? 'text-zinc-100' : 'italic text-zinc-500'}>
+                <dt className="font-mono text-[11px] uppercase tracking-wider text-text-muted">{item.label}</dt>
+                <dd className={`${item.value ? 'text-text' : 'italic text-text-muted'}${item.value && (item.label === 'Year' || item.label === 'Dates') ? ' font-mono tabular-nums' : ''}`}>
                   {item.value ?? 'Not known'}
-                  {item.fromSeries && <span className="ml-1 text-xs text-zinc-400">(from series)</span>}
+                  {item.fromSeries && <span className="ml-1 text-xs text-text-muted">(from series)</span>}
                 </dd>
               </div>
             ))}
           </dl>
           {edition.weekends && edition.weekends.length > 0 && (
             <div className="space-y-1">
-              <p className="text-[11px] uppercase text-zinc-500">Weekends</p>
+              <p className="font-mono text-[11px] uppercase tracking-wider text-text-muted">Weekends</p>
               <div className="flex flex-wrap gap-1.5">
                 {edition.weekends.map((w) => (
                   <Pill key={w.weekend} tone="neutral">
@@ -2014,28 +2024,28 @@ const EditionDetail: React.FC<{
               </div>
             </div>
           )}
-          <p className="text-xs text-zinc-400">
-            Facts source: {edition.factSourceNote ? <span className="text-zinc-200">{edition.factSourceNote}</span> : <span className="italic text-zinc-500">No source note for these facts yet.</span>}
+          <p className="text-xs text-text-muted">
+            Facts source: {edition.factSourceNote ? <span className="text-text">{edition.factSourceNote}</span> : <span className="italic text-text-muted">No source note for these facts yet.</span>}
           </p>
         </>
       )}
       {edition.performances.length === 0 ? (
-        <p className="text-sm text-zinc-400">No acts recorded for this edition.</p>
+        <p className="text-sm text-text-muted">No acts recorded for this edition.</p>
       ) : (
         <>
           {(() => {
             const candidates = edition.performances.filter((p) => p.verification === 'candidate').length;
             return candidates > 0 ? (
-              <p className="text-xs text-amber-300">
+              <p className="text-xs text-warn">
                 {candidates} {candidates === 1 ? 'act' : 'acts'} not yet verified. Each shows as a candidate until a second source agrees or the owner verifies it.
               </p>
             ) : null;
           })()}
-        <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+        <Ledger>
           {edition.performances.map((p) => (
             <ActRecord key={p.artistKey} act={p} partners={(p.b2b ?? []).map((k) => names.get(k) ?? k)} />
           ))}
-        </ul>
+        </Ledger>
         </>
       )}
     </div>
@@ -2369,21 +2379,21 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
 
   return (
     <form
-      className="space-y-3 rounded-lg border border-zinc-800 p-3"
+      className="space-y-3 rounded-card border border-line bg-surface-1 p-3"
       onSubmit={(e) => {
         e.preventDefault();
         if (canSave) void save();
       }}
     >
       <div className="flex items-center justify-between gap-2">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Edit facts</h4>
+        <h4 className="font-mono text-xs font-semibold uppercase tracking-wider text-text-muted">Edit facts</h4>
         <button
           type="button"
           onClick={() => void runResearch(false)}
           disabled={checking || geminiChecking}
-          className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-zinc-700 px-2.5 text-xs text-zinc-200 hover:border-violet-500 hover:text-violet-200 disabled:opacity-50 sm:min-h-8"
+          className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-line-strong px-2.5 text-xs text-text hover:border-accent hover:text-accent disabled:opacity-50 sm:min-h-9"
         >
-          {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
+          {checking ? <Equalizer size="sm" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
           Check details
         </button>
       </div>
@@ -2402,13 +2412,13 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
         onPick={handlePick}
         onNone={handleNone}
       />
-      {checkError && <p role="alert" className="text-xs text-rose-300">{checkError}</p>}
+      {checkError && <p role="alert" className="text-xs text-bad">{checkError}</p>}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {FACT_FIELDS.map((f) => {
           if (f.key === 'city') {
             return (
-              <label key={f.key} className="space-y-1 text-xs text-zinc-400">
-                <span className="block text-[11px] uppercase text-zinc-500">{f.label}</span>
+              <label key={f.key} className="space-y-1 text-xs text-text-muted">
+                <span className="block font-mono text-[11px] uppercase tracking-wider text-text-muted">{f.label}</span>
                 <SuggestInput
                   aria-label={f.label}
                   className={`${field} w-full`}
@@ -2435,9 +2445,9 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
           }
           if (f.key === 'region') {
             return (
-              <div key={f.key} className="space-y-1 text-xs text-zinc-400">
+              <div key={f.key} className="space-y-1 text-xs text-text-muted">
                 <label className="block space-y-1">
-                  <span className="block text-[11px] uppercase text-zinc-500">{f.label}</span>
+                  <span className="block font-mono text-[11px] uppercase tracking-wider text-text-muted">{f.label}</span>
                   <input
                     type="text"
                     aria-label={f.label}
@@ -2458,13 +2468,13 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
                         ...(mapOffer.patch.country ? { country: mapOffer.patch.country } : {}),
                       }))
                     }
-                    className="block text-left text-xs text-violet-300 hover:underline"
+                    className="block text-left text-xs text-accent hover:underline"
                   >
                     Use “{mapOffer.value}” from {mapOffer.from}
                   </button>
                 )}
                 {venueFilled.length > 0 && (
-                  <p className="text-xs text-zinc-500">Filled from venue records: {venueFilled.map((k) => (k === 'region' ? 'region' : k)).join(', ')}.</p>
+                  <p className="text-xs text-text-muted">Filled from venue records: {venueFilled.map((k) => (k === 'region' ? 'region' : k)).join(', ')}.</p>
                 )}
                 {venueChoices.map((c) => (
                   <button
@@ -2474,7 +2484,7 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
                       setValues((v) => ({ ...v, ...emptyPlaceFields({ city: v.city, region: v.region, country: v.country }, c) }));
                       setVenueChoices([]);
                     }}
-                    className="block text-left text-xs text-violet-300 hover:underline"
+                    className="block text-left text-xs text-accent hover:underline"
                   >
                     Use “{formatPlaceLabel(c)}” from venue records
                   </button>
@@ -2490,7 +2500,7 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
                         country: effectiveSeriesCountry ?? '',
                       }))
                     }
-                    className="block text-left text-xs text-violet-300 hover:underline"
+                    className="block text-left text-xs text-accent hover:underline"
                   >
                     Use “{seriesPlaceLabel}” from series
                   </button>
@@ -2499,8 +2509,8 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
             );
           }
           return (
-            <label key={f.key} className="space-y-1 text-xs text-zinc-400">
-              <span className="block text-[11px] uppercase text-zinc-500">{f.label}</span>
+            <label key={f.key} className="space-y-1 text-xs text-text-muted">
+              <span className="block font-mono text-[11px] uppercase tracking-wider text-text-muted">{f.label}</span>
               <input
                 type={f.type ?? 'text'}
                 aria-label={f.label}
@@ -2513,16 +2523,16 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
           );
         })}
       </div>
-      <div className="space-y-2 rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-2.5">
+      <div className="space-y-2 rounded-card border border-line bg-surface-2/40 p-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-[11px] uppercase text-zinc-500">Series</span>
+          <span className="font-mono text-[11px] uppercase tracking-wider text-text-muted">Series</span>
           <div className="flex items-center gap-2">
             {seriesSlug && (
-              <button type="button" onClick={() => setSeriesSlug('')} className="text-xs text-zinc-400 hover:text-zinc-200">
+              <button type="button" onClick={() => setSeriesSlug('')} className="text-xs text-text-muted hover:text-text">
                 Detach
               </button>
             )}
-            <button type="button" onClick={() => setNewSeriesOpen((o) => !o)} className="text-xs text-violet-300 hover:underline">
+            <button type="button" onClick={() => setNewSeriesOpen((o) => !o)} className="text-xs text-accent hover:underline">
               {newSeriesOpen ? 'Close' : '+ New series'}
             </button>
           </div>
@@ -2569,14 +2579,14 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
           </div>
         )}
       </div>
-      <div className="space-y-2 rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-2.5">
+      <div className="space-y-2 rounded-card border border-line bg-surface-2/40 p-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-[11px] uppercase text-zinc-500">Schedule</span>
+          <span className="font-mono text-[11px] uppercase tracking-wider text-text-muted">Schedule</span>
           <div className="flex gap-1.5">
             <button
               type="button"
               onClick={() => setWeekendsMode('single')}
-              className={`rounded-control border px-2 py-1 text-xs ${weekendsMode === 'single' ? 'border-violet-400 bg-violet-500/20 text-violet-100' : 'border-zinc-700 text-zinc-300'}`}
+              className={`min-h-11 sm:min-h-9 rounded-control border px-2.5 py-1 text-xs ${weekendsMode === 'single' ? 'border-accent bg-accent-tint text-accent' : 'border-line-strong text-text-muted hover:text-text'}`}
             >
               Single date range
             </button>
@@ -2595,7 +2605,7 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
                   setDraftBadges(seeded.draftBadges);
                 }
               }}
-              className={`rounded-control border px-2 py-1 text-xs ${weekendsMode === 'multi' ? 'border-violet-400 bg-violet-500/20 text-violet-100' : 'border-zinc-700 text-zinc-300'}`}
+              className={`min-h-11 sm:min-h-9 rounded-control border px-2.5 py-1 text-xs ${weekendsMode === 'multi' ? 'border-accent bg-accent-tint text-accent' : 'border-line-strong text-text-muted hover:text-text'}`}
             >
               Multiple weekends
             </button>
@@ -2606,11 +2616,11 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
             {weekends.map((w, idx) => (
               <div key={idx} className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[auto_1fr_1fr_auto]">
                 <div className="flex flex-wrap items-center gap-1.5 sm:pb-2">
-                  <span className="text-xs font-semibold text-zinc-300">Weekend {idx + 1}</span>
+                  <span className="font-mono text-xs font-semibold tabular-nums text-text">Weekend {idx + 1}</span>
                   {draftBadges[w.weekend] && <Pill tone="warn">{draftBadges[w.weekend]}</Pill>}
                 </div>
-                <label className="space-y-1 text-xs text-zinc-400">
-                  <span className="block text-[10px] uppercase text-zinc-500">Start date</span>
+                <label className="space-y-1 text-xs text-text-muted">
+                  <span className="block font-mono text-[10px] uppercase tracking-wider text-text-muted">Start date</span>
                   <input
                     type="date"
                     aria-label={`Weekend ${idx + 1} start date`}
@@ -2627,8 +2637,8 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
                     }}
                   />
                 </label>
-                <label className="space-y-1 text-xs text-zinc-400">
-                  <span className="block text-[10px] uppercase text-zinc-500">End date</span>
+                <label className="space-y-1 text-xs text-text-muted">
+                  <span className="block font-mono text-[10px] uppercase tracking-wider text-text-muted">End date</span>
                   <input
                     type="date"
                     aria-label={`Weekend ${idx + 1} end date`}
@@ -2658,7 +2668,7 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
                       setDraftBadges(nextBadges);
                       setWeekends((prev) => prev.filter((_, j) => j !== idx).map((item, k) => ({ ...item, weekend: k + 1 })));
                     }}
-                    className="text-xs text-rose-300 hover:underline sm:pb-2"
+                    className="text-xs text-bad hover:underline sm:pb-2"
                   >
                     Remove
                   </button>
@@ -2669,18 +2679,18 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
               <button
                 type="button"
                 onClick={() => setWeekends((prev) => [...prev, { weekend: prev.length + 1, startDate: '' }])}
-                className="text-xs text-violet-300 hover:underline"
+                className="text-xs text-accent hover:underline"
               >
                 + Add weekend
               </button>
             )}
-            {weekendsMissingStart && <p className="text-xs text-rose-300">Every weekend needs a start date.</p>}
+            {weekendsMissingStart && <p className="text-xs text-bad">Every weekend needs a start date.</p>}
           </div>
         )}
       </div>
-      {nameBlank && <p className="text-xs text-rose-300">An edition needs a name.</p>}
-      <label className="block space-y-1 text-xs text-zinc-400">
-        <span className="block text-[11px] uppercase text-zinc-500">Source note (required)</span>
+      {nameBlank && <p className="text-xs text-bad">An edition needs a name.</p>}
+      <label className="block space-y-1 text-xs text-text-muted">
+        <span className="block font-mono text-[11px] uppercase tracking-wider text-text-muted">Source note (required)</span>
         <textarea
           aria-label="Source note"
           rows={2}
@@ -2690,34 +2700,34 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
           onChange={(e) => setNote(e.target.value)}
         />
       </label>
-      <div className="space-y-1 text-xs text-zinc-300">
+      <div className="space-y-1 text-xs text-text-muted">
         {!hasChanges ? (
-          <p className="text-zinc-500">No fact has changed yet.</p>
+          <p className="text-text-faint">No fact has changed yet.</p>
         ) : (
           <>
-            <p className="text-[11px] uppercase text-zinc-500">Changes to save</p>
+            <p className="font-mono text-[11px] uppercase tracking-wider text-text-muted">Changes to save</p>
             <ul className="space-y-0.5">
               {fieldChanges.map((f) => (
                 <li key={f.key}>
-                  {f.label}: <span className="text-zinc-500">{stored(f.key) || 'Not known'}</span> → <span className="text-zinc-100">{trimmed(f.key) || 'Not known (cleared)'}</span>
+                  {f.label}: <span className="text-text-faint">{stored(f.key) || 'Not known'}</span> → <span className="text-text">{trimmed(f.key) || 'Not known (cleared)'}</span>
                 </li>
               ))}
               {seriesChanged && (
                 <li>
-                  Series: <span className="text-zinc-500">{edition.seriesSlug || 'None'}</span> → <span className="text-zinc-100">{seriesSlug || 'None (detached)'}</span>
+                  Series: <span className="text-text-faint">{edition.seriesSlug || 'None'}</span> → <span className="text-text">{seriesSlug || 'None (detached)'}</span>
                 </li>
               )}
               {weekendsChanged && (
                 <li>
-                  Weekends: <span className="text-zinc-500">{initialWeekends.length ? `${initialWeekends.length} weekend(s)` : 'Single date range'}</span> →{' '}
-                  <span className="text-zinc-100">{normalizedWeekends.length ? `${normalizedWeekends.length} weekend(s)` : 'Single date range'}</span>
+                  Weekends: <span className="text-text-faint">{initialWeekends.length ? `${initialWeekends.length} weekend(s)` : 'Single date range'}</span> →{' '}
+                  <span className="text-text">{normalizedWeekends.length ? `${normalizedWeekends.length} weekend(s)` : 'Single date range'}</span>
                 </li>
               )}
             </ul>
           </>
         )}
       </div>
-      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+      {error && <p role="alert" className="text-sm text-bad">{error}</p>}
       <div className="flex flex-wrap gap-2">
         <Button type="submit" variant="primary" disabled={!canSave}>{saving ? 'Saving…' : 'Save facts'}</Button>
         <Button variant="ghost" onClick={onCancel} disabled={saving}>Cancel</Button>
@@ -2730,7 +2740,7 @@ const ActRecord: React.FC<{ act: EditionPerformance; partners: string[] }> = ({ 
   const artistKey = (act as { canonicalArtistKey?: string }).canonicalArtistKey || act.artistKey || act.name;
   const artistLink = artistKey ? canonicalArtistUrl(artistKey) : null;
   return (
-    <li className="space-y-2 p-3 text-sm">
+    <Ledger.Row className="space-y-2 text-sm">
       <div className="flex flex-wrap items-baseline gap-2">
         {artistLink ? (
           <a
@@ -2742,46 +2752,46 @@ const ActRecord: React.FC<{ act: EditionPerformance; partners: string[] }> = ({ 
               rememberManageSearch(new URL(artistLink, window.location.origin).search);
               window.dispatchEvent(new PopStateEvent('popstate'));
             }}
-            className="font-medium text-zinc-100 hover:text-violet-300 hover:underline"
+            className="font-medium text-text hover:text-accent hover:underline"
           >
             {act.name}
           </a>
         ) : (
-          <span className="font-medium text-zinc-100">{act.name}</span>
+          <span className="font-medium text-text">{act.name}</span>
         )}
         <Pill tone="neutral">{BILLING_WORDS[act.billing ?? ''] ?? 'Artist'}</Pill>
         {act.verification === 'candidate' && <Pill tone="warn">Candidate</Pill>}
-        {partners.length > 0 && <span className="text-xs text-zinc-400">B2B with {partners.join(', ')}</span>}
+        {partners.length > 0 && <span className="text-xs text-text-muted">B2B with {partners.join(', ')}</span>}
       </div>
-    <p className="text-xs text-zinc-400">
+    <p className="text-xs text-text-muted">
       Set: {act.set ?? 'Not known'} · Day: {act.days.join(', ') || 'Not known'} · Stage: {act.stages.join(', ') || 'Not known'}
     </p>
-    {act.sources.length === 0 && <p className="text-xs text-rose-300">No source stored for this act.</p>}
+    {act.sources.length === 0 && <p className="text-xs text-bad">No source stored for this act.</p>}
     {act.sources.map((s, i) => {
       const curated = s.extractor === 'admin_curation';
       return (
-        <div key={i} className="space-y-1 border-l-2 border-zinc-800 pl-2 text-xs">
+        <div key={i} className="space-y-1 border-l-2 border-line pl-2.5 text-xs">
           <div className="flex flex-wrap items-center gap-2">
-            {curated ? <Pill tone="accent">Admin curated</Pill> : <span className="text-zinc-300">{SOURCE_LABELS[s.sourceType] ?? s.sourceType}</span>}
+            {curated ? <Pill tone="accent">Admin curated</Pill> : <span className="text-text">{SOURCE_LABELS[s.sourceType] ?? s.sourceType}</span>}
             {s.sourceUrl ? (
-              <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="text-violet-300 hover:underline">Source link</a>
+              <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="text-accent hover:underline">Source link</a>
             ) : (
-              <span className="text-zinc-500">No link</span>
+              <span className="text-text-muted">No link</span>
             )}
           </div>
-          {s.quotedSpan ? <blockquote className="text-zinc-300">“{s.quotedSpan}”</blockquote> : <p className="text-zinc-500">{curated ? 'Curated by you, no quote.' : 'No quote stored.'}</p>}
+          {s.quotedSpan ? <blockquote className="font-display italic text-text">“{s.quotedSpan}”</blockquote> : <p className="text-text-muted">{curated ? 'Curated by you, no quote.' : 'No quote stored.'}</p>}
           {s.sets && s.sets.length > 0 ? (
             s.sets.map((t, j) => (
-              <p key={j} className="text-zinc-300">
+              <p key={j} className="font-mono tabular-nums text-text-muted">
                 Set time: {[t.day, t.stage, t.start && t.end ? `${t.start} to ${t.end}` : t.start ?? t.end].filter(Boolean).join(' · ') || 'Not known'}
               </p>
             ))
           ) : (
-            <p className="text-zinc-500">Set times: not timed by this source.</p>
+            <p className="text-text-muted">Set times: not timed by this source.</p>
           )}
         </div>
       );
     })}
-  </li>
+  </Ledger.Row>
   );
 };
