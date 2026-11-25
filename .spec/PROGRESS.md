@@ -18,7 +18,8 @@ Stage 0 (Claude) goes first. After it, Track A (Claude) and the Gemini package "
 - [x] **Slice 24.4: Track A4: event poster with serif title, grain, mono date line and icon stars** [UI / VISUAL] Target files: src/components/PosterHeader.tsx, src/index.css | Issue: #700 | Verify: npm run lint --silent
 - [x] **Slice 24.6: Track A5a: event detail body on the tokens, with serif source quotes** [UI / VISUAL] Target files: src/components/EventDetail.tsx | Issue: #712 | Verify: npm run lint --silent
 - [x] **Slice 24.7: Track A5b: Who you saw and Lineup as folder tabs on the event detail** [UI / VISUAL] Target files: src/components/EventDetail.tsx | Issue: #714 | Verify: npm run lint --silent
-- [ ] **Track A (Claude):** A6 DetailShell motion, A7 Stats and heatmap.
+- [ ] **Slice 24.8: Track A6: detail panel motion, phone drag and tokens** [IN_PROGRESS] [UI / VISUAL] Target files: src/components/ui/DetailShell.tsx | Issue: #716 | Verify: npm run lint --silent
+- [ ] **Track A (Claude):** A7 Stats and heatmap.
 - [x] **Slice 23.1: Gemini G1a: Table tool row and header** [UI / VISUAL] Brief: docs/specs/design-refresh-2-ledger-and-lobby.md Target files: src/components/TableView.tsx | Issue: #684 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 23.2: Gemini G1b: Table rows on the shared Ledger** [UI / VISUAL] Brief: docs/specs/design-refresh-2-ledger-and-lobby.md Target files: src/components/TableView.tsx | Issue: #685 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 23.3: Gemini G2: Agenda, Month and River** [UI / VISUAL] Brief: docs/specs/design-refresh-2-ledger-and-lobby.md Target files: src/components/timeline/AgendaView.tsx, src/components/timeline/MonthView.tsx, src/components/timeline/RiverView.tsx, src/components/timeline/parts.tsx | Issue: #686 | Verify: npm run lint --silent && npm test --silent
