@@ -19,3 +19,8 @@ The design refresh (`docs/specs/design-refresh-2.md`) adds plain-named colour to
 
   The cap or underline slides between tabs with `motion` and moves at once under reduced motion. The open tab is marked with `aria-current="page"` and never uses the solid Add colour. With `compact`, phones show only the icon for tabs that are not open.
 
+- `Ledger` (`src/components/ui/Ledger.tsx`): joined, square-cornered rows. `Ledger.Row` carries a 3 px straight edge bar on the left for the kind: `festival` (accent), `show` (grey) or `needs` (amber), always paired with a `KindPill` or `HintPill` in the row. Hover lifts the row one shade and widens the bar to 4 px, with no motion. `Ledger.Separator` is a year separator ("2026 · 5 events", or "No date yet"). Lists use year separators, never month headers.
+- `KindPill` (`src/components/ui/KindPill.tsx`): Festival, Show or "Type not known", each with an icon. The app never guesses a kind.
+- `HintPill` (`src/components/ui/HintPill.tsx`): an outlined hint such as "Which weekend?" or "42 to review". Each tone has its own mark: a triangle for needs-you, a tick for done, the equaliser for busy, and none for info.
+- `Stars` (`src/components/ui/Stars.tsx`): a rating as icon stars with a label ("Rated 4 of 5", or "Not rated" with faint outlines). With `onChange` it is a radio group: a tap on the current value clears it, and the chosen star pops once (skipped with reduced motion).
+- `Equalizer` (`src/components/ui/Equalizer.tsx`): the busy mark, three bars that breathe while something is working, in place of a spinner. The words go beside it, and the bars stand still under reduced motion.
