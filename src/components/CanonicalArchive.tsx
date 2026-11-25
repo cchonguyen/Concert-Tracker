@@ -36,6 +36,7 @@ import { Notice } from './ui/Notice';
 import { Pill } from './ui/Pill';
 import { Segmented } from './ui/Segmented';
 import { VersionPicker } from './ui/VersionPicker';
+import { PasteSetTimes } from './PasteSetTimes';
 import {
   buildManageUrl,
   canonicalArtistUrl,
@@ -1761,6 +1762,7 @@ const EditionDetail: React.FC<{
   const [findingLineup, setFindingLineup] = useState(false);
   const [lineupNote, setLineupNote] = useState<{ editionId: string; text: string } | null>(null);
   const canFindLineup = edition.seriesKind === 'festival' && edition.performances.length === 0;
+  const [lineupLink, setLineupLink] = useState('');
   const findLineup = async () => {
     setFindingLineup(true);
     try {
@@ -1768,15 +1770,35 @@ const EditionDetail: React.FC<{
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: '{}',
+        body: JSON.stringify(lineupLink.trim() ? { lineupUrl: lineupLink.trim() } : {}),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof body?.error === 'string' ? body.error : `Request failed (${res.status})`);
-      setLineupNote({ editionId: edition.id, text: 'Clashfinder lookup started. Review the result under Lookups.' });
+      setLineupNote({ editionId: edition.id, text: 'Lineup lookup started. Review the result under Lookups.' });
     } catch (e) {
       setLineupNote({ editionId: edition.id, text: `Could not start the lookup. ${verifyError(e)}` });
     } finally {
       setFindingLineup(false);
+    }
+  };
+  // Paste set times (docs/specs/pasted-set-times.md): read in code, the link is never visited. Reviewed under Lookups.
+  const [pasting, setPasting] = useState(false);
+  const pasteSets = async (url: string, text: string) => {
+    setPasting(true);
+    try {
+      const res = await fetch(`/api/manage/canonical/editions/${encodeURIComponent(edition.id)}/paste-sets`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, text }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof body?.error === 'string' ? body.error : `Request failed (${res.status})`);
+      setLineupNote({ editionId: edition.id, text: 'Pasted set times sent. Review them under Lookups.' });
+    } catch (e) {
+      setLineupNote({ editionId: edition.id, text: `Could not read the pasted set times. ${verifyError(e)}` });
+    } finally {
+      setPasting(false);
     }
   };
   const lineupStatus = lineupNote?.editionId === edition.id ? lineupNote : null;
@@ -1853,6 +1875,18 @@ const EditionDetail: React.FC<{
           {onStartMerge && <Button onClick={onStartMerge}>Merge with…</Button>}
         </div>
       </div>
+      {canFindLineup && (
+        <input
+          className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none"
+          value={lineupLink}
+          onChange={(e) => setLineupLink(e.target.value)}
+          placeholder="Lineup page for Find lineup, if you know one (optional)"
+          aria-label="Lineup page"
+        />
+      )}
+      {edition.startDate && (
+        <PasteSetTimes startDate={edition.startDate} endDate={edition.endDate} busy={pasting} onSubmit={(url, text) => void pasteSets(url, text)} />
+      )}
       {lineupStatus && <p className="text-sm text-zinc-300" role="status">{lineupStatus.text}</p>}
       {edition.weather && (
         <div className="space-y-1 text-xs text-zinc-400">
