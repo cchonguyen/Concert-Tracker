@@ -1,9 +1,10 @@
 import { Dialog } from './ui/Dialog';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FileUp, Loader2, RefreshCw, Square, Tags, X } from 'lucide-react';
+import { FileUp, RefreshCw, Square, Tags, X } from 'lucide-react';
 import { genresApi, LoggedEvent } from '../services/lineupApi';
 import { ArtistGenres, genresByArtist, missingGenreKeys } from '../services/genres';
 import { MAX_MUSICBRAINZ_GENRES } from '../server/events/genreTypes';
+import { Equalizer } from './ui/Equalizer';
 
 // "Artist genres" in the Table view: import the file music-story exports from
 // your listening history, then, if you ask, look up the acts it does not
@@ -15,9 +16,9 @@ interface ArtistGenresPanelProps {
 }
 
 const button =
-  'inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:text-zinc-100 disabled:opacity-40';
+  'inline-flex min-h-11 sm:min-h-9 items-center gap-1.5 rounded-control border border-line-strong px-3 py-2 text-sm text-text-muted hover:text-text disabled:opacity-40';
 const primary =
-  'inline-flex items-center gap-1.5 rounded-lg bg-accent-fill px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40';
+  'inline-flex min-h-11 sm:min-h-9 items-center gap-1.5 rounded-control bg-accent-fill px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40';
 
 export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, onClose }) => {
   const [rows, setRows] = useState<ArtistGenres[] | null>(null);
@@ -114,43 +115,43 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
       <div className="flex-1 space-y-5 overflow-y-auto p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="flex items-center gap-2 text-lg font-bold">
-              <Tags className="h-4 w-4 text-violet-400" /> Artist genres
+            <h2 className="flex items-center gap-2 font-display text-xl font-normal text-text">
+              <Tags className="h-4 w-4 text-accent" /> Artist genres
             </h2>
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-text-muted">
               Genres for the acts you saw, from your music-story listening history first, then MusicBrainz for acts it does not
               cover. Acts neither one knows stay without a genre.
             </p>
           </div>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200" aria-label="Close">
+          <button onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control text-text-muted hover:text-text" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
-        {message && <p className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-2 text-sm text-emerald-200">{message}</p>}
+        {error && <p className="rounded-card border border-bad/45 bg-bad/10 p-2 text-sm text-bad">{error}</p>}
+        {message && <p className="rounded-card border border-good/45 bg-good/10 p-2 text-sm text-good">{message}</p>}
 
         {!rows ? (
-          <p className="flex items-center gap-2 text-sm text-zinc-400">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading
+          <p className="flex items-center gap-2 text-sm text-text-muted">
+            <Equalizer /> Loading
           </p>
         ) : (
           <>
-            <section className="rounded-xl border border-zinc-900 p-4 text-sm">
-              <p className="text-zinc-200">
-                Genres known for <strong>{known.length}</strong> of the {seenKeys.size} acts you saw.
+            <section className="rounded-card border border-line bg-surface-1 p-4 text-sm">
+              <p className="text-text">
+                Genres known for <strong className="font-mono tabular-nums">{known.length}</strong> of the <span className="font-mono tabular-nums">{seenKeys.size}</span> acts you saw.
               </p>
-              <p className="text-xs text-zinc-400">
+              <p className="font-mono text-xs tabular-nums text-text-muted">
                 {fromFile} from music-story, {known.length - fromFile - fromYou} from MusicBrainz{fromYou ? `, ${fromYou} set by you` : ''}
                 {checkedNone ? `, ${checkedNone} looked up with none found` : ''}.
               </p>
             </section>
 
             <section className="space-y-2">
-              <h3 className="text-sm font-semibold text-zinc-200">1. Import from music-story</h3>
-              <p className="text-xs text-zinc-400">
-                In music-story, after a build, run <code className="text-zinc-300">uv run python -m pipeline.artist_genre export</code>{' '}
-                and pick the file it writes, <code className="text-zinc-300">build/artist_genres.json</code>. Importing again replaces
+              <h3 className="text-sm font-semibold text-text">1. Import from music-story</h3>
+              <p className="text-xs text-text-muted">
+                In music-story, after a build, run <code className="font-mono text-text">uv run python -m pipeline.artist_genre export</code>{' '}
+                and pick the file it writes, <code className="font-mono text-text">build/artist_genres.json</code>. Importing again replaces
                 the genres it gave before.
               </p>
               <input
@@ -162,13 +163,13 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
                 onChange={(e) => e.target.files?.[0] && void importFile(e.target.files[0])}
               />
               <button className={primary} disabled={Boolean(busy)} onClick={() => fileInput.current?.click()}>
-                {busy === 'import' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />} Choose file
+                {busy === 'import' ? <Equalizer size="sm" /> : <FileUp className="h-4 w-4" />} Choose file
               </button>
             </section>
 
             <section className="space-y-2">
-              <h3 className="text-sm font-semibold text-zinc-200">2. Look up the rest on MusicBrainz</h3>
-              <p className="text-xs text-zinc-400">
+              <h3 className="text-sm font-semibold text-text">2. Look up the rest on MusicBrainz</h3>
+              <p className="text-xs text-text-muted">
                 {!hasMap
                   ? 'Import the music-story file first: its genre map is how MusicBrainz genres are read.'
                   : missing.length > 0
@@ -178,8 +179,8 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
                       : 'All acts have genres assigned.'}
               </p>
               {busy === 'musicbrainz' ? (
-                <div className="flex items-center gap-3 text-sm text-zinc-300">
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                <div className="flex items-center gap-3 font-mono text-sm tabular-nums text-text-muted">
+                  <Equalizer />
                   {progress && `${progress.done} of ${progress.total}`}
                   <button className={button} onClick={() => (stop.current = true)}>
                     <Square className="h-3.5 w-3.5" /> Stop
