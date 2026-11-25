@@ -4,17 +4,23 @@
 //   - the venue's one known location from the shared venue records (venueLocation).
 // Only empty fields are filled; a value already there is never changed. Every write goes through writeEdition with
 // a system actor and a reason, so each is logged and can be undone. A venue with several known places is offered
-// as choices, never filled on its own.
-import type { Edition, EditionHeader } from '../lineup/types';
+// as choices. When one of those places clearly leads among the shared editions at that venue (leadingPlace), its
+// city, state and country are also inferred for the empty fields (docs/specs/inferred-values.md). An inference is
+// labelled and stored apart from the edition's own columns, which are never written by it.
+import type { Edition, EditionHeader, InferenceInput } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
 import { normalizeName } from '../lineup/text';
 import { currentBudget } from '../lineup/budget';
 import { splitCity } from '../events/regions';
 import { writeEdition } from './editions';
+import { inferEditionField } from './inferences';
 import { emptyPlaceFields, venueLocationOf, type PlaceFieldName, type VenueLocation, type VenueLocationResult } from './venueLocation';
 
 export const VENUE_FILL_ACTOR = 'system:venue-location';
+export const VENUE_INFER_ACTOR = 'system:venue-infer';
+export const VENUE_INFER_RULE = 'venue-most-used-place';
 const SCAN_LIMIT = 5000;
+const SUPPORT_LIMIT = 10;
 const LOOKUP_COST = 2; // venue_aliases + canonical_venues
 // getEdition (edition row + its acts) 2, upsertEdition up to 5 (series check, edition row, artists,
 // clear and re-insert acts), change record 1. Counted low (4) this ran out mid-write on 2026-11-24.
@@ -172,4 +178,96 @@ export async function applyVenueFill(
     result.filled.push({ editionId: id, changeId: w.change?.id ?? null });
   }
   return result;
+}
+
+// An edition's own place, with "City, ST" split. Null when it has no city, since such an edition counts for nothing.
+function editionPlace(e: Pick<EditionHeader, 'city' | 'region' | 'country'>): VenueLocation | null {
+  const split = splitCity({ city: clean(e.city), region: clean(e.region), country: clean(e.country) });
+  const city = clean(split.city);
+  if (!city) return null;
+  const region = clean(split.region);
+  const country = clean(split.country);
+  return { city, ...(region ? { region } : {}), ...(country ? { country } : {}) };
+}
+
+export interface LeadingPlace {
+  location: VenueLocation;
+  count: number; // editions whose own place is this one
+  total: number; // editions counted for exactly one of the places
+  editionIds: string[]; // the supporting editions (at most SUPPORT_LIMIT)
+}
+
+// The place that most of a venue's editions are in, when it clearly leads: at least 2 editions, and more than all the
+// other places together. An edition with no city, or one that matches no place or more than one, counts for nothing.
+export function leadingPlace(
+  choices: VenueLocation[],
+  editionsAtVenue: Array<Pick<EditionHeader, 'id' | 'city' | 'region' | 'country'>>,
+): LeadingPlace | null {
+  const ids: string[][] = choices.map(() => []);
+  for (const e of editionsAtVenue) {
+    const place = editionPlace(e);
+    if (!place) continue;
+    const hits = choices.flatMap((c, i) => (venueLocationOf([c, place]).kind === 'one' ? [i] : []));
+    if (hits.length === 1) ids[hits[0]].push(e.id);
+  }
+  const total = ids.reduce((n, list) => n + list.length, 0);
+  let best = -1;
+  for (let i = 0; i < ids.length; i++) if (best < 0 || ids[i].length > ids[best].length) best = i;
+  if (best < 0) return null;
+  const count = ids[best].length;
+  if (count < 2 || count <= total - count) return null;
+  return { location: choices[best], count, total, editionIds: ids[best].slice(0, SUPPORT_LIMIT) };
+}
+
+// Infers the most-used place for the empty city, state and country of the editions at a venue with several places.
+// Each inference is written through inferEditionField (a reason, named inputs, logged, undoable).
+export async function inferVenuePlaces(
+  store: LineupStore,
+  opts: { actor?: string; budgetLeft?: () => number; editionIds?: ReadonlySet<string> } = {},
+): Promise<{ inferred: Array<{ editionId: string; fields: string[] }>; left: number }> {
+  const budgetLeft = opts.budgetLeft ?? defaultBudgetLeft;
+  const actor = opts.actor ?? VENUE_INFER_ACTOR;
+  const out: { inferred: Array<{ editionId: string; fields: string[] }>; left: number } = { inferred: [], left: 0 };
+  const plan = await planVenueFill(store, { budgetLeft, editionIds: opts.editionIds });
+  if (!plan.choices.length) return out;
+  const headers = await store.listEditionHeaders({ limit: SCAN_LIMIT });
+  const groups = new Map<string, EditionHeader[]>();
+  for (const h of headers) {
+    const v = clean(h.venue);
+    if (!v) continue;
+    const k = normalizeName(v);
+    groups.set(k, [...(groups.get(k) ?? []), h]);
+  }
+  // The leader per venue, worked out once from the venue records' full list of places.
+  const leaders = new Map<string, LeadingPlace | null>();
+  for (const c of plan.choices) {
+    if (budgetLeft() < WRITE_COST + LOOKUP_COST) {
+      out.left++;
+      continue;
+    }
+    const key = normalizeName(c.venue);
+    if (!leaders.has(key)) {
+      const found = venueLocationOf(await store.listVenuesByAlias(key));
+      leaders.set(key, found.kind === 'several' ? leadingPlace(found.choices, groups.get(key) ?? []) : null);
+    }
+    const leader = leaders.get(key);
+    if (!leader) continue;
+    const edition = await store.getEdition(c.editionId);
+    if (!edition) continue;
+    // An edition with a city must be in the leading place; a city elsewhere is never overridden by inference.
+    const own = editionPlace(edition);
+    if (own && venueLocationOf([leader.location, own]).kind !== 'one') continue;
+    const label = [leader.location.city, leader.location.region, leader.location.country].filter(Boolean).join(', ');
+    const reason = `Most shared editions at ${c.venue} are in ${label} (${leader.count} of ${leader.total})`;
+    const inputs: InferenceInput[] = leader.editionIds.map((id) => ({ kind: 'record' as const, table: 'event_editions', id }));
+    const fields: string[] = [];
+    for (const f of ['city', 'region', 'country'] as const) {
+      const value = leader.location[f];
+      if (!value || clean(edition[f])) continue;
+      const r = await inferEditionField(store, { edition, field: f, value, reason, rule: VENUE_INFER_RULE, inputs, actor });
+      if (r.ok) fields.push(f);
+    }
+    if (fields.length) out.inferred.push({ editionId: c.editionId, fields });
+  }
+  return out;
 }
