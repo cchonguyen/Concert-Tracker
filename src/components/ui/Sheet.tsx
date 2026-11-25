@@ -33,13 +33,13 @@ export function Sheet({ open, title, onClose, children }: { open: boolean; title
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className="absolute inset-x-0 bottom-0 flex max-h-[92vh] flex-col rounded-t-2xl border-t border-zinc-800 bg-zinc-950 pb-[env(safe-area-inset-bottom)] shadow-2xl focus:outline-none sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border"
+        className="absolute inset-x-0 bottom-0 flex max-h-[92vh] flex-col rounded-t-card border-t border-line bg-surface-1 pb-[env(safe-area-inset-bottom)] shadow-2xl focus:outline-none sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-card sm:border"
       >
         <div className="flex justify-center pt-2 sm:hidden" aria-hidden="true">
-          <span className="h-1 w-10 rounded-full bg-zinc-700" />
+          <span className="h-1 w-10 rounded-full bg-line-strong" />
         </div>
         <div className="flex items-start justify-between gap-2 px-4 pb-2 pt-2">
-          <h3 className="min-w-0 truncate text-base font-semibold text-zinc-100">{title}</h3>
+          <h3 className="min-w-0 truncate font-display text-lg font-normal text-text">{title}</h3>
           <IconButton icon={X} label="Close" onClick={onClose} />
         </div>
         <div className="space-y-4 overflow-y-auto overscroll-contain px-4 pb-5">{children}</div>

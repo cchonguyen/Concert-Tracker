@@ -10,8 +10,8 @@ interface Props {
   children: ReactNode;
 }
 
-const SIDE_PANEL = 'flex h-full w-full max-w-xl flex-col border-l border-zinc-900 bg-zinc-950 shadow-2xl';
-const CENTER_PANEL = 'w-full max-w-lg space-y-4 rounded-t-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-2xl sm:rounded-2xl';
+const SIDE_PANEL = 'flex h-full w-full max-w-xl flex-col border-l border-line bg-page shadow-2xl';
+const CENTER_PANEL = 'w-full max-w-lg space-y-4 rounded-t-card border border-line bg-surface-1 p-5 shadow-2xl sm:rounded-card';
 
 // Open dialogs, outermost first. Only the last one answers Escape and Tab.
 const openDialogs: symbol[] = [];
