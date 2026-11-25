@@ -8,7 +8,7 @@ import { editionUrl, isModifiedClick, rememberManageSearch } from '../services/m
 import { useIsOwner } from './MeContext';
 import { SourceIcon } from './ui/SourceIcon';
 
-const FIELD_WORDS: Record<EventField | 'ticketPrice', string> = {
+const FIELD_WORDS: Record<string, string> = {
   name: 'name',
   year: 'year',
   startDate: 'date',
