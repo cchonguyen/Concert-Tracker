@@ -632,7 +632,8 @@ const ChipInput: React.FC<{
 // Which days of a multi-day event you went. No days stored means every day,
 // so each day starts ticked and you untick the ones you missed. Ticking every
 // day again stores none; the last ticked day can't be unticked.
-const DaysWent: React.FC<{ days: string[]; attended: string[]; onChange: (days: string[]) => void }> = ({ days, attended, onChange }) => {
+// In a read row the row's own label names it, so `inRow` drops the inline label and the grid span.
+const DaysWent: React.FC<{ days: string[]; attended: string[]; onChange: (days: string[]) => void; inRow?: boolean }> = ({ days, attended, onChange, inRow = false }) => {
   const picked = attended.filter((d) => days.includes(d));
   const went = picked.length ? picked : days;
   const toggle = (d: string) => {
@@ -640,8 +641,8 @@ const DaysWent: React.FC<{ days: string[]; attended: string[]; onChange: (days: 
     onChange(next.length === days.length ? [] : next);
   };
   return (
-    <div className="col-span-2 flex flex-wrap items-center gap-2 text-xs text-text-muted">
-      <span className="font-semibold text-text-muted">Days you went{went.length === days.length ? ' (all)' : ''}:</span>
+    <div className={`${inRow ? '' : 'col-span-2 '}flex flex-wrap items-center gap-2 text-xs text-text-muted`}>
+      {!inRow && <span className="font-semibold text-text-muted">Days you went{went.length === days.length ? ' (all)' : ''}:</span>}
       {days.map((d) => {
         const on = went.includes(d);
         const last = on && went.length === 1;
@@ -1845,7 +1846,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
 
             {days.length > 1 && (
               <ReadRow icon={CalendarCheck} label="Days you went" alwaysOpen>
-                <DaysWent days={days} attended={event.daysAttended} onChange={(daysAttended) => save({ daysAttended })} />
+                <DaysWent inRow days={days} attended={event.daysAttended} onChange={(daysAttended) => save({ daysAttended })} />
               </ReadRow>
             )}
 
