@@ -1,10 +1,11 @@
 # Session Handoff
 
 - **Last Active Platform:** Google Antigravity
-- **Branch Owner:** Gemini (`antigravity/dr2-25.10`)
-- **Active Branch / State:** `antigravity/dr2-25.10` — Slice 25.10 complete, PR open for Claude review
-- **Files Modified in Last Turn:** `src/components/SharePanel.tsx`, `src/components/CollaborationsCard.tsx`, `src/components/SeriesPanel.tsx`, `src/components/LogView.tsx`, `.spec/PROGRESS.md`, `.spec/SESSION_HANDOFF.md`
-- **Verification Status:** Verified via finish-slice.mjs (Slice 27.7)
-- **Immediate Next Step:** For Claude: review and merge PRs for Slices 25.1 (#725), 25.5 (#729), 25.6 (#730), 25.7 (#731), 25.8 (#732), 25.9 (#733), and 25.10 (#734).
+- **Branch Owner:** Gemini (`antigravity/dr3-28.1`)
+- **Active Branch / State:** `antigravity/dr3-28.1` — Slice 28.1 complete, PR open for Claude review
+- **Files Modified in Last Turn:** `src/components/LineupTable.tsx`, `src/components/EventDetail.tsx`, `docs/architecture/15-shared-ui.md`, `.spec/PROGRESS.md`, `.spec/SESSION_HANDOFF.md`
+- **Verification Status:** Verified via finish-slice.mjs (Slice 28.1)
+- **Immediate Next Step:** For Claude: review and merge PR for Slice 28.1 (#799) into `main` so Slice 28.2 can start from the latest `main`.
 - **Open gaps:**
-  - Slices 25.2–25.4 (`CanonicalArchive.tsx`) are waiting on Slice 25.1 (#725) to merge into `main`.
+  - `npm run dev` throws `node:crypto.createHash` on `/demo` because `src/services/reviewRows.ts` imports `src/server/lineup/text.ts` (`NODE_ENV=production npm start` after `npm run build` works, and `/demo` returns `edition: null`).
+  - Slices 28.2–28.4 (`EventDetail.tsx`) are waiting on Slice 28.1 (#799) to merge into `main`.

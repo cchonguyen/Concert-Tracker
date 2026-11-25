@@ -22,10 +22,11 @@ import {
 } from '../services/lineupApi';
 import { editionUrl, isModifiedClick, rememberManageSearch } from '../services/manageNav';
 import { artistsOf, dateConfirmations, datesBetween, formatsOf, joinFormats, matchNames, pastArtistNames, pastCompanionNames, pastSets, supportOf, weekendLabel, weatherLine, whenLabel } from '../services/format';
-import { actSets, byStartTime, chipTime, setLabel } from '../server/events/sets';
+import { actSets, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
-import { groupReviewSlots, pendingReplacement } from '../services/reviewRows';
+import { LineupTable } from './LineupTable';
+import { pendingReplacement } from '../services/reviewRows';
 import { norm } from '../services/listImport';
 import { placeForVenue } from '../services/venuePlace';
 import { emptyPlaceFields, type VenueLocation } from '../server/canon/venueLocation';
@@ -1108,16 +1109,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   }, [event.details.checkedAt]);
   const [showLog, setShowLog] = useState(false);
   const [reviewing, setReviewing] = useState(false);
-  const [lineupStage, setLineupStage] = useState<string>('all');
-  const [lineupDay, setLineupDay] = useState<string>('all');
-  const [lineupSearch, setLineupSearch] = useState<string>('');
   const [weekendPromptDismissed, setWeekendPromptDismissed] = useState(false);
   const whenWhereRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    setLineupStage('all');
-    setLineupDay('all');
-    setLineupSearch('');
     setWeekendPromptDismissed(false);
   }, [event.id]);
 
@@ -1303,7 +1298,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   // went narrow it when you gave them.
   const multiDay = Boolean(event.endDate && event.endDate !== event.startDate);
   const sets = new Map<string, string>();
-  const chipTimes = new Map<string, string>(); // "Fri 19:00" under a lineup chip
   const starts = new Map<string, string>(); // earliest start, to order a timed lineup
   for (const p of [
     ...(job?.candidate?.performers ?? []).map((c) => ({ key: c.key, sources: c.sources })),
@@ -1313,8 +1307,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     const onDays = all.filter((s) => s.day && event.daysAttended.includes(s.day));
     const shown = onDays.length ? onDays : all;
     if (shown.length) sets.set(p.key, shown.map((s) => setLabel(s, multiDay)).join('; '));
-    const short = chipTime(shown, multiDay);
-    if (short) chipTimes.set(p.key, short);
     const first = shown.find((s) => s.start)?.start;
     if (first) starts.set(p.key, first);
   }
@@ -1886,221 +1878,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               onReview={() => setReviewing(true)}
             />
           )}
-          {lineupActs.length > 0 && (() => {
-            const lineupSlots = groupReviewSlots(lineupActs.map((p) => ({ ...p, key: p.artistKey })));
-            const allStages = Array.from(
-              new Set(lineupActs.flatMap((p) => p.stages || []).filter(Boolean)),
-            ).sort();
-            const allDays = Array.from(
-              new Set(lineupActs.flatMap((p) => p.days || []).filter(Boolean)),
-            ).sort();
-
-            const matchingSlots = lineupSlots.filter((slot) => {
-              if (lineupStage !== 'all') {
-                const matchesStage = slot.items.some((it) => it.item.stages?.includes(lineupStage));
-                if (!matchesStage) return false;
-              }
-              if (lineupDay !== 'all' && allDays.includes(lineupDay)) {
-                const matchesDay = slot.items.some((it) => it.item.days?.includes(lineupDay));
-                if (!matchesDay) return false;
-              }
-              if (lineupSearch.trim()) {
-                const q = lineupSearch.toLowerCase();
-                const matchesSearch = slot.items.some((it) => it.item.name.toLowerCase().includes(q));
-                if (!matchesSearch) return false;
-              }
-              return true;
-            });
-            // A timed lineup reads as a timetable: earliest set first, untimed acts after.
-            const slotStart = (slot: (typeof lineupSlots)[number]) =>
-              slot.items.map((it) => starts.get(it.item.artistKey)).filter((t): t is string => Boolean(t)).sort()[0];
-            const filteredSlots = byStartTime(matchingSlots, slotStart);
-
-            return (
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-1.5">
-                  <p className="text-[11px] text-text-muted">
-                    From the lineup, tap to mark who you saw
-                    {filteredSlots.length !== lineupSlots.length ? ` (${filteredSlots.length} of ${lineupSlots.length})` : ''}:
-                  </p>
-                </div>
-
-                {(allStages.length > 1 || allDays.length > 1 || lineupSlots.length > 20) && (
-                  <div className="space-y-1.5 rounded-lg border border-line bg-surface-1 p-2">
-                    {lineupSlots.length > 20 && (
-                      <input
-                        type="search"
-                        value={lineupSearch}
-                        onChange={(e) => setLineupSearch(e.target.value)}
-                        placeholder="Search acts..."
-                        className="w-full rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs text-text placeholder-text-faint focus:border-accent focus:outline-none"
-                      />
-                    )}
-
-                    {allDays.length > 1 && (
-                      <div className="flex items-center gap-1 overflow-x-auto pb-0.5 text-xs">
-                        <span className="shrink-0 text-[10px] text-text-muted mr-1">Day:</span>
-                        <button
-                          type="button"
-                          onClick={() => setLineupDay('all')}
-                          className={`rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
-                            lineupDay === 'all'
-                              ? 'border-accent-tint-line bg-accent-tint text-text font-medium'
-                              : 'border-line bg-surface-1 text-text-muted hover:text-text'
-                          }`}
-                        >
-                          All days
-                        </button>
-                        {allDays.map((d) => (
-                          <button
-                            key={d}
-                            type="button"
-                            onClick={() => setLineupDay(d)}
-                            className={`rounded-md border px-2 py-0.5 text-[11px] shrink-0 transition-colors ${
-                              lineupDay === d
-                                ? 'border-accent-tint-line bg-accent-tint text-text font-medium'
-                                : 'border-line bg-surface-1 text-text-muted hover:text-text'
-                            }`}
-                          >
-                            {whenLabel({ startDate: d }) ?? d}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {allStages.length > 1 && (
-                      <div className="flex items-center gap-1 overflow-x-auto pb-0.5 text-xs">
-                        <span className="shrink-0 text-[10px] text-text-muted mr-1">Stage:</span>
-                        <button
-                          type="button"
-                          onClick={() => setLineupStage('all')}
-                          className={`rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
-                            lineupStage === 'all'
-                              ? 'border-accent-tint-line bg-accent-tint text-text font-medium'
-                              : 'border-line bg-surface-1 text-text-muted hover:text-text'
-                          }`}
-                        >
-                          All stages
-                        </button>
-                        {allStages.map((stage) => {
-                          const count = lineupSlots.filter((slot) =>
-                            slot.items.some((it) => it.item.stages?.includes(stage)),
-                          ).length;
-                          return (
-                            <button
-                              key={stage}
-                              type="button"
-                              onClick={() => setLineupStage(stage)}
-                              className={`rounded-md border px-2 py-0.5 text-[11px] shrink-0 transition-colors ${
-                                lineupStage === stage
-                                  ? 'border-accent-tint-line bg-accent-tint text-text font-medium'
-                                  : 'border-line bg-surface-1 text-text-muted hover:text-text'
-                              }`}
-                            >
-                              {stage} <span className="text-[10px] opacity-70">({count})</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-scroll pr-1">
-                  {filteredSlots.length === 0 ? (
-                    <p className="py-3 text-xs text-text-muted">No acts match the selected stage or filter.</p>
-                  ) : (
-                    filteredSlots.map((slot) => {
-                    const slotKeys = new Set(slot.items.map((it) => it.item.artistKey));
-                    const isSolo = slot.items.length === 1 && (!slot.items[0].item.b2b || slot.items[0].item.b2b.length === 0);
-                    const on = isSolo
-                      ? event.seen.some((s) => s.key === slot.items[0].item.artistKey && (!s.b2b?.length || s.solo))
-                      : slotKeys.size > 0 && [...slotKeys].every((k) => event.seen.some((s) => s.key === k && s.b2b?.some((partner) => slotKeys.has(partner))));
-                    const title = [
-                      slot.items.some((it) => it.item.billing === 'support') && 'Billed as support',
-                      slot.items.some((it) => it.item.billing === 'headliner') && 'Headliner',
-                      slot.items.map((it) => sets.get(it.item.artistKey)).filter(Boolean).join(' · '),
-                    ].filter(Boolean).join(' · ') || undefined;
-
-                    return (
-                      <button
-                        key={slot.id}
-                        onClick={() => {
-                          if (on) {
-                            if (isSolo) {
-                              const artistKey = slot.items[0].item.artistKey;
-                              const nextSeen: SeenPatch = [];
-                              for (const s of event.seen) {
-                                if (s.key === artistKey && (!s.b2b?.length || !s.b2b)) continue;
-                                if (s.key === artistKey && s.solo) {
-                                  const { solo: _s, soloSet: _ss, ...rest } = s;
-                                  nextSeen.push(rest as SeenPatch[number]);
-                                  continue;
-                                }
-                                nextSeen.push(s as SeenPatch[number]);
-                              }
-                              save({ seen: toPatch(nextSeen as any) });
-                            } else {
-                              const nextSeen = event.seen.filter(
-                                (s) => !(slotKeys.has(s.key) && s.b2b?.some((partner) => slotKeys.has(partner))),
-                              );
-                              save({ seen: toPatch(nextSeen) });
-                            }
-                          } else {
-                            if (isSolo) {
-                              const p = slot.items[0].item;
-                              save({
-                                seen: [
-                                  ...toPatch(event.seen),
-                                  {
-                                    name: p.name,
-                                    from: 'lineup' as const,
-                                    role: p.billing,
-                                    roleFrom: p.billing ? ('lineup' as const) : undefined,
-                                  },
-                                ],
-                              });
-                            } else {
-                              const newActs = slot.items.map((it) => {
-                                const p = it.item;
-                                const partners = slot.items
-                                  .filter((other) => other.item.artistKey !== p.artistKey)
-                                  .map((other) => other.item.artistKey);
-                                return {
-                                  name: p.name,
-                                  from: 'lineup' as const,
-                                  role: p.billing,
-                                  roleFrom: p.billing ? ('lineup' as const) : undefined,
-                                  slotId: p.slotId,
-                                  alias: p.alias,
-                                  b2b: partners,
-                                };
-                              });
-                              save({
-                                seen: [...toPatch(event.seen), ...newActs],
-                              });
-                            }
-                          }
-                        }}
-                        title={title}
-                        className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-accent bg-accent-tint text-text' : 'border-line text-text-muted hover:text-text'}`}
-                      >
-                        {slot.name}
-                        {slot.items.some((it) => it.item.billing === 'support') && (
-                          <span className="ml-1 text-[10px] text-text-muted">support</span>
-                        )}
-                        {(() => {
-                          const t = slot.items.map((it) => chipTimes.get(it.item.artistKey)).find(Boolean);
-                          return t ? <span className="ml-1.5 text-[10px] tabular-nums text-text-muted">{t}</span> : null;
-                        })()}
-                      </button>
-                    );
-                  })
-                )}
-                </div>
-              </div>
-            );
-          })()}
+          {lineupActs.length > 0 && (
+            <LineupTable
+              key={event.id}
+              lineupActs={lineupActs}
+              seen={event.seen}
+              sets={sets}
+              starts={starts}
+              daysAttended={event.daysAttended}
+              inferredBilling={inferredBilling}
+              onSeenChange={(seen) => save({ seen })}
+            />
+          )}
 
           {(!job || edition || job.status === 'no_data' || job.status === 'failed') && !isActive(job?.status) && (
             <div className="space-y-1.5">
