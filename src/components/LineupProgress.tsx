@@ -24,18 +24,18 @@ export function LineupProgress({ job, busy, onRetry, onReview }: { job: LookupJo
         : (HEADLINE[job.status] ?? '');
 
   return (
-    <div className="space-y-3 rounded-xl border border-zinc-800 p-3">
+    <div className="space-y-3 rounded-card border border-line p-3">
       <div className="space-y-0.5">
-        <p className="text-sm font-semibold text-zinc-100">{headline}</p>
-        <p className="text-xs text-zinc-400">Find the lineup reads the sources and cites every act. You can close this; it keeps going.</p>
+        <p className="text-sm font-semibold text-text">{headline}</p>
+        <p className="text-xs text-text-muted">Find the lineup reads the sources and cites every act. You can close this; it keeps going.</p>
       </div>
       {job.status === 'waiting_quota' && (
-        <p className="rounded-lg border border-amber-500/30 bg-amber-950/20 p-2 text-xs text-amber-200">
+        <p className="rounded-control border border-warn/45 bg-warn/10 p-2 text-xs text-warn">
           Continues on its own{job.nextAttemptAt ? ` after ${new Date(job.nextAttemptAt).toLocaleString()}` : ''}. Nothing found is lost.
         </p>
       )}
       <Stepper steps={steps} label="Lineup lookup steps" />
-      {acts > 0 && job.status !== 'needs_review' && <p className="text-xs text-zinc-400">{acts} acts found so far.</p>}
+      {acts > 0 && job.status !== 'needs_review' && <p className="text-xs text-text-muted">{acts} acts found so far.</p>}
       <p role="status" aria-live="polite" className="sr-only">
         {lineupAnnouncement(steps)}
       </p>
@@ -55,7 +55,7 @@ export function LineupProgress({ job, busy, onRetry, onReview }: { job: LookupJo
         </Button>
       </div>
       {showLog && (
-        <ol className="max-h-60 space-y-1 overflow-y-auto text-xs text-zinc-400">
+        <ol className="max-h-60 space-y-1 overflow-y-auto text-xs text-text-muted">
           {job.log.map((entry, i) => (
             <li key={i}>{entry.message}</li>
           ))}

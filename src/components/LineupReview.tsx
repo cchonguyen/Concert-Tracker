@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { AlertTriangle, ExternalLink, Loader2, Plus, X } from 'lucide-react';
+import { AlertTriangle, ExternalLink, Plus, X } from 'lucide-react';
+import { Equalizer } from './ui/Equalizer';
 import type { RejectReason } from '../server/lineup/learning';
 import { lineupApi, collaborationsApi, type CollaborationItem, LoggedEvent, LookupJob, SOURCE_LABELS } from '../services/lineupApi';
 import { EventTitle } from './EventTitle';
@@ -48,7 +49,7 @@ interface Row {
 }
 
 const input =
-  'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 focus:border-violet-500 focus:outline-none';
+  'w-full rounded-control border border-line bg-surface-1 px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none';
 
 // Stage 2 review: keep, fix or reject each act and tick who you saw. The
 // event's date and place come from the event itself, not from here.
@@ -424,11 +425,11 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="w-full max-w-5xl space-y-5 rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
+      <div className="w-full max-w-5xl space-y-5 rounded-card border border-line bg-page p-5 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-bold text-zinc-50">{canonical ? 'Lineup for ' : 'Who played '}{event ? <EventTitle event={event} /> : `${job.input.eventName} ${job.input.year}`}</h2>
-            <p className="text-xs text-zinc-400">
+            <h2 className="font-display text-xl font-normal text-text">{canonical ? 'Lineup for ' : 'Who played '}{event ? <EventTitle event={event} /> : `${job.input.eventName} ${job.input.year}`}</h2>
+            <p className="text-xs text-text-muted">
               {replacing
                 ? 'The version you chose. Saving replaces your confirmed lineup; your spellings, roles and who you saw are kept. Acts only the old lineup had start unticked.'
                 : edition
@@ -439,15 +440,13 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
               {candidate?.droppedCount ? ` ${candidate.droppedCount} entries were filtered out by your earlier corrections.` : ''}
             </p>
           </div>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200" aria-label="Close">
-            <X className="h-5 w-5" />
-          </button>
+          <IconButton icon={X} label="Close" onClick={onClose} />
         </div>
 
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <input aria-label="Filter acts" className={`${input} max-w-xs`} placeholder="Filter acts" value={filter} onChange={(e) => setFilter(e.target.value)} />
-            <label className="inline-flex items-center gap-1 text-zinc-400">
+            <label className="inline-flex items-center gap-1 text-text-muted">
               <input type="checkbox" checked={onlyFlagged} onChange={(e) => setOnlyFlagged(e.target.checked)} /> Low evidence only
             </label>
             {options.days.length > 0 && (
@@ -466,22 +465,22 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                 ))}
               </select>
             )}
-            <span className="mx-1 text-zinc-700">|</span>
-            <button className="text-zinc-300 hover:underline" onClick={() => setAll({ accepted: true })}>Accept shown</button>
+            <span className="mx-1 text-text-faint">|</span>
+            <button className="inline-flex min-h-11 items-center sm:min-h-9 text-text-muted hover:underline" onClick={() => setAll({ accepted: true })}>Accept shown</button>
             {!canonical && (
               <>
-                <button className="text-zinc-300 hover:underline" onClick={() => setAll({ seen: true })}>Saw all shown</button>
-                <button className="text-zinc-300 hover:underline" onClick={() => setAll({ seen: false })}>Saw none shown</button>
+                <button className="inline-flex min-h-11 items-center sm:min-h-9 text-text-muted hover:underline" onClick={() => setAll({ seen: true })}>Saw all shown</button>
+                <button className="inline-flex min-h-11 items-center sm:min-h-9 text-text-muted hover:underline" onClick={() => setAll({ seen: false })}>Saw none shown</button>
               </>
             )}
-            <span className="ml-auto text-zinc-400">
+            <span className="ml-auto text-text-muted">
               {rows.filter((r) => r.accepted).length} accepted{!canonical && ` · ${seenCount} seen`}
             </span>
           </div>
 
-          <div className="max-h-[50vh] overflow-y-auto rounded-xl border border-zinc-800">
+          <div className="max-h-[50vh] overflow-y-auto rounded-card border border-line">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-zinc-900 text-left text-[11px] uppercase text-zinc-400">
+              <thead className="sticky top-0 bg-surface-1 text-left text-[11px] uppercase text-text-muted">
                 <tr>
                   <th className="p-2">Keep</th>
                   <th className="p-2">Act</th>
@@ -510,7 +509,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                   });
 
                   return (
-                    <tr key={slot.id} className={`border-t border-zinc-900 ${allAccepted ? '' : 'opacity-50'}`}>
+                    <tr key={slot.id} className={`border-t border-line ${allAccepted ? '' : 'opacity-50'}`}>
                       <td className="p-2 align-top">
                         <input
                           type="checkbox"
@@ -538,7 +537,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                             />
                             <Button
                               variant="secondary"
-                              className="shrink-0 text-xs py-1 px-2 h-auto text-zinc-400 hover:text-zinc-200"
+                              className="shrink-0 text-xs py-1 px-2 h-auto text-text-muted hover:text-text"
                               title="Pairs this act with another artist as a B2B set."
                               onClick={() => {
                                 const idx = slot.items[0].index;
@@ -551,11 +550,11 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                         ) : (
                           <div className="space-y-1.5">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-semibold text-zinc-100">{slot.name}</span>
+                              <span className="font-semibold text-text">{slot.name}</span>
                               {slot.alias && <Pill tone="accent">{slot.alias}</Pill>}
                               <Button
                                 variant="secondary"
-                                className="text-xs py-0.5 px-2 h-auto text-zinc-400 hover:text-zinc-200"
+                                className="text-xs py-0.5 px-2 h-auto text-text-muted hover:text-text"
                                 title="Adds another partner to this set, for a B3B or B4B."
                                 onClick={() => {
                                   const slotId = slot.items[0].item.slotId || crypto.randomUUID();
@@ -585,10 +584,10 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                               {slot.items.map((it) => (
                                 <div
                                   key={it.index}
-                                  className="inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900/90 px-1.5 py-0.5"
+                                  className="inline-flex items-center gap-1 rounded-control border border-line bg-surface-1 px-1.5 py-0.5"
                                 >
                                   <input
-                                    className="bg-transparent text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none max-w-[120px]"
+                                    className="bg-transparent text-xs text-text placeholder:text-text-faint focus:outline-none max-w-[120px]"
                                     value={it.item.name}
                                     onChange={(e) => typeName(it.index, e.target.value)}
                                     onBlur={() => splitRowIfB2b(it.index)}
@@ -617,7 +616,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                                   slot.items.forEach((it) => update(it.index, { alias }));
                                 }}
                                 placeholder="Shared name, e.g. Subjohnics"
-                                className={`${input} max-w-[150px] py-0.5 text-xs text-sky-300 placeholder:text-zinc-600`}
+                                className={`${input} max-w-[150px] py-0.5 text-xs text-text-muted placeholder:text-text-muted`}
                                 title="Sets the name they play under together."
                                 aria-label="Name they play under together"
                               />
@@ -634,23 +633,23 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                           {slot.isB2b && <Pill tone="info">{slot.items.length > 2 ? `B${slot.items.length}B set` : 'B2B set'}</Pill>}
                           {uniqueSources.some((src) => src.sourceType !== 'user') && (
                             <span
-                              className="text-zinc-400"
+                              className="text-text-muted"
                               title="Worked out from the sources that list this act and how often each was right in your past reviews."
                             >
                               {Math.round(slot.confidence * 100)}% confidence
                             </span>
                           )}
                           {allMissingFrom.length > 0 && (
-                            <span className="text-amber-300/80">not on {allMissingFrom.join(' or ')} lineup</span>
+                            <span className="text-warn">not on {allMissingFrom.join(' or ')} lineup</span>
                           )}
                           {renamedItems.map((it) => (
-                            <span key={it.index} className="text-violet-300">
+                            <span key={it.index} className="text-accent">
                               will remember "{it.item.originalName}" as "{it.item.name}"
                             </span>
                           ))}
                           {!allAccepted && slot.items.some((it) => it.item.key) && (
                             <select
-                              className="rounded border border-zinc-800 bg-zinc-900 px-1 text-[11px] text-zinc-300"
+                              className="rounded border border-line bg-surface-1 px-1 text-[11px] text-text-muted"
                               value={slot.items[0].item.rejectReason}
                               onChange={(e) => {
                                 const rejectReason = e.target.value as RejectReason;
@@ -666,7 +665,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                       </td>
                       <td className="p-2 align-top">
                         <div className="flex flex-wrap gap-1">
-                          {uniqueSources.length === 0 && <span className="text-[11px] text-zinc-400">Added by you</span>}
+                          {uniqueSources.length === 0 && <span className="text-[11px] text-text-muted">Added by you</span>}
                           {uniqueSources.map((s, i) =>
                             s.sourceUrl ? (
                               <a
@@ -675,12 +674,12 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                                 target="_blank"
                                 rel="noreferrer"
                                 title={`"${s.quotedSpan}" via ${s.extractor}`}
-                                className="inline-flex items-center gap-0.5 rounded-full border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300 hover:border-violet-500"
+                                className="inline-flex items-center gap-0.5 rounded-full border border-line-strong px-1.5 py-0.5 text-[10px] text-text-muted hover:border-accent"
                               >
                                 {SOURCE_LABELS[s.sourceType]} <ExternalLink className="h-2.5 w-2.5" />
                               </a>
                             ) : (
-                              <span key={i} className="rounded-full border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300">
+                              <span key={i} className="rounded-full border border-line-strong px-1.5 py-0.5 text-[10px] text-text-muted">
                                 {SOURCE_LABELS[s.sourceType]}
                               </span>
                             ),
@@ -689,7 +688,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                       </td>
                       <td className="p-2 align-top">
                         <select
-                          className="rounded border border-zinc-800 bg-zinc-900 px-1 py-1 text-xs text-zinc-200"
+                          className="rounded border border-line bg-surface-1 px-1 py-1 text-xs text-text"
                           value={slot.items[0].item.billing}
                           onChange={(e) => {
                             const billing = e.target.value as Row['billing'];
@@ -720,11 +719,11 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                             slot.items.forEach((it) => update(it.index, { set: trimmed }));
                           }}
                           placeholder="Set type"
-                          className="w-full rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-200 placeholder-zinc-500 focus:border-violet-500 focus:outline-none"
+                          className="w-full rounded border border-line bg-surface-1 px-2 py-1 text-xs text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
                           aria-label={`Set for ${slot.name}`}
                         />
                       </td>
-                      <td className="p-2 align-top text-[11px] text-zinc-400">
+                      <td className="p-2 align-top text-[11px] text-text-muted">
                         {slot.days.join(', ')}
                         {slot.stages.length > 0 && <div>{slot.stages.join(', ')}</div>}
                       </td>
@@ -746,7 +745,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
                 })}
               </tbody>
             </table>
-            {rows.length === 0 && <p className="p-4 text-sm text-zinc-400">No source listed a lineup. Add the acts you saw below.</p>}
+            {rows.length === 0 && <p className="p-4 text-sm text-text-muted">No source listed a lineup. Add the acts you saw below.</p>}
           </div>
 
           <div className="flex gap-2">
@@ -757,7 +756,7 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
               onChange={(e) => setNewAct(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addAct())}
             />
-            <button onClick={addAct} className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 px-3 text-xs text-zinc-200 hover:bg-zinc-900">
+            <button onClick={addAct} className="min-h-11 sm:min-h-9 inline-flex items-center gap-1 rounded-control border border-line-strong px-3 text-xs text-text hover:bg-surface-2">
               <Plus className="h-3 w-3" /> Add
             </button>
           </div>
@@ -765,14 +764,14 @@ export const LineupReview: React.FC<LineupReviewProps> = ({ job, event, mode, ed
 
         {canonical && preview && <CanonicalDiffPanel diff={preview.diff} stale={!previewed} />}
         <div className="flex items-center justify-end gap-3">
-          {error && <p className="mr-auto text-sm text-rose-300">{error}</p>}
-          <button onClick={onClose} className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200">Cancel</button>
+          {error && <p className="mr-auto text-sm text-bad">{error}</p>}
+          <button onClick={onClose} className="inline-flex min-h-11 items-center sm:min-h-9 rounded-control px-3 py-2 text-sm text-text-muted hover:text-text">Cancel</button>
           <button
             onClick={save}
             disabled={saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-good px-4 py-2 text-sm font-semibold text-on-accent hover:bg-good disabled:opacity-50"
+            className="min-h-11 sm:min-h-9 inline-flex items-center gap-2 rounded-control bg-good px-4 py-2 text-sm font-semibold text-on-accent hover:bg-good disabled:opacity-50"
           >
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            {saving && <Equalizer />}
             {canonical
               ? previewed
                 ? 'Confirm and save edition'
@@ -796,10 +795,10 @@ const FACT_LABEL: Record<string, string> = {
 
 // What saving will change in the archive, shown before the save (the server's preview).
 const CanonicalDiffPanel: React.FC<{ diff: CanonicalDiff; stale: boolean }> = ({ diff, stale }) => (
-  <section aria-label="Changes to save" className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 text-sm">
-    <h3 className="font-semibold text-zinc-100">Changes to save</h3>
-    {stale && <p className="text-amber-300">The acts changed since this preview. Review changes again before saving.</p>}
-    <ul className="space-y-1 text-zinc-300">
+  <section aria-label="Changes to save" className="space-y-2 rounded-control border border-line bg-surface-1 p-3 text-sm">
+    <h3 className="font-semibold text-text">Changes to save</h3>
+    {stale && <p className="text-warn">The acts changed since this preview. Review changes again before saving.</p>}
+    <ul className="space-y-1 text-text-muted">
       <li>Added ({diff.added.length}): {diff.added.length ? diff.added.join(', ') : 'none'}</li>
       <li>Changed ({diff.changed.length}): {diff.changed.length ? `${diff.changed.join(', ')}, set, days, stages or role replaced` : 'none'}</li>
       <li>Unchanged ({diff.unchanged.length}): {diff.unchanged.length ? diff.unchanged.join(', ') : 'none'}</li>
@@ -812,6 +811,6 @@ const CanonicalDiffPanel: React.FC<{ diff: CanonicalDiff; stale: boolean }> = ({
         </li>
       ))}
     </ul>
-    <p className="text-xs text-zinc-500">Acts you untick are not removed from the archive; they stay as stored.</p>
+    <p className="text-xs text-text-muted">Acts you untick are not removed from the archive; they stay as stored.</p>
   </section>
 );

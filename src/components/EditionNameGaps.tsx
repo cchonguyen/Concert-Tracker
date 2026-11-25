@@ -58,37 +58,37 @@ export const EditionNameGaps: React.FC = () => {
   if (rows === null && !error) return null;
 
   return (
-    <section aria-label="Find gaps" className="space-y-2 rounded-lg border border-zinc-800 p-3">
-      <h3 className="text-sm font-semibold text-zinc-100">Find gaps: named in the edition, not on the lineup</h3>
-      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
-      {notice && <p role="status" className="text-sm text-zinc-300">{notice}</p>}
+    <section aria-label="Find gaps" className="space-y-2 rounded-control border border-line p-3">
+      <h3 className="font-display text-base font-normal text-text">Find gaps: named in the edition, not on the lineup</h3>
+      {error && <p role="alert" className="text-sm text-bad">{error}</p>}
+      {notice && <p role="status" className="text-sm text-text-muted">{notice}</p>}
       {rows && rows.length > 1 && (
         <button
           type="button"
           disabled={busy !== null}
           onClick={() => void addAll()}
-          className="rounded-md border border-violet-700 px-2.5 py-1 text-xs text-violet-200 hover:bg-violet-950 disabled:opacity-50"
+          className="inline-flex min-h-11 items-center sm:min-h-9 rounded-control border border-accent px-2.5 py-1 text-xs text-accent hover:bg-accent-tint disabled:opacity-50"
         >
           {busy === 'all' ? 'Adding all…' : `Add all to lineup (${rows.length})`}
         </button>
       )}
-      {rows && rows.length === 0 && <p className="text-sm text-zinc-400">Nothing to add: every edition named for an artist already lists them.</p>}
+      {rows && rows.length === 0 && <p className="text-sm text-text-muted">Nothing to add: every edition named for an artist already lists them.</p>}
       {rows && rows.length > 0 && (
-        <ul className="divide-y divide-zinc-800">
+        <ul className="divide-y divide-line">
           {rows.map((row) => {
             const key = `${row.editionId}:${row.artistKey}`;
             return (
               <li key={key} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <span className="text-sm text-zinc-200">
+                <span className="text-sm text-text">
                   <span className="font-medium">{row.artistName}</span>
-                  <span className="text-zinc-400"> in </span>
+                  <span className="text-text-muted"> in </span>
                   {row.editionName}
                 </span>
                 <button
                   type="button"
                   disabled={busy !== null}
                   onClick={() => void add(row)}
-                  className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-100 hover:bg-zinc-800 disabled:opacity-50"
+                  className="inline-flex min-h-11 items-center sm:min-h-9 rounded-control border border-line-strong px-2.5 py-1 text-xs text-text hover:bg-surface-2 disabled:opacity-50"
                 >
                   {busy === key ? 'Adding…' : 'Add to lineup'}
                 </button>
