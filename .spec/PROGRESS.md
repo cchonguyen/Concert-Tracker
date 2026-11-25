@@ -1,5 +1,4 @@
 # Task Progress & Single-Slice Work Lock
-
 > Rule: Mark only ONE task line at a time with the active work tag.
 
 Finished slices move to `.spec/archive/HISTORY.md`. Earlier feature sections (share page, Manage, Tier 3, Global archive, ingest canon, canon review, series, Global Editions, harness rollout) have no open slices and were removed on 2026-11-23; their slices are in HISTORY.md and their specs are listed in `docs/README.md`.
