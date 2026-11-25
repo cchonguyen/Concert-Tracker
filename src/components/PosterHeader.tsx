@@ -141,7 +141,7 @@ export function ThingsLeft({ gaps, current, needsWeekend, onPick, onNext }: Stri
       <button
         type="button"
         onClick={onNext}
-        className="inline-flex min-h-11 items-center gap-0.5 rounded-control bg-violet-500 px-3 text-sm font-semibold text-white hover:bg-violet-400 sm:min-h-9"
+        className="inline-flex min-h-11 items-center gap-0.5 rounded-control bg-accent-fill px-3 text-sm font-semibold text-on-accent hover:brightness-110 sm:min-h-9"
       >
         Next <ChevronRight className="h-4 w-4" aria-hidden="true" />
       </button>
