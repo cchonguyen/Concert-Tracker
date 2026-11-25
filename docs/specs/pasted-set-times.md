@@ -1,6 +1,6 @@
 # Paste set times from a page (spec)
 
-Status: approved 2026-11-24 (PR #657). Thread: "Get Together As One lineup and set times".
+Status: approved 2026-11-24 (PR #657). Slice 1 (rule change) in PR #664. Thread: "Get Together As One lineup and set times".
 Discovery notes: `/mnt/project-files/together-as-one/scope.md` (project files).
 
 ## Ask
