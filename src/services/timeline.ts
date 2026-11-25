@@ -502,7 +502,7 @@ export function riverLayout(model: TimelineModel, pxPerDay: number): RiverLayout
     const x = xOf(span.first);
     const w = span.last === span.first ? 0 : xOf(addDays(span.last, 1)) - x;
     const r = 2 + 2 * actsStep(span.acts);
-    const right = x + Math.max(w, r * 2) + (labels ? 8 + span.title.length * 6.5 : 4);
+    const right = x + Math.max(w, r * 2, labels ? 16 : 0) + 4;
     let lane = laneEnds.findIndex((end) => end < x - r);
     if (lane < 0) lane = laneEnds.push(0) - 1;
     laneEnds[lane] = right;
