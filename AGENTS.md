@@ -2,7 +2,7 @@
 
 Read [REQUIREMENTS.md](REQUIREMENTS.md) first: it says what the app is for (remembering which events you went to and who you saw) and ranks the principles that settle trade-offs. Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing capture, lineup lookup, storage or review. These rules apply to people and AI coding agents alike (Claude, Gemini in AI Studio, Copilot, and others). If a change conflicts with them, change REQUIREMENTS.md or ARCHITECTURE.md first and say why.
 
-- Never synthesize, default or infer a lineup, date, venue, stage, rating or setlist. Missing data stays missing and the UI says so.
+- Never make up or default a lineup, date, venue, stage, rating or setlist, and never let a model answer from memory. An inferred value (approved 2026-11-24, `docs/specs/inferred-values.md`) is allowed only as that spec says: a stated reason with named inputs, the "Inferred" label, never over a typed or verified value, never counted toward verifying anything. Until a slice of that spec changes a rule below, the rule stands. Missing data with nothing to go on stays missing and the UI says so.
 - Every stored act must reference a stored source document and a quoted span from it.
 - The reader model (Gemini today) may only extract from text the app fetched. It never answers from memory and is never asked for confidence, dates it was not shown, or URLs.
 - Reject any extracted name that is not found verbatim (after normalization) in its source text. Do not loosen `isVerbatim`.
