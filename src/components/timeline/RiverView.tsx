@@ -7,15 +7,17 @@ import { Popover } from '../ui/Popover';
 // River: events along a vertical top-to-bottom time axis you drag or scroll
 // through, zoomed from about a decade down to a month, with a light grid in
 // the background. Concerts are dots, runs of days are vertical bars, sized in
-// steps by acts you logged (none logged draws like one act) and spread from
-// left to right across the full width, with a line for today. Names show beside
-// the marks once zoomed in. A mark opens a short list of the events on its days
-// (hover with a mouse, tap on a touch screen, Enter on a keyboard); the marks
-// also carry the browser's title as the screen-reader name.
+// steps by acts you logged (none logged draws like one act) with concentric
+// pulse rings as size grows, spread from left to right across the full width,
+// with a line for today. Names show beside the marks once zoomed in. A mark
+// opens a short list of the events on its days (hover with a mouse, tap on a
+// touch screen, Enter on a keyboard); the marks also carry the browser's
+// title as the screen-reader name.
 
-const AXIS_X = 76;
+const AXIS_X = 92;
 const PAD_Y = 24;
 const GRID_SIZE = 24;
+const RING_GAP = 6;
 
 const ATTENDANCE_LABEL: Record<TimelineSpan['attendance'], string> = {
   went: 'Went',
@@ -33,12 +35,20 @@ interface PlacedItem {
   cy: number;
   vr: number;
   barH: number;
+  rings: number;
+  outerPad: number;
 }
 
 const MARK_CLASS = (item: RiverItem) => {
   if (item.span.attendance === 'confirm') return 'fill-transparent stroke-warn';
   if (item.span.attendance === 'upcoming') return 'fill-transparent stroke-accent';
   return item.span.kind === 'festival' ? 'fill-accent' : 'fill-accent-fill';
+};
+
+const RING_STROKE_CLASS = (item: RiverItem) => {
+  if (item.span.attendance === 'confirm') return 'stroke-warn';
+  if (item.span.attendance === 'upcoming') return 'stroke-accent';
+  return item.span.kind === 'festival' ? 'stroke-accent' : 'stroke-accent-fill';
 };
 
 export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda }) => {
@@ -88,8 +98,8 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
   const placed = useMemo<PlacedItem[]>(() => {
     if (!layout) return [];
     const hasLabels = layout.items.some((i) => i.label);
-    const plotLeft = AXIS_X + 24;
-    const plotRight = Math.max(containerWidth - 16, plotLeft + 180);
+    const plotLeft = AXIS_X + 28;
+    const plotRight = Math.max(containerWidth - 28, plotLeft + 180);
     const plotWidth = plotRight - plotLeft;
     const cols = hasLabels
       ? Math.max(1, Math.floor(plotWidth / 190))
@@ -100,13 +110,16 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
 
     return layout.items.map((item) => {
       const vr = Math.round(item.r * 1.75 + 2);
+      const step = Math.max(1, Math.min(4, Math.round((item.r - 2) / 2)));
+      const rings = step - 1;
+      const outerPad = rings * RING_GAP;
       const cy = PAD_Y + item.x;
       const barH = Math.max(item.w, vr * 2);
 
       let chosen = -1;
       for (let offset = 0; offset < cols; offset++) {
         const c = (nextCol + offset) % cols;
-        if (colBottoms[c] < cy - 6) {
+        if (colBottoms[c] < cy - outerPad - 6) {
           chosen = c;
           break;
         }
@@ -118,14 +131,14 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
         }
       }
 
-      colBottoms[chosen] = cy + barH;
+      colBottoms[chosen] = cy + barH + outerPad;
       nextCol = (chosen + 1) % cols;
 
       const cx = hasLabels
-        ? plotLeft + chosen * colWidth + vr + 8
+        ? plotLeft + chosen * colWidth + vr + outerPad + 8
         : plotLeft + (chosen + 0.5) * colWidth;
 
-      return { item, cx, cy, vr, barH };
+      return { item, cx, cy, vr, barH, rings, outerPad };
     });
   }, [layout, containerWidth]);
 
@@ -206,10 +219,10 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
                     strokeWidth={1}
                   />
                   <text
-                    x={AXIS_X - 8}
-                    y={ty + 4}
+                    x={AXIS_X - 10}
+                    y={t.major ? ty + 7 : ty + 3}
                     textAnchor="end"
-                    className={t.major ? 'fill-text-muted font-mono text-[11px] font-bold' : 'fill-text-faint font-mono text-[9px]'}
+                    className={t.major ? 'fill-text-muted font-mono text-[22px] font-bold' : 'fill-text-faint font-mono text-[9px]'}
                   >
                     {t.label}
                   </text>
@@ -217,29 +230,60 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
               );
             })}
             <line x1={AXIS_X} x2="100%" y1={todayY} y2={todayY} className="stroke-accent" strokeWidth={1.5} strokeDasharray="3 3" />
-            <text x={AXIS_X - 8} y={todayY - 4} textAnchor="end" className="fill-accent font-mono text-[9px] font-bold uppercase">
+            <text x={AXIS_X - 10} y={todayY - 5} textAnchor="end" className="fill-accent font-mono text-[9px] font-bold uppercase">
               Today
             </text>
-            {placed.map(({ item, cx, cy, vr, barH }) => {
+            {placed.map(({ item, cx, cy, vr, barH, rings, outerPad }) => {
               const outlined = item.span.attendance !== 'went';
               const common = {
                 className: `${MARK_CLASS(item)} cursor-pointer hover:brightness-110`,
                 strokeWidth: outlined ? 2 : 0,
                 strokeDasharray: outlined ? '4 3' : undefined,
               };
+              const ringClass = RING_STROKE_CLASS(item);
+              const ringIndices = Array.from({ length: rings }, (_, idx) => rings - idx);
               return (
                 <g key={item.span.id}>
                   <title>
                     {item.span.title}
                     {item.span.attendance === 'confirm' ? ' (did you go?)' : item.span.attendance === 'upcoming' ? ' (upcoming)' : ''}
                   </title>
+                  {ringIndices.map((i) => {
+                    const ringPad = i * RING_GAP;
+                    const opacity = Number((0.48 - (i - 1) * 0.13).toFixed(2));
+                    return item.w > 0 ? (
+                      <rect
+                        key={i}
+                        x={cx - vr - ringPad}
+                        y={cy - ringPad}
+                        width={(vr + ringPad) * 2}
+                        height={barH + ringPad * 2}
+                        rx={vr + ringPad}
+                        fill="none"
+                        className={ringClass}
+                        strokeWidth={1.5}
+                        strokeOpacity={opacity}
+                      />
+                    ) : (
+                      <circle
+                        key={i}
+                        cx={cx}
+                        cy={cy + vr}
+                        r={vr + ringPad}
+                        fill="none"
+                        className={ringClass}
+                        strokeWidth={1.5}
+                        strokeOpacity={opacity}
+                      />
+                    );
+                  })}
                   {item.w > 0 ? (
                     <rect x={cx - vr} y={cy} width={vr * 2} height={barH} rx={vr} {...common} />
                   ) : (
                     <circle cx={cx} cy={cy + vr} r={vr} {...common} />
                   )}
                   {item.label && (
-                    <text x={cx + vr + 8} y={cy + vr + 4} className="pointer-events-none fill-text text-xs">
+                    <text x={cx + vr + outerPad + 8} y={cy + vr + 4} className="pointer-events-none fill-text text-xs">
                       {item.span.attendance === 'confirm' ? '? ' : ''}
                       {item.span.title}
                     </text>
