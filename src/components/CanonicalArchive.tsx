@@ -32,6 +32,8 @@ import { buildPastPlaces, cityPickPatch, formatPlaceLabel, unanimousPlace } from
 import { seedMultiWeekends } from '../services/weekends';
 import { Button } from './ui/Button';
 import { Callout } from './ui/Callout';
+import { Equalizer } from './ui/Equalizer';
+import { Ledger } from './ui/Ledger';
 import { Notice } from './ui/Notice';
 import { Pill } from './ui/Pill';
 import { Segmented } from './ui/Segmented';
@@ -85,7 +87,7 @@ const isActive = (j: LookupJob) => j.status === 'queued' || j.status === 'runnin
 const canRetry = (j: LookupJob) => j.status === 'waiting_quota' || j.status === 'no_data' || j.status === 'failed';
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-const field = 'rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-violet-500 focus:outline-none';
+const field = 'min-h-11 sm:min-h-9 rounded-control border border-line-strong bg-surface-1 px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none';
 
 export const CanonicalArchive: React.FC<{ section: ArchiveSection; query: string; status: EditionStatus }> = ({ section, query, status }) => {
   if (section === 'lookups') return <ArchiveLookups />;
@@ -187,10 +189,10 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
   };
 
   const noticeLine = notice && (
-    <p role="status" className="flex flex-wrap items-center gap-2 text-sm text-zinc-300">
+    <p role="status" className="flex flex-wrap items-center gap-2 text-sm text-text-muted">
       {notice.text}
       {notice.undo && (
-        <button onClick={() => void undo(notice.undo!)} disabled={busy} className="text-violet-300 hover:text-violet-200 disabled:opacity-40">
+        <button onClick={() => void undo(notice.undo!)} disabled={busy} className="min-h-11 rounded-control px-1.5 text-accent hover:underline disabled:opacity-40 sm:min-h-9">
           Undo
         </button>
       )}
@@ -218,19 +220,21 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
   return (
     <section className="space-y-2">
       {noticeLine}
-      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+      {error && <p role="alert" className="text-sm text-bad">{error}</p>}
       {artists === null ? (
-        <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+        <span role="status" aria-label="Loading artists" className="inline-flex items-center text-text-muted">
+          <Equalizer />
+        </span>
       ) : artists.length === 0 ? (
-        <p className="text-sm text-zinc-400">No artists yet.</p>
+        <p className="text-sm text-text-muted">No artists yet.</p>
       ) : shown.length === 0 ? (
-        <p className="text-sm text-zinc-400">No artist matches "{query}".</p>
+        <p className="text-sm text-text-muted">No artist matches "{query}".</p>
       ) : (
-        <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+        <Ledger>
           {shown.map((a) => {
             const url = canonicalArtistUrl(a.key, { q: query || undefined });
             return (
-              <li key={a.key}>
+              <Ledger.Row key={a.key} edge="none" className="hover:border-l-4 hover:bg-surface-2">
                 <a
                   href={url}
                   onClick={(e) => {
@@ -240,23 +244,23 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
                     rememberManageSearch(new URL(url, window.location.origin).search);
                     window.dispatchEvent(new PopStateEvent('popstate'));
                   }}
-                  className="flex w-full flex-wrap items-center gap-2 p-2.5 text-left text-sm hover:bg-zinc-900/60"
+                  className="flex w-full flex-wrap items-center gap-2 px-3 py-2.5 text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
                 >
-                  <span className="text-zinc-100">{a.name}</span>
+                  <span className="font-medium text-text">{a.name}</span>
                   {a.origins.map((o) => (
                     <Pill key={o} tone="neutral">{ORIGIN_LABEL[o]}</Pill>
                   ))}
-                  <span className="text-[11px] text-zinc-500">{a.mbid ? 'MusicBrainz' : 'No MusicBrainz id'}</span>
-                  {a.akas.length > 0 && <span className="basis-full text-xs text-zinc-500">Also known as {a.akas.join(', ')}</span>}
-                  <span className="ml-auto text-xs text-zinc-400">
+                  <span className="text-[11px] text-text-faint">{a.mbid ? 'MusicBrainz' : 'No MusicBrainz id'}</span>
+                  {a.akas.length > 0 && <span className="basis-full text-xs text-text-faint">Also known as {a.akas.join(', ')}</span>}
+                  <span className="ml-auto font-mono text-xs tabular-nums text-text-muted">
                     {a.editionsCount} billed {a.editionsCount === 1 ? 'edition' : 'editions'}
                     {a.communityCount === null ? '' : ` · ${a.communityCount} community`}
                   </span>
                 </a>
-              </li>
+              </Ledger.Row>
             );
           })}
-        </ul>
+        </Ledger>
       )}
     </section>
   );
@@ -351,18 +355,23 @@ const ArchiveBrands: React.FC<{ query: string }> = ({ query }) => {
           </Button>
         </div>
       )}
-      {brands === null && !error && <p className="text-sm text-zinc-500">Loading brands…</p>}
-      {brands && brands.length === 0 && <p className="text-sm text-zinc-500">No brands yet. A brand appears once a series has one.</p>}
+      {brands === null && !error && (
+        <p className="flex items-center gap-2 text-sm text-text-muted">
+          <Equalizer />
+          <span>Loading brands…</span>
+        </p>
+      )}
+      {brands && brands.length === 0 && <p className="text-sm text-text-muted">No brands yet. A brand appears once a series has one.</p>}
       {visible.length > 0 && (
-        <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+        <Ledger>
           {visible.map((b) => (
-            <li key={b.id} className="space-y-2 p-3">
+            <Ledger.Row key={b.id} edge="none" className="flex-col items-stretch gap-2 p-3">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="font-medium text-zinc-100">{b.name}</span>
-                <span className="text-xs text-zinc-500">{b.organizationId ? orgName.get(b.organizationId) ?? 'Organization' : 'No organization'}</span>
+                <span className="font-medium text-text">{b.name}</span>
+                <span className="text-xs text-text-muted">{b.organizationId ? orgName.get(b.organizationId) ?? 'Organization' : 'No organization'}</span>
               </div>
-              {b.aliases.length > 0 && <p className="text-xs text-zinc-500">Also known as {b.aliases.join(', ')}</p>}
-              <p className="text-xs text-zinc-500">
+              {b.aliases.length > 0 && <p className="text-xs text-text-faint">Also known as {b.aliases.join(', ')}</p>}
+              <p className="font-mono text-xs tabular-nums text-text-muted">
                 {b.seriesCount} series · {b.editionCount} {b.editionCount === 1 ? 'edition' : 'editions'}
               </p>
               <div className="flex flex-wrap items-center gap-2">
@@ -431,9 +440,9 @@ const ArchiveBrands: React.FC<{ query: string }> = ({ query }) => {
                   <Button onClick={() => setEditing(null)}>Cancel</Button>
                 </form>
               )}
-            </li>
+            </Ledger.Row>
           ))}
-        </ul>
+        </Ledger>
       )}
     </section>
   );
