@@ -42,7 +42,7 @@ import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../e
 import type { ShareLink } from '../../share/types';
 import { shareEventOnly } from '../../share/types';
 import type { AiCallRow, IngestTraceRow, MergeSummary } from './types';
-import type { CanonicalVenue, EditionChange, ReviewQueueItem, ReviewQueueKind, VenueAlias, EditionExternalId } from '../types';
+import type { CanonicalVenue, EditionChange, EditionInference, InferenceStatus, NewEditionInference, ReviewQueueItem, ReviewQueueKind, VenueAlias, EditionExternalId } from '../types';
 import { ArtistIdTakenError, assertNoPersonalFields, EditionOccurrenceConflictError, ExternalIdConflictError, venueIdFor } from './types';
 import { normalizeName } from '../normalizeName';
 import type { CachedResponse } from '../responseCache';
@@ -110,6 +110,7 @@ interface FileState {
   venueAliases?: Array<VenueAlias>;
   editionExternalIds?: EditionExternalId[];
   editionChanges?: EditionChange[];
+  editionInferences?: EditionInference[];
   reviewQueue?: ReviewQueueItem[];
   owners?: Record<string, string>;
   userSettings?: Record<string, Record<string, unknown>>;
@@ -1383,6 +1384,43 @@ export class FileLineupStore implements LineupStore {
     row.undoneAt = new Date().toISOString();
     await this.save();
     return true;
+  }
+
+  async addEditionInference(i: NewEditionInference): Promise<EditionInference> {
+    if (!i.reason || !i.reason.trim()) throw new Error('An inference needs a reason.');
+    assertNoPersonalFields(i.value);
+    assertNoPersonalFields(i.inputs);
+    const state = await this.load();
+    const rows = state.editionInferences ?? [];
+    if (rows.some((r) => r.editionId === i.editionId && r.field === i.field && r.status === 'active')) {
+      throw new Error(`An active inference already exists for ${i.editionId} ${i.field}.`);
+    }
+    const row: EditionInference = { ...clone(i), id: crypto.randomUUID(), status: 'active', createdAt: new Date().toISOString() };
+    (state.editionInferences ??= []).push(row);
+    await this.save();
+    return clone(row);
+  }
+
+  async listEditionInferences(editionId: string): Promise<EditionInference[]> {
+    const rows = ((await this.load()).editionInferences ?? []).filter((r) => r.editionId === editionId);
+    return clone(rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+  }
+
+  async listInferenceChildren(id: string): Promise<EditionInference[]> {
+    const rows = ((await this.load()).editionInferences ?? []).filter((r) => r.parents.includes(id));
+    return clone(rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+  }
+
+  async resolveEditionInference(id: string, r: { status: Exclude<InferenceStatus, 'active'>; by: string; reason: string }): Promise<EditionInference | null> {
+    const state = await this.load();
+    const row = (state.editionInferences ?? []).find((x) => x.id === id);
+    if (!row || row.status !== 'active') return null;
+    row.status = r.status;
+    row.resolvedAt = new Date().toISOString();
+    row.resolvedBy = r.by;
+    row.resolvedReason = r.reason;
+    await this.save();
+    return clone(row);
   }
 
   async addReviewItem(i: { kind: ReviewQueueKind; editionId?: string; eventId?: string; payload: Record<string, unknown> }) {

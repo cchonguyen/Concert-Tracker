@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createLookup, enqueueArtistResolution, InputError, PipelineDeps, requeueFailedResolveArtists } from './pipeline';
+import { createLookup, enqueueArtistResolution, InputError, PipelineDeps, requeueFailedResolveArtists, stopJob } from './pipeline';
 import { confirmLookup, confirmLookupForMember, ConfirmRequest } from './learning';
 import { currentMember } from '../auth/requestScope';
 import { isOwner } from '../entities/canonicalManage';
@@ -258,6 +258,18 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
       res.json({ job: safeJob(job) });
     } catch (err) {
       fail(res, err);
+    }
+  });
+
+  // Stop a queued or parked lookup (owner only), so it never runs a search again on its own.
+  router.post('/lookups/:id/stop', async (req, res) => {
+    if (!isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
+    try {
+      const job = await stopJob(deps, req.params.id);
+      if (!job) return res.status(404).json({ error: 'Lookup not found.' });
+      res.json({ job: safeJob(job) });
+    } catch (err) {
+      fail(res, err, 400);
     }
   });
 
