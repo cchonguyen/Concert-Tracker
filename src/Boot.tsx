@@ -33,12 +33,12 @@ export function Boot() {
     };
   }, [attempt]);
 
-  if (boot.phase === 'checking') return <p className="p-6 text-sm text-zinc-400">Loading…</p>;
+  if (boot.phase === 'checking') return <p className="p-6 text-sm text-text-muted">Loading…</p>;
   if (boot.phase === 'error')
     return (
-      <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-4 px-4 text-zinc-100">
-        <h1 className="text-lg font-bold">The server did not answer.</h1>
-        <p className="text-sm text-zinc-400">Nothing is shown until it does, so your archive is never swapped for sample data. ({boot.message})</p>
+      <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-4 px-4 text-text">
+        <h1 className="font-display text-2xl font-normal">The server did not answer.</h1>
+        <p className="text-sm text-text-muted">Nothing is shown until it does, so your archive is never swapped for sample data. ({boot.message})</p>
         <div>
           <Button variant="primary" onClick={() => setAttempt((n) => n + 1)}>
             Try again
