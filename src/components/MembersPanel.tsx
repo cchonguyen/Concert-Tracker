@@ -1,10 +1,14 @@
 import { Dialog } from './ui/Dialog';
 import React, { useEffect, useState } from 'react';
-import { Loader2, Mail, Trash2, UserPlus, X } from 'lucide-react';
+import { Mail, Trash2, UserPlus, X } from 'lucide-react';
 import { IconButton } from './ui/IconButton';
 import { Confirm } from './ui/Confirm';
 import { Button } from './ui/Button';
+import { Equalizer } from './ui/Equalizer';
+import { HintPill } from './ui/HintPill';
+import { Ledger } from './ui/Ledger';
 import { Pill } from './ui/Pill';
+import { Tabs } from './ui/Tabs';
 import { accessRequestsApi, membersApi, type AccessRequestRow, type MemberRow, type RequestSettings, type RequestStatus } from '../services/lineupApi';
 import { useMe } from './MeContext';
 
@@ -12,7 +16,8 @@ import { useMe } from './MeContext';
 // email. Requests: everyone who asked, was invited or was banned, with a
 // status the owner can change (ARCHITECTURE.md "Request access").
 
-const button = 'inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:text-zinc-100 disabled:opacity-40';
+const button = 'inline-flex min-h-11 sm:min-h-9 items-center gap-1.5 rounded-control border border-line-strong px-3 py-2 text-sm text-text-muted hover:text-text disabled:opacity-40';
+const field = 'min-h-11 sm:min-h-9 rounded-control border border-line-strong bg-surface-1 px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none';
 const FILTERS: Array<RequestStatus | 'all'> = ['all', 'pending', 'accepted', 'declined', 'left'];
 const WORD: Record<RequestStatus, string> = { pending: 'Pending', accepted: 'Accepted', declined: 'Declined', left: 'Left' };
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -127,7 +132,7 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
   const pendingRows = rows.filter((r) => r.status === 'pending');
 
   const actions = (r: AccessRequestRow) => {
-    if (r.email === me.email) return <span className="text-[11px] text-zinc-500">Owner</span>;
+    if (r.email === me.email) return <span className="text-[11px] text-text-faint">Owner</span>;
     const out: React.ReactNode[] = [];
     if (r.status === 'pending' || r.status === 'left') {
       out.push(<Button key="accept" variant="secondary" disabled={busy} onClick={() => setStatus(r.email, 'accepted')}>Accept</Button>);
@@ -156,37 +161,33 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
   const origin = (r: AccessRequestRow) => (r.source === 'requested' ? 'Asked' : r.source === 'invited' ? 'Invited' : 'Banned directly');
 
   return (
-    <Dialog title="Members" onClose={onClose} panelClassName="h-full w-full max-w-md space-y-4 overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-5">
+    <Dialog title="Members" onClose={onClose} panelClassName="h-full w-full max-w-md space-y-4 overflow-y-auto border-l border-line bg-page p-5">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold">Members</h2>
-        <button onClick={onClose} aria-label="Close" className="text-zinc-400 hover:text-zinc-200">
+        <h2 className="font-display text-xl font-normal text-text">Members</h2>
+        <button onClick={onClose} aria-label="Close" className="flex h-10 w-10 items-center justify-center rounded-control text-text-muted hover:text-text">
           <X className="h-5 w-5" />
         </button>
       </div>
-      <div role="tablist" className="flex gap-1 border-b border-zinc-900">
-        {(['requests', 'members'] as const).map((t) => (
-          <button
-            key={t}
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => setTab(t)}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm ${tab === t ? 'border-violet-400 text-zinc-100' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}
-          >
-            {t === 'requests' ? 'Requests' : 'Members'}
-            {t === 'requests' && pendingRows.length > 0 && <span className="ml-1.5 rounded-full bg-accent-fill px-1.5 text-[10px] text-on-accent">{pendingRows.length}</span>}
-          </button>
-        ))}
-      </div>
-      {error && <p className="text-xs text-rose-300">{error}</p>}
-      {note && <p className="text-xs text-emerald-300">{note}</p>}
+      <Tabs
+        label="Members panel sections"
+        variant="underline"
+        items={[
+          { value: 'requests', label: 'Requests', count: pendingRows.length > 0 ? pendingRows.length : undefined },
+          { value: 'members', label: 'Members' },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
+      {error && <p className="text-xs text-bad">{error}</p>}
+      {note && <p className="text-xs text-good">{note}</p>}
 
       {tab === 'members' && (
         <>
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-text-muted">
             Each member keeps their own events, imports and share link. Nobody, you included, sees another member's events here.
           </p>
           {researchOn !== null && (
-            <label className="flex items-start gap-2 text-xs text-zinc-300">
+            <label className="flex items-start gap-2 text-xs text-text-muted">
               <input
                 type="checkbox"
                 className="mt-0.5"
@@ -223,24 +224,26 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="friend@example.com"
-                className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm"
+                className={`min-w-0 flex-1 ${field}`}
               />
               <button type="submit" disabled={busy || !email.trim()} className={button}>
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} Invite
+                {busy ? <Equalizer size="sm" /> : <UserPlus className="h-4 w-4" />} Invite
               </button>
             </div>
-            <label className="flex items-center gap-2 text-xs text-zinc-400">
+            <label className="flex items-center gap-2 text-xs text-text-muted">
               <input type="checkbox" checked={sendInviteEmail} onChange={(e) => setSendInviteEmail(e.target.checked)} />
               Send invite email with sign-in instructions
             </label>
           </form>
           {members === null ? (
-            <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+            <span role="status" aria-label="Loading members" className="inline-flex items-center text-text-muted">
+              <Equalizer />
+            </span>
           ) : (
             <div className="space-y-2">
               {unaccepted.length > 0 && (
                 <div className="flex items-center justify-between gap-2 pt-1">
-                  <span className="text-xs text-zinc-400">
+                  <span className="font-mono text-xs tabular-nums text-text-muted">
                     {unaccepted.length} {unaccepted.length === 1 ? 'invite pending' : 'invites pending'}
                   </span>
                   <Button variant="ghost" disabled={busy} onClick={resendAllInvites}>
@@ -249,14 +252,14 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
                   </Button>
                 </div>
               )}
-              <ul className="space-y-2">
+              <Ledger>
                 {members.map((m) => {
                   const canResend = m.role !== 'owner' && !m.joined && !m.blocked;
                   return (
-                    <li key={m.email} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3 text-sm">
+                    <Ledger.Row key={m.email} edge="none" className="justify-between px-3 py-2.5 text-sm">
                       <div className="min-w-0">
-                        <p className="truncate text-zinc-100">{m.email}</p>
-                        <p className="text-[11px] text-zinc-400">
+                        <p className="truncate text-text">{m.email}</p>
+                        <p className="text-[11px] text-text-muted">
                           {m.role === 'owner' ? 'Owner' : m.blocked ? 'Blocked' : m.joined ? 'Member' : 'Invited, not signed in yet'}
                         </p>
                       </div>
@@ -275,14 +278,14 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
                             label={`Delete data for ${m.email}`}
                             disabled={busy}
                             onClick={() => setConfirm({ kind: 'delete', email: m.email })}
-                            className="hover:text-rose-300"
+                            className="hover:text-bad"
                           />
                         </div>
                       )}
-                    </li>
+                    </Ledger.Row>
                   );
                 })}
-              </ul>
+              </Ledger>
             </div>
           )}
         </>
@@ -290,17 +293,17 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
 
       {tab === 'requests' && (
         <>
-          <div className="space-y-3 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3 text-sm">
+          <div className="space-y-3 rounded-card border border-line bg-surface-1 p-3 text-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-zinc-100">Requests</p>
-                <p className="text-[11px] text-zinc-400">{requests?.settings.paused ? 'Closed. Nobody new can ask.' : 'Open. Strangers can ask.'}</p>
+                <p className="text-text">Requests</p>
+                <p className="text-[11px] text-text-muted">{requests?.settings.paused ? 'Closed. Nobody new can ask.' : 'Open. Strangers can ask.'}</p>
               </div>
               <button
                 aria-pressed={requests?.settings.paused ?? false}
                 disabled={busy || !requests}
                 onClick={() => saveSettings({ paused: !requests?.settings.paused })}
-                className={`${button} ${requests?.settings.paused ? 'border-rose-500/40 text-rose-200' : ''}`}
+                className={`${button} ${requests?.settings.paused ? 'border-bad/45 text-bad' : ''}`}
               >
                 {requests?.settings.paused ? 'Requests paused' : 'Pause requests'}
               </button>
@@ -313,7 +316,7 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
                 if (Number.isInteger(cap)) void saveSettings({ cap });
               }}
             >
-              <label className="flex-1 space-y-1 text-[11px] text-zinc-400">
+              <label className="flex-1 space-y-1 text-[11px] text-text-muted">
                 Pending cap (1 to 100). At the cap, new requests are closed; lowering it below the pending count closes them at once.
                 <input
                   type="number"
@@ -321,7 +324,7 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
                   max={100}
                   value={capDraft ?? requests?.settings.cap ?? ''}
                   onChange={(e) => setCapDraft(e.target.value)}
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm"
+                  className={`w-full font-mono tabular-nums ${field}`}
                 />
               </label>
               <Button type="submit" variant="secondary" disabled={busy || capDraft === null}>
@@ -347,7 +350,7 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
               onChange={(e) => setBan(e.target.value)}
               placeholder="Ban an email (never asked)"
               aria-label="Ban an email"
-              className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm"
+              className={`min-w-0 flex-1 ${field}`}
             />
             <Button type="submit" variant="ghost" disabled={busy || !ban.trim()}>
               Ban
@@ -359,7 +362,7 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
               aria-label="Filter by status"
               value={filter}
               onChange={(e) => setFilter(e.target.value as RequestStatus | 'all')}
-              className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-sm"
+              className={field}
             >
               {FILTERS.map((f) => (
                 <option key={f} value={f}>
@@ -382,13 +385,19 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
           </div>
 
           {requests === null ? (
-            <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+            <span role="status" aria-label="Loading requests" className="inline-flex items-center text-text-muted">
+              <Equalizer />
+            </span>
           ) : shown.length === 0 ? (
-            <p className="text-xs text-zinc-500">Nothing here yet.</p>
+            <p className="text-xs text-text-muted">Nothing here yet.</p>
           ) : (
-            <ul className="space-y-2">
+            <Ledger>
               {shown.map((r) => (
-                <li key={r.email} className="rounded-xl border border-zinc-900 bg-zinc-900/40 p-3 text-sm">
+                <Ledger.Row
+                  key={r.email}
+                  edge={r.status === 'pending' ? 'needs' : 'none'}
+                  className="flex-col items-stretch gap-2 p-3 text-sm"
+                >
                   <div className="flex items-start gap-3">
                     {r.status === 'pending' && (
                       <input
@@ -407,17 +416,23 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
                       />
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-zinc-100">{r.email}</p>
-                      <p className="text-[11px] text-zinc-400">
+                      <p className="truncate text-text">{r.email}</p>
+                      <p className="font-mono text-[11px] tabular-nums text-text-muted">
                         {origin(r)} {day(r.requestedAt)} · changed {day(r.statusChangedAt)}
                       </p>
                     </div>
-                    <Pill>{label(r)}</Pill>
+                    {r.status === 'pending' ? (
+                      <HintPill tone="needs">{label(r)}</HintPill>
+                    ) : r.status === 'accepted' && !r.blocked ? (
+                      <HintPill tone="done">{label(r)}</HintPill>
+                    ) : (
+                      <Pill>{label(r)}</Pill>
+                    )}
                   </div>
-                  <div className="mt-2 flex flex-wrap justify-end gap-2">{actions(r)}</div>
-                </li>
+                  <div className="flex flex-wrap justify-end gap-2">{actions(r)}</div>
+                </Ledger.Row>
               ))}
-            </ul>
+            </Ledger>
           )}
         </>
       )}
