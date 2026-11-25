@@ -23,7 +23,7 @@ export function Tooltip({ label, children, className = '' }: Props) {
       {children}
       <span
         aria-hidden="true"
-        className={`pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-zinc-800 px-2 py-1 text-xs text-zinc-100 shadow-lg group-hover:block group-focus-within:block ${tapped ? 'block' : 'hidden'}`}
+        className={`pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded-control border border-line-strong bg-surface-3 px-2 py-1 text-xs text-text shadow-lg group-hover:block group-focus-within:block ${tapped ? 'block' : 'hidden'}`}
       >
         {label}
       </span>
