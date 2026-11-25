@@ -64,5 +64,6 @@ Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
 | `PATCH /api/manage/brands/:id/organization` | Owner only. Set the brand's organization (`{ organizationId }`, or null to detach) |
 | `POST /api/manage/brands/merge` | Owner only. Merge a brand into another (`{ sourceId, targetId }`): moves its series and aliases |
 | `POST /api/manage/brands/history/:id/undo` | Owner only. Undo a brand change, if nothing has changed since |
-| `POST /api/manage/canonical/editions/:id/find-lineup` | Owner only. Start a Clashfinder lookup for a festival edition with no acts (`{ job }`, 201). Uses the series' stored Clashfinder slug for the year when there is one. The result waits in Lookups for review |
+| `POST /api/manage/canonical/editions/:id/find-lineup` | Owner only. Start a Clashfinder lookup for a festival edition with no acts (`{ job }`, 201). Uses the series' stored Clashfinder slug for the year when there is one, unless `{ lineupUrl }` gives a page. The result waits in Lookups for review |
+| `POST /api/manage/canonical/editions/:id/paste-sets` | Owner only. Set times pasted with their page link (`{ url, text }`, docs/specs/pasted-set-times.md) for any edition with a full date. Runs only the `pasted` source, keeps the edition's acts, and the result waits in Lookups for review |
 | `GET /api/editions` | Confirmed and draft editions |
