@@ -14,8 +14,8 @@ interface StatsViewProps {
 }
 
 const MONTHS = MONTH_NAMES;
-const card = 'rounded-xl border border-zinc-900 bg-zinc-900/40 p-4';
-const title = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
+const card = 'rounded-card border border-line bg-surface-1 p-4';
+const title = 'font-display text-lg font-normal leading-tight text-text';
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // Events per year as bars; empty years stay as gaps. A bar opens that year in the Table.
@@ -24,40 +24,59 @@ const YearChart: React.FC<{ years: ReturnType<typeof perYear>['years']; onPick: 
   const max = Math.max(1, ...years.map((y) => y.events));
   const showLabel = (i: number) => years.length <= 12 || i === 0 || i === years.length - 1 || years[i].year % 5 === 0;
   const h = years.find((y) => y.year === hover);
+  const thisYear = new Date().getFullYear();
   return (
     <div className="space-y-2">
       <div className="flex h-5 items-baseline justify-between text-xs">
-        <span className="text-zinc-400">
+        <span className="text-text-muted">
           {h ? (
             <>
-              <span className="font-semibold text-zinc-100">{h.year}</span>: {plural(h.events, 'event')}
+              <span className="font-semibold text-text">{h.year}</span>: {plural(h.events, 'event')}
               {h.newArtists > 0 && `, ${plural(h.newArtists, 'new artist')}`}
             </>
           ) : (
-            <span className="text-zinc-400">Most in a year: {max}</span>
+            <span className="text-text-muted">Most in a year: {max}</span>
           )}
         </span>
       </div>
-      <div className="relative flex h-40 items-end gap-[2px] border-b border-zinc-800" onMouseLeave={() => setHover(null)}>
-        {years.map((y) => (
-          <button
-            key={y.year}
-            onClick={() => onPick(y.year)}
-            onMouseEnter={() => setHover(y.year)}
-            onFocus={() => setHover(y.year)}
-            aria-label={`${y.year}: ${plural(y.events, 'event')}`}
-            className="group flex h-full min-w-0 flex-1 items-end"
-          >
-            <span
-              className={`mx-auto block w-full max-w-12 rounded-t-[4px] transition-colors ${
-                hover === y.year ? 'bg-violet-300' : 'bg-violet-500 group-hover:bg-violet-300'
-              }`}
-              style={{ height: y.events ? `${(y.events / max) * 100}%` : 0 }}
-            />
-          </button>
+      <div className="relative flex h-40 items-end gap-[2px] border-b border-line-strong" onMouseLeave={() => setHover(null)}>
+        {/* Dashed guides at half and the full maximum, labelled in mono. */}
+        {[1, 0.5].map((f) => (
+          <div key={f} aria-hidden="true" className="pointer-events-none absolute inset-x-0 border-t border-dashed border-line" style={{ bottom: `${f * 100}%` }}>
+            <span className="absolute -top-2 right-0 bg-surface-1 pl-1 font-mono text-[10px] tabular-nums text-text-faint">{Math.round(max * f)}</span>
+          </div>
         ))}
+        {years.map((y) => {
+          const now = y.year === thisYear;
+          return (
+            <button
+              key={y.year}
+              onClick={() => onPick(y.year)}
+              onMouseEnter={() => setHover(y.year)}
+              onFocus={() => setHover(y.year)}
+              aria-label={`${y.year}: ${plural(y.events, 'event')}`}
+              className="group relative flex h-full min-w-0 flex-1 items-end"
+            >
+              {now && y.events > 0 && (
+                <span
+                  aria-hidden="true"
+                  className="absolute left-1/2 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-control border border-accent-tint-line bg-accent-tint px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-text"
+                  style={{ bottom: `${(y.events / max) * 100}%` }}
+                >
+                  {y.events} this year
+                </span>
+              )}
+              <span
+                className={`mx-auto block w-full max-w-12 rounded-t-[3px] bg-gradient-to-b transition-[filter] ${
+                  now ? 'from-accent-fill to-accent-fill/70' : 'from-accent-fill/85 to-accent-fill/20'
+                } ${hover === y.year ? 'brightness-125' : 'group-hover:brightness-125'}`}
+                style={{ height: y.events ? `${(y.events / max) * 100}%` : 0 }}
+              />
+            </button>
+          );
+        })}
       </div>
-      <div className="flex gap-[2px] text-[10px] text-zinc-400">
+      <div className="flex gap-[2px] font-mono text-[10px] tabular-nums text-text-muted">
         {years.map((y, i) => (
           <span key={y.year} className="min-w-0 flex-1 text-center">
             {showLabel(i) ? (years.length > 12 ? `'${String(y.year).slice(2)}` : y.year) : ''}
@@ -74,18 +93,18 @@ const Ranking: React.FC<{ name: string; rows: Ranked[]; empty: string; onPick: (
     <div className={`${card} space-y-2`}>
       <h3 className={title}>{name}</h3>
       {rows.length === 0 ? (
-        <p className="text-sm text-zinc-400">{empty}</p>
+        <p className="text-sm text-text-muted">{empty}</p>
       ) : (
         <ol className="space-y-1.5">
           {rows.map((r) => (
             <li key={r.key}>
               <button onClick={() => onPick(r)} className="group w-full space-y-0.5 text-left" title={`${r.label}: ${plural(r.count, 'event')}`}>
                 <span className="flex items-baseline justify-between gap-2 text-sm">
-                  <span className="truncate text-zinc-200 group-hover:text-violet-200">{r.label}</span>
-                  <span className="shrink-0 text-xs text-zinc-400">{r.count}</span>
+                  <span className="truncate text-text group-hover:text-accent">{r.label}</span>
+                  <span className="shrink-0 text-xs text-text-muted">{r.count}</span>
                 </span>
-                <span className="block h-1.5 w-full rounded-full bg-zinc-900">
-                  <span className="block h-full rounded-full bg-violet-500 group-hover:bg-violet-300" style={{ width: `${(r.count / max) * 100}%` }} />
+                <span className="block h-1.5 w-full rounded-full bg-surface-2">
+                  <span className="block h-full rounded-full bg-accent-fill group-hover:brightness-125" style={{ width: `${(r.count / max) * 100}%` }} />
                 </span>
               </button>
             </li>
@@ -102,16 +121,16 @@ const GenreBars: React.FC<{ name: string; rows: GenreCount[] }> = ({ name, rows 
   const max = Math.max(...rows.map((r) => r.share), 0.01);
   return (
     <div className="space-y-1.5">
-      <h3 className="text-xs text-zinc-400">{name}</h3>
+      <h3 className="text-xs text-text-muted">{name}</h3>
       <ol className="space-y-1.5">
         {rows.map((r) => (
           <li key={r.name} className="space-y-0.5" title={`${r.name}: ${r.sets.toFixed(1)} sets`}>
             <span className="flex items-baseline justify-between gap-2 text-sm">
-              <span className="truncate text-zinc-200">{r.name}</span>
-              <span className="shrink-0 text-xs tabular-nums text-zinc-400">{Math.round(r.share * 100)}%</span>
+              <span className="truncate text-text">{r.name}</span>
+              <span className="shrink-0 text-xs tabular-nums text-text-muted">{Math.round(r.share * 100)}%</span>
             </span>
-            <span className="block h-1.5 w-full rounded-full bg-zinc-900">
-              <span className="block h-full rounded-full bg-violet-500" style={{ width: `${(r.share / max) * 100}%` }} />
+            <span className="block h-1.5 w-full rounded-full bg-surface-2">
+              <span className="block h-full rounded-full bg-accent-fill" style={{ width: `${(r.share / max) * 100}%` }} />
             </span>
           </li>
         ))}
@@ -127,7 +146,7 @@ const GenreCard: React.FC<{ events: LoggedEvent[]; rows: ArtistGenres[] }> = ({ 
     <section className={`${card} space-y-3`}>
       <div>
         <h2 className={title}>Genres you see live</h2>
-        <p className="text-xs text-zinc-400">
+        <p className="text-xs text-text-muted">
           Share of the sets you saw, from {mix.known} of {plural(mix.sets, 'set')}
           {mix.sets > mix.known && `; ${mix.sets - mix.known === 1 ? 'the other one has' : `the other ${mix.sets - mix.known} have`} no genre yet (Table, Genres)`}.
         </p>
@@ -142,8 +161,8 @@ const GenreCard: React.FC<{ events: LoggedEvent[]; rows: ArtistGenres[] }> = ({ 
 
 const Tile: React.FC<{ value: React.ReactNode; label: string }> = ({ value, label }) => (
   <div>
-    <div className="text-xl font-extrabold tracking-tight text-zinc-100">{value}</div>
-    <div className="text-xs text-zinc-400">{label}</div>
+    <div className="text-xl font-extrabold tracking-tight text-text">{value}</div>
+    <div className="text-xs text-text-muted">{label}</div>
   </div>
 );
 
@@ -157,8 +176,8 @@ const SeriesCard: React.FC<{ rows: SeriesStat[]; onPick: (name: string) => void 
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className={title}>Series</h2>
         {best?.streak && (
-          <span className="text-xs text-zinc-400">
-            Longest run: <span className="text-zinc-200">{best.name}</span>, {best.streak.years} years in a row ({best.streak.from} to {best.streak.to})
+          <span className="text-xs text-text-muted">
+            Longest run: <span className="text-text">{best.name}</span>, {best.streak.years} years in a row ({best.streak.from} to {best.streak.to})
           </span>
         )}
       </div>
@@ -167,13 +186,13 @@ const SeriesCard: React.FC<{ rows: SeriesStat[]; onPick: (name: string) => void 
           <li key={r.name}>
             <button onClick={() => onPick(r.name)} className="group w-full space-y-1 text-left">
               <span className="flex items-baseline justify-between gap-2 text-sm">
-                <span className="truncate font-medium text-zinc-100 group-hover:text-violet-300">{r.name}</span>
-                <span className="shrink-0 tabular-nums text-zinc-400">{plural(r.editions, 'edition')}</span>
+                <span className="truncate font-medium text-text group-hover:text-accent">{r.name}</span>
+                <span className="shrink-0 tabular-nums text-text-muted">{plural(r.editions, 'edition')}</span>
               </span>
-              <span className="block h-1.5 rounded-full bg-zinc-800">
-                <span className="block h-1.5 rounded-full bg-violet-500 group-hover:bg-violet-300" style={{ width: `${(r.editions / max) * 100}%` }} />
+              <span className="block h-1.5 rounded-full bg-surface-3">
+                <span className="block h-1.5 rounded-full bg-accent-fill group-hover:brightness-125" style={{ width: `${(r.editions / max) * 100}%` }} />
               </span>
-              <span className="block text-xs text-zinc-400">
+              <span className="block text-xs text-text-muted">
                 {[
                   r.years.length ? (r.years.length === 1 ? String(r.years[0]) : `${r.years[0]} to ${r.years[r.years.length - 1]}`) : null,
                   r.streak ? `${r.streak.years} years in a row` : null,
@@ -184,8 +203,8 @@ const SeriesCard: React.FC<{ rows: SeriesStat[]; onPick: (name: string) => void 
                   .join(' · ')}
               </span>
               {r.regulars.length > 0 && (
-                <span className="block text-xs text-zinc-400">
-                  <span className="text-zinc-400">Regulars: </span>
+                <span className="block text-xs text-text-muted">
+                  <span className="text-text-muted">Regulars: </span>
                   {r.regulars.map((a) => `${a.label} ×${a.count}`).join(', ')}
                 </span>
               )}
@@ -231,16 +250,16 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
     return n;
   }, [events, today]);
   const heldNote = (held.upcoming > 0 || held.confirm > 0) && (
-    <p className="text-xs text-zinc-400">
+    <p className="text-xs text-text-muted">
       Not counted yet:{' '}
       {held.upcoming > 0 && (
-        <button onClick={() => onOpenTable('went=upcoming')} className="hover:text-zinc-300 hover:underline">
+        <button onClick={() => onOpenTable('went=upcoming')} className="hover:text-text-muted hover:underline">
           {held.upcoming} upcoming
         </button>
       )}
       {held.upcoming > 0 && held.confirm > 0 && ', '}
       {held.confirm > 0 && (
-        <button onClick={() => onOpenTable('went=confirm')} className="text-violet-300 hover:underline">
+        <button onClick={() => onOpenTable('went=confirm')} className="text-accent hover:underline">
           {held.confirm} waiting for you to say you went
         </button>
       )}
@@ -250,7 +269,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
 
   if (!past.length) {
     return (
-      <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-400">
+      <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-text-muted">
         Stats appear once you have logged an event you went to.
       </p>
     );
@@ -264,7 +283,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
           <h2 className={title}>Events per year</h2>
           <YearChart years={years} onPick={(y) => onOpenTable(`from=${y}&to=${y}`)} />
           {undated > 0 && (
-            <button onClick={() => onOpenTable('needs=date')} className="text-xs text-zinc-400 hover:text-zinc-300">
+            <button onClick={() => onOpenTable('needs=date')} className="text-xs text-text-muted hover:text-text-muted">
               {plural(undated, 'event')} without a year not shown
             </button>
           )}
@@ -280,7 +299,8 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
                 <button
                   key={y}
                   onClick={() => setPickedYear(y)}
-                  className={`rounded-md px-2 py-0.5 text-xs ${y === year ? 'bg-accent-fill text-on-accent' : 'text-zinc-400 hover:text-zinc-200'}`}
+                  aria-pressed={y === year}
+                  className={`min-h-9 rounded-control border px-2 font-mono text-xs tabular-nums sm:min-h-7 ${y === year ? 'border-accent-tint-line bg-accent-tint font-semibold text-text' : 'border-transparent text-text-muted hover:text-text'}`}
                 >
                   {y}
                 </button>
@@ -289,7 +309,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
                 <select
                   value={reviewYears.slice(0, 8).includes(year) ? '' : year}
                   onChange={(e) => e.target.value && setPickedYear(Number(e.target.value))}
-                  className="rounded-md border border-zinc-800 bg-zinc-900 px-1 text-xs text-zinc-300"
+                  className="rounded-md border border-line bg-surface-2 px-1 text-xs text-text-muted"
                 >
                   <option value="">Earlier</option>
                   {reviewYears.slice(8).map((y) => (
@@ -306,38 +326,38 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
             <Tile value={review.artists} label="Artists seen" />
             <Tile value={review.newArtists.length} label="First-time artists" />
             <Tile
-              value={review.averageRating ?? <span className="text-zinc-400">–</span>}
+              value={review.averageRating ?? <span className="text-text-muted">–</span>}
               label={review.rated ? `Average rating (${review.rated} rated)` : 'No ratings yet'}
             />
           </div>
-          <ul className="space-y-1 text-sm text-zinc-300">
+          <ul className="space-y-1 text-sm text-text-muted">
             {review.topArtist && (
               <li>
-                <span className="text-zinc-400">Most seen: </span>
+                <span className="text-text-muted">Most seen: </span>
                 {review.topArtist.label}, {review.topArtist.count} times
               </li>
             )}
             {review.topVenue && (
               <li>
-                <span className="text-zinc-400">Top venue: </span>
+                <span className="text-text-muted">Top venue: </span>
                 {review.topVenue.label}, {plural(review.topVenue.count, 'visit')}
               </li>
             )}
             {review.topCompanion && (
               <li>
-                <span className="text-zinc-400">Went most with: </span>
+                <span className="text-text-muted">Went most with: </span>
                 {review.topCompanion.label}, {plural(review.topCompanion.count, 'event')}
               </li>
             )}
             {review.busiestMonth && (
               <li>
-                <span className="text-zinc-400">Busiest month: </span>
+                <span className="text-text-muted">Busiest month: </span>
                 {MONTHS[review.busiestMonth.month - 1]}, {plural(review.busiestMonth.events, 'event')}
               </li>
             )}
             {review.newArtists.length > 0 && (
-              <li className="text-zinc-400">
-                <span className="text-zinc-400">First time seeing: </span>
+              <li className="text-text-muted">
+                <span className="text-text-muted">First time seeing: </span>
                 {review.newArtists.slice(0, 12).join(', ')}
                 {review.newArtists.length > 12 && ` and ${review.newArtists.length - 12} more`}
               </li>
@@ -359,37 +379,37 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
 
       <section className={`${card} space-y-2`}>
         <h2 className={title}>Fun facts</h2>
-        <ul className="space-y-1.5 text-sm text-zinc-300">
+        <ul className="space-y-1.5 text-sm text-text-muted">
           {f.first && (
             <li>
-              <span className="text-zinc-400">First event logged: </span>
-              <button onClick={() => onOpen(f.first!.id)} className="hover:text-violet-300 hover:underline">
+              <span className="text-text-muted">First event logged: </span>
+              <button onClick={() => onOpen(f.first!.id)} className="hover:text-accent hover:underline">
                 <EventTitle event={f.first} />, {whenLabel(f.first)}
               </button>
             </li>
           )}
           {f.mostSeen && (
             <li>
-              <span className="text-zinc-400">Seen most: </span>
+              <span className="text-text-muted">Seen most: </span>
               {f.mostSeen.label}, {f.mostSeen.count} times
             </li>
           )}
           {f.busiestStretch && (
             <li>
-              <span className="text-zinc-400">Busiest stretch: </span>
+              <span className="text-text-muted">Busiest stretch: </span>
               {f.busiestStretch.events} events within 30 days ({whenLabel({ startDate: f.busiestStretch.from })} to{' '}
               {whenLabel({ startDate: f.busiestStretch.to })})
             </li>
           )}
           {f.longestGap && (
             <li>
-              <span className="text-zinc-400">Longest break: </span>
+              <span className="text-text-muted">Longest break: </span>
               {plural(f.longestGap.days, 'day')}, between <EventTitle event={f.longestGap.from} /> and <EventTitle event={f.longestGap.to} />
             </li>
           )}
           {f.actsPerEvent && (
             <li>
-              <span className="text-zinc-400">Acts per event: </span>
+              <span className="text-text-muted">Acts per event: </span>
               {f.actsPerEvent.average} on average ({plural(f.actsPerEvent.events, 'event')} with acts marked)
             </li>
           )}
