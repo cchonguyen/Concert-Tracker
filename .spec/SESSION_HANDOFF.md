@@ -4,7 +4,7 @@
 - **Branch Owner:** Claude
 - **Active Branch / State:** `claude/project-thread-ipjor1`. Venue location fill: all 7 slices merged (#619 to #633). Members share the state (notice version 3): PR #637.
 - **Files Modified in Last Turn:** NoticeModal.tsx, auth/routes.ts, events/details.ts, canon/memberBackfill.ts, AGENTS.md, REQUIREMENTS.md, docs/architecture 02 and 12, member tests.
-- **Verification Status:** Verified via finish-slice.mjs (Slice 22.5)
+- **Verification Status:** Verified via finish-slice.mjs (Slice 22.6)
 - **Immediate Next Step:** None for venue fill once #637 merges. Members accept the notice again on next sign-in.
 - **Streamlining (`claude/project-thread-47kcgx`, `docs/specs/streamlining-plan.md`):** all five slices built 2026-11-24 (#636, #639, #641, #643, #649, #652, and the last tidy-up PR). Charlie signed off deleting the four one-off scripts and the two unused packages.
 - **Open gaps:**
