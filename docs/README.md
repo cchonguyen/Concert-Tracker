@@ -21,6 +21,7 @@ Statuses were checked against the code on 2026-11-23.
 | [specs/design-refresh-2.md](specs/design-refresh-2.md) | Approved 2026-11-25. Not started: Stage 0 (Claude), then Track A (Claude) and the Gemini package in parallel. |
 | [specs/design-refresh-2-ledger-and-lobby.md](specs/design-refresh-2-ledger-and-lobby.md) | Gemini package for the design refresh. Starts after Stage 0. |
 | [specs/design-refresh-2-back-office.md](specs/design-refresh-2-back-office.md) | Gemini package for design refresh stage 2: global archive, Manage, admin, Artists, map, imports, sharing and log. |
+| [specs/design-refresh-2-detail-gaps.md](specs/design-refresh-2-detail-gaps.md) | Gemini package for design refresh stage 3: event detail lineup table, sources, tabs and read rows. Not started. |
 | [tier3-specs.md](tier3-specs.md) | TECH-04 and FETCH-01 built. The other Tier 3 tickets not started. |
 | [engineering-ticket-bank.md](engineering-ticket-bank.md) | Backlog of open tickets. Closed ones are in [archive/engineering-ticket-bank-closed.md](archive/engineering-ticket-bank-closed.md). |
 | [social-features-spec.md](social-features-spec.md) | Not started. Discussion draft. |
