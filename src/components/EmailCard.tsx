@@ -10,14 +10,14 @@ const { emailCard } = copy;
 export const EmailCard: React.FC<{ waiting: number; onCheck: () => void }> = ({ waiting, onCheck }) => {
   const [open, setOpen] = useState(false);
   return (
-    <section className="space-y-4 rounded-2xl border border-violet-500/30 bg-violet-500/5 p-5">
+    <section className="space-y-4 rounded-card border border-accent-tint-line bg-accent-tint p-5">
       <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-violet-300">{emailCard.eyebrow}</p>
-        <h2 className="text-lg font-bold text-zinc-50">{emailCard.title}</h2>
-        <p className="text-sm text-zinc-300">{emailCard.line}</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-accent">{emailCard.eyebrow}</p>
+        <h2 className="font-display text-xl font-normal text-text">{emailCard.title}</h2>
+        <p className="text-sm text-text-muted">{emailCard.line}</p>
         <ul className="flex flex-wrap gap-2 pt-1">
           {emailCard.badges.map((b) => (
-            <li key={b} className="rounded-full border border-zinc-700 px-2.5 py-0.5 text-xs text-zinc-300">
+            <li key={b} className="rounded-full border border-line-strong px-2.5 py-0.5 text-xs text-text-muted">
               {b}
             </li>
           ))}
@@ -31,11 +31,11 @@ export const EmailCard: React.FC<{ waiting: number; onCheck: () => void }> = ({ 
         <Button variant="ghost" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
           How it works
         </Button>
-        {waiting > 0 && <p className="text-xs text-amber-200">{waiting === 1 ? '1 show waiting for you to review.' : `${waiting} shows waiting for you to review.`}</p>}
+        {waiting > 0 && <p className="text-xs text-warn">{waiting === 1 ? '1 show waiting for you to review.' : `${waiting} shows waiting for you to review.`}</p>}
       </div>
 
       {open && (
-        <div className="space-y-4 border-t border-zinc-800 pt-4 text-sm text-zinc-300">
+        <div className="space-y-4 border-t border-line pt-4 text-sm text-text-muted">
           <ol className="list-decimal space-y-3 pl-5">
             <li>{emailCard.steps[0]}</li>
             <li>
@@ -46,10 +46,10 @@ export const EmailCard: React.FC<{ waiting: number; onCheck: () => void }> = ({ 
           </ol>
 
           <details open className="space-y-2">
-            <summary className="cursor-pointer font-semibold text-zinc-100">What&rsquo;s saved</summary>
+            <summary className="cursor-pointer font-semibold text-text">What&rsquo;s saved</summary>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">Saved to your LiveArchive</h3>
+                <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">Saved to your LiveArchive</h3>
                 <ul className="list-disc space-y-1 pl-5">
                   {emailCard.savedHere.map((s) => (
                     <li key={s}>{s}</li>
@@ -57,7 +57,7 @@ export const EmailCard: React.FC<{ waiting: number; onCheck: () => void }> = ({ 
                 </ul>
               </div>
               <div>
-                <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">Never leaves your browser</h3>
+                <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">Never leaves your browser</h3>
                 <ul className="list-disc space-y-1 pl-5">
                   {emailCard.neverLeaves.map((s) => (
                     <li key={s}>{s}</li>
@@ -67,7 +67,7 @@ export const EmailCard: React.FC<{ waiting: number; onCheck: () => void }> = ({ 
             </div>
           </details>
 
-          <ul className="list-disc space-y-1 pl-5 text-xs text-zinc-400">
+          <ul className="list-disc space-y-1 pl-5 text-xs text-text-muted">
             {emailCard.smallPrint.map((s) => (
               <li key={s}>{s}</li>
             ))}
