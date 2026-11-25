@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Building2, HeartPulse, History, Layers, Loader2, MapPin, Mic2, Plus, Search, Tag, Undo2, Users } from 'lucide-react';
+import { Building2, HeartPulse, History, Layers, MapPin, Mic2, Plus, Search, Tag, Undo2, Users } from 'lucide-react';
 import { canonicalApi, entitiesApi, LoggedEvent } from '../services/lineupApi';
 import type { ArtistOrigin, CanonicalArtistSummary } from '../server/entities/canonicalManage';
 import { normalizeName } from '../server/lineup/normalizeName';
@@ -9,8 +9,13 @@ import { DataHealth } from './DataHealth';
 import { ManageEntry } from './ManageEntry';
 import { SeriesPanel } from './SeriesPanel';
 import { CollaborationsCard } from './CollaborationsCard';
+import { Equalizer } from './ui/Equalizer';
+import { HintPill } from './ui/HintPill';
+import { Ledger } from './ui/Ledger';
 import { MenuButton, type MenuOption } from './ui/MenuButton';
+import { Pill } from './ui/Pill';
 import { Segmented, type SegmentedOption } from './ui/Segmented';
+import { Tabs } from './ui/Tabs';
 import { CanonicalArchive, type ArchiveSection, type EditionStatus } from './CanonicalArchive';
 import { useIsOwner } from './MeContext';
 import { AdminInbox } from './AdminInbox';
@@ -134,7 +139,7 @@ export function eventsByEntity(events: LoggedEvent[]): Map<string, LoggedEvent[]
 }
 
 const control =
-  'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
+  'min-h-11 sm:min-h-9 w-full rounded-control border border-line-strong bg-surface-1 px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none';
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -351,9 +356,15 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   };
 
   if (error) {
-    return <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-3 text-sm text-rose-200">{error}</p>;
+    return <p className="rounded-card border border-bad/45 bg-bad/10 p-3 text-sm text-bad">{error}</p>;
   }
-  if (!data) return <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />;
+  if (!data) {
+    return (
+      <span role="status" aria-label="Loading manage data" className="inline-flex items-center text-text-muted">
+        <Equalizer />
+      </span>
+    );
+  }
 
   const open = openId ? byId.get(openId) : undefined;
   const live = kind === 'history' || kind === 'health' ? [] : data.entities.filter((e) => e.kind === kind && !e.mergedIntoId);
@@ -381,8 +392,8 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-lg font-bold text-zinc-50">Manage</h1>
-        <p className="text-xs text-zinc-400">
+        <h1 className="font-display text-2xl font-normal text-text">Manage</h1>
+        <p className="text-xs text-text-muted">
           {archive
             ? 'The shared catalog: lineups you look up, the editions they make up, and the artists in them. Nothing here is added to your log.'
             : 'The names on your events, one record each. Rename one to change it on every event, merge two that are the same, and keep other spellings as AKAs. Every change can be undone from History.'}
@@ -399,7 +410,6 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
             setScope(s);
             setOpenId(null);
             setQuery('');
-            const nextSection: ArchiveSection = s === 'archive' ? 'editions' : archiveSection;
             if (s === 'archive') {
               setArchiveSection('editions');
             }
@@ -413,39 +423,27 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
         />
       )}
 
-      {/* The archive's sections are header tabs. Arrow keys are not wired: each tab is a button, reached with Tab. */}
+      {/* The archive's sections are header tabs. */}
       {archive && (
-        <div role="tablist" aria-label="Global archive sections" className="flex gap-1 overflow-x-auto border-b border-zinc-800">
-          {ARCHIVE_TABS.map((t) => {
-            const selected = archiveSection === t.value;
-            return (
-              <button
-                key={t.value}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                onClick={() => {
-                  setArchiveSection(t.value);
-                  setOpenId(null);
-                  setQuery('');
-                  const route: ManageRouteState = {
-                    scope: 'archive',
-                    section: t.value,
-                    status: t.value === 'editions' && editionStatus !== 'all' ? editionStatus : undefined,
-                  };
-                  const url = buildManageUrl(route, window.location.pathname);
-                  window.history.replaceState(null, '', url);
-                  rememberManageSearch(buildManageSearch(route));
-                }}
-                className={`shrink-0 whitespace-nowrap rounded-t-md border-b-2 px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
-                  selected ? 'border-violet-400 text-zinc-50' : 'border-transparent text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
+        <Tabs
+          label="Global archive sections"
+          variant="underline"
+          items={ARCHIVE_TABS}
+          value={archiveSection}
+          onChange={(v) => {
+            setArchiveSection(v);
+            setOpenId(null);
+            setQuery('');
+            const route: ManageRouteState = {
+              scope: 'archive',
+              section: v,
+              status: v === 'editions' && editionStatus !== 'all' ? editionStatus : undefined,
+            };
+            const url = buildManageUrl(route, window.location.pathname);
+            window.history.replaceState(null, '', url);
+            rememberManageSearch(buildManageSearch(route));
+          }}
+        />
       )}
 
       {/* The search box, the edition filter and (in My records) the section menu share one row. */}
@@ -453,7 +451,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
         <div className="flex items-center gap-2">
           {showSearch && (
             <label className="relative block min-w-0 flex-1">
-              <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-zinc-400" />
+              <Search className="pointer-events-none absolute left-2.5 top-3 h-4 w-4 text-text-muted sm:top-2.5" />
               <input
                 className={`${control} pl-8`}
                 value={query}
@@ -525,18 +523,18 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
       )}
 
       {notice && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5 text-sm text-zinc-200">
+        <div className="flex flex-wrap items-center gap-3 rounded-card border border-line bg-surface-1 p-2.5 text-sm text-text">
           <span className="min-w-0 flex-1">{notice.text}</span>
           {notice.undo && (
             <button
               onClick={() => void undo(notice.undo!)}
               disabled={Boolean(busy)}
-              className="inline-flex items-center gap-1 text-violet-300 hover:text-violet-200 disabled:opacity-40"
+              className="inline-flex min-h-11 items-center gap-1 rounded-control px-1.5 text-accent hover:underline disabled:opacity-40 sm:min-h-9"
             >
               <Undo2 className="h-3.5 w-3.5" /> Undo
             </button>
           )}
-          <button onClick={() => setNotice(null)} className="text-xs text-zinc-400 hover:text-zinc-300">
+          <button onClick={() => setNotice(null)} className="min-h-11 rounded-control px-1.5 text-xs text-text-muted hover:text-text sm:min-h-9">
             Dismiss
           </button>
         </div>
@@ -561,16 +559,18 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
       ) : kind === 'history' ? (
         <section className="space-y-2">
           {!history ? (
-            <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+            <span role="status" aria-label="Loading history" className="inline-flex items-center text-text-muted">
+              <Equalizer />
+            </span>
           ) : !history.length ? (
-            <p className="text-sm text-zinc-400">No changes yet.</p>
+            <p className="text-sm text-text-muted">No changes yet.</p>
           ) : (
-            <ul className="divide-y divide-zinc-900 rounded-xl border border-zinc-900">
+            <Ledger>
               {history.map((h) => (
-                <li key={h.id} className="flex items-baseline gap-3 px-3 py-2 text-sm">
+                <Ledger.Row key={h.id} edge="none" className="min-h-11 justify-between px-3 py-2 text-sm sm:min-h-9">
                   <span className="min-w-0 flex-1">
-                    <span className={h.undoneAt ? 'text-zinc-400 line-through' : 'text-zinc-200'}>{h.summary}</span>
-                    <span className="block text-[11px] text-zinc-400">
+                    <span className={h.undoneAt ? 'text-text-muted line-through' : 'text-text'}>{h.summary}</span>
+                    <span className="block font-mono text-[11px] tabular-nums text-text-muted">
                       {when(h.createdAt)}
                       {h.undoneAt && ` · undone ${when(h.undoneAt)}`}
                     </span>
@@ -579,16 +579,16 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
                     <button
                       onClick={() => void undo(h.id)}
                       disabled={Boolean(busy)}
-                      className="inline-flex shrink-0 items-center gap-1 text-xs text-zinc-400 hover:text-violet-300 disabled:opacity-40"
+                      className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-control px-1.5 text-xs text-text-muted hover:text-accent disabled:opacity-40 sm:min-h-9"
                     >
-                      {busy === `undo:${h.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />} Undo
+                      {busy === `undo:${h.id}` ? <Equalizer size="sm" /> : <Undo2 className="h-3 w-3" />} Undo
                     </button>
                   )}
-                </li>
+                </Ledger.Row>
               ))}
-            </ul>
+            </Ledger>
           )}
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-text-muted">
             Undo puts names back on every event you haven't changed since. A change can only be undone after the later changes to the same
             records.
           </p>
@@ -618,8 +618,8 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
             />
           )}
           {kind === 'series' && (
-            <details className="rounded-xl border border-zinc-900 p-3">
-              <summary className="cursor-pointer text-sm font-semibold text-zinc-200">Link the years of a festival or tour</summary>
+            <details className="rounded-card border border-line bg-surface-1 p-3">
+              <summary className="cursor-pointer text-sm font-semibold text-text">Link the years of a festival or tour</summary>
               <div className="pt-3">
                 <SeriesPanel
                   embedded
@@ -645,9 +645,9 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
               <button
                 type="submit"
                 disabled={!newOrg.trim() || Boolean(busy)}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent-fill px-3 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40"
+                className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control bg-accent-fill px-3 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40 sm:min-h-9"
               >
-                {busy === 'org' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add
+                {busy === 'org' ? <Equalizer size="sm" /> : <Plus className="h-3.5 w-3.5" />} Add
               </button>
             </form>
           )}
@@ -676,20 +676,21 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
               <button
                 type="submit"
                 disabled={!newLabel.trim() || Boolean(busy)}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent-fill px-3 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40"
+                className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control bg-accent-fill px-3 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40 sm:min-h-9"
               >
-                {busy === 'label' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add
+                {busy === 'label' ? <Equalizer size="sm" /> : <Plus className="h-3.5 w-3.5" />} Add
               </button>
             </form>
           )}
           {list.length ? (
-            <ul className="divide-y divide-zinc-900 rounded-xl border border-zinc-900">
+            <Ledger>
               {list.map((e) => {
                 const n = e.kind === 'label' ? data.links.filter((l) => l.toId === e.id && l.role === 'has_label').length : (counts.get(e.id)?.length ?? 0);
                 const akas = data.aliases.filter((a) => a.entityId === e.id).length;
                 const hosts = e.kind === 'series' ? data.links.filter((l) => l.fromId === e.id && l.role === 'hosted_by').length : 0;
+                const hasDup = duplicateOf.has(e.id);
                 return (
-                  <li key={e.id}>
+                  <Ledger.Row key={e.id} edge={hasDup ? 'needs' : 'none'} className="hover:border-l-4 hover:bg-surface-2">
                     <a
                       href={entityUrl(kind, e.id)}
                       onClick={(ev) => {
@@ -697,31 +698,31 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
                         ev.preventDefault();
                         openEntity(e.id);
                       }}
-                      className="flex w-full items-baseline gap-3 px-3 py-2 text-left hover:bg-zinc-900/60"
+                      className="flex w-full items-baseline gap-3 px-3 py-2.5 text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
                     >
-                      <span className="min-w-0 flex-1 truncate text-sm text-zinc-100">{entityLabel(e)}</span>
-                      {duplicateOf.has(e.id) && (
-                        <span className="shrink-0 rounded bg-amber-950/50 px-1.5 text-[11px] text-amber-300" title="Another record looks like the same one">
-                          Look-alike
+                      <span className="min-w-0 flex-1 truncate text-sm text-text">{entityLabel(e)}</span>
+                      {hasDup && (
+                        <span title="Another record looks like the same one">
+                          <HintPill tone="needs">Look-alike</HintPill>
                         </span>
                       )}
                       {e.kind === 'artist' &&
                         (origins.get(normalizeName(e.name)) ?? []).map((o) => (
-                          <span key={o} className="shrink-0 rounded-full border border-zinc-700 px-1.5 text-[11px] text-zinc-300">
+                          <Pill key={o} tone="neutral">
                             {ORIGIN_BADGE[o]}
-                          </span>
+                          </Pill>
                         ))}
-                      {akas > 0 && <span className="shrink-0 text-[11px] text-zinc-400">{akas} AKA</span>}
-                      {hosts > 0 && <span className="shrink-0 text-[11px] text-zinc-400">hosted</span>}
-                      {e.kind === 'label' && typeof e.attrs.group === 'string' && <span className="shrink-0 text-[11px] text-zinc-400">{e.attrs.group}</span>}
-                      <span className="w-10 shrink-0 text-right text-xs tabular-nums text-zinc-400">{e.kind === 'organization' ? '' : n}</span>
+                      {akas > 0 && <span className="shrink-0 font-mono text-[11px] tabular-nums text-text-muted">{akas} AKA</span>}
+                      {hosts > 0 && <span className="shrink-0 text-[11px] text-text-muted">hosted</span>}
+                      {e.kind === 'label' && typeof e.attrs.group === 'string' && <span className="shrink-0 text-[11px] text-text-muted">{e.attrs.group}</span>}
+                      <span className="w-10 shrink-0 text-right font-mono text-xs tabular-nums text-text-muted">{e.kind === 'organization' ? '' : n}</span>
                     </a>
-                  </li>
+                  </Ledger.Row>
                 );
               })}
-            </ul>
+            </Ledger>
           ) : (
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-text-muted">
               {live.length
                 ? 'Nothing matches.'
                 : kind === 'organization'

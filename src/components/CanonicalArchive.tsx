@@ -32,6 +32,8 @@ import { buildPastPlaces, cityPickPatch, formatPlaceLabel, unanimousPlace } from
 import { seedMultiWeekends } from '../services/weekends';
 import { Button } from './ui/Button';
 import { Callout } from './ui/Callout';
+import { Equalizer } from './ui/Equalizer';
+import { Ledger } from './ui/Ledger';
 import { Notice } from './ui/Notice';
 import { Pill } from './ui/Pill';
 import { Segmented } from './ui/Segmented';
@@ -85,7 +87,7 @@ const isActive = (j: LookupJob) => j.status === 'queued' || j.status === 'runnin
 const canRetry = (j: LookupJob) => j.status === 'waiting_quota' || j.status === 'no_data' || j.status === 'failed';
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-const field = 'rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-violet-500 focus:outline-none';
+const field = 'min-h-11 sm:min-h-9 rounded-control border border-line-strong bg-surface-1 px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none';
 
 export const CanonicalArchive: React.FC<{ section: ArchiveSection; query: string; status: EditionStatus }> = ({ section, query, status }) => {
   if (section === 'lookups') return <ArchiveLookups />;
@@ -187,10 +189,10 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
   };
 
   const noticeLine = notice && (
-    <p role="status" className="flex flex-wrap items-center gap-2 text-sm text-zinc-300">
+    <p role="status" className="flex flex-wrap items-center gap-2 text-sm text-text-muted">
       {notice.text}
       {notice.undo && (
-        <button onClick={() => void undo(notice.undo!)} disabled={busy} className="text-violet-300 hover:text-violet-200 disabled:opacity-40">
+        <button onClick={() => void undo(notice.undo!)} disabled={busy} className="min-h-11 rounded-control px-1.5 text-accent hover:underline disabled:opacity-40 sm:min-h-9">
           Undo
         </button>
       )}
@@ -218,19 +220,21 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
   return (
     <section className="space-y-2">
       {noticeLine}
-      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+      {error && <p role="alert" className="text-sm text-bad">{error}</p>}
       {artists === null ? (
-        <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+        <span role="status" aria-label="Loading artists" className="inline-flex items-center text-text-muted">
+          <Equalizer />
+        </span>
       ) : artists.length === 0 ? (
-        <p className="text-sm text-zinc-400">No artists yet.</p>
+        <p className="text-sm text-text-muted">No artists yet.</p>
       ) : shown.length === 0 ? (
-        <p className="text-sm text-zinc-400">No artist matches "{query}".</p>
+        <p className="text-sm text-text-muted">No artist matches "{query}".</p>
       ) : (
-        <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+        <Ledger>
           {shown.map((a) => {
             const url = canonicalArtistUrl(a.key, { q: query || undefined });
             return (
-              <li key={a.key}>
+              <Ledger.Row key={a.key} edge="none" className="hover:border-l-4 hover:bg-surface-2">
                 <a
                   href={url}
                   onClick={(e) => {
@@ -240,23 +244,23 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
                     rememberManageSearch(new URL(url, window.location.origin).search);
                     window.dispatchEvent(new PopStateEvent('popstate'));
                   }}
-                  className="flex w-full flex-wrap items-center gap-2 p-2.5 text-left text-sm hover:bg-zinc-900/60"
+                  className="flex w-full flex-wrap items-center gap-2 px-3 py-2.5 text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
                 >
-                  <span className="text-zinc-100">{a.name}</span>
+                  <span className="font-medium text-text">{a.name}</span>
                   {a.origins.map((o) => (
                     <Pill key={o} tone="neutral">{ORIGIN_LABEL[o]}</Pill>
                   ))}
-                  <span className="text-[11px] text-zinc-500">{a.mbid ? 'MusicBrainz' : 'No MusicBrainz id'}</span>
-                  {a.akas.length > 0 && <span className="basis-full text-xs text-zinc-500">Also known as {a.akas.join(', ')}</span>}
-                  <span className="ml-auto text-xs text-zinc-400">
+                  <span className="text-[11px] text-text-faint">{a.mbid ? 'MusicBrainz' : 'No MusicBrainz id'}</span>
+                  {a.akas.length > 0 && <span className="basis-full text-xs text-text-faint">Also known as {a.akas.join(', ')}</span>}
+                  <span className="ml-auto font-mono text-xs tabular-nums text-text-muted">
                     {a.editionsCount} billed {a.editionsCount === 1 ? 'edition' : 'editions'}
                     {a.communityCount === null ? '' : ` · ${a.communityCount} community`}
                   </span>
                 </a>
-              </li>
+              </Ledger.Row>
             );
           })}
-        </ul>
+        </Ledger>
       )}
     </section>
   );
@@ -351,18 +355,23 @@ const ArchiveBrands: React.FC<{ query: string }> = ({ query }) => {
           </Button>
         </div>
       )}
-      {brands === null && !error && <p className="text-sm text-zinc-500">Loading brands…</p>}
-      {brands && brands.length === 0 && <p className="text-sm text-zinc-500">No brands yet. A brand appears once a series has one.</p>}
+      {brands === null && !error && (
+        <p className="flex items-center gap-2 text-sm text-text-muted">
+          <Equalizer />
+          <span>Loading brands…</span>
+        </p>
+      )}
+      {brands && brands.length === 0 && <p className="text-sm text-text-muted">No brands yet. A brand appears once a series has one.</p>}
       {visible.length > 0 && (
-        <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+        <Ledger>
           {visible.map((b) => (
-            <li key={b.id} className="space-y-2 p-3">
+            <Ledger.Row key={b.id} edge="none" className="flex-col items-stretch gap-2 p-3">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="font-medium text-zinc-100">{b.name}</span>
-                <span className="text-xs text-zinc-500">{b.organizationId ? orgName.get(b.organizationId) ?? 'Organization' : 'No organization'}</span>
+                <span className="font-medium text-text">{b.name}</span>
+                <span className="text-xs text-text-muted">{b.organizationId ? orgName.get(b.organizationId) ?? 'Organization' : 'No organization'}</span>
               </div>
-              {b.aliases.length > 0 && <p className="text-xs text-zinc-500">Also known as {b.aliases.join(', ')}</p>}
-              <p className="text-xs text-zinc-500">
+              {b.aliases.length > 0 && <p className="text-xs text-text-faint">Also known as {b.aliases.join(', ')}</p>}
+              <p className="font-mono text-xs tabular-nums text-text-muted">
                 {b.seriesCount} series · {b.editionCount} {b.editionCount === 1 ? 'edition' : 'editions'}
               </p>
               <div className="flex flex-wrap items-center gap-2">
@@ -431,9 +440,9 @@ const ArchiveBrands: React.FC<{ query: string }> = ({ query }) => {
                   <Button onClick={() => setEditing(null)}>Cancel</Button>
                 </form>
               )}
-            </li>
+            </Ledger.Row>
           ))}
-        </ul>
+        </Ledger>
       )}
     </section>
   );
@@ -582,7 +591,7 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
             e.preventDefault();
             handleBackToSeries();
           }}
-          className="text-sm text-violet-300 hover:text-violet-200"
+          className="inline-flex min-h-11 items-center text-sm text-accent hover:underline sm:min-h-9"
         >
           ← Back to series
         </a>
@@ -627,11 +636,11 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
       </div>
 
       {creating && (
-        <form onSubmit={(e) => void createNewSeries(e)} className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+        <form onSubmit={(e) => void createNewSeries(e)} className="space-y-3 rounded-card border border-line bg-surface-1 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-zinc-100">Create series</h3>
+            <h3 className="font-display text-base font-normal text-text">Create series</h3>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] uppercase text-zinc-500">Type</span>
+              <span className="text-[11px] uppercase text-text-muted">Type</span>
               <Segmented
                 label="Series type"
                 value={newKind}
@@ -644,8 +653,8 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
             </div>
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <label className="space-y-1 text-xs text-zinc-400">
-              <span className="block text-[11px] uppercase text-zinc-500">Name *</span>
+            <label className="space-y-1 text-xs text-text-muted">
+              <span className="block text-[11px] uppercase text-text-muted">Name *</span>
               <input
                 required
                 className={`${field} w-full`}
@@ -654,8 +663,8 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
                 onChange={(e) => setNewName(e.target.value)}
               />
             </label>
-            <label className="space-y-1 text-xs text-zinc-400">
-              <span className="block text-[11px] uppercase text-zinc-500">Brand (optional)</span>
+            <label className="space-y-1 text-xs text-text-muted">
+              <span className="block text-[11px] uppercase text-text-muted">Brand (optional)</span>
               <SuggestInput
                 className={`${field} w-full`}
                 placeholder="e.g. Insomniac"
@@ -667,8 +676,8 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
             </label>
             {newKind === 'festival' ? (
               <>
-                <label className="space-y-1 text-xs text-zinc-400">
-                  <span className="block text-[11px] uppercase text-zinc-500">City (optional)</span>
+                <label className="space-y-1 text-xs text-text-muted">
+                  <span className="block text-[11px] uppercase text-text-muted">City (optional)</span>
                   <SuggestInput
                     className={`${field} w-full`}
                     placeholder="e.g. Las Vegas"
@@ -687,9 +696,9 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
                     }}
                   />
                 </label>
-                <div className="space-y-1 text-xs text-zinc-400">
+                <div className="space-y-1 text-xs text-text-muted">
                   <label className="block space-y-1">
-                    <span className="block text-[11px] uppercase text-zinc-500">State (optional)</span>
+                    <span className="block text-[11px] uppercase text-text-muted">State (optional)</span>
                     <input
                       className={`${field} w-full`}
                       placeholder="NV, or the region"
@@ -705,14 +714,14 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
                         if (mapOffer.patch.region) setNewRegion(mapOffer.patch.region);
                         if (mapOffer.patch.country) setNewCountry(mapOffer.patch.country);
                       }}
-                      className="block text-left text-xs text-violet-300 hover:underline"
+                      className="block text-left text-xs text-accent hover:underline"
                     >
                       Use “{mapOffer.value}” from {mapOffer.from}
                     </button>
                   )}
                 </div>
-                <label className="space-y-1 text-xs text-zinc-400">
-                  <span className="block text-[11px] uppercase text-zinc-500">Country (optional)</span>
+                <label className="space-y-1 text-xs text-text-muted">
+                  <span className="block text-[11px] uppercase text-text-muted">Country (optional)</span>
                   <input
                     className={`${field} w-full`}
                     placeholder="e.g. United States"
@@ -722,12 +731,12 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
                 </label>
               </>
             ) : (
-              <p className="text-xs text-zinc-400 sm:col-span-2">
+              <p className="text-xs text-text-muted sm:col-span-2">
                 Tour series are location-agnostic; each stop carries its own venue and city.
               </p>
             )}
-            <label className="space-y-1 text-xs text-zinc-400">
-              <span className="block text-[11px] uppercase text-zinc-500">Aliases (comma-separated)</span>
+            <label className="space-y-1 text-xs text-text-muted">
+              <span className="block text-[11px] uppercase text-text-muted">Aliases (comma-separated)</span>
               <input
                 className={`${field} w-full`}
                 placeholder="e.g. EDC, EDCLV"
@@ -735,8 +744,8 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
                 onChange={(e) => setNewAliases(e.target.value)}
               />
             </label>
-            <label className="space-y-1 text-xs text-zinc-400">
-              <span className="block text-[11px] uppercase text-zinc-500">Lineup URL (optional)</span>
+            <label className="space-y-1 text-xs text-text-muted">
+              <span className="block text-[11px] uppercase text-text-muted">Lineup URL (optional)</span>
               <input
                 className={`${field} w-full`}
                 placeholder="https://…"
@@ -747,26 +756,28 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
           </div>
           <div className="flex gap-2">
             <Button type="submit" variant="primary" disabled={savingNew || !newName.trim()}>
-              {savingNew && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Create series
+              {savingNew && <Equalizer size="sm" />} Create series
             </Button>
           </div>
         </form>
       )}
 
       {notice && <Notice tone="success">{notice}</Notice>}
-      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+      {error && <p role="alert" className="text-sm text-bad">{error}</p>}
 
       {seriesList === null ? (
-        <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+        <span role="status" aria-label="Loading series" className="inline-flex items-center text-text-muted">
+          <Equalizer />
+        </span>
       ) : seriesList.length === 0 ? (
-        <p className="text-sm text-zinc-400">{query || brandFilter ? 'No series match.' : 'No series yet.'}</p>
+        <p className="text-sm text-text-muted">{query || brandFilter ? 'No series match.' : 'No series yet.'}</p>
       ) : (
-        <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+        <Ledger>
           {seriesList.map((s) => {
             const url = seriesUrl(s.slug, { q: query || undefined });
             const place = s.kind !== 'tour' ? formatPlaceLabel(s) : '';
             return (
-              <li key={s.slug}>
+              <Ledger.Row key={s.slug} edge={s.kind === 'festival' ? 'festival' : s.kind === 'tour' ? 'show' : 'none'} className="hover:border-l-4 hover:bg-surface-2">
                 <a
                   href={url}
                   onClick={(e) => {
@@ -774,23 +785,23 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
                     e.preventDefault();
                     openSeries(s.slug);
                   }}
-                  className="flex w-full flex-wrap items-center gap-2 p-2.5 text-left text-sm hover:bg-zinc-900/60"
+                  className="flex w-full flex-wrap items-center gap-2 px-3 py-2.5 text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
                 >
-                  <span className="font-medium text-zinc-100">{s.name}</span>
+                  <span className="font-medium text-text">{s.name}</span>
                   <Pill tone="neutral">{s.kind === 'tour' ? 'Tour' : s.kind === 'festival' ? 'Festival' : 'Not set'}</Pill>
                   {s.brand && <Pill tone="accent">{s.brand}</Pill>}
-                  {place && <span className="text-xs text-zinc-400">{place}</span>}
+                  {place && <span className="text-xs text-text-muted">{place}</span>}
                   {s.aliases && s.aliases.length > 0 && (
-                    <span className="text-xs text-zinc-400">AKA {s.aliases.join(', ')}</span>
+                    <span className="text-xs text-text-faint">AKA {s.aliases.join(', ')}</span>
                   )}
-                  <span className="ml-auto text-xs text-zinc-400">
+                  <span className="ml-auto font-mono text-xs tabular-nums text-text-muted">
                     {s.editionCount} {s.editionCount === 1 ? 'edition' : 'editions'}
                   </span>
                 </a>
-              </li>
+              </Ledger.Row>
             );
           })}
-        </ul>
+        </Ledger>
       )}
     </section>
   );
@@ -917,8 +928,14 @@ const SeriesDetail: React.FC<{
     }
   };
 
-  if (loading && !series) return <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />;
-  if (!series) return <p role="alert" className="text-sm text-rose-300">{error ?? 'Series not found.'}</p>;
+  if (loading && !series) {
+    return (
+      <span role="status" aria-label="Loading series" className="inline-flex items-center text-text-muted">
+        <Equalizer />
+      </span>
+    );
+  }
+  if (!series) return <p role="alert" className="text-sm text-bad">{error ?? 'Series not found.'}</p>;
 
   const mergeTargets = allSeries.filter((s) => s.slug !== slug);
   const seriesPlaceLabel = series.kind !== 'tour' ? formatPlaceLabel(series) : '';
@@ -929,12 +946,12 @@ const SeriesDetail: React.FC<{
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-lg font-semibold text-zinc-50">{series.name}</h3>
+            <h3 className="font-display text-xl font-normal text-text">{series.name}</h3>
             <Pill tone="neutral">{series.kind === 'tour' ? 'Tour' : series.kind === 'festival' ? 'Festival' : 'Not set'}</Pill>
             {series.brand && <Pill tone="accent">{series.brand}</Pill>}
-            {seriesPlaceLabel && <span className="text-xs text-zinc-400">{seriesPlaceLabel}</span>}
+            {seriesPlaceLabel && <span className="text-xs text-text-muted">{seriesPlaceLabel}</span>}
           </div>
-          <p className="text-xs text-zinc-500">Slug: {series.slug}</p>
+          <p className="font-mono text-xs text-text-faint">Slug: {series.slug}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {!editing && <Button onClick={() => setEditing(true)}>Edit series</Button>}
@@ -947,12 +964,12 @@ const SeriesDetail: React.FC<{
       </div>
 
       {notice && <Notice tone="success">{notice}</Notice>}
-      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+      {error && <p role="alert" className="text-sm text-bad">{error}</p>}
 
       {merging && (
-        <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-950/20 p-3 text-sm">
-          <p className="font-semibold text-zinc-100">Merge "{series.name}" into another series</p>
-          <p className="text-xs text-zinc-400">
+        <div className="space-y-2 rounded-card border border-warn/45 bg-warn/10 p-3 text-sm">
+          <p className="font-semibold text-text">Merge "{series.name}" into another series</p>
+          <p className="text-xs text-text-muted">
             All attached editions move onto the target series, and "{series.name}" plus its aliases are kept as aliases on the target.
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -970,16 +987,16 @@ const SeriesDetail: React.FC<{
               ))}
             </select>
             <Button variant="primary" onClick={() => void runMerge()} disabled={!targetSlug || mergeBusy}>
-              {mergeBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Merge series
+              {mergeBusy && <Equalizer size="sm" />} Merge series
             </Button>
           </div>
         </div>
       )}
 
       {editing ? (
-        <form onSubmit={(e) => void saveEdit(e)} className="space-y-3 rounded-lg border border-zinc-800 p-3">
+        <form onSubmit={(e) => void saveEdit(e)} className="space-y-3 rounded-card border border-line bg-surface-1 p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] uppercase text-zinc-500">Type</span>
+            <span className="text-[11px] uppercase text-text-muted">Type</span>
             <Segmented
               label="Series type"
               value={kind ?? ''}
@@ -991,12 +1008,12 @@ const SeriesDetail: React.FC<{
             />
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="space-y-1 text-xs text-zinc-400">
-              <span className="block text-[11px] uppercase text-zinc-500">Name</span>
+            <label className="space-y-1 text-xs text-text-muted">
+              <span className="block text-[11px] uppercase text-text-muted">Name</span>
               <input required className={`${field} w-full`} value={name} onChange={(e) => setName(e.target.value)} />
             </label>
-            <label className="space-y-1 text-xs text-zinc-400">
-              <span className="block text-[11px] uppercase text-zinc-500">Brand</span>
+            <label className="space-y-1 text-xs text-text-muted">
+              <span className="block text-[11px] uppercase text-text-muted">Brand</span>
               <SuggestInput
                 className={`${field} w-full`}
                 placeholder="Optional"
@@ -1008,8 +1025,8 @@ const SeriesDetail: React.FC<{
             </label>
             {kind !== 'tour' ? (
               <>
-                <label className="space-y-1 text-xs text-zinc-400">
-                  <span className="block text-[11px] uppercase text-zinc-500">City</span>
+                <label className="space-y-1 text-xs text-text-muted">
+                  <span className="block text-[11px] uppercase text-text-muted">City</span>
                   <SuggestInput
                     className={`${field} w-full`}
                     placeholder="Optional"
@@ -1028,9 +1045,9 @@ const SeriesDetail: React.FC<{
                     }}
                   />
                 </label>
-                <div className="space-y-1 text-xs text-zinc-400">
+                <div className="space-y-1 text-xs text-text-muted">
                   <label className="block space-y-1">
-                    <span className="block text-[11px] uppercase text-zinc-500">State</span>
+                    <span className="block text-[11px] uppercase text-text-muted">State</span>
                     <input
                       className={`${field} w-full`}
                       placeholder="NV, or the region"
@@ -1046,7 +1063,7 @@ const SeriesDetail: React.FC<{
                         if (mapOffer.patch.region) setRegion(mapOffer.patch.region);
                         if (mapOffer.patch.country) setCountry(mapOffer.patch.country);
                       }}
-                      className="block text-left text-xs text-violet-300 hover:underline"
+                      className="block text-left text-xs text-accent hover:underline"
                     >
                       Use “{mapOffer.value}” from {mapOffer.from}
                     </button>
@@ -1059,14 +1076,14 @@ const SeriesDetail: React.FC<{
                         setRegion(editionsPlace.region ?? '');
                         setCountry(editionsPlace.country ?? '');
                       }}
-                      className="block text-left text-xs text-violet-300 hover:underline"
+                      className="block text-left text-xs text-accent hover:underline"
                     >
                       Use “{editionsPlace.label}” from attached editions
                     </button>
                   )}
                 </div>
-                <label className="space-y-1 text-xs text-zinc-400">
-                  <span className="block text-[11px] uppercase text-zinc-500">Country</span>
+                <label className="space-y-1 text-xs text-text-muted">
+                  <span className="block text-[11px] uppercase text-text-muted">Country</span>
                   <input
                     className={`${field} w-full`}
                     placeholder="Optional"
@@ -1076,21 +1093,21 @@ const SeriesDetail: React.FC<{
                 </label>
               </>
             ) : (
-              <p className="text-xs text-zinc-400 sm:col-span-2">
+              <p className="text-xs text-text-muted sm:col-span-2">
                 Tour series are location-agnostic; each stop carries its own venue and city.
               </p>
             )}
-            <label className="space-y-1 text-xs text-zinc-400">
-              <span className="block text-[11px] uppercase text-zinc-500">Aliases (comma-separated)</span>
+            <label className="space-y-1 text-xs text-text-muted">
+              <span className="block text-[11px] uppercase text-text-muted">Aliases (comma-separated)</span>
               <input className={`${field} w-full`} placeholder="e.g. EDC, EDCLV" value={aliases} onChange={(e) => setAliases(e.target.value)} />
             </label>
-            <label className="space-y-1 text-xs text-zinc-400">
-              <span className="block text-[11px] uppercase text-zinc-500">Lineup URL</span>
+            <label className="space-y-1 text-xs text-text-muted">
+              <span className="block text-[11px] uppercase text-text-muted">Lineup URL</span>
               <input className={`${field} w-full`} placeholder="https://…" value={lineupUrl} onChange={(e) => setLineupUrl(e.target.value)} />
             </label>
           </div>
           <div className="space-y-1">
-            <span className="block text-[11px] uppercase text-zinc-500">Source priority</span>
+            <span className="block text-[11px] uppercase text-text-muted">Source priority</span>
             <div className="flex flex-wrap gap-1.5">
               {SOURCE_PRIORITY_OPTIONS.map((src) => {
                 const active = sourcePriority.includes(src);
@@ -1100,10 +1117,10 @@ const SeriesDetail: React.FC<{
                     type="button"
                     aria-pressed={active}
                     onClick={() => togglePriority(src)}
-                    className={`rounded-full border px-2.5 py-0.5 text-xs ${
+                    className={`min-h-11 rounded-full border px-2.5 py-0.5 text-xs sm:min-h-9 ${
                       active
-                        ? 'border-violet-400 bg-violet-500/20 text-violet-100'
-                        : 'border-zinc-700 text-zinc-300 hover:border-violet-500'
+                        ? 'border-accent-tint-line bg-accent-tint text-accent'
+                        : 'border-line-strong text-text-muted hover:border-accent'
                     }`}
                   >
                     {SOURCE_LABELS[src] ?? src}
@@ -1123,33 +1140,33 @@ const SeriesDetail: React.FC<{
       ) : (
         <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
           <div>
-            <dt className="text-[11px] uppercase text-zinc-500">Aliases</dt>
-            <dd className={series.aliases?.length ? 'text-zinc-200' : 'italic text-zinc-500'}>
+            <dt className="text-[11px] uppercase text-text-muted">Aliases</dt>
+            <dd className={series.aliases?.length ? 'text-text' : 'italic text-text-faint'}>
               {series.aliases?.length ? series.aliases.join(', ') : 'None'}
             </dd>
           </div>
           <div>
-            <dt className="text-[11px] uppercase text-zinc-500">Lineup URL</dt>
+            <dt className="text-[11px] uppercase text-text-muted">Lineup URL</dt>
             <dd className="truncate">
               {series.lineupUrl ? (
-                <a href={series.lineupUrl} target="_blank" rel="noreferrer" className="text-violet-300 hover:underline">
+                <a href={series.lineupUrl} target="_blank" rel="noreferrer" className="text-accent hover:underline">
                   {series.lineupUrl}
                 </a>
               ) : (
-                <span className="italic text-zinc-500">Not set</span>
+                <span className="italic text-text-faint">Not set</span>
               )}
             </dd>
           </div>
           <div>
-            <dt className="text-[11px] uppercase text-zinc-500">Place</dt>
-            <dd className={seriesPlaceLabel ? 'text-zinc-200' : 'italic text-zinc-500'}>
+            <dt className="text-[11px] uppercase text-text-muted">Place</dt>
+            <dd className={seriesPlaceLabel ? 'text-text' : 'italic text-text-faint'}>
               {series.kind === 'tour' ? 'Location-agnostic (tour)' : seriesPlaceLabel || 'Not set'}
             </dd>
           </div>
           {series.sourcePriority && series.sourcePriority.length > 0 && (
             <div className="sm:col-span-2">
-              <dt className="text-[11px] uppercase text-zinc-500">Source priority</dt>
-              <dd className="text-zinc-200">
+              <dt className="text-[11px] uppercase text-text-muted">Source priority</dt>
+              <dd className="text-text">
                 {series.sourcePriority.map((s) => SOURCE_LABELS[s] ?? s).join(' → ')}
               </dd>
             </div>
@@ -1158,20 +1175,20 @@ const SeriesDetail: React.FC<{
       )}
 
       <section className="space-y-2">
-        <h4 className="text-sm font-semibold text-zinc-200">
-          Editions ({editions.length})
+        <h4 className="text-sm font-semibold text-text">
+          Editions (<span className="font-mono tabular-nums">{editions.length}</span>)
         </h4>
         {editions.length === 0 ? (
-          <p className="text-sm text-zinc-400">No editions attached to this series yet.</p>
+          <p className="text-sm text-text-muted">No editions attached to this series yet.</p>
         ) : (
-          <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+          <Ledger>
             {editions.map((e) => {
               const url = editionUrl(e.id);
               const dateText = e.weekends.length > 1
                 ? e.weekends.map((w) => weekendLabel(w, 'WK')).join(' · ')
                 : e.startDate ?? String(e.year);
               return (
-                <li key={e.id}>
+                <Ledger.Row key={e.id} edge="none" className="hover:border-l-4 hover:bg-surface-2">
                   <a
                     href={url}
                     onClick={(ev) => {
@@ -1181,20 +1198,20 @@ const SeriesDetail: React.FC<{
                       rememberManageSearch(new URL(url, window.location.origin).search);
                       window.dispatchEvent(new PopStateEvent('popstate'));
                     }}
-                    className="flex w-full flex-wrap items-baseline gap-x-3 p-2.5 text-left text-sm hover:bg-zinc-900/60"
+                    className="flex w-full flex-wrap items-baseline gap-x-3 px-3 py-2.5 text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
                   >
-                    <span className="font-medium text-zinc-100">{e.name}</span>
-                    <span className="text-xs text-zinc-400">
+                    <span className="font-medium text-text">{e.name}</span>
+                    <span className="font-mono text-xs tabular-nums text-text-muted">
                       {[dateText, e.venue, e.city].filter(Boolean).join(' · ')}
                     </span>
-                    <span className="ml-auto text-xs text-zinc-400">
+                    <span className="ml-auto font-mono text-xs tabular-nums text-text-muted">
                       {e.performanceCount} billed · {editionStatusWords(e.status).split(' (')[0].toLowerCase()}
                     </span>
                   </a>
-                </li>
+                </Ledger.Row>
               );
             })}
-          </ul>
+          </Ledger>
         )}
       </section>
     </div>
@@ -1518,6 +1535,19 @@ const ArchiveLookups: React.FC = () => {
     }
   };
 
+  const stop = async (id: string) => {
+    setError(null);
+    setRetrying(id);
+    try {
+      const latest = await lineupApi.stop(id);
+      setLookups((prev) => (prev ?? []).map((j) => (j.id === id ? latest : j)));
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setRetrying(null);
+    }
+  };
+
   const retry = async (id: string) => {
     setError(null);
     setRetrying(id);
@@ -1586,6 +1616,11 @@ const ArchiveLookups: React.FC = () => {
                 {j.status === 'waiting_quota' && j.waitingReason && <span className="basis-full text-xs text-amber-200">{j.waitingReason}</span>}
                 <span className="ml-auto flex gap-2">
                   {j.status === 'needs_review' && <Button variant="primary" onClick={() => setReviewing(j)}>Review</Button>}
+                  {(j.status === 'queued' || j.status === 'waiting_quota') && (
+                    <Button variant="ghost" onClick={() => void stop(j.id)} disabled={retrying === j.id}>
+                      Stop
+                    </Button>
+                  )}
                   {canRetry(j) && (
                     <Button onClick={() => void retry(j.id)} disabled={retrying === j.id}>
                       {retrying === j.id && <Loader2 className="h-4 w-4 animate-spin" />} Retry

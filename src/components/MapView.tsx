@@ -9,6 +9,7 @@ import { FilterButton, FilterPanel, FilterSelect } from './ui/FilterControls';
 import type { CityPoint } from '../server/events/place';
 import { mapData, MapPlace, placeKey, placeQuery, playbackYears, Points, trail, travel } from '../services/map';
 import { EventTitle } from './EventTitle';
+import { Ledger } from './ui/Ledger';
 
 interface MapViewProps {
   events: LoggedEvent[];
@@ -21,7 +22,7 @@ interface MapViewProps {
 }
 
 const control =
-  'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
+  'min-h-11 sm:min-h-9 w-full rounded-control border border-line-strong bg-surface-1 px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none';
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // City points are kept in this browser so the geocoder is asked once per city.
@@ -142,10 +143,9 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
   const layer = useRef<L.LayerGroup | null>(null);
   useEffect(() => {
     if (!box.current || map.current) return;
-    map.current = L.map(box.current, { worldCopyJump: true, zoomControl: true }).setView([30, -40], 2);
+    map.current = L.map(box.current, { worldCopyJump: true, zoomControl: true, attributionControl: false }).setView([30, -40], 2);
     // OpenStreetMap's own tiles need no key; the map-tiles class darkens them in CSS in the dark theme.
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       className: 'map-tiles',
       maxZoom: 19,
     }).addTo(map.current);
@@ -247,13 +247,13 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
         </FilterPanel>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
-        <span>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-text-muted">
+        <span className="font-mono tabular-nums">
           {counts.cities} {counts.cities === 1 ? 'city' : 'cities'} · {counts.regions} {counts.regions === 1 ? 'state or province' : 'states or provinces'} ·{' '}
           {counts.countries} {counts.countries === 1 ? 'country' : 'countries'}
           {' · '}
           {plural(data.places.reduce((a, p) => a + p.events.length, 0), 'event')} on the map
-          {data.pending > 0 && <span className="text-zinc-400"> · placing {data.pending} more</span>}
+          {data.pending > 0 && <span className="text-text-muted"> · placing {data.pending} more</span>}
         </span>
         <span className="flex items-center gap-3">
           {years.length > 1 && (
@@ -265,27 +265,34 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
                   setPlaying(true);
                 }
               }}
-              className="inline-flex items-center gap-1.5 text-violet-300 hover:text-violet-200"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-control px-1.5 text-accent hover:underline sm:min-h-9"
             >
               {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
               {playing ? 'Pause' : playYear === null ? 'Play the years' : 'Resume'}
             </button>
           )}
           {playYear !== null && !playing && (
-            <button onClick={() => setPlayYear(null)} className="inline-flex items-center gap-1 hover:text-zinc-200">
+            <button onClick={() => setPlayYear(null)} className="inline-flex min-h-11 items-center gap-1 rounded-control px-1.5 hover:text-text sm:min-h-9">
               <X className="h-3.5 w-3.5" /> Show all years
             </button>
           )}
-          <button onClick={() => onOpenTable(tableQuery)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+          <button onClick={() => onOpenTable(tableQuery)} className="inline-flex min-h-11 items-center gap-1.5 rounded-control px-1.5 hover:text-text sm:min-h-9">
             <Table2 className="h-3.5 w-3.5" /> These events in the Table
           </button>
         </span>
       </div>
 
-      <div className="relative isolate overflow-hidden rounded-xl border border-zinc-900">
-        <div ref={box} className="h-[60vh] min-h-[320px] w-full bg-zinc-950" />
+      <div className="relative isolate overflow-hidden rounded-card border border-line">
+        <div ref={box} className="h-[60vh] min-h-[320px] w-full bg-page" />
+        <div className="pointer-events-auto absolute bottom-1 right-1 z-[400] rounded px-1.5 py-0.5 text-[11px] bg-surface-1/95 text-text-muted">
+          &copy;{' '}
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="text-text underline">
+            OpenStreetMap
+          </a>{' '}
+          contributors
+        </div>
         {playYear !== null && (
-          <div className="pointer-events-none absolute right-3 top-3 z-[500] rounded-lg bg-zinc-950/80 px-3 py-1 text-2xl font-extrabold text-zinc-100">
+          <div className="pointer-events-none absolute right-3 top-3 z-[500] rounded-control bg-surface-1/90 px-3 py-1 font-mono text-2xl font-extrabold tabular-nums text-text">
             {playYear}
           </div>
         )}
@@ -295,24 +302,24 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
 
       {stops.length > 0 && (
         <section className="space-y-1 text-sm">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-zinc-400">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-text-muted">
             Trail: {options.artists.find((a) => a.key === filters.artist)?.name}
           </h2>
-          <ol className="flex flex-wrap gap-x-2 gap-y-1 text-zinc-300">
+          <ol className="flex flex-wrap gap-x-2 gap-y-1 text-text">
             {stops.map((s, i) => (
               <li key={s.event.id}>
-                <button onClick={() => onOpen(s.event.id)} className="hover:text-violet-300 hover:underline">
+                <button onClick={() => onOpen(s.event.id)} className="hover:text-accent hover:underline">
                   {i + 1}. {s.event.city}
-                  <span className="text-zinc-400">{whenLabel(s.event) ? `, ${whenLabel(s.event)}` : ''}</span>
+                  <span className="font-mono text-xs tabular-nums text-text-muted">{whenLabel(s.event) ? `, ${whenLabel(s.event)}` : ''}</span>
                 </button>
-                {i < stops.length - 1 && <span className="ml-2 text-zinc-400">→</span>}
+                {i < stops.length - 1 && <span className="ml-2 text-text-muted">→</span>}
               </li>
             ))}
           </ol>
         </section>
       )}
 
-      <div className="space-y-1 text-xs text-zinc-400">
+      <div className="space-y-1 text-xs text-text-muted">
         {data.noCity > 0 && (
           <p>{plural(data.noCity, 'event')} without a city not shown. Fill gaps in the Table can add them.</p>
         )}
@@ -338,32 +345,30 @@ const PlacePanel: React.FC<{ place: MapPlace; onOpen: (id: string) => void; onCl
   onClose,
   onOpenTable,
 }) => (
-  <section className="space-y-2 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">
+  <section className="space-y-2 rounded-card border border-line bg-surface-1 p-3">
     <div className="flex items-center justify-between gap-2">
-      <h2 className="font-semibold text-zinc-100">
-        {place.city} <span className="text-xs font-normal text-zinc-400">{plural(place.events.length, 'event')}</span>
+      <h2 className="font-display text-lg font-normal text-text">
+        {place.city} <span className="font-mono text-xs font-normal tabular-nums text-text-muted">{plural(place.events.length, 'event')}</span>
       </h2>
       <span className="flex items-center gap-3 text-xs">
-        <button onClick={() => onOpenTable(`city=${encodeURIComponent(place.city)}`)} className="text-zinc-400 hover:text-zinc-200">
+        <button onClick={() => onOpenTable(`city=${encodeURIComponent(place.city)}`)} className="min-h-11 rounded-control px-1.5 text-text-muted hover:text-text sm:min-h-9">
           Open in Table
         </button>
-        <button onClick={onClose} aria-label="Close" className="text-zinc-400 hover:text-zinc-200">
+        <button onClick={onClose} aria-label="Close" className="flex h-10 w-10 items-center justify-center rounded-control text-text-muted hover:text-text">
           <X className="h-4 w-4" />
         </button>
       </span>
     </div>
-    <ul className="divide-y divide-zinc-900">
+    <Ledger bare>
       {place.events.map((e) => (
-        <li key={e.id}>
-          <button onClick={() => onOpen(e.id)} className="flex w-full items-baseline justify-between gap-3 py-1.5 text-left text-sm hover:text-violet-300">
-            <span className="truncate text-zinc-200">
-              <EventTitle event={e} />
-              {e.venue && <span className="text-zinc-400"> · {e.venue}</span>}
-            </span>
-            <span className="shrink-0 text-xs text-zinc-400">{whenLabel(e) ?? 'Date unknown'}</span>
-          </button>
-        </li>
+        <Ledger.Row key={e.id} edge="none" onOpen={() => onOpen(e.id)} className="min-h-11 justify-between px-2 py-1.5 text-sm sm:min-h-9">
+          <span className="truncate text-text group-hover:text-accent">
+            <EventTitle event={e} />
+            {e.venue && <span className="text-text-muted"> · {e.venue}</span>}
+          </span>
+          <span className="shrink-0 font-mono text-xs tabular-nums text-text-muted">{whenLabel(e) ?? 'Date unknown'}</span>
+        </Ledger.Row>
       ))}
-    </ul>
+    </Ledger>
   </section>
 );

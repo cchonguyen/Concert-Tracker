@@ -3,6 +3,7 @@ import { canonicalApi } from '../services/lineupApi';
 import { formatPlaceLabel } from '../services/placeAutofill';
 import type { VenueFillPlan } from '../server/canon/venueFill';
 import type { VenueLocation } from '../server/canon/venueLocation';
+import { Ledger } from './ui/Ledger';
 
 const BATCH = 40;
 const label = (p: { city?: string; region?: string; country?: string }) => formatPlaceLabel(p) || 'Nothing yet';
@@ -64,57 +65,57 @@ export const VenueFillPanel: React.FC = () => {
   };
 
   return (
-    <section aria-label="Fill locations from venues" className="space-y-2 rounded-lg border border-zinc-800 p-3">
+    <section aria-label="Fill locations from venues" className="space-y-2 rounded-card border border-line bg-surface-1 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-zinc-100">Fill locations from venues</h3>
+        <h3 className="font-display text-base font-normal text-text">Fill locations from venues</h3>
         <button
           type="button"
           disabled={busy !== null}
           onClick={() => void load()}
-          className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-100 hover:bg-zinc-800 disabled:opacity-50"
+          className="min-h-11 rounded-control border border-line-strong px-2.5 py-1 text-xs text-text hover:bg-surface-2 disabled:opacity-50 sm:min-h-9"
         >
           {busy === 'load' ? 'Checking…' : plan ? 'Check again' : 'Check editions'}
         </button>
       </div>
-      {!plan && <p className="text-xs text-zinc-400">Finds editions with an empty city, state or country that their venue or their own city already gives. Nothing is changed until you press Fill.</p>}
-      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
-      {notice && <p role="status" className="text-sm text-zinc-300">{notice}</p>}
-      {plan && plan.unchecked > 0 && <p className="text-xs text-zinc-400">{plan.unchecked} more editions were not checked this time. Press Check again after filling.</p>}
-      {plan && plan.fills.length === 0 && plan.choices.length === 0 && <p className="text-sm text-zinc-400">Nothing to fill.</p>}
+      {!plan && <p className="text-xs text-text-muted">Finds editions with an empty city, state or country that their venue or their own city already gives. Nothing is changed until you press Fill.</p>}
+      {error && <p role="alert" className="text-sm text-bad">{error}</p>}
+      {notice && <p role="status" className="text-sm text-text-muted">{notice}</p>}
+      {plan && plan.unchecked > 0 && <p className="font-mono text-xs tabular-nums text-text-muted">{plan.unchecked} more editions were not checked this time. Press Check again after filling.</p>}
+      {plan && plan.fills.length === 0 && plan.choices.length === 0 && <p className="text-sm text-text-muted">Nothing to fill.</p>}
       {plan && plan.fills.length > 0 && (
         <>
           <button
             type="button"
             disabled={busy !== null}
             onClick={() => void fillAll()}
-            className="rounded-md border border-violet-700 px-2.5 py-1 text-xs text-violet-200 hover:bg-violet-950 disabled:opacity-50"
+            className="min-h-11 rounded-control border border-accent-tint-line bg-accent-tint px-2.5 py-1 font-mono text-xs tabular-nums text-accent hover:underline disabled:opacity-50 sm:min-h-9"
           >
             {busy === 'all' ? 'Filling…' : `Fill all (${plan.fills.length})`}
           </button>
-          <ul className="divide-y divide-zinc-800">
+          <Ledger>
             {plan.fills.map((f) => (
-              <li key={f.editionId} className="space-y-0.5 py-2 text-sm">
-                <span className="block text-zinc-200">
+              <Ledger.Row key={f.editionId} edge="none" className="flex-col items-stretch gap-0.5 px-3 py-2 text-sm">
+                <span className="block text-text">
                   <span className="font-medium">{f.name}</span>
-                  {f.venue && <span className="text-zinc-400"> at {f.venue}</span>}
+                  {f.venue && <span className="text-text-muted"> at {f.venue}</span>}
                 </span>
-                <span className="block text-xs text-zinc-400">
-                  {label(f.before)} → <span className="text-zinc-200">{label(f.after)}</span> ({f.from.map((k) => FROM[k]).join(', ')})
+                <span className="block text-xs text-text-muted">
+                  {label(f.before)} → <span className="text-text">{label(f.after)}</span> ({f.from.map((k) => FROM[k]).join(', ')})
                 </span>
-              </li>
+              </Ledger.Row>
             ))}
-          </ul>
+          </Ledger>
         </>
       )}
       {plan && plan.choices.length > 0 && (
         <div className="space-y-1">
-          <h4 className="text-xs uppercase text-zinc-500">Venue in more than one place: pick one</h4>
-          <ul className="divide-y divide-zinc-800">
+          <h4 className="text-xs uppercase text-text-muted">Venue in more than one place: pick one</h4>
+          <Ledger>
             {plan.choices.map((c) => (
-              <li key={c.editionId} className="space-y-1 py-2 text-sm">
-                <span className="block text-zinc-200">
+              <Ledger.Row key={c.editionId} edge="needs" className="flex-col items-stretch gap-1.5 px-3 py-2 text-sm">
+                <span className="block text-text">
                   <span className="font-medium">{c.name}</span>
-                  <span className="text-zinc-400"> at {c.venue}</span>
+                  <span className="text-text-muted"> at {c.venue}</span>
                 </span>
                 <span className="flex flex-wrap gap-2">
                   {c.choices.map((loc) => (
@@ -123,15 +124,15 @@ export const VenueFillPanel: React.FC = () => {
                       type="button"
                       disabled={busy !== null}
                       onClick={() => void pick(c.editionId, loc)}
-                      className="rounded-md border border-zinc-700 px-2 py-0.5 text-xs text-zinc-100 hover:bg-zinc-800 disabled:opacity-50"
+                      className="min-h-11 rounded-control border border-line-strong px-2.5 py-1 text-xs text-text hover:bg-surface-2 disabled:opacity-50 sm:min-h-9"
                     >
                       {busy === c.editionId ? 'Filling…' : label(loc)}
                     </button>
                   ))}
                 </span>
-              </li>
+              </Ledger.Row>
             ))}
-          </ul>
+          </Ledger>
         </div>
       )}
     </section>

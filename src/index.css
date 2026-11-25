@@ -348,6 +348,25 @@
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* A just-added ledger row slides in at the top and glows for 1.5 s (design-refresh-2.md, section 4). */
+.ledger-fresh {
+  animation:
+    ledger-in 180ms ease-out,
+    ledger-glow 1.5s ease-out;
+}
+@keyframes ledger-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+@keyframes ledger-glow {
+  from {
+    background-color: var(--color-accent-tint);
+    box-shadow: inset 0 0 0 1px var(--color-accent-tint-line);
+  }
+}
+
 /* Reduced motion: spinners, pulses, transitions and smooth scrolling all stand still (docs/specs/design-refresh-2.md, section 4). */
 @media (prefers-reduced-motion: reduce) {
   *,

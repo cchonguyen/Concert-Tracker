@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { GitMerge, Loader2, MapPin, Sparkles, Tag } from 'lucide-react';
+import { GitMerge, MapPin, Sparkles, Tag } from 'lucide-react';
 import { entitiesApi, LoggedEvent } from '../services/lineupApi';
 import type { Entity, HistoryEntry } from '../server/entities/types';
 import { entityLabel, KINDS, ManageData } from './ManageView';
 import { categoryGaps, linkedSuggestions, placeOfferVenues, rareLabels, venuesWithoutPlace } from '../services/dataHealth';
+import { Equalizer } from './ui/Equalizer';
+import { Ledger } from './ui/Ledger';
 
 // Data health in the Manage tab: what needs your call to keep records from
 // drifting. Records that look like the same one (merge, or leave them),
@@ -23,9 +25,9 @@ interface DataHealthProps {
 
 type VenuePlaces = Awaited<ReturnType<typeof entitiesApi.health>>['venuePlaces'];
 
-const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
+const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-text-muted';
 const chip =
-  'inline-flex items-center gap-1 rounded-full border border-zinc-800 px-2.5 py-1 text-xs text-zinc-200 hover:border-violet-500/60 hover:text-violet-200 disabled:opacity-40';
+  'inline-flex min-h-11 sm:min-h-9 items-center gap-1 rounded-full border border-line-strong px-2.5 py-1 text-xs text-text hover:border-accent hover:text-accent disabled:opacity-40';
 
 export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, onOpen, onChanged }) => {
   const [venues, setVenues] = useState<VenuePlaces | null>(null);
@@ -76,29 +78,31 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
 
   return (
     <section className="space-y-6">
-      <p className="text-xs text-zinc-400">
+      <p className="text-xs text-text-muted">
         Things that need your call to keep names consistent. Nothing here changes on its own, and every change can be undone from
         History.
       </p>
-      {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2.5 text-sm text-rose-200">{error}</p>}
+      {error && <p className="rounded-card border border-bad/45 bg-bad/10 p-2.5 text-sm text-bad">{error}</p>}
 
       <div className="space-y-2">
         <h3 className={sectionTitle}>Venues whose events disagree on the city</h3>
         {!venues ? (
-          <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+          <span role="status" aria-label="Loading venues" className="inline-flex items-center text-text-muted">
+            <Equalizer />
+          </span>
         ) : !disagree.length ? (
-          <p className="text-sm text-zinc-400">None. Every venue with a city on its events is in one place.</p>
+          <p className="text-sm text-text-muted">None. Every venue with a city on its events is in one place.</p>
         ) : (
-          <ul className="space-y-2">
+          <Ledger>
             {disagree.map((v) => {
               const venue = byId.get(v.venueId)!;
               return (
-                <li key={v.venueId} className="space-y-2 rounded-xl border border-zinc-900 p-3">
-                  <p className="text-sm text-zinc-200">
-                    <button onClick={() => onOpen(venue.id)} className="font-semibold hover:text-violet-300">
+                <Ledger.Row key={v.venueId} edge="needs" className="flex-col items-stretch gap-2 p-3">
+                  <p className="text-sm text-text">
+                    <button onClick={() => onOpen(venue.id)} className="font-semibold hover:text-accent">
                       {venue.name}
                     </button>{' '}
-                    <span className="text-zinc-400">is in which city? Its events will all take the one you pick.</span>
+                    <span className="text-text-muted">is in which city? Its events will all take the one you pick.</span>
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {v.places.map((p) => {
@@ -111,19 +115,19 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
                           disabled={Boolean(busy)}
                           className={chip}
                         >
-                          {busy === `venue:${v.venueId}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <MapPin className="h-3 w-3" />}
+                          {busy === `venue:${v.venueId}` ? <Equalizer size="sm" /> : <MapPin className="h-3 w-3" />}
                           {entityLabel(place)}
-                          <span className="text-zinc-400">
+                          <span className="font-mono tabular-nums text-text-muted">
                             {p.events} event{p.events === 1 ? '' : 's'}
                           </span>
                         </button>
                       );
                     })}
                   </div>
-                </li>
+                </Ledger.Row>
               );
             })}
-          </ul>
+          </Ledger>
         )}
         <button
           onClick={() =>
@@ -132,7 +136,7 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
             })
           }
           disabled={Boolean(busy)}
-          className="text-xs text-zinc-400 hover:text-violet-300 disabled:opacity-40"
+          className="min-h-11 rounded-control text-xs text-text-muted hover:text-accent disabled:opacity-40 sm:min-h-9"
         >
           {busy === 'venues' ? 'Working…' : 'Put venues whose events all share a city in it'}
         </button>
@@ -141,21 +145,21 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
       <div className="space-y-2">
         <h3 className={sectionTitle}>Look-alikes</h3>
         {!groups.length ? (
-          <p className="text-sm text-zinc-400">None. No two records differ only by spacing, a leading “the”, or “and”.</p>
+          <p className="text-sm text-text-muted">None. No two records differ only by spacing, a leading “the”, or “and”.</p>
         ) : (
-          <ul className="space-y-2">
+          <Ledger>
             {groups.map((g) => {
               const kind = KINDS.find((k) => k.kind === g[0].kind)!;
               return (
-                <li key={g.map((e) => e.id).join()} className="space-y-2 rounded-xl border border-zinc-900 p-3">
-                  <p className="text-[11px] uppercase tracking-wide text-zinc-400">{kind.one}</p>
+                <Ledger.Row key={g.map((e) => e.id).join()} edge="needs" className="flex-col items-stretch gap-2 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-text-muted">{kind.one}</p>
                   <ul className="space-y-1">
                     {g.map((e) => (
-                      <li key={e.id} className="flex flex-wrap items-baseline gap-2 text-sm">
-                        <button onClick={() => onOpen(e.id)} className="text-zinc-100 hover:text-violet-300">
+                      <li key={e.id} className="flex flex-wrap items-center gap-2 text-sm">
+                        <button onClick={() => onOpen(e.id)} className="text-text hover:text-accent">
                           {entityLabel(e)}
                         </button>
-                        <span className="text-xs text-zinc-400">
+                        <span className="font-mono text-xs tabular-nums text-text-muted">
                           {n(e.id)} event{n(e.id) === 1 ? '' : 's'}
                         </span>
                         {g
@@ -169,7 +173,7 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
                     ))}
                   </ul>
                   {merging && g.includes(merging.from) && (
-                    <div className="space-y-2 rounded-lg border border-violet-500/30 bg-violet-950/20 p-2.5 text-sm text-zinc-200">
+                    <div className="space-y-2 rounded-card border border-accent-tint-line bg-accent-tint p-2.5 text-sm text-text">
                       <p>
                         Merge “{entityLabel(merging.from)}” into “{entityLabel(merging.into)}”? Its {n(merging.from.id)} event
                         {n(merging.from.id) === 1 ? '' : 's'} will show “{entityLabel(merging.into)}”
@@ -181,20 +185,20 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
                             void run('merge', () => entitiesApi.merge(merging.from.id, merging.into.id), () => setMerging(null))
                           }
                           disabled={Boolean(busy)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-accent-fill px-3 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40"
+                          className="inline-flex min-h-11 items-center gap-1.5 rounded-control bg-accent-fill px-3 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40 sm:min-h-9"
                         >
-                          {busy === 'merge' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitMerge className="h-3.5 w-3.5" />} Merge
+                          {busy === 'merge' ? <Equalizer size="sm" /> : <GitMerge className="h-3.5 w-3.5" />} Merge
                         </button>
-                        <button onClick={() => setMerging(null)} className="rounded-lg border border-zinc-800 px-3 py-1.5 text-sm text-zinc-300 hover:text-zinc-100">
+                        <button onClick={() => setMerging(null)} className="min-h-11 rounded-control border border-line-strong px-3 py-1.5 text-sm text-text-muted hover:text-text sm:min-h-9">
                           Cancel
                         </button>
                       </div>
                     </div>
                   )}
-                </li>
+                </Ledger.Row>
               );
             })}
-          </ul>
+          </Ledger>
         )}
       </div>
 
@@ -202,14 +206,14 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
         <div className="space-y-2">
           <h3 className={sectionTitle}>Labels some records lack</h3>
           {gaps.map((g) => (
-            <div key={`${g.kind}:${g.group}`} className="space-y-1.5 rounded-xl border border-zinc-900 p-3">
-              <p className="text-sm text-zinc-200">
+            <div key={`${g.kind}:${g.group}`} className="space-y-1.5 rounded-card border border-line bg-surface-1 p-3">
+              <p className="text-sm text-text">
                 {label(g.kind, g.missing.length)} with no {g.group.toLowerCase()}
               </p>
               <ul className="space-y-1">
                 {g.missing.slice(0, 12).map((r) => (
                   <li key={r.id} className="flex flex-wrap items-center gap-1.5 text-sm">
-                    <button onClick={() => onOpen(r.id)} className="mr-1 text-zinc-100 hover:text-violet-300">
+                    <button onClick={() => onOpen(r.id)} className="mr-1 text-text hover:text-accent">
                       {r.name}
                     </button>
                     {g.labels.map((l) => (
@@ -220,7 +224,7 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
                   </li>
                 ))}
               </ul>
-              {g.missing.length > 12 && <p className="text-xs text-zinc-400">and {g.missing.length - 12} more</p>}
+              {g.missing.length > 12 && <p className="font-mono text-xs tabular-nums text-text-muted">and {g.missing.length - 12} more</p>}
             </div>
           ))}
         </div>
@@ -236,12 +240,12 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
               const because = byId.get(o.becauseId);
               if (!r || !l || !because) return null;
               return (
-                <li key={`${o.recordId}:${o.labelId}`} className="flex flex-wrap items-center gap-2 text-sm text-zinc-300">
-                  <Sparkles className="h-3.5 w-3.5 text-violet-300" />
-                  <button onClick={() => onOpen(r.id)} className="text-zinc-100 hover:text-violet-300">
+                <li key={`${o.recordId}:${o.labelId}`} className="flex flex-wrap items-center gap-2 text-sm text-text">
+                  <Sparkles className="h-3.5 w-3.5 text-accent" />
+                  <button onClick={() => onOpen(r.id)} className="text-text hover:text-accent">
                     {r.name}
                   </button>
-                  <span className="text-zinc-400">
+                  <span className="text-text-muted">
                     has no {String(l.attrs.group ?? 'such label').toLowerCase()}; {because.name} is {l.name}.
                   </span>
                   <button onClick={() => addLabel(r.id, l.id)} disabled={Boolean(busy)} className={chip}>
@@ -257,12 +261,12 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
       {rare.length > 0 && (
         <div className="space-y-2">
           <h3 className={sectionTitle}>Labels used once or not at all</h3>
-          <p className="text-xs text-zinc-400">Often a typo of another label: open one to merge or rename it.</p>
+          <p className="text-xs text-text-muted">Often a typo of another label: open one to merge or rename it.</p>
           <ul className="flex flex-wrap gap-1.5">
             {rare.map(({ label: l, uses }) => (
               <li key={l.id}>
                 <button onClick={() => onOpen(l.id)} className={chip}>
-                  {l.name} <span className="text-zinc-400">{uses ? 'once' : 'unused'}</span>
+                  {l.name} <span className="text-text-muted">{uses ? 'once' : 'unused'}</span>
                 </button>
               </li>
             ))}
@@ -273,16 +277,16 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
       {offered.length > 0 && (
         <div className="space-y-2">
           <h3 className={sectionTitle}>Other cities a save brought</h3>
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-text-muted">
             These events took their venue's city in place of the one shown. If the venue's city is the wrong one, open the venue and move it.
           </p>
           <ul className="space-y-1.5">
             {offered.map(({ venue, offers: cities }) => (
-              <li key={venue.id} className="text-sm text-zinc-300">
-                <button onClick={() => onOpen(venue.id)} className="font-semibold text-zinc-100 hover:text-violet-300">
+              <li key={venue.id} className="text-sm text-text-muted">
+                <button onClick={() => onOpen(venue.id)} className="font-semibold text-text hover:text-accent">
                   {venue.name}
                 </button>{' '}
-                <span className="text-zinc-400">
+                <span>
                   {cities.map((c) => `${[c.city, c.region, c.country].filter(Boolean).join(', ')} (from ${c.from === 'user' ? 'you' : c.from})`).join('; ')}
                 </span>
               </li>
@@ -299,13 +303,13 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
               <li key={v.id}>
                 <button onClick={() => onOpen(v.id)} className={chip}>
                   <MapPin className="h-3 w-3" /> {v.name}
-                  <span className="text-zinc-400">{n(v.id)}</span>
+                  <span className="font-mono tabular-nums text-text-muted">{n(v.id)}</span>
                 </button>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-zinc-400">None. Every venue on your events is in a place.</p>
+          <p className="text-sm text-text-muted">None. Every venue on your events is in a place.</p>
         )}
       </div>
     </section>
