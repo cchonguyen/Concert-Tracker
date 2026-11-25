@@ -8,6 +8,7 @@ import { EventTitle } from './EventTitle';
 import { Tooltip } from './ui/Tooltip';
 import { ARTIST_SORTS, artistSummaries, ArtistSort, ArtistSummary, groupArtists, jumpTargets } from '../services/artists';
 import { buildManageUrl, entityUrl, isModifiedClick } from '../services/manageNav';
+import { scrollBehavior } from '../services/motion';
 
 interface ArtistsViewProps {
   events: LoggedEvent[];
@@ -354,7 +355,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
     return () => window.removeEventListener('scroll', onScroll);
   }, [groups, jumps.length, headerHeight, barHeight]);
   const jumpTo = (group: string) =>
-    document.getElementById(groupId(group))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById(groupId(group))?.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
 
   const repeat = artists.filter((a) => a.events.length > 1).length;
   const favourites = artists.filter((a) => a.favourites > 0).length;

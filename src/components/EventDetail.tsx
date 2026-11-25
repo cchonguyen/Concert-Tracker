@@ -63,6 +63,7 @@ import { IconButton } from './ui/IconButton';
 import { Segmented } from './ui/Segmented';
 import { SaveStatus } from './ui/SaveStatus';
 import { beginSave, emptyTrack, failSave, hintVisit, succeedSave, takeFailed, type SaveTrack } from '../services/saveStatus';
+import { scrollBehavior } from '../services/motion';
 
 interface EventDetailProps {
   event: LoggedEvent;
@@ -1266,7 +1267,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
     const el = document.getElementById(GAP_SECTION[gap]);
     setGuide(gap);
     if (!el) return;
-    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
     el.classList.add('ring-2', 'ring-violet-400/70', 'rounded-xl');
     window.setTimeout(() => el.classList.remove('ring-2', 'ring-violet-400/70', 'rounded-xl'), 1600);
     el.querySelector<HTMLElement>('input, select, textarea')?.focus({ preventScroll: true });
