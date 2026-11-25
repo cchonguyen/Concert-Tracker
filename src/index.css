@@ -293,6 +293,10 @@
   --la-good: #34d3a6;
   --la-warn: #fbbf24;
   --la-bad: #f87171;
+  /* Ticket stub (docs/specs/ticket-stub.md): perforation and paper, derived from the tokens above. */
+  --la-perf: color-mix(in oklab, var(--la-text) 32%, transparent);
+  --la-paper: color-mix(in oklab, var(--la-surface-1) 90%, var(--accent-500));
+  --la-paper-2: color-mix(in oklab, var(--la-surface-2) 75%, var(--accent-500));
 }
 :root[data-theme='light'] {
   --la-page: #f7f7f8;
@@ -313,6 +317,10 @@
   --la-good: #0b7a5c;
   --la-warn: #8a4b08;
   --la-bad: #b91c1c;
+  /* Ticket stub (docs/specs/ticket-stub.md): perforation and paper, derived from the tokens above. */
+  --la-perf: color-mix(in oklab, var(--la-text) 32%, transparent);
+  --la-paper: color-mix(in oklab, var(--la-surface-1) 94%, var(--accent-500));
+  --la-paper-2: color-mix(in oklab, var(--la-surface-2) 88%, var(--accent-500));
 }
 :root[data-theme='light'][data-accent='teal'],
 :root[data-theme='light'][data-accent='orange'] {
@@ -339,6 +347,7 @@
   --color-good: var(--la-good);
   --color-warn: var(--la-warn);
   --color-bad: var(--la-bad);
+  --color-perf: var(--la-perf);
 }
 
 /* Type roles: Jakarta for everything people read or tap, Newsreader for headings only, Mono for dates, times, counts and prices. */
@@ -365,6 +374,115 @@
     background-color: var(--color-accent-tint);
     box-shadow: inset 0 0 0 1px var(--color-accent-tint-line);
   }
+}
+
+/* Ticket stub (docs/specs/ticket-stub.md). Structure, paper, perforation and notches are
+   classes here because pseudo-elements and gradients are not Tailwind utilities. Text and spacing
+   stay in the components. --ticket-ground is the surface behind a ticket or stub header: the notch
+   circles are painted in it so they look cut out. Callers override it with an inline style. */
+.ticket-card,
+.stub-header {
+  --ticket-ground: var(--color-page);
+}
+.ticket-paper {
+  background: linear-gradient(120deg, var(--la-paper) 0%, var(--la-paper-2) 100%);
+}
+.ticket-cols {
+  grid-template-columns: minmax(0, 1fr) var(--ticket-stub-w, 230px);
+}
+.ticket-rows {
+  grid-template-columns: minmax(0, 1fr);
+}
+/* The stub end: a dashed tear on its left (columns) or top (rows), with a notch at each end of the tear. */
+.ticket-stub {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  transition:
+    transform 220ms ease,
+    box-shadow 220ms ease;
+}
+.ticket-cols .ticket-stub {
+  border-left: 2px dashed var(--color-perf);
+  padding: 16px 16px 14px;
+}
+.ticket-rows .ticket-stub {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  border-top: 2px dashed var(--color-perf);
+  padding: 12px 14px;
+}
+.ticket-stub::before,
+.ticket-stub::after {
+  content: '';
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--ticket-ground);
+  border: 1px solid var(--color-perf);
+  pointer-events: none;
+}
+.ticket-cols .ticket-stub::before {
+  top: -12px;
+  left: -12px;
+  clip-path: inset(50% 0 0 0);
+}
+.ticket-cols .ticket-stub::after {
+  bottom: -12px;
+  left: -12px;
+  clip-path: inset(0 0 50% 0);
+}
+.ticket-rows .ticket-stub::before {
+  top: -12px;
+  left: -12px;
+  clip-path: inset(0 0 0 50%);
+}
+.ticket-rows .ticket-stub::after {
+  top: -12px;
+  right: -12px;
+  clip-path: inset(0 50% 0 0);
+}
+/* Motion: the stub end can tear away or sit slightly askew. Both are off under reduced motion. */
+.ticket-tearing {
+  transform: translate(10px, 6px) rotate(6deg);
+  box-shadow: 0 14px 22px -12px color-mix(in oklab, var(--la-text) 45%, transparent);
+}
+.ticket-torn {
+  transform: translate(6px, 0) rotate(2deg);
+}
+/* Reduced motion: the global block below stops this transition. */
+/* Stub header (mockup 2b/2c): one large dashed perforation with a notch cut into each outer edge. */
+.stub-perf {
+  position: relative;
+  height: 0;
+  border-top: 3px dashed var(--color-perf);
+  margin: 0 18px;
+}
+.stub-perf::before,
+.stub-perf::after {
+  content: '';
+  position: absolute;
+  top: -17px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--ticket-ground);
+  border: 1px solid var(--color-line-strong);
+  pointer-events: none;
+}
+.stub-perf::before {
+  left: -35px;
+  clip-path: inset(0 0 0 50%);
+}
+.stub-perf::after {
+  right: -35px;
+  clip-path: inset(0 50% 0 0);
 }
 
 /* Reduced motion: spinners, pulses, transitions and smooth scrolling all stand still (docs/specs/design-refresh-2.md, section 4). */
