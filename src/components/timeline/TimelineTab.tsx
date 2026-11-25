@@ -27,7 +27,7 @@ interface TimelineTabProps {
 }
 
 const control =
-  'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
+  'min-h-11 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none sm:min-h-9';
 const ALL: TimelineRange = { kind: 'all' };
 
 export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, focusEventId = null, events, lineups, editions, onOpen, onOpenTable, onShowInAgenda }) => {
@@ -66,12 +66,12 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, focusEventId = n
                 if (mode === 'agenda') setSelectedEventId(confirmId);
                 else onShowInAgenda(confirmId);
               }}
-              className="rounded-full border border-dashed border-amber-400/60 px-2.5 py-1 font-semibold text-amber-300 hover:bg-amber-400/10"
+              className="inline-flex min-h-11 items-center rounded-full border border-dashed border-warn/60 px-3 font-semibold text-warn hover:bg-warn/10 sm:min-h-9"
             >
               {model.toConfirm} to confirm
             </button>
           )}
-          <button onClick={() => onOpenTable(tableQuery)} className="inline-flex items-center gap-1 text-zinc-400 hover:text-zinc-200">
+          <button onClick={() => onOpenTable(tableQuery)} className="inline-flex min-h-11 items-center gap-1 text-text-muted hover:text-text sm:min-h-9">
             <Table2 className="h-3.5 w-3.5" /> Open in Table
           </button>
         </div>

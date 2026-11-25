@@ -180,7 +180,7 @@ export const AgendaView: React.FC<TimelineViewProps> = ({ model, range, selected
               type="button"
               aria-pressed={order === o}
               onClick={() => choose(o)}
-              className={`min-h-9 rounded-[6px] px-2.5 py-1 font-medium transition-colors sm:min-h-7 ${
+              className={`min-h-11 rounded-[6px] px-2.5 py-1 font-medium transition-colors sm:min-h-9 ${
                 order === o ? 'bg-accent-fill text-on-accent' : 'text-text-muted hover:text-text'
               }`}
             >

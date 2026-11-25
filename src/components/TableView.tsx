@@ -595,7 +595,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
             </button>
           )}
         </span>
-        <span className="flex flex-wrap items-center gap-x-4 gap-y-1 whitespace-nowrap">
+        <span className="flex flex-wrap items-center gap-x-4 gap-y-1 whitespace-nowrap [&>button]:min-h-11 sm:[&>button]:min-h-9">
           {fillButton}
           {seriesButton}
           {genresButton}
@@ -642,7 +642,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                         const activeSort = filters.sort === s.key;
                         return (
                           <React.Fragment key={s.key}>
-                            {i > 0 && <span className="text-line-strong">/</span>}
+                            {i > 0 && <span aria-hidden="true" className="text-line-strong">/</span>}
                             <button
                               onClick={() => sortBy(s.key)}
                               title="Sorts by this column; press again to reverse it, and a third time to stop sorting."
