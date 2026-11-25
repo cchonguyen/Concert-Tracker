@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus, Search, X } from 'lucide-react';
+import { Plus, Search, X } from 'lucide-react';
 import {
   canonicalApi,
   type CanonicalEditionSummary,
@@ -8,6 +8,8 @@ import {
 import { weekendLabel } from '../services/format';
 import { Dialog } from './ui/Dialog';
 import { Button } from './ui/Button';
+import { Equalizer } from './ui/Equalizer';
+import { Ledger } from './ui/Ledger';
 import { Pill } from './ui/Pill';
 
 export type MergeFactField = 'name' | 'seriesSlug' | 'startDate' | 'endDate' | 'venue' | 'city' | 'region' | 'country';
@@ -191,12 +193,12 @@ export const MergeEditionModal: React.FC<MergeEditionModalProps> = ({ initialEdi
       title="Merge editions"
       placement="center"
       onClose={saving ? undefined : onClose}
-      panelClassName="w-full max-w-3xl max-h-[90vh] overflow-y-auto space-y-4 rounded-t-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-2xl sm:rounded-2xl"
+      panelClassName="w-full max-w-3xl max-h-[90vh] overflow-y-auto space-y-4 rounded-t-card border border-line-strong bg-surface-1 p-5 shadow-2xl sm:rounded-card"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-base font-semibold text-zinc-50">Merge editions</h3>
-          <p className="text-xs text-zinc-400">
+          <h3 className="font-display text-lg font-normal text-text">Merge editions</h3>
+          <p className="text-xs text-text-muted">
             Choose which edition record to keep. Performances, external IDs, and attendee links move onto the kept edition.
           </p>
         </div>
@@ -205,22 +207,22 @@ export const MergeEditionModal: React.FC<MergeEditionModalProps> = ({ initialEdi
           onClick={onClose}
           disabled={saving}
           aria-label="Close merge dialog"
-          className="rounded-md p-1 text-zinc-400 hover:text-zinc-200 disabled:opacity-40"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control text-text-muted hover:text-text disabled:opacity-40"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
       {/* Add another edition to merge */}
-      <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+      <div className="space-y-2 rounded-card border border-line bg-surface-2 p-3">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-semibold text-zinc-300">
+          <span className="font-mono text-xs font-semibold tabular-nums text-text">
             Editions in merge ({editions.length})
           </span>
           <button
             type="button"
             onClick={() => setSearchOpen((v) => !v)}
-            className="inline-flex items-center gap-1 text-xs text-violet-300 hover:text-violet-200"
+            className="inline-flex min-h-11 items-center gap-1 rounded-control px-1.5 text-xs text-accent hover:underline sm:min-h-9"
           >
             <Plus className="h-3.5 w-3.5" /> {searchOpen ? 'Hide search' : 'Add another edition'}
           </button>
@@ -228,38 +230,38 @@ export const MergeEditionModal: React.FC<MergeEditionModalProps> = ({ initialEdi
         {searchOpen && (
           <div className="space-y-2">
             <label className="relative block">
-              <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-zinc-500" />
+              <Search className="pointer-events-none absolute left-2.5 top-3 h-4 w-4 text-text-faint sm:top-2.5" />
               <input
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search editions by name, series, or venue…"
                 aria-label="Search editions to merge"
-                className="w-full rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 pl-8 pr-3 text-sm text-zinc-100 placeholder-zinc-500 focus:border-violet-500 focus:outline-none"
+                className="min-h-11 w-full rounded-control border border-line-strong bg-surface-1 py-1.5 pl-8 pr-3 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none sm:min-h-9"
               />
             </label>
             {searching ? (
-              <p className="flex items-center gap-1.5 text-xs text-zinc-400">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Searching…
+              <p className="flex items-center gap-1.5 text-xs text-text-muted">
+                <Equalizer size="sm" /> Searching…
               </p>
             ) : candidateResults.length === 0 ? (
-              <p className="text-xs text-zinc-500">No matching editions to add.</p>
+              <p className="text-xs text-text-muted">No matching editions to add.</p>
             ) : (
-              <ul className="max-h-40 divide-y divide-zinc-800 overflow-y-auto rounded-lg border border-zinc-800">
+              <Ledger className="max-h-40 overflow-y-auto">
                 {candidateResults.map((r) => (
-                  <li key={r.id} className="flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs">
+                  <Ledger.Row key={r.id} edge="none" className="min-h-11 justify-between px-2.5 py-1.5 text-xs sm:min-h-9">
                     <span className="min-w-0 truncate">
-                      <span className="font-medium text-zinc-100">{r.name}</span>{' '}
-                      <span className="text-zinc-400">
+                      <span className="font-medium text-text">{r.name}</span>{' '}
+                      <span className="font-mono tabular-nums text-text-muted">
                         · {[r.seriesName, r.startDate ?? String(r.year), r.venue, r.city].filter(Boolean).join(' · ')} ({r.performanceCount} acts)
                       </span>
                     </span>
                     <Button onClick={() => void addEditionById(r.id)} disabled={addingId === r.id}>
-                      {addingId === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Add'}
+                      {addingId === r.id ? <Equalizer size="sm" /> : 'Add'}
                     </Button>
-                  </li>
+                  </Ledger.Row>
                 ))}
-              </ul>
+              </Ledger>
             )}
           </div>
         )}
@@ -272,18 +274,18 @@ export const MergeEditionModal: React.FC<MergeEditionModalProps> = ({ initialEdi
           return (
             <div
               key={ed.id}
-              className={`space-y-2 rounded-xl border p-3 text-xs ${
-                isKeep ? 'border-violet-500 bg-violet-950/20' : 'border-zinc-800 bg-zinc-950/60'
+              className={`space-y-2 rounded-card border p-3 text-xs ${
+                isKeep ? 'border-accent-tint-line bg-accent-tint' : 'border-line bg-surface-2'
               }`}
             >
               <div className="flex items-start justify-between gap-2">
-                <label className="flex cursor-pointer items-center gap-2 font-semibold text-zinc-100">
+                <label className="flex cursor-pointer items-center gap-2 font-semibold text-text">
                   <input
                     type="radio"
                     name="merge-keep-edition"
                     checked={isKeep}
                     onChange={() => setKeepId(ed.id)}
-                    className="accent-violet-500"
+                    className="accent-accent-fill"
                   />
                   <span>{isKeep ? 'Keep this edition' : 'Merge into kept'}</span>
                 </label>
@@ -296,28 +298,28 @@ export const MergeEditionModal: React.FC<MergeEditionModalProps> = ({ initialEdi
                       type="button"
                       onClick={() => removeEdition(ed.id)}
                       aria-label={`Remove ${ed.name} from merge`}
-                      className="text-zinc-500 hover:text-zinc-300"
+                      className="flex h-7 w-7 items-center justify-center rounded-control text-text-muted hover:text-text"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
                   )}
                 </div>
               </div>
-              <p className="text-sm font-semibold text-zinc-50">{ed.name}</p>
-              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-zinc-300">
-                <dt className="text-zinc-500">Series</dt>
+              <p className="text-sm font-semibold text-text">{ed.name}</p>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-text-muted">
+                <dt className="text-text-faint">Series</dt>
                 <dd className="truncate">
                   {ed.seriesName || ed.seriesSlug || 'None'}
-                  {ed.seriesBrand && <span className="ml-1.5 text-zinc-400">({ed.seriesBrand})</span>}
+                  {ed.seriesBrand && <span className="ml-1.5 text-text-muted">({ed.seriesBrand})</span>}
                 </dd>
-                <dt className="text-zinc-500">Dates</dt>
-                <dd>{editionDateSummary(ed)}</dd>
-                <dt className="text-zinc-500">Venue</dt>
+                <dt className="text-text-faint">Dates</dt>
+                <dd className="font-mono tabular-nums">{editionDateSummary(ed)}</dd>
+                <dt className="text-text-faint">Venue</dt>
                 <dd className="truncate">{ed.venue ?? 'Not known'}</dd>
-                <dt className="text-zinc-500">Place</dt>
+                <dt className="text-text-faint">Place</dt>
                 <dd className="truncate">{[ed.city, ed.region, ed.country].filter(Boolean).join(', ') || 'Not known'}</dd>
-                <dt className="text-zinc-500">Acts</dt>
-                <dd>{ed.performances.length} billed</dd>
+                <dt className="text-text-faint">Acts</dt>
+                <dd className="font-mono tabular-nums">{ed.performances.length} billed</dd>
               </dl>
             </div>
           );
@@ -326,17 +328,17 @@ export const MergeEditionModal: React.FC<MergeEditionModalProps> = ({ initialEdi
 
       {/* Combine as weekends */}
       {distinctDates && editions.length >= 2 && (
-        <label className="block space-y-1 rounded-lg border border-violet-500/30 bg-violet-950/15 p-3 text-xs">
-          <span className="flex items-center gap-2 font-semibold text-zinc-100">
+        <label className="block space-y-1 rounded-card border border-accent-tint-line bg-accent-tint p-3 text-xs">
+          <span className="flex items-center gap-2 font-semibold text-text">
             <input
               type="checkbox"
               checked={combineAsWeekends}
               onChange={(e) => setCombineAsWeekends(e.target.checked)}
-              className="accent-violet-500"
+              className="accent-accent-fill"
             />
             Combine dates into Weekend 1 &amp; Weekend 2
           </span>
-          <span className="block pl-5 text-zinc-400">
+          <span className="block pl-5 text-text-muted">
             Builds multi-weekend dates on the kept edition. Existing attendees keep their weekend dates (Weekend 1, Weekend 2, etc.) on their personal log entries. Merges cannot be undone via Undo.
           </span>
         </label>
@@ -344,14 +346,14 @@ export const MergeEditionModal: React.FC<MergeEditionModalProps> = ({ initialEdi
 
       {/* Differing fact choices */}
       {diffs.length > 0 && (
-        <div className="space-y-2 rounded-lg border border-zinc-800 p-3">
-          <p className="text-xs font-semibold text-zinc-200">Choose differing facts</p>
+        <div className="space-y-2 rounded-card border border-line bg-surface-1 p-3">
+          <p className="text-xs font-semibold text-text">Choose differing facts</p>
           <div className="space-y-2">
             {diffs.map((d) => {
               const current = factChoices[d.field] ?? (kept?.[d.field] ? String(kept[d.field]) : d.options[0]?.value);
               return (
                 <div key={d.field} className="space-y-1 text-xs">
-                  <span className="text-zinc-400">{d.label}</span>
+                  <span className="text-text-muted">{d.label}</span>
                   <div className="flex flex-wrap gap-1.5">
                     {d.options.map((opt) => {
                       const active = current === opt.value;
@@ -361,10 +363,10 @@ export const MergeEditionModal: React.FC<MergeEditionModalProps> = ({ initialEdi
                           type="button"
                           aria-pressed={active}
                           onClick={() => setFactChoices((prev) => ({ ...prev, [d.field]: opt.value }))}
-                          className={`rounded-full border px-2.5 py-1 text-xs ${
+                          className={`min-h-11 rounded-full border px-3 py-1 text-xs sm:min-h-9 ${
                             active
-                              ? 'border-violet-400 bg-violet-500/20 text-violet-100'
-                              : 'border-zinc-700 text-zinc-300 hover:border-violet-500'
+                              ? 'border-accent-tint-line bg-accent-tint text-accent'
+                              : 'border-line-strong text-text-muted hover:border-accent'
                           }`}
                         >
                           {opt.display}
@@ -379,24 +381,24 @@ export const MergeEditionModal: React.FC<MergeEditionModalProps> = ({ initialEdi
         </div>
       )}
 
-      <label className="block space-y-1 text-xs text-zinc-400">
+      <label className="block space-y-1 text-xs text-text-muted">
         <span>Merge note (optional)</span>
         <input
           type="text"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           placeholder="e.g. duplicate entry, or combine Weekend 1 & Weekend 2"
-          className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-violet-500 focus:outline-none"
+          className="min-h-11 w-full rounded-control border border-line-strong bg-surface-1 px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none sm:min-h-9"
         />
       </label>
 
       {!distinctDates && (
-        <p className="text-xs text-amber-300/90">
+        <p className="text-xs text-warn">
           Merging editions moves performances, external IDs, and attendee links onto the kept edition. Merges cannot be undone via Undo.
         </p>
       )}
 
-      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+      {error && <p role="alert" className="text-sm text-bad">{error}</p>}
 
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
@@ -405,7 +407,7 @@ export const MergeEditionModal: React.FC<MergeEditionModalProps> = ({ initialEdi
           onClick={() => void submitMerge()}
           disabled={saving || editions.length < 2 || dropIds.length === 0}
         >
-          {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {saving && <Equalizer size="sm" />}
           Merge {dropIds.length} {dropIds.length === 1 ? 'edition' : 'editions'} into kept
         </Button>
       </div>
