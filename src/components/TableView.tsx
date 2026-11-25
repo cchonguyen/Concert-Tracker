@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -17,6 +17,7 @@ import {
 import type { LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
 import { artistsOf, eventYear, formatsOf, kindLabel, whenLabel } from '../services/format';
 import { exportCsv } from './DataActions';
+import { tintHue } from '../services/eventTint';
 import { useToast } from './ui/Toast';
 import { BackToTop } from './ui/BackToTop';
 import { MenuButton } from './ui/MenuButton';
@@ -724,7 +725,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                                 title={`Show only ${e.series}`}
                                 className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text"
                               >
-                                <span className="h-2 w-2 rounded-full bg-accent-fill" aria-hidden="true" />
+                                <SeriesDot series={e.series!} />
                                 {e.series}
                               </span>
                             )}
@@ -810,7 +811,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                             <KindPill kind={eventKind} size="sm" />
                             {e.series && (
                               <span className="inline-flex items-center gap-1 text-xs text-text-muted">
-                                <span className="h-2 w-2 rounded-full bg-accent-fill" aria-hidden="true" />
+                                <SeriesDot series={e.series!} />
                                 {e.series}
                               </span>
                             )}
@@ -845,3 +846,9 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
     </div>
   );
 };
+
+// The dot beside a series name, in the series' own tint (services/eventTint.ts), or the accent when tints are off.
+function SeriesDot({ series }: { series: string }) {
+  const hue = tintHue(series);
+  return <span className="series-dot h-2 w-2 shrink-0 rounded-full bg-accent-fill" style={hue == null ? undefined : ({ '--event-hue': hue } as CSSProperties)} aria-hidden="true" />;
+}
