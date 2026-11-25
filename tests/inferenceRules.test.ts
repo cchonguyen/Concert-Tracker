@@ -7,7 +7,8 @@ import type { Edition, EditionInference, InferenceInput } from '../src/server/li
 import type { LineupStore } from '../src/server/lineup/store/types.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import { undoEditionChange, writeEdition } from '../src/server/canon/editions.ts';
-import { healEdition, inferEditionField, rejectInference, shownValue } from '../src/server/canon/inferences.ts';
+import { healEdition, inferEditionField, inferredFieldsFor, rejectInference, shownValue } from '../src/server/canon/inferences.ts';
+import type { LoggedEvent } from '../src/server/events/types.ts';
 
 const fresh = async () => new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'infr-')));
 const ed = (over: Partial<Edition> = {}): Edition => ({
@@ -206,4 +207,28 @@ test('a store whose inference lookup throws does not break a save', async () => 
   const r = await writeEdition(broken, { edition: ed({ city: 'Austin' }), actor: 'owner:1', reason: 'typed' });
   assert.equal(r.changed, true);
   assert.equal((await s.getEdition('e1'))!.city, 'Austin');
+});
+
+const inf = (over: Partial<EditionInference>): EditionInference => ({
+  id: 'i1', editionId: 'e1', field: 'city', value: 'Austin', reason: 'the venue is in Austin', rule: 'venue-place',
+  inputs: venueInput, parents: [], status: 'active', actor: 'system:test', createdAt: '2026-01-01T00:00:00.000Z', ...over,
+});
+const eventWith = (over: Partial<LoggedEvent> = {}): LoggedEvent => ({ id: 'ev1', input: 'Fest', sources: {}, details: {} as LoggedEvent['details'], seen: [], ...over } as LoggedEvent);
+
+test('inferredFieldsFor offers an active inference only for an empty event field', () => {
+  const list = [inf({ id: 'i1', field: 'city' }), inf({ id: 'i2', field: 'region', value: 'TX', reason: 'Austin is in TX' })];
+  const out = inferredFieldsFor(eventWith({ city: 'Dallas' }), list);
+  assert.equal(out.city, undefined);
+  assert.deepEqual(out.region, { value: 'TX', reason: 'Austin is in TX', inferenceId: 'i2' });
+});
+
+test('inferredFieldsFor ignores inferences that are no longer active', () => {
+  const list = ['confirmed', 'replaced', 'rejected'].map((status, n) => inf({ id: `i${n}`, status: status as EditionInference['status'] }));
+  assert.deepEqual(inferredFieldsFor(eventWith(), list), {});
+});
+
+test('inferredFieldsFor never writes into the event it reads', () => {
+  const event = eventWith();
+  inferredFieldsFor(event, [inf({})]);
+  assert.equal('city' in event, false);
 });
