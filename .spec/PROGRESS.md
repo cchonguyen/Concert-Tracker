@@ -43,12 +43,12 @@ Finished slices move to `.spec/archive/HISTORY.md`. Earlier feature sections (sh
 
 ## LiveArchive 2.0 design refresh (spec: `docs/specs/design-refresh-2.md`, approved by Charlie 2026-11-25)
 Stage 0 (Claude) goes first. After it, Track A (Claude) and the Gemini package "Ledger & Lobby" (`docs/specs/design-refresh-2-ledger-and-lobby.md`) run in parallel. Each slice gets its issue when it starts.
-- [ ] **Slice DR2.0-1: Tokens, fonts, phone bar colour and contrast test** [CORE / DATA] Target files: src/index.css, src/services/theme.ts, app.html, tests/themeContrast.test.ts | Verify: npm run lint --silent && npm test --silent
-- [ ] **Slice DR2.0-2: Ink on accent, part 1** [UI / VISUAL] Target files: src/components/ui/Button.tsx, src/components/CaptureBar.tsx, src/components/PosterHeader.tsx, src/App.tsx | Verify: npm run lint --silent
-- [ ] **Slice DR2.0-3: Ink on accent, parts 2 to 6** [UI / VISUAL] Target files: one area per slice (Manage, Import, Timeline, Stats and Artists, panels) | Verify: npm run lint --silent
-- [ ] **Slice DR2.0-4: Reduced-motion sweep** [UI / VISUAL] Target files: spinners by area, src/components/ui/BackToTop.tsx, src/components/ui/SaveStatus.tsx | Verify: npm run lint --silent
-- [ ] **Slice DR2.0-5: Shared Tabs** [UI / VISUAL] Target files: src/components/ui/Tabs.tsx, docs/design-system/ | Verify: npm run lint --silent
-- [ ] **Slice DR2.0-6: Shared Ledger, KindPill, HintPill** [UI / VISUAL] Target files: src/components/ui/Ledger.tsx, src/components/ui/KindPill.tsx, src/components/ui/HintPill.tsx, docs/design-system/ | Verify: npm run lint --silent
-- [ ] **Slice DR2.0-7: Shared Stars and Equalizer** [UI / VISUAL] Target files: src/components/ui/Stars.tsx, src/components/ui/Equalizer.tsx, docs/design-system/ | Verify: npm run lint --silent
+- [ ] **Slice 22.1: Tokens, fonts, phone bar colour and contrast test** [IN_PROGRESS] [CORE / DATA] Target files: src/index.css, src/services/theme.ts, app.html, tests/themeContrast.test.ts | Issue: #672 | Verify: npm run lint --silent && npm test --silent
+- [ ] **Slice 22.2: Ink on accent, part 1** [UI / VISUAL] Target files: src/components/ui/Button.tsx, src/components/CaptureBar.tsx, src/components/PosterHeader.tsx, src/App.tsx | Verify: npm run lint --silent
+- [ ] **Slice 22.3: Ink on accent, parts 2 to 6** [UI / VISUAL] Target files: one area per slice (Manage, Import, Timeline, Stats and Artists, panels) | Verify: npm run lint --silent
+- [ ] **Slice 22.4: Reduced-motion sweep** [UI / VISUAL] Target files: spinners by area, src/components/ui/BackToTop.tsx, src/components/ui/SaveStatus.tsx | Verify: npm run lint --silent
+- [ ] **Slice 22.5: Shared Tabs** [UI / VISUAL] Target files: src/components/ui/Tabs.tsx, docs/design-system/ | Verify: npm run lint --silent
+- [ ] **Slice 22.6: Shared Ledger, KindPill, HintPill** [UI / VISUAL] Target files: src/components/ui/Ledger.tsx, src/components/ui/KindPill.tsx, src/components/ui/HintPill.tsx, docs/design-system/ | Verify: npm run lint --silent
+- [ ] **Slice 22.7: Shared Stars and Equalizer** [UI / VISUAL] Target files: src/components/ui/Stars.tsx, src/components/ui/Equalizer.tsx, docs/design-system/ | Verify: npm run lint --silent
 - [ ] **Track A (Claude):** A1 Popover, A2 top bar and page rows, A3 EventsHome, A4 poster, A5 two-column detail (2-3 slices), A6 DetailShell motion, A7 Stats and heatmap.
 - [ ] **Gemini package "Ledger & Lobby":** G1a/G1b Table, G2 Agenda, Month and River, G3 capture box, G4 Home, G5 celebrations, G6 landing page, G7 share page and emails.
