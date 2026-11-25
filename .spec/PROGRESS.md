@@ -47,7 +47,7 @@ Stage 0 (Claude) goes first. After it, Track A (Claude) and the Gemini package "
 - [x] **Slice 22.2: Ink on accent, part 1** [UI / VISUAL] Target files: src/components/ui/Button.tsx, src/components/CaptureBar.tsx, src/components/PosterHeader.tsx, src/App.tsx | Issue: #674 | Verify: npm run lint --silent
 - [x] **Slice 22.3: Ink on accent, the remaining screens** [UI / VISUAL] Target files: src/components/ | Issue: #676 | Verify: npm run lint --silent
 - [x] **Slice 22.4: Reduced-motion sweep** [CORE / DATA] Target files: src/index.css, src/services/motion.ts, src/components/, tests/motion.test.ts | Issue: #678 | Verify: npm run lint --silent && npm test --silent
-- [ ] **Slice 22.5: Shared Tabs** [IN_PROGRESS] [UI / VISUAL] Target files: src/components/ui/Tabs.tsx, docs/architecture/15-shared-ui.md | Issue: #680 | Verify: npm run lint --silent
+- [x] **Slice 22.5: Shared Tabs** [UI / VISUAL] Target files: src/components/ui/Tabs.tsx, docs/architecture/15-shared-ui.md | Issue: #680 | Verify: npm run lint --silent
 - [ ] **Slice 22.6: Shared Ledger, KindPill, HintPill, Stars and Equalizer** [UI / VISUAL] Target files: src/components/ui/Ledger.tsx, src/components/ui/KindPill.tsx, src/components/ui/HintPill.tsx, src/components/ui/Stars.tsx, src/components/ui/Equalizer.tsx, docs/architecture/15-shared-ui.md | Verify: npm run lint --silent
 - [ ] **Slice 22.7: Design-system notes for the refresh tokens and parts** [UI / VISUAL] Target files: docs/design-system/, docs/architecture/15-shared-ui.md | Verify: npm run lint --silent
 - [ ] **Track A (Claude):** A1 Popover, A2 top bar and page rows, A3 EventsHome, A4 poster, A5 two-column detail (2-3 slices), A6 DetailShell motion, A7 Stats and heatmap.
