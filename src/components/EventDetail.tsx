@@ -50,6 +50,7 @@ import { cityWithRegion, sameCountry } from '../server/events/regions';
 import { attendanceOf } from '../server/events/attendance';
 import type { EditionPerformance, InferenceField } from '../server/lineup/types';
 import type { InferredField } from '../server/canon/inferences';
+import type { InferredBilling } from '../server/canon/inferredBilling';
 import type { ManageTarget } from './ManageView';
 import { DetailShell, type DetailRow } from './ui/DetailShell';
 import { Confirm } from './ui/Confirm';
@@ -176,6 +177,18 @@ const InferredNote: React.FC<{ inferred: InferredField; type: string }> = ({ inf
         </button>
       </Popover>
     </div>
+  );
+};
+
+// An inferred billing role on an act with no stated role. Its reason opens on tap.
+const InferredRole: React.FC<{ inferred: InferredBilling }> = ({ inferred }) => {
+  const reason = inferred.reason.replace(/[.\s]+$/, '');
+  return (
+    <Popover label="Why this role is inferred" content={<p className="max-w-xs text-xs leading-relaxed text-text">{`Inferred: ${reason}.`}</p>}>
+      <button type="button" aria-label="Why this role is inferred" className="rounded-full">
+        <Pill tone="inferred">{inferred.role === 'headliner' ? 'Inferred headliner' : 'Inferred support'}</Pill>
+      </button>
+    </Popover>
   );
 };
 
@@ -599,12 +612,14 @@ const SeenActs: React.FC<{
   sets: Map<string, string>;
   past: string[];
   pastSets: string[];
+  inferredBilling: Record<string, InferredBilling>;
   onChange: (seen: SeenPatch) => void;
 }> = ({
   seen,
   sets,
   past,
   pastSets: pastSetsList,
+  inferredBilling,
   onChange,
 }) => {
   const [draft, setDraft] = useState('');
@@ -638,6 +653,7 @@ const SeenActs: React.FC<{
         </Pill>
       )}
       {s.role === 'headliner' && <Pill tone="highlight">Headliner</Pill>}
+      {!s.role && inferredBilling[s.key] && <InferredRole inferred={inferredBilling[s.key]} />}
       {s.asSolo && <Pill>Solo</Pill>}
     </React.Fragment>
   );
@@ -1046,6 +1062,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const [job, setJob] = useState<LookupJob | null>(null);
   const [edition, setEdition] = useState<Edition | null>(null);
   const [inferred, setInferred] = useState<Partial<Record<InferenceField, InferredField>>>({});
+  const [inferredBilling, setInferredBilling] = useState<Record<string, InferredBilling>>({});
   const [suggestions, setSuggestions] = useState<ArtistSuggestion[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1101,6 +1118,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
       setJob(data.job);
       setEdition(data.edition);
       setInferred(data.inferred ?? {});
+      setInferredBilling(data.inferredBilling ?? {});
       setSuggestions(data.suggestions ?? []);
       // Slower: parts of the name MusicBrainz knows as artists.
       eventsApi
@@ -1773,7 +1791,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               Each act is a row. Tap the row to set its billing, set type and B2B partners. Tap the heart to mark a favourite set. Acts you add here count as seen.
             </SectionHelp>
           </div>
-          <SeenActs seen={event.seen} sets={sets} past={pastArtists} pastSets={pastSetsList} onChange={(seen) => save({ seen })} />
+          <SeenActs seen={event.seen} sets={sets} past={pastArtists} pastSets={pastSetsList} inferredBilling={inferredBilling} onChange={(seen) => save({ seen })} />
           <SeenGenres event={event} />
           {offered.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 text-xs">

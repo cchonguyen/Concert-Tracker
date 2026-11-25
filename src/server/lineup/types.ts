@@ -398,6 +398,8 @@ export interface EditionChange {
 
 // Inferred values for a shared edition. The rules are in docs/specs/inferred-values.md.
 export type InferenceField = 'startDate' | 'endDate' | 'venue' | 'city' | 'region' | 'country';
+// Fields that are about one act on the edition, not the edition row. Such a row carries a subject (the artist key).
+export type InferenceSubjectField = 'billing';
 export type InferenceStatus = 'active' | 'confirmed' | 'replaced' | 'rejected';
 export type InferenceInput =
   | { kind: 'source'; url: string; quote: string }
@@ -406,7 +408,8 @@ export type InferenceInput =
 export interface EditionInference {
   id: string;
   editionId: string;
-  field: InferenceField;
+  field: InferenceField | InferenceSubjectField;
+  subject?: string; // the performance's artist key, for a billing row
   value: unknown;
   reason: string;
   rule: string;

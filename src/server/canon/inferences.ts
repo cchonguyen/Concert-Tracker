@@ -107,7 +107,7 @@ function sameInferred(field: InferenceField, own: unknown, inferred: unknown): b
 }
 
 // Resolves one active inference and records the resolution. Returns null when it was not active.
-async function resolveRecorded(
+export async function resolveRecorded(
   store: LineupStore,
   editionId: string,
   id: string,
@@ -151,6 +151,8 @@ export async function healEdition(store: LineupStore, editionId: string, edition
   const out: EditionInference[] = [];
   const visited = new Set<string>();
   for (const inf of active) {
+    // Billing rows are about one act (inferredBilling.ts), never an edition field.
+    if (inf.field === 'billing') continue;
     const own = edition[inf.field];
     if (isEmptyValue(own)) continue;
     const status = sameInferred(inf.field, own, inf.value) ? 'confirmed' : 'replaced';
@@ -209,6 +211,7 @@ export function inferredFieldsFor(
 ): Partial<Record<InferenceField, InferredField>> {
   const out: Partial<Record<InferenceField, InferredField>> = {};
   for (const inf of inferences) {
+    if (inf.field === 'billing') continue;
     if (inf.status !== 'active' || out[inf.field]) continue;
     if (!isEmptyValue(event[inf.field])) continue;
     out[inf.field] = { value: inf.value, reason: inf.reason, inferenceId: inf.id };

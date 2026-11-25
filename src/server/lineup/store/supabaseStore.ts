@@ -71,7 +71,7 @@ export { EditionOccurrenceConflictError, type EditionConflictInfo };
 
 function mapEditionInference(r: any): EditionInference {
   return {
-    id: r.id, editionId: r.edition_id, field: r.field, value: r.value, reason: r.reason, rule: r.rule,
+    id: r.id, editionId: r.edition_id, field: r.field, ...(r.subject != null ? { subject: r.subject } : {}), value: r.value, reason: r.reason, rule: r.rule,
     inputs: r.inputs ?? [], parents: r.parents ?? [], status: r.status, actor: r.actor, createdAt: r.created_at,
     resolvedAt: r.resolved_at ?? undefined, resolvedBy: r.resolved_by ?? undefined, resolvedReason: r.resolved_reason ?? undefined,
   };
@@ -1992,7 +1992,7 @@ export class SupabaseLineupStore implements LineupStore {
     const row: EditionInference = { ...i, id: crypto.randomUUID(), status: 'active', createdAt: new Date().toISOString() };
     this.check(
       await this.db.from('edition_inferences').insert({
-        id: row.id, edition_id: row.editionId, field: row.field, value: row.value ?? null, reason: row.reason, rule: row.rule,
+        id: row.id, edition_id: row.editionId, field: row.field, subject: row.subject ?? null, value: row.value ?? null, reason: row.reason, rule: row.rule,
         inputs: row.inputs, parents: row.parents, status: 'active', actor: row.actor, created_at: row.createdAt,
       }),
       'addEditionInference (apply 0055_edition_inferences.sql)',

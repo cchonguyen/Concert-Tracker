@@ -1392,8 +1392,9 @@ export class FileLineupStore implements LineupStore {
     assertNoPersonalFields(i.inputs);
     const state = await this.load();
     const rows = state.editionInferences ?? [];
-    if (rows.some((r) => r.editionId === i.editionId && r.field === i.field && r.status === 'active')) {
-      throw new Error(`An active inference already exists for ${i.editionId} ${i.field}.`);
+    const sameSubject = (r: EditionInference) => (r.subject ?? '') === (i.subject ?? '');
+    if (rows.some((r) => r.editionId === i.editionId && r.field === i.field && sameSubject(r) && r.status === 'active')) {
+      throw new Error(`An active inference already exists for ${i.editionId} ${i.field}${i.subject ? ` ${i.subject}` : ''}.`);
     }
     const row: EditionInference = { ...clone(i), id: crypto.randomUUID(), status: 'active', createdAt: new Date().toISOString() };
     (state.editionInferences ??= []).push(row);
