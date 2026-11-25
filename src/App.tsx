@@ -699,7 +699,9 @@ export default function App({ initialMe }: { initialMe?: Me }) {
           <ArtistsView events={went} onOpenEvent={openEvent} onOpenTable={openTable} onManage={(key) => openManage({ kind: 'artist', name: key })} />
         )}
         {shown === 'log' && <LogView eventId={logFor} onShowAll={() => setLogFor(null)} />}
-        {shown === 'share' && <SharePage sample={readOnly ? () => askSample('share') : undefined} />}
+        {shown === 'share' && (
+          <SharePage events={events} today={today} sample={readOnly ? () => askSample('share') : undefined} />
+        )}
         {shown === 'manage' && (
           <ManageView
             events={events}
