@@ -16,7 +16,7 @@ interface SharePanelProps {
 const button =
   'inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:text-zinc-100 disabled:opacity-40';
 const primary =
-  'inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40';
+  'inline-flex items-center gap-1.5 rounded-lg bg-accent-fill px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40';
 
 // The server keeps only a hash of the link's code, so the full link can be
 // shown again only from this browser, which remembers it for the active link.

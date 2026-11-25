@@ -50,6 +50,7 @@ import { hintSeen, markHintSeen, NavStorage, Page, PAGE_BLURB, SubPage, PAGE_LAB
 import { PAGE_ICON, SECTION_ICON } from './components/pageIcons';
 import { HomePage } from './components/HomePage';
 import { BackToTop } from './components/ui/BackToTop';
+import { Tabs } from './components/ui/Tabs';
 import { Callout } from './components/ui/Callout';
 import { copy } from './services/copy';
 import { ARTIST_MILESTONES, artistMilestoneLine, highestMilestoneCrossed, milestoneCounts, milestoneLine, type MilestoneCounts } from './services/milestones';
@@ -527,46 +528,40 @@ export default function App({ initialMe }: { initialMe?: Me }) {
     <VaultProvider events={events} onChanged={refresh}>
     <div
       inert={Boolean(notice)}
-      className="min-h-screen bg-zinc-950 font-sans text-zinc-100 selection:bg-violet-600 selection:text-white flex flex-col"
+      className="min-h-screen bg-page font-sans text-text selection:bg-accent-fill selection:text-on-accent flex flex-col"
     >
       {sampleMe?.sample && (
         <SampleBanner mode={sampleMe.sample} email={sampleMe.email} signedIn={document.documentElement.hasAttribute('data-signed-in')} />
       )}
       <header
         ref={headerRef}
-        className={`sticky top-0 z-30 border-b border-zinc-900 bg-zinc-950/90 sm:backdrop-blur-md transition-transform duration-200 motion-reduce:transition-none ${
+        className={`sticky top-0 z-30 border-b border-line-strong bg-sunken/95 sm:backdrop-blur-md transition-transform duration-200 motion-reduce:transition-none ${
           headerShown ? '' : '-translate-y-full'
         }`}
       >
-        <div className={`mx-auto flex ${headerWidth} items-center justify-between gap-3 px-4 py-3`}>
-          <div className="flex items-center gap-2">
+        {/* The section tabs sit on the header's bottom line, and the open one joins the row below. */}
+        <div className={`mx-auto flex ${headerWidth} items-stretch justify-between gap-2 px-4 pt-2`}>
+          <div className="flex items-center gap-2 pb-2">
             <img src="/logo.svg" alt="LiveArchive" className="h-8 w-8" />
             <span className="hidden text-base font-extrabold tracking-tight sm:inline">
-              Live<span className="text-violet-400">Archive</span>
+              Live<span className="text-accent">Archive</span>
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <nav className="flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1 text-sm">
-              {(['home', 'library', 'explore'] as const).map((id) => {
-                const Icon = id === 'home' ? House : SECTION_ICON[id];
-                const label = id === 'home' ? PAGE_LABELS.home : SECTIONS[id].label;
-                const active = id === 'home' ? tab === 'home' : section === id;
-                return (
-                  <button
-                    key={id}
-                    onClick={() => openTab(id === 'home' ? 'home' : rememberedPage(id, { canManage }, navStorage()))}
-                    aria-label={label}
-                    aria-current={active ? 'page' : undefined}
-                    className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 font-medium transition-colors sm:px-3 ${
-                      active ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    <span className={active ? '' : 'hidden sm:inline'}>{label}</span>
-                  </button>
-                );
-              })}
-            </nav>
+          <Tabs
+            label="Sections"
+            line={false}
+            panel={section ? 'surface-1' : 'page'}
+            className="self-end"
+            value={section ?? 'home'}
+            onChange={(id) => openTab(id === 'home' ? 'home' : rememberedPage(id, { canManage }, navStorage()))}
+            items={(['home', 'library', 'explore'] as const).map((id) => ({
+              value: id,
+              label: id === 'home' ? PAGE_LABELS.home : SECTIONS[id].label,
+              icon: id === 'home' ? House : SECTION_ICON[id],
+              compact: true,
+            }))}
+          />
+          <div className="flex items-center gap-2 pb-2">
             <QuickAddButton onClick={() => (readOnly ? askSample('add') : setQuickAdd(true))} />
             <AppHeaderMenu
               theme={theme}
@@ -585,34 +580,24 @@ export default function App({ initialMe }: { initialMe?: Me }) {
           </div>
         </div>
         {section && (
-          <div className="border-t border-zinc-900">
-            <div className={`mx-auto flex ${headerWidth} gap-1 overflow-x-auto px-4`}>
-              {subPagesFor(section, { canManage }).map((p) => {
-                const Icon = PAGE_ICON[p];
-                const active = shown === p;
-                const count = p === 'summary' ? events.length : null;
-                return (
-                  <button
-                    key={p}
-                    onClick={() => openTab(p)}
-                    aria-label={PAGE_LABELS[p]}
-                    aria-current={active ? 'page' : undefined}
-                    className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-                      active ? 'border-violet-500 text-violet-300' : 'border-transparent text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                    {/* Phones show the icon alone, except on the open page. */}
-                    <span className={active ? '' : 'hidden sm:inline'}>
-                      {PAGE_LABELS[p]}
-                      {count !== null && <span className="ml-1.5 text-[11px] opacity-70">{count}</span>}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+          <div className="bg-surface-1">
+            <Tabs
+              label={`${SECTIONS[section].label} pages`}
+              variant="underline"
+              line={false}
+              className={`mx-auto ${headerWidth} px-4`}
+              value={shown as SubPage}
+              onChange={(p) => openTab(p)}
+              items={subPagesFor(section, { canManage }).map((p) => ({
+                value: p,
+                label: PAGE_LABELS[p],
+                icon: PAGE_ICON[p],
+                count: p === 'summary' ? events.length : undefined,
+                compact: true,
+              }))}
+            />
             {hintDue && (
-              <p className={`mx-auto ${headerWidth} px-4 pb-2 text-xs text-violet-300 sm:hidden`}>
+              <p className={`mx-auto ${headerWidth} px-4 pb-2 text-xs text-accent sm:hidden`}>
                 Tap an icon to switch pages.
               </p>
             )}

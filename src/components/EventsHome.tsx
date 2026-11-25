@@ -1,9 +1,14 @@
-import React, { useMemo } from 'react';
-import { CalendarHeart, Check, ChevronRight, Loader2, Mail, Table2 } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { CalendarClock, CalendarDays, CalendarHeart, Check, Clock, Mail, MapPin, Mic, Sparkles, Table2, Ticket, TriangleAlert, CircleHelp } from 'lucide-react';
 import type { LineupSummary, LoggedEvent } from '../services/lineupApi';
 import { dateConfirmations, placeLabel, whenLabel } from '../services/format';
 import { homeSummary } from '../services/home';
+import { eventScale } from '../server/events/scale';
 import { EventTitle } from './EventTitle';
+import { Tabs } from './ui/Tabs';
+import { Ledger, type LedgerEdge } from './ui/Ledger';
+import { KindPill } from './ui/KindPill';
+import { HintPill, type HintTone } from './ui/HintPill';
 
 interface EventsHomeProps {
   events: LoggedEvent[];
@@ -18,27 +23,32 @@ interface EventsHomeProps {
   onOpenTable: (query: string) => void;
 }
 
-// What an event still needs, as a quiet hint. null = nothing to say.
-function hint(e: LoggedEvent, lineup: LineupSummary | undefined, researching: boolean): { text: string; busy?: boolean; tone?: string } | null {
-  if (researching) return { text: 'Looking up details', busy: true };
+interface Hint {
+  text: string;
+  tone: HintTone;
+}
+
+// What an event still needs, as a short hint pill. null = nothing to say.
+function hint(e: LoggedEvent, lineup: LineupSummary | undefined, researching: boolean): Hint | null {
+  if (researching) return { text: 'Looking up details', tone: 'busy' };
   if (e.details.status === 'candidates' && e.details.candidates.some((c) => Boolean(c.editionId))) {
-    return { text: 'Which edition?', tone: 'text-violet-300' };
+    return { text: 'Which edition?', tone: 'needs' };
   }
-  if (e.editionId && !e.weekend && !e.startDate) return { text: 'Which weekend?', tone: 'text-amber-300/90' };
-  if (e.details.status === 'needs_date') return { text: 'When was it?', tone: 'text-amber-300/90' };
+  if (e.editionId && !e.weekend && !e.startDate) return { text: 'Which weekend?', tone: 'needs' };
+  if (e.details.status === 'needs_date') return { text: 'When was it?', tone: 'needs' };
   if (e.details.status === 'choose') {
-    if (e.details.candidates.some((c) => Boolean(c.editionId))) return { text: 'Which edition?', tone: 'text-violet-300' };
+    if (e.details.candidates.some((c) => Boolean(c.editionId))) return { text: 'Which edition?', tone: 'needs' };
     return {
       text: e.startDate ? 'Sources give a different date' : `Is this it? ${e.details.candidates.length} suggestion${e.details.candidates.length === 1 ? '' : 's'}`,
-      tone: 'text-violet-300',
+      tone: 'needs',
     };
   }
   if (lineup && !e.editionId) {
-    if (lineup.status === 'queued' || lineup.status === 'running') return { text: 'Finding who played', busy: true };
-    if (lineup.status === 'waiting_quota') return { text: 'Lineup lookup waiting for capacity', tone: 'text-amber-300/90' };
-    if (lineup.status === 'needs_review') return { text: `Lineup ready: ${lineup.actCount} acts to review`, tone: 'text-emerald-300' };
-    if (lineup.status === 'no_data') return { text: 'No lineup found yet' };
-    if (lineup.status === 'failed') return { text: 'Lineup lookup failed', tone: 'text-rose-300' };
+    if (lineup.status === 'queued' || lineup.status === 'running') return { text: 'Finding who played', tone: 'busy' };
+    if (lineup.status === 'waiting_quota') return { text: 'Lineup lookup waiting for capacity', tone: 'needs' };
+    if (lineup.status === 'needs_review') return { text: `Lineup ready: ${lineup.actCount} acts to review`, tone: 'done' };
+    if (lineup.status === 'no_data') return { text: 'No lineup found yet', tone: 'info' };
+    if (lineup.status === 'failed') return { text: 'Lineup lookup failed', tone: 'needs' };
   }
   return null;
 }
@@ -51,43 +61,48 @@ const Row: React.FC<{ event: LoggedEvent; lineup?: LineupSummary; researching: b
   onOpen,
 }) => {
   // Over and not confirmed: the one thing it needs is your answer.
-  const h = ask ? { text: 'Tap to say whether you went and who you saw', tone: 'text-violet-300' } : hint(event, lineup, researching);
+  const h: Hint | null = ask ? { text: 'Did you go?', tone: 'needs' } : hint(event, lineup, researching);
   const place = placeLabel(event);
   const seen = event.seen.map((s) => s.name).join(', ');
+  const scale = eventScale(event).kind;
+  const kind = scale === 'festival' ? 'festival' : scale === 'concert' ? 'show' : 'unknown';
+  const edge: LedgerEdge = h?.tone === 'needs' ? 'needs' : kind === 'unknown' ? 'none' : kind;
+  const pills = (
+    <>
+      {h && <HintPill tone={h.tone}>{h.text}</HintPill>}
+      <KindPill kind={kind} size="sm" />
+    </>
+  );
   return (
-    <li>
-      <button onClick={onOpen} className="group flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-zinc-900/60">
-        <span className="w-24 shrink-0 text-xs text-zinc-400">
-          {whenLabel(event) ?? 'Date unknown'}
-          {dateConfirmations(event).length > 0 && <Check className="ml-1 inline h-3 w-3 text-emerald-400" aria-label="Date confirmed" />}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-zinc-100"><EventTitle event={event} /></span>
-          <span className="block truncate text-xs text-zinc-400">
-            {[place, seen && `saw ${seen}`].filter(Boolean).join(' · ')}
-            {h && (
-              <span className={`${place || seen ? 'ml-1' : ''} inline-flex items-center gap-1 ${h.tone ?? ''}`}>
-                {h.busy && <Loader2 className="h-3 w-3 animate-spin" />}
-                {h.text}
-              </span>
-            )}
-          </span>
-        </span>
-        <ChevronRight className="h-4 w-4 shrink-0 text-zinc-700 group-hover:text-zinc-400" />
-      </button>
-    </li>
+    <Ledger.Row edge={edge} onOpen={onOpen} className="px-3 py-2.5">
+      <span className="w-24 shrink-0 self-start pt-0.5 font-mono text-[11.5px] leading-snug tabular-nums text-text-muted sm:w-32">
+        {whenLabel(event) ?? 'Date unknown'}
+        {dateConfirmations(event).length > 0 && <Check className="ml-1 inline h-3 w-3 text-good" aria-label="Date confirmed" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-text"><EventTitle event={event} /></span>
+        <span className="block truncate text-xs text-text-muted">{[place, seen && `saw ${seen}`].filter(Boolean).join(' · ')}</span>
+        {/* Phones put the pills under the name; wider screens put them at the end of the row. */}
+        <span className="mt-1.5 flex flex-wrap gap-1.5 sm:hidden">{pills}</span>
+      </span>
+      <span className="hidden shrink-0 items-center gap-1.5 sm:flex">{pills}</span>
+    </Ledger.Row>
   );
 };
 
-const Section: React.FC<{ title: string; icon?: React.ReactNode; children: React.ReactNode }> = ({ title, icon, children }) => (
-  <section className="space-y-2">
-    <h2 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-zinc-400">
-      {icon}
-      {title}
-    </h2>
-    <ul className="divide-y divide-zinc-900 rounded-xl border border-zinc-900 bg-zinc-900/30">{children}</ul>
-  </section>
-);
+// Year separators in list order, with the undated events last under "No date yet".
+function byYear(list: LoggedEvent[]): Array<[string, LoggedEvent[]]> {
+  const groups = new Map<string, LoggedEvent[]>();
+  for (const e of list) {
+    const key = e.startDate ? e.startDate.slice(0, 4) : 'No date yet';
+    groups.set(key, [...(groups.get(key) ?? []), e]);
+  }
+  const undated = groups.get('No date yet');
+  groups.delete('No date yet');
+  return [...groups.entries(), ...(undated ? [['No date yet', undated] as [string, LoggedEvent[]]] : [])];
+}
+
+type ListTab = 'recent' | 'upcoming' | 'confirm' | 'added';
 
 export const EventsHome: React.FC<EventsHomeProps> = ({
   events,
@@ -106,25 +121,32 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
   const added = justAdded.map((id) => events.find((e) => e.id === id)).filter((e): e is LoggedEvent => Boolean(e));
   const addedIds = new Set(added.map((e) => e.id));
   const recent = s.recent.filter((e) => !addedIds.has(e.id));
+  const upcoming = s.upcoming.filter((e) => !addedIds.has(e.id));
+
+  // Open "Just added" when there is something new, so a capture shows up at once.
+  const [tab, setTab] = useState<ListTab>(added.length ? 'added' : 'recent');
+  const addedCount = useRef(added.length);
+  useEffect(() => {
+    if (added.length > addedCount.current) setTab('added');
+    addedCount.current = added.length;
+  }, [added.length]);
+
   const yearsAgo = (e: LoggedEvent) => {
     const n = Number(today.slice(0, 4)) - Number(e.startDate!.slice(0, 4));
     return n === 1 ? 'a year ago' : `${n} years ago`;
   };
-  const row = (e: LoggedEvent) => (
-    <Row key={e.id} event={e} lineup={lineups[e.id]} researching={researching.has(e.id)} onOpen={() => onOpen(e.id)} />
-  );
 
   if (loaded && events.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-400">
+      <p className="rounded-card border border-dashed border-line-strong p-6 text-center text-sm text-text-muted">
         Nothing here yet. Type the last show you went to above; a name is enough, and you can add the rest later.
       </p>
     );
   }
 
   const tasks = [
-    toReview > 0 && { label: `${toReview} from your email to review`, icon: <Mail className="h-3.5 w-3.5" />, onClick: onReviewEmail },
-    !toReview && emailCheck && { label: 'Check email for new tickets', icon: <Mail className="h-3.5 w-3.5" />, onClick: onReviewEmail },
+    toReview > 0 && { label: `${toReview} from your email to review`, mail: true, onClick: onReviewEmail },
+    !toReview && emailCheck && { label: 'Check email for new tickets', mail: true, onClick: onReviewEmail },
     s.toConfirm.length > 0 && {
       label: `${s.toConfirm.length} to confirm you went`,
       onClick: () => (s.toConfirm.length === 1 ? onOpen(s.toConfirm[0].id) : onOpenTable('went=confirm')),
@@ -132,14 +154,25 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
     s.needs.date > 0 && { label: `${s.needs.date} need a date`, onClick: () => onOpenTable('needs=date') },
     s.needs.pick > 0 && { label: `${s.needs.pick} waiting on a pick`, onClick: () => onOpenTable('needs=pick') },
     s.needs.review > 0 && { label: `${s.needs.review} lineup${s.needs.review === 1 ? '' : 's'} to review`, onClick: () => onOpenTable('needs=review') },
-  ].filter(Boolean) as Array<{ label: string; icon?: React.ReactNode; onClick: () => void }>;
+  ].filter(Boolean) as Array<{ label: string; mail?: boolean; onClick: () => void }>;
 
-  const tiles: Array<[string, number, string]> = [
-    ['Events', s.events, 'went=went'],
-    ['Artists seen', s.artists, ''],
-    ['Venues', s.venues, ''],
-    [`In ${today.slice(0, 4)}`, s.thisYear, `from=${today.slice(0, 4)}&to=${today.slice(0, 4)}&went=went`],
+  const tiles: Array<[string, number, string, React.ElementType]> = [
+    ['Events', s.events, 'went=went', Ticket],
+    ['Artists seen', s.artists, '', Mic],
+    ['Venues', s.venues, '', MapPin],
+    [`In ${today.slice(0, 4)}`, s.thisYear, `from=${today.slice(0, 4)}&to=${today.slice(0, 4)}&went=went`, CalendarDays],
   ];
+
+  const lists: Record<ListTab, LoggedEvent[]> = { recent, upcoming, confirm: s.toConfirm, added };
+  const tabItems = [
+    { value: 'recent' as const, label: 'Recent', icon: Clock, count: recent.length },
+    upcoming.length > 0 && { value: 'upcoming' as const, label: 'Coming up', icon: CalendarClock, count: upcoming.length },
+    s.toConfirm.length > 0 && { value: 'confirm' as const, label: 'Did you go?', icon: CircleHelp, count: s.toConfirm.length },
+    added.length > 0 && { value: 'added' as const, label: 'Just added', icon: Sparkles, count: added.length },
+  ].filter(Boolean) as Array<{ value: ListTab; label: string; icon: typeof Clock; count: number }>;
+  // A tab whose list has emptied falls back to Recent.
+  const open: ListTab = tabItems.some((t) => t.value === tab) ? tab : 'recent';
+  const shown = lists[open];
 
   return (
     <div className="space-y-6">
@@ -149,9 +182,13 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
             <button
               key={t.label}
               onClick={t.onClick}
-              className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-950/30 px-3 py-1 text-xs text-violet-200 hover:border-violet-400"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-control border border-line bg-surface-1 px-3 text-xs font-semibold text-text hover:border-line-strong hover:bg-surface-2 sm:min-h-9"
             >
-              {t.icon}
+              {t.mail ? (
+                <Mail className="h-3.5 w-3.5 text-accent" strokeWidth={1.75} aria-hidden="true" />
+              ) : (
+                <TriangleAlert className="h-3.5 w-3.5 text-warn" strokeWidth={2} aria-hidden="true" />
+              )}
               {t.label}
             </button>
           ))}
@@ -159,45 +196,61 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
       )}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {tiles.map(([label, value, query]) => (
+        {tiles.map(([label, value, query, Icon]) => (
           <button
             key={label}
             onClick={() => onOpenTable(query)}
-            className="rounded-xl border border-zinc-900 bg-zinc-900/40 px-4 py-3 text-left hover:border-zinc-800"
+            className="flex items-center gap-3 rounded-card border border-line bg-surface-1 px-3.5 py-3 text-left hover:border-line-strong hover:bg-surface-2"
           >
-            <div className="text-2xl font-extrabold tracking-tight text-zinc-100">{value}</div>
-            <div className="text-xs text-zinc-400">{label}</div>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-accent-tint text-accent">
+              <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} aria-hidden="true" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-2xl font-extrabold leading-none tracking-tight tabular-nums text-text">{value}</span>
+              <span className="mt-1 block truncate text-xs text-text-muted">{label}</span>
+            </span>
           </button>
         ))}
       </div>
 
       {s.onThisDay.length > 0 && (
-        <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-zinc-300">
-          <CalendarHeart className="h-4 w-4 text-violet-300" />
-          <span className="text-zinc-400">On this day:</span>
+        <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-text">
+          <CalendarHeart className="h-4 w-4 text-accent" strokeWidth={1.75} aria-hidden="true" />
+          <span className="text-text-muted">On this day:</span>
           {s.onThisDay.map((e, i) => (
-            <button key={e.id} onClick={() => onOpen(e.id)} className="hover:text-violet-300 hover:underline">
+            <button key={e.id} onClick={() => onOpen(e.id)} className="hover:text-accent hover:underline">
               <EventTitle event={e} />, {yearsAgo(e)}{i < s.onThisDay.length - 1 ? ';' : ''}
             </button>
           ))}
         </p>
       )}
 
-      {s.toConfirm.length > 0 && (
-        <Section title="Did you go?">
-          {s.toConfirm.map((e) => (
-            <Row key={e.id} event={e} lineup={lineups[e.id]} researching={false} ask onOpen={() => onOpen(e.id)} />
-          ))}
-        </Section>
+      {(shown.length > 0 || tabItems.length > 1) && (
+        <section>
+          <Tabs label="Event lists" items={tabItems} value={open} onChange={setTab} panel="surface-1" />
+          <Ledger className="border-t-0">
+            {shown.length === 0 && <p className="px-3.5 py-4 text-sm text-text-muted">Nothing here yet.</p>}
+            {byYear(shown).map(([year, list]) => (
+              <React.Fragment key={year}>
+                <Ledger.Separator label={year} count={list.length} />
+                {list.map((e) => (
+                  <Row
+                    key={e.id}
+                    event={e}
+                    lineup={lineups[e.id]}
+                    researching={open === 'confirm' ? false : researching.has(e.id)}
+                    ask={open === 'confirm'}
+                    onOpen={() => onOpen(e.id)}
+                  />
+                ))}
+              </React.Fragment>
+            ))}
+          </Ledger>
+        </section>
       )}
-      {added.length > 0 && <Section title="Just added">{added.map(row)}</Section>}
-      {s.upcoming.some((e) => !addedIds.has(e.id)) && (
-        <Section title="Coming up">{s.upcoming.filter((e) => !addedIds.has(e.id)).map(row)}</Section>
-      )}
-      {recent.length > 0 && <Section title="Recent">{recent.map(row)}</Section>}
 
-      <button onClick={() => onOpenTable('')} className="inline-flex items-center gap-1.5 text-sm text-violet-300 hover:text-violet-200">
-        <Table2 className="h-3.5 w-3.5" /> See all {events.length} events in the Table
+      <button onClick={() => onOpenTable('')} className="inline-flex min-h-11 items-center gap-1.5 text-sm text-accent hover:underline sm:min-h-9">
+        <Table2 className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" /> See all {events.length} events in the Table
       </button>
     </div>
   );

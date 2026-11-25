@@ -645,7 +645,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
               <button
                 type="submit"
                 disabled={!newOrg.trim() || Boolean(busy)}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent-fill px-3 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40"
               >
                 {busy === 'org' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add
               </button>
@@ -676,7 +676,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
               <button
                 type="submit"
                 disabled={!newLabel.trim() || Boolean(busy)}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent-fill px-3 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40"
               >
                 {busy === 'label' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add
               </button>

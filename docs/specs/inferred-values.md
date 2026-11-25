@@ -20,9 +20,7 @@ Replace "never guess" with "always verify, and label every inference". The old r
 | 8 | Lineups? | An act or a billing role (for example a headliner from poster order) may be Inferred, shown dotted. Who you saw still needs your own tap. |
 | 9 | Name? | "Inferred" (not "Guess"). It ranks below Candidate. |
 
-## Open
-
-10. A member taps "Verify" on an Inferred value on their own event. Today a member's tick never verifies anything (auto-verify spec). Recommendation: the tap lifts the value on the shared edition to Candidate (with source "your entry"), and two or more members agreeing, or a trusted source, or the owner, makes it Verified.
+| 10 | A member taps "Verify" on an Inferred value on their own event? | The value on the shared edition is lifted to Candidate (source "your entry"). It becomes Verified when two or more members agree, a trusted source confirms it, or the owner confirms it. (Changes the auto-verify rule "Ticks never verify an act" in the slice that builds it.) |
 
 ## Rules for an inferred value
 
@@ -39,7 +37,7 @@ Replace "never guess" with "always verify, and label every inference". The old r
 - Billing role: "List order, font size or position never make a headliner" (slice for item 8).
 - Reader model: "never asked for ... dates it was not shown" and the extraction-only prompt in `src/server/lineup/gemini.ts` (slice for item 7). "Never answers from memory" stays.
 - Venue fill: "several places are only offered" (could become an Inferred pick of the most-used place).
-- Auto-verify: "Ticks never verify an act" (item 10, once answered).
+- Auto-verify: "Ticks never verify an act" (item 10: two or more members agreeing will verify).
 - On-screen text that says the app never guesses (landing page `FeatureTiles.tsx`, Find the lineup help in `EventDetail.tsx`) changes when the label ships, not before.
 
 ## Proposed slices (to be confirmed before building)

@@ -1,9 +1,20 @@
+import { prefersReducedMotion } from '../../services/motion';
+
 // The confetti burst shared by the milestone card and the event detail. Written inline so no library is installed.
-const COLORS = ['#a78bfa', '#8b5cf6', '#c4b5fd', '#f4f4f5', '#fbbf24'];
+const COLOR_VARS = ['--la-accent', '--la-accent-fill', '--accent-300', '--la-warn', '--la-text'];
 const PIECES = 120;
 const DURATION_MS = 2000;
 
+function readPalette(): string[] {
+  const styles = getComputedStyle(document.documentElement);
+  const colors = COLOR_VARS.map((v) => styles.getPropertyValue(v).trim()).filter(Boolean);
+  if (colors.length > 0) return colors;
+  const fallback = styles.color.trim();
+  return fallback ? [fallback] : ['CanvasText'];
+}
+
 export function burstConfetti() {
+  if (prefersReducedMotion()) return () => undefined;
   const canvas = document.createElement('canvas');
   canvas.setAttribute('aria-hidden', 'true');
   canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:60';
@@ -15,13 +26,14 @@ export function burstConfetti() {
     canvas.remove();
     return () => undefined;
   }
+  const palette = readPalette();
   const pieces = Array.from({ length: PIECES }, () => ({
     x: canvas.width / 2,
     y: canvas.height * 0.35,
     vx: (Math.random() - 0.5) * 14,
     vy: -Math.random() * 12 - 4,
     spin: Math.random() * Math.PI,
-    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+    color: palette[Math.floor(Math.random() * palette.length)],
   }));
   const start = performance.now();
   let frame = 0;
@@ -50,4 +62,3 @@ export function burstConfetti() {
     canvas.remove();
   };
 }
-

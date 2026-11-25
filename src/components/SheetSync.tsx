@@ -21,7 +21,7 @@ interface SheetSyncProps {
 const button =
   'inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:text-zinc-100 disabled:opacity-40';
 const primary =
-  'inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40';
+  'inline-flex items-center gap-1.5 rounded-lg bg-accent-fill px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40';
 
 // The sign-in lacks Sheets access (or Google asks to connect again): offer a fresh sign-in.
 const RECONNECT = /sign in to google sheets again/i;

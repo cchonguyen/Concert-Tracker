@@ -56,7 +56,7 @@ function PasteLink({ replacing, confirmedActs, busy, onPick, onDone }: {
           type="button"
           disabled={busy}
           onClick={() => { onPick(chosen, replacing); onDone(); }}
-          className="rounded-md bg-violet-600 px-2 py-1 text-white hover:bg-violet-500 disabled:opacity-50"
+          className="rounded-md bg-accent-fill px-2 py-1 text-on-accent hover:bg-accent-fill disabled:opacity-50"
         >
           Confirm
         </button>
@@ -165,7 +165,7 @@ export function VersionPicker({ load, confirmedActs, busy, onPick }: Props) {
                     type="button"
                     disabled={busy}
                     onClick={() => { onPick(v, replacing); setPending(null); setOpen(false); }}
-                    className="rounded-md bg-violet-600 px-2 py-1 text-white hover:bg-violet-500 disabled:opacity-50"
+                    className="rounded-md bg-accent-fill px-2 py-1 text-on-accent hover:bg-accent-fill disabled:opacity-50"
                   >
                     Confirm
                   </button>

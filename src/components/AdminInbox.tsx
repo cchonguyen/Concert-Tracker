@@ -77,7 +77,7 @@ export const AdminInbox: React.FC = () => {
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          className="inline-flex items-center gap-2 text-base font-semibold text-zinc-100 hover:text-white"
+          className="inline-flex items-center gap-2 text-base font-semibold text-zinc-100 hover:text-zinc-50"
         >
           {open ? <ChevronDown className="h-4 w-4 text-zinc-400" /> : <ChevronRight className="h-4 w-4 text-zinc-400" />}
           <span>Inbox</span>

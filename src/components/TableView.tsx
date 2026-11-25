@@ -2,34 +2,28 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
-  Check,
-  CalendarX2,
   CircleCheck,
   Download,
-  Eye,
   FileUp,
   Heart,
   Layers,
-  ListChecks,
   Mail,
   MapPin,
-  Pencil,
-  Mic2,
   Sheet,
   Sparkles,
-  Star,
   Tags,
-  Tent,
   X,
 } from 'lucide-react';
-import type { EmailImport, LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
-import { artistsOf, formatsOf, kindLabel, whenLabel } from '../services/format';
+import type { LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
+import { artistsOf, eventYear, formatsOf, kindLabel, whenLabel } from '../services/format';
 import { exportCsv } from './DataActions';
 import { useToast } from './ui/Toast';
 import { BackToTop } from './ui/BackToTop';
-import { IconButton } from './ui/IconButton';
 import { MenuButton } from './ui/MenuButton';
-import { Pill } from './ui/Pill';
+import { Ledger, type LedgerEdge } from './ui/Ledger';
+import { KindPill, type EventKind } from './ui/KindPill';
+import { HintPill } from './ui/HintPill';
+import { Stars } from './ui/Stars';
 import { FilterButton, FilterPanel, FilterSelect, FilterToggle } from './ui/FilterControls';
 import {
   activeFilterCount,
@@ -79,7 +73,14 @@ interface TableViewProps {
 }
 
 const control =
-  'w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none';
+  'min-h-11 sm:min-h-9 w-full rounded-control border border-line-strong bg-surface-1 px-3 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none';
+
+const WENT_FILTER_LABELS: Record<Exclude<TableFilters['went'], 'any'>, string> = {
+  went: 'Went',
+  upcoming: 'Upcoming',
+  confirm: 'To confirm',
+  missed: "Didn't go",
+};
 
 // Each "has" chip: its name, then what it reads when set to yes or no.
 const HAS_LABELS: Record<HasField, [string, string, string]> = {
@@ -117,9 +118,7 @@ const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
 const sortLabel = (label: string, f: { sort: SortChoice; desc: boolean }, key: SortKey) =>
   f.sort === key ? `${label} ${f.desc ? '↓' : '↑'}` : label;
 
-const NEEDS_ICONS = { date: CalendarX2, pick: ListChecks, review: Pencil } as const;
-// What the icon for a missing thing says on hover and to screen readers.
-const NEEDS_TITLES = { date: 'No date yet', pick: 'Pick needed', review: 'Lineup not reviewed' } as const;
+
 
 const readQuery = () => filtersFromQuery(typeof window === 'undefined' ? '' : window.location.search);
 
@@ -143,132 +142,67 @@ export function nextRowId(
   }
 }
 
-const dash = <span className="text-zinc-700">–</span>;
+const dash = <span className="text-text-faint">–</span>;
 
-// Day, month and year in fixed-width slots, so they line up down the column.
-// A missing part leaves its slot empty and the note says so.
+// Day, month and year in mono tabular figures, with weekday or missing-part note underneath.
 const DateCell: React.FC<{ e: LoggedEvent }> = ({ e }) => {
   const d = tableDate(e);
-  if (!d) return <span className="text-xs italic text-zinc-400">No date yet</span>;
+  if (!d) return <span className="font-mono text-xs italic text-text-muted">No date yet</span>;
   return (
     <div title={whenLabel(e) ?? undefined}>
-      <div className="flex items-baseline gap-1.5 font-medium tabular-nums text-zinc-200">
-        <span className="w-5 text-right">{d.day ?? ''}</span>
-        <span className="w-8">{d.month ?? ''}</span>
-        <span className="text-zinc-400">{d.year}</span>
+      <div className="flex items-baseline gap-1.5 font-mono text-xs font-medium tabular-nums text-text">
+        {d.day && <span className="w-5 text-right">{d.day}</span>}
+        {d.month && <span className="w-7">{d.month}</span>}
+        <span className="text-text-muted">{d.year}</span>
       </div>
-      {d.note && <div className="mt-0.5 pl-[1.625rem] text-[11px] text-zinc-400">{d.note}</div>}
+      {d.note && <div className="mt-0.5 font-mono text-[11px] text-text-muted">{d.note}</div>}
     </div>
   );
 };
 
-const KIND_STYLES = {
-  Festival: { icon: Tent, className: 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300' },
-  Concert: { icon: Mic2, className: 'border-sky-500/30 bg-sky-500/10 text-sky-300' },
-} as const;
-
-const KindBadge: React.FC<{ kind: string }> = ({ kind }) => {
-  const style = KIND_STYLES[kind as keyof typeof KIND_STYLES];
-  if (!style) return null;
-  const Icon = style.icon;
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs leading-4 ${style.className}`}>
-      <Icon className="h-3 w-3" /> {kind}
-    </span>
-  );
-};
+const toEventKind = (kind: string): EventKind =>
+  kind === 'Festival' ? 'festival' : kind === 'Concert' ? 'show' : 'unknown';
 
 const FormatChip: React.FC<{ value: string }> = ({ value }) => (
-  <span className="rounded-full bg-zinc-800/80 px-1.5 py-px text-[11px] text-zinc-300">{value}</span>
+  <span className="rounded-control bg-surface-3 px-1.5 py-0.5 text-[11px] text-text-muted">{value}</span>
 );
 
-const Stars: React.FC<{ rating?: number | null }> = ({ rating }) =>
-  rating ? (
-    <span className="inline-flex gap-px" title={`${rating} of 5`} aria-label={`${rating} of 5`}>
-      {[1, 2, 3, 4, 5].map((n) => (
-        <Star key={n} className={`h-3.5 w-3.5 ${n <= rating ? 'fill-amber-400 text-amber-400' : 'text-zinc-800'}`} />
-      ))}
-    </span>
-  ) : (
-    dash
-  );
-
-const WENT_TONES: Record<Exclude<AttendanceState, 'went'>, 'accent' | 'info' | 'neutral'> = {
-  confirm: 'accent',
-  upcoming: 'info',
-  missed: 'neutral',
-};
-
-// Upcoming, waiting for you to say you went, or missed. Nothing for an
-// event you went to.
-const WentBadge: React.FC<{ state: AttendanceState }> = ({ state }) =>
-  state === 'went' ? null : (
-    <span
-      title={state === 'confirm' ? "Over: open it to say whether you went. Not counted until then." : 'Not counted in Stats, Artists or the Map'}
-      className="inline-flex whitespace-nowrap"
-    >
-      <Pill tone={WENT_TONES[state]}>{ATTENDANCE_LABELS[state]}</Pill>
-    </span>
-  );
-
-// The Details cell: pills for what the event is, icons for what it still needs
-// (each one opens the event), and the rating when there is one.
 const DetailsCell: React.FC<{
   e: LoggedEvent;
-  kind: string;
   state: AttendanceState;
   needs: keyof typeof NEEDS_LABELS | null;
   confirmed: boolean;
-  onSeries: () => void;
-}> = ({ e, kind, state, needs, confirmed, onSeries }) => {
+}> = ({ e, state, needs, confirmed }) => {
   const formats = formatsOf(e.format);
-  const pills = Boolean(e.series || kind || formats.length || state !== 'went');
-  const icons = fromEmail(e) || needs || confirmed;
-  if (!pills && !icons && !e.rating) return dash;
-  // One wrapping row: pills, icons and rating share a height and sit side by side.
+  const hasPrice = e.ticketPrice !== undefined && e.ticketPrice !== null;
+  const email = fromEmail(e);
+  if (!e.rating && !hasPrice && !email && !needs && !confirmed && state === 'went' && formats.length === 0) return dash;
   return (
-    <div className="flex flex-wrap items-center gap-1">
-      {e.series && (
-        <button
-          type="button"
-          onClick={(ev) => {
-            ev.stopPropagation();
-            onSeries();
-          }}
-          title={`Show only ${e.series}`}
-          className="inline-flex rounded-full hover:opacity-80"
-        >
-          <Pill tone="accent">
-            <Layers className="h-3 w-3" /> {e.series}
-          </Pill>
-        </button>
-      )}
-      {kind && <KindBadge kind={kind} />}
-      {formats.map((f) => (
-        <Pill key={f}>{f}</Pill>
-      ))}
-      <WentBadge state={state} />
-      {fromEmail(e) && <IconButton size="chip" icon={Mail} label="Added from a ticket email" />}
-      {needs && <IconButton size="chip" icon={NEEDS_ICONS[needs]} label={NEEDS_TITLES[needs]} />}
-      {confirmed && <IconButton size="chip" icon={CircleCheck} label="Lineup confirmed" />}
-      {e.rating ? (
-        <span className="inline-flex items-center gap-1 text-xs leading-4 text-amber-300" title={`${e.rating} of 5`} aria-label={`Rated ${e.rating} of 5`}>
-          <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" aria-hidden="true" />
-          {e.rating}
+    <div className="flex flex-wrap items-center gap-1.5">
+      {e.rating ? <Stars value={e.rating} size="sm" /> : null}
+      {hasPrice && (
+        <span className="font-mono text-xs tabular-nums text-text-muted" title={`Ticket price: $${e.ticketPrice}`}>
+          ${e.ticketPrice}
         </span>
-      ) : null}
+      )}
+      {email && (
+        <span title="Added from a ticket email" aria-label="Added from a ticket email" className="inline-flex text-text-muted">
+          <Mail className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
+      )}
+      {needs && <HintPill tone="needs">{NEEDS_LABELS[needs]}</HintPill>}
+      {state !== 'went' && (
+        <HintPill tone={state === 'confirm' ? 'needs' : 'info'}>{ATTENDANCE_LABELS[state]}</HintPill>
+      )}
+      {confirmed && (
+        <span title="Lineup confirmed" aria-label="Lineup confirmed" className="inline-flex text-good">
+          <CircleCheck className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
+      )}
+      {formats.map((f) => (
+        <FormatChip key={f} value={f} />
+      ))}
     </div>
-  );
-};
-
-const NeedsBadge: React.FC<{ needs: keyof typeof NEEDS_LABELS }> = ({ needs }) => {
-  const Icon = NEEDS_ICONS[needs];
-  return (
-    <span className="whitespace-nowrap">
-      <Pill tone="warn">
-        <Icon className="h-3 w-3" /> {NEEDS_LABELS[needs]}
-      </Pill>
-    </span>
   );
 };
 
@@ -284,30 +218,30 @@ const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, 
     const isLive = set.toLowerCase() === 'live' || set.toLowerCase() === 'live set';
     const label = isDj ? 'DJ' : isLive ? 'Live' : set;
     return (
-      <span className={`ml-1 text-[10px] ${isDj || isLive ? 'uppercase' : ''} text-sky-300/80`} title={SET_LABELS[set] || set}>
+      <span className={`ml-1 font-mono text-[10px] ${isDj || isLive ? 'uppercase' : ''} text-text-muted`} title={SET_LABELS[set] || set}>
         {label}
       </span>
     );
   };
   return (
-    <span className={muted ? 'text-zinc-400' : 'text-zinc-200'}>
+    <span className={muted ? 'text-text-muted' : 'text-text'}>
       {shown.map((slot, i) => {
         const set = new Set(slot.map((s) => s.set)).size === 1 ? slot[0].set : undefined;
         return (
           <React.Fragment key={slotId(slot)}>
             {i > 0 && ', '}
-            {slot.some((s) => s.favourite) && <Heart className="mr-0.5 inline h-3 w-3 -translate-y-px fill-rose-400 text-rose-400" />}
+            {slot.some((s) => s.favourite) && <Heart className="mr-0.5 inline h-3 w-3 -translate-y-px fill-bad text-bad" aria-hidden="true" />}
             {slot.map((s, j) => (
               <React.Fragment key={s.key}>
-                {j > 0 && <span className="text-[10px] uppercase text-violet-300/80"> b2b </span>}
+                {j > 0 && <span className="font-mono text-[10px] uppercase text-accent"> b2b </span>}
                 {s.role === 'headliner' ? (
-                  <span className="font-semibold text-amber-100" title="Headliner">
+                  <span className="font-semibold text-text" title="Headliner">
                     {s.name}
                   </span>
                 ) : (
                   s.name
                 )}
-                {s.asSolo && <span className="ml-1 text-[10px] uppercase text-violet-300/80">solo</span>}
+                {s.asSolo && <span className="ml-1 font-mono text-[10px] uppercase text-accent">solo</span>}
                 {!set && s.set && tag(s.set)}
               </React.Fragment>
             ))}
@@ -315,16 +249,16 @@ const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, 
           </React.Fragment>
         );
       })}
-      {slots.length > 3 && <span className="text-zinc-400"> +{slots.length - 3}</span>}
+      {slots.length > 3 && <span className="font-mono text-xs text-text-muted"> +{slots.length - 3}</span>}
     </span>
   );
 };
 
 const TodayIndicator: React.FC = () => (
-  <div className="flex items-center gap-2 py-1 text-[11px] font-bold uppercase tracking-wide text-violet-300">
-    <span className="h-px flex-1 bg-violet-500/50" />
+  <div className="flex items-center gap-2 border-y border-accent-tint-line bg-accent-tint px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-accent">
+    <span className="h-px flex-1 bg-accent-tint-line" />
     Today
-    <span className="h-px flex-1 bg-violet-500/50" />
+    <span className="h-px flex-1 bg-accent-tint-line" />
   </div>
 );
 
@@ -362,43 +296,108 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const year = (s: string) => (s ? Number(s) : undefined);
   const list = (values: string[]) => values.map((v) => ({ value: v, label: v }));
 
+  const activeChips: Array<{ key: string; label: string; icon?: React.ReactNode; onRemove: () => void }> = [];
+  if (filters.q) activeChips.push({ key: 'q', label: `Search: ${filters.q}`, onRemove: () => set({ q: '' }) });
+  if (filters.yearFrom !== undefined) activeChips.push({ key: 'yearFrom', label: `From ${filters.yearFrom}`, onRemove: () => set({ yearFrom: undefined }) });
+  if (filters.yearTo !== undefined) activeChips.push({ key: 'yearTo', label: `To ${filters.yearTo}`, onRemove: () => set({ yearTo: undefined }) });
+  if (filters.kind !== 'any') {
+    const kindText = filters.kind === 'concert' ? 'Concerts' : filters.kind === 'festival' ? 'Festivals' : 'Type not known';
+    activeChips.push({ key: 'kind', label: kindText, onRemove: () => set({ kind: 'any' }) });
+  }
+  if (filters.format) activeChips.push({ key: 'format', label: `Format: ${filters.format}`, onRemove: () => set({ format: '' }) });
+  if (filters.series) {
+    activeChips.push({
+      key: 'series',
+      label: filters.series,
+      icon: <Layers className="h-3 w-3 shrink-0" aria-hidden="true" />,
+      onRemove: () => set({ series: '' }),
+    });
+  }
+  if (filters.artist) {
+    const artistName = options.artists.find((a) => a.key === filters.artist)?.name ?? filters.artist;
+    activeChips.push({ key: 'artist', label: `Saw: ${artistName}`, onRemove: () => set({ artist: '' }) });
+  }
+  if (filters.companion) activeChips.push({ key: 'companion', label: `With: ${filters.companion}`, onRemove: () => set({ companion: '' }) });
+  if (filters.venue) activeChips.push({ key: 'venue', label: `Venue: ${filters.venue}`, onRemove: () => set({ venue: '' }) });
+  if (filters.city) activeChips.push({ key: 'city', label: `City: ${filters.city}`, onRemove: () => set({ city: '' }) });
+  if (filters.region) activeChips.push({ key: 'region', label: `State: ${filters.region}`, onRemove: () => set({ region: '' }) });
+  if (filters.country) activeChips.push({ key: 'country', label: `Country: ${filters.country}`, onRemove: () => set({ country: '' }) });
+  if (filters.minRating !== undefined) {
+    activeChips.push({
+      key: 'minRating',
+      label: filters.minRating === 5 ? '5 stars' : `${filters.minRating}+ stars`,
+      onRemove: () => set({ minRating: undefined }),
+    });
+  }
+  for (const field of HAS_FIELDS) {
+    const v = filters.has[field];
+    if (v && v !== 'any') {
+      activeChips.push({
+        key: `has-${field}`,
+        label: HAS_LABELS[field][v === 'yes' ? 1 : 2],
+        onRemove: () => setHas(field, 'any'),
+      });
+    }
+  }
+  if (filters.needs !== 'any') {
+    activeChips.push({
+      key: 'needs',
+      label: `Needs ${NEEDS_LABELS[filters.needs].toLowerCase()}`,
+      onRemove: () => set({ needs: 'any' }),
+    });
+  }
+  if (filters.went !== 'any') {
+    activeChips.push({
+      key: 'went',
+      label: WENT_FILTER_LABELS[filters.went],
+      onRemove: () => set({ went: 'any' }),
+    });
+  }
+  if (filters.origin !== 'any') {
+    activeChips.push({
+      key: 'origin',
+      label: filters.origin === 'typed' ? 'Typed by you' : 'From ticket emails',
+      onRemove: () => set({ origin: 'any' }),
+    });
+  }
+
   const importButton = (
-    <button onClick={onImport} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+    <button onClick={onImport} className="inline-flex items-center gap-1.5 hover:text-text">
       <FileUp className="h-3.5 w-3.5" /> Import a list
     </button>
   );
   // Sheets and the music-story/MusicBrainz genre tools stay the owner's; members edit their own genres in SeenGenres.
   const owner = useIsOwner();
   const sheetButton = !owner ? null : (
-    <button onClick={onSheets} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+    <button onClick={onSheets} className="inline-flex items-center gap-1.5 hover:text-text">
       <Sheet className="h-3.5 w-3.5" /> Google Sheets
     </button>
   );
   const genresButton = !owner ? null : (
-    <button onClick={() => setGenres(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+    <button onClick={() => setGenres(true)} className="inline-flex items-center gap-1.5 hover:text-text">
       <Tags className="h-3.5 w-3.5" /> Genres
     </button>
   );
   const seriesButton = (
     <button
       onClick={() => (onManage ? onManage({ kind: 'series' }) : setLinking(true))}
-      className="inline-flex items-center gap-1.5 hover:text-zinc-200"
+      className="inline-flex items-center gap-1.5 hover:text-text"
       title={onManage ? 'Series are in the Manage tab' : undefined}
     >
       <Layers className="h-3.5 w-3.5" /> Series
     </button>
   );
   const fillButton = (
-    <button onClick={() => setFilling(true)} className="inline-flex items-center gap-1.5 hover:text-zinc-200">
+    <button onClick={() => setFilling(true)} className="inline-flex items-center gap-1.5 hover:text-text">
       <Sparkles className="h-3.5 w-3.5" /> Fill gaps
     </button>
   );
 
   if (!events.length) {
     return (
-      <div className="space-y-2 rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-400">
+      <div className="space-y-2 rounded-card border border-dashed border-line-strong bg-surface-1 p-6 text-center text-sm text-text-muted">
         <p>Nothing to show yet. Events you add appear here as rows.</p>
-        <p className="flex justify-center gap-4 text-xs text-zinc-400">
+        <p className="flex justify-center gap-4 text-xs text-text-muted">
           {importButton}
           {sheetButton}
         </p>
@@ -445,30 +444,49 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
           value={filters.q}
           onChange={(e) => set({ q: e.target.value })}
           placeholder="Search events, venues, acts, people, notes"
-          className={`${control} min-w-0 flex-1 py-2`}
+          className={`${control} min-w-0 flex-1`}
         />
-        <MenuButton label="Sort rows" value={filters.sort} options={sortOptions} onChange={pickSort} />
-        <FilterButton open={showFilters} count={active} onClick={() => setShowFilters((s) => !s)} />
-        {filters.series && (
-          <button
-            onClick={() => set({ series: '' })}
-            className="inline-flex rounded-full hover:opacity-80"
-            aria-label={`Stop showing only ${filters.series}`}
-          >
-            <Pill tone="accent">
-              <Layers className="h-3 w-3" /> {filters.series} <X className="h-3 w-3" />
-            </Pill>
-          </button>
-        )}
-        {active > 0 && (
-          <button
-            onClick={() => setFilters({ ...EMPTY_FILTERS, sort: filters.sort, desc: filters.desc })}
-            className="inline-flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-200"
-          >
-            <X className="h-3.5 w-3.5" /> Clear
-          </button>
-        )}
+        <MenuButton
+          label="Sort rows"
+          value={filters.sort}
+          options={sortOptions}
+          onChange={pickSort}
+          className="[&>button]:h-auto [&>button]:min-h-11 [&>button]:sm:min-h-9 [&>button]:rounded-control [&>button]:border-line-strong [&>button]:bg-surface-1 [&>button]:text-text [&>button]:hover:border-accent-tint-line [&>button]:focus-visible:outline-accent"
+        />
+        <div className="[&>button]:h-auto [&>button]:min-h-11 [&>button]:sm:min-h-9 [&>button]:rounded-control [&>button]:border-line-strong [&>button]:bg-surface-1 [&>button]:text-text [&>button]:hover:border-accent-tint-line">
+          <FilterButton open={showFilters} count={active} onClick={() => setShowFilters((s) => !s)} />
+        </div>
       </div>
+
+      {(activeChips.length > 0 || rows.length < events.length) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex min-h-7 items-center rounded-control border border-line bg-surface-2 px-2 py-0.5 font-mono text-xs tabular-nums text-text-muted">
+            {rows.length} of {events.length}
+          </span>
+          {activeChips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={chip.onRemove}
+              aria-label={`Remove filter ${chip.label}`}
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-control border border-accent-tint-line bg-accent-tint px-2.5 py-1 text-xs text-accent hover:border-accent"
+            >
+              {chip.icon}
+              <span>{chip.label}</span>
+              <X className="h-3 w-3 shrink-0" aria-hidden="true" />
+            </button>
+          ))}
+          {active > 0 && (
+            <button
+              type="button"
+              onClick={() => setFilters({ ...EMPTY_FILTERS, sort: filters.sort, desc: filters.desc })}
+              className="inline-flex min-h-8 items-center gap-1 rounded-control px-2 py-1 text-xs text-text-muted hover:text-text"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" /> Clear all
+            </button>
+          )}
+        </div>
+      )}
 
       {showFilters && (
         <FilterPanel>
@@ -551,30 +569,33 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
         </FilterPanel>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-text-muted">
         <span>
-          {summary.events} event{summary.events === 1 ? '' : 's'} you went to
-          {rows.length < events.length && <span className="text-zinc-400"> ({rows.length} of {events.length} shown)</span>}
+          <span className="font-mono tabular-nums text-text">{summary.events}</span> event{summary.events === 1 ? '' : 's'} you went to
+          {rows.length < events.length && (
+            <span className="font-mono tabular-nums text-text-muted"> ({rows.length} of {events.length} shown)</span>
+          )}
           {' · '}
-          {summary.acts} act{summary.acts === 1 ? '' : 's'} seen · {summary.venues} venue{summary.venues === 1 ? '' : 's'}
+          <span className="font-mono tabular-nums">{summary.acts}</span> act{summary.acts === 1 ? '' : 's'} seen ·{' '}
+          <span className="font-mono tabular-nums">{summary.venues}</span> venue{summary.venues === 1 ? '' : 's'}
           {summary.firstYear !== undefined &&
             ` · ${summary.firstYear === summary.lastYear ? summary.firstYear : `${summary.firstYear} to ${summary.lastYear}`}`}
           {summary.averageRating !== undefined && ` · rated ${summary.averageRating} on average (${summary.rated} rated)`}
           {summary.totalPrice !== undefined && ` · ${summary.totalPrice.toLocaleString()} spent (${summary.priced} priced)`}
           {summary.upcoming > 0 && (
-            <button onClick={() => set({ went: 'upcoming' })} className="text-sky-300/90 hover:underline">
+            <button onClick={() => set({ went: 'upcoming' })} className="text-accent hover:underline">
               {' · '}
               {summary.upcoming} upcoming
             </button>
           )}
           {summary.toConfirm > 0 && (
-            <button onClick={() => set({ went: 'confirm' })} className="text-violet-300 hover:underline">
+            <button onClick={() => set({ went: 'confirm' })} className="text-accent hover:underline">
               {' · '}
               {summary.toConfirm} to confirm
             </button>
           )}
         </span>
-        <span className="flex flex-wrap items-center gap-x-4 gap-y-1 whitespace-nowrap">
+        <span className="flex flex-wrap items-center gap-x-4 gap-y-1 whitespace-nowrap [&>button]:min-h-11 sm:[&>button]:min-h-9">
           {fillButton}
           {seriesButton}
           {genresButton}
@@ -586,7 +607,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
             toast({ message: `Exported ${rows.length} ${rows.length === 1 ? 'show' : 'shows'} as CSV` });
           }}
           disabled={!rows.length}
-          className="inline-flex items-center gap-1.5 hover:text-zinc-200 disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 hover:text-text disabled:opacity-40"
         >
           <Download className="h-3.5 w-3.5" /> {rows.length < events.length ? 'Export these rows' : 'Export all'} as CSV
           </button>
@@ -594,182 +615,230 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
       </div>
 
       {rows.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-400">No events match these filters.</p>
+        <p className="rounded-card border border-dashed border-line-strong bg-surface-1 p-6 text-center text-sm text-text-muted">No events match these filters.</p>
       ) : (
         <>
-          <div className="hidden max-h-[calc(100vh-11rem)] overflow-auto rounded-xl border border-zinc-900 md:block">
-            <table className="w-full border-separate border-spacing-0 text-left text-sm">
-              <thead className="text-[11px] uppercase tracking-wide text-zinc-400">
-                <tr>
-                  {COLUMNS.map((c) => (
-                    <th
-                      key={c.label}
-                      className={`sticky top-0 z-10 whitespace-nowrap border-b border-zinc-800 bg-zinc-900/95 px-4 py-2.5 font-semibold backdrop-blur ${c.className ?? ''}`}
-                    >
-                      {c.sorts ? (
-                        <span className="inline-flex items-center gap-2">
-                          {c.sorts.map((s, i) => (
-                            <React.Fragment key={s.key}>
-                              {i > 0 && <span className="text-zinc-700">/</span>}
-                              <button
-                                onClick={() => sortBy(s.key)}
-                                title="Sorts by this column; press again to reverse it, and a third time to stop sorting."
-                                className={`inline-flex items-center gap-1 uppercase hover:text-zinc-200 ${filters.sort === s.key ? 'text-zinc-200' : ''}`}
-                              >
-                                {s.label}
-                                {filters.sort === s.key &&
-                                  (filters.desc ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />)}
-                              </button>
-                            </React.Fragment>
-                          ))}
-                        </span>
-                      ) : (
-                        c.label
-                      )}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody
-                onKeyDown={(k) => {
-                  if (k.key !== 'ArrowUp' && k.key !== 'ArrowDown' && k.key !== 'Home' && k.key !== 'End') return;
-                  const target = k.target;
-                  if (!(target instanceof HTMLElement) || target.tagName !== 'TR') return;
-                  const currentId = target.getAttribute('data-event-id');
-                  if (!currentId) return;
-                  const nextId = nextRowId(rows, currentId, k.key);
-                  if (!nextId) return;
-                  k.preventDefault();
-                  const nextRow = k.currentTarget.querySelector<HTMLElement>(`tr[data-event-id="${CSS.escape(nextId)}"]`);
-                  nextRow?.focus();
-                }}
-              >
-                {rows.map((e, i) => {
+          <div
+            className="hidden max-h-[calc(100vh-11rem)] overflow-auto border border-line-strong bg-surface-1 md:block"
+            onKeyDown={(k) => {
+              if (k.key !== 'ArrowUp' && k.key !== 'ArrowDown' && k.key !== 'Home' && k.key !== 'End') return;
+              const target = k.target;
+              if (!(target instanceof HTMLElement) || target.tagName !== 'BUTTON') return;
+              const currentId = target.getAttribute('data-event-id');
+              if (!currentId) return;
+              const nextId = nextRowId(rows, currentId, k.key);
+              if (!nextId) return;
+              k.preventDefault();
+              const nextRow = k.currentTarget.querySelector<HTMLElement>(`button[data-event-id="${CSS.escape(nextId)}"]`);
+              nextRow?.focus();
+            }}
+          >
+            <div className="sticky top-0 z-10 grid grid-cols-[8rem_minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1.15fr)] gap-3 border-b border-line bg-surface-2 px-4 py-2.5 pl-[19px] font-mono text-[11px] uppercase tracking-wider text-text-faint">
+              {COLUMNS.map((c) => (
+                <div key={c.label} className="whitespace-nowrap">
+                  {c.sorts ? (
+                    <span className="inline-flex items-center gap-2">
+                      {c.sorts.map((s, i) => {
+                        const activeSort = filters.sort === s.key;
+                        return (
+                          <React.Fragment key={s.key}>
+                            {i > 0 && <span aria-hidden="true" className="text-line-strong">/</span>}
+                            <button
+                              onClick={() => sortBy(s.key)}
+                              title="Sorts by this column; press again to reverse it, and a third time to stop sorting."
+                              className={`inline-flex items-center gap-1 font-mono uppercase tracking-wider hover:text-text ${activeSort ? 'font-semibold text-text' : 'text-text-faint'}`}
+                            >
+                              {s.label}
+                              {activeSort &&
+                                (filters.desc ? (
+                                  <ArrowDown className="h-3 w-3 text-accent" aria-hidden="true" />
+                                ) : (
+                                  <ArrowUp className="h-3 w-3 text-accent" aria-hidden="true" />
+                                ))}
+                            </button>
+                          </React.Fragment>
+                        );
+                      })}
+                    </span>
+                  ) : (
+                    c.label
+                  )}
+                </div>
+              ))}
+            </div>
+            <Ledger bare>
+              {(() => {
+                const showYears = filters.sort === 'date';
+                const yearCounts = new Map<string, number>();
+                if (showYears) {
+                  for (const ev of rows) {
+                    const yl = eventYear(ev) ? String(eventYear(ev)) : 'No date yet';
+                    yearCounts.set(yl, (yearCounts.get(yl) ?? 0) + 1);
+                  }
+                }
+                let prevYear: string | null = null;
+                return rows.map((e, i) => {
                   const needs = needsOf(e, lineups[e.id]);
+                  const state = attendanceOf(e, today);
                   const artists = artistsOf(e.seen);
-                  const cell = 'border-b border-zinc-900 px-4 py-3 align-top';
+                  const kind = kindLabel(e, editions[e.id]);
+                  const eventKind = toEventKind(kind);
+                  const edge: LedgerEdge = needs || state === 'confirm' ? 'needs' : eventKind === 'festival' ? 'festival' : eventKind === 'show' ? 'show' : 'none';
+                  const yearLabel = eventYear(e) ? String(eventYear(e)) : 'No date yet';
+                  const showSep = showYears && yearLabel !== prevYear;
+                  prevYear = yearLabel;
                   return (
                     <React.Fragment key={e.id}>
-                      {i === todayLine && (
-                        <tr key="today-indicator">
-                          <td colSpan={COLUMNS.length} className="border-b border-zinc-900 px-4 py-2">
-                            <TodayIndicator />
-                          </td>
-                        </tr>
-                      )}
-                      <tr
-                        tabIndex={0}
+                      {i === todayLine && <TodayIndicator />}
+                      {showSep && <Ledger.Separator label={yearLabel} count={yearCounts.get(yearLabel)} />}
+                      <Ledger.Row
+                        edge={edge}
+                        onOpen={() => onOpen(e.id)}
                         data-event-id={e.id}
-                        onClick={() => onOpen(e.id)}
-                        onKeyDown={(k) => {
-                          if (k.key === 'Enter' && k.target === k.currentTarget) onOpen(e.id);
-                        }}
-                        className="scroll-mt-16 cursor-pointer transition-colors hover:bg-zinc-900/60 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-violet-400"
+                        className="grid grid-cols-[8rem_minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1.15fr)] items-start gap-3 px-4 py-3 text-sm"
                       >
-                        <td className={`${cell} whitespace-nowrap`}>
+                        <div className="whitespace-nowrap">
                           <DateCell e={e} />
-                        </td>
-                        <td className={`${cell} font-medium text-zinc-100`}>
-                          <EventTitle event={e} />
-                        </td>
-                        <td className={cell}>
+                        </div>
+                        <div className="min-w-0 space-y-1">
+                          <div className="font-medium text-text">
+                            <EventTitle event={e} />
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <KindPill kind={eventKind} size="sm" />
+                            {e.series && (
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                onClick={(ev) => {
+                                  ev.stopPropagation();
+                                  set({ series: e.series! });
+                                }}
+                                onKeyDown={(ev) => {
+                                  if (ev.key === 'Enter' || ev.key === ' ') {
+                                    ev.preventDefault();
+                                    ev.stopPropagation();
+                                    set({ series: e.series! });
+                                  }
+                                }}
+                                title={`Show only ${e.series}`}
+                                className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text"
+                              >
+                                <span className="h-2 w-2 rounded-full bg-accent-fill" aria-hidden="true" />
+                                {e.series}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="min-w-0">
                           {e.venue || e.city ? (
                             <>
-                              <div className="text-zinc-200">{e.venue ?? <span className="text-zinc-400">Venue not known</span>}</div>
+                              <div className="text-text">{e.venue ?? <span className="text-text-muted">Venue not known</span>}</div>
                               {e.city && (
-                                <div className="mt-0.5 flex items-center gap-1 text-xs text-zinc-400">
-                                  <MapPin className="h-3 w-3 shrink-0" /> {cityOf(e)}
+                                <div className="mt-0.5 flex items-center gap-1 text-xs text-text-muted">
+                                  <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" /> {cityOf(e)}
                                 </div>
                               )}
                             </>
                           ) : (
                             dash
                           )}
-                        </td>
-                        <td className={cell} title={e.seen.map((s) => s.name).join(', ')}>
+                        </div>
+                        <div className="min-w-0" title={e.seen.map((s) => s.name).join(', ')}>
                           {e.seen.length ? (
                             <div className="flex items-start gap-2">
-                              <span className="mt-px shrink-0 rounded-md bg-zinc-800 px-1.5 text-[11px] font-semibold tabular-nums text-zinc-300">
+                              <span className="mt-px shrink-0 rounded-control bg-surface-3 px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-text-muted">
                                 {e.seen.length}
                               </span>
-                              <div className="space-y-0.5">{artists.length > 0 && <Acts seen={artists} />}</div>
+                              <div className="min-w-0 space-y-0.5">{artists.length > 0 && <Acts seen={artists} />}</div>
                             </div>
                           ) : (
                             dash
                           )}
-                        </td>
-                        <td className={cell}>
+                        </div>
+                        <div className="min-w-0">
                           <DetailsCell
                             e={e}
-                            kind={kindLabel(e, editions[e.id])}
                             state={attendanceOf(e, today)}
                             needs={needs}
                             confirmed={Boolean(e.editionId)}
-                            onSeries={() => set({ series: e.series! })}
                           />
-                        </td>
-                      </tr>
+                        </div>
+                      </Ledger.Row>
                     </React.Fragment>
                   );
-                })}
-                {todayLine === rows.length && todayLine > 0 && (
-                  <tr key="today-indicator">
-                    <td colSpan={COLUMNS.length} className="border-b border-zinc-900 px-4 py-2">
-                      <TodayIndicator />
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                });
+              })()}
+              {todayLine === rows.length && todayLine > 0 && <TodayIndicator />}
+            </Ledger>
           </div>
 
-          <ul className="divide-y divide-zinc-900 rounded-xl border border-zinc-900 md:hidden">
-            {rows.map((e, i) => {
-              const needs = needsOf(e, lineups[e.id]);
-              return (
-                <React.Fragment key={e.id}>
-                  {i === todayLine && (
-                    <li key="today-indicator" className="px-3 py-2">
-                      <TodayIndicator />
-                    </li>
-                  )}
-                  <li key={e.id}>
-                    <button onClick={() => onOpen(e.id)} className="flex w-full items-start gap-3 px-3 py-3 text-left hover:bg-zinc-900/60">
-                      <div className="w-28 shrink-0">
-                        <DateCell e={e} />
-                      </div>
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <div className="truncate font-medium text-zinc-100"><EventTitle event={e} /></div>
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-400">
-                          <WentBadge state={attendanceOf(e, today)} />
-                          <KindBadge kind={kindLabel(e, editions[e.id])} />
-                          {formatsOf(e.format).map((f) => (
-                            <FormatChip key={f} value={f} />
-                          ))}
-                          {(e.venue || e.city) && (
-                            <span className="inline-flex min-w-0 items-center gap-1 truncate">
-                              <MapPin className="h-3 w-3 shrink-0 text-zinc-400" />
-                              {[e.venue, cityOf(e)].filter(Boolean).join(' · ')}
-                            </span>
-                          )}
+          <div className="md:hidden">
+            <Ledger>
+              {(() => {
+                const showYears = filters.sort === 'date';
+                const yearCounts = new Map<string, number>();
+                if (showYears) {
+                  for (const ev of rows) {
+                    const yl = eventYear(ev) ? String(eventYear(ev)) : 'No date yet';
+                    yearCounts.set(yl, (yearCounts.get(yl) ?? 0) + 1);
+                  }
+                }
+                let prevYear: string | null = null;
+                return rows.map((e, i) => {
+                  const needs = needsOf(e, lineups[e.id]);
+                  const state = attendanceOf(e, today);
+                  const kind = kindLabel(e, editions[e.id]);
+                  const eventKind = toEventKind(kind);
+                  const edge: LedgerEdge = needs || state === 'confirm' ? 'needs' : eventKind === 'festival' ? 'festival' : eventKind === 'show' ? 'show' : 'none';
+                  const yearLabel = eventYear(e) ? String(eventYear(e)) : 'No date yet';
+                  const showSep = showYears && yearLabel !== prevYear;
+                  prevYear = yearLabel;
+                  return (
+                    <React.Fragment key={e.id}>
+                      {i === todayLine && <TodayIndicator />}
+                      {showSep && <Ledger.Separator label={yearLabel} count={yearCounts.get(yearLabel)} />}
+                      <Ledger.Row edge={edge} onOpen={() => onOpen(e.id)} className="items-start px-3 py-3">
+                        <div className="w-24 shrink-0">
+                          <DateCell e={e} />
                         </div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
-                          {e.seen.length > 0 && <span>{e.seen.length} seen</span>}
-                          {e.rating ? <Stars rating={e.rating} /> : null}
-                          {needs && <NeedsBadge needs={needs} />}
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          <div className="truncate font-medium text-text">
+                            <EventTitle event={e} />
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 text-xs text-text-muted">
+                            <KindPill kind={eventKind} size="sm" />
+                            {e.series && (
+                              <span className="inline-flex items-center gap-1 text-xs text-text-muted">
+                                <span className="h-2 w-2 rounded-full bg-accent-fill" aria-hidden="true" />
+                                {e.series}
+                              </span>
+                            )}
+                            {(e.venue || e.city) && (
+                              <span className="inline-flex min-w-0 items-center gap-1 truncate">
+                                <MapPin className="h-3 w-3 shrink-0 text-text-muted" aria-hidden="true" />
+                                {[e.venue, cityOf(e)].filter(Boolean).join(' · ')}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+                            {e.seen.length > 0 && <span className="font-mono tabular-nums">{e.seen.length} seen</span>}
+                            <DetailsCell
+                              e={e}
+                              state={attendanceOf(e, today)}
+                              needs={needs}
+                              confirmed={Boolean(e.editionId)}
+                            />
+                          </div>
                         </div>
-                      </div>
-                    </button>
-                  </li>
-                </React.Fragment>
-              );
-            })}
-            {todayLine === rows.length && todayLine > 0 && (
-              <li key="today-indicator" className="px-3 py-2">
-                <TodayIndicator />
-              </li>
-            )}
-          </ul>
+                      </Ledger.Row>
+                    </React.Fragment>
+                  );
+                });
+              })()}
+              {todayLine === rows.length && todayLine > 0 && <TodayIndicator />}
+            </Ledger>
+          </div>
         </>
       )}
       <BackToTop />

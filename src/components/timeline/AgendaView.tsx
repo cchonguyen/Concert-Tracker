@@ -16,11 +16,14 @@ import {
 } from '../../services/timeline';
 import { EventTitle } from '../EventTitle';
 import { BackToTop } from '../ui/BackToTop';
-import { ATTENDANCE_STYLE, ConfirmMark, DayDots, Rating } from './parts';
+import { Ledger, type LedgerEdge } from '../ui/Ledger';
+import { KindPill, type EventKind } from '../ui/KindPill';
+import { HintPill } from '../ui/HintPill';
+import { ConfirmMark, DayDots, Rating } from './parts';
+import { scrollBehavior } from '../../services/motion';
 
-// Agenda: one line per event under year and month headers, newest first unless
-// you picked oldest first (remembered on this device), opening at the Today
-// line. Only the large size is built so far.
+// Agenda: one line per event under year separators (no month headers), newest first unless
+// you picked oldest first (remembered on this device), opening at the Today line.
 
 const readOrder = (): AgendaOrder => {
   try {
@@ -40,7 +43,13 @@ const writeOrder = (order: AgendaOrder) => {
 
 const rowId = (id: string) => `timeline-${id}`;
 
-const Row: React.FC<{ row: AgendaRow; selected: boolean; onOpen: (id: string) => void; todayRef: React.Ref<HTMLLIElement> }> = ({
+// Rows sit under year separators only, so each date carries its month.
+const monthShort = (m: number) => MONTH_NAMES[m - 1].slice(0, 3);
+
+const kindOfEvent = (kind?: string): EventKind =>
+  kind === 'festival' ? 'festival' : kind === 'concert' ? 'show' : 'unknown';
+
+const Row: React.FC<{ row: AgendaRow; selected: boolean; onOpen: (id: string) => void; todayRef: React.Ref<HTMLDivElement> }> = ({
   row,
   selected,
   onOpen,
@@ -48,79 +57,97 @@ const Row: React.FC<{ row: AgendaRow; selected: boolean; onOpen: (id: string) =>
 }) => {
   if (row.kind === 'today') {
     return (
-      <li ref={todayRef} className="flex items-center gap-2 py-1 text-[11px] font-bold uppercase tracking-wide text-violet-300">
-        <span className="h-px flex-1 bg-violet-500/50" />
+      <div
+        ref={todayRef}
+        className="flex items-center gap-2 border-y border-accent-tint-line bg-accent-tint px-3.5 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-accent"
+      >
+        <span className="h-px flex-1 bg-accent-tint-line" />
         Today
-        <span className="h-px flex-1 bg-violet-500/50" />
-      </li>
+        <span className="h-px flex-1 bg-accent-tint-line" />
+      </div>
     );
   }
   const item = row.kind === 'span' ? row.span : row.partial;
   const event = item.event;
   const place = placeLabel(event);
   const multi = row.kind === 'span' && row.span.last !== row.span.first;
+  const eventKind = kindOfEvent(item.kind);
+  const edge: LedgerEdge =
+    item.attendance === 'confirm' ? 'needs' : eventKind === 'festival' ? 'festival' : eventKind === 'show' ? 'show' : 'none';
+
   return (
-    <li id={rowId(item.id)}>
-      <button
-        onClick={() => onOpen(item.id)}
-        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors hover:border-zinc-600 ${ATTENDANCE_STYLE[item.attendance]} ${
-          selected ? 'ring-2 ring-violet-500' : ''
-        }`}
-      >
-        <span className="w-24 shrink-0 text-xs font-semibold text-zinc-400 sm:w-32">
-          {row.kind === 'span' ? dateChip(row.span) : row.partial.month ? 'Day unknown' : 'Month unknown'}
+    <div id={rowId(item.id)}>
+      <Ledger.Row edge={edge} selected={selected} onOpen={() => onOpen(item.id)} className="items-start px-3.5 py-2.5 sm:items-center">
+        <span className="w-20 shrink-0 font-mono text-xs tabular-nums text-text-muted sm:w-32">
+          {row.kind === 'span'
+            ? `${monthShort(Number(row.span.first.slice(5, 7)))} · ${dateChip(row.span)}`
+            : row.partial.month
+              ? `${monthShort(row.partial.month)} · day unknown`
+              : 'Month unknown'}
           {multi && (
             <span className="mt-1 block">
               <DayDots all={daysBetween(row.span.first, row.span.last)} went={row.span.days} />
             </span>
           )}
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-zinc-100">
-            <EventTitle event={event} />
+        <span className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+          <span className="min-w-0 flex-1 space-y-1">
+            <span className="block truncate text-sm font-medium text-text">
+              <EventTitle event={event} />
+            </span>
+            <span className="flex flex-wrap items-center gap-2">
+              <KindPill kind={eventKind} size="sm" />
+              {place && <span className="truncate text-xs text-text-muted">{place}</span>}
+            </span>
           </span>
-          {place && <span className="block truncate text-xs text-zinc-400">{place}</span>}
+          <span className="flex shrink-0 items-center gap-2">
+            {item.attendance === 'confirm' ? (
+              <ConfirmMark />
+            ) : item.attendance === 'upcoming' ? (
+              <HintPill tone="info">Upcoming</HintPill>
+            ) : (
+              <Rating rating={event.rating} />
+            )}
+          </span>
         </span>
-        {item.attendance === 'confirm' ? <ConfirmMark /> : item.attendance === 'upcoming' ? null : <Rating rating={event.rating} />}
-      </button>
-    </li>
+      </Ledger.Row>
+    </div>
   );
 };
 
-const Block: React.FC<{
-  block: AgendaBlock;
-  selectedEventId?: string | null;
-  onOpen: (id: string) => void;
-  todayRef: React.Ref<HTMLLIElement>;
-}> = ({ block, selectedEventId, onOpen, todayRef }) => {
-  if (block.kind === 'year') return <h2 className="pt-4 text-2xl font-extrabold tracking-tight text-zinc-200 first:pt-0">{block.year}</h2>;
-  if (block.kind === 'gap') return <p className="border-l-2 border-zinc-800 py-1 pl-3 text-xs text-zinc-400">No events, {gapLabel(block)}</p>;
-  return (
-    <section>
-      {/* Sticky under the app header, so you always know which month you are in. */}
-      <h3 className="sticky top-[57px] z-10 -mx-1 bg-zinc-950/95 px-1 py-1.5 text-xs font-bold uppercase tracking-wide text-zinc-400 backdrop-blur">
-        {block.month ? `${MONTH_NAMES[block.month - 1]} ${block.year}` : `Sometime in ${block.year}`}
-      </h3>
-      <ul className="space-y-1.5">
-        {block.rows.map((row) => (
-          <Row
-            key={row.kind === 'today' ? 'today' : row.kind === 'span' ? row.span.id : row.partial.id}
-            row={row}
-            selected={row.kind !== 'today' && (row.kind === 'span' ? row.span.id : row.partial.id) === selectedEventId}
-            onOpen={onOpen}
-            todayRef={todayRef}
-          />
-        ))}
-      </ul>
-    </section>
-  );
-};
+interface YearGroup {
+  year: number | null;
+  items: AgendaBlock[];
+  eventCount: number;
+}
+
+function groupByYear(blocks: AgendaBlock[]): YearGroup[] {
+  const groups: YearGroup[] = [];
+  let current: YearGroup | null = null;
+  for (const b of blocks) {
+    if (b.kind === 'year') {
+      current = { year: b.year, items: [], eventCount: 0 };
+      groups.push(current);
+      continue;
+    }
+    if (!current) {
+      current = { year: b.kind === 'month' ? b.year : null, items: [], eventCount: 0 };
+      groups.push(current);
+    }
+    current.items.push(b);
+    if (b.kind === 'month') {
+      current.eventCount += b.rows.filter((r) => r.kind !== 'today').length;
+    }
+  }
+  return groups;
+}
 
 export const AgendaView: React.FC<TimelineViewProps> = ({ model, range, selectedEventId, onOpen }) => {
   const [order, setOrder] = useState<AgendaOrder>(readOrder);
   const blocks = useMemo(() => agendaBlocks(model, range, true, order), [model, range, order]);
+  const groups = useMemo(() => groupByYear(blocks), [blocks]);
   const count = useMemo(() => agendaCount(blocks), [blocks]);
-  const todayRef = useRef<HTMLLIElement>(null);
+  const todayRef = useRef<HTMLDivElement>(null);
   const opened = useRef(false);
   const choose = (next: AgendaOrder) => {
     setOrder(next);
@@ -136,33 +163,58 @@ export const AgendaView: React.FC<TimelineViewProps> = ({ model, range, selected
 
   // A selected event (from the "to confirm" chip, or another view later) is scrolled to.
   useEffect(() => {
-    if (selectedEventId) document.getElementById(rowId(selectedEventId))?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (selectedEventId) document.getElementById(rowId(selectedEventId))?.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
   }, [selectedEventId]);
 
-  if (!blocks.length) return <p className="py-10 text-center text-sm text-zinc-400">No dated events match these filters.</p>;
+  if (!blocks.length) return <p className="py-10 text-center text-sm text-text-muted">No dated events match these filters.</p>;
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
-        <span>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-text-muted">
+        <span className="font-mono tabular-nums">
           {count} event{count === 1 ? '' : 's'}
         </span>
-        <div role="group" aria-label="Order" className="flex items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-900 p-0.5">
+        <div role="group" aria-label="Order" className="flex items-center gap-1 rounded-control border border-line-strong bg-surface-1 p-0.5">
           {(['newest', 'oldest'] as const).map((o) => (
             <button
               key={o}
               type="button"
               aria-pressed={order === o}
               onClick={() => choose(o)}
-              className={`rounded-md px-2.5 py-1 font-medium transition-colors ${order === o ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+              className={`min-h-11 rounded-[6px] px-2.5 py-1 font-medium transition-colors sm:min-h-9 ${
+                order === o ? 'bg-accent-fill text-on-accent' : 'text-text-muted hover:text-text'
+              }`}
             >
               {o === 'newest' ? 'Newest first' : 'Oldest first'}
             </button>
           ))}
         </div>
       </div>
-      {blocks.map((block, i) => (
-        <Block key={i} block={block} selectedEventId={selectedEventId} onOpen={onOpen} todayRef={todayRef} />
-      ))}
+      <Ledger>
+        {groups.map((g, gi) => (
+          <React.Fragment key={g.year ?? `group-${gi}`}>
+            {g.year !== null && <Ledger.Separator label={String(g.year)} count={g.eventCount} />}
+            {g.items.map((block, bi) => {
+              if (block.kind === 'gap') {
+                return (
+                  <p key={`gap-${bi}`} className="border-b border-l-[3px] border-b-line border-l-transparent px-3.5 py-2 font-mono text-xs text-text-muted">
+                    No events, {gapLabel(block)}
+                  </p>
+                );
+              }
+              if (block.kind !== 'month') return null;
+              return block.rows.map((row) => (
+                <Row
+                  key={row.kind === 'today' ? 'today' : row.kind === 'span' ? row.span.id : row.partial.id}
+                  row={row}
+                  selected={row.kind !== 'today' && (row.kind === 'span' ? row.span.id : row.partial.id) === selectedEventId}
+                  onOpen={onOpen}
+                  todayRef={todayRef}
+                />
+              ));
+            })}
+          </React.Fragment>
+        ))}
+      </Ledger>
       <BackToTop />
     </div>
   );

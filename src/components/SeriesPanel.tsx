@@ -117,7 +117,7 @@ const Suggestion: React.FC<{
           )
         }
         disabled={busy || !name.trim() || picked.length < 1 || !toLink.length}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-40"
+        className="inline-flex items-center gap-1.5 rounded-lg bg-accent-fill px-3 py-1.5 text-xs font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40"
       >
         {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Layers className="h-3 w-3" />} Link {toLink.length} as “{name.trim() || '…'}”
       </button>

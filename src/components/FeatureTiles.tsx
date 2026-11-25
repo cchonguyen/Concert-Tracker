@@ -87,7 +87,7 @@ export const FeatureTiles: React.FC<{ eventCount: number; onOpen: (page: Page) =
   return (
     <section aria-label="Tips" className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">What LiveArchive can do</h2>
+        <h2 className="font-display text-lg font-normal text-text">What LiveArchive can do</h2>
         <Button variant="ghost" onClick={() => update({ ...saved, allHidden: true })}>
           Hide these
         </Button>
@@ -96,20 +96,25 @@ export const FeatureTiles: React.FC<{ eventCount: number; onOpen: (page: Page) =
         {visible.map((t) => {
           const Icon = t.icon;
           return (
-            <li key={t.key} className="relative rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+            <li
+              key={t.key}
+              className="relative rounded-card border border-line-strong bg-surface-1 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
+            >
               <button
                 aria-label={`Hide tip: ${t.title}`}
                 onClick={() => update({ ...saved, dismissed: [...saved.dismissed, t.key] })}
-                className="absolute right-1 top-1 rounded-md p-2.5 text-zinc-400 hover:text-zinc-100"
+                className="absolute right-1 top-1 flex min-h-10 min-w-10 items-center justify-center rounded-control text-text-muted hover:text-text"
               >
                 <X className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
-              <Icon className="mb-2 h-5 w-5 text-violet-300" aria-hidden="true" />
-              <h3 className="pr-6 text-sm font-bold text-zinc-100">{t.title}</h3>
-              <p className="mt-1 text-sm text-zinc-400">{t.line}</p>
+              <span className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-control border border-accent-tint-line bg-accent-tint text-accent">
+                <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+              </span>
+              <h3 className="pr-8 text-sm font-bold text-text">{t.title}</h3>
+              <p className="mt-1 text-sm text-text-muted">{t.line}</p>
               <button
                 onClick={() => (t.action === 'import' ? onImport() : t.action === 'share' ? onShare() : onOpen(t.page))}
-                className="mt-2 text-sm text-violet-300 hover:text-violet-200"
+                className="mt-2 inline-flex min-h-9 items-center text-sm font-medium text-accent hover:underline"
               >
                 {t.linkLabel}
               </button>

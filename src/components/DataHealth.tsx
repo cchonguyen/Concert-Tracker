@@ -181,7 +181,7 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
                             void run('merge', () => entitiesApi.merge(merging.from.id, merging.into.id), () => setMerging(null))
                           }
                           disabled={Boolean(busy)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-accent-fill px-3 py-1.5 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40"
                         >
                           {busy === 'merge' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitMerge className="h-3.5 w-3.5" />} Merge
                         </button>

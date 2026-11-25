@@ -77,7 +77,7 @@ export function AppHeaderMenu({ theme, canMembers, canAccount, canSheets, pendin
                 <button onClick={() => choose(onMembers)} className={item}>
                   <Users className="h-3.5 w-3.5" />
                   Members
-                  {pendingRequests > 0 && <span className="ml-auto rounded-full bg-violet-500 px-1.5 text-[10px] text-white">{pendingRequests}</span>}
+                  {pendingRequests > 0 && <span className="ml-auto rounded-full bg-accent-fill px-1.5 text-[10px] text-on-accent">{pendingRequests}</span>}
                 </button>
               )}
             </div>

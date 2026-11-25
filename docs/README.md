@@ -18,6 +18,8 @@ Statuses were checked against the code on 2026-11-23.
 | [specs/venue-location-fill.md](specs/venue-location-fill.md) | Built 2026-11-24 (all slices merged). Member entries sharing the state waits on Charlie's notice decision. |
 | [specs/pasted-set-times.md](specs/pasted-set-times.md) | Built 2026-11-25 (slices 1 to 4). Slice 5 is data entry for Together As One. |
 | [specs/inferred-values.md](specs/inferred-values.md) | Principle approved 2026-11-24 (replaces "never guess"). Build not started. |
+| [specs/design-refresh-2.md](specs/design-refresh-2.md) | Approved 2026-11-25. Not started: Stage 0 (Claude), then Track A (Claude) and the Gemini package in parallel. |
+| [specs/design-refresh-2-ledger-and-lobby.md](specs/design-refresh-2-ledger-and-lobby.md) | Gemini package for the design refresh. Starts after Stage 0. |
 | [tier3-specs.md](tier3-specs.md) | TECH-04 and FETCH-01 built. The other Tier 3 tickets not started. |
 | [engineering-ticket-bank.md](engineering-ticket-bank.md) | Backlog of open tickets. Closed ones are in [archive/engineering-ticket-bank-closed.md](archive/engineering-ticket-bank-closed.md). |
 | [social-features-spec.md](social-features-spec.md) | Not started. Discussion draft. |

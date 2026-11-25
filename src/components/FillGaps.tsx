@@ -106,7 +106,7 @@ const TitleArtistsRow: React.FC<{
     <button
       onClick={onAdd}
       disabled={!ticked.size}
-      className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+      className="rounded-lg bg-good px-2.5 py-1 text-xs font-semibold text-on-accent hover:bg-good disabled:opacity-40"
     >
       Add {ticked.size || ''}
     </button>
@@ -285,7 +285,7 @@ const ReviewRow: React.FC<{ event: LoggedEvent; onDone: (e: LoggedEvent) => void
         <button
           onClick={accept}
           disabled={busy || !kept.length}
-          className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+          className="inline-flex items-center gap-1 rounded-lg bg-good px-2.5 py-1 text-xs font-semibold text-on-accent hover:bg-good disabled:opacity-40"
         >
           {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Accept {kept.length} act{kept.length === 1 ? '' : 's'}
         </button>
@@ -652,7 +652,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
             <button
               onClick={addAllFromTitles}
               disabled={busy !== null || !withPicks.length}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-good px-3 py-1.5 text-xs font-semibold text-on-accent hover:bg-good disabled:opacity-40"
             >
               {busy === 'title-add' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               Add ticked artists to {withPicks.length} event{withPicks.length === 1 ? '' : 's'}
@@ -707,7 +707,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
             <button
               onClick={useAllPlaces}
               disabled={busy !== null}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-good px-3 py-1.5 text-xs font-semibold text-on-accent hover:bg-good disabled:opacity-40"
             >
               {busy === 'places-use' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               Use all {guessed.length}

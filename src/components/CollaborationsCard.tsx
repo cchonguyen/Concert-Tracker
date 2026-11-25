@@ -164,7 +164,7 @@ export const CollaborationsCard: React.FC<Props> = ({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-200 hover:text-white"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-200 hover:text-zinc-50"
         >
           {open ? <ChevronDown className="h-4 w-4 text-zinc-400" /> : <ChevronRight className="h-4 w-4 text-zinc-400" />}
           <Users className="h-4 w-4 text-violet-400" />
@@ -216,7 +216,7 @@ export const CollaborationsCard: React.FC<Props> = ({
                         type="button"
                         onClick={() => removePartner(idx)}
                         aria-label={`Remove ${partner}`}
-                        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-zinc-400 hover:text-white"
+                        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-zinc-400 hover:text-zinc-50"
                       >
                         <X className="h-3 w-3" />
                       </button>

@@ -365,7 +365,7 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
           <button
             onClick={go}
             disabled={busy || !chosen.length}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-accent-fill px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40"
           >
             {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             {`Import ${chosen.length || ''} event${chosen.length === 1 ? '' : 's'}`}

@@ -21,5 +21,5 @@ export const parseAccent = (v: string | null | undefined): Accent =>
 export const resolveMode = (mode: ThemeMode, systemLight: boolean): 'dark' | 'light' =>
   mode === 'system' ? (systemLight ? 'light' : 'dark') : mode;
 
-// The browser bar color for each resolved mode (dark keeps the original color).
-export const BAR_COLORS = { dark: '#022c22', light: '#fafafa' } as const;
+// The browser bar color for each resolved mode: the page color (--la-page in index.css).
+export const BAR_COLORS = { dark: '#0e0e11', light: '#f7f7f8' } as const;

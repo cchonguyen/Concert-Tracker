@@ -161,18 +161,34 @@
   --color-cyan-950: oklch(98.4% 0.019 200.873);
 }
 
-/* The event poster's backdrop (PosterHeader.tsx): dark ink in dark mode, the light surface in light mode. */
+/* The event poster's backdrop (PosterHeader.tsx): the accent tint over the raised surface, with a fine grain
+   on top (design-refresh-2.md, section 3). The grain is a still noise image, so it never moves. */
 :root {
-  --poster-base: #111114;
+  --poster-base: var(--la-surface-1);
+  --poster-tint: 40%;
+  --poster-grain: 0.16;
 }
 :root[data-theme='light'] {
-  --poster-base: var(--color-zinc-950);
+  --poster-tint: 26%;
+  --poster-grain: 0.1;
 }
 .poster-bg {
+  position: relative;
+  isolation: isolate;
   background:
-    radial-gradient(90% 140% at 12% 0%, color-mix(in oklab, var(--accent-500) 42%, transparent), transparent 60%),
-    radial-gradient(60% 120% at 100% 100%, rgb(244 114 182 / 0.16), transparent 60%),
+    radial-gradient(90% 140% at 12% 0%, color-mix(in oklab, var(--accent-500) var(--poster-tint), transparent), transparent 62%),
+    radial-gradient(70% 120% at 100% 100%, color-mix(in oklab, var(--accent-700) 18%, transparent), transparent 60%),
     var(--poster-base);
+}
+.poster-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--poster-grain);
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 1.4 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* Map view: dark until the tiles load. */
@@ -227,4 +243,99 @@
 @theme {
   --radius-control: 0.5rem;
   --radius-card: 0.75rem;
+}
+
+/*
+  Design refresh 2.0 tokens (docs/specs/design-refresh-2.md). Plain names on
+  top of the accent engine above, so the 5 accents x 2 modes keep working.
+  Ink on accent works like a lit sign: in dark mode a bright fill (accent 400)
+  with dark ink, in light mode a deep fill (accent 600, 700 for teal and
+  orange) with white ink. tests/themeContrast.test.ts reads these blocks and
+  fails if any text and fill pair drops under 4.5:1, so keep each value to a
+  hex, var(--accent-N), var(--la-*) or color-mix(in oklab, A P%, B).
+*/
+:root {
+  --la-page: #0e0e11;
+  --la-surface-1: #141418;
+  --la-surface-2: #1a1a1f;
+  --la-surface-3: #232329;
+  --la-sunken: #0a0a0c;
+  --la-line: #2a2a31;
+  --la-line-strong: #3d3d46;
+  --la-text: #ededf0;
+  --la-text-muted: #a1a1aa;
+  --la-text-faint: #8b8b95;
+  --la-accent: var(--accent-300);
+  --la-accent-fill: var(--accent-400);
+  --la-on-accent: #0e0e11;
+  --la-accent-tint: color-mix(in oklab, var(--accent-500) 18%, var(--la-surface-1));
+  --la-accent-tint-line: color-mix(in oklab, var(--accent-500) 50%, var(--la-surface-1));
+  --la-good: #34d3a6;
+  --la-warn: #fbbf24;
+  --la-bad: #f87171;
+}
+:root[data-theme='light'] {
+  --la-page: #f7f7f8;
+  --la-surface-1: #ffffff;
+  --la-surface-2: #f7f7f8;
+  --la-surface-3: #f0f0f2;
+  --la-sunken: #efeff2;
+  --la-line: #e4e4e7;
+  --la-line-strong: #c4c4cc;
+  --la-text: #18181b;
+  --la-text-muted: #52525b;
+  --la-text-faint: #63636d;
+  --la-accent: var(--accent-700);
+  --la-accent-fill: var(--accent-600);
+  --la-on-accent: #ffffff;
+  --la-accent-tint: color-mix(in oklab, var(--accent-500) 7%, var(--la-surface-1));
+  --la-accent-tint-line: color-mix(in oklab, var(--accent-500) 30%, var(--la-surface-1));
+  --la-good: #0b7a5c;
+  --la-warn: #8a4b08;
+  --la-bad: #b91c1c;
+}
+:root[data-theme='light'][data-accent='teal'],
+:root[data-theme='light'][data-accent='orange'] {
+  --la-accent-fill: var(--accent-700);
+}
+
+/* Utilities: bg-surface-1, text-text-muted, border-line, bg-accent-fill, text-on-accent, font-display, font-mono, ... */
+@theme inline {
+  --color-page: var(--la-page);
+  --color-surface-1: var(--la-surface-1);
+  --color-surface-2: var(--la-surface-2);
+  --color-surface-3: var(--la-surface-3);
+  --color-sunken: var(--la-sunken);
+  --color-line: var(--la-line);
+  --color-line-strong: var(--la-line-strong);
+  --color-text: var(--la-text);
+  --color-text-muted: var(--la-text-muted);
+  --color-text-faint: var(--la-text-faint);
+  --color-accent: var(--la-accent);
+  --color-accent-fill: var(--la-accent-fill);
+  --color-on-accent: var(--la-on-accent);
+  --color-accent-tint: var(--la-accent-tint);
+  --color-accent-tint-line: var(--la-accent-tint-line);
+  --color-good: var(--la-good);
+  --color-warn: var(--la-warn);
+  --color-bad: var(--la-bad);
+}
+
+/* Type roles: Jakarta for everything people read or tap, Newsreader for headings only, Mono for dates, times, counts and prices. */
+@theme {
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Newsreader', ui-serif, Georgia, serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Reduced motion: spinners, pulses, transitions and smooth scrolling all stand still (docs/specs/design-refresh-2.md, section 4). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
