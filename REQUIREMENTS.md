@@ -27,7 +27,7 @@ Ranked goals:
 
 These decide trade-offs. They are ordered: when two conflict, the earlier one wins.
 
-1. **Never guess.** Missing data stays missing and the UI says so. No default dates, venues, cities, stages, ratings, setlists or lineups, and no model answering from memory. An empty answer is a valid answer.
+1. **Always verify, and label every inference.** The app looks for a source first. When none settles a field, it may store an inferred value, but only one with a reason that can be argued for or against: its inputs are named (the app's own records, or a quote from a page it fetched) and its logic is shown. An inferred value is labelled as inferred everywhere, never overwrites a verified value or anything you typed, never makes anything verified, and is replaced when a verified source arrives. Nothing is made up: no default values and no model answering from memory. A field with nothing to go on stays empty, and the UI says so. Rules: [docs/specs/inferred-values.md](docs/specs/inferred-values.md) (approved 2026-11-24).
 2. **Capture beats completeness.** Saving an event must never wait on research, quota or a network call. Research happens after the event is saved and can be repeated later.
 3. **Two stages, triggered separately.** Stage 1 records the event itself (name, date, place). Stage 2 finds the lineup, and only when you ask for it on a saved event. A failed or parked stage 2 never affects stage 1.
 4. **Every fact has a source.** Each field on an event and each act in a lineup records where it came from: you, or a cited source (URL plus the quoted text). The UI can always show it.
