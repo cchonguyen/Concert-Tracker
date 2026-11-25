@@ -29,13 +29,13 @@ const wrapHtml = (title: string, bodyHtml: string, unsubscribeLink: string): str
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>${escapeHtml(title)}</title>
   </head>
-  <body style="margin:0;padding:24px 16px;background:#0f1115;color:#eef0f4;font:15px/1.6 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;">
-    <div style="max-width:560px;margin:0 auto;background:#181b22;border:1px solid #2a2f3a;border-radius:12px;padding:24px;">
+  <body style="margin:0;padding:24px 16px;background:#0e0e11;color:#ededf0;font:15px/1.6 'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+    <div style="max-width:560px;margin:0 auto;background:#141418;border:1px solid #3d3d46;border-radius:12px;padding:24px;">
       ${bodyHtml}
-      <hr style="border:0;border-top:1px solid #2a2f3a;margin:24px 0 16px;" />
-      <p style="margin:0;font-size:12px;color:#a3a9b6;">
+      <hr style="border:0;border-top:1px solid #2a2a31;margin:24px 0 16px;" />
+      <p style="margin:0;font-size:12px;color:#a1a1aa;">
         Sent by LiveArchive. Don't want emails from LiveArchive?
-        <a href="${escapeHtml(unsubscribeLink)}" style="color:#8b7cf6;text-decoration:underline;">Unsubscribe in one click</a>.
+        <a href="${escapeHtml(unsubscribeLink)}" style="color:#c4b5fd;text-decoration:underline;">Unsubscribe in one click</a>.
       </p>
     </div>
   </body>
@@ -67,18 +67,18 @@ export function buildDigestEmail(opts: {
   const htmlItems = opts.newRequests
     .map(
       (r) =>
-        `<li style="margin:0 0 6px;"><strong style="color:#eef0f4;">${escapeHtml(r.email)}</strong> <span style="color:#a3a9b6;font-size:13px;">(asked ${escapeHtml(formatDay(r.requestedAt))})</span></li>`,
+        `<li style="margin:0 0 6px;"><strong style="color:#ededf0;">${escapeHtml(r.email)}</strong> <span style="color:#a1a1aa;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">(asked ${escapeHtml(formatDay(r.requestedAt))})</span></li>`,
     )
     .join('');
 
   const html = wrapHtml(
     subject,
     [
-      `<h1 style="font-size:20px;margin:0 0 12px;color:#eef0f4;">${escapeHtml(subject)}</h1>`,
-      `<p style="margin:0 0 12px;color:#a3a9b6;">${count === 1 ? 'A new person asked' : `${count} new people asked`} for a tracker:</p>`,
+      `<h1 style="font-family:Georgia,'Times New Roman',serif;font-weight:400;font-size:22px;margin:0 0 12px;color:#ededf0;">${escapeHtml(subject)}</h1>`,
+      `<p style="margin:0 0 12px;color:#a1a1aa;">${count === 1 ? 'A new person asked' : `${count} new people asked`} for a tracker:</p>`,
       `<ul style="margin:0 0 16px;padding-left:20px;">${htmlItems}</ul>`,
-      `<p style="margin:0 0 20px;font-size:13px;color:#a3a9b6;">Pending requests: <strong style="color:#eef0f4;">${opts.totalPending}</strong> of ${opts.cap} cap.</p>`,
-      `<p style="margin:0;"><a href="${escapeHtml(appUrl)}" style="display:inline-block;background:#8b7cf6;color:#ffffff;text-decoration:none;font-weight:600;padding:10px 16px;border-radius:8px;">Review requests in LiveArchive</a></p>`,
+      `<p style="margin:0 0 20px;font-size:13px;color:#a1a1aa;">Pending requests: <strong style="color:#ededf0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">${opts.totalPending}</strong> of ${opts.cap} cap.</p>`,
+      `<p style="margin:0;"><a href="${escapeHtml(appUrl)}" style="display:inline-block;background:#a78bfa;color:#0e0e11;text-decoration:none;font-weight:600;padding:10px 16px;border-radius:8px;">Review requests in LiveArchive</a></p>`,
     ].join(''),
     opts.unsubscribeLink,
   );
@@ -111,16 +111,16 @@ export function buildInviteEmail(opts: {
   const html = wrapHtml(
     subject,
     [
-      `<h1 style="font-size:20px;margin:0 0 12px;color:#eef0f4;">You're invited to LiveArchive</h1>`,
-      `<p style="margin:0 0 16px;color:#eef0f4;">You've been added to the invite list for <strong>LiveArchive</strong> — a private log to remember which concerts and festivals you went to and who you saw there.</p>`,
-      `<h2 style="font-size:15px;margin:20px 0 8px;color:#eef0f4;">How to sign in and get started</h2>`,
-      `<ol style="margin:0 0 20px;padding-left:20px;color:#eef0f4;">`,
-      `<li style="margin:0 0 8px;">Open <a href="${escapeHtml(appUrl)}" style="color:#8b7cf6;">${escapeHtml(appUrl)}</a></li>`,
+      `<h1 style="font-family:Georgia,'Times New Roman',serif;font-weight:400;font-size:22px;margin:0 0 12px;color:#ededf0;">You're invited to LiveArchive</h1>`,
+      `<p style="margin:0 0 16px;color:#ededf0;">You've been added to the invite list for <strong>LiveArchive</strong> — a private log to remember which concerts and festivals you went to and who you saw there.</p>`,
+      `<h2 style="font-family:Georgia,'Times New Roman',serif;font-weight:400;font-size:17px;margin:20px 0 8px;color:#ededf0;">How to sign in and get started</h2>`,
+      `<ol style="margin:0 0 20px;padding-left:20px;color:#ededf0;">`,
+      `<li style="margin:0 0 8px;">Open <a href="${escapeHtml(appUrl)}" style="color:#c4b5fd;">${escapeHtml(appUrl)}</a></li>`,
       `<li style="margin:0 0 8px;">Sign in through Cloudflare Access using <strong>${escapeHtml(opts.email)}</strong>.</li>`,
       `<li style="margin:0;">Your personal archive will open right away (or if prompted on the banner, click <strong>Request access</strong> to finish linking your sign-in).</li>`,
       `</ol>`,
-      `<p style="margin:0 0 20px;"><a href="${escapeHtml(appUrl)}" style="display:inline-block;background:#8b7cf6;color:#ffffff;text-decoration:none;font-weight:600;padding:10px 16px;border-radius:8px;">Sign in to LiveArchive</a></p>`,
-      `<p style="margin:0;font-size:13px;color:#a3a9b6;"><strong>Privacy:</strong> Your events, ticket imports, share link, and notes are yours alone. Nobody else—including the site owner—can see your archive.</p>`,
+      `<p style="margin:0 0 20px;"><a href="${escapeHtml(appUrl)}" style="display:inline-block;background:#a78bfa;color:#0e0e11;text-decoration:none;font-weight:600;padding:10px 16px;border-radius:8px;">Sign in to LiveArchive</a></p>`,
+      `<p style="margin:0;font-size:13px;color:#a1a1aa;"><strong>Privacy:</strong> Your events, ticket imports, share link, and notes are yours alone. Nobody else—including the site owner—can see your archive.</p>`,
     ].join(''),
     opts.unsubscribeLink,
   );
@@ -154,12 +154,12 @@ export function buildWelcomeEmail(opts: {
   const html = wrapHtml(
     subject,
     [
-      `<h1 style="font-size:20px;margin:0 0 12px;color:#eef0f4;">Welcome to LiveArchive</h1>`,
-      `<p style="margin:0 0 16px;color:#eef0f4;">Your account (<strong>${escapeHtml(opts.email)}</strong>) is approved and your personal concert archive is ready.</p>`,
-      `<p style="margin:0 0 24px;"><a href="${escapeHtml(appUrl)}" style="display:inline-block;background:#8b7cf6;color:#ffffff;text-decoration:none;font-weight:600;padding:10px 16px;border-radius:8px;">Open your archive</a></p>`,
-      `<h2 style="font-size:15px;margin:0 0 10px;color:#eef0f4;">Recommended next steps</h2>`,
-      `<ul style="margin:0;padding-left:20px;color:#eef0f4;">`,
-      `<li style="margin:0 0 10px;"><strong>Add a show in one line:</strong> Type a show at the top of Home, such as <code>Porter Robinson at the Greek Theatre, Oct 5 2024</code> or <code>EDC Las Vegas 2025</code>.</li>`,
+      `<h1 style="font-family:Georgia,'Times New Roman',serif;font-weight:400;font-size:22px;margin:0 0 12px;color:#ededf0;">Welcome to LiveArchive</h1>`,
+      `<p style="margin:0 0 16px;color:#ededf0;">Your account (<strong>${escapeHtml(opts.email)}</strong>) is approved and your personal concert archive is ready.</p>`,
+      `<p style="margin:0 0 24px;"><a href="${escapeHtml(appUrl)}" style="display:inline-block;background:#a78bfa;color:#0e0e11;text-decoration:none;font-weight:600;padding:10px 16px;border-radius:8px;">Open your archive</a></p>`,
+      `<h2 style="font-family:Georgia,'Times New Roman',serif;font-weight:400;font-size:17px;margin:0 0 10px;color:#ededf0;">Recommended next steps</h2>`,
+      `<ul style="margin:0;padding-left:20px;color:#ededf0;">`,
+      `<li style="margin:0 0 10px;"><strong>Add a show in one line:</strong> Type a show at the top of Home, such as <code style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">Porter Robinson at the Greek Theatre, Oct 5 2024</code> or <code style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">EDC Las Vegas 2025</code>.</li>`,
       `<li style="margin:0 0 10px;"><strong>Scan your ticket emails:</strong> Use the browser ticket scanner on Home to find past shows from Ticketmaster, AXS, DICE, Eventbrite, and more—your email bodies never leave your browser, and nothing is saved until you tick it.</li>`,
       `<li style="margin:0 0 10px;"><strong>Import a list:</strong> Have an existing spreadsheet or Notion export? Use <em>Import a list</em> on Home or in the Table tab.</li>`,
       `<li style="margin:0;"><strong>Turn on Private Notes (optional):</strong> Open <em>Menu → Your account</em> to encrypt your notes and companions in your browser.</li>`,

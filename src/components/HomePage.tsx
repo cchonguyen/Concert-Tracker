@@ -29,8 +29,8 @@ interface HomePageProps {
 // What each page is for, in one friendly line.
 
 const TINT: Record<Section, string> = {
-  library: 'border-violet-500/30 bg-violet-500/5',
-  explore: 'border-zinc-700 bg-zinc-900',
+  library: 'border-accent-tint-line bg-surface-1',
+  explore: 'border-line-strong bg-surface-1',
 };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -68,11 +68,11 @@ export const HomePage: React.FC<HomePageProps> = ({
   return (
     <div className="space-y-6">
       <section className="space-y-3">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-zinc-50">
+        <div className="space-y-1.5">
+          <h1 className="font-display text-3xl font-normal tracking-tight text-text sm:text-4xl">
             {empty ? 'Start with the last show you remember' : 'Every show you\u2019ve ever been to, in one place.'}
           </h1>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-text-muted">
             Type one line about a show. LiveArchive finds the date, the venue and who played, and shows you where every detail came from.
           </p>
         </div>
@@ -81,7 +81,7 @@ export const HomePage: React.FC<HomePageProps> = ({
           label={empty ? 'A name is enough. You can add the rest later.' : undefined}
         />
         <div className="flex flex-wrap gap-4 text-sm">
-          <button onClick={onImport} className="text-violet-300 hover:text-violet-200">
+          <button onClick={onImport} className="inline-flex min-h-11 items-center font-medium text-accent hover:underline sm:min-h-9">
             Import a list
           </button>
         </div>
@@ -94,8 +94,8 @@ export const HomePage: React.FC<HomePageProps> = ({
       <FeatureTiles eventCount={eventCount} onOpen={onOpen} onImport={onImport} onShare={onShare} />
 
       {alerts.length > 0 && (
-        <section className="space-y-2 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-300">Needs you</h2>
+        <section className="space-y-2.5 rounded-card border border-warn/35 bg-surface-1 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
+          <h2 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-warn">Needs you</h2>
           <div className="flex flex-wrap gap-2">
             {alerts.map((a) => {
               const Icon = a.icon;
@@ -103,9 +103,9 @@ export const HomePage: React.FC<HomePageProps> = ({
                 <button
                   key={a.key}
                   onClick={a.onClick}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-200 hover:border-amber-500/50"
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-control border border-line-strong bg-surface-2 px-3 py-1.5 text-sm text-text hover:border-warn/60 sm:min-h-9"
                 >
-                  <Icon className="h-3.5 w-3.5" /> {a.text}
+                  <Icon className="h-3.5 w-3.5 text-warn" aria-hidden="true" /> {a.text}
                 </button>
               );
             })}
@@ -115,7 +115,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       {(Object.keys(SECTIONS) as Section[]).map((section) => (
         <section key={section} className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">{SECTIONS[section].label}</h2>
+          <h2 className="font-display text-xl font-normal text-text">{SECTIONS[section].label}</h2>
           <div className={`grid gap-3 sm:grid-cols-2 ${empty ? 'opacity-60' : ''}`}>
             {subPagesFor(section, { canManage }).map((p) => {
               const Icon = PAGE_ICON[p];
@@ -124,19 +124,19 @@ export const HomePage: React.FC<HomePageProps> = ({
                 <button
                   key={p}
                   onClick={() => onOpen(p)}
-                  className={`group flex items-center gap-4 rounded-2xl border p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-violet-500/60 hover:shadow-lg hover:shadow-black/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 active:scale-[0.98] motion-reduce:transform-none motion-reduce:transition-none ${TINT[section]}`}
+                  className={`group flex items-center gap-4 rounded-card border p-4 text-left shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] transition duration-150 hover:-translate-y-0.5 hover:border-accent-tint-line hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.99] motion-reduce:transform-none motion-reduce:transition-none ${TINT[section]}`}
                 >
-                  <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-violet-600/20 text-violet-300 transition duration-200 group-hover:scale-110 group-hover:bg-violet-600/30 motion-reduce:transform-none">
-                    <Icon className="h-7 w-7" />
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-control border border-accent-tint-line bg-accent-tint text-accent transition duration-150 group-hover:scale-105 motion-reduce:transform-none">
+                    <Icon className="h-6 w-6" strokeWidth={1.75} aria-hidden="true" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-base font-bold text-zinc-100">{PAGE_LABELS[p]}</span>
-                    <span className="block text-sm text-zinc-400">{PAGE_BLURB[p]}</span>
+                    <span className="block text-base font-semibold text-text">{PAGE_LABELS[p]}</span>
+                    <span className="block text-sm text-text-muted">{PAGE_BLURB[p]}</span>
                   </span>
                   {count && (
                     <span className="shrink-0 text-right">
-                      <span className="block text-3xl font-extrabold tabular-nums text-zinc-100">{count.n}</span>
-                      <span className="block text-xs text-zinc-400">{count.unit}</span>
+                      <span className="block text-3xl font-extrabold tabular-nums text-text">{count.n}</span>
+                      <span className="block font-mono text-xs text-text-muted">{count.unit}</span>
                     </span>
                   )}
                 </button>
