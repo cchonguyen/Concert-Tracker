@@ -98,7 +98,7 @@ const Ranking: React.FC<{ name: string; rows: Ranked[]; empty: string; onPick: (
         <ol className="space-y-1.5">
           {rows.map((r) => (
             <li key={r.key}>
-              <button onClick={() => onPick(r)} className="group w-full space-y-0.5 text-left" title={`${r.label}: ${plural(r.count, 'event')}`}>
+              <button onClick={() => onPick(r)} className="group block min-h-11 w-full space-y-0.5 py-1 text-left sm:min-h-9" title={`${r.label}: ${plural(r.count, 'event')}`}>
                 <span className="flex items-baseline justify-between gap-2 text-sm">
                   <span className="truncate text-text group-hover:text-accent">{r.label}</span>
                   <span className="shrink-0 text-xs text-text-muted">{r.count}</span>
@@ -184,7 +184,7 @@ const SeriesCard: React.FC<{ rows: SeriesStat[]; onPick: (name: string) => void 
       <ol className="space-y-3">
         {rows.slice(0, 8).map((r) => (
           <li key={r.name}>
-            <button onClick={() => onPick(r.name)} className="group w-full space-y-1 text-left">
+            <button onClick={() => onPick(r.name)} className="group block min-h-11 w-full space-y-1 py-1 text-left sm:min-h-9">
               <span className="flex items-baseline justify-between gap-2 text-sm">
                 <span className="truncate font-medium text-text group-hover:text-accent">{r.name}</span>
                 <span className="shrink-0 tabular-nums text-text-muted">{plural(r.editions, 'edition')}</span>
@@ -300,7 +300,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
                   key={y}
                   onClick={() => setPickedYear(y)}
                   aria-pressed={y === year}
-                  className={`min-h-9 rounded-control border px-2 font-mono text-xs tabular-nums sm:min-h-7 ${y === year ? 'border-accent-tint-line bg-accent-tint font-semibold text-text' : 'border-transparent text-text-muted hover:text-text'}`}
+                  className={`min-h-11 rounded-control border px-2 font-mono text-xs tabular-nums sm:min-h-9 ${y === year ? 'border-accent-tint-line bg-accent-tint font-semibold text-text' : 'border-transparent text-text-muted hover:text-text'}`}
                 >
                   {y}
                 </button>
