@@ -4,6 +4,9 @@ import {
   hintSeen,
   markHintSeen,
   NavStorage,
+  PAGE_BLURB,
+  PAGE_LABELS,
+  PAGES,
   pageFromView,
   rememberedPage,
   rememberPage,
@@ -41,14 +44,28 @@ test('every page belongs to one section, and Home to none', () => {
 
 const EXPLORE = ['agenda', 'month', 'heatmap', 'river', 'map', 'stats', 'ranking'];
 
-test('owners see all four Library subtabs and all seven Explore subtabs', () => {
-  assert.deepEqual(subPagesFor('library', OWNER), ['summary', 'table', 'manage', 'log']);
+test('owners see all five Library subtabs and all seven Explore subtabs', () => {
+  assert.deepEqual(subPagesFor('library', OWNER), ['summary', 'table', 'manage', 'log', 'share']);
   assert.deepEqual(subPagesFor('explore', OWNER), EXPLORE);
 });
 
-test('members who cannot see Manage keep Summary, Table and Log', () => {
-  assert.deepEqual(subPagesFor('library', MEMBER), ['summary', 'table', 'log']);
+test('members who cannot see Manage keep Summary, Table, Log and Share', () => {
+  assert.deepEqual(subPagesFor('library', MEMBER), ['summary', 'table', 'log', 'share']);
   assert.deepEqual(subPagesFor('explore', MEMBER), EXPLORE);
+});
+
+test('Share is a Library page, after Log, and is not in Explore', () => {
+  assert.equal(sectionOf('share'), 'library');
+  assert.equal(PAGE_LABELS.share, 'Share');
+  assert.ok(PAGE_BLURB.share.length > 0);
+  assert.ok(PAGES.includes('share'));
+  assert.ok(!EXPLORE.includes('share'));
+});
+
+test('?view=share opens the Share page for everyone, and the address names it', () => {
+  assert.equal(pageFromView('share', OWNER), 'share');
+  assert.equal(pageFromView('share', MEMBER), 'share');
+  assert.equal(viewFor('share'), 'view=share');
 });
 
 test('no view, and the old ?view=events, open Home', () => {
