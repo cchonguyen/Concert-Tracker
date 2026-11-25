@@ -2,11 +2,13 @@ import { Dialog } from './ui/Dialog';
 import { Tooltip } from './ui/Tooltip';
 import { useToast } from './ui/Toast';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, ExternalLink, GitMerge, Loader2, Mail, RefreshCw, Undo2, X } from 'lucide-react';
+import { Check, ExternalLink, GitMerge, Mail, RefreshCw, Undo2, X } from 'lucide-react';
 import { EmailImport, EmailScanStatus, importsApi, LoggedEvent } from '../services/lineupApi';
 import type { MergeField } from '../server/events/email/types';
 import { placeLabel, whenLabel } from '../services/format';
 import { BrowserScan } from './BrowserScan';
+import { Equalizer } from './ui/Equalizer';
+import { Ledger } from './ui/Ledger';
 import { Notice } from './ui/Notice';
 import { useIsOwner } from './MeContext';
 
@@ -30,12 +32,12 @@ const FLAG_LABELS: Record<EmailImport['flags'][number], string> = {
   transferred_away: 'Tickets sent to someone else',
 };
 
-const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-zinc-400';
+const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-text-muted';
 
 const EmailLink: React.FC<{ row: EmailImport }> = ({ row }) => {
   const link = row.sources.name?.link ?? row.messages.find((m) => m.link)?.link;
   return link ? (
-    <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 hover:text-violet-300">
+    <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 hover:text-accent">
       {row.seller} email <ExternalLink className="h-2.5 w-2.5" />
     </a>
   ) : (
@@ -112,34 +114,34 @@ const CheckEmail: React.FC<{ onFound: (imports: EmailImport[]) => void }> = ({ o
   };
 
   return (
-    <div className="space-y-1 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">
+    <div className="space-y-2 rounded-card border border-line bg-surface-1 p-3">
       {/* The server's Gmail connection is one stored sign-in: the owner's. Members scan in the browser below. */}
       {owner && (
         <details className="space-y-2">
-          <summary className="cursor-pointer text-xs text-zinc-400">More options</summary>
+          <summary className="cursor-pointer text-xs text-text-muted">More options</summary>
           <div className="space-y-1">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs text-zinc-400">{status.connected ? summary() : 'Connect Gmail to check for new ticket emails.'}</p>
+              <p className="text-xs text-text-muted">{status.connected ? summary() : 'Connect Gmail to check for new ticket emails.'}</p>
               {status.connected ? (
                 <button
                   onClick={check}
                   disabled={checking}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:border-zinc-500 disabled:opacity-40"
+                  className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-line-strong px-3 py-1.5 text-xs font-semibold text-text hover:border-accent disabled:opacity-40 sm:min-h-9"
                 >
-                  {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  {checking ? <Equalizer size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
                   Check email
                 </button>
               ) : (
                 <a
                   href="/api/gmail/connect"
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent-fill px-3 py-1.5 text-xs font-semibold text-on-accent hover:bg-accent-fill"
+                  className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control bg-accent-fill px-3 py-1.5 text-xs font-semibold text-on-accent hover:bg-accent-fill sm:min-h-9"
                 >
                   <Mail className="h-3.5 w-3.5" /> Connect Gmail
                 </a>
               )}
             </div>
-            {status.connected && status.account && <p className="text-[11px] text-zinc-400">{status.account}</p>}
-            {error && <p className="text-xs text-rose-300">{error}</p>}
+            {status.connected && status.account && <p className="text-[11px] text-text-muted">{status.account}</p>}
+            {error && <p className="text-xs text-bad">{error}</p>}
           </div>
         </details>
       )}
@@ -163,37 +165,37 @@ const Row: React.FC<{ row: EmailImport; ticked?: boolean; onTick?: () => void; a
   const place = placeLabel(row);
   const facts = [row.tickets ? `${row.tickets} ticket${row.tickets === 1 ? '' : 's'}` : null, row.total].filter(Boolean).join(' · ');
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-zinc-900 bg-zinc-900/40 p-3">
+    <Ledger.Row edge={row.flags.length > 0 ? 'needs' : 'none'} className="items-start gap-3 p-3">
       {onTick && (
         <button
           onClick={onTick}
           aria-pressed={ticked}
           aria-label={ticked ? 'I went (ticked)' : 'I went'}
           className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
-            ticked ? 'border-violet-500 bg-accent-fill text-on-accent' : 'border-zinc-700 text-transparent hover:border-zinc-500'
+            ticked ? 'border-accent-fill bg-accent-fill text-on-accent' : 'border-line-strong text-transparent hover:border-accent'
           }`}
         >
           <Check className="h-3.5 w-3.5" />
         </button>
       )}
       <div className="min-w-0 flex-1 space-y-0.5">
-        <p className="text-sm font-semibold text-zinc-100">{row.name}</p>
-        {note && <p className="text-xs text-violet-300/80">{note}</p>}
-        <p className="text-xs text-zinc-400">
+        <p className="text-sm font-semibold text-text">{row.name}</p>
+        {note && <p className="text-xs text-accent">{note}</p>}
+        <p className="font-mono text-xs tabular-nums text-text-muted">
           {[when ?? 'No date in the email', place].filter(Boolean).join(' · ')}
         </p>
-        <p className="flex flex-wrap items-center gap-x-2 text-[11px] text-zinc-400">
+        <p className="flex flex-wrap items-center gap-x-2 text-[11px] text-text-muted">
           <EmailLink row={row} />
-          {facts && <span>{facts}</span>}
+          {facts && <span className="font-mono tabular-nums">{facts}</span>}
           {row.flags.map((f) => (
-            <span key={f} className="rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-300/90">
+            <span key={f} className="rounded bg-warn/10 px-1.5 py-0.5 text-warn">
               {FLAG_LABELS[f]}
             </span>
           ))}
         </p>
       </div>
       {action}
-    </div>
+    </Ledger.Row>
   );
 };
 
@@ -230,7 +232,7 @@ const MergePicker: React.FC<{ row: EmailImport; events: LoggedEvent[]; busy: boo
       .slice(0, 8);
   }, [q, events, row.startDate]);
   return (
-    <div className="space-y-2 rounded-xl border border-violet-500/30 bg-violet-950/20 p-3">
+    <div className="space-y-2 rounded-card border border-accent-tint-line bg-accent-tint p-3">
       <div className="flex items-center gap-2">
         <input
           autoFocus
@@ -238,25 +240,25 @@ const MergePicker: React.FC<{ row: EmailImport; events: LoggedEvent[]; busy: boo
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Which of your events is this?"
-          className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-400 focus:border-violet-500 focus:outline-none"
+          className="min-h-11 min-w-0 flex-1 rounded-control border border-line-strong bg-surface-1 px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none sm:min-h-9"
         />
-        <button onClick={onCancel} className="text-xs text-zinc-400 hover:text-zinc-200">
+        <button onClick={onCancel} className="min-h-11 rounded-control px-1.5 text-xs text-text-muted hover:text-text sm:min-h-9">
           Cancel
         </button>
       </div>
-      {!options.length && <p className="text-xs text-zinc-400">No event of yours matches.</p>}
+      {!options.length && <p className="text-xs text-text-muted">No event of yours matches.</p>}
       {options.map((e) => (
         <button
           key={e.id}
           disabled={busy}
           onClick={() => onPick(e)}
-          className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-zinc-900 disabled:opacity-40"
+          className="block min-h-11 w-full rounded-control px-2 py-1.5 text-left hover:bg-surface-2 disabled:opacity-40 sm:min-h-9"
         >
-          <span className="block text-sm text-zinc-100">{e.name}</span>
-          <span className="block text-xs text-zinc-400">{[whenLabel(e) ?? 'No date', placeLabel(e)].filter(Boolean).join(' · ')}</span>
+          <span className="block text-sm text-text">{e.name}</span>
+          <span className="block font-mono text-xs tabular-nums text-text-muted">{[whenLabel(e) ?? 'No date', placeLabel(e)].filter(Boolean).join(' · ')}</span>
         </button>
       ))}
-      <p className="text-[11px] text-zinc-400">Only empty fields are filled from the email; what you entered stays as it is.</p>
+      <p className="text-[11px] text-text-muted">Only empty fields are filled from the email; what you entered stays as it is.</p>
     </div>
   );
 };
@@ -348,7 +350,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
   const nameOf = (id?: string) => events.find((e) => e.id === id)?.name;
   // A row on the list, with "Same as one of mine" and its picker.
   const reviewRow = (r: EmailImport) => (
-    <div key={r.id} className="space-y-2">
+    <div key={r.id}>
       <Row
         row={r}
         ticked={ticked.has(r.id)}
@@ -356,7 +358,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
         action={
           <button
             onClick={() => setMerging(merging === r.id ? null : r.id)}
-            className="text-zinc-400 hover:text-violet-300"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control text-text-muted hover:text-accent"
             aria-label="Same as one of my events"
             title="Same as one of my events"
           >
@@ -364,7 +366,11 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
           </button>
         }
       />
-      {merging === r.id && <MergePicker row={r} events={events} busy={busy} onPick={(e) => mergeInto(r, e)} onCancel={() => setMerging(null)} />}
+      {merging === r.id && (
+        <div className="p-2">
+          <MergePicker row={r} events={events} busy={busy} onPick={(e) => mergeInto(r, e)} onCancel={() => setMerging(null)} />
+        </div>
+      )}
     </div>
   );
 
@@ -373,131 +379,137 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
       <div className="flex-1 space-y-6 overflow-y-auto p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="flex items-center gap-2 text-lg font-bold">
-              <Mail className="h-4 w-4 text-violet-400" /> From your ticket emails
+            <h2 className="flex items-center gap-2 font-display text-xl font-normal text-text">
+              <Mail className="h-4 w-4 text-accent" /> From your ticket emails
             </h2>
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-text-muted">
               A ticket doesn't prove you went, so tick the ones you did. Each one is saved with a link to its email.
             </p>
           </div>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200" aria-label="Close">
+          <button onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control text-text-muted hover:text-text" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
         {notice && (
           <p
-            className={`rounded-lg border p-2 text-sm ${
-              notice === 'connected' ? 'border-violet-500/30 bg-violet-950/30 text-violet-200' : 'border-rose-500/30 bg-rose-950/30 text-rose-200'
+            className={`rounded-card border p-2 text-sm ${
+              notice === 'connected' ? 'border-accent-tint-line bg-accent-tint text-accent' : 'border-bad/45 bg-bad/10 text-bad'
             }`}
           >
             {notice === 'connected' ? 'Gmail is connected. Press Check email to look for new tickets.' : notice}
           </p>
         )}
         <CheckEmail onFound={onChange} />
-        {error && <p className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p>}
+        {error && <p className="rounded-card border border-bad/45 bg-bad/10 p-2 text-sm text-bad">{error}</p>}
 
-        {!toReview.length && <p className="text-sm text-zinc-400">Nothing left to review.</p>}
+        {!toReview.length && <p className="text-sm text-text-muted">Nothing left to review.</p>}
         {years.map((g) => (
           <section key={g.label} className="space-y-2">
             <div className="flex items-baseline justify-between">
-              <h3 className="text-sm font-bold text-zinc-300">
-                {g.label} <span className="text-xs font-normal text-zinc-400">{g.rows.length}</span>
+              <h3 className="text-sm font-bold text-text">
+                {g.label} <span className="font-mono text-xs font-normal tabular-nums text-text-muted">{g.rows.length}</span>
               </h3>
-              <button onClick={() => toggle(g.rows.map((r) => r.id))} className="text-xs text-zinc-400 hover:text-zinc-200">
+              <button onClick={() => toggle(g.rows.map((r) => r.id))} className="min-h-11 rounded-control px-1.5 text-xs text-text-muted hover:text-text sm:min-h-9">
                 {g.rows.every((r) => ticked.has(r.id)) ? 'Untick all' : `Tick all in ${g.label}`}
               </button>
             </div>
-            {g.rows.map(reviewRow)}
+            <Ledger>{g.rows.map(reviewRow)}</Ledger>
           </section>
         ))}
 
         {upcoming.length > 0 && (
           <section className="space-y-2">
-            <h3 className={sectionTitle}>Still ahead ({upcoming.length})</h3>
-            <p className="text-xs text-zinc-400">
+            <h3 className={sectionTitle}>Still ahead (<span className="font-mono tabular-nums">{upcoming.length}</span>)</h3>
+            <p className="text-xs text-text-muted">
               Tick one to add it as upcoming: it isn't counted until you say you went, and once it's over the app asks. Unticked ones stay here.
             </p>
-            {upcoming.map(reviewRow)}
+            <Ledger>{upcoming.map(reviewRow)}</Ledger>
           </section>
         )}
 
         {logged.length > 0 && (
           <details className="space-y-2">
-            <summary className={`${sectionTitle} cursor-pointer`}>Already in your log ({logged.length})</summary>
-            {logged.map((r) => (
-              <Row
-                key={r.id}
-                row={r}
-                note={nameOf(r.eventId) && `${r.mergedFields ? 'Merged into' : r.status === 'added' ? 'Added as' : 'Matched to'} “${nameOf(r.eventId)}”`}
-                action={
-                  r.mergedFields ? (
-                    <Tooltip label="Undo merge">
-                      <button onClick={() => unmerge(r)} className="text-zinc-400 hover:text-zinc-200" aria-label="Undo merge">
-                        <Undo2 className="h-4 w-4" />
-                      </button>
-                    </Tooltip>
-                  ) : r.status === 'new' && events.some((e) => e.id === r.eventId) ? (
-                    // Matched on its own: merging fills the event's empty fields from the email.
-                    <Tooltip label="Merge into this event">
-                      <button
-                        disabled={busy}
-                        onClick={() => mergeInto(r, events.find((e) => e.id === r.eventId)!)}
-                        className="text-zinc-400 hover:text-violet-300 disabled:opacity-40"
-                        aria-label="Merge into this event"
-                      >
-                        <GitMerge className="h-4 w-4" />
-                      </button>
-                    </Tooltip>
-                  ) : undefined
-                }
-              />
-            ))}
+            <summary className={`${sectionTitle} cursor-pointer`}>Already in your log (<span className="font-mono tabular-nums">{logged.length}</span>)</summary>
+            <Ledger>
+              {logged.map((r) => (
+                <Row
+                  key={r.id}
+                  row={r}
+                  note={nameOf(r.eventId) && `${r.mergedFields ? 'Merged into' : r.status === 'added' ? 'Added as' : 'Matched to'} “${nameOf(r.eventId)}”`}
+                  action={
+                    r.mergedFields ? (
+                      <Tooltip label="Undo merge">
+                        <button onClick={() => unmerge(r)} className="flex h-9 w-9 items-center justify-center rounded-control text-text-muted hover:text-text" aria-label="Undo merge">
+                          <Undo2 className="h-4 w-4" />
+                        </button>
+                      </Tooltip>
+                    ) : r.status === 'new' && events.some((e) => e.id === r.eventId) ? (
+                      // Matched on its own: merging fills the event's empty fields from the email.
+                      <Tooltip label="Merge into this event">
+                        <button
+                          disabled={busy}
+                          onClick={() => mergeInto(r, events.find((e) => e.id === r.eventId)!)}
+                          className="flex h-9 w-9 items-center justify-center rounded-control text-text-muted hover:text-accent disabled:opacity-40"
+                          aria-label="Merge into this event"
+                        >
+                          <GitMerge className="h-4 w-4" />
+                        </button>
+                      </Tooltip>
+                    ) : undefined
+                  }
+                />
+              ))}
+            </Ledger>
           </details>
         )}
 
         {skipped.length > 0 && (
           <details className="space-y-2">
-            <summary className={`${sectionTitle} cursor-pointer`}>Left out ({skipped.length})</summary>
-            {skipped.map((r) => (
-              <Row
-                key={r.id}
-                row={r}
-                action={
-                  <button onClick={() => skip([r.id], true)} className="text-zinc-400 hover:text-zinc-200" aria-label="Put back">
-                    <Undo2 className="h-4 w-4" />
-                  </button>
-                }
-              />
-            ))}
+            <summary className={`${sectionTitle} cursor-pointer`}>Left out (<span className="font-mono tabular-nums">{skipped.length}</span>)</summary>
+            <Ledger>
+              {skipped.map((r) => (
+                <Row
+                  key={r.id}
+                  row={r}
+                  action={
+                    <button onClick={() => skip([r.id], true)} className="flex h-9 w-9 items-center justify-center rounded-control text-text-muted hover:text-text" aria-label="Put back">
+                      <Undo2 className="h-4 w-4" />
+                    </button>
+                  }
+                />
+              ))}
+            </Ledger>
           </details>
         )}
 
         {unreadable.length > 0 && (
           <details className="space-y-2">
-            <summary className={`${sectionTitle} cursor-pointer`}>Couldn't read ({unreadable.length})</summary>
-            <p className="text-xs text-zinc-400">Ticket emails in a layout the app doesn't know yet. Open one and add it by typing a line.</p>
-            {unreadable.map((r) => (
-              <Row key={r.id} row={{ ...r, dateText: undefined }} />
-            ))}
+            <summary className={`${sectionTitle} cursor-pointer`}>Couldn't read (<span className="font-mono tabular-nums">{unreadable.length}</span>)</summary>
+            <p className="text-xs text-text-muted">Ticket emails in a layout the app doesn't know yet. Open one and add it by typing a line.</p>
+            <Ledger>
+              {unreadable.map((r) => (
+                <Row key={r.id} row={{ ...r, dateText: undefined }} />
+              ))}
+            </Ledger>
           </details>
         )}
       </div>
 
       {(toReview.length > 0 || upcoming.length > 0) && (
-        <div className="flex items-center justify-between gap-3 border-t border-zinc-900 p-4">
+        <div className="flex items-center justify-between gap-3 border-t border-line p-4">
           <button
             onClick={() => skip(chosen)}
             disabled={busy || !chosen.length}
-            className="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-40"
+            className="min-h-11 rounded-control px-1.5 text-xs text-text-muted hover:text-text disabled:opacity-40 sm:min-h-9"
           >
             Leave these out
           </button>
           <button
             onClick={add}
             disabled={busy || !chosen.length}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-accent-fill px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-control bg-accent-fill px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40 sm:min-h-9"
           >
-            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {busy && <Equalizer size="sm" />}
             Add {chosen.length || ''} event{chosen.length === 1 ? '' : 's'}
           </button>
         </div>
