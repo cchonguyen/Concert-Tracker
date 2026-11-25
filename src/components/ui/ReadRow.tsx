@@ -114,7 +114,8 @@ export function ReadRow({
 
   return (
     <div id={id} className={`px-3 py-1.5 ${flash ? 'ring-1 ring-inset ring-good/60' : ''}`}>
-      <div className="flex min-h-11 items-center gap-2 sm:min-h-10">
+      {/* On phones the source drops under the value, so the value keeps the row's width. */}
+      <div className="flex min-h-11 flex-wrap items-center gap-x-2 sm:min-h-10 sm:flex-nowrap">
         <button
           type="button"
           disabled={disabled || !editor}
@@ -123,9 +124,9 @@ export function ReadRow({
           className="group flex min-h-11 min-w-0 flex-1 items-center gap-2.5 py-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent disabled:cursor-default sm:min-h-10"
         >
           <Icon className="h-4 w-4 shrink-0 text-text-muted" strokeWidth={1.75} aria-hidden="true" />
-          <span className="w-24 shrink-0 text-xs font-medium text-text-muted">{label}</span>
+          <span className="w-20 shrink-0 text-xs font-medium text-text-muted sm:w-24">{label}</span>
           <span
-            className={`min-w-0 flex-1 truncate text-sm ${mono ? 'font-mono tabular-nums' : ''} ${
+            className={`min-w-0 flex-1 break-words text-sm ${mono ? 'font-mono tabular-nums' : ''} ${
               hasValue ? 'text-text' : 'text-text-faint'
             }`}
           >
@@ -138,7 +139,7 @@ export function ReadRow({
         </button>
 
         {(source || inferred) && (
-          <div className="flex shrink-0 items-center gap-2 text-xs">
+          <div className="flex w-full shrink-0 items-center gap-2 pb-1.5 pl-[26px] text-xs sm:w-auto sm:pb-0 sm:pl-0">
             {inferred}
             {source}
           </div>

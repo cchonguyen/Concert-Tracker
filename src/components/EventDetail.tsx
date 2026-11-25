@@ -474,7 +474,10 @@ const Field: React.FC<{
                   pending.current = null;
                 }
                 editing.current = false;
-                setDraft(value === undefined ? '' : String(value));
+                const stored = value === undefined ? '' : String(value);
+                setDraft(stored);
+                // Escape closes the read row at once, and closing flushes on unmount: drop the draft now so nothing is saved.
+                latest.current = { ...latest.current, draft: stored };
                 skipBlur.current = true;
                 (e.target as HTMLInputElement).blur();
               }
@@ -502,7 +505,10 @@ const Field: React.FC<{
                   pending.current = null;
                 }
                 editing.current = false;
-                setDraft(value === undefined ? '' : String(value));
+                const stored = value === undefined ? '' : String(value);
+                setDraft(stored);
+                // Escape closes the read row at once, and closing flushes on unmount: drop the draft now so nothing is saved.
+                latest.current = { ...latest.current, draft: stored };
                 skipBlur.current = true;
                 (e.target as HTMLInputElement).blur();
               }
