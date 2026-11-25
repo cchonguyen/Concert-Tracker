@@ -12,7 +12,7 @@ import { EditionOccurrenceConflictError, isEditionSuggestQuery } from './store/t
 import { canonReviewRouter } from '../canon/reviewRoutes';
 import { finderReadout } from '../telemetry/finderReadout';
 import { clashfinderCandidates } from './adapters/clashfinder';
-import { findLineupRequest } from './canonicalIngest';
+import { findLineupRequest, pasteLineupRequest } from './canonicalIngest';
 import { refreshEditionWeather } from '../events/editionWeather';
 
 // Older log entries were written before redaction existed.
@@ -191,7 +191,30 @@ export function lineupRouter(deps: PipelineDeps, runner: JobRunner): Router {
       const request = findLineupRequest(edition, series?.clashfinderSlugs?.[String(edition?.year)] ?? null);
       if (!request.ok) return res.status(edition ? 400 : 404).json({ error: request.error });
       const { ok: _ok, ...input } = request;
-      const job = await createLookup(deps, input);
+      // An optional lineup page the owner knows (the official page, or a Clashfinder link) wins over the stored slug.
+      const lineupUrl = typeof req.body?.lineupUrl === 'string' && /^https?:\/\/\S+$/i.test(req.body.lineupUrl.trim()) ? req.body.lineupUrl.trim() : undefined;
+      const job = await createLookup(deps, { ...input, ...(lineupUrl ? { lineupUrl } : {}) });
+      await runner.kick(job.id, true);
+      res.status(201).json({ job: safeJob(job) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Paste set times on one edition: { url, text }. Owner only. The link is never requested; the lookup runs only the
+  // pasted source and keeps the edition's acts, and the result goes to Lookups for review (docs/specs/pasted-set-times.md).
+  router.post('/manage/canonical/editions/:id/paste-sets', async (req, res) => {
+    if (!isOwner(currentMember())) return res.status(403).json({ error: 'Only the owner can do this.' });
+    try {
+      const url = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+      const text = typeof req.body?.text === 'string' ? req.body.text : '';
+      if (!/^https?:\/\/\S+$/i.test(url)) throw new InputError('Add the link of the page you copied the set times from.');
+      if (!text.trim()) throw new InputError('Paste the set times text.');
+      const edition = await deps.store.getEdition(req.params.id);
+      const request = pasteLineupRequest(edition);
+      if (!request.ok) return res.status(edition ? 400 : 404).json({ error: request.error });
+      const { ok: _ok, ...input } = request;
+      const job = await createLookup(deps, { ...input, pasted: { url, text } });
       await runner.kick(job.id, true);
       res.status(201).json({ job: safeJob(job) });
     } catch (err) {

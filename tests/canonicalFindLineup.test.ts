@@ -64,3 +64,12 @@ test('without a stored slug the lookup goes by name and year only', () => {
   const r = findLineupRequest(edition(), null);
   assert.equal(r.ok && 'lineupUrl' in r, false);
 });
+
+test('paste set times works on any edition with a name and a full date, festival or not, with or without acts', async () => {
+  const { pasteLineupRequest } = await import('../src/server/lineup/canonicalIngest.ts');
+  const r = pasteLineupRequest(edition({ seriesKind: 'concert' as any, performances: [{ artistKey: 'a' } as any] }));
+  assert.equal(r.ok, true);
+  assert.equal(r.ok && r.startDate, '2026-05-15');
+  assert.deepEqual(pasteLineupRequest(edition({ startDate: undefined })), { ok: false, error: 'Add the full date first, so each time can be placed on a day.' });
+  assert.deepEqual(pasteLineupRequest(null), { ok: false, error: 'No such edition.' });
+});

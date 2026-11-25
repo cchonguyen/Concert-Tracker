@@ -669,6 +669,26 @@ export async function autoMergeZeroLineupGroup(
   return { keep: mergeRes.edition, droppedIds: drops.map((d) => d.id) };
 }
 
+// Paste set times on a shared edition (docs/specs/pasted-set-times.md): any edition with a name and a full date. The
+// pasted page is read in code and the result waits for review under Lookups, like Find lineup.
+export function pasteLineupRequest(edition: Edition | null): FindLineupRequest {
+  if (!edition) return { ok: false, error: 'No such edition.' };
+  const eventName = edition.name?.trim();
+  if (!eventName) return { ok: false, error: 'Give the edition a name first.' };
+  if (!Number.isInteger(edition.year)) return { ok: false, error: 'The edition needs a year first.' };
+  if (!edition.startDate) return { ok: false, error: 'Add the full date first, so each time can be placed on a day.' };
+  return {
+    ok: true,
+    eventName,
+    year: edition.year,
+    startDate: edition.startDate,
+    endDate: edition.endDate,
+    venue: edition.venue,
+    city: edition.city,
+    country: edition.country,
+  };
+}
+
 // Clashfinder "Find lineup": only a festival edition with no lineup can ask for one. The request is
 // the edition's own name and year, so the existing ingest adapter ranks the Clashfinder versions. Its result still
 // waits for review under Lookups and is written by the usual confirm path.
