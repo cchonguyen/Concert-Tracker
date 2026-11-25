@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { filterOptions, groupReviewSlots, pendingReplacement, startRows } from '../src/services/reviewRows.ts';
+import { filterOptions, groupReviewSlots, pendingReplacement, splitAddedActs, startRows } from '../src/services/reviewRows.ts';
 
 const src = (name: string) => ({ sourceType: 'clashfinder' as const, sourceUrl: 'https://clashfinder.com/s/x/', quotedSpan: name, evidence: 'crowd' as const, extractor: 'cf' });
 const cand = (name: string, extra: any = {}) => ({ key: name.toLowerCase(), name, days: [], stages: [], confidence: 0.9, flagged: false, status: 'billed', sources: [src(name)], ...extra }) as any;
@@ -270,4 +270,14 @@ test('a finished lookup on a confirmed lineup is a pending replacement; a cached
   assert.equal(pendingReplacement({ id: 'j', input: {} as any, status: 'needs_review', candidate: { performers: [], cached: true } as any }, edition), false);
   assert.equal(pendingReplacement({ id: 'j', input: {} as any, status: 'confirmed', candidate: { performers: [] } as any }, edition), false);
   assert.equal(pendingReplacement({ id: 'j', input: {} as any, status: 'needs_review', candidate: { performers: [] } as any }, null), false);
+});
+
+test('splitAddedActs splits comma-separated act names and drops blanks', () => {
+  assert.deepEqual(splitAddedActs('Four Tet'), ['Four Tet']);
+  assert.deepEqual(splitAddedActs('Subtronics b2b John Summit, Four Tet, , Skrillex,'), [
+    'Subtronics b2b John Summit',
+    'Four Tet',
+    'Skrillex',
+  ]);
+  assert.deepEqual(splitAddedActs('  ,  , '), []);
 });
