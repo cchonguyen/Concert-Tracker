@@ -305,3 +305,7 @@ test('the same show with two different typed venues stays two editions', async (
   assert.equal(r?.created, 2);
   assert.equal((await s.listEditions(10)).length, 2);
 });
+
+test('member notice is version 4 (act names in the owner genres file), so members accept again', () => {
+  assert.equal(NOTICE_VERSION, 4);
+});

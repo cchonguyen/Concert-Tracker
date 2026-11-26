@@ -17,7 +17,7 @@ export function singleOwnerMeRouter(): Router {
 }
 
 // Bump when the notice's wording changes, so members accept the new text.
-export const NOTICE_VERSION = 3; // 3: members' entries share the state too (2026-11-24)
+export const NOTICE_VERSION = 4; // 4: act names in the owner's genres file (2026-11-26)
 export const NOTICE_SETTING = 'notice_accepted';
 
 export function membersRouter(

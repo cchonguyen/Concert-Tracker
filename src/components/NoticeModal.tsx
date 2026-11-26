@@ -41,7 +41,9 @@ export const NoticeModal: React.FC<{ onAccepted: () => void }> = ({ onAccepted }
         <li>
           <b>What is shared.</b> When you save an event with a full date, the event's name, date, venue, city and state may be added to a
           shared list of editions, so the next person who adds the same show gets the details filled in. It is marked provisional
-          until it is checked. Your notes, companions, rating, price and attendance are never shared.
+          until it is checked. The names of acts you tick as seen may appear, without your name, in the site owner's list of
+          artists, so genres can be set for them. Genres are shared: everyone sees the same ones. Your notes, companions, rating,
+          price and attendance are never shared.
         </li>
         <li>
           <b>Your private vault.</b> Your notes and the names of people you went with are encrypted in your browser (AES-GCM)
