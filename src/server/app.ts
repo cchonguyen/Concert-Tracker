@@ -53,6 +53,7 @@ export function createApiApp(
   app.use('/api/imports/proposals', express.json({ limit: '10mb' }));
   // A music-story export lists every artist you have listened to.
   app.use('/api/artist-genres/music-story', express.json({ limit: '25mb' }));
+  app.use('/api/artist-genres/csv', express.json({ limit: '5mb' }));
   app.use(express.json());
 
   app.get('/api/health', (_req, res) => {

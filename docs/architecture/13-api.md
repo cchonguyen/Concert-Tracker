@@ -37,7 +37,11 @@ Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
 | `GET /api/places/cities?q=` | City suggestions as `City, ST` (Open-Meteo geocoding, cached in memory) |
 | `GET /api/places/guess?city=&region=&country=` | The state and country of a stored city when one place clearly fits (`placeGuess`): `{ guess: { city, region, country, label, places } \| null, note? }`. Never saved here |
 | `GET /api/places/point?city=&country=` | Where a stored city is, for the map: `{ lat, lon, match }` where `match` is `exact` (the state or country you wrote matched) or `name` (the biggest place by that name); `null` when a state or country you wrote matches nothing (Open-Meteo geocoding, `cityPoint`, cached in memory) |
-| `GET /api/artist-genres` | Stored artist genres, whether a genre map has been uploaded and every genre you can pick (`{ genres, hasMap, known }`) |
+| `GET /api/artist-genres` | Stored artist genres, whether a genre map has been uploaded, every genre you can pick and whether a CSV upload can be undone (`{ genres, hasMap, known, csvUndo }`, `csvUndo` is `{ at, count }` or `null`) |
+| `GET /api/artist-genres/csv/export` | The acts you can give genres as a CSV download (UTF-8 with BOM, `artists-and-genres-YYYY-MM-DD.csv`) |
+| `POST /api/artist-genres/csv/preview` | Checks an edited CSV's rows (`{ rows: [{ line, name, mbid, newGenres, stamp }] }`, up to 5,000 rows with new genres); saves nothing; returns `{ changes, skipped }` |
+| `POST /api/artist-genres/csv/apply` | Saves the matched, not-stale rows (`{ rows, overwrite: [keys] }`) and records the undo for this upload; returns `{ saved, skipped, batchId }` |
+| `POST /api/artist-genres/csv/undo` | Puts back the latest CSV upload; rows edited since are left alone; returns `{ restored, leftAlone }` (400 when there is no upload to undo) |
 | `POST /api/artist-genres/music-story` | Upload music-story's `artist_genres.json` (up to 25 MB): keeps its genre map and the genres of acts you saw; returns `{ matched, seen, inFile, mapTags }` |
 | `PUT /api/artist-genres/:key` | Your own genres for a seen act (`{ styles }`, up to 10, 60 characters each), or `{ reset: true }` to drop them; returns `{ row }` |
 | `POST /api/artist-genres/musicbrainz` | MusicBrainz genres for up to 5 seen acts (`{ keys }`), read through the genre map; returns `{ genres }` (400 before a genre map is uploaded) |
