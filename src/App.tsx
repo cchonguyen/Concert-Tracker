@@ -29,6 +29,8 @@ import { SharePage } from './components/SharePage';
 import { QuickAdd, QuickAddButton, QuickAddFab } from './components/QuickAdd';
 import { useToast } from './components/ui/Toast';
 import { AboutDialog } from './components/AboutDialog';
+import { LegalDialog } from './components/LegalDialog';
+import type { LegalKind } from './services/legalPage';
 import { ReaderPanel } from './components/ReaderPanel';
 import { FinderReadoutPanel } from './components/FinderReadoutPanel';
 import { DataPanel, exportCsv } from './components/DataActions';
@@ -125,6 +127,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
   const theme = useTheme();
   const [quickAdd, setQuickAdd] = useState(false);
   const [about, setAbout] = useState(false);
+  const [legal, setLegal] = useState<LegalKind | null>(null);
   const [logFor, setLogFor] = useState<string | null>(null);
   const headerRef = useRef<HTMLElement>(null);
   const headerShown = useHideOnScroll(headerRef);
@@ -728,16 +731,33 @@ export default function App({ initialMe }: { initialMe?: Me }) {
           <a href="/demo" className="inline-flex min-h-11 items-center font-medium text-text-muted hover:text-text sm:min-h-9">
             Demo
           </a>
-          <a href="/privacy" className="inline-flex min-h-11 items-center font-medium text-text-muted hover:text-text sm:min-h-9">
+          <a
+            href="/privacy"
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+              e.preventDefault();
+              setLegal('privacy');
+            }}
+            className="inline-flex min-h-11 items-center font-medium text-text-muted hover:text-text sm:min-h-9"
+          >
             Privacy
           </a>
-          <a href="/terms" className="inline-flex min-h-11 items-center font-medium text-text-muted hover:text-text sm:min-h-9">
+          <a
+            href="/terms"
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+              e.preventDefault();
+              setLegal('terms');
+            }}
+            className="inline-flex min-h-11 items-center font-medium text-text-muted hover:text-text sm:min-h-9"
+          >
             Terms
           </a>
           <span>© 2026 Charlie Cho Nguyen</span>
         </nav>
       </footer>
 
+      {legal && <LegalDialog kind={legal} onClose={() => setLegal(null)} />}
       {about && <AboutDialog status={status} onClose={() => setAbout(false)} onShowTips={() => void showTipsAgain()} />}
       {BACK_TO_TOP.includes(shown) && <BackToTop />}
       <QuickAddFab onClick={() => (readOnly ? askSample('add') : setQuickAdd(true))} />
