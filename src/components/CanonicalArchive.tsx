@@ -41,6 +41,7 @@ import { Pill } from './ui/Pill';
 import { Segmented } from './ui/Segmented';
 import { VersionPicker } from './ui/VersionPicker';
 import { PasteSetTimes } from './PasteSetTimes';
+import { GenresPanel } from './GenresPanel';
 import {
   buildManageUrl,
   canonicalArtistUrl,
@@ -53,10 +54,10 @@ import {
 import { useKeptScroll } from './useKeptScroll';
 
 // Global Archive (owner only, spec Phase 4). Each section is one body rendered by ManageView:
-// Artists, Series, Editions & Lineups, Lookups, Changes. Counts only; no member names. Never writes a personal log.
+// Artists, Series, Brands, Genres, Editions & Lineups, Lookups, Changes. Counts only; no member names. Never writes a personal log.
 // The search box and the edition status filter live in ManageView and arrive as props.
 
-export type ArchiveSection = 'artists' | 'series' | 'brands' | 'editions' | 'lookups' | 'changes';
+export type ArchiveSection = 'artists' | 'series' | 'brands' | 'genres' | 'editions' | 'lookups' | 'changes';
 export type EditionStatus = 'all' | 'verified' | 'provisional' | 'draft';
 
 // An edition's status in words. 'confirmed' is the legacy name for verified.
@@ -97,6 +98,7 @@ export const CanonicalArchive: React.FC<{ section: ArchiveSection; query: string
   if (section === 'changes') return <ArchiveChanges />;
   if (section === 'series') return <ArchiveSeries query={query} />;
   if (section === 'brands') return <ArchiveBrands query={query} />;
+  if (section === 'genres') return <GenresPanel query={query} />;
   if (section === 'editions') return <ArchiveEditions query={query} status={status} />;
   return <ArchiveArtists query={query} />;
 };
