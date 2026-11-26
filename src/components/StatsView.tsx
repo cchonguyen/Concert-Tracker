@@ -4,7 +4,7 @@ import { genresApi, LoggedEvent } from '../services/lineupApi';
 import { ArtistGenres, GenreCount, genreMix, genresByArtist } from '../services/genres';
 import { whenLabel } from '../services/format';
 import { attendanceOf } from '../server/events/attendance';
-import { facts, pastEvents, perYear, RankBy, Ranked, seriesStats, SeriesStat, top, YearReview, yearInReview } from '../services/stats';
+import { allTime, AllTime, facts, pastEvents, perYear, RankBy, Ranked, seriesStats, SeriesStat, top, YearReview, yearInReview } from '../services/stats';
 import { barcodeBars } from '../services/ticket';
 import { EventTitle } from './EventTitle';
 import { StubHeader } from './ui/StubHeader';
@@ -35,6 +35,34 @@ const MONTHS = MONTH_NAMES;
 const card = 'rounded-card border border-line bg-surface-1 p-4';
 const title = 'font-display text-lg font-normal leading-tight text-text';
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+// All time: the totals the Table used to show, one cell each, with what each one covers (docs/specs/quiet-tips-table.md).
+const AllTimeStrip: React.FC<{ t: AllTime }> = ({ t }) => {
+  const cells: { k: string; v: string; c: string }[] = [
+    { k: 'Shows', v: t.events.toLocaleString(), c: 'you went to' },
+    { k: 'Acts', v: t.acts.toLocaleString(), c: 'seen live' },
+    { k: 'Venues', v: t.venues.toLocaleString(), c: `in ${t.cities} ${t.cities === 1 ? 'city' : 'cities'}` },
+  ];
+  if (t.firstYear !== undefined && t.lastYear !== undefined) {
+    cells.push({ k: 'Years', v: String(t.lastYear - t.firstYear + 1), c: t.firstYear === t.lastYear ? String(t.firstYear) : `${t.firstYear} to ${t.lastYear}` });
+  }
+  if (t.averageRating !== undefined) cells.push({ k: 'Average rating', v: String(t.averageRating), c: `from ${t.rated} rated` });
+  if (t.totalPrice !== undefined) cells.push({ k: 'Spent', v: Math.round(t.totalPrice).toLocaleString(), c: `on ${t.priced} priced` });
+  return (
+    <section aria-label="All time" className="space-y-2">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">All time</h2>
+      <dl className="grid grid-cols-2 gap-px overflow-hidden border border-line-strong bg-line sm:grid-cols-3 lg:grid-cols-6">
+        {cells.map((cell) => (
+          <div key={cell.k} className="flex flex-col gap-1 bg-surface-1 px-3.5 py-3">
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">{cell.k}</dt>
+            <dd className="font-display text-2xl leading-none text-text tabular-nums">{cell.v}</dd>
+            <dd className="text-xs text-text-muted">{cell.c}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+};
 
 // Events per year as bars; empty years stay as gaps. A bar opens that year in the Table.
 const YearChart: React.FC<{ years: ReturnType<typeof perYear>['years']; onPick: (year: number) => void }> = ({ years, onPick }) => {
@@ -337,6 +365,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
     [past, years, year],
   );
   const f = useMemo(() => facts(past), [past]);
+  const totals = useMemo(() => allTime(events, today), [events, today]);
   const ranks = useMemo(
     () => Object.fromEntries((['artist', 'venue', 'city', 'companion'] as RankBy[]).map((by) => [by, top(past, by, 8)])) as Record<RankBy, Ranked[]>,
     [past],
@@ -381,6 +410,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
 
   return (
     <div className="space-y-6">
+      <AllTimeStrip t={totals} />
       {heldNote}
       {years.length > 0 && (
         <section className={`${card} space-y-2`}>

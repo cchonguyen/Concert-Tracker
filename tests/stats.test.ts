@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LoggedEvent } from '../src/server/events/types.ts';
-import { facts, pastEvents, perYear, top, yearInReview } from '../src/services/stats.ts';
+import { allTime, facts, pastEvents, perYear, top, yearInReview } from '../src/services/stats.ts';
 
 const ev = (id: string, patch: Partial<LoggedEvent>): LoggedEvent => ({
   id,
@@ -76,4 +76,28 @@ test('fun facts: first event, longest break, busiest stretch, acts per event', (
   assert.deepEqual(f.busiestStretch, { events: 2, from: '2021-03-01', to: '2021-03-20' });
   assert.deepEqual(f.actsPerEvent, { average: 1.7, events: 3 });
   assert.equal(facts([]).first, undefined);
+});
+
+test('All time counts shows, acts, venues, cities, years, rating and spend over events you went to', () => {
+  const all = [...events, ev('priced', { startDate: '2024-02-02', venue: 'Pier 70', city: 'San Francisco', region: 'CA', ticketPrice: 80, seen: [act('Bonobo')] })];
+  const t = allTime(all, '2026-10-21');
+  assert.equal(t.events, 6, 'the show still ahead is left out');
+  assert.equal(t.upcoming, 1);
+  assert.equal(t.acts, 3);
+  assert.equal(t.venues, 2, 'The Shrine is one venue however it is spelled');
+  assert.equal(t.cities, 3);
+  assert.equal(t.firstYear, 2021);
+  assert.equal(t.lastYear, 2024);
+  assert.equal(t.rated, 2);
+  assert.equal(t.averageRating, 4.5);
+  assert.equal(t.priced, 1);
+  assert.equal(t.totalPrice, 80);
+});
+
+test('All time over nothing is all zeros with no rating, spend or years', () => {
+  const t = allTime([], '2026-10-21');
+  assert.deepEqual([t.events, t.acts, t.venues, t.cities, t.rated, t.priced], [0, 0, 0, 0, 0, 0]);
+  assert.equal(t.averageRating, undefined);
+  assert.equal(t.totalPrice, undefined);
+  assert.equal(t.firstYear, undefined);
 });
