@@ -795,19 +795,13 @@ const DayChecks: React.FC<{
   );
 };
 
-// The day after an ISO date.
-function nextDay(iso: string): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
 
-// The Date row's "+": adds the next day, or a weekend, so the Weekend row stays hidden on the many events without one.
+// The Date row's "+": opens the date fields or, for a series, the Weekend row, which stays hidden on the many events without one.
 const DateAddMenu: React.FC<{ options: Array<{ label: string; onPick: () => void }> }> = ({ options }) => (
   <Popover
     align="end"
     closeOnPick
-    label="Add to the date"
+    label="Edit dates or weekends"
     content={
       <span className="flex flex-col gap-1">
         {options.map((o) => (
@@ -818,8 +812,11 @@ const DateAddMenu: React.FC<{ options: Array<{ label: string; onPick: () => void
       </span>
     }
   >
-    <span className="inline-flex h-7 w-7 items-center justify-center rounded-control border border-line text-text-muted hover:border-accent hover:text-accent">
-      <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+    {/* The padding widens the hover area around the small "+", so a sweeping pointer does not close the menu. */}
+    <span className="group/add inline-flex sm:p-1.5">
+      <span className="inline-flex h-7 w-7 items-center justify-center rounded-control border border-line text-text-muted group-hover/add:border-accent group-hover/add:text-accent">
+        <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+      </span>
     </span>
   </Popover>
 );
@@ -1675,11 +1672,20 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const state = attendanceOf(event, new Date().toISOString().slice(0, 10));
   // The Weekend row shows when the edition has several weekends, one is picked, or you add it from the Date row's "+".
   const showWeekend = Boolean(edition?.weekends && edition.weekends.length > 1) || (Boolean(event.series) && (event.weekend != null || weekendOpen));
+  // The Date row's "+" sits where the edit icon would be and offers the date fields and, for a series, the weekend.
   const dateAdds = [
-    ...(event.startDate && days.length < 14
-      ? [{ label: "Add a day", onPick: () => void save({ endDate: nextDay(event.endDate ?? event.startDate!) }) }]
+    { label: "Edit dates", onPick: () => setOpenRow("date") },
+    ...(event.series
+      ? [
+          {
+            label: "Edit weekends",
+            onPick: () => {
+              setWeekendOpen(true);
+              window.requestAnimationFrame(() => document.getElementById("weekend-row")?.scrollIntoView({ block: "nearest" }));
+            },
+          },
+        ]
       : []),
-    ...(event.series && !showWeekend ? [{ label: "Add a weekend", onPick: () => setWeekendOpen(true) }] : []),
   ];
   const gapsLeft = thingsLeft(event, (e, g) => hasGap(e, g, undefined, edition ? lineupFacts(edition) : undefined));
   // Scrolls to the section a gap is filled in and highlights it for a moment.
@@ -1913,9 +1919,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             />
 
             {/* Most festivals have one weekend, so this row shows only when the edition has several weekends, one is
-                picked, or you add it from the Date row's "+". */}
+                picked, or you open it from the Date row's "+". */}
             {showWeekend && (
-              <ReadRow icon={CalendarRange} label="Weekend" alwaysOpen>
+              <ReadRow id="weekend-row" icon={CalendarRange} label="Weekend" alwaysOpen>
                 <div className="flex flex-wrap items-center gap-1.5">
                   {(edition?.weekends && edition.weekends.length > 1
                     ? edition.weekends.map((w) => ({ n: w.weekend, label: weekendLabel(w, "WK") }))
@@ -1962,7 +1968,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               flash={flashing.includes("startDate") || flashing.includes("endDate")}
               open={openRow === "date"}
               onOpenChange={(o) => setOpenRow(o ? "date" : null)}
-              action={dateAdds.length > 0 ? <DateAddMenu options={dateAdds} /> : undefined}
+              action={<DateAddMenu options={dateAdds} />}
               editor={() => (
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <Field

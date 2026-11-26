@@ -12,9 +12,9 @@ export function ReadList({ children, className = '' }: { children: ReactNode; cl
 
 // Every read row shares these columns, so icons, labels, values and the right-hand icons line up down the list:
 // the row's icon, its label, the value, an optional action, and the right slot. From `sm` up the info icon sits
-// beside the label and the right slot holds the edit icon (shown on hover). On phones a tap on the row edits it,
-// so there is no edit icon and the info icon takes the right slot.
-const COLUMNS = 'grid grid-cols-[1rem_4.5rem_minmax(0,1fr)_auto_1.5rem] items-center gap-x-1.5 sm:gap-x-2 sm:grid-cols-[1rem_6.5rem_minmax(0,1fr)_auto_1.75rem]';
+// beside the label and there is no right slot: the edit icon overlays the row's right edge on hover. On phones a tap
+// on the row edits it, so there is no edit icon and the info icon takes the right slot.
+const COLUMNS = 'grid grid-cols-[1rem_4.5rem_minmax(0,1fr)_auto_1.5rem] items-center gap-x-1.5 sm:gap-x-2 sm:grid-cols-[1rem_6.5rem_minmax(0,1fr)_auto]';
 
 interface ReadRowProps {
   id?: string;
@@ -34,7 +34,8 @@ interface ReadRowProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   editor?: (close: () => void) => ReactNode;
-  // A small control just left of the edit slot, such as the Date row's "+".
+  // A small control such as the Date row's "+". From `sm` up it takes the edit icon's place at the right edge, always
+  // shown, and the row has no edit icon of its own there.
   action?: ReactNode;
   below?: ReactNode;
   children?: ReactNode;
@@ -127,8 +128,13 @@ export function ReadRow({
     </span>
   );
 
+  const saved = <Check className="h-3.5 w-3.5 text-good" aria-label="Saved" />;
+
   return (
-    <div id={id} className={`group ${COLUMNS} px-3 py-1 ${flash ? 'ring-1 ring-inset ring-good/60' : ''}`}>
+    <div
+      id={id}
+      className={`group/row relative ${COLUMNS} px-3 py-1 transition-colors hover:bg-surface-2/50 ${action ? 'sm:pr-11' : ''} ${flash ? 'ring-1 ring-inset ring-good/60' : ''}`}
+    >
       <Icon className="h-4 w-4 shrink-0 self-center text-text-muted" strokeWidth={1.75} aria-hidden="true" />
       <span className="flex min-w-0 items-center gap-1 text-xs font-medium text-text-muted">
         <span className="min-w-0">{label}</span>
@@ -147,24 +153,33 @@ export function ReadRow({
           {valueText}
         </button>
       )}
-      <span className="flex items-center">{action}</span>
-      <span className="flex items-center justify-end sm:hidden">{flash ? <Check className="h-3.5 w-3.5 text-good" aria-label="Saved" /> : info ? infoButton('end') : null}</span>
-      <span className="hidden items-center justify-end sm:flex">
-        {flash ? (
-          <Check className="h-3.5 w-3.5 text-good" aria-label="Saved" />
-        ) : canEdit ? (
-          <button
-            type="button"
-            tabIndex={alwaysOpen ? 0 : -1}
-            aria-hidden={alwaysOpen ? undefined : true}
-            aria-label={alwaysOpen ? `Edit ${label}` : undefined}
-            onClick={() => setOpen(true)}
-            className={`inline-flex h-7 w-7 items-center justify-center rounded-control text-text-faint opacity-0 transition-opacity hover:text-accent focus-visible:opacity-100 group-hover:opacity-100`}
-          >
-            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
-        ) : null}
-      </span>
+      {/* From `sm` up the action takes the edit icon's place at the right edge and is always shown. */}
+      <span className="flex items-center sm:absolute sm:inset-y-0 sm:right-0 sm:w-10 sm:justify-center">{action}</span>
+      <span className="flex items-center justify-end sm:hidden">{flash ? saved : info ? infoButton('end') : null}</span>
+      {(flash || (canEdit && !action)) && (
+        // Desktop: no column is kept for the edit icon, so the value runs to the row's right edge. On hover the icon
+        // lays a square over that edge, tinted like the hovered row, and the square is its own click target.
+        <span
+          className={`absolute inset-y-0 right-0 hidden w-10 bg-surface-1 transition-opacity sm:block ${flash ? 'opacity-100' : 'opacity-0 focus-within:opacity-100 group-hover/row:opacity-100'}`}
+        >
+          <span className="flex h-full w-full items-center justify-center bg-surface-2/50">
+            {flash ? (
+              saved
+            ) : (
+              <button
+                type="button"
+                tabIndex={alwaysOpen ? 0 : -1}
+                aria-hidden={alwaysOpen ? undefined : true}
+                aria-label={alwaysOpen ? `Edit ${label}` : undefined}
+                onClick={() => setOpen(true)}
+                className="flex h-full w-full items-center justify-center text-text-faint hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+              >
+                <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            )}
+          </span>
+        </span>
+      )}
       {below && <div className="col-span-3 col-start-3 pb-1.5">{below}</div>}
     </div>
   );
