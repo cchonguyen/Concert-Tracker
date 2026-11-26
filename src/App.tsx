@@ -37,6 +37,7 @@ import { SheetSync } from './components/SheetSync';
 import { ManageTarget, ManageView } from './components/ManageView';
 import { LogView } from './components/LogView';
 import { MeProvider, type Me } from './components/MeContext';
+import { TipsButton, TipsProvider } from './components/ui/TipsContext';
 import { NoticeModal } from './components/NoticeModal';
 import { MembersPanel } from './components/MembersPanel';
 import { SampleBanner } from './components/SampleBanner';
@@ -54,7 +55,7 @@ import { Tabs } from './components/ui/Tabs';
 import { Callout } from './components/ui/Callout';
 import { copy } from './services/copy';
 import { ARTIST_MILESTONES, artistMilestoneLine, highestMilestoneCrossed, milestoneCounts, milestoneLine, type MilestoneCounts } from './services/milestones';
-import { loadPrefs, recordMilestone, showTipsAgain } from './services/prefs';
+import { loadPrefs, recordMilestone } from './services/prefs';
 import type { MilestoneSaved } from './server/auth/prefs';
 import { MilestoneCard } from './components/MilestoneCard';
 import { cityOf, filterEvents, filtersFromQuery, GAPS, hasGap, sortRows } from './services/table';
@@ -531,6 +532,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
 
   return (
     <MeProvider me={me}>
+    <TipsProvider email={me.email}>
     {notice && (
       <NoticeModal onAccepted={() => setMe((m) => ({ ...m, noticeAccepted: true }))} />
     )}
@@ -572,6 +574,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
           />
           <div className="flex items-center gap-2 pb-2">
             <QuickAddButton onClick={() => (readOnly ? askSample('add') : setQuickAdd(true))} />
+            <TipsButton />
             <AppHeaderMenu
               theme={theme}
               canMembers={me.multiUser && me.role === 'owner'}
@@ -583,7 +586,6 @@ export default function App({ initialMe }: { initialMe?: Me }) {
               onImport={openImport}
               onExport={() => exportCsv(events, editions)}
               onSheets={openSheets}
-              onShowTips={() => void showTipsAgain()}
             />
           </div>
         </div>
@@ -626,7 +628,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
           </div>
         )}
         {error && <p className="rounded-card border border-bad/45 bg-bad/10 p-3 text-sm text-bad">{error}</p>}
-        {shown in copy.callouts && <Callout id={shown}>{copy.callouts[shown as keyof typeof copy.callouts]}</Callout>}
+        {shown in copy.callouts && <Callout id={shown as keyof typeof copy.callouts}>{copy.callouts[shown as keyof typeof copy.callouts]}</Callout>}
         {shown === 'home' && (
           <HomePage
             canManage={canManage}
@@ -738,7 +740,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
         </nav>
       </footer>
 
-      {about && <AboutDialog status={status} onClose={() => setAbout(false)} onShowTips={() => void showTipsAgain()} />}
+      {about && <AboutDialog status={status} onClose={() => setAbout(false)} />}
       {BACK_TO_TOP.includes(shown) && <BackToTop />}
       <QuickAddFab onClick={() => (readOnly ? askSample('add') : setQuickAdd(true))} />
       <QuickAdd
@@ -818,6 +820,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
           onClose={() => setMilestone(null)}
         />
       )}
+    </TipsProvider>
     </MeProvider>
   );
 }

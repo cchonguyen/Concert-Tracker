@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Download, FileUp, Lightbulb, Menu, Sheet, UserCog, Users } from 'lucide-react';
 import { Theme, ThemeControls } from './ThemePicker';
 import { LogOutLink } from './LogOutLink';
+import { useTips } from './ui/TipsContext';
 
 interface Props {
   theme: Theme;
@@ -14,14 +15,14 @@ interface Props {
   onImport: () => void;
   onExport: () => void; // every event, as CSV
   onSheets: () => void;
-  onShowTips: () => void;
 }
 
 // App header menu for everything about you and the app. A dropdown on desktop and a
 // bottom sheet on phone. Import, Export and Google Sheets sit in one row
 // of icons, and the theme modes in another. Both rows show each icon with its name below.
-export function AppHeaderMenu({ theme, canMembers, canAccount, canSheets, pendingRequests = 0, onMembers, onAccount, onImport, onExport, onSheets, onShowTips }: Props) {
+export function AppHeaderMenu({ theme, canMembers, canAccount, canSheets, pendingRequests = 0, onMembers, onAccount, onImport, onExport, onSheets }: Props) {
   const [open, setOpen] = useState(false);
+  const tips = useTips();
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -102,9 +103,15 @@ export function AppHeaderMenu({ theme, canMembers, canAccount, canSheets, pendin
             <ThemeControls theme={theme} />
           </div>
           <div className="border-t border-line pt-3">
-            <button onClick={() => choose(onShowTips)} className={item}>
+            <button type="button" role="switch" aria-checked={tips.showAll} onClick={() => tips.setAll(!tips.showAll)} className={item}>
               <Lightbulb className="h-3.5 w-3.5" />
-              Show tips again
+              Show all tips
+              <span className="ml-auto inline-flex items-center gap-2 text-xs">
+                {tips.showAll ? 'On' : 'Off'}
+                <span className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors motion-reduce:transition-none ${tips.showAll ? 'bg-accent-fill' : 'bg-line-strong'}`} aria-hidden="true">
+                  <span className={`absolute top-0.5 h-4 w-4 rounded-full transition-transform motion-reduce:transition-none ${tips.showAll ? 'left-[18px] bg-on-accent' : 'left-0.5 bg-text-muted'}`} />
+                </span>
+              </span>
             </button>
             <LogOutLink className={item} />
           </div>
