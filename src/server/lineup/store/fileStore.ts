@@ -406,6 +406,8 @@ export class FileLineupStore implements LineupStore {
       name: keep.name,
       kind,
       ...(brand !== undefined ? { brand } : {}),
+      // The kept series' qualifier stays, as merge_canonical_series leaves that column alone (0058).
+      ...(keep.qualifier?.trim() ? { qualifier: keep.qualifier } : {}),
       ...(city !== undefined ? { city } : {}),
       ...(region !== undefined ? { region } : {}),
       ...(country !== undefined ? { country } : {}),
