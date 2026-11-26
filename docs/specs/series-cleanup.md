@@ -1,6 +1,6 @@
 # Series cleanup: one list, one naming rule, words stored once
 
-Status: proposed 2026-11-26, waiting on Charlie's approval. Triage: `/mnt/project-files/series-cleanup/triage.md`. The full data cleanup list: `/mnt/project-files/series-cleanup/cleanup-list.md` (kept outside the repo because it names one member's own records).
+Status: approved by Charlie 2026-11-26 (plan and the full cleanup list, one yes). Slices not started. Triage: `/mnt/project-files/series-cleanup/triage.md`. The full data cleanup list: `/mnt/project-files/series-cleanup/cleanup-list.md` (kept outside the repo because it names one member's own records).
 
 ## Charlie's decisions (2026-11-26)
 
