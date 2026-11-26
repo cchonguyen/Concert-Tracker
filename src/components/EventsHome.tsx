@@ -10,6 +10,7 @@ import { Ledger, type LedgerEdge } from './ui/Ledger';
 import { StubHeader } from './ui/StubHeader';
 import { KindPill } from './ui/KindPill';
 import { HintPill, type HintTone } from './ui/HintPill';
+import { DateStack } from './ui/DateStack';
 
 interface EventsHomeProps {
   events: LoggedEvent[];
@@ -77,7 +78,12 @@ const Row: React.FC<{ event: LoggedEvent; lineup?: LineupSummary; researching: b
   );
   return (
     <Ledger.Row edge={edge} onOpen={onOpen} fresh={fresh} className="px-3 py-2.5">
-      <span className="w-24 shrink-0 self-start pt-0.5 font-mono text-[11.5px] leading-snug tabular-nums text-text-muted sm:w-32">
+      {/* Phones stack the date in a narrow column, so the name and place get the room. */}
+      <span className="w-12 shrink-0 self-start sm:hidden">
+        <DateStack e={event} />
+        {dateConfirmations(event).length > 0 && <Check className="mx-auto mt-0.5 block h-3 w-3 text-good" aria-label="Date confirmed" />}
+      </span>
+      <span className="hidden w-32 shrink-0 self-start pt-0.5 font-mono text-[11.5px] leading-snug tabular-nums text-text-muted sm:block">
         {whenLabel(event) ?? 'Date unknown'}
         {dateConfirmations(event).length > 0 && <Check className="ml-1 inline h-3 w-3 text-good" aria-label="Date confirmed" />}
       </span>

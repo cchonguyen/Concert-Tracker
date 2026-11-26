@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import type { LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
+import { DateStack } from './ui/DateStack';
 import { artistsOf, eventYear, formatsOf, kindLabel, whenLabel } from '../services/format';
 import { exportCsv } from './DataActions';
 import { tintHue } from '../services/eventTint';
@@ -800,8 +801,8 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                       {i === todayLine && <TodayIndicator />}
                       {showSep && <Ledger.Separator label={yearLabel} count={yearCounts.get(yearLabel)} />}
                       <Ledger.Row edge={edge} onOpen={() => onOpen(e.id)} className="items-start px-3 py-3">
-                        <div className="w-24 shrink-0">
-                          <DateCell e={e} />
+                        <div className="w-12 shrink-0">
+                          <DateStack e={e} />
                         </div>
                         <div className="min-w-0 flex-1 space-y-1.5">
                           <div className="truncate font-medium text-text">
