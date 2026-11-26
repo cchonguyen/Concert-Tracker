@@ -106,10 +106,6 @@ const ARCHIVE_TABS: Array<{ value: ArchiveSection; label: string }> = [
   { value: 'changes', label: 'Changes' },
 ];
 
-// The section as the address bar knows it. Genres is not one of the URL's sections
-// yet, so it is left out of the address (a reload opens the default section).
-const urlSection = (s: ArchiveSection): ManageRouteState['section'] => (s === 'genres' ? undefined : s);
-
 const SCOPE_OPTIONS: SegmentedOption<'mine' | 'archive'>[] = [
   { value: 'mine', label: 'My records' },
   { value: 'archive', label: 'Global archive' },
@@ -451,7 +447,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
             setQuery('');
             const route: ManageRouteState = {
               scope: 'archive',
-              section: urlSection(v),
+              section: v,
               status: v === 'editions' && editionStatus !== 'all' ? editionStatus : undefined,
             };
             const url = buildManageUrl(route, window.location.pathname);
@@ -476,7 +472,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
                   const route: ManageRouteState = archive
                     ? {
                         scope: 'archive',
-                        section: urlSection(archiveSection),
+                        section: archiveSection,
                         status: archiveSection === 'editions' && editionStatus !== 'all' ? editionStatus : undefined,
                         q: nextQ.trim() || undefined,
                       }
@@ -503,7 +499,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
                 setEditionStatus(st);
                 const route: ManageRouteState = {
                   scope: 'archive',
-                  section: urlSection(archiveSection),
+                  section: archiveSection,
                   status: st !== 'all' ? st : undefined,
                   q: query.trim() || undefined,
                 };
