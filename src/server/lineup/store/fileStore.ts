@@ -25,6 +25,7 @@ import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres, GenreChange } from '../../events/genres';
+import type { GenreVocabChange, GenreVocabulary, VocabGenre } from '../../events/genreTypes';
 import { diffEvent, type ActivityDraft, type ActivityEntry } from '../../events/activityLog';
 import { isCiphertext } from '../../auth/vault';
 import { ArtistAliasRow, ArtistEditionRow, CANONICAL_OPERATIONS, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
@@ -41,7 +42,7 @@ import type {
 import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../entities/integrity';
 import type { ShareLink } from '../../share/types';
 import { shareEventOnly } from '../../share/types';
-import type { AiCallRow, GenreChangeQuery, GenreWriteMeta, GenreWriteRow, IngestTraceRow, MergeSummary } from './types';
+import type { AiCallRow, GenreChangeQuery, GenreVocabChangeQuery, GenreVocabWriteMeta, GenreVocabWriteRow, GenreWriteMeta, GenreWriteRow, IngestTraceRow, MergeSummary } from './types';
 import type { CanonicalVenue, EditionChange, EditionInference, InferenceStatus, InferenceVote, NewEditionInference, ReviewQueueItem, ReviewQueueKind, VenueAlias, EditionExternalId } from '../types';
 import { ArtistIdTakenError, assertNoPersonalFields, EditionOccurrenceConflictError, ExternalIdConflictError, venueIdFor } from './types';
 import { normalizeName } from '../normalizeName';
@@ -93,6 +94,8 @@ interface FileState {
   artists: Record<string, ArtistIdentity>;
   artistGenres?: Record<string, ArtistGenres>; // by `${source}|${key}`
   genreChanges?: GenreChange[]; // artist_genre_changes: append-only, only undoneAt is ever set
+  genreVocab?: Record<string, VocabGenre>; // genres with their aliases and umbrellas (0060), by key
+  genreVocabChanges?: GenreVocabChange[]; // genre_changes: append-only, only undoneAt is ever set
   entities?: Record<string, Entity>;
   entityAliases?: EntityAlias[];
   entityLinks?: EntityLink[];
@@ -1049,6 +1052,116 @@ export class FileLineupStore implements LineupStore {
     await this.save();
   }
 
+  // The owner's genre vocabulary (0060), ordered by key, aliases by key, umbrellas sorted.
+  async getGenreVocabulary(): Promise<GenreVocabulary> {
+    const vocab = (await this.load()).genreVocab ?? {};
+    return { genres: vocabImages(vocab, Object.keys(vocab)) };
+  }
+
+  // genre_vocabulary_write (0060): the same checks and refusals as the SQL, all or nothing.
+  async writeGenreVocabulary(after: GenreVocabWriteRow[], meta: GenreVocabWriteMeta): Promise<GenreVocabChange> {
+    if (!Array.isArray(after)) throw new Error('genre_vocabulary_write: p_after must be an array');
+    if (!(meta.actor === 'owner' || (typeof meta.actor === 'string' && meta.actor.startsWith('system:')))) {
+      throw new Error('genre_vocabulary_write: actor must be owner or system:<job>');
+    }
+    if (!VOCAB_OPERATIONS.has(meta.operation)) throw new Error(`genre_vocabulary_write: unknown operation ${meta.operation}`);
+    if (!meta.reason?.trim() || !meta.summary?.trim()) throw new Error('genre_vocabulary_write: a reason and a summary are required');
+    const state = await this.load();
+    let change: GenreVocabChange | undefined;
+    await this.mutateCanonical(state, () => {
+      const vocab = (state.genreVocab ??= {});
+      state.genreVocabChanges ??= [];
+      const keys = after.map((r) => r.key);
+      if (keys.some((k) => typeof k !== 'string' || !k.trim())) throw new Error('genre_vocabulary_write: every entry needs a key');
+      if (new Set(keys).size !== keys.length) throw new Error('genre_vocabulary_write: a genre key is listed twice');
+      const deleted = new Set(after.filter((r) => !r.image).map((r) => r.key));
+      // Touched: the listed genres, and any genre that sits under one being deleted.
+      const touched = new Set(keys);
+      for (const g of Object.values(vocab)) if (g.umbrellas.some((u) => deleted.has(u))) touched.add(g.key);
+      const before = vocabImages(vocab, [...touched]);
+
+      // Clear the listed genres' own links, and delete the genres with no image with every link to them.
+      for (const k of keys) {
+        const g = lookup(vocab, k);
+        if (g) {
+          g.aliases = [];
+          g.umbrellas = [];
+        }
+      }
+      for (const k of deleted) delete vocab[k];
+      for (const g of Object.values(vocab)) g.umbrellas = g.umbrellas.filter((u) => !deleted.has(u));
+
+      const aliasOwner = (aliasKey: string) => Object.values(vocab).find((g) => g.aliases.some((a) => a.key === aliasKey));
+      // Every genre with an image first, so links between listed genres resolve.
+      for (const r of after) {
+        if (!r.image) continue;
+        const name = typeof r.image.name === 'string' ? r.image.name.trim() : '';
+        if (!name) throw new Error(`genre_vocabulary_write: genre ${r.key} needs a name`);
+        if (aliasOwner(r.key)) throw new Error(`genre_vocabulary_write: ${r.key} is already another genre's alias`);
+        const parent = typeof r.image.parent === 'string' ? r.image.parent.trim() : '';
+        vocab[r.key] = { key: r.key, name, ...(parent ? { parent } : {}), aliases: [], umbrellas: [] };
+      }
+      for (const r of after) {
+        if (!r.image) continue;
+        const g = vocab[r.key];
+        for (const a of r.image.aliases ?? []) {
+          const aliasKey = typeof a?.key === 'string' ? a.key : '';
+          const alias = typeof a?.alias === 'string' ? a.alias.trim() : '';
+          if (!aliasKey.trim() || !alias) throw new Error(`genre_vocabulary_write: an alias of ${r.key} needs a key and a spelling`);
+          if (has(vocab, aliasKey)) throw new Error(`genre_vocabulary_write: alias key ${aliasKey} is already a genre key`);
+          if (aliasOwner(aliasKey)) throw new Error(`genre_vocabulary_write: alias key ${aliasKey} is already an alias of another genre`);
+          g.aliases.push({ key: aliasKey, alias });
+        }
+        for (const u of r.image.umbrellas ?? []) {
+          if (u === r.key) throw new Error(`genre_vocabulary_write: ${r.key} cannot sit under itself`);
+          if (!has(vocab, u)) throw new Error(`genre_vocabulary_write: umbrella ${u} is not a genre`);
+          if (!g.umbrellas.includes(u)) g.umbrellas.push(u);
+        }
+      }
+
+      // Umbrella loops: walk up from each new link's umbrella; reaching the genre itself is a loop.
+      for (const k of keys) {
+        for (const u of lookup(vocab, k)?.umbrellas ?? []) {
+          const seen = new Set<string>();
+          const todo = [u];
+          while (todo.length) {
+            const at = todo.pop()!;
+            if (at === k) throw new Error(`genre_vocabulary_write: putting ${k} under ${u} makes an umbrella loop`);
+            if (seen.has(at)) continue;
+            seen.add(at);
+            todo.push(...(lookup(vocab, at)?.umbrellas ?? []));
+          }
+        }
+      }
+
+      change = {
+        id: crypto.randomUUID(),
+        at: new Date().toISOString(),
+        actor: meta.actor,
+        operation: meta.operation,
+        reason: meta.reason,
+        summary: meta.summary,
+        before,
+        after: vocabImages(vocab, [...touched]),
+      };
+      state.genreVocabChanges.push(change);
+    });
+    return clone(change!);
+  }
+
+  async listGenreVocabChanges(q: GenreVocabChangeQuery): Promise<GenreVocabChange[]> {
+    const newest = [...((await this.load()).genreVocabChanges ?? [])].reverse().filter((c) => q.id === undefined || c.id === q.id);
+    return clone(q.limit === undefined ? newest : newest.slice(0, q.limit));
+  }
+
+  // Only undoneAt may be set, once: a change already undone keeps its first time.
+  async markGenreVocabChangesUndone(ids: string[], at: string): Promise<void> {
+    const state = await this.load();
+    const want = new Set(ids);
+    for (const c of state.genreVocabChanges ?? []) if (want.has(c.id) && !c.undoneAt) c.undoneAt = at;
+    await this.save();
+  }
+
   // seen_act_names() (0059): one row per key across every member's live events, the lowest spelling,
   // key and name only. Empty keys and names and vault ciphertext are skipped.
   async listSeenActNames(): Promise<Array<{ key: string; name: string }>> {
@@ -1645,6 +1758,25 @@ function assertCanonicalEntry(entry: SqlCanonicalEntry): void {
   if (!ok) throw new CanonicalStoreError('generic', 'The change has no id, a known operation, or a canonical block.');
 }
 
+const VOCAB_OPERATIONS = new Set<string>(['rename', 'alias-add', 'alias-remove', 'merge', 'parent', 'umbrella-add', 'umbrella-remove', 'spelling', 'create', 'undo']);
+
+// genre_vocabulary_images (0060): the given genres as they are now, ordered by key; a key with no genre is left out.
+function vocabImages(vocab: Record<string, VocabGenre>, keys: string[]): VocabGenre[] {
+  return [...new Set(keys)]
+    .filter((k) => has(vocab, k))
+    .sort()
+    .map((k) => {
+      const g = vocab[k];
+      return {
+        key: g.key,
+        name: g.name,
+        ...(g.parent ? { parent: g.parent } : {}),
+        aliases: [...g.aliases].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)).map((a) => ({ key: a.key, alias: a.alias })),
+        umbrellas: [...g.umbrellas].sort(),
+      };
+    });
+}
+
 function ownerOnly(scope: UserScope): void {
   if (scope.role !== 'owner') throw new CanonicalStoreError('forbidden', 'Only the owner can do this.');
 }
@@ -1992,6 +2124,17 @@ function scopedFileStore(base: FileLineupStore, scope: UserScope): LineupStore {
           async listSeenActNames() {
             ownerOnly(scope);
             return [];
+          },
+          async writeGenreVocabulary(): Promise<GenreVocabChange> {
+            ownerOnly(scope);
+            throw new Error('unreachable');
+          },
+          async listGenreVocabChanges() {
+            ownerOnly(scope);
+            return [];
+          },
+          async markGenreVocabChangesUndone() {
+            ownerOnly(scope);
           },
         }),
     // Each member has their own records (user_entities and friends in Supabase).
