@@ -45,9 +45,9 @@ export function runAsMember<T>(member: SignedInMember, store: LineupStore, fn: (
 }
 
 // Routes a member (not the owner) may not use until their data is split per
-// member: Manage and its records (people are shared records today), genre
-// edits (yours win for everyone),
-// the server's Gmail check (one stored Google sign-in). Sheets is per member
+// member: Manage and its records (people are shared records today), the
+// owner's genre tools (the genres file export and every genre POST: uploads,
+// music-story, MusicBrainz, undo), the server's Gmail check (one stored Google sign-in). Sheets is per member
 // (drive.file, token sealed per user); its sign-in comes back through the
 // Gmail callback address, so that one callback is let through when its state
 // is a Sheets one.
@@ -56,8 +56,11 @@ export function runAsMember<T>(member: SignedInMember, store: LineupStore, fn: (
 const OWNER_ONLY: Array<[method: string | null, pattern: RegExp]> = [
   [null, /^\/api\/gmail(\/|$)/],
   ['POST', /^\/api\/imports\/(email|scan)$/],
-  // The music-story export is the owner's listening data, and MusicBrainz tags
-  // are read through its genre map; members set their own genres (PUT).
+  // Artist genres are shared and only the owner changes them: the genres file
+  // lists every act any member saw, so its export is the owner's alone. The
+  // music-story export and MusicBrainz tags (read through its genre map) are
+  // the owner's too. PUT stays open: a member's PUT sets only their own additions.
+  ['GET', /^\/api\/artist-genres\/csv\//],
   ['POST', /^\/api\/artist-genres\//],
   ['POST', /^\/api\/collaborations(\/|$)/],
   ['DELETE', /^\/api\/collaborations\//],

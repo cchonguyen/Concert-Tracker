@@ -17,6 +17,7 @@ import type { LookupJob } from '../src/server/lineup/types.ts';
 import { accountRouter, membersRouter } from '../src/server/auth/routes.ts';
 import { vaultGuard, vaultRouter } from '../src/server/auth/vault.ts';
 import { peopleRouter } from '../src/server/entities/people.ts';
+import { genresRouter } from '../src/server/events/genreRoutes.ts';
 
 const ev = (id: string, patch: Partial<LoggedEvent> = {}): LoggedEvent => ({
   id, input: id, name: id, sources: {}, details: { status: 'resolved', candidates: [], notes: [] },
@@ -88,7 +89,7 @@ test('share page: a member\'s link shows only that member\'s events', async () =
 });
 
 test('owner-only routes: Gmail, server scans and music-story/MusicBrainz genres', () => {
-  for (const [m, p] of [['GET', '/api/gmail/connect'], ['POST', '/api/imports/email'], ['POST', '/api/artist-genres/music-story'], ['POST', '/api/artist-genres/musicbrainz']]) {
+  for (const [m, p] of [['GET', '/api/gmail/connect'], ['POST', '/api/imports/email'], ['POST', '/api/artist-genres/music-story'], ['POST', '/api/artist-genres/musicbrainz'], ['GET', '/api/artist-genres/csv/export'], ['POST', '/api/artist-genres/k/undo']]) {
     assert.equal(ownerOnly(m, p), true, `${m} ${p}`);
   }
   for (const [m, p] of [['GET', '/api/events'], ['POST', '/api/events'], ['GET', '/api/imports'], ['POST', '/api/imports/proposals'], ['GET', '/api/share'], ['GET', '/api/artist-genres'], ['PUT', '/api/artist-genres/k'], ['GET', '/api/lookups'], ['POST', '/api/lookups'], ['POST', '/api/lookups/j1/run'], ['POST', '/api/lookups/j1/confirm'], ['POST', '/api/events/lineups'], ['POST', '/api/events/e1/lineup'], ['GET', '/api/me'], ['GET', '/api/entities'], ['PATCH', '/api/entities/x'], ['GET', '/api/people'], ['GET', '/api/sheets'], ['PUT', '/api/sheets/values'], ['POST', '/api/sheets/link']]) {
@@ -137,6 +138,7 @@ async function apiFixture() {
   app.use('/api', vaultRouter(scoped));
   app.use('/api', accountRouter(directory, scoped));
   app.use('/api', peopleRouter(scoped));
+  app.use('/api', genresRouter({ store: scoped, fetcher: {} as any, now: () => new Date('2026-11-26T00:00:00Z') } as any));
   app.get('/api/sheets', (_req, res) => res.json({}));
   app.get('/api/gmail/connect', (_req, res) => res.json({}));
   app.get('/api/events', async (_req, res) => res.json({ me: currentMember()?.email, events: (await scoped.listEvents()).map((e) => e.id) }));
@@ -160,7 +162,7 @@ async function apiFixture() {
     const r = await dispatch(app, { ...init, url: route, headers, body: init.body });
     return { status: r.status, body: r.json() as any };
   };
-  return { call };
+  return { call, store };
 }
 
 test('API: no token is 401, a stranger 403, a member sees only their rows, members cannot use owner-only routes', async () => {
@@ -417,4 +419,48 @@ test('genres: a member reads the shared genres plus their own additions; the own
   await assert.rejects(s.forUser(ANN).putArtistGenres([row('x', 'music-story')]), /only keep genres they set/);
   await s.forUser(ANN).deleteArtistGenres('moon garden', 'you');
   assert.deepEqual((await s.forUser(ANN).listArtistGenres()).map((g) => g.key), ['zedd', 'zedd']);
+});
+
+test('API genres: a member cannot export the genres file; a member\'s PUT changes only their own additions', async () => {
+  const { call, store } = await apiFixture();
+  await store.forUser(ANN).putEvent(ev('a1', { seen: [{ key: 'moon garden', name: 'Moon Garden', from: 'you' }] }));
+  assert.equal((await call('ann@example.com', '/api/artist-genres/csv/export')).status, 403);
+  assert.equal((await call('ann@example.com', '/api/artist-genres/moon%20garden/undo', { method: 'POST', body: '{}' })).status, 403);
+  // The owner sets the shared genres (logged).
+  const owner = await call('owner@example.com', '/api/artist-genres/moon%20garden', { method: 'PUT', body: JSON.stringify({ styles: ['house'] }) });
+  assert.equal(owner.status, 200);
+  assert.equal(owner.body.row.source, 'owner');
+  const sharedBefore = (await store.listArtistGenres()).filter((r) => r.source !== 'added');
+  const logBefore = await store.listGenreChanges({ key: 'moon garden' });
+  assert.equal(logBefore.length, 1);
+  // Ann's PUT is her own addition only.
+  const ann = await call('ann@example.com', '/api/artist-genres/moon%20garden', { method: 'PUT', body: JSON.stringify({ styles: ['shoegaze'] }) });
+  assert.equal(ann.status, 200);
+  assert.equal(ann.body.row.source, 'added');
+  assert.deepEqual((await store.listArtistGenres()).filter((r) => r.source !== 'added'), sharedBefore);
+  assert.deepEqual(await store.listGenreChanges({ key: 'moon garden' }), logBefore);
+  const annRows = (await call('ann@example.com', '/api/artist-genres')).body;
+  assert.deepEqual(annRows.genres.map((g: any) => `${g.key}:${g.source}`).sort(), ['moon garden:added', 'moon garden:owner']);
+  assert.equal(annRows.csvUndo, null);
+  // Nobody else sees Ann's addition.
+  assert.ok(!(await call('owner@example.com', '/api/artist-genres')).body.genres.some((g: any) => g.source === 'added'));
+  // The owner's undo route puts the shared row back.
+  const undo = await call('owner@example.com', '/api/artist-genres/moon%20garden/undo', { method: 'POST', body: '{}' });
+  assert.equal(undo.status, 200);
+  assert.ok(!undo.body.rows.some((r: any) => r.source === 'owner'));
+});
+
+test('API genres: a member never gets shared genre rows for another member\'s act; the owner gets every row', async () => {
+  const { call, store } = await apiFixture();
+  await store.forUser(ANN).putEvent(ev('a1', { seen: [{ key: 'moon garden', name: 'Moon Garden', from: 'you' }] }));
+  await store.forUser(BOB).putEvent(ev('b1', { seen: [{ key: 'secret act', name: 'Secret Act', from: 'you' }] }));
+  for (const key of ['moon%20garden', 'secret%20act']) {
+    assert.equal((await call('owner@example.com', `/api/artist-genres/${key}`, { method: 'PUT', body: JSON.stringify({ styles: ['house'] }) })).status, 200);
+  }
+  const keys = async (email: string) => ((await call(email, '/api/artist-genres')).body.genres as any[]).map((g) => g.key).sort();
+  assert.deepEqual(await keys('ann@example.com'), ['moon garden']);
+  assert.deepEqual(await keys('bob@example.com'), ['secret act']);
+  assert.deepEqual(await keys('owner@example.com'), ['moon garden', 'secret act']);
+  const known = ((await call('ann@example.com', '/api/artist-genres')).body.known as any[]);
+  assert.ok(Array.isArray(known));
 });
