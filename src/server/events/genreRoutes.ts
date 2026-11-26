@@ -1,6 +1,14 @@
 import { Router } from 'express';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
 import { GENRE_MAP_SETTING, GenreMapEntry, importMusicStory, knownGenres, musicBrainzGenres, setOwnGenres } from './genres';
+import {
+  GENRES_CSV_UNDO_SETTING,
+  GenresCsvUndoRecord,
+  applyGenresCsv,
+  exportGenresCsv,
+  previewGenresCsv,
+  undoGenresCsv,
+} from './genreCsvApply';
 
 // /api/artist-genres: genres of the acts you saw (see ARCHITECTURE.md, Artist genres).
 export function genresRouter(deps: PipelineDeps): Router {
@@ -10,11 +18,51 @@ export function genresRouter(deps: PipelineDeps): Router {
 
   router.get('/artist-genres', async (_req, res) => {
     try {
-      const [genres, map] = await Promise.all([
+      const [genres, map, undo] = await Promise.all([
         deps.store.listArtistGenres(),
         deps.store.getSetting<GenreMapEntry[]>(GENRE_MAP_SETTING),
+        deps.store.getSetting<GenresCsvUndoRecord>(GENRES_CSV_UNDO_SETTING),
       ]);
-      res.json({ genres, hasMap: Boolean(map?.length), known: knownGenres(map ?? [], genres) });
+      const csvUndo = undo ? { at: undo.at, count: undo.rows.length } : null;
+      res.json({ genres, hasMap: Boolean(map?.length), known: knownGenres(map ?? [], genres), csvUndo });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // The downloadable CSV of the acts you can give genres (see docs/specs/genres-csv.md).
+  router.get('/artist-genres/csv/export', async (_req, res) => {
+    try {
+      const day = deps.now().toISOString().slice(0, 10);
+      res.setHeader('Content-Disposition', `attachment; filename="artists-and-genres-${day}.csv"`);
+      res.type('text/csv; charset=utf-8').send(await exportGenresCsv(deps.store));
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Matches and checks an uploaded file's rows. Changes nothing. Max 5,000 rows with new genres.
+  router.post('/artist-genres/csv/preview', async (req, res) => {
+    try {
+      res.json(await previewGenresCsv(deps.store, req.body));
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Saves the matched, valid, not-stale rows and records the undo for this upload.
+  router.post('/artist-genres/csv/apply', async (req, res) => {
+    try {
+      res.json(await applyGenresCsv(deps.store, req.body, deps.now()));
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Puts back the latest upload (only the latest can be undone).
+  router.post('/artist-genres/csv/undo', async (_req, res) => {
+    try {
+      res.json(await undoGenresCsv(deps.store));
     } catch (err) {
       fail(res, err);
     }

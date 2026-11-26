@@ -454,7 +454,23 @@ export const accountApi = {
 
 // Genres of the acts you saw: the music-story file, then MusicBrainz on request.
 export const genresApi = {
-  list: () => request<{ genres: ArtistGenres[]; hasMap: boolean; known: KnownGenre[] }>('/api/artist-genres'),
+  list: () =>
+    request<{ genres: ArtistGenres[]; hasMap: boolean; known: KnownGenre[]; csvUndo: { at: string; count: number } | null }>('/api/artist-genres'),
+  // The CSV text of the acts you can give genres (the browser downloads it).
+  csvExport: async (): Promise<string> => {
+    const init = await outgoing();
+    const res = await fetch('/api/artist-genres/csv/export', init);
+    if (!res.ok) throw new Error(`Request failed with HTTP ${res.status}`);
+    return res.text();
+  },
+  csvPreview: (rows: unknown[]) =>
+    request<{ changes: unknown[]; skipped: Array<{ line: number; name: string; reason: string }> }>('/api/artist-genres/csv/preview', post({ rows })),
+  csvApply: (rows: unknown[], overwrite: string[]) =>
+    request<{ saved: number; skipped: Array<{ line: number; name: string; reason: string }>; batchId: string | null }>(
+      '/api/artist-genres/csv/apply',
+      post({ rows, overwrite }),
+    ),
+  csvUndo: () => request<{ restored: number; leftAlone: string[] }>('/api/artist-genres/csv/undo', post()),
   setOwn: (key: string, styles: string[]) =>
     request<{ row: ArtistGenres }>(`/api/artist-genres/${encodeURIComponent(key)}`, { method: 'PUT', body: JSON.stringify({ styles }) }).then(
       (r) => r.row,
