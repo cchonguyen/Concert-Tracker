@@ -78,6 +78,7 @@ const control =
   'min-h-11 sm:min-h-9 w-full rounded-control border border-line-strong bg-surface-1 px-3 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none';
 
 const WENT_FILTER_LABELS: Record<Exclude<TableFilters['went'], 'any'>, string> = {
+  all: 'Everything',
   went: 'Went',
   upcoming: 'Upcoming',
   confirm: 'To confirm',
@@ -283,6 +284,12 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const options = useMemo(() => filterOptions(events), [events]);
   const rows = useMemo(() => filterEvents(events, filters, lineups, editions), [events, filters, lineups, editions]);
   const summary = useMemo(() => summarize(rows), [rows]);
+  // Events you didn't go to that the other filters would show; hidden until you ask for them.
+  const hiddenMissed = useMemo(
+    () => (filters.went === 'any' ? filterEvents(events, { ...filters, went: 'missed' }, lineups, editions).length : 0),
+    [events, filters, lineups, editions],
+  );
+  const shownOf = events.length - (filters.went === 'any' ? events.filter((e) => e.attendance === 'missed').length : 0);
   const today = todayProp ?? new Date().toISOString().slice(0, 10);
   const todayLine = useMemo(() => todayLineIndex(rows, filters, today), [rows, filters, today]);
   const active = activeFilterCount(filters);
@@ -552,6 +559,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
               value={filters.went === 'any' ? '' : filters.went}
               onChange={(v) => set({ went: (v || 'any') as TableFilters['went'] })}
               options={[
+                { value: 'all', label: "Everything, with ones you didn't go to" },
                 { value: 'went', label: 'Went' },
                 { value: 'upcoming', label: 'Upcoming' },
                 { value: 'confirm', label: 'Did you go? (to confirm)' },
@@ -574,8 +582,8 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-text-muted">
         <span>
           <span className="font-mono tabular-nums text-text">{summary.events}</span> event{summary.events === 1 ? '' : 's'} you went to
-          {rows.length < events.length && (
-            <span className="font-mono tabular-nums text-text-muted"> ({rows.length} of {events.length} shown)</span>
+          {rows.length < shownOf && (
+            <span className="font-mono tabular-nums text-text-muted"> ({rows.length} of {shownOf} shown)</span>
           )}
           {' · '}
           <span className="font-mono tabular-nums">{summary.acts}</span> act{summary.acts === 1 ? '' : 's'} seen ·{' '}
@@ -595,6 +603,15 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
               {' · '}
               {summary.toConfirm} to confirm
             </button>
+          )}
+          {hiddenMissed > 0 && (
+            <>
+              {' · '}
+              <span className="font-mono tabular-nums">{hiddenMissed}</span> you didn't go to hidden{' '}
+              <button onClick={() => set({ went: 'all' })} className="text-accent hover:underline">
+                Show them
+              </button>
+            </>
           )}
         </span>
         <span className="flex flex-wrap items-center gap-x-4 gap-y-1 whitespace-nowrap [&>button]:min-h-11 sm:[&>button]:min-h-9">

@@ -145,6 +145,8 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
   const hosted = data.links.filter((l) => l.toId === entity.id && l.role === 'hosted_by').map((l) => byId.get(l.fromId)!).filter(Boolean);
   const labelled = data.links.filter((l) => l.toId === entity.id && l.role === 'has_label').map((l) => byId.get(l.fromId)!).filter(Boolean);
   const venuesHere = data.links.filter((l) => l.toId === entity.id && l.role === 'in').map((l) => byId.get(l.fromId)!).filter(Boolean);
+  // The header counts only events you went to, like the Table it links to.
+  const wentCount = wentTo(events, new Date().toISOString().slice(0, 10)).length;
   const tableQuery =
     entity.kind === 'artist'
       ? `artist=${encodeURIComponent(entity.nameNormalized)}`
@@ -174,7 +176,7 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
           <h2 className="truncate font-display text-2xl font-normal text-text">{entityLabel(entity)}</h2>
           <p className="font-mono text-xs tabular-nums text-text-muted">
             {meta.one}
-            {entity.kind !== 'organization' && ` · ${events.length} event${events.length === 1 ? '' : 's'}`}
+            {entity.kind !== 'organization' && ` · ${wentCount} event${wentCount === 1 ? '' : 's'}`}
           </p>
         </div>
         {tableQuery && events.length > 0 && (
