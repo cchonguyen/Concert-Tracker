@@ -13,3 +13,7 @@ Charlie asked for this in the project thread on 2026-11-25 and approved the plan
 ## Files
 
 `src/components/ui/ReadRow.tsx`, `src/components/ui/Popover.tsx` (`align="start"`, `closeOnPick`), `src/components/ui/Segmented.tsx` (`compact`), `src/components/EventDetail.tsx`, `docs/architecture/02` and `15`, `docs/README.md`.
+
+## Magnifying glasses (2026-11-25)
+
+Charlie asked for a magnifying glass at the top right of The edition that runs Check details with the music bars and updates "Where every detail came from", and nothing else for now (no Deep search). The Weather row gets the same glass in its right slot, which looks up the weather with the bars, shown only once the event's last day has passed. The old "Look up the weather" link under the row is gone; a note from the lookup still shows there.

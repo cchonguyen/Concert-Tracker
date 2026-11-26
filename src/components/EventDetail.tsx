@@ -1336,41 +1336,6 @@ const ActEditor: React.FC<{
   );
 };
 
-// The weather on the event's days, with where it was read from; or a button
-// to look it up once there is a past date and a city.
-const Weather: React.FC<{ event: LoggedEvent; busy: boolean; note: string | null; onLookUp: () => void }> = ({ event, busy, note, onLookUp }) => {
-  const w = event.weather;
-  if (w) {
-    return (
-      <div className="space-y-0.5 text-xs">
-        <p className="inline-flex items-center gap-1 text-text-muted">
-          <CloudSun className="h-3.5 w-3.5 text-text-muted" /> Weather
-        </p>
-        <ul className="space-y-0.5 text-text-muted">
-          {w.days.map((d) => (
-            <li key={d.date}>
-              {w.days.length > 1 && <span className="text-text-muted">{whenLabel({ startDate: d.date })}: </span>}
-              {weatherLine(d) || 'No reading'}
-            </li>
-          ))}
-        </ul>
-        <a href={w.sourceUrl} target="_blank" rel="noreferrer" className="text-text-muted hover:text-accent">
-          Open-Meteo archive, {w.place} <ExternalLink className="inline h-2.5 w-2.5" />
-        </a>
-      </div>
-    );
-  }
-  if (!event.startDate || !event.city) return null;
-  return (
-    <div className="space-y-1">
-      <button onClick={onLookUp} disabled={busy} className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-text disabled:opacity-50">
-        {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CloudSun className="h-3 w-3" />} Look up the weather
-      </button>
-      {note && <p className="text-xs text-text-muted">{note}</p>}
-    </div>
-  );
-};
-
 function candidateLine(c: DetailCandidate): string {
   return [whenLabel(c), c.venue, c.city, c.country].filter(Boolean).join(' · ');
 }
@@ -1610,6 +1575,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
       setWeatherNote(r.note ?? null);
       return r.event;
     });
+  // The Weather row's magnifying glass shows only once the event's last day has passed and it has a city:
+  // a lookup before then finds nothing.
+  const weatherDay = event.endDate ?? event.startDate;
+  const canLookUpWeather = Boolean(weatherDay && event.city && weatherDay < new Date().toISOString().slice(0, 10));
   const text = (v: string) => (v.trim() ? v.trim() : null);
 
   const seenKeys = new Set(event.seen.map((s) => s.key));
@@ -1840,9 +1809,19 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             <div className="flex items-center gap-0.5">
               <h3 className={cardTitle}>The edition</h3>
               <SectionHelp label="The edition">
-                Tap a row to change it. Check details, at the bottom, looks for this date and place in other sources.
+                Tap a row to change it. The magnifying glass, or Check details at the bottom, looks for this date and place in other sources.
               </SectionHelp>
             </div>
+            {/* Runs the same plain Check details as the button in "Where every detail came from", whose card shows
+                what it finds. It never starts Deep search. */}
+            <IconButton
+              icon={Search}
+              label={busy === "research" ? "Checking details…" : "Check details"}
+              busy={busy === "research"}
+              disabled={busy === "research" || busy === "research-gemini"}
+              onClick={() => void run("research", () => eventsApi.research(event.id))}
+              className="disabled:cursor-default disabled:opacity-60"
+            />
           </div>
           {needsWeekendPrompt(event, edition) && !weekendPromptDismissed && edition?.weekends && (
             <div className="space-y-2 rounded-lg border border-accent-tint-line bg-accent-tint p-2.5">
@@ -2202,7 +2181,19 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                     infoLabel: "Where this came from",
                   }
                 : {})}
-              below={!event.weather ? <Weather event={event} busy={busy === "weather"} note={weatherNote} onLookUp={lookUpWeather} /> : undefined}
+              action={
+                canLookUpWeather ? (
+                  <IconButton
+                    icon={Search}
+                    label={busy === "weather" ? "Looking up the weather…" : "Look up the weather"}
+                    busy={busy === "weather"}
+                    disabled={busy === "weather"}
+                    onClick={lookUpWeather}
+                    className="disabled:cursor-default disabled:opacity-60"
+                  />
+                ) : undefined
+              }
+              below={weatherNote ? <p className="text-xs text-text-muted">{weatherNote}</p> : undefined}
             />
           </ReadList>
 
