@@ -14,6 +14,7 @@ import type { LineupStore } from '../lineup/store/types';
 import type { CapturedFields, EventOverrides } from '../lineup/types';
 import type { LoggedEvent } from './types';
 import { applyPatch, EventPatch } from './service';
+import { sharedSeriesName } from '../../services/series';
 
 type Shared = 'name' | 'startDate' | 'endDate' | 'venue' | 'city' | 'region' | 'country';
 // Event field, key in captured/overrides, and the edition field it follows.
@@ -102,8 +103,8 @@ export function resolveEvent(e: LoggedEvent, edition: EditionHeader | Edition | 
   }
   if ('series' in overrides) {
     out.series = clean(overrides.series);
-  } else if (edition.seriesSlug && clean(edition.seriesName)) {
-    out.series = clean(edition.seriesName);
+  } else if (sharedSeriesName(edition)) {
+    out.series = sharedSeriesName(edition);
   }
   if (edition.seriesSlug && edition.seriesKind) {
     out.seriesKind = edition.seriesKind === 'tour' ? 'concert' : 'festival';
@@ -198,7 +199,7 @@ export function applyLinkedPatch(
     }
   }
   // Personal series overrides stay local in overrides.series and never enter review_queue.
-  const edSeries = edition!.seriesSlug ? clean(edition!.seriesName) : undefined;
+  const edSeries = sharedSeriesName(edition);
   if ('series' in patch) {
     const before = clean(seen.series);
     const after = clean(patched.series);

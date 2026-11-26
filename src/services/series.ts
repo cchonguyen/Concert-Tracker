@@ -55,6 +55,16 @@ export function seriesDisplayName(s: { name: string; brand?: string; qualifier?:
   return s.kind === 'tour' ? `${brand}: ${qualifier}` : `${brand} ${qualifier}`;
 }
 
+// The shared series name a linked event shows: its edition's series, built
+// from brand and qualifier. Undefined when the edition has no series.
+export function sharedSeriesName(
+  edition: { seriesSlug?: string; seriesName?: string; seriesBrand?: string; seriesQualifier?: string; seriesKind?: 'festival' | 'tour' } | null | undefined,
+): string | undefined {
+  const name = edition?.seriesSlug ? edition.seriesName?.trim() : undefined;
+  if (!edition || !name) return undefined;
+  return seriesDisplayName({ name, brand: edition.seriesBrand, qualifier: edition.seriesQualifier, kind: edition.seriesKind }) || undefined;
+}
+
 // The shown title of a shared edition: its series' name, the year unless it is
 // a tour stop, the night's own subtitle, and the weekend when one is picked
 // ("Coachella 2024 · Weekend 1", "A State of Trance Los Angeles 2025 · 1000").
@@ -101,7 +111,9 @@ export function eventTitle(e: LoggedEvent): string {
 // front, the whole title is `name`.
 export function eventTitleParts(e: LoggedEvent): { artists?: string; name: string } {
   if (e.series) {
-    const name = withPlace(e.series, e.city);
+    // A shared series name already says its place when it needs one, so only your own wording gets the town.
+    const shared = e.seriesKind !== undefined && !('series' in (e.overrides ?? {}));
+    const name = shared ? e.series : withPlace(e.series, e.city);
     const year = eventYear(e);
     const title = year ? `${name} ${year}` : name;
     return { name: e.weekend ? `${title} · Weekend ${e.weekend}` : title };
@@ -194,15 +206,16 @@ export function seriesSuggestions(events: LoggedEvent[]): SeriesSuggestion[] {
   return out.sort((a, b) => b.events.length - a.events.length || a.name.localeCompare(b.name));
 }
 
-// Series names to offer on one event: yours that its name starts with or
-// contains, then the name with its year taken out.
-export function seriesOffers(event: LoggedEvent, events: LoggedEvent[]): string[] {
+// Series names to offer on one event: the shared series of its edition first,
+// then yours that its name starts with or contains, then the name with its
+// year taken out.
+export function seriesOffers(event: LoggedEvent, events: LoggedEvent[], shared?: string): string[] {
   const name = ` ${seriesKey(event.name)} `;
   const yours = seriesList(events)
     .map((g) => g.name)
     .filter((s) => name.includes(` ${seriesKey(s)} `));
   const base = seriesBase(event.name) && withPlace(seriesBase(event.name), event.city);
-  return [...new Set([...yours, ...(base ? [base] : []), ...seriesList(events).map((g) => g.name)])].filter(
+  return [...new Set([...(shared ? [shared] : []), ...yours, ...(base ? [base] : []), ...seriesList(events).map((g) => g.name)])].filter(
     (s) => s !== event.series,
   );
 }
