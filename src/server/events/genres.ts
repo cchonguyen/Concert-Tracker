@@ -4,9 +4,11 @@ import { artistGenreTags, exactMatches } from '../lineup/musicbrainz';
 import { normalizeName } from '../lineup/text';
 import type { Fetcher } from '../lineup/types';
 import type { LineupStore } from '../lineup/store/types';
+import { currentMember } from '../auth/requestScope';
+import { genreUniverse } from './genreCatalog';
 import type { LoggedEvent } from './types';
 import { GENRE_MAP_SETTING, MAX_GENRE_LENGTH, MAX_MUSICBRAINZ_GENRES, MAX_OWN_GENRES, MIN_SHARE, MUSIC_STORY_FORMAT } from './genreTypes';
-import type { ArtistGenres, GenreMapEntry, GenreShare, KnownGenre } from './genreTypes';
+import type { ArtistGenres, GenreChange, GenreMapEntry, GenreShare, GenreSource, KnownGenre } from './genreTypes';
 
 export * from './genreTypes';
 
@@ -15,7 +17,9 @@ export * from './genreTypes';
 // genre map applied to Last.fm, Spotify and MusicBrainz tags), and, only when
 // you ask, MusicBrainz genres for acts that file does not cover, mapped through
 // the same genre map. An act with no genre from either stays without one.
-// Genres you set on an act yourself (source `you`) win over both.
+// The owner's genres (source `owner`) are the shared ones and win over both.
+// A member may add genres of their own (source `added`), shown only to them.
+// Every shared write goes through writeArtistGenres and is logged.
 
 interface MusicStoryArtist {
   name: string;
@@ -131,32 +135,36 @@ export function matchMusicStory(
 }
 
 // Imports a music-story file: keeps its genre map and the genres of every
-// act you saw that it covers. Earlier music-story rows for those acts are replaced.
+// act in the genre universe (catalog, seen acts, owner records) that it covers.
+// Earlier music-story rows for those acts are replaced. One batch per upload.
 export async function importMusicStory(store: LineupStore, raw: unknown, now: Date) {
   const { map, artists } = readMusicStory(raw);
-  const seen = await seenArtists(store, await store.listEvents());
-  const rows = matchMusicStory(artists, seen, await store.getAliases(), now.toISOString());
+  const universe = await genreUniverse(store);
+  const rows = matchMusicStory(artists, universe, await store.getAliases(), now.toISOString());
   await store.putSetting(GENRE_MAP_SETTING, map);
-  await store.putArtistGenres(rows);
-  return { matched: rows.length, seen: seen.length, inFile: artists.length, mapTags: map.length };
+  if (rows.length) {
+    await store.writeArtistGenres(
+      rows.map((r) => ({ key: r.key, source: 'music-story' as const, row: r })),
+      { actor: 'system:music-story', reason: 'music-story file upload', batchId: batchId(now) },
+    );
+  }
+  return { matched: rows.length, seen: universe.length, inFile: artists.length, mapTags: map.length };
 }
 
-// MusicBrainz genres for acts you saw, on request: the stored MusicBrainz ID,
-// or the one artist whose name or alias is exactly the act's name. Two or more
-// such artists, or none, means no genre. A check that finds none is stored
-// too, so the same act is not looked up again unless you ask for it by key.
+const batchId = (now: Date) => `${now.getTime().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+// MusicBrainz genres for acts in the genre universe, on request: the stored
+// MusicBrainz ID, or the one artist whose name or alias is exactly the act's
+// name. Two or more such artists, or none, means no genre. A check that finds
+// none is stored too, so the same act is not looked up again unless asked for by key.
 export async function musicBrainzGenres(store: LineupStore, fetcher: Fetcher, keys: string[], now: Date) {
   if (keys.length > MAX_MUSICBRAINZ_GENRES) throw new InputError(`At most ${MAX_MUSICBRAINZ_GENRES} artists at a time.`);
   const map = await store.getSetting<GenreMapEntry[]>(GENRE_MAP_SETTING);
   if (!map?.length) throw new InputError('Import your music-story file first: its genre map is used to read MusicBrainz genres.');
-  const seen = new Map((await seenArtists(store, await store.listEvents())).map((a) => [a.key, a]));
+  const universe = new Map((await genreUniverse(store)).map((a) => [a.key, a]));
   const rows: ArtistGenres[] = [];
   for (const key of keys) {
-    let act = seen.get(key);
-    if (!act) {
-      const entity = (await store.listEntities()).find((e) => e.kind === 'artist' && !e.mergedIntoId && e.nameNormalized === key);
-      if (entity) act = { key: entity.nameNormalized, name: entity.name };
-    }
+    const act = universe.get(key);
     if (!act) continue;
     let mbid = act.mbid;
     if (!mbid) {
@@ -174,7 +182,12 @@ export async function musicBrainzGenres(store: LineupStore, fetcher: Fetcher, ke
       checkedAt: now.toISOString(),
     });
   }
-  await store.putArtistGenres(rows);
+  if (rows.length) {
+    await store.writeArtistGenres(
+      rows.map((r) => ({ key: r.key, source: 'musicbrainz' as const, row: r })),
+      { actor: 'system:musicbrainz', reason: 'MusicBrainz lookup' },
+    );
+  }
   return rows;
 }
 
@@ -187,19 +200,22 @@ export function knownGenres(map: GenreMapEntry[], rows: ArtistGenres[]): KnownGe
   return [...out.values()].sort((a, b) => a.style.localeCompare(b.style));
 }
 
-// Your own genres for one act you saw ({ name, styles }), equal weights. A
-// style you already know keeps its known spelling and parent genre; a new one
-// is its own parent. An empty list means you say it has none; `reset` drops
-// your genres so the found ones show again.
-// Known genres keyed by lower-case style, for ownGenreRow.
+// Known genres keyed by lower-case style, for the genre rows below.
 export function knownGenreMap(map: GenreMapEntry[], rows: ArtistGenres[]): Map<string, KnownGenre> {
   return new Map(knownGenres(map, rows).map((g) => [g.style.toLowerCase(), g]));
 }
 
-// The row you own for one act: the styles, equal weights, a known style keeping
-// its spelling and parent. Throws InputError past the limits. Shared by
-// setOwnGenres and the genres CSV apply (genreCsvApply.ts). Pure: no store.
-export function ownGenreRow(known: ReadonlyMap<string, KnownGenre>, key: string, name: string, styles: unknown[], now: Date): ArtistGenres {
+// A genre row typed in the app or a file: the styles, equal weights, a known
+// style keeping its spelling and parent, a new one its own parent. An empty
+// list means "none". Throws InputError past the limits. Pure: no store.
+function typedGenreRow(
+  source: GenreSource,
+  known: ReadonlyMap<string, KnownGenre>,
+  key: string,
+  name: string,
+  styles: unknown[],
+  now: Date,
+): ArtistGenres {
   const picked = new Map<string, KnownGenre>();
   for (const raw of styles) {
     const style = String(raw ?? '').replace(/\s+/g, ' ').trim();
@@ -213,23 +229,95 @@ export function ownGenreRow(known: ReadonlyMap<string, KnownGenre>, key: string,
   return {
     key,
     name,
-    source: 'you',
+    source,
     genres: [...picked.values()].map((g) => ({ ...g, weight })),
     checkedAt: now.toISOString(),
   };
 }
 
-export async function setOwnGenres(store: LineupStore, key: string, styles: unknown, now: Date, reset = false) {
+// The owner's shared row for one act (source `owner`).
+export function ownerGenreRow(known: ReadonlyMap<string, KnownGenre>, key: string, name: string, styles: unknown[], now: Date): ArtistGenres {
+  return typedGenreRow('owner', known, key, name, styles, now);
+}
+
+// Legacy row (source `you`), still used by the genres file until it writes `owner` rows.
+export function ownGenreRow(known: ReadonlyMap<string, KnownGenre>, key: string, name: string, styles: unknown[], now: Date): ArtistGenres {
+  return typedGenreRow('you', known, key, name, styles, now);
+}
+
+async function knownFor(store: LineupStore): Promise<Map<string, KnownGenre>> {
+  const [map, rows] = await Promise.all([store.getSetting<GenreMapEntry[]>(GENRE_MAP_SETTING), store.listArtistGenres()]);
+  return knownGenreMap(map ?? [], rows);
+}
+
+// The owner sets the shared genres of one act in the genre universe. An empty
+// list means the owner says it has none; `reset` removes the owner's row so
+// the found genres show again. Logged with actor `owner`.
+export async function setOwnerGenres(store: LineupStore, key: string, styles: unknown, now: Date, reset = false) {
+  const act = (await genreUniverse(store)).find((a) => a.key === key);
+  if (!act) throw new InputError('Only acts in the catalog, seen by a member or in your records can have genres.');
+  if (reset) {
+    await store.writeArtistGenres([{ key, source: 'owner', row: null }], { actor: 'owner', reason: 'Reset to found genres' });
+    return null;
+  }
+  if (!Array.isArray(styles)) throw new InputError('Send { styles: [...] }.');
+  const row = ownerGenreRow(await knownFor(store), key, act.name, styles, now);
+  await store.writeArtistGenres([{ key, source: 'owner', row }], { actor: 'owner', reason: 'Set in the app' });
+  return row;
+}
+
+// A member's own genres for one act they saw or keep a record of, added on top
+// of the shared ones and shown only to them (source `added`, not logged).
+// `reset` removes them.
+export async function setMemberAdditions(store: LineupStore, key: string, styles: unknown, now: Date, reset = false) {
   const seen = (await store.listEvents()).flatMap((e) => e.seen).find((s) => s.key === key);
   const entity = !seen ? (await store.listEntities()).find((e) => e.kind === 'artist' && !e.mergedIntoId && e.nameNormalized === key) : undefined;
   if (!seen && !entity) throw new InputError('Only acts you saw can have genres.');
   if (reset) {
-    await store.deleteArtistGenres(key, 'you');
+    await store.deleteArtistGenres(key, 'added');
     return null;
   }
   if (!Array.isArray(styles)) throw new InputError('Send { styles: [...] }.');
-  const [map, rows] = await Promise.all([store.getSetting<GenreMapEntry[]>(GENRE_MAP_SETTING), store.listArtistGenres()]);
-  const row = ownGenreRow(knownGenreMap(map ?? [], rows), key, (seen?.name ?? entity?.name)!, styles, now);
+  const row = typedGenreRow('added', await knownFor(store), key, (seen?.name ?? entity?.name)!, styles, now);
   await store.putArtistGenres([row]);
   return row;
+}
+
+// PUT /api/artist-genres/:key: the owner (or a store outside a member request)
+// sets the shared genres; a member sets their own additions.
+export async function setOwnGenres(store: LineupStore, key: string, styles: unknown, now: Date, reset = false) {
+  return currentMember()?.role === 'member'
+    ? setMemberAdditions(store, key, styles, now, reset)
+    : setOwnerGenres(store, key, styles, now, reset);
+}
+
+// Shared rows compared without checkedAt: a re-check that changes only the time is not a change.
+function sameRow(a: ArtistGenres | null | undefined, b: ArtistGenres | null | undefined): boolean {
+  const bare = (r: ArtistGenres | null | undefined) =>
+    r
+      ? JSON.stringify({
+          name: r.name,
+          mbid: r.mbid || null,
+          genres: r.genres.map((g) => [g.parent, g.style, g.weight]),
+          sourceUrl: r.sourceUrl || null,
+          inputs: r.inputs?.length ? r.inputs : null,
+        })
+      : null;
+  return bare(a) === bare(b);
+}
+
+const isUndoReason = (reason: string) => /^undo\b/i.test(reason);
+
+// Undoes the newest change to one act's shared genres that is not undone yet
+// (an undo itself is skipped, so repeated undos walk back). Refused when the
+// row was changed since. Restores the row as it was, logged as the owner's Undo.
+export async function undoGenreChange(store: LineupStore, key: string, now: Date): Promise<{ change: GenreChange; restored: ArtistGenres | null }> {
+  const change = (await store.listGenreChanges({ key })).find((c) => !c.undoneAt && !isUndoReason(c.reason));
+  if (!change) throw new InputError('There is no change to undo for this artist.');
+  const current = (await store.listArtistGenres()).find((r) => r.key === key && r.source === change.source) ?? null;
+  if (!sameRow(current, change.after)) throw new InputError('Changed since; nothing undone.');
+  const restored = change.before ? { ...change.before, key, source: change.source } : null;
+  await store.writeArtistGenres([{ key, source: change.source, row: restored }], { actor: 'owner', reason: 'Undo' });
+  await store.markGenreChangesUndone([change.id], now.toISOString());
+  return { change, restored };
 }

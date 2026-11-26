@@ -47,7 +47,7 @@ async function fresh(seen: SeenAct[] = [act('Bonobo')]) {
 
 const line = (name: string, newGenres: string, stamp = '', mbid = '', n = 2) => ({ line: n, name, mbid, newGenres, stamp });
 const ownStyles = async (store: FileLineupStore, key: string) =>
-  (await store.listArtistGenres()).find((r) => r.key === key && r.source === 'you')?.genres.map((g) => g.style) ?? null;
+  (await store.listArtistGenres()).find((r) => r.key === key && r.source === 'owner')?.genres.map((g) => g.style) ?? null;
 
 test('export lists every act once, with the stamp of what shows now', async () => {
   const store = await fresh([act('Bonobo'), act('Bonobo')]);
@@ -120,7 +120,7 @@ test('music-story rows stay stored underneath your genres', async () => {
   ]);
   await applyGenresCsv(store, { rows: [line('Bonobo', 'techno', genreStamp('music-story', ['house']))] }, now);
   const rows = await store.listArtistGenres();
-  assert.deepEqual(rows.map((r) => r.source).sort(), ['music-story', 'you']);
+  assert.deepEqual(rows.map((r) => r.source).sort(), ['music-story', 'owner']);
   assert.deepEqual(genresByArtist(rows).get('bonobo')?.genres.map((g: { style: string }) => g.style), ['techno']);
   // Undo removes yours; the music-story row is still there.
   await undoGenresCsv(store);

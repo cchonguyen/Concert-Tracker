@@ -46,7 +46,7 @@ async function withApp(fn: (app: express.Express, store: FileLineupStore) => Pro
 }
 
 const ownStyles = async (store: FileLineupStore, key: string) =>
-  (await store.listArtistGenres()).find((r) => r.key === key && r.source === 'you')?.genres.map((g) => g.style) ?? null;
+  (await store.listArtistGenres()).find((r) => r.key === key && r.source === 'owner')?.genres.map((g) => g.style) ?? null;
 
 test('GET /api/artist-genres reports whether an upload can be undone', async () => {
   await withApp(async (app) => {
