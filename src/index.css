@@ -493,7 +493,7 @@
    fades out slowly, so sweeping the pointer down a list leaves a short trail. Only where a pointer can hover;
    reduced motion (below) drops the fade. */
 .row-hover {
-  transition: background-color 500ms ease-out;
+  transition: background-color 800ms ease-out;
 }
 @media (hover: hover) {
   .row-hover:hover {
