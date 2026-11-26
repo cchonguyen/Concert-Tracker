@@ -35,7 +35,7 @@ import { placeForVenue } from '../services/venuePlace';
 import { emptyPlaceFields, type VenueLocation } from '../server/canon/venueLocation';
 import { isSampleMode } from '../services/sampleMode';
 import { leaveB2b, pairB2b, seenSlots, SET_LABELS, setSolo, SlotAct, slotId, toSeenInput } from '../server/events/seen';
-import { eventTitle, seriesList, seriesOffers } from '../services/series';
+import { eventTitle, seriesList, seriesOffers, sharedSeriesName } from '../services/series';
 import { SuggestInput } from './SuggestInput';
 import { usePlaceAutofill } from './PlaceFields';
 import { buildPastPlaces, cityPickPatch } from '../services/placeAutofill';
@@ -1886,7 +1886,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                   field="series"
                   value={event.series}
                   placeholder="Festival or tour it's one year of, e.g. EDC Las Vegas"
-                  suggestions={seriesOffers(event, others)}
+                  suggestions={seriesOffers(event, others, sharedSeriesName(edition))}
                   saveOnLeave
                   onSave={(v) => save({ series: text(v), ...(text(v) ? {} : { weekend: null }) })}
                 />
