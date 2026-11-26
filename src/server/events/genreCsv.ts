@@ -75,6 +75,8 @@ export interface GenreChange {
 
 const SOURCE_LABEL: Record<ShownSource, string> = {
   you: 'yours',
+  owner: 'yours', // placeholder until the CSV handles the owner source
+  added: 'yours',
   'music-story': 'music-story',
   musicbrainz: 'MusicBrainz',
   none: 'none',

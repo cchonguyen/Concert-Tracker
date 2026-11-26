@@ -15,6 +15,8 @@ const SOURCE_NAMES: Record<ArtistGenres['source'], string> = {
   'music-story': 'music-story',
   musicbrainz: 'MusicBrainz',
   you: 'you',
+  owner: 'the site owner',
+  added: 'you',
 };
 
 const ActGenres: React.FC<{

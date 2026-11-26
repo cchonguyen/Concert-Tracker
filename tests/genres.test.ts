@@ -16,6 +16,7 @@ import {
 } from '../src/server/events/genres.ts';
 import { genreMix, genresByArtist, missingGenreKeys, topStyles } from '../src/services/genres.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
+import type { GenreSource } from '../src/server/events/genreTypes.ts';
 import { fakeFetcher } from './fakes.ts';
 
 const ev = (id: string, seen: SeenAct[]): LoggedEvent => ({
@@ -154,7 +155,7 @@ test('the stored MusicBrainz ID is used without a search', async () => {
   assert.equal(calls.length, 1);
 });
 
-const row = (key: string, source: 'music-story' | 'musicbrainz' | 'you', styles: Array<[string, string, number]>) => ({
+const row = (key: string, source: GenreSource, styles: Array<[string, string, number]>) => ({
   key,
   name: key,
   source,
@@ -264,4 +265,54 @@ test('setOwnGenres allows setting genres for an artist entity from Manage', asyn
   assert.equal(mbRows.length, 1);
   assert.equal(mbRows[0].name, 'Caribou');
   assert.deepEqual(mbRows[0].genres, [{ parent: 'electronic', style: 'techno', weight: 1 }]);
+});
+
+test('owner genres win over legacy you and every other source; missing treats owner as done', () => {
+  const by = genresByArtist([
+    row('a', 'you', [['electronic', 'techno', 1]]),
+    row('a', 'owner', [['rock', 'indie rock', 1]]),
+    row('a', 'music-story', [['electronic', 'house', 1]]),
+    row('b', 'music-story', [['electronic', 'house', 1]]),
+    row('b', 'owner', []),
+    row('c', 'musicbrainz', [['rock', 'indie rock', 1]]),
+    row('c', 'you', [['electronic', 'techno', 1]]),
+  ]);
+  assert.deepEqual(topStyles(by.get('a')), ['indie rock']);
+  assert.equal(by.get('a')?.source, 'owner');
+  assert.deepEqual(topStyles(by.get('b')), []);
+  assert.deepEqual(topStyles(by.get('c')), ['techno']);
+  assert.deepEqual(missingGenreKeys([ev('e', [act('C'), act('D')])], [row('c', 'owner', []), row('d', 'added', [['rock', 'rock', 1]])]), ['d']);
+});
+
+test('a member\'s additions go after the shared base, deduped, with scaled weights', () => {
+  const by = genresByArtist([
+    row('a', 'music-story', [['rock', 'rock', 0.7], ['pop', 'pop', 0.3]]),
+    row('a', 'added', [['rock', ' ROCK ', 0.5], ['jazz', 'jazz', 0.5]]),
+    row('b', 'added', [['jazz', 'jazz', 1], ['soul', 'soul', 1]]),
+    row('c', 'musicbrainz', []),
+    row('c', 'added', [['jazz', 'jazz', 1]]),
+    row('d', 'owner', [['rock', 'rock', 1]]),
+    row('d', 'added', []),
+    row('e', 'owner', [['rock', 'rock', 1]]),
+    row('e', 'added', [['rock', 'Rock', 1]]),
+  ]);
+  const a = by.get('a')!;
+  assert.equal(a.source, 'music-story');
+  assert.deepEqual(a.added, ['jazz']);
+  assert.deepEqual(a.genres.map((g) => g.style), ['rock', 'pop', 'jazz']);
+  assert.deepEqual(a.genres.map((g) => Math.round(g.weight * 1000) / 1000), [0.467, 0.2, 0.333]);
+  const b = by.get('b')!;
+  assert.equal(b.source, 'added');
+  assert.deepEqual(b.genres.map((g) => [g.style, g.weight]), [['jazz', 0.5], ['soul', 0.5]]);
+  const c = by.get('c')!;
+  assert.equal(c.source, 'added');
+  assert.deepEqual(c.genres.map((g) => [g.style, g.weight]), [['jazz', 1]]);
+  assert.deepEqual(by.get('d')?.genres.map((g) => [g.style, g.weight]), [['rock', 1]]);
+  assert.equal(by.get('d')?.added, undefined);
+  assert.equal(by.get('e')?.added, undefined);
+
+  const mix = genreMix([ev('e1', [act('A'), act('B')])], by);
+  assert.equal(mix.known, 2);
+  const styles = Object.fromEntries(mix.styles.map((s) => [s.name, Math.round(s.sets * 1000) / 1000]));
+  assert.deepEqual(styles, { jazz: 0.833, soul: 0.5, rock: 0.467, pop: 0.2 });
 });
