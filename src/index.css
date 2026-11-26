@@ -382,11 +382,52 @@
 
 /* Ticket stub (docs/specs/ticket-stub.md). Structure, paper, perforation and notches are
    classes here because pseudo-elements and gradients are not Tailwind utilities. Text and spacing
-   stay in the components. --ticket-ground is the surface behind a ticket or stub header: the notch
-   circles are painted in it so they look cut out. Callers override it with an inline style. */
+   stay in the components. The notches are real holes (2026-11-26): the ticket's paper and border are
+   painted on a ::before layer that a mask cuts at --notch-a and --notch-b, so whatever is behind the
+   ticket shows through. The notch circles' outlines are drawn by the stub's own pseudo-elements. */
 .ticket-card,
 .stub-header {
-  --ticket-ground: var(--color-page);
+  isolation: isolate;
+}
+.ticket-card::before,
+.stub-header::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  pointer-events: none;
+  border: 1px solid var(--color-perf);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+.ticket-card::before {
+  background: linear-gradient(120deg, var(--la-paper) 0%, var(--la-paper-2) 100%);
+  mask-image:
+    radial-gradient(circle 11px at var(--notch-a), transparent 10.5px, #000 11px),
+    radial-gradient(circle 11px at var(--notch-b), transparent 10.5px, #000 11px);
+}
+.stub-header::before {
+  background: var(--color-surface-1);
+  border-color: var(--color-line-strong);
+  mask-image:
+    radial-gradient(circle 16px at 0 var(--tear-y, -99px), transparent 15.5px, #000 16px),
+    radial-gradient(circle 16px at 100% var(--tear-y, -99px), transparent 15.5px, #000 16px);
+}
+/* The stub header's paper band reaches down to the perforation, so it is cut too. */
+.stub-header .ticket-paper {
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  mask-image:
+    radial-gradient(circle 16px at -1px calc(100% - 1px), transparent 15.5px, #000 16px),
+    radial-gradient(circle 16px at calc(100% + 1px) calc(100% - 1px), transparent 15.5px, #000 16px);
+}
+.ticket-cols {
+  --notch-a: var(--notch-x, calc(100% - var(--ticket-stub-w, 230px) - 2px)) 0;
+  --notch-b: var(--notch-x, calc(100% - var(--ticket-stub-w, 230px) - 2px)) 100%;
+}
+.ticket-rows {
+  --notch-a: 0 var(--notch-y, -99px);
+  --notch-b: 100% var(--notch-y, -99px);
 }
 .ticket-paper {
   background: linear-gradient(120deg, var(--la-paper) 0%, var(--la-paper-2) 100%);
@@ -409,7 +450,12 @@
     box-shadow 220ms ease;
 }
 .ticket-cols .ticket-stub {
-  border-left: 2px dashed var(--color-perf);
+  /* The tear is painted dashes that stop short of the notches, so no dash crosses a hole. */
+  border-left: 2px solid transparent;
+  background: repeating-linear-gradient(to bottom, var(--color-perf) 0 6px, transparent 6px 11px) no-repeat;
+  background-origin: border-box;
+  background-size: 2px calc(100% - 22px);
+  background-position: 0 11px;
   padding: 16px 16px 14px;
 }
 .ticket-rows .ticket-stub {
@@ -418,7 +464,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px 14px;
-  border-top: 2px dashed var(--color-perf);
+  border-top: 2px solid transparent;
+  background: repeating-linear-gradient(to right, var(--color-perf) 0 6px, transparent 6px 11px) no-repeat;
+  background-origin: border-box;
+  background-size: calc(100% - 22px) 2px;
+  background-position: 11px 0;
   padding: 12px 14px;
 }
 .ticket-stub::before,
@@ -428,7 +478,7 @@
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: var(--ticket-ground);
+  background: transparent;
   border: 1px solid var(--color-perf);
   pointer-events: none;
 }
@@ -476,7 +526,7 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: var(--ticket-ground);
+  background: transparent;
   border: 1px solid var(--color-line-strong);
   pointer-events: none;
 }

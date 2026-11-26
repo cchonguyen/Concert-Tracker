@@ -11,6 +11,7 @@ import { Ticket as TicketCard, TicketEventLine, TicketHeadline, TicketKicker, Ti
 import type { YearReview } from '../services/stats';
 import { barcodeBars, shortDate, ticketLines, type TicketAct } from '../services/ticket';
 import { placeLabel, whenLabel } from '../services/format';
+import { NameList } from './ui/NameList';
 
 interface HomePageProps {
   canManage: boolean;
@@ -63,7 +64,9 @@ function SmallShowTicket({
       {lines.showEventLine && <TicketEventLine>{event.name}</TicketEventLine>}
       {(lines.small.length > 0 || lines.moreHeadliners > 0) && (
         <TicketSmallLine>
-          {[lines.small.join(', '), lines.moreHeadliners > 0 ? `+${lines.moreHeadliners} more` : ''].filter(Boolean).join(' · ')}
+          <NameList names={lines.small} />
+          {lines.small.length > 0 && lines.moreHeadliners > 0 && ' · '}
+          {lines.moreHeadliners > 0 && `+${lines.moreHeadliners} more`}
         </TicketSmallLine>
       )}
       {where && <TicketSmallLine>{where}</TicketSmallLine>}
