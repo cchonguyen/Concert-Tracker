@@ -288,14 +288,27 @@ test('matchCsvRows uses an alias from artist_aliases', () => {
   assert.equal(matched[0].act.key, 'bjork');
 });
 
-test('matchCsvRows skips a name that an alias makes match two acts', () => {
+test('matchCsvRows: a name with its own row wins over a rename to another act', () => {
+  // Both the renamed name and its target were exported, as in
+  // "Porter Robinson (DJ Set)" renamed to "Porter Robinson".
+  const aliases = { 'the rolling stones': 'Rolling Stones', 'rolling stones': 'The Rolling Stones' };
   const { matched, skipped } = matchCsvRows(
-    [row({ name: 'The Rolling Stones', newGenres: 'rock' })],
+    [row({ line: 2, name: 'The Rolling Stones', newGenres: 'rock' }), row({ line: 3, name: 'Rolling Stones', newGenres: 'blues' })],
     acts,
-    { 'the rolling stones': 'Rolling Stones' },
+    aliases,
   );
-  assert.equal(matched.length, 0);
-  assert.equal(skipped[0].reason, 'the name matches more than one act');
+  assert.deepEqual(skipped, []);
+  assert.deepEqual(matched.map((m) => m.act.key), ['the rolling stones', 'rolling stones']);
+});
+
+test('matchCsvRows uses a rename only when the name has no row of its own', () => {
+  const { matched, skipped } = matchCsvRows(
+    [row({ name: 'Stones', newGenres: 'rock' })],
+    acts,
+    { stones: 'The Rolling Stones' },
+  );
+  assert.deepEqual(skipped, []);
+  assert.equal(matched[0].act.key, 'the rolling stones');
 });
 
 test('matchCsvRows prefers the ID and skips when the name points to another act', () => {
