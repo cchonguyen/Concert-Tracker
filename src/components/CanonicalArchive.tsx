@@ -30,6 +30,7 @@ import { SuggestInput } from './SuggestInput';
 import { shortDateRange, weatherLine, weekendLabel } from '../services/format';
 import { buildPastPlaces, cityPickPatch, formatPlaceLabel, unanimousPlace } from '../services/placeAutofill';
 import { seedMultiWeekends } from '../services/weekends';
+import { seriesDisplayName } from '../services/series';
 import { Button } from './ui/Button';
 import { Callout } from './ui/Callout';
 import { Equalizer } from './ui/Equalizer';
@@ -830,6 +831,7 @@ const SeriesDetail: React.FC<{
   const [kind, setKind] = useState<SeriesKind | null>(null);
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
+  const [qualifier, setQualifier] = useState('');
   const [city, setCity] = useState('');
   const [region, setRegion] = useState('');
   const [country, setCountry] = useState('');
@@ -866,6 +868,7 @@ const SeriesDetail: React.FC<{
       setKind(res.series.kind === 'tour' || res.series.kind === 'festival' ? res.series.kind : null);
       setName(res.series.name);
       setBrand(res.series.brand ?? '');
+      setQualifier(res.series.qualifier ?? '');
       setCity(res.series.city ?? '');
       setRegion(res.series.region ?? '');
       setCountry(res.series.country ?? '');
@@ -887,17 +890,22 @@ const SeriesDetail: React.FC<{
     setSourcePriority((prev) => (prev.includes(src) ? prev.filter((x) => x !== src) : [...prev, src]));
   };
 
+  // With a brand and a place or tour name, the name is built from them and not typed (series cleanup).
+  const builtName =
+    brand.trim() && qualifier.trim() ? seriesDisplayName({ name, brand, qualifier, kind: kind ?? undefined }) : null;
+
   const saveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || saving) return;
+    if (!(builtName ?? name).trim() || saving) return;
     setSaving(true);
     setError(null);
     setNotice(null);
     try {
       const updated = await canonicalApi.updateSeries(slug, {
-        name: name.trim(),
+        name: (builtName ?? name).trim(),
         ...(kind ? { kind } : {}),
         brand: brand.trim() || null,
+        qualifier: qualifier.trim() || null,
         ...(kind !== 'tour'
           ? {
               city: city.trim() || null,
@@ -1016,7 +1024,14 @@ const SeriesDetail: React.FC<{
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="space-y-1 text-xs text-text-muted">
               <span className="block text-[11px] uppercase text-text-muted">Name</span>
-              <input required className={`${field} w-full`} value={name} onChange={(e) => setName(e.target.value)} />
+              <input
+                required
+                readOnly={builtName !== null}
+                title={builtName !== null ? 'Built from the brand and the place or tour name.' : undefined}
+                className={`${field} w-full`}
+                value={builtName ?? name}
+                onChange={(e) => setName(e.target.value)}
+              />
             </label>
             <label className="space-y-1 text-xs text-text-muted">
               <span className="block text-[11px] uppercase text-text-muted">Brand</span>
@@ -1027,6 +1042,16 @@ const SeriesDetail: React.FC<{
                 suggestions={seriesBrands}
                 onChange={(e) => setBrand(e.target.value)}
                 onPick={(b) => setBrand(b)}
+              />
+            </label>
+            <label className="space-y-1 text-xs text-text-muted">
+              <span className="block text-[11px] uppercase text-text-muted">{kind === 'tour' ? 'Tour name' : 'Place'}</span>
+              <input
+                className={`${field} w-full`}
+                placeholder={kind === 'tour' ? 'Optional, e.g. Duality Tour' : 'Optional, e.g. SoCal'}
+                value={qualifier}
+                onChange={(e) => setQualifier(e.target.value)}
+                maxLength={120}
               />
             </label>
             {kind !== 'tour' ? (

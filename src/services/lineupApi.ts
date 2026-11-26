@@ -765,6 +765,7 @@ export const canonicalApi = {
     slug?: string;
     kind?: SeriesKind;
     brand?: string;
+    qualifier?: string;
     city?: string | null;
     region?: string | null;
     country?: string | null;
@@ -779,6 +780,7 @@ export const canonicalApi = {
       name?: string;
       kind?: SeriesKind;
       brand?: string | null;
+      qualifier?: string | null;
       city?: string | null;
       region?: string | null;
       country?: string | null;
