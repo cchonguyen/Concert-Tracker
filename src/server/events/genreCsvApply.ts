@@ -3,10 +3,12 @@
 // writes the store. No model calls. Spec: docs/specs/genres-csv.md.
 
 import { InputError } from '../lineup/pipeline';
+import { CanonicalStoreError } from '../lineup/store/types';
 import type { LineupStore } from '../lineup/store/types';
+import { genreUniverse } from './genreCatalog';
 import { genresByArtist } from '../../services/genres';
 import { GENRE_MAP_SETTING, knownGenreMap, knownGenres, ownerGenreRow } from './genres';
-import type { ArtistGenres, GenreMapEntry, GenreShare, KnownGenre } from './genreTypes';
+import type { ArtistGenres, GenreChange as LoggedGenreChange, GenreMapEntry, GenreShare, KnownGenre } from './genreTypes';
 import {
   MAX_CSV_ROWS,
   changesToSave,
@@ -16,13 +18,16 @@ import {
 } from './genreCsv';
 import type { CsvAct, GenreChange, GenreCsvRow, SkippedRow } from './genreCsv';
 
-// app_settings key of the latest upload's undo record (one per person).
+// app_settings key of the old undo record, from before undo read the change log.
+// It is ignored, and cleared (set to null) when an apply or undo finds it.
 export const GENRES_CSV_UNDO_SETTING = 'genres_csv_undo';
 
-export interface GenresCsvUndoRecord {
-  batchId: string;
-  at: string;
-  rows: Array<{ key: string; name: string; before: ArtistGenres | null; after: ArtistGenres }>;
+// The reasons written to artist_genre_changes by an upload and by its undo.
+export const UPLOAD_REASON = 'Genres file upload';
+export const UNDO_REASON = 'Undo genres file upload';
+
+async function clearOldUndoSetting(store: LineupStore): Promise<void> {
+  if ((await store.getSetting(GENRES_CSV_UNDO_SETTING)) != null) await store.putSetting(GENRES_CSV_UNDO_SETTING, null);
 }
 
 interface Catalog {
@@ -33,27 +38,18 @@ interface Catalog {
   rows: ArtistGenres[];
 }
 
-// Every act you can give genres: each seen act, plus every live artist record,
-// once by key. Each row shows what genresByArtist shows.
+// Every act that can have shared genres (genreUniverse: the lineup catalog with
+// its MusicBrainz IDs, every member's seen acts by name only, the owner's
+// records), once by key. Each row shows what genresByArtist shows.
 async function loadCatalog(store: LineupStore): Promise<Catalog> {
-  const [events, entities, map, rows, aliases] = await Promise.all([
-    store.listEvents(),
-    store.listEntities(),
+  const [universe, map, rows, aliases] = await Promise.all([
+    genreUniverse(store),
     store.getSetting<GenreMapEntry[]>(GENRE_MAP_SETTING),
     store.listArtistGenres(),
     store.getAliases(),
   ]);
-  const byKey = new Map<string, { key: string; name: string; mbid?: string }>();
-  for (const e of events) for (const s of e.seen) if (!byKey.has(s.key)) byKey.set(s.key, { key: s.key, name: s.name });
-  for (const e of entities) {
-    if (e.kind === 'artist' && !e.mergedIntoId && !byKey.has(e.nameNormalized)) byKey.set(e.nameNormalized, { key: e.nameNormalized, name: e.name });
-  }
-  for (const a of await store.getArtists([...byKey.keys()])) {
-    const act = byKey.get(a.key);
-    if (act && a.mbid) act.mbid = a.mbid;
-  }
   const shown = genresByArtist(rows);
-  const acts: CsvAct[] = [...byKey.values()].map((a) => {
+  const acts: CsvAct[] = universe.map((a) => {
     const g = shown.get(a.key);
     return {
       key: a.key,
@@ -117,9 +113,9 @@ export interface GenresCsvApplyResult {
   batchId: string | null;
 }
 
-// Saves the matched, valid rows that are not stale (or are ticked in `overwrite`),
-// and records the undo for this upload. A new upload replaces the undo record.
-// An upload that saves nothing leaves the previous undo record as it is.
+// Saves the matched, valid rows that are not stale (or are ticked in `overwrite`)
+// as shared `owner` rows, one batch in the change log. The newest batch is the
+// one an undo puts back. An upload that saves nothing writes no batch.
 export async function applyGenresCsv(store: LineupStore, input: unknown, now: Date): Promise<GenresCsvApplyResult> {
   const rows = readUploadRows(input);
   const overwrite = readOverwrite(input);
@@ -132,23 +128,18 @@ export async function applyGenresCsv(store: LineupStore, input: unknown, now: Da
   }
   skipped.sort((a, b) => a.line - b.line);
 
-  const ownBefore = new Map(cat.rows.filter((r) => r.source === 'owner').map((r) => [r.key, r]));
   const saving: ArtistGenres[] = [];
-  const undoRows: GenresCsvUndoRecord['rows'] = [];
   for (const c of changesToSave(changes, overwrite)) {
-    const row = ownerGenreRow(cat.knownMap, c.key, c.name, c.after.map((a) => a.style), now);
-    saving.push(row);
-    undoRows.push({ key: c.key, name: c.name, before: ownBefore.get(c.key) ?? null, after: row });
+    saving.push(ownerGenreRow(cat.knownMap, c.key, c.name, c.after.map((a) => a.style), now));
   }
+  await clearOldUndoSetting(store);
   if (saving.length === 0) return { saved: 0, skipped, batchId: null };
 
   const batchId = `${now.getTime().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   await store.writeArtistGenres(
     saving.map((row) => ({ key: row.key, source: 'owner' as const, row })),
-    { actor: 'owner', reason: 'Genres file upload', batchId },
+    { actor: 'owner', reason: UPLOAD_REASON, batchId },
   );
-  const record: GenresCsvUndoRecord = { batchId, at: now.toISOString(), rows: undoRows };
-  await store.putSetting(GENRES_CSV_UNDO_SETTING, record);
   return { saved: saving.length, skipped, batchId };
 }
 
@@ -163,25 +154,49 @@ export interface GenresCsvUndoResult {
   leftAlone: string[]; // acts edited after the upload, left as they are
 }
 
-// Puts back the latest upload. A row whose owner genres no longer equal what
-// the upload saved (edited since) is left alone. The record is then removed.
-export async function undoGenresCsv(store: LineupStore): Promise<GenresCsvUndoResult> {
-  const record = await store.getSetting<GenresCsvUndoRecord>(GENRES_CSV_UNDO_SETTING);
-  if (!record) throw new InputError('There is no upload to undo.');
+// The latest upload that can be undone, from the change log. A member cannot
+// read the log, so a member gets null.
+async function latestUpload(store: LineupStore): Promise<LoggedGenreChange[]> {
+  try {
+    return await store.listGenreChanges({ latestBatchReason: UPLOAD_REASON });
+  } catch (err) {
+    if (err instanceof CanonicalStoreError && err.code === 'forbidden') return [];
+    throw err;
+  }
+}
+
+// What GET /api/artist-genres reports: when the latest upload was saved and how
+// many acts it changed, or null when there is nothing to undo.
+export async function genresCsvUndoStatus(store: LineupStore): Promise<{ at: string; count: number } | null> {
+  const changes = await latestUpload(store);
+  if (!changes.length) return null;
+  // The upload's own time (the saved rows' checkedAt, the app clock at Apply), else the log time.
+  const when = (c: LoggedGenreChange) => c.after?.checkedAt || c.at;
+  const at = changes.map(when).reduce((max, t) => (t > max ? t : max));
+  return { at, count: new Set(changes.map((c) => c.key)).size };
+}
+
+const keyName = (c: LoggedGenreChange) => c.after?.name ?? c.before?.name ?? c.key;
+
+// Puts back the latest upload, read from artist_genre_changes. A row whose owner
+// genres no longer equal what the upload saved (edited since) is left alone and
+// named. The restore is one logged write; the upload's changes are marked undone.
+export async function undoGenresCsv(store: LineupStore, now: Date = new Date()): Promise<GenresCsvUndoResult> {
+  await clearOldUndoSetting(store);
+  const changes = await latestUpload(store);
+  if (!changes.length) throw new InputError('There is no upload to undo.');
   const own = new Map((await store.listArtistGenres()).filter((r) => r.source === 'owner').map((r) => [r.key, r]));
   const restore: Array<{ key: string; source: 'owner'; row: ArtistGenres | null }> = [];
   const leftAlone: string[] = [];
-  let restored = 0;
-  for (const r of record.rows) {
-    const current = own.get(r.key);
-    if (!current || genreSignature(current.genres) !== genreSignature(r.after.genres)) {
-      leftAlone.push(r.name);
+  for (const c of changes) {
+    const current = own.get(c.key);
+    if (!current || !c.after || genreSignature(current.genres) !== genreSignature(c.after.genres)) {
+      leftAlone.push(keyName(c));
       continue;
     }
-    restore.push({ key: r.key, source: 'owner', row: r.before && { ...r.before, source: 'owner' } });
-    restored += 1;
+    restore.push({ key: c.key, source: 'owner', row: c.before && { ...c.before, source: 'owner' } });
   }
-  if (restore.length) await store.writeArtistGenres(restore, { actor: 'owner', reason: 'Undo genres file upload' });
-  await store.putSetting<GenresCsvUndoRecord | null>(GENRES_CSV_UNDO_SETTING, null);
-  return { restored, leftAlone };
+  if (restore.length) await store.writeArtistGenres(restore, { actor: 'owner', reason: UNDO_REASON });
+  await store.markGenreChangesUndone(changes.map((c) => c.id), now.toISOString());
+  return { restored: restore.length, leftAlone };
 }

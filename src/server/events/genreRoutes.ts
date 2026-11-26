@@ -2,10 +2,9 @@ import { Router } from 'express';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
 import { GENRE_MAP_SETTING, GenreMapEntry, importMusicStory, knownGenres, musicBrainzGenres, setOwnGenres } from './genres';
 import {
-  GENRES_CSV_UNDO_SETTING,
-  GenresCsvUndoRecord,
   applyGenresCsv,
   exportGenresCsv,
+  genresCsvUndoStatus,
   previewGenresCsv,
   undoGenresCsv,
 } from './genreCsvApply';
@@ -18,12 +17,11 @@ export function genresRouter(deps: PipelineDeps): Router {
 
   router.get('/artist-genres', async (_req, res) => {
     try {
-      const [genres, map, undo] = await Promise.all([
+      const [genres, map, csvUndo] = await Promise.all([
         deps.store.listArtistGenres(),
         deps.store.getSetting<GenreMapEntry[]>(GENRE_MAP_SETTING),
-        deps.store.getSetting<GenresCsvUndoRecord>(GENRES_CSV_UNDO_SETTING),
+        genresCsvUndoStatus(deps.store),
       ]);
-      const csvUndo = undo ? { at: undo.at, count: undo.rows.length } : null;
       res.json({ genres, hasMap: Boolean(map?.length), known: knownGenres(map ?? [], genres), csvUndo });
     } catch (err) {
       fail(res, err);
@@ -62,7 +60,7 @@ export function genresRouter(deps: PipelineDeps): Router {
   // Puts back the latest upload (only the latest can be undone).
   router.post('/artist-genres/csv/undo', async (_req, res) => {
     try {
-      res.json(await undoGenresCsv(deps.store));
+      res.json(await undoGenresCsv(deps.store, deps.now()));
     } catch (err) {
       fail(res, err);
     }
