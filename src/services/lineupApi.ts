@@ -19,7 +19,8 @@ import type { TicketFacts } from '../server/events/email/ticketFacts';
 import type { ArtistSuggestion } from '../server/events/artists';
 import type { LineupFacts } from '../server/events/scale';
 import type { CityPoint, PlaceGuess } from '../server/events/place';
-import type { ArtistGenres, KnownGenre } from '../server/events/genreTypes';
+import type { ArtistGenres, GenreCollision, GenreMapEntry, GenreVocabChange, GenreVocabulary, KnownGenre } from '../server/events/genreTypes';
+import type { GenreMergePlan } from '../server/events/genreVocabularyManage';
 import type { MilestoneSaved, Prefs, TipsSaved } from '../server/auth/prefs';
 import { dehydrateBody, hydrateEvent, type PeopleBook, type PeopleServer } from './vaultPeople';
 import { allowedInSample, reportBlockedWrite, sampleSource, SAMPLE_WRITE_MESSAGE, SampleRefused, type SampleSource } from './sampleMode';
@@ -452,9 +453,41 @@ export const accountApi = {
 };
 
 // Genres of the acts you saw: the music-story file, then MusicBrainz on request.
+// What GET /api/artist-genres returns. The change log and the collisions come
+// only to the owner.
+export interface GenresList {
+  genres: ArtistGenres[];
+  hasMap: boolean;
+  known: KnownGenre[];
+  csvUndo: { at: string; count: number } | null;
+  vocabulary: GenreVocabulary;
+  map: GenreMapEntry[];
+  vocabularyChanges?: GenreVocabChange[];
+  collisions?: GenreCollision[];
+}
+
+const vocabWrite = (operation: string, body: Record<string, unknown>) =>
+  request<{ change: GenreVocabChange }>(`/api/artist-genres/vocabulary/${operation}`, post(body)).then((r) => r.change);
+
 export const genresApi = {
-  list: () =>
-    request<{ genres: ArtistGenres[]; hasMap: boolean; known: KnownGenre[]; csvUndo: { at: string; count: number } | null }>('/api/artist-genres'),
+  list: () => request<GenresList>('/api/artist-genres'),
+  // The owner's genre vocabulary (docs/specs/genre-vocabulary.md section 6).
+  // Each write returns the change it recorded, which undoVocabulary takes back.
+  createGenre: (name: string, parent?: string | null) => vocabWrite('create', { name, parent }),
+  renameGenre: (genre: string, name: string) => vocabWrite('rename', { genre, name }),
+  addGenreAlias: (genre: string, alias: string) => vocabWrite('alias-add', { genre, alias }),
+  removeGenreAlias: (genre: string, alias: string) => vocabWrite('alias-remove', { genre, alias }),
+  // null clears the owner's group: it comes from the genre map again.
+  setGenreParent: (genre: string, parent: string | null) => vocabWrite('parent', { genre, parent }),
+  addGenreUmbrella: (genre: string, umbrella: string) => vocabWrite('umbrella-add', { genre, umbrella }),
+  removeGenreUmbrella: (genre: string, umbrella: string) => vocabWrite('umbrella-remove', { genre, umbrella }),
+  pickGenreSpelling: (key: string, spelling: string) => vocabWrite('spelling', { key, spelling }),
+  previewGenreMerge: (drop: string, keep: string) =>
+    request<{ plan: GenreMergePlan }>('/api/artist-genres/vocabulary/merge-preview', post({ drop, keep })).then((r) => r.plan),
+  mergeGenres: (drop: string, keep: string) =>
+    request<{ plan: GenreMergePlan; change: GenreVocabChange }>('/api/artist-genres/vocabulary/merge', post({ drop, keep })),
+  undoVocabulary: (id: string) =>
+    request<{ change: GenreVocabChange }>(`/api/artist-genres/vocabulary/undo/${encodeURIComponent(id)}`, post()).then((r) => r.change),
   // The CSV text of the acts you can give genres (the browser downloads it).
   csvExport: async (): Promise<string> => {
     const init = await outgoing();

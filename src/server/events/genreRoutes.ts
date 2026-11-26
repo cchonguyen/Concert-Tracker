@@ -20,8 +20,43 @@ import {
   previewGenresCsv,
   undoGenresCsv,
 } from './genreCsvApply';
+import { genreCollisions } from './genreVocabulary';
+import {
+  addGenreAlias,
+  addGenreUmbrella,
+  createGenre,
+  mergeGenres,
+  pickGenreSpelling,
+  planGenreMerge,
+  removeGenreAlias,
+  removeGenreUmbrella,
+  renameGenre,
+  setGenreParent,
+  undoGenreVocabChange,
+} from './genreVocabularyManage';
+import { ManageError } from '../entities/manage';
+
+// How many of the newest vocabulary changes the owner's GET carries.
+export const VOCAB_CHANGES_LIMIT = 100;
 
 const isMember = () => currentMember()?.role === 'member';
+
+// The owner's vocabulary writes, by the last part of the path. Each gets the
+// request body and returns the change it wrote.
+type VocabWrite = (store: LineupStore, b: Record<string, unknown>) => Promise<unknown>;
+const VOCAB_WRITES: Record<string, VocabWrite> = {
+  create: async (s, b) => ({ change: await createGenre(s, { name: b.name, parent: b.parent }) }),
+  rename: async (s, b) => ({ change: await renameGenre(s, b.genre, b.name) }),
+  'alias-add': async (s, b) => ({ change: await addGenreAlias(s, b.genre, b.alias) }),
+  'alias-remove': async (s, b) => ({ change: await removeGenreAlias(s, b.genre, b.alias) }),
+  parent: async (s, b) => ({ change: await setGenreParent(s, b.genre, b.parent) }),
+  'umbrella-add': async (s, b) => ({ change: await addGenreUmbrella(s, b.genre, b.umbrella) }),
+  'umbrella-remove': async (s, b) => ({ change: await removeGenreUmbrella(s, b.genre, b.umbrella) }),
+  spelling: async (s, b) => ({ change: await pickGenreSpelling(s, b.key, b.spelling) }),
+  'merge-preview': async (s, b) => ({ plan: await planGenreMerge(s, b.drop, b.keep) }),
+  merge: async (s, b) => mergeGenres(s, b.drop, b.keep),
+};
+const MEMBER_REFUSED = 'Only the owner changes the genre list.';
 
 // A member is sent shared genre rows only for acts in their own events or
 // artist records; their own additions always come back. The owner (and a
@@ -39,16 +74,35 @@ async function visibleGenres(store: LineupStore): Promise<ArtistGenres[]> {
 export function genresRouter(deps: PipelineDeps): Router {
   const router = Router();
   const fail = (res: any, err: unknown) =>
-    res.status(err instanceof InputError ? 400 : 500).json({ error: err instanceof Error ? err.message : String(err) });
+    res
+      .status(err instanceof ManageError ? err.status : err instanceof InputError ? 400 : 500)
+      .json({ error: err instanceof Error ? err.message : String(err) });
 
+  // Every scope gets the vocabulary and the genre map. Only the owner gets the
+  // vocabulary's change log and the spellings that collide: a member's
+  // additions never reach either (docs/specs/genre-vocabulary.md section 8).
   router.get('/artist-genres', async (_req, res) => {
     try {
-      const [genres, map, csvUndo] = await Promise.all([
+      const member = isMember();
+      const [genres, map, csvUndo, vocabulary] = await Promise.all([
         visibleGenres(deps.store),
         deps.store.getSetting<GenreMapEntry[]>(GENRE_MAP_SETTING),
-        isMember() ? null : genresCsvUndoStatus(deps.store),
+        member ? null : genresCsvUndoStatus(deps.store),
+        deps.store.getGenreVocabulary(),
       ]);
-      res.json({ genres, hasMap: Boolean(map?.length), known: knownGenres(map ?? [], genres), csvUndo });
+      const body: Record<string, unknown> = {
+        genres,
+        hasMap: Boolean(map?.length),
+        known: knownGenres(map ?? [], genres),
+        csvUndo,
+        vocabulary,
+        map: map ?? [],
+      };
+      if (!member) {
+        body.vocabularyChanges = await deps.store.listGenreVocabChanges({ limit: VOCAB_CHANGES_LIMIT });
+        body.collisions = genreCollisions(genres, vocabulary, map ?? []);
+      }
+      res.json(body);
     } catch (err) {
       fail(res, err);
     }
@@ -106,6 +160,30 @@ export function genresRouter(deps: PipelineDeps): Router {
     try {
       const keys = Array.isArray(req.body?.keys) ? req.body.keys.map(String) : [];
       res.json({ genres: await musicBrainzGenres(deps.store, deps.fetcher, keys, deps.now()) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // The owner's vocabulary writes. OWNER_ONLY in requestScope.ts already
+  // refuses a member's POST here; the route refuses it too. Registered before
+  // '/artist-genres/:key/undo' so 'vocabulary' is never read as an act's key.
+  router.post('/artist-genres/vocabulary/undo/:id', async (req, res) => {
+    if (isMember()) return res.status(403).json({ error: MEMBER_REFUSED });
+    try {
+      res.json({ change: await undoGenreVocabChange(deps.store, req.params.id, deps.now()) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post('/artist-genres/vocabulary/:operation', async (req, res) => {
+    if (isMember()) return res.status(403).json({ error: MEMBER_REFUSED });
+    const op = Object.prototype.hasOwnProperty.call(VOCAB_WRITES, req.params.operation) ? VOCAB_WRITES[req.params.operation] : undefined;
+    if (!op) return res.status(404).json({ error: 'No such genre operation.' });
+    try {
+      const b = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      res.json(await op(deps.store, b));
     } catch (err) {
       fail(res, err);
     }
