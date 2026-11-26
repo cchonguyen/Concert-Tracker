@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { LoggedEvent } from '../server/events/types';
-import { cardContent, cardEvents, cardFileName, cardText, type CardContent, type CardOptions } from '../services/shareCard';
+import { cardContent, cardEvents, cardFileName, cardText, searchCards, type CardContent, type CardOptions } from '../services/shareCard';
 import { whenLabel } from '../services/format';
 import { stubPiecesShared } from '../services/ticket';
 
@@ -230,10 +230,12 @@ function drawCard(canvas: HTMLCanvasElement, c: CardContent, p: Palette): void {
 export const ShareCards: React.FC<{ events: LoggedEvent[]; today: string; sample?: () => void }> = ({ events, today, sample }) => {
   const cards = useMemo(() => cardEvents(events, today), [events, today]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const shown = useMemo(() => searchCards(cards, query), [cards, query]);
   const [opts, setOpts] = useState<CardOptions>({ acts: true, exactDates: true, venue: true });
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const selected = cards.find((e) => e.id === selectedId) ?? cards[0];
+  const selected = shown.find((e) => e.id === selectedId) ?? shown[0];
   const content = useMemo(() => (selected ? cardContent(selected, opts) : null), [selected, opts]);
 
   useEffect(() => {
@@ -283,16 +285,36 @@ export const ShareCards: React.FC<{ events: LoggedEvent[]; today: string; sample
   return (
     <div className="space-y-4" role="region" aria-label="Event cards">
       <div className="space-y-2">
+        <label htmlFor="share-card-search" className="block text-sm text-text-muted">
+          Find an event
+        </label>
+        <input
+          id="share-card-search"
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Name, artist, venue or year"
+          autoComplete="off"
+          className="min-h-11 w-full rounded-control border border-line-strong bg-surface-2 px-3 text-sm text-text placeholder:text-text-muted sm:min-h-9"
+        />
+        <p className="text-xs text-text-muted" aria-live="polite">
+          {query.trim() ? `${shown.length} of ${cards.length} events match` : `${cards.length} events`}
+        </p>
+      </div>
+
+      <div className="space-y-2">
         <label htmlFor="share-card-event" className="block text-sm text-text-muted">
           Event
         </label>
         <select
           id="share-card-event"
-          value={selected?.id}
+          value={selected?.id ?? ''}
           onChange={(e) => setSelectedId(e.target.value)}
-          className="min-h-11 w-full rounded-control border border-line-strong bg-surface-2 px-3 text-sm text-text sm:min-h-9"
+          disabled={shown.length === 0}
+          className="min-h-11 w-full rounded-control border border-line-strong bg-surface-2 px-3 text-sm text-text disabled:opacity-60 sm:min-h-9"
         >
-          {cards.map((e) => (
+          {shown.length === 0 && <option value="">No events match</option>}
+          {shown.map((e) => (
             <option key={e.id} value={e.id}>
               {`${e.name} · ${whenLabel(e) ?? 'undated'}`}
             </option>
@@ -326,7 +348,8 @@ export const ShareCards: React.FC<{ events: LoggedEvent[]; today: string; sample
       <button
         type="button"
         onClick={save}
-        className="inline-flex min-h-11 items-center gap-1.5 rounded-control border border-line-strong bg-surface-2 px-3 py-1.5 text-sm text-text hover:border-warn/60 sm:min-h-9"
+        disabled={!selected}
+        className="inline-flex min-h-11 items-center gap-1.5 rounded-control border border-line-strong bg-surface-2 px-3 py-1.5 text-sm text-text hover:border-warn/60 disabled:opacity-60 sm:min-h-9"
       >
         Save image
       </button>
