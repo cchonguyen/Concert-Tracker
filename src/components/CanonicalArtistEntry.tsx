@@ -232,7 +232,7 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
         ← Back to artists
       </a>
 
-      <Callout id="canonical-artist-preview">
+      <Callout id="canonical-artist">
         Changes to the shared catalog are previewed first: nothing is saved until you press Apply. Undo is offered after each save.
       </Callout>
 
