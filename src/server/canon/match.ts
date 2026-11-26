@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import type { Edition, EditionHeader } from '../lineup/types';
 import { isVerifiedStatus, type LineupStore } from '../lineup/store/types';
 import { editionKeyFor, normalizeName, seriesSlugFor } from '../lineup/text';
+import { cleanSeriesName, findSeries } from '../lineup/seriesResolve';
 import { writeEdition } from './editions';
 import { autoMergeZeroLineupGroup } from '../lineup/canonicalIngest';
 
@@ -315,10 +316,14 @@ export async function upsertOccurrence(store: LineupStore, input: UpsertOccurren
   let key = editionKeyFor(name, year, input.startDate);
   const id = randomUUID();
   if (await store.getEditionByKey(key)) key = `${key}-${id.slice(0, 8)}`;
+  // An existing series by its slug, name or other names; else a new one named without the ticket's year, weekend or extras.
+  const series = await findSeries(store, name);
+  const seriesName = cleanSeriesName(name);
   const created: Edition = {
     id,
     key,
-    seriesSlug: seriesSlugFor(name),
+    seriesSlug: series?.slug ?? seriesSlugFor(seriesName),
+    ...(series ? {} : { seriesName }),
     year,
     name,
     startDate: input.startDate,
