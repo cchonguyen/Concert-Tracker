@@ -230,6 +230,9 @@ export interface SeriesRecord {
   name: string;
   kind?: SeriesKind;
   brand?: string;
+  // What sets this series apart inside its brand (0058): a place for a festival ("SoCal"), the tour name for a
+  // tour ("Duality Tour"). Absent when the brand alone names it. The shown name is built by seriesDisplayName.
+  qualifier?: string;
   city?: string;
   region?: string;
   country?: string;
@@ -275,6 +278,7 @@ export interface Edition {
   seriesSlug?: string;
   seriesName?: string;
   seriesBrand?: string;
+  seriesQualifier?: string;
   seriesAliases?: string[];
   seriesKind?: SeriesKind;
   seriesCity?: string;
@@ -282,6 +286,9 @@ export interface Edition {
   seriesCountry?: string;
   year: number;
   name: string;
+  // A short name for this one night when it has its own ("1000"), never a year or weekend (0058).
+  // undefined keeps the stored value; an empty string clears it.
+  subtitle?: string;
   startDate?: string;
   endDate?: string;
   venue?: string;
