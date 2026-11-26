@@ -1119,7 +1119,14 @@ export class SupabaseLineupStore implements LineupStore {
   async putEvents(list: LoggedEvent[]) {
     if (!list.length) return;
     const before = await this.priorEvents(list.map((e) => e.id));
-    this.check(await this.own('logged_events').upsert(list.map((e) => this.stamp(this.eventToRow(e)))), 'putEvents');
+    // A bulk upsert fills a column one row leaves out with null for that row, and some columns are written only
+    // when set (overrides, captured, person_ids, refs). So rows go up in groups that share the same columns.
+    const groups = new Map<string, Record<string, unknown>[]>();
+    for (const row of list.map((e) => this.stamp(this.eventToRow(e)) as Record<string, unknown>)) {
+      const key = Object.keys(row).sort().join(',');
+      groups.set(key, [...(groups.get(key) ?? []), row]);
+    }
+    for (const rows of groups.values()) this.check(await this.own('logged_events').upsert(rows), 'putEvents');
     const now = new Date().toISOString();
     await this.writeActivity(
       list.flatMap((e) => {
