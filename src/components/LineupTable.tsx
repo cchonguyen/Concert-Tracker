@@ -321,9 +321,7 @@ export const LineupTable: React.FC<LineupTableProps> = ({
                       <span className={`inline-flex flex-wrap items-center gap-1.5 text-sm ${on ? 'font-semibold text-text' : 'text-text'}`}>
                         <span>{actDisplayName}</span>
                         {!isSolo && (
-                          <Pill tone="accent">
-                            <span className="font-mono text-[10px]">B2B</span>
-                          </Pill>
+<span className="text-xs text-text-muted">B2B</span>
                         )}
                       </span>
                     </td>

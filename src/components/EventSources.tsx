@@ -45,6 +45,9 @@ interface EventSourcesProps {
   lineupActs: EditionPerformance[];
   editionId?: string;
   highlightedKey?: string | null;
+  // The Check details button, shown beside the heading, and its results (Check details and Deep search).
+  action?: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 export const EventSources: React.FC<EventSourcesProps> = ({
@@ -53,6 +56,8 @@ export const EventSources: React.FC<EventSourcesProps> = ({
   lineupActs,
   editionId,
   highlightedKey,
+  action,
+  children,
 }) => {
   const isOwner = useIsOwner();
   const entries = new Map<string, SourceEntry>();
@@ -119,7 +124,11 @@ export const EventSources: React.FC<EventSourcesProps> = ({
 
   return (
     <section id="event-sources" className="space-y-3 rounded-card border border-line bg-surface-1 p-4">
-      <h3 className="font-display text-lg font-normal text-text">Where every detail came from</h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-display text-lg font-normal text-text">Where every detail came from</h3>
+        {action}
+      </div>
+      {children}
       {list.length === 0 ? (
         <p className="text-xs text-text-muted">Nothing here came from a source yet. What you typed is kept as you typed it.</p>
       ) : (

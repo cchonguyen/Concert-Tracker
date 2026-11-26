@@ -197,7 +197,7 @@ export function eventRows(
     'Saw',
     'Artist',
     'Supporting artists',
-    'Favourite set',
+    'Favorite set',
     'Sets',
     'Went with',
     'Rating',

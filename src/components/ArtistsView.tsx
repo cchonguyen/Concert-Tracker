@@ -130,7 +130,7 @@ const ArtistRow: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpe
       <Avatar artist={a} small />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className="truncate text-sm font-medium text-text">{a.name}</span>
-        {a.favourites > 0 && <Heart className="h-3 w-3 shrink-0 fill-current text-bad" aria-label="Favourite set" />}
+        {a.favourites > 0 && <Heart className="h-3 w-3 shrink-0 fill-current text-bad" aria-label="Favorite set" />}
         {a.headlined > 0 && <Crown className="h-3 w-3 shrink-0 text-warn" aria-label="Headliner" />}
       </span>
       {genre?.genres.length ? (
@@ -205,9 +205,9 @@ const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOp
             {a.favourites > 0 && (
               <Pill
                 icon={<Heart className="h-3 w-3 fill-current" />}
-                text={a.favourites === 1 ? 'Favourite set' : `Favourite set ×${a.favourites}`}
+                text={a.favourites === 1 ? 'Favorite set' : `Favorite set ×${a.favourites}`}
                 tone="border border-bad/45 bg-bad/10 text-bad"
-                title="Events where this was your favourite set"
+                title="Events where this was your favorite set"
               />
             )}
             {a.headlined > 0 && (
@@ -371,7 +371,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
         {[
           [artists.length, artists.length === 1 ? 'Artist' : 'Artists'],
           [repeat, 'Seen more than once'],
-          [favourites, 'Favourite sets'],
+          [favourites, 'Favorite sets'],
         ].map(([value, label]) => (
           <div key={label} className="rounded-card border border-line bg-surface-1 px-4 py-3">
             <div className="text-2xl font-extrabold tracking-tight tabular-nums text-text">{value}</div>
