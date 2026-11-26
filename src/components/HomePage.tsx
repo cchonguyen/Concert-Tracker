@@ -151,7 +151,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       {yearReview && <YearTile review={yearReview} cities={yearCities} months={yearMonths} onOpen={() => onOpen('stats')} />}
 
       {(lastShow || onThisDay) && (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className={`grid gap-3 ${lastShow && onThisDay ? 'sm:grid-cols-2' : ''}`}>
           {lastShow && <SmallShowTicket event={lastShow} kicker="Last show" onOpen={onOpenEvent} />}
           {onThisDay && (
             <SmallShowTicket
