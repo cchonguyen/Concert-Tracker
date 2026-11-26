@@ -24,7 +24,7 @@ test('a stored headliner goes big, and the supports go small, supports first', (
   const c = cardContent(e, ALL);
   assert.deepEqual(c.big, ['Star']);
   assert.equal(c.eventLine, 'Night One');
-  assert.equal(c.small, 'Opener, Plain');
+  assert.equal(c.small, 'Opener ◆ Plain');
 });
 
 test('two stored headliners both go big; no roles and 3 acts puts the event name big', () => {
@@ -50,7 +50,7 @@ test('two stored headliners both go big; no roles and 3 acts puts the event name
   const c = cardContent(three, ALL);
   assert.deepEqual(c.big, ['Big Night']);
   assert.equal(c.eventLine, undefined);
-  assert.equal(c.small, 'One, Two, Three');
+  assert.equal(c.small, 'One ◆ Two ◆ Three');
 });
 
 test('acts off: the event name is the only big line, with no small or event line', () => {

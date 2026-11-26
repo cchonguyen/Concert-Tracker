@@ -10,6 +10,7 @@ import { EventTitle } from './EventTitle';
 import { StubHeader } from './ui/StubHeader';
 import { StubBarcode, StubSentence, StubSerial, Ticket, TicketKicker, TicketSmallLine } from './ui/Ticket';
 import { MONTH_NAMES } from '../server/lineup/months';
+import { NameList } from './ui/NameList';
 
 // Bars grow in once per visit to Stats (design-refresh-2.md, section 4): only while the page has just opened,
 // so changing the year or a filter later swaps them in place. Off with reduced motion.
@@ -483,7 +484,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
             {review.newArtists.length > 0 && (
               <li className="text-text-muted">
                 <span className="text-text-muted">First time seeing: </span>
-                {review.newArtists.slice(0, 12).join(', ')}
+                <NameList names={review.newArtists.slice(0, 12)} />
                 {review.newArtists.length > 12 && ` and ${review.newArtists.length - 12} more`}
               </li>
             )}

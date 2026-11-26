@@ -58,7 +58,7 @@ export function cardContent(event: LoggedEvent, opts: CardOptions): CardContent 
     big = lines.big;
     eventLine = lines.showEventLine ? event.name : undefined;
     small =
-      [lines.small.join(', '), lines.moreHeadliners > 0 ? `+${lines.moreHeadliners} more` : '']
+      [lines.small.join(' ◆ '), lines.moreHeadliners > 0 ? `+${lines.moreHeadliners} more` : '']
         .filter(Boolean)
         .join(' · ') || undefined;
   } else {
