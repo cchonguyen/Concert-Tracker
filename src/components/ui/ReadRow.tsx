@@ -25,7 +25,6 @@ interface ReadRowProps {
   mono?: boolean;
   // Where the value came from and any notes about it. It opens from a small icon beside the label, on hover or tap.
   info?: ReactNode;
-  infoIcon?: LucideIcon;
   infoLabel?: string;
   flash?: boolean;
   // The value is its own control (choices, checkboxes), so the row is not one big edit button. With `editor`,
@@ -51,7 +50,6 @@ export function ReadRow({
   emptyText = 'Not known yet',
   mono = false,
   info,
-  infoIcon: InfoIcon = Info,
   infoLabel,
   flash = false,
   alwaysOpen = false,
@@ -116,7 +114,7 @@ export function ReadRow({
   const infoButton = (align: 'start' | 'end') => (
     <Popover align={align} label={infoLabel ?? `About ${label}`} content={<span className="block space-y-2 text-xs leading-relaxed text-text">{info}</span>}>
       <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-muted hover:text-accent">
-        <InfoIcon className="h-3.5 w-3.5" aria-hidden="true" />
+        <Info className="h-3.5 w-3.5" aria-hidden="true" />
       </span>
     </Popover>
   );
