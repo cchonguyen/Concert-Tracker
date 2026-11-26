@@ -24,6 +24,11 @@ test('the one-time series cleanup routes are removed', async () => {
     assert.equal(get.status, 404);
     const post = await dispatch(app, { url: '/api/manage/canonical/series-cleanup', method: 'POST', headers: { 'content-type': 'application/json' }, body: { from: 0, count: 3 } });
     assert.equal(post.status, 404);
+    // The runner itself stays and still previews a list without changing anything.
+    const { runSeriesCleanup } = await import('../src/server/entities/seriesCleanup.ts');
+    const preview = await runSeriesCleanup(linked, [{ op: 'series', slug: 'nowhere' }], { apply: false, actor: 'system:test', reason: 'test' });
+    assert.equal(preview.length, 1);
+    assert.equal(preview[0].outcome, 'missing');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
