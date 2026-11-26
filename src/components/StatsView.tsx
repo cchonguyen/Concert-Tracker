@@ -1,7 +1,7 @@
 import React, { Fragment, useEffect, useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { genresApi, LoggedEvent } from '../services/lineupApi';
-import { ArtistGenres, GenreCount, genreMix, genresByArtist } from '../services/genres';
+import { genresApi, GenresList, LoggedEvent } from '../services/lineupApi';
+import { GenreCount, genreMix, genresByArtist } from '../services/genres';
 import { whenLabel } from '../services/format';
 import { attendanceOf } from '../server/events/attendance';
 import { allTime, AllTime, facts, pastEvents, perYear, RankBy, Ranked, seriesStats, SeriesStat, top, YearReview, yearInReview } from '../services/stats';
@@ -174,12 +174,13 @@ const Ranking: React.FC<{ name: string; rows: Ranked[]; empty: string; onPick: (
 
 // What you see live by genre: each set you saw split across its act's genres.
 // Sets whose act has no genre are counted apart, not spread over the rest.
-const GenreBars: React.FC<{ name: string; rows: GenreCount[] }> = ({ name, rows }) => {
+const GenreBars: React.FC<{ name: string; rows: GenreCount[]; note?: string }> = ({ name, rows, note }) => {
   const growX = useGrow('x');
   const max = Math.max(...rows.map((r) => r.share), 0.01);
   return (
     <div className="space-y-1.5">
       <h3 className="text-xs text-text-muted">{name}</h3>
+      {note && <p className="text-xs text-text-faint">{note}</p>}
       <ol className="space-y-1.5">
         {rows.map((r) => (
           <li key={r.name} className="space-y-0.5" title={`${r.name}: ${r.sets.toFixed(1)} sets`}>
@@ -197,8 +198,13 @@ const GenreBars: React.FC<{ name: string; rows: GenreCount[] }> = ({ name, rows 
   );
 };
 
-const GenreCard: React.FC<{ events: LoggedEvent[]; rows: ArtistGenres[] }> = ({ events, rows }) => {
-  const mix = useMemo(() => genreMix(events, genresByArtist(rows)), [events, rows]);
+type GenreData = Pick<GenresList, 'genres' | 'vocabulary' | 'map'>;
+
+const GenreCard: React.FC<{ events: LoggedEvent[]; data: GenreData }> = ({ events, data }) => {
+  const mix = useMemo(
+    () => genreMix(events, genresByArtist(data.genres, data.vocabulary, data.map), data.vocabulary),
+    [events, data],
+  );
   if (!mix.known) return null;
   return (
     <section className={`${card} space-y-3`}>
@@ -212,10 +218,19 @@ const GenreCard: React.FC<{ events: LoggedEvent[]; rows: ArtistGenres[] }> = ({ 
       <div className="grid gap-4 sm:grid-cols-2">
         <GenreBars name="Genre" rows={mix.parents.slice(0, 8)} />
         <GenreBars name="Style" rows={mix.styles.slice(0, 10)} />
+        {mix.umbrellas.length > 0 && (
+          <GenreBars
+            name="Including related genres"
+            note="A set counts once under each umbrella it falls in."
+            rows={mix.umbrellas.slice(0, 10)}
+          />
+        )}
       </div>
     </section>
   );
 };
+
+const NO_GENRES: GenreData = { genres: [], vocabulary: { genres: [] }, map: [] };
 
 const WIDE = '(min-width: 640px)';
 
@@ -348,12 +363,12 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
   const today = new Date().toISOString().slice(0, 10);
   const past = useMemo(() => pastEvents(events, today), [events, today]);
   // Optional: without genres (or before 0013 is applied) the card is left out.
-  const [genreRows, setGenreRows] = useState<ArtistGenres[]>([]);
+  const [genreData, setGenreData] = useState<GenreData>(NO_GENRES);
   useEffect(() => {
     genresApi
       .list()
-      .then((r) => setGenreRows(r.genres))
-      .catch(() => setGenreRows([]));
+      .then((r) => setGenreData({ genres: r.genres, vocabulary: r.vocabulary, map: r.map }))
+      .catch(() => setGenreData(NO_GENRES));
   }, []);
   const { years, undated } = useMemo(() => perYear(past), [past]);
   const [pickedYear, setPickedYear] = useState<number | null>(null);
@@ -499,7 +514,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
         <Ranking name="Went with most" rows={ranks.companion} empty="Add who you went with on an event to see this." onPick={(r) => filter('with', r.key)} />
       </section>
 
-      <GenreCard events={past} rows={genreRows} />
+      <GenreCard events={past} data={genreData} />
 
       {series.length > 0 && <SeriesCard rows={series} onPick={(name) => filter('series', name)} />}
 
