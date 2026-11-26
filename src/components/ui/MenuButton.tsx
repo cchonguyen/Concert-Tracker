@@ -90,7 +90,7 @@ export function MenuButton<T extends string>({ label, value, options, onChange, 
           role="listbox"
           aria-label={label}
           onKeyDown={onListKey}
-          className="absolute right-0 top-full z-30 mt-1.5 w-56 space-y-0.5 rounded-card border border-line bg-surface-1 p-1.5 shadow-xl shadow-black/30"
+          className="pop-in absolute right-0 top-full z-30 mt-1.5 w-56 space-y-0.5 rounded-card border border-line bg-surface-1 p-1.5 shadow-xl shadow-black/30"
         >
           {options.map((o) => {
             const Icon = o.icon;

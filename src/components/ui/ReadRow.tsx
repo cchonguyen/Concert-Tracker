@@ -104,7 +104,7 @@ export function ReadRow({
             setOpen(false);
           }
         }}
-        className={`space-y-2 bg-surface-2/60 px-3 py-2.5 ${flash ? 'ring-1 ring-inset ring-good/60' : ''}`}
+        className={`space-y-2 bg-surface-2/60 px-3 py-2.5 ${flash ? 'save-flash ring-1 ring-inset ring-good/60' : ''}`}
       >
         {editor(() => setOpen(false))}
         {below && <div className="pt-0.5">{below}</div>}
@@ -133,7 +133,7 @@ export function ReadRow({
   return (
     <div
       id={id}
-      className={`group/row row-hover relative ${COLUMNS} px-3 py-1 ${action ? 'sm:pr-11' : ''} ${flash ? 'ring-1 ring-inset ring-good/60' : ''}`}
+      className={`group/row row-hover relative ${COLUMNS} px-3 py-1 ${action ? 'sm:pr-11' : ''} ${flash ? 'save-flash ring-1 ring-inset ring-good/60' : ''}`}
     >
       <Icon className="h-4 w-4 shrink-0 self-center text-text-muted" strokeWidth={1.75} aria-hidden="true" />
       <span className="flex min-w-0 items-center gap-1 text-xs font-medium text-text-muted">

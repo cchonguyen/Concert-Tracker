@@ -33,11 +33,11 @@ const PANEL_BORDER = { page: 'border-b-page', 'surface-1': 'border-b-surface-1',
 // Navigation between pages or views (docs/specs/design-refresh-2.md, section 2, Shape).
 // Square corners and straight borders, never the solid Add colour. The open tab is also
 // bold, raised and marked with aria-current, so the state is never shown by colour alone.
-// The cap or underline slides between tabs; with reduced motion it moves at once.
+// The cap or underline slides between tabs with a little overshoot; with reduced motion it moves at once.
 export function Tabs<T extends string>({ label, items, value, onChange, variant = 'folder', panel = 'surface-1', className = '', end, line = true }: Props<T>) {
   const id = useId();
   const still = useReducedMotion();
-  const slide = still ? { duration: 0 } : { type: 'spring' as const, stiffness: 520, damping: 42, mass: 0.6 };
+  const slide = still ? { duration: 0 } : { type: 'spring' as const, stiffness: 360, damping: 22, mass: 0.7 };
   const folder = variant === 'folder';
 
   return (

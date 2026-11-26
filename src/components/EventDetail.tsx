@@ -517,7 +517,7 @@ const Field: React.FC<{
     flush();
   };
   return (
-    <div ref={boxRef} className={`-m-0.5 space-y-1 rounded-lg p-0.5 transition-shadow motion-reduce:transition-none ${flash ? 'ring-1 ring-good/60' : ''} ${className ?? ''}`}>
+    <div ref={boxRef} className={`-m-0.5 space-y-1 rounded-lg p-0.5 transition-shadow motion-reduce:transition-none ${flash ? 'save-flash ring-1 ring-good/60' : ''} ${className ?? ''}`}>
       <label className="block space-y-1">
         <span className="flex items-center justify-between gap-2 text-[11px] font-semibold text-text-muted">
           <span className="inline-flex items-center gap-1">
