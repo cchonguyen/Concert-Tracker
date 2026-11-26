@@ -22,6 +22,7 @@ const FIELDS = [
   'venueId',
   'subjectKey',
   'seriesSlug',
+  'subtitle',
   'weekends',
   'hasLineup',
 ] as const;
@@ -62,6 +63,7 @@ function snapshot(e: Edition | null): Snapshot {
   const s: Snapshot = {};
   for (const f of FIELDS) {
     if (f === 'weekends') s[f] = normalizeWeekends(e?.weekends);
+    else if (f === 'subtitle') s[f] = e?.subtitle?.trim() || null;
     else s[f] = (e?.[f] as string | boolean | undefined) ?? null;
   }
   s[SUMMARY] = e ? e.performances.length : null;
@@ -83,8 +85,13 @@ export interface WriteEditionResult {
   change?: EditionChange;
 }
 
-export async function writeEdition(store: LineupStore, input: WriteEditionInput): Promise<WriteEditionResult> {
-  const existing = input.before !== undefined ? input.before : await store.getEdition(input.edition.id);
+export async function writeEdition(store: LineupStore, rawInput: WriteEditionInput): Promise<WriteEditionResult> {
+  const existing = rawInput.before !== undefined ? rawInput.before : await store.getEdition(rawInput.edition.id);
+  // An edition without a subtitle key keeps the stored one (0058), so it is not recorded as a removal.
+  const input =
+    rawInput.edition.subtitle === undefined && existing?.subtitle
+      ? { ...rawInput, edition: { ...rawInput.edition, subtitle: existing.subtitle } }
+      : rawInput;
   const before = snapshot(existing);
   // An edition without a weather key keeps the stored record, so it is not recorded as a removal.
   const after = snapshot(input.edition.weather === undefined ? { ...input.edition, weather: existing?.weather } : input.edition);
@@ -216,6 +223,9 @@ export async function undoEditionChange(store: LineupStore, editionId: string, c
       restored.weekends = Array.isArray(before[f]) ? normalizeWeekends(before[f] as EditionWeekend[]) ?? undefined : undefined;
     } else if (f === 'weather') {
       restored.weather = (before.weather as Edition['weather']) ?? null;
+    } else if (f === 'subtitle') {
+      // '' clears it: an absent subtitle would keep the stored one.
+      restored.subtitle = (before.subtitle as string | null) ?? '';
     } else if (f === 'seriesSlug') {
       const prev = before[f] ?? undefined;
       restored.seriesSlug = prev as string | undefined;
