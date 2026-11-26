@@ -191,17 +191,15 @@ export function knownGenres(map: GenreMapEntry[], rows: ArtistGenres[]): KnownGe
 // style you already know keeps its known spelling and parent genre; a new one
 // is its own parent. An empty list means you say it has none; `reset` drops
 // your genres so the found ones show again.
-export async function setOwnGenres(store: LineupStore, key: string, styles: unknown, now: Date, reset = false) {
-  const seen = (await store.listEvents()).flatMap((e) => e.seen).find((s) => s.key === key);
-  const entity = !seen ? (await store.listEntities()).find((e) => e.kind === 'artist' && !e.mergedIntoId && e.nameNormalized === key) : undefined;
-  if (!seen && !entity) throw new InputError('Only acts you saw can have genres.');
-  if (reset) {
-    await store.deleteArtistGenres(key, 'you');
-    return null;
-  }
-  if (!Array.isArray(styles)) throw new InputError('Send { styles: [...] }.');
-  const [map, rows] = await Promise.all([store.getSetting<GenreMapEntry[]>(GENRE_MAP_SETTING), store.listArtistGenres()]);
-  const known = new Map(knownGenres(map ?? [], rows).map((g) => [g.style.toLowerCase(), g]));
+// Known genres keyed by lower-case style, for ownGenreRow.
+export function knownGenreMap(map: GenreMapEntry[], rows: ArtistGenres[]): Map<string, KnownGenre> {
+  return new Map(knownGenres(map, rows).map((g) => [g.style.toLowerCase(), g]));
+}
+
+// The row you own for one act: the styles, equal weights, a known style keeping
+// its spelling and parent. Throws InputError past the limits. Shared by
+// setOwnGenres and the genres CSV apply (genreCsvApply.ts). Pure: no store.
+export function ownGenreRow(known: ReadonlyMap<string, KnownGenre>, key: string, name: string, styles: unknown[], now: Date): ArtistGenres {
   const picked = new Map<string, KnownGenre>();
   for (const raw of styles) {
     const style = String(raw ?? '').replace(/\s+/g, ' ').trim();
@@ -212,13 +210,26 @@ export async function setOwnGenres(store: LineupStore, key: string, styles: unkn
   }
   if (picked.size > MAX_OWN_GENRES) throw new InputError(`At most ${MAX_OWN_GENRES} genres per act.`);
   const weight = picked.size ? Math.round((1 / picked.size) * 10_000) / 10_000 : 0;
-  const row: ArtistGenres = {
+  return {
     key,
-    name: (seen?.name ?? entity?.name)!,
+    name,
     source: 'you',
     genres: [...picked.values()].map((g) => ({ ...g, weight })),
     checkedAt: now.toISOString(),
   };
+}
+
+export async function setOwnGenres(store: LineupStore, key: string, styles: unknown, now: Date, reset = false) {
+  const seen = (await store.listEvents()).flatMap((e) => e.seen).find((s) => s.key === key);
+  const entity = !seen ? (await store.listEntities()).find((e) => e.kind === 'artist' && !e.mergedIntoId && e.nameNormalized === key) : undefined;
+  if (!seen && !entity) throw new InputError('Only acts you saw can have genres.');
+  if (reset) {
+    await store.deleteArtistGenres(key, 'you');
+    return null;
+  }
+  if (!Array.isArray(styles)) throw new InputError('Send { styles: [...] }.');
+  const [map, rows] = await Promise.all([store.getSetting<GenreMapEntry[]>(GENRE_MAP_SETTING), store.listArtistGenres()]);
+  const row = ownGenreRow(knownGenreMap(map ?? [], rows), key, (seen?.name ?? entity?.name)!, styles, now);
   await store.putArtistGenres([row]);
   return row;
 }
