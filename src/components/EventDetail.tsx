@@ -437,7 +437,8 @@ const InferredRole: React.FC<{ inferred: InferredBilling }> = ({ inferred }) => 
   );
 };
 
-// A text field that saves when you leave it, and 500 ms after you stop typing.
+// A text field that saves when you leave it, and 500 ms after you stop typing
+// (with `saveOnLeave`, only when you leave it or pick a suggestion).
 const Field: React.FC<{
   label: string;
   value?: string | number;
@@ -456,7 +457,9 @@ const Field: React.FC<{
   // Shown only while the stored value is empty; never put into the input or saved.
   inferred?: InferredView;
   onInferredAct?: (inferenceId: string) => Promise<void>;
-}> = ({ label, value, type = 'text', placeholder, source, onSave, onType, suggestions, offer, min, className, field, inferred, onInferredAct }) => {
+  // A field whose every saved value makes a record (Series): typing never saves part of a name.
+  saveOnLeave?: boolean;
+}> = ({ label, value, type = 'text', placeholder, source, onSave, onType, suggestions, offer, min, className, field, inferred, onInferredAct, saveOnLeave }) => {
   const flashing = React.useContext(FlashContext);
   const isOwner = useIsOwner();
   const editionId = React.useContext(EditionIdContext);
@@ -578,7 +581,7 @@ const Field: React.FC<{
             onChange={(e) => {
               setDraft(e.target.value);
               onType?.(e.target.value);
-              scheduleSave();
+              if (!saveOnLeave) scheduleSave();
             }}
             onFocus={() => (editing.current = true)}
             onBlur={handleBlur}
@@ -609,7 +612,7 @@ const Field: React.FC<{
             onChange={(e) => {
               setDraft(e.target.value);
               onType?.(e.target.value);
-              scheduleSave();
+              if (!saveOnLeave) scheduleSave();
             }}
             onFocus={() => (editing.current = true)}
             onBlur={handleBlur}
@@ -1884,6 +1887,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                   value={event.series}
                   placeholder="Festival or tour it's one year of, e.g. EDC Las Vegas"
                   suggestions={seriesOffers(event, others)}
+                  saveOnLeave
                   onSave={(v) => save({ series: text(v), ...(text(v) ? {} : { weekend: null }) })}
                 />
               )}

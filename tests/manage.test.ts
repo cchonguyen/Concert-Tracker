@@ -18,6 +18,7 @@ import {
   planEntityRename,
   removeAlias,
   removeLink,
+  removeUnusedSeries,
   renameEntity,
   undoEntry,
 } from '../src/server/entities/manage.ts';
@@ -355,4 +356,56 @@ test('undo of an artist merge brings back both acts', async () => {
   assert.equal((await get(store, 'a')).seen.length, 1);
   await undoEntry(store, entry.id);
   assert.deepEqual((await get(store, 'a')).seen, before);
+});
+
+// Records left by part-typed or changed series names.
+async function memberSetup(events: LoggedEvent[]): Promise<LineupStore> {
+  const base = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'manage-unused-')));
+  const store = withEntityLinks(base).forUser!({ userId: 'member-1', role: 'member' });
+  await store.putEvents(events);
+  return store;
+}
+
+test('unused series records are removed in one undoable entry; used ones stay', async () => {
+  const store = await memberSetup([event('a', { series: 'Victory Live' })]);
+  // Part-typed saves left records behind.
+  for (const partial of ['Vi', 'Victory Li']) await store.putEvent({ ...(await get(store, 'a')), series: partial });
+  await store.putEvent({ ...(await get(store, 'a')), series: 'Victory Live' });
+  const names = async () => (await store.listEntities()).filter((e) => e.kind === 'series').map((e) => e.name).sort();
+  assert.deepEqual(await names(), ['Vi', 'Victory Li', 'Victory Live']);
+
+  const entry = await removeUnusedSeries(store, {}, LATER);
+  assert.ok(entry);
+  assert.equal(entry.operation, 'remove');
+  assert.deepEqual(entry.entities.before.map((e) => e.name).sort(), ['Vi', 'Victory Li']);
+  assert.deepEqual(await names(), ['Victory Live']);
+  assert.equal((await get(store, 'a')).series, 'Victory Live');
+  assert.equal(await removeUnusedSeries(store, {}, LATER), null);
+
+  await undoEntry(store, entry.id, LATER);
+  assert.deepEqual(await names(), ['Vi', 'Victory Li', 'Victory Live']);
+});
+
+test('names limits removal to those records, and records with other names, details or links stay', async () => {
+  const store = await memberSetup([event('a', { series: 'EDC' })]);
+  for (const n of ['Co', 'Ex', 'Dreamstate Long Beach']) await store.putEvent({ ...(await get(store, 'a')), series: n });
+  await store.putEvent({ ...(await get(store, 'a')), series: 'EDC' });
+  const dlb = (await store.listEntities()).find((e) => e.name === 'Dreamstate Long Beach')!;
+  await addAlias(store, dlb.id, 'Dreamstate LB', AT);
+
+  const only = await removeUnusedSeries(store, { names: ['co'] }, LATER);
+  assert.deepEqual(only?.entities.before.map((e) => e.name), ['Co']);
+  const rest = await removeUnusedSeries(store, {}, LATER);
+  assert.deepEqual(rest?.entities.before.map((e) => e.name), ['Ex']);
+  const left = (await store.listEntities()).filter((e) => e.kind === 'series').map((e) => e.name).sort();
+  assert.deepEqual(left, ['Dreamstate Long Beach', 'EDC']);
+});
+
+test('the shared records are never removed: the store refuses and nothing is logged', async () => {
+  const store = await setup([event('a', { series: 'EDC' })]);
+  await store.putEvent({ ...(await get(store, 'a')), series: 'Co' });
+  await store.putEvent({ ...(await get(store, 'a')), series: 'EDC' });
+  await assert.rejects(() => removeUnusedSeries(store, {}, LATER));
+  assert.equal((await store.listEntityHistory(50)).filter((h) => h.operation === 'remove').length, 0);
+  assert.ok((await store.listEntities()).some((e) => e.name === 'Co'));
 });

@@ -78,7 +78,7 @@ export const CANONICAL_OPERATIONS = ['canonical-rename', 'canonical-merge', 'can
 
 export interface HistoryEntry {
   id: string;
-  operation: 'rename' | 'merge' | 'alias-add' | 'alias-remove' | 'link-add' | 'link-remove' | 'details' | 'create' | (typeof CANONICAL_OPERATIONS)[number];
+  operation: 'rename' | 'merge' | 'alias-add' | 'alias-remove' | 'link-add' | 'link-remove' | 'details' | 'create' | 'remove' | (typeof CANONICAL_OPERATIONS)[number];
   summary: string;
   sourceEntityId: string;
   targetEntityId?: string;

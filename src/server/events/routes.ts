@@ -15,6 +15,7 @@ import { editionCoversDate, findSeriesEditionMatches } from '../canon/match';
 import { parseEventInput } from './parse';
 import { isAhead } from './attendance';
 import { normalizeName } from '../lineup/normalizeName';
+import { removeUnusedSeries } from '../entities/manage';
 import { artistSuggestions, eventPerformers, nameArtistSuggestions, MAX_BULK_SUGGESTIONS, storedNameSuggestions } from './artists';
 import type { LineupFacts } from './scale';
 import { lookupWeather } from './weather';
@@ -369,6 +370,10 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
       const { event: updated, changes } = applyLinkedPatch(event, edition, body, deps.now(), { recapture: body.import === true });
       const stored = await saveEvent(updated);
       await recordOverrides(deps.store, stored, changes);
+      // The series it had may now be used by no event (a part-typed name, or a changed one): remove that record, logged and undoable.
+      if (body.series !== undefined && event.series && normalizeName(event.series) !== normalizeName(stored.series ?? '')) {
+        await removeUnusedSeries(deps.store, { names: [event.series] }).catch((err) => console.warn('unused series not removed', err instanceof Error ? err.name : 'error'));
+      }
       // The event is already saved; a failed shared write must not fail the save. The tick is retried on the next save.
       if (edition && body.seen) {
         await recordWhoISawTicks(deps.store, edition, stored.seen ?? []).catch((err) => console.warn('member tick not recorded', err instanceof Error ? err.name : 'error'));
