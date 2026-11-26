@@ -74,9 +74,9 @@ export interface GenreChange {
 }
 
 const SOURCE_LABEL: Record<ShownSource, string> = {
-  you: 'yours',
-  owner: 'yours', // placeholder until the CSV handles the owner source
-  added: 'yours',
+  you: 'owner',
+  owner: 'owner',
+  added: 'owner',
   'music-story': 'music-story',
   musicbrainz: 'MusicBrainz',
   none: 'none',
@@ -93,11 +93,13 @@ export function fnv1a(text: string): string {
 }
 
 // A hash of the stored genres as shown, not a timestamp. Nothing shown is
-// always "none|".
+// always "none|". The owner's genres hash the same under `you` (legacy) and
+// `owner`, so a file downloaded before the move to `owner` is not stale after it.
 export function genreStamp(source: ShownSource, styles: string[]): string {
   if (styles.length === 0) return fnv1a('none|');
   const sorted = styles.map((s) => s.toLowerCase()).sort();
-  return fnv1a(`${source}|${sorted.join(';')}`);
+  const token = source === 'owner' ? 'you' : source;
+  return fnv1a(`${token}|${sorted.join(';')}`);
 }
 
 // Spreadsheet formula safety: a cell starting with = + - or @ gets a leading
@@ -329,7 +331,7 @@ export function previewGenresCsv(
       beforeSource,
       after,
       stale,
-      sameAsNow: act.source === 'you' && sameStyles(before, list.styles),
+      sameAsNow: (act.source === 'you' || act.source === 'owner') && sameStyles(before, list.styles),
     });
   }
   skipped.sort((a, b) => a.line - b.line);
