@@ -28,6 +28,7 @@ Statuses were checked against the code on 2026-11-23.
 | [specs/edition-panel-rows.md](specs/edition-panel-rows.md) | The edition panel: one field per aligned row, one info icon for source and notes, dates with checkboxes, Ends and Weekend behind "+", Type as a two-part control. Charlie's request 2026-11-25. |
 | [specs/row-hover.md](specs/row-hover.md) | One stronger hover tint for every row, with a fade-out trail when you sweep across a list. Charlie's request 2026-11-25. |
 | [specs/hide-didnt-go.md](specs/hide-didnt-go.md) | Hide events you didn't go to in the Table by default, with "Everything" to bring them back; milestone and Manage counts only count events you went to. Charlie's request 2026-11-26. |
+| [specs/genres-csv.md](specs/genres-csv.md) | Artist genres as a CSV: download, edit "New genres" in a spreadsheet, check, apply, undo. Designed 2026-11-26; slice 34.1 (pure rules) in progress. |
 | [specs/quiet-tips-table.md](specs/quiet-tips-table.md) | One-line page tips that fold away after 3 visits, a header ? to bring them back and a Show all tips switch; a lean Table toolbar; an All time strip on Stats. Charlie's request 2026-11-26. |
 | [specs/motion-whimsy.md](specs/motion-whimsy.md) | Louder, playful motion on controls, tabs, menus, saves, toasts, stars and bursts, all off under reduced motion. Charlie's request 2026-11-25. |
 | [specs/poster-lineups-and-notches.md](specs/poster-lineups-and-notches.md) | Acts listed with a diamond between names, like a lineup poster; ticket notches cut as real holes. Charlie's requests 2026-11-26. |
