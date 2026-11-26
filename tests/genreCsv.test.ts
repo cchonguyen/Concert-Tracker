@@ -111,13 +111,13 @@ test('exportTable shows "none" as the source when nothing shows, even for a "say
   assert.equal(table[1][5], fnv1a('none|'));
 });
 
-test('exportTable labels MusicBrainz and yours the way the file says', () => {
+test('exportTable labels MusicBrainz and the owner the way the file says', () => {
   const table = exportTable([
     act({ key: 'a', name: 'A', source: 'musicbrainz', genres: [{ style: 'rock', weight: 1 }] }),
     act({ key: 'b', name: 'B', source: 'you', genres: [{ style: 'pop', weight: 1 }] }),
   ]);
   assert.equal(table[1][3], 'MusicBrainz');
-  assert.equal(table[2][3], 'yours');
+  assert.equal(table[2][3], 'owner');
 });
 
 test('exportTable keeps one row per key and a blank MusicBrainz cell when none', () => {
@@ -495,4 +495,20 @@ test('changesToSave leaves out stale rows unless ticked', () => {
   assert.equal(changes[0].stale, true);
   assert.equal(changesToSave(changes, new Set()).length, 0);
   assert.equal(changesToSave(changes, new Set(['a'])).length, 1);
+});
+
+test('genreStamp treats legacy you and owner as the same token', () => {
+  assert.equal(genreStamp('owner', ['House', 'techno']), genreStamp('you', ['techno', 'house']));
+  assert.notEqual(genreStamp('owner', ['house']), genreStamp('music-story', ['house']));
+});
+
+test('a file downloaded with legacy you rows is not stale once they are owner rows', () => {
+  const before = act({ key: 'a', name: 'A', source: 'you', genres: [{ style: 'House', weight: 1 }] });
+  const stamp = exportTable([before])[1][5];
+  const after = act({ key: 'a', name: 'A', source: 'owner', genres: [{ style: 'House', weight: 1 }] });
+  const { changes } = previewGenresCsv([{ line: 2, name: 'A', mbid: '', newGenres: 'house; disco', stamp }], [after], {}, []);
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0].stale, false);
+  const same = previewGenresCsv([{ line: 2, name: 'A', mbid: '', newGenres: 'House', stamp }], [after], {}, []);
+  assert.equal(same.changes[0].sameAsNow, true);
 });

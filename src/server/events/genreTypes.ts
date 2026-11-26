@@ -1,8 +1,10 @@
 // Shapes and limits shared by the server (genres.ts) and the browser, kept
 // free of server imports so the client bundle can use them.
 
-// you: genres you set on an act yourself, which win over the other two.
-export type GenreSource = 'music-story' | 'musicbrainz' | 'you';
+// owner: the site owner's shared genres, which win over every other source.
+// you: legacy owner rows in the shared table until migration 0059 moves them to owner.
+// added: client-only, a member's own additions (user_artist_genres), shown only to them.
+export type GenreSource = 'music-story' | 'musicbrainz' | 'you' | 'owner' | 'added';
 
 export interface GenreShare {
   parent: string; // one of music-story's parent genres, e.g. "electronic"; a genre you made up is its own parent
@@ -19,6 +21,21 @@ export interface ArtistGenres {
   sourceUrl?: string; // the MusicBrainz artist page
   inputs?: string[]; // music-story: which tag sources fed it (lastfm, spotify, musicbrainz)
   checkedAt: string;
+  added?: string[]; // display only: the styles a member added on top of the shared ones
+}
+
+// One row of artist_genre_changes (docs/specs/canonical-genres.md section 3).
+export interface GenreChange {
+  id: string;
+  key: string; // artist_key
+  source: GenreSource; // which artist_genres row changed
+  at: string;
+  actor: 'owner' | `system:${string}`;
+  reason: string;
+  batchId?: string; // one genres file upload
+  before: ArtistGenres | null; // null: there was no row
+  after: ArtistGenres | null; // null: the row was removed
+  undoneAt?: string;
 }
 
 export interface GenreMapEntry {
