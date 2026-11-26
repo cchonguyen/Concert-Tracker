@@ -857,10 +857,38 @@ export async function planArtistChange(
   };
 }
 
+// Carries shared artist_genres rows when a canonical artist is renamed or merged.
+// A rename moves every shared row to the new key; a merge keeps the target's
+// row for each source and moves the source's only where the target has none.
+async function carrySharedGenres(
+  store: LineupStore,
+  op: 'canonical-rename' | 'canonical-merge',
+  fromKey: string,
+  toKey: string,
+  toName: string,
+): Promise<void> {
+  if (!fromKey || !toKey || fromKey === toKey) return;
+  const all = await store.listArtistGenres();
+  const fromRows = all.filter((r) => r.key === fromKey && r.source !== 'added');
+  if (!fromRows.length) return;
+  const targetSources =
+    op === 'canonical-merge'
+      ? new Set(all.filter((r) => r.key === toKey && r.source !== 'added').map((r) => r.source))
+      : new Set<string>();
+  const writes = fromRows.flatMap((r) => {
+    const remove = { key: fromKey, source: r.source, row: null };
+    if (op === 'canonical-merge' && targetSources.has(r.source)) return [remove];
+    return [remove, { key: toKey, source: r.source, row: { ...r, key: toKey, name: toName } }];
+  });
+  const actor = op === 'canonical-rename' ? 'system:catalog-rename' : 'system:catalog-merge';
+  const reason = op === 'canonical-rename' ? 'Artist renamed' : 'Artist merged';
+  await store.writeArtistGenres(writes, { actor, reason });
+}
+
 // Writes a plan: the owner's record change (manage.ts) first, then the history entry, then the catalog writes.
 export async function applyArtistChangePlan(store: LineupStore, plan: ArtistChangePlan): Promise<HistoryEntry> {
   const personalHistoryId = plan.personal ? (await applyEntityChangePlan(store, plan.personal)).id : undefined;
-  return applyArtistChange(store, {
+  const entry = await applyArtistChange(store, {
     id: plan.id,
     operation: plan.operation,
     summary: plan.summary,
@@ -873,6 +901,11 @@ export async function applyArtistChangePlan(store: LineupStore, plan: ArtistChan
     createdAt: plan.at,
     canonical: { ...plan.change, personalHistoryId },
   });
+  if (plan.operation === 'canonical-rename' || plan.operation === 'canonical-merge') {
+    const after = plan.change.artists.after[0];
+    if (after) await carrySharedGenres(store, plan.operation, plan.key, after.key, after.name);
+  }
+  return entry;
 }
 
 // History first, then the writes: the entry holds what undo needs.
