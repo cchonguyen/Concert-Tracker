@@ -9,9 +9,7 @@ import {
   Layers,
   Mail,
   MapPin,
-  Sheet,
   Sparkles,
-  Tags,
   X,
 } from 'lucide-react';
 import type { LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
@@ -49,11 +47,7 @@ import {
   TableFilters,
   todayLineIndex,
 } from '../services/table';
-import { useIsOwner } from './MeContext';
 import { FillGaps } from './FillGaps';
-import { ArtistGenresPanel } from './ArtistGenresPanel';
-import { SeriesPanel } from './SeriesPanel';
-import type { ManageTarget } from './ManageView';
 import { EventTitle } from './EventTitle';
 import { SET_LABELS, seenSlots, slotId } from '../server/events/seen';
 import { ATTENDANCE_LABELS, attendanceOf, AttendanceState } from '../server/events/attendance';
@@ -67,9 +61,7 @@ interface TableViewProps {
   onOpen: (id: string) => void;
   onChanged: (event: LoggedEvent) => void;
   // Series live in the Manage tab; without it, the Series panel opens here.
-  onManage?: (target: ManageTarget) => void;
   onImport: () => void; // the same Import as the Menu and Quick add
-  onSheets: () => void; // the same Google Sheets as the Menu
   onRefresh: () => void; // reload events after a fill-in
   today?: string;
 }
@@ -267,12 +259,10 @@ const TodayIndicator: React.FC = () => (
 
 // Every event as a row you can filter, sort and export. A row opens the usual
 // event panel for editing; "Import a list" adds events from a CSV you kept.
-export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, onOpen, onChanged, onManage, onImport, onSheets, onRefresh, today: todayProp }) => {
+export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions, onOpen, onChanged, onImport, onRefresh, today: todayProp }) => {
   const [filling, setFilling] = useState(false);
-  const [linking, setLinking] = useState(false);
   const toast = useToast();
   const [filters, setFilters] = useState<TableFilters>(readQuery);
-  const [genres, setGenres] = useState(false);
   const [showFilters, setShowFilters] = useState(() => activeFilterCount(readQuery()) > 0);
 
   useEffect(() => {
@@ -289,10 +279,11 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
     () => (filters.went === 'any' ? filterEvents(events, { ...filters, went: 'missed' }, lineups, editions).length : 0),
     [events, filters, lineups, editions],
   );
-  const shownOf = events.length - (filters.went === 'any' ? events.filter((e) => e.attendance === 'missed').length : 0);
   const today = todayProp ?? new Date().toISOString().slice(0, 10);
   const todayLine = useMemo(() => todayLineIndex(rows, filters, today), [rows, filters, today]);
   const active = activeFilterCount(filters);
+  // The Table's filter shortcuts (upcoming, to confirm, hidden): small chips, shown only when above zero.
+  const shortcut = 'inline-flex min-h-8 items-center gap-1.5 rounded-control border border-line-strong px-2.5 py-1 text-xs font-semibold text-text-muted transition-colors hover:border-accent-tint-line hover:text-text motion-reduce:transition-none';
   const set = (patch: Partial<TableFilters>) => setFilters((f) => ({ ...f, ...patch }));
   const setHas = (field: HasField, v: Has) => setFilters((f) => ({ ...f, has: { ...f.has, [field]: v } }));
   // A column header and the sort menu both cycle: the usual direction, the other, then off.
@@ -375,30 +366,12 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
       <FileUp className="h-3.5 w-3.5" /> Import a list
     </button>
   );
-  // Sheets and the music-story/MusicBrainz genre tools stay the owner's; members edit their own genres in SeenGenres.
-  const owner = useIsOwner();
-  const sheetButton = !owner ? null : (
-    <button onClick={onSheets} className="inline-flex items-center gap-1.5 hover:text-text">
-      <Sheet className="h-3.5 w-3.5" /> Google Sheets
-    </button>
-  );
-  const genresButton = !owner ? null : (
-    <button onClick={() => setGenres(true)} className="inline-flex items-center gap-1.5 hover:text-text">
-      <Tags className="h-3.5 w-3.5" /> Genres
-    </button>
-  );
-  const seriesButton = (
-    <button
-      onClick={() => (onManage ? onManage({ kind: 'series' }) : setLinking(true))}
-      className="inline-flex items-center gap-1.5 hover:text-text"
-      title={onManage ? 'Series are in the Manage tab' : undefined}
-    >
-      <Layers className="h-3.5 w-3.5" /> Series
-    </button>
-  );
   const fillButton = (
-    <button onClick={() => setFilling(true)} className="inline-flex items-center gap-1.5 hover:text-text">
-      <Sparkles className="h-3.5 w-3.5" /> Fill gaps
+    <button
+      onClick={() => setFilling(true)}
+      className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-line-strong bg-surface-1 px-3 text-sm text-accent transition-colors hover:border-accent-tint-line motion-reduce:transition-none sm:min-h-9"
+    >
+      <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Fill gaps
     </button>
   );
 
@@ -408,7 +381,6 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
         <p>Nothing to show yet. Events you add appear here as rows.</p>
         <p className="flex justify-center gap-4 text-xs text-text-muted">
           {importButton}
-          {sheetButton}
         </p>
       </div>
     );
@@ -416,22 +388,6 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
 
   return (
     <div className="space-y-3">
-      {genres && <ArtistGenresPanel events={events} onClose={() => setGenres(false)} />}
-      {linking && (
-        <SeriesPanel
-          events={events}
-          onChanged={onChanged}
-          onShow={(series) => {
-            setLinking(false);
-            set({ series });
-          }}
-          onOpen={(id) => {
-            setLinking(false);
-            onOpen(id);
-          }}
-          onClose={() => setLinking(false)}
-        />
-      )}
       {filling && (
         <FillGaps
           events={rows}
@@ -465,6 +421,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
         <div className="[&>button]:h-auto [&>button]:min-h-11 [&>button]:sm:min-h-9 [&>button]:rounded-control [&>button]:border-line-strong [&>button]:bg-surface-1 [&>button]:text-text [&>button]:hover:border-accent-tint-line">
           <FilterButton open={showFilters} count={active} onClick={() => setShowFilters((s) => !s)} />
         </div>
+        {fillButton}
       </div>
 
       {(activeChips.length > 0 || rows.length < events.length) && (
@@ -485,6 +442,18 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
               <X className="h-3 w-3 shrink-0" aria-hidden="true" />
             </button>
           ))}
+          {active > 0 && rows.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                exportCsv(rows, editions);
+                toast({ message: `Exported ${rows.length} ${rows.length === 1 ? 'show' : 'shows'} as CSV` });
+              }}
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-control px-2 py-1 text-xs text-accent hover:underline"
+            >
+              <Download className="h-3.5 w-3.5" aria-hidden="true" /> Export these {rows.length}
+            </button>
+          )}
           {active > 0 && (
             <button
               type="button"
@@ -579,59 +548,25 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
         </FilterPanel>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-text-muted">
-        <span>
-          <span className="font-mono tabular-nums text-text">{summary.events}</span> event{summary.events === 1 ? '' : 's'} you went to
-          {rows.length < shownOf && (
-            <span className="font-mono tabular-nums text-text-muted"> ({rows.length} of {shownOf} shown)</span>
-          )}
-          {' · '}
-          <span className="font-mono tabular-nums">{summary.acts}</span> act{summary.acts === 1 ? '' : 's'} seen ·{' '}
-          <span className="font-mono tabular-nums">{summary.venues}</span> venue{summary.venues === 1 ? '' : 's'}
-          {summary.firstYear !== undefined &&
-            ` · ${summary.firstYear === summary.lastYear ? summary.firstYear : `${summary.firstYear} to ${summary.lastYear}`}`}
-          {summary.averageRating !== undefined && ` · rated ${summary.averageRating} on average (${summary.rated} rated)`}
-          {summary.totalPrice !== undefined && ` · ${summary.totalPrice.toLocaleString()} spent (${summary.priced} priced)`}
+      {(summary.upcoming > 0 || summary.toConfirm > 0 || hiddenMissed > 0) && (
+        <div className="flex flex-wrap items-center gap-1.5">
           {summary.upcoming > 0 && (
-            <button onClick={() => set({ went: 'upcoming' })} className="text-accent hover:underline">
-              {' · '}
-              {summary.upcoming} upcoming
+            <button type="button" onClick={() => set({ went: 'upcoming' })} className={shortcut}>
+              <span className="font-mono tabular-nums">{summary.upcoming}</span> upcoming
             </button>
           )}
           {summary.toConfirm > 0 && (
-            <button onClick={() => set({ went: 'confirm' })} className="text-accent hover:underline">
-              {' · '}
-              {summary.toConfirm} to confirm
+            <button type="button" onClick={() => set({ went: 'confirm' })} className={`${shortcut} border-warn/45 text-warn hover:border-warn`}>
+              <span className="font-mono tabular-nums">{summary.toConfirm}</span> to confirm
             </button>
           )}
           {hiddenMissed > 0 && (
-            <>
-              {' · '}
-              <span className="font-mono tabular-nums">{hiddenMissed}</span> you didn't go to hidden{' '}
-              <button onClick={() => set({ went: 'all' })} className="text-accent hover:underline">
-                Show them
-              </button>
-            </>
+            <button type="button" onClick={() => set({ went: 'all' })} className={shortcut}>
+              <span className="font-mono tabular-nums">{hiddenMissed}</span> didn't go, hidden · Show
+            </button>
           )}
-        </span>
-        <span className="flex flex-wrap items-center gap-x-4 gap-y-1 whitespace-nowrap [&>button]:min-h-11 sm:[&>button]:min-h-9">
-          {fillButton}
-          {seriesButton}
-          {genresButton}
-          {importButton}
-          {sheetButton}
-          <button
-          onClick={() => {
-            exportCsv(rows, editions);
-            toast({ message: `Exported ${rows.length} ${rows.length === 1 ? 'show' : 'shows'} as CSV` });
-          }}
-          disabled={!rows.length}
-          className="inline-flex items-center gap-1.5 hover:text-text disabled:opacity-40"
-        >
-          <Download className="h-3.5 w-3.5" /> {rows.length < events.length ? 'Export these rows' : 'Export all'} as CSV
-          </button>
-        </span>
-      </div>
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <p className="rounded-card border border-dashed border-line-strong bg-surface-1 p-6 text-center text-sm text-text-muted">No events match these filters.</p>

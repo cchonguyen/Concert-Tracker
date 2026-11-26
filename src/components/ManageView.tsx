@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Building2, HeartPulse, History, Layers, MapPin, Mic2, Plus, Search, Tag, Undo2, Users } from 'lucide-react';
+import { Building2, HeartPulse, History, Layers, MapPin, Mic2, Plus, Search, Tag, Tags, Undo2, Users } from 'lucide-react';
+import { ArtistGenresPanel } from './ArtistGenresPanel';
 import { canonicalApi, entitiesApi, LoggedEvent } from '../services/lineupApi';
 import type { ArtistOrigin, CanonicalArtistSummary } from '../server/entities/canonicalManage';
 import { normalizeName } from '../server/lineup/normalizeName';
@@ -186,6 +187,8 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   const [newOrg, setNewOrg] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [newGroup, setNewGroup] = useState('');
+  // Artist genres (owner only), moved here from the Table (docs/specs/quiet-tips-table.md).
+  const [genres, setGenres] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -519,8 +522,18 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
               className={showSearch ? '' : 'ml-auto'}
             />
           )}
+          {!archive && kind === 'artist' && isOwner && (
+            <button
+              type="button"
+              onClick={() => setGenres(true)}
+              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-line-strong bg-surface-1 px-3 text-sm text-text transition-colors hover:border-accent-tint-line motion-reduce:transition-none sm:min-h-9"
+            >
+              <Tags className="h-3.5 w-3.5" aria-hidden="true" /> Genres
+            </button>
+          )}
         </div>
       )}
+      {genres && <ArtistGenresPanel events={events} onClose={() => setGenres(false)} />}
 
       {notice && (
         <div className="flex flex-wrap items-center gap-3 rounded-card border border-line bg-surface-1 p-2.5 text-sm text-text">
