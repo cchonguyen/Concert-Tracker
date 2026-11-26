@@ -15,14 +15,15 @@ export function highestMilestoneCrossed(before: number, after: number, marks: re
   return hit;
 }
 
-// Both counts the cards watch: every show in the log, and the distinct acts seen at the shows you went to.
+// Both counts the cards watch: the shows you went to, and the distinct acts seen at them.
 export interface MilestoneCounts {
   shows: number;
   artists: number;
 }
 
 export function milestoneCounts(events: LoggedEvent[], today: string): MilestoneCounts {
-  return { shows: events.length, artists: distinctActs(wentTo(events, today)) };
+  const went = wentTo(events, today);
+  return { shows: went.length, artists: distinctActs(went) };
 }
 
 // The card text for each milestone. The count is written in by the caller for the big ones.
