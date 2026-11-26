@@ -58,7 +58,7 @@ export function cardContent(event: LoggedEvent, opts: CardOptions): CardContent 
     big = lines.big;
     eventLine = lines.showEventLine ? event.name : undefined;
     small =
-      [lines.small.join(', '), lines.moreHeadliners > 0 ? `+${lines.moreHeadliners} more` : '']
+      [lines.small.join(' ◆ '), lines.moreHeadliners > 0 ? `+${lines.moreHeadliners} more` : '']
         .filter(Boolean)
         .join(' · ') || undefined;
   } else {
@@ -117,4 +117,22 @@ export function cardFileName(event: Pick<LoggedEvent, 'name' | 'startDate' | 'ye
       .replace(/-+$/, '') || 'event';
   const date = event.startDate ?? (event.year ? String(event.year) : '');
   return date ? `livearchive-${slug}-${date}.png` : `livearchive-${slug}.png`;
+}
+
+// The cards whose name, acts, venue, city, region, country or year contain
+// every word of the search, ignoring case and accents. An empty search keeps all.
+const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+export function searchCards(events: LoggedEvent[], query: string): LoggedEvent[] {
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  if (words.length === 0) return events;
+  return events.filter((e) => {
+    const year = eventYear(e);
+    const text = fold(
+      [e.name, ...e.seen.map((s) => s.name), e.venue, e.city, e.region, e.country, year ? String(year) : '', e.startDate, e.endDate]
+        .filter(Boolean)
+        .join(' '),
+    );
+    return words.every((w) => text.includes(w));
+  });
 }

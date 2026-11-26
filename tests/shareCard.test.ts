@@ -24,7 +24,7 @@ test('a stored headliner goes big, and the supports go small, supports first', (
   const c = cardContent(e, ALL);
   assert.deepEqual(c.big, ['Star']);
   assert.equal(c.eventLine, 'Night One');
-  assert.equal(c.small, 'Opener, Plain');
+  assert.equal(c.small, 'Opener ◆ Plain');
 });
 
 test('two stored headliners both go big; no roles and 3 acts puts the event name big', () => {
@@ -50,7 +50,7 @@ test('two stored headliners both go big; no roles and 3 acts puts the event name
   const c = cardContent(three, ALL);
   assert.deepEqual(c.big, ['Big Night']);
   assert.equal(c.eventLine, undefined);
-  assert.equal(c.small, 'One, Two, Three');
+  assert.equal(c.small, 'One ◆ Two ◆ Three');
 });
 
 test('acts off: the event name is the only big line, with no small or event line', () => {
@@ -162,4 +162,20 @@ test('cardFileName slugs the name and adds the date or year', () => {
   );
   assert.equal(cardFileName({ name: 'Yearly  Show', year: 2024 }), 'livearchive-yearly-show-2024.png');
   assert.equal(cardFileName({ name: '!!!' }), 'livearchive-event.png');
+});
+
+test('card search matches name, act, venue, city and year, every word, ignoring case and accents', async () => {
+  const { searchCards } = await import('../src/services/shareCard.ts');
+  const a = ev({ id: 'a', name: 'Night One', startDate: '2024-11-02', venue: 'The Fillmore', city: 'San Francisco', seen: [{ key: 'x', name: 'Röyksopp', from: 'lineup' }] });
+  const b = ev({ id: 'b', name: 'Dreamstate', year: 2023, venue: 'Queen Mary', city: 'Long Beach' });
+  const ids = (q: string) => searchCards([a, b], q).map((e) => e.id);
+  assert.deepEqual(ids(''), ['a', 'b']);
+  assert.deepEqual(ids('  '), ['a', 'b']);
+  assert.deepEqual(ids('dream'), ['b']);
+  assert.deepEqual(ids('royksopp'), ['a']);
+  assert.deepEqual(ids('fillmore'), ['a']);
+  assert.deepEqual(ids('long beach'), ['b']);
+  assert.deepEqual(ids('2023'), ['b']);
+  assert.deepEqual(ids('2024 night'), ['a']);
+  assert.deepEqual(ids('2024 dream'), []);
 });
