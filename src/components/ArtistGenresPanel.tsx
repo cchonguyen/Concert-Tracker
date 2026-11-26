@@ -59,7 +59,7 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
   const by = useMemo(() => genresByArtist(rows ?? []), [rows]);
   const known = [...seenKeys].filter((k) => by.get(k)?.genres.length);
   const fromFile = known.filter((k) => by.get(k)?.source === 'music-story').length;
-  const fromYou = known.filter((k) => by.get(k)?.source === 'you').length;
+  const fromYou = known.filter((k) => by.get(k)?.source === 'owner' || by.get(k)?.source === 'you').length;
   const missing = useMemo(() => missingGenreKeys(events, rows ?? []), [events, rows]);
   const noneKeys = useMemo(
     () => [...seenKeys].filter((k) => by.get(k) && !by.get(k)!.genres.length && by.get(k)!.source === 'musicbrainz'),
@@ -216,7 +216,7 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
             </h2>
             <p className="text-xs text-text-muted">
               Genres for the acts you saw, from your music-story listening history first, then MusicBrainz for acts it does not
-              cover. Acts neither one knows stay without a genre.
+              cover. Acts neither one knows stay without a genre. Genres you set here are shown to everyone.
             </p>
           </div>
           <IconButton icon={X} label="Close" onClick={onClose} />

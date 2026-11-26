@@ -4,7 +4,7 @@
 - **Branch Owner:** Claude (`claude/project-thread-ccwuqr`). Gemini works on its own branch, one per slice: `antigravity/35.10`, `antigravity/35.11`, `antigravity/35.12`.
 - **Active Branch / State:** `main` is current. Shared genres (`docs/specs/canonical-genres.md`): slices 35.1 to 35.9 merged (#939, #940, #942, #944, #945, #946, #947, #949, #951). Migration 0059 is applied in production (329 owner genres moved from `you` to `owner`). No slice is `[IN_PROGRESS]`.
 - **Files Modified in Last Turn:** `.spec/SESSION_HANDOFF.md`
-- **Verification Status:** Verified via finish-slice.mjs (Slice 35.10)
+- **Verification Status:** Verified via finish-slice.mjs (Slice 35.11)
 - **Immediate Next Step:** Slices 35.10, 35.11 and 35.12 in `.spec/PROGRESS.md` are ready for an external implementor (Gemini), in that order, one branch and one PR each. Start each with `node .harness/scripts/start-slice.mjs` and finish with `node .harness/scripts/finish-slice.mjs "<msg>"`.
 
 ## Notes for the three open slices
