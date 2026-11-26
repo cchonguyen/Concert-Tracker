@@ -3,7 +3,7 @@ import { useIsOwner } from './MeContext';
 import { noteView } from '../services/vaultSession';
 import { draftAfterStoredChange } from '../services/fieldDraft';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Calendar, CalendarCheck, CalendarRange, Check, ChevronDown, CircleHelp, CloudSun, ExternalLink, FolderCog, Globe, Heart, Lightbulb, History, Layers, ListFilter, ListMusic, Loader2, MapPin, Plus, RefreshCw, Search, StickyNote, Tag, Ticket, Trash2, Type, Users, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Calendar, CalendarCheck, CalendarRange, Check, ChevronDown, CircleHelp, CloudSun, ExternalLink, FolderCog, Globe, Heart, Info, Lightbulb, History, Layers, ListFilter, ListMusic, Loader2, MapPin, Plus, RefreshCw, Search, StickyNote, Tag, Ticket, Trash2, Type, Users, X, type LucideIcon } from 'lucide-react';
 import {
   ArtistSuggestion,
   canonicalApi,
@@ -73,7 +73,7 @@ import { Pill } from './ui/Pill';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
 import { Segmented } from './ui/Segmented';
-import { ReadList, ReadRow, ROW_TAG_WORDS } from './ui/ReadRow';
+import { ReadList, ReadRow } from './ui/ReadRow';
 import { sourceGlyph } from './ui/SourceIcon';
 import { SaveStatus } from './ui/SaveStatus';
 import { beginSave, emptyTrack, failSave, hintVisit, succeedSave, takeFailed, type SaveTrack } from '../services/saveStatus';
@@ -219,9 +219,18 @@ const FlashContext = React.createContext<string[]>([]);
 const EditionIdContext = React.createContext<string | undefined>(undefined);
 const SourceHighlightContext = React.createContext<(key: string | null) => void>(() => undefined);
 
-// A field's source, at the right end of its row: the source's icon, with "via Ticketmaster" beside it when the row
-// has room and in the tooltip always.
-const SourceLink: React.FC<{ source?: LoggedEvent['sources'][keyof LoggedEvent['sources']] }> = ({ source }) => {
+type FieldSource = LoggedEvent['sources'][keyof LoggedEvent['sources']];
+
+// A field's source glyph, for the info icon beside its row label.
+function sourceIconFor(source: FieldSource): LucideIcon {
+  if (!source) return Info;
+  if (source.sourceType === 'edition') return Tag;
+  if (source.sourceType === 'venue') return MapPin;
+  return sourceGlyph(source.sourceType as SourceType);
+}
+
+// A field's source, inside its row's info tooltip: the source's name as a link, and the quote it gave.
+const SourceLine: React.FC<{ source?: FieldSource }> = ({ source }) => {
   const isOwner = useIsOwner();
   const editionId = React.useContext(EditionIdContext);
   const setHighlightedSource = React.useContext(SourceHighlightContext);
@@ -233,55 +242,50 @@ const SourceLink: React.FC<{ source?: LoggedEvent['sources'][keyof LoggedEvent['
     onFocus: () => setHighlightedSource(highlightKey),
     onBlur: () => setHighlightedSource(null),
   };
-  const tag = 'inline-flex min-h-8 items-center gap-1 whitespace-nowrap font-normal text-text-muted';
+  const Glyph = sourceIconFor(source);
+  const link = 'inline-flex items-center gap-1 font-medium text-text hover:text-accent hover:underline';
   if (source.sourceType === 'edition') {
-    const words = `from ${FIELD_SOURCE_LABELS.edition}`;
-    const body = (
-      <>
-        <Tag className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        <span className={ROW_TAG_WORDS}>{words}</span>
-      </>
-    );
-    return isOwner && editionId ? (
-      <a
-        href={editionUrl(editionId)}
-        {...hover}
-        title={words}
-        aria-label={words}
-        onClick={(e) => {
-          if (isModifiedClick(e)) return;
-          e.preventDefault();
-          const url = editionUrl(editionId);
-          window.history.pushState({ fromManageList: false }, '', url);
-          rememberManageSearch(new URL(url, window.location.origin).search);
-          window.dispatchEvent(new PopStateEvent('popstate'));
-        }}
-        className={`${tag} hover:text-accent hover:underline`}
-      >
-        {body}
-      </a>
-    ) : (
-      <span title={words} aria-label={words} className={tag}>
-        {body}
+    const words = `From ${FIELD_SOURCE_LABELS.edition}`;
+    return (
+      <span className="block">
+        {isOwner && editionId ? (
+          <a
+            href={editionUrl(editionId)}
+            {...hover}
+            onClick={(e) => {
+              if (isModifiedClick(e)) return;
+              e.preventDefault();
+              const url = editionUrl(editionId);
+              window.history.pushState({ fromManageList: false }, '', url);
+              rememberManageSearch(new URL(url, window.location.origin).search);
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }}
+            className={link}
+          >
+            <Glyph className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {words}
+          </a>
+        ) : (
+          <span className="inline-flex items-center gap-1 font-medium text-text">
+            <Glyph className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {words}
+          </span>
+        )}
       </span>
     );
   }
-  const words = `${source.sourceType === 'venue' ? 'from' : 'via'} ${FIELD_SOURCE_LABELS[source.sourceType]}`;
-  const Glyph = source.sourceType === 'venue' ? MapPin : sourceGlyph(source.sourceType as SourceType);
+  const words = `${source.sourceType === 'venue' ? 'From' : 'Via'} ${FIELD_SOURCE_LABELS[source.sourceType]}`;
   return (
-    <a
-      href={source.sourceUrl}
-      target="_blank"
-      rel="noreferrer"
-      {...hover}
-      title={source.quote ? `${words}: “${source.quote}”` : words}
-      aria-label={words}
-      className={`${tag} hover:text-accent`}
-    >
-      <Glyph className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-      <span className={ROW_TAG_WORDS}>{words}</span>
-      <ExternalLink className={`h-2.5 w-2.5 ${ROW_TAG_WORDS}`} aria-hidden="true" />
-    </a>
+    <span className="block space-y-1">
+      {source.sourceUrl ? (
+        <a href={source.sourceUrl} target="_blank" rel="noreferrer" {...hover} className={link}>
+          <Glyph className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {words} <ExternalLink className="h-2.5 w-2.5" aria-hidden="true" />
+        </a>
+      ) : (
+        <span className="inline-flex items-center gap-1 font-medium text-text">
+          <Glyph className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {words}
+        </span>
+      )}
+      {source.quote && <span className="block font-display italic text-text-muted">“{source.quote}”</span>}
+    </span>
   );
 };
 
@@ -348,16 +352,13 @@ const InferredValue: React.FC<{ parts: Array<{ text: string; inferred: boolean }
   </>
 );
 
-// The inferred tag at the right end of a read row: an icon, with its word beside it when the row has room. A tap
-// opens each inferred value's reason with its Confirm (owner) or Verify (member) button.
-const InferredTag: React.FC<{ items: Array<{ inferred: InferredView; field: string }>; onAct?: (inferenceId: string) => Promise<void> }> = ({ items, onAct }) => {
+type InferredItem = { inferred: InferredView; field: string };
+
+// Inferred values inside a row's info tooltip: each one's reason, with Confirm (owner) or Verify (member).
+const InferredInfo: React.FC<{ items: InferredItem[]; onAct?: (inferenceId: string) => Promise<void> }> = ({ items, onAct }) => {
   const isOwner = useIsOwner();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  if (!items.length) return null;
-  const candidate = items.find((i) => i.inferred.standing === 'candidate');
-  const votes = candidate?.inferred.votes ?? 0;
-  const word = candidate ? `Candidate, ${votes} member${votes === 1 ? '' : 's'}` : 'Inferred';
   const act = async (inferenceId: string) => {
     if (!onAct) return;
     setBusy(inferenceId);
@@ -371,39 +372,59 @@ const InferredTag: React.FC<{ items: Array<{ inferred: InferredView; field: stri
     }
   };
   return (
-    <Popover
-      align="end"
-      label="Why this is inferred"
-      content={
-        <span className="block space-y-2 text-xs leading-relaxed text-text">
-          {items.map(({ inferred, field }) => (
-            <span key={inferred.inferenceId} className="block space-y-1.5">
-              <span className="block">{`${items.length > 1 ? `${field}: ` : ''}Inferred: ${inferred.reason.replace(/[.\s]+$/, '')}.`}</span>
-              {onAct && (
-                <button
-                  type="button"
-                  onClick={() => void act(inferred.inferenceId)}
-                  disabled={busy === inferred.inferenceId}
-                  title={isOwner ? 'Writes this value into the event as yours.' : 'Your Verify counts toward this value. Two members make it verified.'}
-                  className="inline-flex min-h-9 items-center rounded-control border border-line px-3 text-xs text-text hover:bg-surface-3 disabled:opacity-50"
-                >
-                  {isOwner ? 'Confirm' : 'Verify'}
-                  {items.length > 1 ? ` ${field.toLowerCase()}` : ''}
-                </button>
-              )}
+    <span className="block space-y-2">
+      {items.map(({ inferred, field }) => {
+        const votes = inferred.votes ?? 0;
+        const word = inferred.standing === 'candidate' ? `Candidate, ${votes} member${votes === 1 ? '' : 's'}` : 'Inferred';
+        return (
+          <span key={inferred.inferenceId} className="block space-y-1.5">
+            <span className="block">
+              <span className="font-medium">{items.length > 1 ? `${field}: ${word.toLowerCase()}` : word}.</span>{' '}
+              {inferred.reason.replace(/[.\s]+$/, '')}.
             </span>
-          ))}
-          {error && <span role="alert" className="block text-bad">{error}</span>}
-        </span>
-      }
-    >
-      <span title={word} className="inline-flex min-h-8 items-center gap-1 whitespace-nowrap rounded-full border border-dashed border-line-strong px-1.5 text-[11px] italic text-text-muted">
-        <Lightbulb className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        <span className={ROW_TAG_WORDS}>{word}</span>
-      </span>
-    </Popover>
+            {onAct && (
+              <button
+                type="button"
+                onClick={() => void act(inferred.inferenceId)}
+                disabled={busy === inferred.inferenceId}
+                title={isOwner ? 'Writes this value into the event as yours.' : 'Your Verify counts toward this value. Two members make it verified.'}
+                className="inline-flex min-h-9 items-center rounded-control border border-line px-3 text-xs text-text hover:bg-surface-3 disabled:opacity-50"
+              >
+                {isOwner ? 'Confirm' : 'Verify'}
+                {items.length > 1 ? ` ${field.toLowerCase()}` : ''}
+              </button>
+            )}
+          </span>
+        );
+      })}
+      {error && <span role="alert" className="block text-bad">{error}</span>}
+    </span>
   );
 };
+
+// A read row's info: where its value came from, inferred values, and notes. The row shows it from one icon beside
+// its label: the inferred bulb, else the source's glyph, else an "i".
+function infoFor(opts: { source?: FieldSource; inferred?: Array<InferredItem | false | undefined>; onAct?: (inferenceId: string) => Promise<void>; notes?: React.ReactNode[] }): { info?: React.ReactNode; infoIcon?: LucideIcon; infoLabel?: string } {
+  const src = opts.source && opts.source.sourceType !== 'user' ? opts.source : undefined;
+  const inferredItems = (opts.inferred ?? []).filter((x): x is InferredItem => Boolean(x));
+  const notes = (opts.notes ?? []).filter(Boolean);
+  if (!src && !inferredItems.length && !notes.length) return {};
+  return {
+    info: (
+      <>
+        {src && <SourceLine source={src} />}
+        {inferredItems.length > 0 && <InferredInfo items={inferredItems} onAct={opts.onAct} />}
+        {notes.map((n, i) => (
+          <span key={i} className="block text-text-muted">
+            {n}
+          </span>
+        ))}
+      </>
+    ),
+    infoIcon: inferredItems.length ? Lightbulb : src ? sourceIconFor(src) : Info,
+    infoLabel: inferredItems.length ? 'Why this is inferred' : src ? 'Where this came from' : undefined,
+  };
+}
 
 // An inferred billing role on an act with no stated role. Its reason opens on tap.
 const InferredRole: React.FC<{ inferred: InferredBilling }> = ({ inferred }) => {
@@ -721,6 +742,82 @@ const ChipInput: React.FC<{
     </div>
   );
 };
+
+// The Date row's days, one line each. Once you went (or said you didn't), each day has a checkbox, ticked unless you
+// missed it; even a one-day event has one. Unticking the only day left asks whether you didn't go at all. Ticking
+// every day stores none (the default). Tapping a date opens the date editor.
+const DayChecks: React.FC<{
+  days: string[];
+  attended: string[];
+  checkable: boolean;
+  missed: boolean;
+  onChange: (days: string[]) => void;
+  onWent: (days: string[]) => void;
+  onNoneLeft: () => void;
+  onOpenDate: () => void;
+}> = ({ days, attended, checkable, missed, onChange, onWent, onNoneLeft, onOpenDate }) => {
+  const picked = attended.filter((d) => days.includes(d));
+  const went = missed ? [] : picked.length ? picked : days;
+  const toggle = (d: string) => {
+    if (missed) return onWent(days.length > 1 ? [d] : []);
+    if (went.includes(d)) {
+      if (went.length === 1) return onNoneLeft();
+      return onChange(went.filter((x) => x !== d));
+    }
+    const next = [...went, d].sort();
+    onChange(next.length === days.length ? [] : next);
+  };
+  return (
+    <ul className="space-y-0.5">
+      {days.map((d) => {
+        const on = went.includes(d);
+        const label = whenLabel({ startDate: d }) ?? d;
+        return (
+          <li key={d} className="flex min-h-9 items-center gap-2">
+            {checkable && (
+              <input
+                type="checkbox"
+                checked={on}
+                onChange={() => toggle(d)}
+                aria-label={on ? `Went on ${label}. Untick if you missed it.` : `Missed ${label}. Tick if you went.`}
+                className="h-4 w-4 shrink-0 accent-[var(--la-accent)]"
+              />
+            )}
+            <button
+              type="button"
+              onClick={onOpenDate}
+              className={`min-w-0 text-left text-sm tabular-nums hover:text-accent sm:font-mono ${checkable && !on ? 'text-text-muted line-through' : 'text-text'}`}
+            >
+              {label}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
+
+// The Date row's "+": adds an end date or a weekend, so those rows stay hidden on the many events that need neither.
+const DateAddMenu: React.FC<{ options: Array<{ label: string; onPick: () => void }> }> = ({ options }) => (
+  <Popover
+    align="end"
+    closeOnPick
+    label="Add to the date"
+    content={
+      <span className="flex flex-col gap-1">
+        {options.map((o) => (
+          <button key={o.label} type="button" onClick={o.onPick} className="min-h-9 rounded-control px-2 text-left text-sm text-text hover:bg-surface-3">
+            {o.label}
+          </button>
+        ))}
+      </span>
+    }
+  >
+    <span className="inline-flex h-7 w-7 items-center justify-center rounded-control border border-line text-text-muted hover:border-accent hover:text-accent">
+      <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+    </span>
+  </Popover>
+);
 
 // Which days of a multi-day event you went. No days stored means every day,
 // so each day starts ticked and you untick the ones you missed. Ticking every
@@ -1325,6 +1422,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const [reviewing, setReviewing] = useState(false);
   const [weekendPromptDismissed, setWeekendPromptDismissed] = useState(false);
   const [weekendOpen, setWeekendOpen] = useState(false);
+  const [endsOpen, setEndsOpen] = useState(false);
+  const [confirmingMissed, setConfirmingMissed] = useState(false);
   const [highlightedSource, setHighlightedSource] = useState<string | null>(null);
   const [openRow, setOpenRow] = useState<string | null>(null);
   const whenWhereRef = useRef<HTMLElement>(null);
@@ -1332,6 +1431,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   useEffect(() => {
     setWeekendPromptDismissed(false);
     setWeekendOpen(false);
+    setEndsOpen(false);
     setHighlightedSource(null);
     setOpenRow(null);
   }, [event.id]);
@@ -1570,6 +1670,14 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const roleName = (role?: Seen['role']) => (role === 'support' ? 'Supporting' : 'Artist');
 
   const state = attendanceOf(event, new Date().toISOString().slice(0, 10));
+  // The Weekend row shows when the edition has several weekends, one is picked, or you add it from the Date row's "+".
+  const showWeekend = Boolean(edition?.weekends && edition.weekends.length > 1) || (Boolean(event.series) && (event.weekend != null || weekendOpen));
+  const dateAdds = [
+    ...(event.startDate && !event.endDate && !inferred.endDate && !endsOpen
+      ? [{ label: "Add a day", onPick: () => { setEndsOpen(true); setOpenRow("endDate"); } }]
+      : []),
+    ...(event.series && !showWeekend ? [{ label: "Add a weekend", onPick: () => setWeekendOpen(true) }] : []),
+  ];
   const gapsLeft = thingsLeft(event, (e, g) => hasGap(e, g, undefined, edition ? lineupFacts(edition) : undefined));
   // Scrolls to the section a gap is filled in and highlights it for a moment.
   const [rightTab, setRightTab] = useState<'lineup' | 'seen' | 'changes'>('seen');
@@ -1765,7 +1873,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               open={openRow === "name"}
               onOpenChange={(o) => setOpenRow(o ? "name" : null)}
               editor={() => <Field label="Event" field="name" value={event.name} onSave={(v) => save({ name: v })} />}
-              below={event.input && event.input !== event.name ? <p className="text-xs text-text-muted">You typed: “{event.input}”</p> : undefined}
+              {...infoFor({ notes: [event.input && event.input !== event.name ? `You typed: “${event.input}”` : null] })}
             />
 
             <ReadRow
@@ -1786,90 +1894,69 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                   onSave={(v) => save({ series: text(v), ...(text(v) ? {} : { weekend: null }) })}
                 />
               )}
-              below={
-                (event.series || (edition?.weekends && edition.weekends.length > 1) || eventTitle(event) !== event.name) ? (
-                  <div className="space-y-1.5">
-                    {/* Most events have one weekend, so the picker stays a small button until the edition has several
-                        weekends, one is already picked, or you open it. */}
-                    {event.series && !(edition?.weekends && edition.weekends.length > 1) && event.weekend == null && !weekendOpen && (
-                      <button
-                        type="button"
-                        onClick={() => setWeekendOpen(true)}
-                        aria-expanded={false}
-                        title="Opens the weekend choices, for a festival that runs more than one weekend."
-                        className="inline-flex min-h-11 items-center gap-1 rounded-control border border-line px-2.5 text-xs text-text-muted hover:border-accent hover:text-text sm:min-h-8"
-                      >
-                        <Plus className="h-3 w-3" aria-hidden="true" /> Weekend
-                      </button>
-                    )}
-                    {((edition?.weekends && edition.weekends.length > 1) || (event.series && (event.weekend != null || weekendOpen))) && (
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-[11px] font-semibold text-text-muted mr-1">Weekend</span>
-                        {edition?.weekends && edition.weekends.length > 1
-                          ? edition.weekends.map((w) => {
-                              const on = event.weekend === w.weekend;
-                              return (
-                                <button
-                                  key={w.weekend}
-                                  type="button"
-                                  aria-pressed={on}
-                                  onClick={() => void save({ weekend: w.weekend })}
-                                  className={`min-h-11 rounded-control border px-3 text-sm sm:min-h-9 ${on ? "border-accent bg-accent-tint text-text" : "border-line-strong text-text-muted hover:border-accent"}`}
-                                >
-                                  {weekendLabel(w, "WK")}
-                                </button>
-                              );
-                            })
-                          : [1, 2].map((w) => {
-                              const on = event.weekend === w;
-                              return (
-                                <button
-                                  key={w}
-                                  type="button"
-                                  aria-pressed={on}
-                                  onClick={() => void save({ weekend: w })}
-                                  className={`min-h-11 rounded-control border px-3 text-sm sm:min-h-9 ${on ? "border-accent bg-accent-tint text-text" : "border-line-strong text-text-muted hover:border-accent"}`}
-                                >
-                                  WK{w}
-                                </button>
-                              );
-                            })}
-                        {event.weekend != null && (
-                          <button
-                            type="button"
-                            onClick={() => void save({ weekend: null })}
-                            className="min-h-11 px-2 text-xs text-text-muted hover:text-text sm:min-h-9"
-                          >
-                            Clear
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    {(event.series || eventTitle(event) !== event.name) && (
-                      <p className="text-[11px] text-text-muted">
-                        Shows as “<EventTitle event={event} />”
-                        {(() => {
-                          const n = seriesList(events).find((g) => g.name === event.series)?.events.length ?? 1;
-                          return n > 1 ? ` · ${n} editions in your log` : "";
-                        })()}
-                      </p>
-                    )}
-                  </div>
-                ) : undefined
-              }
+              {...infoFor({
+                notes: [
+                  event.series || eventTitle(event) !== event.name ? (
+                    <>
+                      Shows as “<EventTitle event={event} />”
+                      {(() => {
+                        const n = seriesList(events).find((g) => g.name === event.series)?.events.length ?? 1;
+                        return n > 1 ? `. ${n} editions in your log.` : ".";
+                      })()}
+                    </>
+                  ) : null,
+                ],
+              })}
             />
+
+            {/* Most festivals have one weekend, so this row shows only when the edition has several weekends, one is
+                picked, or you add it from the Date row's "+". */}
+            {showWeekend && (
+              <ReadRow icon={CalendarRange} label="Weekend" alwaysOpen>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {(edition?.weekends && edition.weekends.length > 1
+                    ? edition.weekends.map((w) => ({ n: w.weekend, label: weekendLabel(w, "WK") }))
+                    : [1, 2].map((n) => ({ n, label: `WK${n}` }))
+                  ).map(({ n, label }) => {
+                    const on = event.weekend === n;
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => void save({ weekend: n })}
+                        className={`min-h-11 rounded-control border px-3 text-sm sm:min-h-8 ${on ? "border-accent bg-accent-tint text-text" : "border-line-strong text-text-muted hover:border-accent"}`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                  {event.weekend != null && (
+                    <button type="button" onClick={() => void save({ weekend: null })} className="min-h-11 px-2 text-xs text-text-muted hover:text-text sm:min-h-8">
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </ReadRow>
+            )}
 
             <ReadRow
               icon={Calendar}
               label="Date"
               mono
-              value={event.startDate ? (whenLabel({ startDate: event.startDate }) ?? event.startDate) : inferred.startDate ? <InferredValue parts={[{ text: inferredText(inferred.startDate, "date"), inferred: true }]} /> : undefined}
-              inferred={!event.startDate && inferred.startDate ? <InferredTag items={[{ inferred: inferred.startDate, field: "Date" }]} onAct={verifyInferred} /> : undefined}
+              alwaysOpen={days.length > 0}
+              value={event.startDate ? undefined : inferred.startDate ? <InferredValue parts={[{ text: inferredText(inferred.startDate, "date"), inferred: true }]} /> : undefined}
               emptyText="Not known yet"
-              source={<SourceLink source={event.sources.startDate} />}
+              {...infoFor({
+                source: event.sources.startDate,
+                inferred: [!event.startDate && inferred.startDate && { inferred: inferred.startDate, field: "Date" }],
+                onAct: verifyInferred,
+                notes: [days.length > 0 && (state === "went" || state === "missed") ? "Untick a day you missed. Unticking the only day marks the event as one you didn't go to." : null],
+              })}
               flash={flashing.includes("startDate")}
               open={openRow === "date"}
               onOpenChange={(o) => setOpenRow(o ? "date" : null)}
+              action={dateAdds.length > 0 ? <DateAddMenu options={dateAdds} /> : undefined}
               editor={() => (
                 <Field
                   label="Date"
@@ -1882,7 +1969,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                   onSave={(v) => save({ startDate: text(v) })}
                 />
               )}
-            />
+            >
+              <DayChecks
+                days={days}
+                attended={event.daysAttended}
+                checkable={state === "went" || state === "missed"}
+                missed={state === "missed"}
+                onChange={(daysAttended) => save({ daysAttended })}
+                onWent={(daysAttended) => save({ attendance: null, daysAttended })}
+                onNoneLeft={() => setConfirmingMissed(true)}
+                onOpenDate={() => setOpenRow("date")}
+              />
+            </ReadRow>
 
             {!event.startDate && (
               <ReadRow
@@ -1898,20 +1996,24 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               />
             )}
 
+            {(event.endDate || inferred.endDate || endsOpen) && (
             <ReadRow
               icon={CalendarRange}
-              label="Last day"
+              label="Ends"
               mono
               value={event.endDate ? (whenLabel({ startDate: event.endDate }) ?? event.endDate) : inferred.endDate ? <InferredValue parts={[{ text: inferredText(inferred.endDate, "date"), inferred: true }]} /> : undefined}
-              inferred={!event.endDate && inferred.endDate ? <InferredTag items={[{ inferred: inferred.endDate, field: "Last day" }]} onAct={verifyInferred} /> : undefined}
-              emptyText="Not known yet"
-              source={event.endDate ? <SourceLink source={event.sources.endDate} /> : undefined}
+              {...infoFor({
+                source: event.endDate ? event.sources.endDate : undefined,
+                inferred: [!event.endDate && inferred.endDate && { inferred: inferred.endDate, field: "Ends" }],
+                onAct: verifyInferred,
+              })}
+              emptyText="Not set"
               flash={flashing.includes("endDate")}
               open={openRow === "endDate"}
               onOpenChange={(o) => setOpenRow(o ? "endDate" : null)}
               editor={() => (
                 <Field
-                  label="Last day"
+                  label="Ends"
                   field="endDate"
                   type="date"
                   value={event.endDate ?? event.startDate}
@@ -1923,20 +2025,14 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                 />
               )}
             />
-
-            {days.length > 1 && (
-              <ReadRow icon={CalendarCheck} label="Went on" alwaysOpen>
-                <DaysWent inRow days={days} attended={event.daysAttended} onChange={(daysAttended) => save({ daysAttended })} />
-              </ReadRow>
             )}
 
             <ReadRow
               icon={MapPin}
               label="Venue"
               value={event.venue || (inferred.venue ? <InferredValue parts={[{ text: inferredText(inferred.venue, "text"), inferred: true }]} /> : undefined)}
-              inferred={!event.venue && inferred.venue ? <InferredTag items={[{ inferred: inferred.venue, field: "Venue" }]} onAct={verifyInferred} /> : undefined}
+              {...infoFor({ source: event.sources.venue, inferred: [!event.venue && inferred.venue && { inferred: inferred.venue, field: "Venue" }], onAct: verifyInferred })}
               emptyText="Not known yet"
-              source={<SourceLink source={event.sources.venue} />}
               flash={flashing.includes("venue")}
               open={openRow === "venue"}
               onOpenChange={(o) => setOpenRow(o ? "venue" : null)}
@@ -1998,14 +2094,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                 );
                 return parts.length ? <InferredValue parts={parts} /> : undefined;
               })()}
-              inferred={(() => {
-                const items = ([["city", "City"], ["region", "State"], ["country", "Country"]] as const).flatMap(([f, field]) =>
-                  !event[f] && inferred[f] ? [{ inferred: inferred[f]!, field }] : [],
-                );
-                return items.length ? <InferredTag items={items} onAct={verifyInferred} /> : undefined;
-              })()}
+              {...infoFor({
+                source: event.sources.city ?? event.sources.region ?? event.sources.country,
+                inferred: ([["city", "City"], ["region", "State"], ["country", "Country"]] as const).map(([f, field]) => !event[f] && inferred[f] && { inferred: inferred[f]!, field }),
+                onAct: verifyInferred,
+              })}
               emptyText="Not known yet"
-              source={<SourceLink source={event.sources.city ?? event.sources.region ?? event.sources.country} />}
               flash={flashing.includes("city") || flashing.includes("region") || flashing.includes("country")}
               open={openRow === "place"}
               onOpenChange={(o) => setOpenRow(o ? "place" : null)}
@@ -2070,39 +2164,25 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               icon={ListFilter}
               label="Type"
               alwaysOpen
-              below={
-                !event.kind && worked.kind ? (
-                  worked.by === "series" ? (
-                    <span
-                      title={`${worked.kind === "festival" ? "From festival series" : "From tour series"}. Tap a type to change it.`}
-                      className="text-xs text-text-muted"
-                    >
-                      {worked.kind === "festival" ? "From festival series" : "From tour series"}
-                    </span>
-                  ) : (
-                    <span title="Worked out from the lineup; tap a type to change it." aria-label="Worked out from the lineup" className="text-accent">
-                      ✦
-                    </span>
-                  )
-                ) : undefined
-              }
+              {...infoFor({
+                notes: [
+                  !event.kind && worked.kind
+                    ? worked.by === "series"
+                      ? `${worked.kind === "festival" ? "From the festival series" : "From the tour series"}. Pick one to change it.`
+                      : "Worked out from the lineup. Pick one to change it."
+                    : null,
+                ],
+              })}
             >
-              <div className="flex flex-wrap items-center gap-1.5">
-                {(["festival", "concert"] as const).map((k) => {
-                  const shown = event.kind ?? worked.kind;
-                  return (
-                    <button
-                      key={k}
-                      type="button"
-                      aria-pressed={shown === k}
-                      onClick={() => save({ kind: k })}
-                      className={`min-h-11 rounded-control border px-3 text-sm sm:min-h-9 ${shown === k ? "border-accent bg-accent-tint text-text" : "border-line-strong text-text-muted hover:border-accent"}`}
-                    >
-                      {KIND_LABELS[k]}
-                    </button>
-                  );
-                })}
-              </div>
+              {/* One control in two halves: you pick Festival or Concert. Until you pick, the worked-out type is lit. */}
+              <Segmented
+                label="Type"
+                value={(event.kind ?? worked.kind ?? "") as "festival" | "concert"}
+                options={(["festival", "concert"] as const).map((k) => ({ value: k, label: KIND_LABELS[k] }))}
+                onChange={(k) => void save({ kind: k })}
+                compact
+                className="flex-nowrap!"
+              />
             </ReadRow>
 
             <ReadRow
@@ -2116,15 +2196,17 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                   : undefined
               }
               emptyText="Not known yet"
-              source={
-                event.weather ? (
-                  <a href={event.weather.sourceUrl} target="_blank" rel="noreferrer" title="via Open-Meteo" aria-label="via Open-Meteo" className="inline-flex min-h-8 items-center gap-1 whitespace-nowrap text-text-muted hover:text-accent">
-                    <CloudSun className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                    <span className={ROW_TAG_WORDS}>Open-Meteo</span>
-                    <ExternalLink className={`h-2.5 w-2.5 ${ROW_TAG_WORDS}`} aria-hidden="true" />
-                  </a>
-                ) : undefined
-              }
+              {...(event.weather
+                ? {
+                    info: (
+                      <a href={event.weather.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-text hover:text-accent hover:underline">
+                        <CloudSun className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> Via Open-Meteo <ExternalLink className="h-2.5 w-2.5" aria-hidden="true" />
+                      </a>
+                    ),
+                    infoIcon: CloudSun,
+                    infoLabel: "Where this came from",
+                  }
+                : {})}
               below={!event.weather ? <Weather event={event} busy={busy === "weather"} note={weatherNote} onLookUp={lookUpWeather} /> : undefined}
             />
           </ReadList>
@@ -2193,7 +2275,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               mono
               value={event.ticketPrice != null ? String(event.ticketPrice) : undefined}
               emptyText="Not set"
-              source={<SourceLink source={event.sources.ticketPrice} />}
+              {...infoFor({ source: event.sources.ticketPrice })}
               flash={flashing.includes("ticketPrice")}
               open={openRow === "ticketPrice"}
               onOpenChange={(o) => setOpenRow(o ? "ticketPrice" : null)}
@@ -2497,6 +2579,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
         </EditionIdContext.Provider>
       </FlashContext.Provider>
 
+      {confirmingMissed && (
+        <Confirm
+          title="Did you not go to this event?"
+          message={`"${eventTitle(event)}" will be marked as one you didn't go to. It leaves your counts and history, and you can still find it in the Table.`}
+          confirmLabel="I didn't go"
+          onCancel={() => setConfirmingMissed(false)}
+          onConfirm={() => {
+            setConfirmingMissed(false);
+            void save({ attendance: "missed", daysAttended: [] });
+          }}
+        />
+      )}
       {confirmingDelete && (
         <Confirm
           title="Delete event"

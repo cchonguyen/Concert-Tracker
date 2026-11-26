@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Check, Pencil, type LucideIcon } from 'lucide-react';
-
-// Words beside a row tag's icon show only when the row is wide enough; below that the tag is its icon alone.
-export const ROW_TAG_WORDS = 'hidden @[23rem]:inline';
+import { Check, Info, Pencil, type LucideIcon } from 'lucide-react';
+import { Popover } from './Popover';
 
 export function ReadList({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
@@ -12,6 +10,12 @@ export function ReadList({ children, className = '' }: { children: ReactNode; cl
   );
 }
 
+// Every read row shares these columns, so icons, labels, values and the right-hand icons line up down the list:
+// the row's icon, its label, the value, an optional action, and the right slot. From `sm` up the info icon sits
+// beside the label and the right slot holds the edit icon (shown on hover). On phones a tap on the row edits it,
+// so there is no edit icon and the info icon takes the right slot.
+const COLUMNS = 'grid grid-cols-[1rem_4.5rem_minmax(0,1fr)_auto_1.5rem] items-center gap-x-1.5 sm:gap-x-2 sm:grid-cols-[1rem_6.5rem_minmax(0,1fr)_auto_1.75rem]';
+
 interface ReadRowProps {
   id?: string;
   icon: LucideIcon;
@@ -19,19 +23,25 @@ interface ReadRowProps {
   value?: ReactNode;
   emptyText?: string;
   mono?: boolean;
-  source?: ReactNode;
-  inferred?: ReactNode;
+  // Where the value came from and any notes about it. It opens from a small icon beside the label, on hover or tap.
+  info?: ReactNode;
+  infoIcon?: LucideIcon;
+  infoLabel?: string;
   flash?: boolean;
+  // The value is its own control (choices, checkboxes), so the row is not one big edit button. With `editor`,
+  // the edit icon on the right still opens it.
   alwaysOpen?: boolean;
   disabled?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   editor?: (close: () => void) => ReactNode;
+  // A small control just left of the edit slot, such as the Date row's "+".
+  action?: ReactNode;
   below?: ReactNode;
   children?: ReactNode;
 }
 
-// A saved field shown as a quiet read row with its icon, label, value, and source.
+// A saved field shown as a quiet read row with its icon, label, value, and the edit icon at the right end.
 // Tapping or pressing Enter swaps to the editor in place; leaving returns to read mode.
 export function ReadRow({
   id,
@@ -40,14 +50,16 @@ export function ReadRow({
   value,
   emptyText = 'Not known yet',
   mono = false,
-  source,
-  inferred,
+  info,
+  infoIcon: InfoIcon = Info,
+  infoLabel,
   flash = false,
   alwaysOpen = false,
   disabled = false,
   open: controlledOpen,
   onOpenChange,
   editor,
+  action,
   below,
   children,
 }: ReadRowProps) {
@@ -73,21 +85,7 @@ export function ReadRow({
   }, [isOpen]);
 
   const hasValue = value !== undefined && value !== null && value !== '';
-
-  if (alwaysOpen) {
-    return (
-      <div id={id} className={`px-3 py-2.5 ${flash ? 'bg-good/5' : ''}`}>
-        <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 sm:min-h-10">
-          <div className="flex items-center gap-2 text-xs font-medium text-text-muted">
-            <Icon className="h-4 w-4 shrink-0 text-text-muted" strokeWidth={1.75} aria-hidden="true" />
-            <span>{label}</span>
-          </div>
-          <div className="min-w-0 flex-1 flex justify-end">{children}</div>
-        </div>
-        {below && <div className="mt-1.5 pl-6">{below}</div>}
-      </div>
-    );
-  }
+  const canEdit = Boolean(editor) && !disabled;
 
   if (isOpen && editor) {
     return (
@@ -115,41 +113,61 @@ export function ReadRow({
     );
   }
 
+  const infoButton = (align: 'start' | 'end') => (
+    <Popover align={align} label={infoLabel ?? `About ${label}`} content={<span className="block space-y-2 text-xs leading-relaxed text-text">{info}</span>}>
+      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-muted hover:text-accent">
+        <InfoIcon className="h-3.5 w-3.5" aria-hidden="true" />
+      </span>
+    </Popover>
+  );
+
+  const valueText = (
+    <span
+      className={`block min-w-0 break-words text-sm ${mono ? 'tabular-nums sm:font-mono' : ''} ${hasValue ? 'text-text' : 'text-text-faint'}`}
+    >
+      {hasValue ? value : emptyText}
+    </span>
+  );
+
   return (
-    <div id={id} className={`@container px-3 py-1.5 ${flash ? 'ring-1 ring-inset ring-good/60' : ''}`}>
-      {/* The source and inferred tags stay at the right end of the row. In a narrow row they show only their icon,
-          and their words move to the tooltip (ROW_TAG_WORDS). */}
-      <div className="flex min-h-11 items-center gap-x-2 sm:min-h-10">
+    <div id={id} className={`group ${COLUMNS} px-3 py-1 ${flash ? 'ring-1 ring-inset ring-good/60' : ''}`}>
+      <Icon className="h-4 w-4 shrink-0 self-center text-text-muted" strokeWidth={1.75} aria-hidden="true" />
+      <span className="flex min-w-0 items-center gap-1 text-xs font-medium text-text-muted">
+        <span className="min-w-0">{label}</span>
+        {info && <span className="hidden sm:inline-flex">{infoButton('start')}</span>}
+      </span>
+      {alwaysOpen ? (
+        <div className="min-w-0 py-1.5">{children}</div>
+      ) : (
         <button
           type="button"
-          disabled={disabled || !editor}
+          disabled={!canEdit}
           aria-label={`Edit ${label}`}
-          onClick={() => editor && !disabled && setOpen(true)}
-          className="group flex min-h-11 min-w-0 flex-1 items-center gap-2.5 py-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent disabled:cursor-default sm:min-h-10"
+          onClick={() => canEdit && setOpen(true)}
+          className="flex min-h-11 min-w-0 items-center py-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent disabled:cursor-default sm:min-h-10"
         >
-          <Icon className="h-4 w-4 shrink-0 text-text-muted" strokeWidth={1.75} aria-hidden="true" />
-          <span className="w-20 shrink-0 text-xs font-medium text-text-muted sm:w-24">{label}</span>
-          <span
-            className={`min-w-0 flex-1 break-words text-sm ${mono ? 'font-mono tabular-nums' : ''} ${
-              hasValue ? 'text-text' : 'text-text-faint'
-            }`}
-          >
-            {hasValue ? value : emptyText}
-          </span>
-          {flash && <Check className="h-3.5 w-3.5 shrink-0 text-good" aria-label="Saved" />}
-          {editor && !disabled && (
-            <Pencil className="h-3.5 w-3.5 shrink-0 text-text-faint opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden="true" />
-          )}
+          {valueText}
         </button>
-
-        {(source || inferred) && (
-          <div className="ml-auto flex shrink-0 flex-col items-end gap-1 text-xs">
-            {inferred}
-            {source}
-          </div>
-        )}
-      </div>
-      {below && <div className="pb-1 pl-6">{below}</div>}
+      )}
+      <span className="flex items-center">{action}</span>
+      <span className="flex items-center justify-end sm:hidden">{flash ? <Check className="h-3.5 w-3.5 text-good" aria-label="Saved" /> : info ? infoButton('end') : null}</span>
+      <span className="hidden items-center justify-end sm:flex">
+        {flash ? (
+          <Check className="h-3.5 w-3.5 text-good" aria-label="Saved" />
+        ) : canEdit ? (
+          <button
+            type="button"
+            tabIndex={alwaysOpen ? 0 : -1}
+            aria-hidden={alwaysOpen ? undefined : true}
+            aria-label={alwaysOpen ? `Edit ${label}` : undefined}
+            onClick={() => setOpen(true)}
+            className={`inline-flex h-7 w-7 items-center justify-center rounded-control text-text-faint opacity-0 transition-opacity hover:text-accent focus-visible:opacity-100 group-hover:opacity-100`}
+          >
+            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        ) : null}
+      </span>
+      {below && <div className="col-span-3 col-start-3 pb-1.5">{below}</div>}
     </div>
   );
 }
