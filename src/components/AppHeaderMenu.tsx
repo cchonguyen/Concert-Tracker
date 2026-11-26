@@ -62,7 +62,7 @@ export function AppHeaderMenu({ theme, canMembers, canAccount, canSheets, pendin
         <Menu className="h-4 w-4" />
       </button>
       {open && (
-        <div className="fixed inset-x-0 bottom-0 z-40 max-h-[80vh] space-y-4 overflow-y-auto rounded-t-card border-t border-line bg-surface-1 p-4 shadow-xl shadow-black/30 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-11 sm:max-h-none sm:w-64 sm:overflow-visible sm:rounded-card sm:border sm:p-3">
+        <div className="pop-in fixed inset-x-0 bottom-0 z-40 max-h-[80vh] space-y-4 overflow-y-auto rounded-t-card border-t border-line bg-surface-1 p-4 shadow-xl shadow-black/30 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-11 sm:max-h-none sm:w-64 sm:overflow-visible sm:rounded-card sm:border sm:p-3">
           {(canMembers || canAccount) && (
             <div className="space-y-1">
               {canAccount && (

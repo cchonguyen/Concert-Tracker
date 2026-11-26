@@ -86,7 +86,7 @@ export function Popover({ content, label, children, className = '', align = 'cen
           }}
           // The panel's top padding bridges the trigger and the card, so there is no gap where the pointer leaves the box.
           className={`absolute top-full z-30 w-64 pt-1 ${align === 'end' ? 'right-0' : align === 'start' ? 'left-0' : 'left-1/2 -translate-x-1/2'}`}>
-          <span className={`block ${POPOVER_PANEL}`}>{content}</span>
+          <span className={`pop-in block ${POPOVER_PANEL}`}>{content}</span>
         </span>
       )}
     </span>

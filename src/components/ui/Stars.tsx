@@ -14,7 +14,7 @@ interface Props {
 // (docs/specs/design-refresh-2.md, section 2). Unrated says "Not rated" to
 // screen readers and shows faint outlines, so nothing reads as a rating that
 // was not given. When editable, a tap on the current value clears it, and the
-// chosen star pops once (skipped with reduced motion).
+// chosen star and the ones before it pop in a quick ripple (skipped with reduced motion).
 export function Stars({ value, onChange, size = 'sm', className = '' }: Props) {
   const still = useReducedMotion();
   const [popped, setPopped] = useState<number | null>(null);
@@ -49,8 +49,8 @@ export function Stars({ value, onChange, size = 'sm', className = '' }: Props) {
           className="flex min-h-11 min-w-9 items-center justify-center rounded-control focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent sm:min-h-9 sm:min-w-8"
         >
           <motion.span
-            animate={!still && popped === n ? { scale: [1, 1.35, 1] } : { scale: 1 }}
-            transition={{ duration: 0.28, ease: 'easeOut' }}
+            animate={!still && popped !== null && n <= popped ? { scale: [1, 1.55, 1], rotate: [0, -14, 0] } : { scale: 1, rotate: 0 }}
+            transition={{ duration: 0.36, ease: 'easeOut', delay: still ? 0 : (n - 1) * 0.05 }}
             className="inline-flex"
           >
             <Star className={`${px} ${n <= rated ? '' : 'opacity-45'}`} fill={n <= rated ? 'currentColor' : 'none'} strokeWidth={1.75} aria-hidden="true" />

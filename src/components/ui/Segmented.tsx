@@ -1,5 +1,6 @@
-import { useRef, type KeyboardEvent } from 'react';
+import { useId, useRef, type KeyboardEvent } from 'react';
 import { Check } from 'lucide-react';
+import { motion, useReducedMotion } from 'motion/react';
 
 export interface SegmentedOption<T extends string> {
   value: T;
@@ -21,6 +22,10 @@ interface Props<T extends string> {
 // Arrow keys move between options and choose the one they land on; Tab leaves the group.
 export function Segmented<T extends string>({ label, options, value, onChange, className = '', compact = false }: Props<T>) {
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
+  // The chosen fill slides to the new option with a little bounce; with reduced motion it moves at once.
+  const id = useId();
+  const still = useReducedMotion();
+  const slide = still ? { duration: 0 } : { type: 'spring' as const, stiffness: 420, damping: 26, mass: 0.7 };
   const chosen = options.findIndex((o) => o.value === value);
   // The chosen option is the one Tab lands on; with none chosen, the first enabled one is.
   const tabStop = chosen >= 0 ? chosen : options.findIndex((o) => !o.disabled);
@@ -60,12 +65,13 @@ export function Segmented<T extends string>({ label, options, value, onChange, c
             disabled={o.disabled}
             onClick={() => onChange(o.value)}
             onKeyDown={(e) => onKeyDown(e, i)}
-            className={`inline-flex min-h-11 items-center gap-1 rounded-control ${compact ? 'px-2 text-xs sm:px-3 sm:text-sm' : 'px-3 text-sm'} transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-9 ${
-              on ? 'bg-accent-tint font-semibold text-text' : 'text-text-muted hover:text-text'
+            className={`relative inline-flex min-h-11 items-center gap-1 rounded-control ${compact ? 'px-2 text-xs sm:px-3 sm:text-sm' : 'px-3 text-sm'} transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-9 ${
+              on ? 'font-semibold text-text' : 'text-text-muted hover:text-text'
             }`}
           >
-            {on && <Check className={`h-3.5 w-3.5 ${compact ? 'hidden sm:block' : ''}`} aria-hidden="true" />}
-            {o.label}
+            {on && <motion.span layoutId={`${id}-fill`} transition={slide} aria-hidden="true" className="absolute inset-0 rounded-control bg-accent-tint" />}
+            {on && <Check className={`relative h-3.5 w-3.5 ${compact ? 'hidden sm:block' : ''}`} aria-hidden="true" />}
+            <span className="relative">{o.label}</span>
           </button>
         );
       })}

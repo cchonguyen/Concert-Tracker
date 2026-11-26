@@ -43,14 +43,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-24 z-50 flex flex-col items-center gap-2 px-4 sm:bottom-5">
         <AnimatePresence initial={false}>
         {items.map((t) => (
-          // Toasts rise into place and fade out (design-refresh-2.md, section 4); instant with reduced motion.
+          // Toasts spring up into place and sink away as they fade (motion-whimsy.md); instant with reduced motion.
           <motion.div
             key={t.id}
             layout={!still}
-            initial={still ? false : { opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={still ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, y: 6, transition: { duration: 0.15 } }}
-            transition={{ duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }}
+            initial={still ? false : { opacity: 0, y: 32, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={still ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, y: 14, scale: 0.96, transition: { duration: 0.22 } }}
+            transition={still ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 24 }}
             className="pointer-events-auto flex max-w-full items-center gap-3 rounded-card border border-line-strong bg-surface-2 px-4 py-2.5 text-sm text-text shadow-xl shadow-black/30"
           >
             <Check className="h-4 w-4 shrink-0 text-good" aria-hidden="true" />
