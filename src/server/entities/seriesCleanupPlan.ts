@@ -135,10 +135,24 @@ const yours: CleanupStep[] = [
   { op: 'linkEvents' },
 ];
 
+// Added after the first run (Charlie's choice, 2026-11-26): the last events with no shared series to link to.
+// Breakaway, VELD and Planet Pride editions get a series; Head in the Clouds takes the place he typed.
+const lastLinks: CleanupStep[] = [
+  { op: 'series', slug: 'breakaway-music-festival-bay-area', create: true, brand: 'Breakaway Music Festival', qualifier: 'Bay Area' },
+  { op: 'edition', id: '11f6dcd3-2067-4c4d-9adb-410f187bec47', seriesSlug: 'breakaway-music-festival-bay-area' },
+  { op: 'series', slug: 'veld', create: true, name: 'VELD', brand: 'VELD' },
+  { op: 'edition', id: '14e37ffe-1e94-4675-85ec-878abd4577bf', seriesSlug: 'veld' },
+  { op: 'series', slug: 'planet-pride', create: true, name: 'Planet Pride', brand: 'Planet Pride' },
+  { op: 'edition', id: '482e4eaf-f4bb-4169-9b6f-2ae69ac07ab7', seriesSlug: 'planet-pride' },
+  { op: 'series', slug: 'head-in-the-clouds', qualifier: 'Pasadena' },
+  { op: 'linkEvents' },
+];
+
 export const SERIES_CLEANUP_PLAN: CleanupStep[] = [
   ...festivals,
   ...festivalToTour,
   ...tours,
   ...ONE_ARTIST.map(([slug, brand]): CleanupStep => ({ op: 'series', slug, brand })),
   ...yours,
+  ...lastLinks,
 ];
