@@ -1,5 +1,6 @@
 import type { LineupStore } from '../lineup/store/types';
 import type { Edition, EditionHeader, SeriesKind, SeriesRecord } from '../lineup/types';
+import type { LoggedEvent } from '../events/types';
 import { writeEdition } from '../canon/editions';
 import { mergeCanonicalEditions } from '../lineup/canonicalIngest';
 import { eventSeriesSlug } from '../events/routes';
@@ -45,6 +46,24 @@ export interface CleanupOptions {
   actor: string;
   reason: string;
   now?: () => Date;
+  // Run only steps[from, from + count): a Worker request has a small call budget, so the client sends batches.
+  from?: number;
+  count?: number;
+}
+
+// The store as linkEvents reads it: the shared series list read once, and each series found in it, so linking
+// many events costs a few calls, not several per event.
+function withSeriesCache(store: LineupStore): LineupStore {
+  let list: Promise<Awaited<ReturnType<LineupStore['listSeries']>>> | null = null;
+  const all = () => (list ??= store.listSeries({ limit: 500 }));
+  return new Proxy(store, {
+    get(target, prop) {
+      if (prop === 'listSeries') return () => all();
+      if (prop === 'getSeries') return async (slug: string) => (await all()).find((s) => s.slug === slug) ?? null;
+      const v = Reflect.get(target, prop, target);
+      return typeof v === 'function' ? v.bind(target) : v;
+    },
+  });
 }
 
 const targetOf = (s: CleanupStep): string => {
@@ -139,28 +158,33 @@ async function runStep(store: LineupStore, s: CleanupStep, opts: CleanupOptions,
       return entry ? { outcome: 'done', note: `${entry.entities.before.length} removed` } : { outcome: 'unchanged' };
     }
     case 'linkEvents': {
+      const cached = withSeriesCache(store);
       const events = await store.listEvents();
       const ids = [...new Set(events.flatMap((e) => (e.editionId ? [e.editionId] : [])))];
       const editions = new Map((ids.length ? await store.getEditionHeaders(ids) : []).map((h: EditionHeader) => [h.id, h]));
-      let changed = 0;
+      const changed: LoggedEvent[] = [];
       for (const e of events) {
-        const slug = await eventSeriesSlug(store, e, (e.editionId && editions.get(e.editionId)) || null);
+        const slug = await eventSeriesSlug(cached, e, (e.editionId && editions.get(e.editionId)) || null);
         if ((slug ?? undefined) === (e.seriesSlug ?? undefined)) continue;
-        changed++;
-        if (!opts.apply) continue;
         const { seriesSlug: _old, ...rest } = e;
-        await store.putEvent(slug ? { ...rest, seriesSlug: slug } : rest);
+        changed.push(slug ? { ...rest, seriesSlug: slug } : rest);
       }
-      if (!changed) return { outcome: 'unchanged' };
-      return { outcome: opts.apply ? 'done' : 'ready', note: `${changed} events` };
+      if (!changed.length) return { outcome: 'unchanged' };
+      if (!opts.apply) return { outcome: 'ready', note: `${changed.length} events` };
+      await store.putEvents(changed);
+      return { outcome: 'done', note: `${changed.length} events` };
     }
   }
 }
 
 export async function runSeriesCleanup(store: LineupStore, steps: CleanupStep[], opts: CleanupOptions): Promise<CleanupResult[]> {
   const out: CleanupResult[] = [];
-  const made = new Set<string>();
-  for (const [i, s] of steps.entries()) {
+  const from = Math.max(0, Math.floor(opts.from ?? 0));
+  const to = opts.count === undefined ? steps.length : Math.min(steps.length, from + Math.max(0, Math.floor(opts.count)));
+  // Series an earlier batch creates: in a preview they do not exist yet, and moves into them are still ready.
+  const made = new Set(steps.slice(0, from).flatMap((s) => (s.op === 'series' && s.create ? [s.slug] : [])));
+  for (let i = from; i < to; i++) {
+    const s = steps[i];
     const head = { step: i + 1, op: s.op, target: targetOf(s) };
     try {
       out.push({ ...head, ...(await runStep(store, s, opts, made)) });

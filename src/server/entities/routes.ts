@@ -23,6 +23,8 @@ import {
   unifyArtists,
   withAkas,
 } from './canonicalManage';
+import { runSeriesCleanup } from './seriesCleanup';
+import { SERIES_CLEANUP_PLAN } from './seriesCleanupPlan';
 import { CanonicalHistoryCursorError, CanonicalHistoryEntry, CanonicalStoreError, EditionOccurrenceConflictError, isVerifiedStatus } from '../lineup/store/types';
 import { currentMember } from '../auth/requestScope';
 import { brandsRouter } from '../brands/routes';
@@ -632,6 +634,36 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     } catch (err) {
       if (err instanceof ManageError) return res.status(err.status).json({ error: err.message, conflict: err.conflict });
       if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // The approved series cleanup (docs/specs/series-cleanup.md): preview, then run, in batches of steps so one
+  // request stays inside the call budget. Every change goes through its logged path and can be undone.
+  const cleanupBatch = (q: Record<string, unknown>, max: number) => {
+    const from = Number(q.from ?? 0);
+    const count = Number(q.count ?? max);
+    return {
+      from: Number.isInteger(from) && from >= 0 ? from : 0,
+      count: Number.isInteger(count) && count > 0 ? Math.min(count, max) : max,
+    };
+  };
+  const CLEANUP_BY = { actor: 'system:series-cleanup', reason: 'Series cleanup approved by Charlie 2026-11-26 (cleanup-list.md)' };
+  router.get('/manage/canonical/series-cleanup', ownerOnly as any, async (req, res) => {
+    try {
+      const batch = cleanupBatch(req.query as Record<string, unknown>, 20);
+      const results = await runSeriesCleanup(store, SERIES_CLEANUP_PLAN, { ...CLEANUP_BY, apply: false, ...batch });
+      res.json({ total: SERIES_CLEANUP_PLAN.length, results });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+  router.post('/manage/canonical/series-cleanup', ownerOnly as any, async (req, res) => {
+    try {
+      const batch = cleanupBatch((req.body ?? {}) as Record<string, unknown>, 3);
+      const results = await runSeriesCleanup(store, SERIES_CLEANUP_PLAN, { ...CLEANUP_BY, apply: true, ...batch });
+      res.json({ total: SERIES_CLEANUP_PLAN.length, results });
+    } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
