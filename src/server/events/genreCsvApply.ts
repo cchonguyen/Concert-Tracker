@@ -5,7 +5,7 @@
 import { InputError } from '../lineup/pipeline';
 import type { LineupStore } from '../lineup/store/types';
 import { genresByArtist } from '../../services/genres';
-import { GENRE_MAP_SETTING, knownGenreMap, knownGenres, ownGenreRow } from './genres';
+import { GENRE_MAP_SETTING, knownGenreMap, knownGenres, ownerGenreRow } from './genres';
 import type { ArtistGenres, GenreMapEntry, GenreShare, KnownGenre } from './genreTypes';
 import {
   MAX_CSV_ROWS,
@@ -132,18 +132,21 @@ export async function applyGenresCsv(store: LineupStore, input: unknown, now: Da
   }
   skipped.sort((a, b) => a.line - b.line);
 
-  const ownBefore = new Map(cat.rows.filter((r) => r.source === 'you').map((r) => [r.key, r]));
+  const ownBefore = new Map(cat.rows.filter((r) => r.source === 'owner').map((r) => [r.key, r]));
   const saving: ArtistGenres[] = [];
   const undoRows: GenresCsvUndoRecord['rows'] = [];
   for (const c of changesToSave(changes, overwrite)) {
-    const row = ownGenreRow(cat.knownMap, c.key, c.name, c.after.map((a) => a.style), now);
+    const row = ownerGenreRow(cat.knownMap, c.key, c.name, c.after.map((a) => a.style), now);
     saving.push(row);
     undoRows.push({ key: c.key, name: c.name, before: ownBefore.get(c.key) ?? null, after: row });
   }
   if (saving.length === 0) return { saved: 0, skipped, batchId: null };
 
-  await store.putArtistGenres(saving);
   const batchId = `${now.getTime().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  await store.writeArtistGenres(
+    saving.map((row) => ({ key: row.key, source: 'owner' as const, row })),
+    { actor: 'owner', reason: 'Genres file upload', batchId },
+  );
   const record: GenresCsvUndoRecord = { batchId, at: now.toISOString(), rows: undoRows };
   await store.putSetting(GENRES_CSV_UNDO_SETTING, record);
   return { saved: saving.length, skipped, batchId };
@@ -160,13 +163,13 @@ export interface GenresCsvUndoResult {
   leftAlone: string[]; // acts edited after the upload, left as they are
 }
 
-// Puts back the latest upload. A row whose "you" genres no longer equal what
+// Puts back the latest upload. A row whose owner genres no longer equal what
 // the upload saved (edited since) is left alone. The record is then removed.
 export async function undoGenresCsv(store: LineupStore): Promise<GenresCsvUndoResult> {
   const record = await store.getSetting<GenresCsvUndoRecord>(GENRES_CSV_UNDO_SETTING);
   if (!record) throw new InputError('There is no upload to undo.');
-  const own = new Map((await store.listArtistGenres()).filter((r) => r.source === 'you').map((r) => [r.key, r]));
-  const restore: ArtistGenres[] = [];
+  const own = new Map((await store.listArtistGenres()).filter((r) => r.source === 'owner').map((r) => [r.key, r]));
+  const restore: Array<{ key: string; source: 'owner'; row: ArtistGenres | null }> = [];
   const leftAlone: string[] = [];
   let restored = 0;
   for (const r of record.rows) {
@@ -175,11 +178,10 @@ export async function undoGenresCsv(store: LineupStore): Promise<GenresCsvUndoRe
       leftAlone.push(r.name);
       continue;
     }
-    if (r.before) restore.push(r.before);
-    else await store.deleteArtistGenres(r.key, 'you');
+    restore.push({ key: r.key, source: 'owner', row: r.before && { ...r.before, source: 'owner' } });
     restored += 1;
   }
-  if (restore.length) await store.putArtistGenres(restore);
+  if (restore.length) await store.writeArtistGenres(restore, { actor: 'owner', reason: 'Undo genres file upload' });
   await store.putSetting<GenresCsvUndoRecord | null>(GENRES_CSV_UNDO_SETTING, null);
   return { restored, leftAlone };
 }

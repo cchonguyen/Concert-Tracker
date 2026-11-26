@@ -13,7 +13,11 @@ import {
   readMusicStory,
   knownGenres,
   setOwnGenres,
+  setOwnerGenres,
+  setMemberAdditions,
+  undoGenreChange,
 } from '../src/server/events/genres.ts';
+import { runAsMember } from '../src/server/auth/requestScope.ts';
 import { genreMix, genresByArtist, missingGenreKeys, topStyles } from '../src/services/genres.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import type { GenreSource } from '../src/server/events/genreTypes.ts';
@@ -219,7 +223,7 @@ test('setOwnGenres keeps known spellings and parents, adds new genres, and reset
   await store.putEvent(ev('e1', [act('Bonobo')]));
   await store.putSetting(GENRE_MAP_SETTING, map);
   const now = new Date('2026-10-27T00:00:00Z');
-  await assert.rejects(setOwnGenres(store, 'nobody', ['house'], now), /Only acts you saw/);
+  await assert.rejects(setOwnGenres(store, 'nobody', ['house'], now), /Only acts in the catalog/);
   await assert.rejects(setOwnGenres(store, 'bonobo', 'house', now), /styles/);
   await assert.rejects(setOwnGenres(store, 'bonobo', ['x'.repeat(61)], now), /at most 60/);
   const r = await setOwnGenres(store, 'bonobo', ['HOUSE', ' Downtempo  vibes ', 'house', ''], now);
@@ -315,4 +319,88 @@ test('a member\'s additions go after the shared base, deduped, with scaled weigh
   assert.equal(mix.known, 2);
   const styles = Object.fromEntries(mix.styles.map((s) => [s.name, Math.round(s.sets * 1000) / 1000]));
   assert.deepEqual(styles, { jazz: 0.833, soul: 0.5, rock: 0.467, pop: 0.2 });
+});
+
+const ANN = { userId: 'u1', role: 'member' as const };
+
+test('setOwnerGenres writes the shared owner row, logged, for any act in the universe', async () => {
+  const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'genres-')));
+  await store.forUser(ANN).putEvent(ev('e1', [act('Moon Garden')])); // only a member saw it
+  await store.putSetting(GENRE_MAP_SETTING, map);
+  const now = new Date('2026-11-26T00:00:00Z');
+  const r = await setOwnerGenres(store, 'moon garden', ['house'], now);
+  assert.equal(r?.source, 'owner');
+  assert.deepEqual((await store.listArtistGenres()).map((g) => `${g.key}:${g.source}`), ['moon garden:owner']);
+  assert.deepEqual((await setOwnerGenres(store, 'moon garden', [], now))?.genres, []); // owner says none
+  assert.equal(await setOwnerGenres(store, 'moon garden', undefined, now, true), null);
+  assert.deepEqual(await store.listArtistGenres(), []);
+  const log = await store.listGenreChanges({ key: 'moon garden' });
+  assert.deepEqual(log.map((c) => [c.actor, c.reason, c.source]), [
+    ['owner', 'Reset to found genres', 'owner'],
+    ['owner', 'Set in the app', 'owner'],
+    ['owner', 'Set in the app', 'owner'],
+  ]);
+});
+
+test('a member PUT writes only their added row, within the limits, and reset removes it', async () => {
+  const base = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'genres-')));
+  const ann = base.forUser(ANN);
+  await ann.putEvent(ev('e1', [act('Bonobo')]));
+  await base.putSetting(GENRE_MAP_SETTING, map);
+  const now = new Date('2026-11-26T00:00:00Z');
+  const asAnn = <T>(fn: () => Promise<T>) => runAsMember({ email: 'a@x', ...ANN }, ann, fn);
+  await assert.rejects(asAnn(() => setOwnGenres(ann, 'nobody', ['house'], now)), /Only acts you saw/);
+  await assert.rejects(setMemberAdditions(ann, 'bonobo', Array.from({ length: 11 }, (_, i) => `g${i}`), now), /At most 10/);
+  await assert.rejects(setMemberAdditions(ann, 'bonobo', ['x'.repeat(61)], now), /at most 60/);
+  const r = await asAnn(() => setOwnGenres(ann, 'bonobo', ['house', 'jazz'], now));
+  assert.equal(r?.source, 'added');
+  assert.deepEqual((await ann.listArtistGenres()).map((g) => `${g.key}:${g.source}:${g.genres.map((x) => x.style)}`), ['bonobo:added:house,jazz']);
+  assert.deepEqual(await base.listArtistGenres(), []); // nothing shared
+  assert.deepEqual(await base.listGenreChanges({}), []); // never logged
+  assert.equal(await asAnn(() => setOwnGenres(ann, 'bonobo', undefined, now, true)), null);
+  assert.deepEqual(await ann.listArtistGenres(), []);
+});
+
+test('music-story and MusicBrainz match the universe and log their system actors', async () => {
+  const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'genres-')));
+  await store.upsertArtist({ key: 'odesza', name: 'Odesza' }); // catalog only, nobody's event
+  await store.forUser(ANN).putEvent(ev('e1', [act('Bonobo')]));
+  const now = new Date('2026-11-26T00:00:00Z');
+  const out = await importMusicStory(store, file, now);
+  assert.deepEqual(out, { matched: 1, seen: 2, inFile: 3, mapTags: 4 });
+  const { fetcher } = fakeFetcher({
+    'https://musicbrainz.org/ws/2/artist/?query=artist%3A%22Bonobo%22': { body: { artists: [{ id: 'mb-bonobo', name: 'Bonobo', score: 100 }] } },
+    'https://musicbrainz.org/ws/2/artist/mb-bonobo?inc=genres': { body: { genres: [{ name: 'house', count: 1 }] } },
+  });
+  await musicBrainzGenres(store, fetcher, ['bonobo'], now);
+  const log = await store.listGenreChanges({});
+  assert.deepEqual(log.map((c) => [c.key, c.source, c.actor, c.reason, Boolean(c.batchId)]), [
+    ['bonobo', 'musicbrainz', 'system:musicbrainz', 'MusicBrainz lookup', false],
+    ['odesza', 'music-story', 'system:music-story', 'music-story file upload', true],
+  ]);
+  await assert.rejects(importMusicStory(store.forUser(ANN), file, now), /Only the owner/);
+});
+
+test('undoGenreChange restores the row before the latest change, and refuses when changed since', async () => {
+  const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'genres-')));
+  await store.putEvent(ev('e1', [act('Bonobo')]));
+  await store.putSetting(GENRE_MAP_SETTING, map);
+  const now = new Date('2026-11-26T00:00:00Z');
+  await assert.rejects(undoGenreChange(store, 'bonobo', now), /no change to undo/);
+  await setOwnerGenres(store, 'bonobo', ['house'], now);
+  await setOwnerGenres(store, 'bonobo', ['techno'], now);
+  const owner = async () => (await store.listArtistGenres()).find((r) => r.source === 'owner')?.genres.map((g) => g.style) ?? null;
+  await undoGenreChange(store, 'bonobo', now);
+  assert.deepEqual(await owner(), ['house']);
+  await undoGenreChange(store, 'bonobo', now); // walks back past its own undo
+  assert.equal(await owner(), null);
+  await assert.rejects(undoGenreChange(store, 'bonobo', now), /no change to undo/);
+  const reasons = (await store.listGenreChanges({ key: 'bonobo' })).map((c) => [c.reason, Boolean(c.undoneAt)]);
+  assert.deepEqual(reasons, [['Undo', false], ['Undo', false], ['Set in the app', true], ['Set in the app', true]]);
+
+  // Changed since: the latest change is no longer what the row holds.
+  await setOwnerGenres(store, 'bonobo', ['house'], now);
+  await store.putArtistGenres([{ key: 'bonobo', name: 'Bonobo', source: 'owner', genres: [{ parent: 'rock', style: 'indie rock', weight: 1 }], checkedAt: 'x' }]);
+  await assert.rejects(undoGenreChange(store, 'bonobo', now), /Changed since; nothing undone/);
+  assert.deepEqual(await owner(), ['indie rock']);
 });
