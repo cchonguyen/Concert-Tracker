@@ -9,6 +9,7 @@ import { genreUniverse } from './genreCatalog';
 import type { LoggedEvent } from './types';
 import { GENRE_MAP_SETTING, MAX_GENRE_LENGTH, MAX_MUSICBRAINZ_GENRES, MAX_OWN_GENRES, MIN_SHARE, MUSIC_STORY_FORMAT } from './genreTypes';
 import type { ArtistGenres, GenreChange, GenreMapEntry, GenreShare, GenreSource, KnownGenre } from './genreTypes';
+import { GENRE_NEEDS_LETTER, NOT_GROUPED, genreKey, genreResolver } from './genreVocabulary';
 
 export * from './genreTypes';
 
@@ -192,21 +193,28 @@ export async function musicBrainzGenres(store: LineupStore, fetcher: Fetcher, ke
 }
 
 // Every genre you can pick: the genre map's styles and those on stored acts,
-// yours included, by name.
+// yours included, once per genreKey, in the resolved spelling and group (a genre
+// with no group is "Not grouped"). No vocabulary yet: spellings fold by key alone.
 export function knownGenres(map: GenreMapEntry[], rows: ArtistGenres[]): KnownGenre[] {
+  const resolver = genreResolver(undefined, map, rows);
   const out = new Map<string, KnownGenre>();
-  for (const m of map) out.set(m.style.toLowerCase(), { style: m.style, parent: m.parent });
-  for (const r of rows) for (const g of r.genres) if (!out.has(g.style.toLowerCase())) out.set(g.style.toLowerCase(), { style: g.style, parent: g.parent });
+  const add = (style: string) => {
+    const r = resolver.resolve(style);
+    if (r.key && !out.has(r.key)) out.set(r.key, { style: r.name, parent: r.parent ?? NOT_GROUPED });
+  };
+  for (const m of map) add(m.style);
+  for (const r of rows) for (const g of r.genres) add(g.style);
   return [...out.values()].sort((a, b) => a.style.localeCompare(b.style));
 }
 
-// Known genres keyed by lower-case style, for the genre rows below.
+// Known genres keyed by genreKey, for the genre rows below.
 export function knownGenreMap(map: GenreMapEntry[], rows: ArtistGenres[]): Map<string, KnownGenre> {
-  return new Map(knownGenres(map, rows).map((g) => [g.style.toLowerCase(), g]));
+  return new Map(knownGenres(map, rows).map((g) => [genreKey(g.style), g]));
 }
 
 // A genre row typed in the app or a file: the styles, equal weights, a known
-// style keeping its spelling and parent, a new one its own parent. An empty
+// style (same genreKey) stored in its resolved spelling and group, a new one as
+// typed and "Not grouped". A style with no letter or digit is refused. An empty
 // list means "none". Throws InputError past the limits. Pure: no store.
 function typedGenreRow(
   source: GenreSource,
@@ -221,8 +229,9 @@ function typedGenreRow(
     const style = String(raw ?? '').replace(/\s+/g, ' ').trim();
     if (!style) continue;
     if (style.length > MAX_GENRE_LENGTH) throw new InputError(`A genre can be at most ${MAX_GENRE_LENGTH} characters.`);
-    const k = style.toLowerCase();
-    if (!picked.has(k)) picked.set(k, known.get(k) ?? { style, parent: style });
+    const k = genreKey(style);
+    if (!k) throw new InputError(GENRE_NEEDS_LETTER);
+    if (!picked.has(k)) picked.set(k, known.get(k) ?? { style, parent: NOT_GROUPED });
   }
   if (picked.size > MAX_OWN_GENRES) throw new InputError(`At most ${MAX_OWN_GENRES} genres per act.`);
   const weight = picked.size ? Math.round((1 / picked.size) * 10_000) / 10_000 : 0;
