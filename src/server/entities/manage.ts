@@ -562,6 +562,56 @@ export async function linkVenuePlaces(store: LineupStore, at = now()): Promise<H
   return plan ? apply(store, world, plan, at) : null;
 }
 
+// Series records no event uses, with no other names, links, details or merged
+// records pointing at them: left behind when an event's series was changed or
+// typed part-way. `names` limits it to those records.
+function unusedSeries(world: World, names?: string[]): Entity[] {
+  const used = new Set(world.linked.map((e) => e.refs?.seriesId).filter(Boolean));
+  const wanted = names ? new Set(names.map((n) => normalizeName(n)).filter(Boolean)) : null;
+  const all = [...world.byId.values()];
+  return all.filter(
+    (e) =>
+      e.kind === 'series' &&
+      !e.mergedIntoId &&
+      !used.has(e.id) &&
+      (!wanted || wanted.has(e.nameNormalized)) &&
+      !Object.keys(e.attrs ?? {}).length &&
+      !world.aliases.some((a) => a.entityId === e.id) &&
+      !world.links.some((l) => l.fromId === e.id || l.toId === e.id) &&
+      !all.some((o) => o.mergedIntoId === e.id),
+  );
+}
+
+// Removes those records, with one history entry that undo puts back. Null when there are none.
+// Only a member's own records can be removed (the store refuses the shared ones).
+export async function removeUnusedSeries(store: LineupStore, opts: { names?: string[] } = {}, at = now()): Promise<HistoryEntry | null> {
+  const world = await load(store);
+  const gone = unusedSeries(world, opts.names);
+  if (!gone.length) return null;
+  const entry: HistoryEntry = {
+    id: randomUUID(),
+    operation: 'remove',
+    summary: `Removed ${plural(gone.length, 'unused series record')}: ${gone.map((e) => e.name).join(', ')}`,
+    sourceEntityId: gone[0].id,
+    entities: { before: gone, after: [] },
+    touched: [],
+    aliases: { before: [], after: [] },
+    links: { before: [], after: [] },
+    events: [],
+    createdAt: at,
+  };
+  // Delete first, as a store without member tables refuses it and then nothing is logged;
+  // a history entry that cannot be written puts the records straight back.
+  await store.deleteEntities(gone.map((e) => e.id));
+  try {
+    await store.putEntityHistory(entry);
+  } catch (err) {
+    await store.putEntities(gone);
+    throw err;
+  }
+  return entry;
+}
+
 // Venues with no place whose events use more than one city, for Data health.
 export async function venuePlaceConflicts(store: LineupStore) {
   const world = await load(store);
