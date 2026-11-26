@@ -24,7 +24,7 @@ import { LoggedEvent } from '../../events/types';
 import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
-import type { ArtistGenres } from '../../events/genres';
+import type { ArtistGenres, GenreChange } from '../../events/genres';
 import { diffEvent, type ActivityDraft, type ActivityEntry } from '../../events/activityLog';
 import { isCiphertext } from '../../auth/vault';
 import { ArtistAliasRow, ArtistEditionRow, CANONICAL_OPERATIONS, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
@@ -41,7 +41,7 @@ import type {
 import { checkAliases, checkEntities, checkEventRefs, checkLinks } from '../../entities/integrity';
 import type { ShareLink } from '../../share/types';
 import { shareEventOnly } from '../../share/types';
-import type { AiCallRow, IngestTraceRow, MergeSummary } from './types';
+import type { AiCallRow, GenreChangeQuery, GenreWriteMeta, GenreWriteRow, IngestTraceRow, MergeSummary } from './types';
 import type { CanonicalVenue, EditionChange, EditionInference, InferenceStatus, InferenceVote, NewEditionInference, ReviewQueueItem, ReviewQueueKind, VenueAlias, EditionExternalId } from '../types';
 import { ArtistIdTakenError, assertNoPersonalFields, EditionOccurrenceConflictError, ExternalIdConflictError, venueIdFor } from './types';
 import { normalizeName } from '../normalizeName';
@@ -92,6 +92,7 @@ interface FileState {
   settings?: Record<string, unknown>;
   artists: Record<string, ArtistIdentity>;
   artistGenres?: Record<string, ArtistGenres>; // by `${source}|${key}`
+  genreChanges?: GenreChange[]; // artist_genre_changes: append-only, only undoneAt is ever set
   entities?: Record<string, Entity>;
   entityAliases?: EntityAlias[];
   entityLinks?: EntityLink[];
@@ -991,6 +992,80 @@ export class FileLineupStore implements LineupStore {
     await this.save();
   }
 
+  // artist_genres_write (0059): upsert or delete each row and log it, all or nothing.
+  async writeArtistGenres(rows: GenreWriteRow[], meta: GenreWriteMeta): Promise<GenreChange[]> {
+    const state = await this.load();
+    const changes: GenreChange[] = [];
+    await this.mutateCanonical(state, () => {
+      state.artistGenres ??= {};
+      state.genreChanges ??= [];
+      for (const r of rows) {
+        const id = `${r.source}|${r.key}`;
+        const before = lookup(state.artistGenres, id) ?? null;
+        const after = r.row ? { ...clone(r.row), key: r.key, source: r.source } : null;
+        if (after) state.artistGenres[id] = after;
+        else delete state.artistGenres[id];
+        const bare = (g: ArtistGenres | null) => (g ? stableJson({ ...g, checkedAt: null }) : null);
+        if (bare(before) === bare(after)) continue;
+        const change: GenreChange = {
+          id: crypto.randomUUID(),
+          key: r.key,
+          source: r.source,
+          at: new Date().toISOString(),
+          actor: meta.actor,
+          reason: meta.reason,
+          ...(meta.batchId ? { batchId: meta.batchId } : {}),
+          before: before && clone(before),
+          after: after && clone(after),
+        };
+        state.genreChanges.push(change);
+        changes.push(clone(change));
+      }
+    });
+    return changes;
+  }
+
+  async listGenreChanges(q: GenreChangeQuery): Promise<GenreChange[]> {
+    const newest = [...((await this.load()).genreChanges ?? [])].reverse();
+    let batchId = q.batchId;
+    if (q.latestBatchReason !== undefined) {
+      batchId = newest.find((c) => c.reason === q.latestBatchReason && !c.undoneAt && c.batchId)?.batchId;
+      if (!batchId) return [];
+    }
+    const out = newest.filter(
+      (c) =>
+        (q.key === undefined || c.key === q.key) &&
+        (batchId === undefined || c.batchId === batchId) &&
+        (q.latestBatchReason === undefined || (c.reason === q.latestBatchReason && !c.undoneAt)),
+    );
+    return clone(q.limit === undefined ? out : out.slice(0, q.limit));
+  }
+
+  // Only undoneAt may be set, once: a change already undone keeps its first time.
+  async markGenreChangesUndone(ids: string[], at: string): Promise<void> {
+    const state = await this.load();
+    const want = new Set(ids);
+    for (const c of state.genreChanges ?? []) if (want.has(c.id) && !c.undoneAt) c.undoneAt = at;
+    await this.save();
+  }
+
+  // seen_act_names() (0059): one row per key across every member's live events, the lowest spelling,
+  // key and name only. Empty keys and names and vault ciphertext are skipped.
+  async listSeenActNames(): Promise<Array<{ key: string; name: string }>> {
+    const names = new Map<string, string>();
+    for (const e of Object.values((await this.load()).events)) {
+      if (e.deletedAt || !Array.isArray(e.seen)) continue;
+      for (const a of e.seen) {
+        const key = typeof a?.key === 'string' ? a.key.trim() : '';
+        const name = typeof a?.name === 'string' ? a.name.trim() : '';
+        if (!key || !name || a.name.startsWith('v1:')) continue;
+        const had = names.get(key);
+        if (had === undefined || name < had) names.set(key, name);
+      }
+    }
+    return [...names].map(([key, name]) => ({ key, name }));
+  }
+
   // The entity tables of one member (Supabase: user_entities and friends), or
   // of the single-owner app (the state itself) when uid is undefined.
   private holder(state: FileState, uid?: string): Pick<FileState, 'entities' | 'entityAliases' | 'entityLinks' | 'entityHistory'> {
@@ -1882,23 +1957,41 @@ function scopedFileStore(base: FileLineupStore, scope: UserScope): LineupStore {
       await claim('event', events.map((e) => e.id));
       await base.putEventsFor(scope.userId, events);
     },
-    // A member's genres are their own; the owner's shared ones come from the music-story export.
+    // A member reads the shared genres plus their own additions (source 'added'), and writes only those.
+    // Shared writes, the change log and the seen-act list are owner and system only.
     ...(scope.role === 'owner'
       ? {}
       : {
           async listArtistGenres() {
-            return clone(Object.values(await base.memberGenres(scope.userId)));
+            const own = Object.values(await base.memberGenres(scope.userId)).map((r): ArtistGenres => ({ ...clone(r), source: 'added' }));
+            return [...(await base.listArtistGenres()), ...own];
           },
           async putArtistGenres(rows: ArtistGenres[]) {
-            if (rows.some((r) => r.source !== 'you')) throw new Error('A member can only keep genres they set themselves.');
+            // 'you' is still accepted from callers that have not moved to 'added'.
+            if (rows.some((r) => r.source !== 'added' && r.source !== 'you')) throw new Error('A member can only keep genres they set themselves.');
             const own = await base.memberGenres(scope.userId);
-            for (const r of rows) own[r.key] = clone(r);
+            for (const r of rows) own[r.key] = { ...clone(r), source: 'added' };
             await base.saveMemberGenres();
           },
           async deleteArtistGenres(key: string, source: ArtistGenres['source']) {
-            if (source !== 'you') return;
+            if (source !== 'added' && source !== 'you') return;
             delete (await base.memberGenres(scope.userId))[key];
             await base.saveMemberGenres();
+          },
+          async writeArtistGenres() {
+            ownerOnly(scope);
+            return [];
+          },
+          async listGenreChanges() {
+            ownerOnly(scope);
+            return [];
+          },
+          async markGenreChangesUndone() {
+            ownerOnly(scope);
+          },
+          async listSeenActNames() {
+            ownerOnly(scope);
+            return [];
           },
         }),
     // Each member has their own records (user_entities and friends in Supabase).

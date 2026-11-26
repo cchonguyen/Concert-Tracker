@@ -31,7 +31,7 @@ import { normalizeName } from '../normalizeName';
 import type { ActivityEntry } from '../../events/activityLog';
 import type { LineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
-import type { ArtistGenres } from '../../events/genres';
+import type { ArtistGenres, GenreChange } from '../../events/genres';
 import { ArtistEditionRow, CANONICAL_OPERATIONS, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import type { ShareLink } from '../../share/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -480,6 +480,14 @@ export interface LineupStore {
   // Replaces the rows with the same act and source.
   putArtistGenres(rows: ArtistGenres[]): Promise<void>;
   deleteArtistGenres(key: string, source: ArtistGenres['source']): Promise<void>;
+  // Shared genre writes, each logged in artist_genre_changes (0059) in the same transaction. A row
+  // that changes only checkedAt writes no change. Owner and system only: a member scope throws.
+  writeArtistGenres(rows: GenreWriteRow[], meta: GenreWriteMeta): Promise<GenreChange[]>;
+  // Newest first. latestBatchReason: only the changes of the newest batch with that reason that is not undone.
+  listGenreChanges(q: GenreChangeQuery): Promise<GenreChange[]>;
+  markGenreChangesUndone(ids: string[], at: string): Promise<void>;
+  // Every act any member marked as seen, once per key, names only (seen_act_names()). Owner and system only.
+  listSeenActNames(): Promise<Array<{ key: string; name: string }>>;
   // Records with permanent IDs (0014, src/server/entities/). Optional until
   // the Manage tab: createStore only links events when the tables exist.
   // Both stores enforce entities/integrity.ts.
@@ -719,4 +727,24 @@ export function roundRobin(jobs: LookupJob[], limit: number): LookupJob[] {
     for (const l of lists) if (l[round] && out.length < limit) out.push(l[round]);
   }
   return out;
+}
+
+// One shared genre row to write; row null removes it.
+export interface GenreWriteRow {
+  key: string;
+  source: ArtistGenres['source'];
+  row: ArtistGenres | null;
+}
+
+export interface GenreWriteMeta {
+  actor: GenreChange['actor'];
+  reason: string;
+  batchId?: string;
+}
+
+export interface GenreChangeQuery {
+  key?: string;
+  batchId?: string;
+  latestBatchReason?: string;
+  limit?: number;
 }

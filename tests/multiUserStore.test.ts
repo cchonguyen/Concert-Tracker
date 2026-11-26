@@ -406,15 +406,15 @@ test('people: turning the vault on converts plain people, moves their events and
   for (const name of ['Jen', 'Jennifer', 'Sam']) assert.ok(!stored.includes(name), `${name} is still readable`);
 });
 
-test('genres: a member keeps only the genres they set; the owner\'s shared ones stay the owner\'s', async () => {
+test('genres: a member reads the shared genres plus their own additions; the owner\'s shared ones stay the owner\'s', async () => {
   const s = await base();
   const row = (key: string, source: 'you' | 'music-story') => ({ key, name: key, source, genres: [{ parent: 'electronic', style: 'house', weight: 1 }], checkedAt: '2026-01-01T00:00:00Z' });
   await s.forUser(OWNER).putArtistGenres([row('zedd', 'music-story'), row('zedd', 'you')]);
   await s.forUser(ANN).putArtistGenres([row('moon garden', 'you')]);
-  assert.deepEqual((await s.forUser(ANN).listArtistGenres()).map((g) => g.key), ['moon garden']);
-  assert.deepEqual((await s.forUser(BOB).listArtistGenres()).map((g) => g.key), []);
+  assert.deepEqual((await s.forUser(ANN).listArtistGenres()).map((g) => `${g.key}:${g.source}`).sort(), ['moon garden:added', 'zedd:music-story', 'zedd:you']);
+  assert.deepEqual((await s.forUser(BOB).listArtistGenres()).map((g) => `${g.key}:${g.source}`).sort(), ['zedd:music-story', 'zedd:you']);
   assert.deepEqual((await s.forUser(OWNER).listArtistGenres()).map((g) => `${g.key}:${g.source}`).sort(), ['zedd:music-story', 'zedd:you']);
   await assert.rejects(s.forUser(ANN).putArtistGenres([row('x', 'music-story')]), /only keep genres they set/);
   await s.forUser(ANN).deleteArtistGenres('moon garden', 'you');
-  assert.deepEqual(await s.forUser(ANN).listArtistGenres(), []);
+  assert.deepEqual((await s.forUser(ANN).listArtistGenres()).map((g) => g.key), ['zedd', 'zedd']);
 });
