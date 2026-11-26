@@ -12,6 +12,7 @@ import {
 import { LineupStore } from './store/types';
 import { domainOf, lineupWindow, normalizeName, seriesSlugFor } from './text';
 import { slugFromClashfinderUrl } from './adapters/clashfinder';
+import { findSeries } from './seriesResolve';
 import { LoggedEvent, SeenAct, SetKind } from '../events/types';
 import { isSetKind, withB2b } from '../events/seen';
 import { Billing, isBilling } from './billing';
@@ -341,8 +342,9 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
   await store.ensureArtists(performances.map((p) => ({ key: p.artistKey, name: p.name })));
 
   const existing = await store.getEditionByKey(job.editionKey);
-  const series = await store.getSeries(slug);
-  const seriesSlug = existing?.seriesSlug ?? (series ? slug : undefined);
+  // An existing series by its slug, name or other names; a confirm never makes one.
+  const series = existing?.seriesSlug ? null : await findSeries(store, job.input.eventName);
+  const seriesSlug = existing?.seriesSlug ?? series?.slug;
   const edition: Edition = {
     id: existing?.id ?? randomUUID(),
     key: job.editionKey,
