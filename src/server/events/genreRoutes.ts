@@ -1,6 +1,18 @@
 import { Router } from 'express';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
-import { GENRE_MAP_SETTING, GenreMapEntry, importMusicStory, knownGenres, musicBrainzGenres, setOwnGenres } from './genres';
+import { currentMember } from '../auth/requestScope';
+import type { LineupStore } from '../lineup/store/types';
+import {
+  ArtistGenres,
+  GENRE_MAP_SETTING,
+  GenreMapEntry,
+  importMusicStory,
+  knownGenres,
+  musicBrainzGenres,
+  setMemberAdditions,
+  setOwnerGenres,
+  undoGenreChange,
+} from './genres';
 import {
   applyGenresCsv,
   exportGenresCsv,
@@ -8,6 +20,20 @@ import {
   previewGenresCsv,
   undoGenresCsv,
 } from './genreCsvApply';
+
+const isMember = () => currentMember()?.role === 'member';
+
+// A member is sent shared genre rows only for acts in their own events or
+// artist records; their own additions always come back. The owner (and a
+// request outside multi-user mode) gets every row.
+async function visibleGenres(store: LineupStore): Promise<ArtistGenres[]> {
+  const rows = await store.listArtistGenres();
+  if (!isMember()) return rows;
+  const [events, entities] = await Promise.all([store.listEvents(), store.listEntities()]);
+  const keys = new Set<string>(events.flatMap((e) => e.seen.map((s) => s.key)));
+  for (const e of entities) if (e.kind === 'artist' && !e.mergedIntoId) keys.add(e.nameNormalized);
+  return rows.filter((r) => r.source === 'added' || keys.has(r.key));
+}
 
 // /api/artist-genres: genres of the acts you saw (see ARCHITECTURE.md, Artist genres).
 export function genresRouter(deps: PipelineDeps): Router {
@@ -18,9 +44,9 @@ export function genresRouter(deps: PipelineDeps): Router {
   router.get('/artist-genres', async (_req, res) => {
     try {
       const [genres, map, csvUndo] = await Promise.all([
-        deps.store.listArtistGenres(),
+        visibleGenres(deps.store),
         deps.store.getSetting<GenreMapEntry[]>(GENRE_MAP_SETTING),
-        genresCsvUndoStatus(deps.store),
+        isMember() ? null : genresCsvUndoStatus(deps.store),
       ]);
       res.json({ genres, hasMap: Boolean(map?.length), known: knownGenres(map ?? [], genres), csvUndo });
     } catch (err) {
@@ -85,12 +111,29 @@ export function genresRouter(deps: PipelineDeps): Router {
     }
   });
 
-  // Your own genres for one act you saw: { styles: [...] }, or { reset: true }
-  // to drop them so the found ones show again.
+  // Genres for one act: { styles: [...] }, or { reset: true } to drop them.
+  // The owner sets the shared genres (logged); a member sets only their own
+  // additions, shown only to them.
   router.put('/artist-genres/:key', async (req, res) => {
     try {
-      res.json({ row: await setOwnGenres(deps.store, req.params.key, req.body?.styles, deps.now(), req.body?.reset === true) });
+      const set = isMember() ? setMemberAdditions : setOwnerGenres;
+      res.json({ row: await set(deps.store, req.params.key, req.body?.styles, deps.now(), req.body?.reset === true) });
     } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // Undoes the newest change to one act's shared genres (owner only, via
+  // OWNER_ONLY). Returns that act's rows after the undo; 409 when the row
+  // was changed since.
+  router.post('/artist-genres/:key/undo', async (req, res) => {
+    try {
+      const key = req.params.key;
+      const { restored } = await undoGenreChange(deps.store, key, deps.now());
+      const rows = (await deps.store.listArtistGenres()).filter((r) => r.key === key);
+      res.json({ restored, rows });
+    } catch (err) {
+      if (err instanceof InputError && /^Changed since/.test(err.message)) return res.status(409).json({ error: err.message });
       fail(res, err);
     }
   });
