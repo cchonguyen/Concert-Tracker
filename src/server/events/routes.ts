@@ -16,6 +16,9 @@ import { parseEventInput } from './parse';
 import { isAhead } from './attendance';
 import { normalizeName } from '../lineup/normalizeName';
 import { removeUnusedSeries } from '../entities/manage';
+import { findSeries } from '../lineup/seriesResolve';
+import { sharedSeriesName } from '../../services/series';
+import type { LineupStore } from '../lineup/store/types';
 import { artistSuggestions, eventPerformers, nameArtistSuggestions, MAX_BULK_SUGGESTIONS, storedNameSuggestions } from './artists';
 import type { LineupFacts } from './scale';
 import { lookupWeather } from './weather';
@@ -30,6 +33,16 @@ import { currentMember } from '../auth/requestScope';
 // A runner that can also run stage 1 research off the request (the Cloudflare queue).
 // The Node runner has no such method; the browser then asks for research itself, as before.
 // actor: the member who saved the event, so the consumer reads and writes that member's rows.
+// The shared series an event points at (logged_events.series_slug, 0058): its edition's series when the
+// event shows that name, else the one shared series its own wording matches (findSeries), else none.
+// The member's wording in `series` is never changed here.
+export async function eventSeriesSlug(store: LineupStore, event: LoggedEvent, edition: EditionHeader | Edition | null): Promise<string | undefined> {
+  const shown = resolveEvent(event, edition).series?.trim();
+  if (!shown) return undefined;
+  if (edition?.seriesSlug && edition.id === event.editionId && shown === sharedSeriesName(edition)) return edition.seriesSlug;
+  return (await findSeries(store, shown))?.slug;
+}
+
 export interface ResearchActor {
   userId: string;
   role: 'owner' | 'member';
@@ -367,7 +380,16 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
       const edition = event.editionId ? await deps.store.getEdition(event.editionId) : null;
       const body = (req.body ?? {}) as EventPatch & { import?: boolean };
       // `import: true` (list import, Sheets): an event not yet edited takes these values as what was first imported.
-      const { event: updated, changes } = applyLinkedPatch(event, edition, body, deps.now(), { recapture: body.import === true });
+      const { event: patched, changes } = applyLinkedPatch(event, edition, body, deps.now(), { recapture: body.import === true });
+      let updated = patched;
+      if (body.series !== undefined) {
+        const seriesSlug = await eventSeriesSlug(deps.store, patched, edition).catch((err) => {
+          console.warn('shared series not found', err instanceof Error ? err.name : 'error');
+          return patched.seriesSlug;
+        });
+        const { seriesSlug: _old, ...rest } = patched;
+        updated = seriesSlug ? { ...rest, seriesSlug } : rest;
+      }
       const stored = await saveEvent(updated);
       await recordOverrides(deps.store, stored, changes);
       // The series it had may now be used by no event (a part-typed name, or a changed one): remove that record, logged and undoable.
