@@ -49,6 +49,7 @@ import {
   rememberManageSearch,
   seriesUrl,
 } from '../services/manageNav';
+import { useKeptScroll } from './useKeptScroll';
 
 // Global Archive (owner only, spec Phase 4). Each section is one body rendered by ManageView:
 // Artists, Series, Editions & Lineups, Lookups, Changes. Counts only; no member names. Never writes a personal log.
@@ -199,6 +200,8 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
       )}
     </p>
   );
+
+  useKeptScroll('archive:artists', !detail, artists !== null);
 
   if (detail) {
     return (
@@ -578,6 +581,8 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
       setSavingNew(false);
     }
   };
+
+  useKeptScroll('archive:series', !detailSlug, seriesList !== null);
 
   if (detailSlug) {
     return (
@@ -1321,6 +1326,8 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
       setLoadingMerge(false);
     }
   };
+
+  useKeptScroll('archive:editions', !detail, page !== null);
 
   if (detail && editing) {
     return (

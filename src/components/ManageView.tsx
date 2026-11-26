@@ -7,6 +7,7 @@ import type { Entity, EntityAlias, EntityKind, EntityLink, HistoryEntry } from '
 import { norm } from '../services/listImport';
 import { DataHealth } from './DataHealth';
 import { ManageEntry } from './ManageEntry';
+import { useKeptScroll } from './useKeptScroll';
 import { SeriesPanel } from './SeriesPanel';
 import { CollaborationsCard } from './CollaborationsCard';
 import { Equalizer } from './ui/Equalizer';
@@ -354,6 +355,10 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
     if (!record) throw new Error(`No series record for “${from}” yet. Reload and try again.`);
     await changed(await entitiesApi.rename(record.id, to), true);
   };
+
+  // A record open over the list: going back puts the list where it was.
+  const entryShown = !(scope === 'archive' && isOwner) && Boolean(openId && byId.get(openId)?.kind === kind);
+  useKeptScroll(`mine:${kind}`, !entryShown, data !== null);
 
   if (error) {
     return <p className="rounded-card border border-bad/45 bg-bad/10 p-3 text-sm text-bad">{error}</p>;

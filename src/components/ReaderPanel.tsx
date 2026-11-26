@@ -37,34 +37,44 @@ export function ReaderPanel({ status }: { status: LineupStatus | null }) {
   }
   const recent = (r.recent ?? []).slice(0, 20);
   return (
-    <section className="mt-6 space-y-3 text-sm text-text-muted" aria-label="Reader">
-      <h3 className="font-display text-lg font-normal text-text">Reader</h3>
-      <p className="break-words">{readerLine(r)}</p>
-      {r.caps && (
-        <p className="break-words text-xs text-text-muted">
-          Caps: {money(r.caps.dayUsd)} a day, {money(r.caps.monthUsd)} a month, {r.caps.perJob} calls a job. Log write failures today:{' '}
-          {count(r.logWriteFailuresToday)}.
-        </p>
-      )}
-      {recent.length === 0 ? (
-        <p className="text-text-muted">No calls recorded yet.</p>
-      ) : (
-        <ul className="space-y-2">
-          {recent.map((c, i) => (
-            <li key={`${c.createdAt}-${i}`} className="space-y-1 rounded-control border border-line p-2 text-xs">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-text-muted">{when(c.createdAt)}</span>
-                <span className="break-words font-medium text-text">{c.feature}</span>
-                <Pill tone={tone(c.outcome)}>{c.outcome}</Pill>
-              </div>
-              <p className="break-words text-text-muted">
-                {c.provider} {c.model} · in {count(c.inputTokens)} · out {count(c.outputTokens)} · cost {money(c.estCostUsd)}
-              </p>
-              {c.reason && <p className="break-words text-text-muted">Guard: {c.reason}</p>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    // Starts collapsed every time Manage opens: the one-line summary stays in view, the call list opens on a tap.
+    <details className="group mt-6 text-sm text-text-muted" aria-label="Reader">
+      <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-baseline gap-x-2 rounded-control py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent sm:min-h-9 [&::-webkit-details-marker]:hidden">
+        <h3 className="font-display text-lg font-normal text-text">
+          <span aria-hidden="true" className="mr-1 inline-block text-text-muted transition-transform group-open:rotate-90">
+            ›
+          </span>
+          Reader
+        </h3>
+        <span className="min-w-0 break-words text-xs">{readerLine(r)}</span>
+      </summary>
+      <div className="mt-2 space-y-3">
+        {r.caps && (
+          <p className="break-words text-xs text-text-muted">
+            Caps: {money(r.caps.dayUsd)} a day, {money(r.caps.monthUsd)} a month, {r.caps.perJob} calls a job. Log write failures today:{' '}
+            {count(r.logWriteFailuresToday)}.
+          </p>
+        )}
+        {recent.length === 0 ? (
+          <p className="text-text-muted">No calls recorded yet.</p>
+        ) : (
+          <ul className="space-y-2">
+            {recent.map((c, i) => (
+              <li key={`${c.createdAt}-${i}`} className="space-y-1 rounded-control border border-line p-2 text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-text-muted">{when(c.createdAt)}</span>
+                  <span className="break-words font-medium text-text">{c.feature}</span>
+                  <Pill tone={tone(c.outcome)}>{c.outcome}</Pill>
+                </div>
+                <p className="break-words text-text-muted">
+                  {c.provider} {c.model} · in {count(c.inputTokens)} · out {count(c.outputTokens)} · cost {money(c.estCostUsd)}
+                </p>
+                {c.reason && <p className="break-words text-text-muted">Guard: {c.reason}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </details>
   );
 }
