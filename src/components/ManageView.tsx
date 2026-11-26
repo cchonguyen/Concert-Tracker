@@ -100,10 +100,15 @@ const ARCHIVE_TABS: Array<{ value: ArchiveSection; label: string }> = [
   { value: 'artists', label: 'Artists' },
   { value: 'series', label: 'Series' },
   { value: 'brands', label: 'Brands' },
+  { value: 'genres', label: 'Genres' },
   { value: 'editions', label: 'Editions & Lineups' },
   { value: 'lookups', label: 'Lookups' },
   { value: 'changes', label: 'Changes' },
 ];
+
+// The section as the address bar knows it. Genres is not one of the URL's sections
+// yet, so it is left out of the address (a reload opens the default section).
+const urlSection = (s: ArchiveSection): ManageRouteState['section'] => (s === 'genres' ? undefined : s);
 
 const SCOPE_OPTIONS: SegmentedOption<'mine' | 'archive'>[] = [
   { value: 'mine', label: 'My records' },
@@ -387,14 +392,16 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   // The search box belongs to a record list: not on Data health, History or an open record.
   // In the archive it filters the artists or editions; Lookups has no list to search.
   // Only the artists and editions lists in the archive have anything to filter.
-  const archiveFilters = archive && (archiveSection === 'artists' || archiveSection === 'series' || archiveSection === 'editions');
+  const archiveFilters = archive && (archiveSection === 'artists' || archiveSection === 'series' || archiveSection === 'genres' || archiveSection === 'editions');
   const showSearch = archive ? archiveFilters : kind !== 'history' && kind !== 'health' && !(open && open.kind === kind);
   const searchPlaceholder = archive
     ? archiveSection === 'artists'
       ? 'Find artists in the archive by name or AKA'
       : archiveSection === 'series'
         ? 'Find series by name, brand or alias'
-        : 'Search name, series or venue'
+        : archiveSection === 'genres'
+          ? 'Find genres by name or alias'
+          : 'Search name, series or venue'
     : `Find ${meta?.label.toLowerCase()} by name or AKA`;
 
   return (
@@ -444,7 +451,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
             setQuery('');
             const route: ManageRouteState = {
               scope: 'archive',
-              section: v,
+              section: urlSection(v),
               status: v === 'editions' && editionStatus !== 'all' ? editionStatus : undefined,
             };
             const url = buildManageUrl(route, window.location.pathname);
@@ -469,7 +476,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
                   const route: ManageRouteState = archive
                     ? {
                         scope: 'archive',
-                        section: archiveSection,
+                        section: urlSection(archiveSection),
                         status: archiveSection === 'editions' && editionStatus !== 'all' ? editionStatus : undefined,
                         q: nextQ.trim() || undefined,
                       }
@@ -496,7 +503,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
                 setEditionStatus(st);
                 const route: ManageRouteState = {
                   scope: 'archive',
-                  section: archiveSection,
+                  section: urlSection(archiveSection),
                   status: st !== 'all' ? st : undefined,
                   q: query.trim() || undefined,
                 };

@@ -1,0 +1,321 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { genresApi, type GenresList } from '../services/lineupApi';
+import { genreResolver, NOT_GROUPED } from '../server/events/genreVocabulary';
+import type { GenreCollision, GenreVocabChange } from '../server/events/genreTypes';
+import { Button } from './ui/Button';
+import { Equalizer } from './ui/Equalizer';
+import { Ledger } from './ui/Ledger';
+import { MenuButton, type MenuOption } from './ui/MenuButton';
+import { Notice } from './ui/Notice';
+import { Pill } from './ui/Pill';
+
+// Manage > Global archive > Genres (docs/specs/genre-vocabulary.md section 6). Owner only:
+// the Global archive is not shown to members. One row per genre after resolving, so
+// spellings with the same key are one row. Counts are shared rows only; a member's own
+// additions never count here (section 8). The search box lives in ManageView.
+
+const field =
+  'min-h-11 sm:min-h-9 rounded-control border border-line-strong bg-surface-1 px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none';
+const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+const ALL = '__all';
+
+export interface GenreListRow {
+  key: string;
+  name: string;
+  group: string; // NOT_GROUPED when it has none
+  aliases: string[]; // the owner's other spellings
+  spellings: string[]; // every spelling seen with this genre's key or an alias of it
+  umbrellas: string[]; // shown names of the genres this one sits under
+  artists: number; // shared rows with this genre, after resolving
+}
+
+// Every vocabulary genre, every genre map style and every style on shared rows,
+// resolved so each genre appears once.
+function genreRows(data: GenresList): { rows: GenreListRow[]; groups: string[] } {
+  const shared = data.genres.filter((r) => r.source !== 'added');
+  const resolver = genreResolver(data.vocabulary, data.map, shared);
+  const byKey = new Map<string, GenreListRow>();
+  const artistsByKey = new Map<string, Set<string>>();
+  const add = (style: string): string | undefined => {
+    const r = resolver.resolve(style);
+    if (!r.key) return undefined;
+    let row = byKey.get(r.key);
+    if (!row) {
+      row = { key: r.key, name: r.name, group: r.parent ?? NOT_GROUPED, aliases: [], spellings: [], umbrellas: [], artists: 0 };
+      byKey.set(r.key, row);
+    }
+    const s = style.trim();
+    if (s && !row.spellings.includes(s)) row.spellings.push(s);
+    return r.key;
+  };
+  for (const g of data.vocabulary.genres) add(g.name);
+  for (const m of data.map) add(m.style);
+  for (const r of shared) {
+    for (const s of r.genres) {
+      const k = add(s.style);
+      if (!k) continue;
+      let set = artistsByKey.get(k);
+      if (!set) artistsByKey.set(k, (set = new Set()));
+      set.add(r.key);
+    }
+  }
+  for (const g of data.vocabulary.genres) {
+    const row = byKey.get(g.key);
+    if (!row) continue;
+    row.aliases = g.aliases.map((a) => a.alias);
+    row.umbrellas = g.umbrellas.map((u) => byKey.get(u)?.name ?? resolver.resolve(u).name);
+  }
+  for (const [k, set] of artistsByKey) {
+    const row = byKey.get(k);
+    if (row) row.artists = set.size;
+  }
+  const rows = [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const groups = [...new Set([...resolver.groups, ...rows.map((r) => r.group).filter((g) => g !== NOT_GROUPED)])].sort((a, b) =>
+    a.localeCompare(b),
+  );
+  return { rows, groups };
+}
+
+const CollisionItem: React.FC<{ c: GenreCollision; busy: boolean; onPick: (key: string, spelling: string) => void }> = ({ c, busy, onPick }) => (
+  <Ledger.Row edge="needs" className="flex-col items-stretch gap-2 p-3">
+    <p className="text-sm text-text">
+      Shown today as <span className="font-medium">{c.shown}</span>
+    </p>
+    <ul className="space-y-1">
+      {c.spellings.map((s) => (
+        <li key={s.name} className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm text-text">
+            {s.name}{' '}
+            <span className="font-mono text-xs tabular-nums text-text-muted">
+              {s.artists} {s.artists === 1 ? 'artist' : 'artists'}
+            </span>
+          </span>
+          <Button onClick={() => onPick(c.key, s.name)} disabled={busy}>
+            Use this spelling
+          </Button>
+        </li>
+      ))}
+    </ul>
+  </Ledger.Row>
+);
+
+export const GenresPanel: React.FC<{ query: string }> = ({ query }) => {
+  const [data, setData] = useState<GenresList | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [group, setGroup] = useState<string>(ALL);
+  const [showCollisions, setShowCollisions] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newGroup, setNewGroup] = useState('');
+  // The genre whose record is open, by key.
+  const [selected, setSelected] = useState<string | null>(null);
+  // The last change and its Undo.
+  const [notice, setNotice] = useState<{ text: string; undoId?: string } | null>(null);
+
+  const load = useCallback(
+    () =>
+      genresApi
+        .list()
+        .then((r) => {
+          setData(r);
+          setError(null);
+        })
+        .catch((err) => setError(messageOf(err))),
+    [],
+  );
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const { rows, groups } = useMemo(() => (data ? genreRows(data) : { rows: [], groups: [] }), [data]);
+  const collisions = data?.collisions ?? [];
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (group !== ALL && r.group !== group) return false;
+      if (!q) return true;
+      return [r.name, ...r.aliases, ...r.spellings].some((n) => n.toLowerCase().includes(q));
+    });
+  }, [rows, query, group]);
+
+  const groupOptions: MenuOption<string>[] = useMemo(
+    () => [
+      { value: ALL, label: 'All groups' },
+      ...groups.map((g) => ({ value: g, label: g })),
+      { value: NOT_GROUPED, label: NOT_GROUPED },
+    ],
+    [groups],
+  );
+
+  const run = async (action: () => Promise<GenreVocabChange>): Promise<boolean> => {
+    setBusy(true);
+    setError(null);
+    try {
+      const change = await action();
+      setNotice({ text: change.summary, undoId: change.id });
+      await load();
+      return true;
+    } catch (err) {
+      setError(messageOf(err));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const undo = async () => {
+    if (!notice?.undoId) return;
+    const id = notice.undoId;
+    setBusy(true);
+    setError(null);
+    try {
+      await genresApi.undoVocabulary(id);
+      setNotice({ text: 'Undone.' });
+      await load();
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const selectedRow = selected ? rows.find((r) => r.key === selected) : undefined;
+
+  return (
+    <section className="space-y-3">
+      {error && <Notice tone="warning">{error}</Notice>}
+      {notice && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Notice tone="success">{notice.text}</Notice>
+          {notice.undoId && (
+            <Button variant="ghost" onClick={() => void undo()} disabled={busy}>
+              Undo
+            </Button>
+          )}
+        </div>
+      )}
+
+      {collisions.length > 0 && (
+        <div className="space-y-2">
+          <Notice tone="info">
+            <span>
+              {collisions.length} {collisions.length === 1 ? 'genre has' : 'genres have'} more than one spelling. Pick one.
+            </span>{' '}
+            <button
+              type="button"
+              onClick={() => setShowCollisions((v) => !v)}
+              aria-expanded={showCollisions}
+              className="text-accent hover:underline"
+            >
+              {showCollisions ? 'Hide' : 'Show'}
+            </button>
+          </Notice>
+          {showCollisions && (
+            <Ledger>
+              {collisions.map((c) => (
+                <CollisionItem key={c.key} c={c} busy={busy} onPick={(key, spelling) => void run(() => genresApi.pickGenreSpelling(key, spelling))} />
+              ))}
+            </Ledger>
+          )}
+        </div>
+      )}
+
+      {data && (
+        <div className="flex flex-wrap items-center gap-2">
+          <MenuButton label="Genre group" value={group} options={groupOptions} onChange={setGroup} />
+          <Button onClick={() => setCreating((v) => !v)} disabled={busy} className="ml-auto">
+            New genre
+          </Button>
+        </div>
+      )}
+
+      {creating && (
+        <form
+          className="flex flex-wrap items-center gap-2 rounded-card border border-line bg-surface-1 p-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run(() => genresApi.createGenre(newName.trim(), newGroup || null)).then((ok) => {
+              if (!ok) return;
+              setCreating(false);
+              setNewName('');
+              setNewGroup('');
+            });
+          }}
+        >
+          <input
+            aria-label="New genre name"
+            className={field}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Genre name"
+            maxLength={80}
+          />
+          <select aria-label="Group for the new genre" className={field} value={newGroup} onChange={(e) => setNewGroup(e.target.value)}>
+            <option value="">{NOT_GROUPED}</option>
+            {groups.map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </select>
+          <Button variant="primary" type="submit" disabled={busy || !newName.trim()}>
+            Add genre
+          </Button>
+          <Button onClick={() => setCreating(false)}>Cancel</Button>
+        </form>
+      )}
+
+      {/* The genre's record (GenreRecord) renders here when it is built: name, other
+          spellings, group, umbrellas, merge and history for selectedRow. */}
+      {selectedRow && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-line bg-surface-1 p-3" data-genre-record-slot={selectedRow.key}>
+          <span className="font-medium text-text">{selectedRow.name}</span>
+          <Button variant="ghost" onClick={() => setSelected(null)}>
+            Close
+          </Button>
+        </div>
+      )}
+
+      {data === null && !error && (
+        <p className="flex items-center gap-2 text-sm text-text-muted">
+          <Equalizer />
+          <span>Loading genres…</span>
+        </p>
+      )}
+      {data && rows.length === 0 && <p className="text-sm text-text-muted">No genres yet. They appear once an artist has one.</p>}
+      {data && rows.length > 0 && visible.length === 0 && <p className="text-sm text-text-muted">No genre matches.</p>}
+      {visible.length > 0 && (
+        <Ledger>
+          {visible.map((r) => (
+            <Ledger.Row
+              key={r.key}
+              edge="none"
+              selected={selected === r.key}
+              onOpen={() => setSelected((s) => (s === r.key ? null : r.key))}
+              className="flex-col items-stretch gap-1 p-3"
+            >
+              <span className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="font-medium text-text">{r.name}</span>
+                <span className="font-mono text-xs tabular-nums text-text-muted">
+                  {r.artists} {r.artists === 1 ? 'artist' : 'artists'}
+                </span>
+              </span>
+              <span className="flex flex-wrap items-center gap-1.5">
+                <Pill tone={r.group === NOT_GROUPED ? 'neutral' : 'accent'}>{r.group}</Pill>
+                {r.umbrellas.map((u) => (
+                  <Pill key={u} tone="info">
+                    Under {u}
+                  </Pill>
+                ))}
+              </span>
+              {r.aliases.length > 0 && <span className="text-xs text-text-faint">Also spelled {r.aliases.join(', ')}</span>}
+            </Ledger.Row>
+          ))}
+        </Ledger>
+      )}
+    </section>
+  );
+};
