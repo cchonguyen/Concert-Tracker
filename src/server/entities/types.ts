@@ -96,5 +96,6 @@ export interface HistoryEntry {
   // Set on a catalog artist change (CANONICAL_OPERATIONS); its records are not entities.
   canonical?: CanonicalChange;
   // Set on a series save (CANONICAL_OPERATIONS 'canonical-series'): the full record before and after, so undo puts it back.
-  series?: { slug: string; before: SeriesRecord; after: SeriesRecord };
+  // A merge (mergeSeriesLogged) also carries the dropped record, so undo can put it back first.
+  series?: { slug: string; before: SeriesRecord; after: SeriesRecord; dropped?: SeriesRecord };
 }

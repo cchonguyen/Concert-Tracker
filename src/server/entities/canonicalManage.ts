@@ -5,6 +5,7 @@ import type { CanonicalUndoResult, LineupStore } from '../lineup/store/types';
 import { CanonicalStoreError, editionMatchesStatusFilter, isVerifiedStatus } from '../lineup/store/types';
 import type { CanonicalEditionStatusFilter } from '../lineup/store/types';
 import { currentMember } from '../auth/requestScope';
+import { writeEdition } from '../canon/editions';
 import { seriesDisplayName } from '../../services/series';
 import { ArtistAliasRow, ArtistEditionRow, CANONICAL_OPERATIONS, CanonicalChange, Entity, EntityAlias, EntityLink, HistoryEntry } from './types';
 import { applyEntityChangePlan, cleanName, EntityChangePlan, ManageError, planEntityMerge, planEntityRename, undoEntry, UndoResult } from './manage';
@@ -978,6 +979,44 @@ export async function saveSeriesLogged(store: LineupStore, existing: SeriesRecor
   return entry;
 }
 
+// Merge one shared series into another, logged and undoable. Each edition of the dropped series moves
+// through writeEdition (its own change record, undoable), then the records merge (merge_canonical_series,
+// which by then moves nothing) and one history entry holds both records so undo can put them back.
+export async function mergeSeriesLogged(
+  store: LineupStore,
+  keepSlug: string,
+  dropSlug: string,
+  opts: { actor: string; reason: string },
+  at = now(),
+): Promise<HistoryEntry> {
+  if (keepSlug === dropSlug) throw new ManageError('Cannot merge a series into itself.', 400);
+  const keep = await store.getSeries(keepSlug);
+  const drop = await store.getSeries(dropSlug);
+  if (!keep || !drop) throw new ManageError('No such series.', 404);
+  for (const header of await store.listEditionHeaders({ seriesSlug: dropSlug, limit: 500 })) {
+    const edition = await store.getEdition(header.id);
+    if (!edition) continue;
+    await writeEdition(store, { edition: { ...edition, seriesSlug: keepSlug, updatedAt: at }, actor: opts.actor, reason: opts.reason });
+  }
+  await store.mergeSeries(keepSlug, dropSlug);
+  const after = (await store.getSeries(keepSlug)) ?? keep;
+  const entry: HistoryEntry = {
+    id: randomUUID(),
+    operation: 'canonical-series',
+    summary: `Series "${drop.name}" merged into "${keep.name}"`,
+    sourceEntityId: keepSlug,
+    entities: { before: [], after: [] },
+    touched: [],
+    aliases: { before: [], after: [] },
+    links: { before: [], after: [] },
+    events: [],
+    createdAt: at,
+    series: { slug: keepSlug, before: keep, after, dropped: drop },
+  };
+  await store.putEntityHistory(entry);
+  return entry;
+}
+
 async function undoSeriesChange(store: LineupStore, entry: HistoryEntry, at: string): Promise<UndoResult> {
   if (!isOwner(currentMember())) throw new ManageError('Only the owner can do this.', 403);
   if (entry.undoneAt) throw new ManageError('That change was already undone.', 409);
@@ -986,6 +1025,8 @@ async function undoSeriesChange(store: LineupStore, entry: HistoryEntry, at: str
   if (!current || stable(current) !== stable(change.after)) {
     throw new ManageError('Those records changed after this. Undo the later change first.', 409);
   }
+  // A merge puts the dropped record back first; its editions return through their own change records.
+  if (change.dropped && !(await store.getSeries(change.dropped.slug))) await store.upsertSeries(change.dropped);
   await store.upsertSeries(change.before);
   const done = { ...entry, undoneAt: at };
   await store.putEntityHistory(done);
