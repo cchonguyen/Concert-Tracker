@@ -4,6 +4,8 @@
 
 import { canonicalName } from '../lineup/merge';
 import { normalizeName } from '../lineup/text';
+import { GENRE_NEEDS_LETTER, genreKey, genreResolver } from './genreVocabulary';
+import type { GenreResolver } from './genreVocabulary';
 import { MAX_GENRE_LENGTH, MAX_OWN_GENRES } from './genreTypes';
 import type { GenreSource, KnownGenre } from './genreTypes';
 
@@ -56,9 +58,10 @@ export interface MatchedRow {
 }
 
 export interface AfterGenre {
-  style: string;
+  style: string; // the spelling that is stored (resolved through the vocabulary)
   parent: string;
   isNew: boolean;
+  typed?: string; // what the file said, only when it differs from `style`
 }
 
 export interface GenreChange {
@@ -92,14 +95,26 @@ export function fnv1a(text: string): string {
   return (h >>> 0).toString(16).padStart(8, '0');
 }
 
-// A hash of the stored genres as shown, not a timestamp. Nothing shown is
-// always "none|". The owner's genres hash the same under `you` (legacy) and
-// `owner`, so a file downloaded before the move to `owner` is not stale after it.
+const stampToken = (source: ShownSource) => (source === 'owner' ? 'you' : source);
+
+// A hash of the genres as shown (already resolved), not a timestamp. It hashes
+// each genre's loose-match key, so choosing another spelling for the same genre
+// does not make a downloaded row stale, while an alias or merge that turns a
+// genre into a different one does. Nothing shown is always "none|". The owner's
+// genres hash the same under `you` (legacy) and `owner`.
 export function genreStamp(source: ShownSource, styles: string[]): string {
   if (styles.length === 0) return fnv1a('none|');
+  const keys = [...new Set(styles.map(genreKey))].sort();
+  return fnv1a(`${stampToken(source)}|${keys.join(';')}`);
+}
+
+// The stamp files carried before it hashed keys: lower-cased spellings. Still
+// accepted, over the same resolved genres, so a file downloaded before the change
+// is not stale only because of it.
+export function legacyGenreStamp(source: ShownSource, styles: string[]): string {
+  if (styles.length === 0) return fnv1a('none|');
   const sorted = styles.map((s) => s.toLowerCase()).sort();
-  const token = source === 'owner' ? 'you' : source;
-  return fnv1a(`${token}|${sorted.join(';')}`);
+  return fnv1a(`${stampToken(source)}|${sorted.join(';')}`);
 }
 
 // Spreadsheet formula safety: a cell starting with = + - or @ gets a leading
@@ -291,21 +306,27 @@ export function matchCsvRows(
   return { matched, skipped };
 }
 
-const sameStyles = (a: string[], b: string[]) => {
-  const norm = (xs: string[]) => xs.map((x) => x.toLowerCase()).sort().join('\n');
-  return norm(a) === norm(b);
-};
+// Key-only resolving: no vocabulary, no map, no rows. Each genre is its own key
+// and keeps the spelling typed.
+const PLAIN_RESOLVER = genreResolver(undefined, []);
 
-// Preview: matches, parses each list, checks the stamp, and works out the
-// before and after. Changes nothing.
+// Preview: matches, parses each list, resolves each typed genre through the
+// vocabulary (`resolver`), checks the stamp, and works out the before and after.
+// Two typed spellings of one genre become one. A genre with no letter or digit
+// refuses the row. Changes nothing.
 export function previewGenresCsv(
   rows: GenreCsvRow[],
   acts: CsvAct[],
   aliases: Record<string, string>,
   known: KnownGenre[],
+  resolver: GenreResolver = PLAIN_RESOLVER,
 ): { changes: GenreChange[]; skipped: SkippedRow[] } {
   const { matched, skipped } = matchCsvRows(rows, acts, aliases);
-  const knownBy = new Map(known.map((g) => [g.style.toLowerCase(), g]));
+  const knownBy = new Map<string, KnownGenre>();
+  for (const g of known) {
+    const k = genreKey(g.style);
+    if (k && !knownBy.has(k)) knownBy.set(k, g);
+  }
   const changes: GenreChange[] = [];
   for (const { row, act } of matched) {
     const list = parseGenreList(row.newGenres);
@@ -313,15 +334,32 @@ export function previewGenresCsv(
       skipped.push({ line: row.line, name: row.name || act.name, reason: list.reason });
       continue;
     }
+    if (list.styles.some((s) => !genreKey(s))) {
+      skipped.push({ line: row.line, name: row.name || act.name, reason: GENRE_NEEDS_LETTER });
+      continue;
+    }
     const before = shownStyles(act);
     const beforeSource: ShownSource = before.length ? act.source : 'none';
     const stamp = row.stamp.trim().toLowerCase();
     const readable = /^[0-9a-f]{8}$/.test(stamp);
-    const stale = readable ? stamp !== genreStamp(beforeSource, before) : before.length > 0;
-    const after = list.styles.map((style): AfterGenre => {
-      const k = knownBy.get(style.toLowerCase());
-      return k ? { style: k.style, parent: k.parent, isNew: false } : { style, parent: style, isNew: true };
-    });
+    const stale = readable
+      ? stamp !== genreStamp(beforeSource, before) && stamp !== legacyGenreStamp(beforeSource, before)
+      : before.length > 0;
+    const after: AfterGenre[] = [];
+    const afterKeys = new Set<string>();
+    for (const typed of list.styles) {
+      const r = resolver.resolve(typed);
+      if (afterKeys.has(r.key)) continue;
+      afterKeys.add(r.key);
+      const k = knownBy.get(r.key);
+      const g: AfterGenre = k
+        ? { style: k.style, parent: k.parent, isNew: false }
+        : { style: r.name, parent: r.name, isNew: true };
+      if (g.style !== typed) g.typed = typed;
+      after.push(g);
+    }
+    const beforeKeys = new Set(before.map((s) => resolver.resolve(s).key));
+    const same = beforeKeys.size === afterKeys.size && [...afterKeys].every((k) => beforeKeys.has(k));
     changes.push({
       line: row.line,
       key: act.key,
@@ -331,7 +369,7 @@ export function previewGenresCsv(
       beforeSource,
       after,
       stale,
-      sameAsNow: (act.source === 'you' || act.source === 'owner') && sameStyles(before, list.styles),
+      sameAsNow: (act.source === 'you' || act.source === 'owner') && same,
     });
   }
   skipped.sort((a, b) => a.line - b.line);

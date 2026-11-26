@@ -227,3 +227,46 @@ test('the upload input must be a list of rows', async () => {
   await assert.rejects(applyGenresCsv(store, { rows: 'nope' }, now), /Send \{ rows/);
   await assert.rejects(previewGenresCsv(store, {}), /Send \{ rows/);
 });
+
+// The owner's vocabulary: "big room" is an alias of "electro house".
+async function withVocab(store: FileLineupStore) {
+  await store.writeGenreVocabulary(
+    [{ key: 'electrohouse', image: { key: 'electrohouse', name: 'electro house', parent: 'electronic', aliases: [{ key: 'bigroom', alias: 'big room' }], umbrellas: [] } }],
+    { operation: 'alias-add', actor: 'owner', reason: 'test', summary: 'test' },
+  );
+}
+
+test('export lists resolved names, and stored rows are not rewritten', async () => {
+  const store = await fresh();
+  await applyGenresCsv(store, { rows: [line('Bonobo', 'Big Room', genreStamp('none', []))] }, now);
+  assert.deepEqual(await ownStyles(store, 'bonobo'), ['Big Room']);
+  await withVocab(store);
+  const text = await exportGenresCsv(store);
+  const lines = text.trimEnd().split('\r\n');
+  assert.equal(lines[1], `Bonobo,,electro house,owner,,${genreStamp('owner', ['electro house'])}`);
+  assert.deepEqual(await ownStyles(store, 'bonobo'), ['Big Room']);
+});
+
+test('apply stores the resolved spelling and a resolved-equal row is no change', async () => {
+  const store = await fresh();
+  await withVocab(store);
+  const preview = await previewGenresCsv(store, { rows: [line('Bonobo', 'Big Room', genreStamp('none', []))] });
+  assert.deepEqual(preview.changes[0].after, [{ style: 'electro house', parent: 'electronic', isNew: false, typed: 'Big Room' }]);
+  const saved = await applyGenresCsv(store, { rows: [line('Bonobo', 'Big Room', genreStamp('none', []))] }, now);
+  assert.equal(saved.saved, 1);
+  const row = (await store.listArtistGenres()).find((r) => r.key === 'bonobo' && r.source === 'owner');
+  assert.deepEqual(row?.genres.map((g) => [g.style, g.parent]), [['electro house', 'electronic']]);
+  const again = await previewGenresCsv(store, { rows: [line('Bonobo', 'Electro-House', genreStamp('owner', ['electro house']))] });
+  assert.equal(again.changes[0].sameAsNow, true);
+  assert.equal(again.changes[0].stale, false);
+});
+
+test('an alias made after download makes the row stale; a re-spelling does not', async () => {
+  const store = await fresh();
+  await applyGenresCsv(store, { rows: [line('Bonobo', 'big room', genreStamp('none', []))] }, now);
+  const downloaded = genreStamp('owner', ['big room']);
+  await withVocab(store);
+  const p = await previewGenresCsv(store, { rows: [line('Bonobo', 'techno', downloaded)] });
+  assert.equal(p.changes[0].stale, true);
+  assert.equal(genreStamp('owner', ['Big-Room']), downloaded);
+});
