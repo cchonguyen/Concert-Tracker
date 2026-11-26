@@ -226,15 +226,15 @@ export function matchCsvRows(
     if (!byKey.has(act.key)) byKey.set(act.key, act);
   }
 
+  // A name that has its own row is that act, even when a rename links it to
+  // another exported act. The rename is used only when there is no exact row.
   const nameHitsFor = (name: string): CsvAct[] => {
-    if (!normalizeName(name)) return [];
-    const keys = new Set([normalizeName(name), normalizeName(canonicalName(name, aliases))]);
-    const hits: CsvAct[] = [];
-    for (const k of keys) {
-      const act = byKey.get(k);
-      if (act && !hits.includes(act)) hits.push(act);
-    }
-    return hits;
+    const exactKey = normalizeName(name);
+    if (!exactKey) return [];
+    const exact = byKey.get(exactKey);
+    if (exact) return [exact];
+    const renamed = byKey.get(normalizeName(canonicalName(name, aliases)));
+    return renamed ? [renamed] : [];
   };
 
   const skipped: SkippedRow[] = [];
