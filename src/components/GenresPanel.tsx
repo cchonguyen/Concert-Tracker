@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { genresApi, type GenresList } from '../services/lineupApi';
 import { genreResolver, NOT_GROUPED } from '../server/events/genreVocabulary';
 import type { GenreCollision, GenreVocabChange } from '../server/events/genreTypes';
+import { GenreRecord } from './GenreRecord';
 import { Button } from './ui/Button';
 import { Equalizer } from './ui/Equalizer';
 import { Ledger } from './ui/Ledger';
@@ -166,6 +167,15 @@ export const GenresPanel: React.FC<{ query: string }> = ({ query }) => {
     }
   };
 
+  // A change saved in the open genre's record: its notice with Undo, the list again,
+  // and the genre it now lives under (after a rename or a merge).
+  const changed = async (change: GenreVocabChange, selectKey?: string) => {
+    setError(null);
+    setNotice({ text: change.summary, undoId: change.id });
+    await load();
+    if (selectKey) setSelected(selectKey);
+  };
+
   const undo = async () => {
     if (!notice?.undoId) return;
     const id = notice.undoId;
@@ -268,15 +278,16 @@ export const GenresPanel: React.FC<{ query: string }> = ({ query }) => {
         </form>
       )}
 
-      {/* The genre's record (GenreRecord) renders here when it is built: name, other
-          spellings, group, umbrellas, merge and history for selectedRow. */}
-      {selectedRow && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-line bg-surface-1 p-3" data-genre-record-slot={selectedRow.key}>
-          <span className="font-medium text-text">{selectedRow.name}</span>
-          <Button variant="ghost" onClick={() => setSelected(null)}>
-            Close
-          </Button>
-        </div>
+      {selectedRow && data && (
+        <GenreRecord
+          row={selectedRow}
+          rows={rows}
+          groups={groups}
+          data={data}
+          onChanged={changed}
+          onSelect={setSelected}
+          onClose={() => setSelected(null)}
+        />
       )}
 
       {data === null && !error && (
