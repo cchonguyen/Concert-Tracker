@@ -152,6 +152,9 @@ export interface LoggedEvent extends EventFacts, LoggedEventInheritance {
   // your words. Editions with the same series show as "<series> <year>".
   // Set only by you; the Table can offer a name from your own event names.
   series?: string;
+  // The shared series (event_series.slug) this event points at (0058). Worked out in code when the series
+  // changes (eventSeriesSlug in routes.ts); `series` above stays as your own wording.
+  seriesSlug?: string;
   // Which weekend of a festival that runs more than one (Weekend 1, 2, ...),
   // as you pick it. Shown with the series.
   weekend?: number;
