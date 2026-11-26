@@ -18,7 +18,8 @@ export const HAS_FIELDS: HasField[] = ['seen', 'rating', 'price', 'companions', 
 export type Needs = 'any' | 'date' | 'pick' | 'review';
 export type Origin = 'any' | 'typed' | 'email';
 export type KindFilter = 'any' | 'concert' | 'festival' | 'unknown';
-export type WentFilter = 'any' | AttendanceState;
+// 'any' (no filter) leaves out events you didn't go to; 'all' shows every event.
+export type WentFilter = 'any' | 'all' | AttendanceState;
 export type SortKey = 'date' | 'name' | 'venue' | 'city' | 'seen' | 'rating' | 'price';
 // 'none' is the untoggled state: rows stay in the order they came in.
 export type SortChoice = SortKey | 'none';
@@ -40,7 +41,7 @@ export interface TableFilters {
   kind: KindFilter;
   format: string;
   series: string;
-  went: WentFilter; // went, upcoming, waiting for you to confirm, or didn't go
+  went: WentFilter; // unset hides didn't go; everything, went, upcoming, waiting for you to confirm, or didn't go
   sort: SortChoice;
   desc: boolean;
 }
@@ -169,7 +170,7 @@ export function matches(e: LoggedEvent, f: TableFilters, lineup?: LineupSummary,
   if (f.kind !== 'any' && (eventScale(e, facts).kind ?? 'unknown') !== f.kind) return false;
   if (f.format && !formatsOf(e.format).some((v) => v.toLowerCase() === f.format.toLowerCase())) return false;
   if (f.series && e.series !== f.series) return false;
-  if (f.went !== 'any' && attendanceOf(e, day) !== f.went) return false;
+  if (f.went === 'any' ? attendanceOf(e, day) === 'missed' : f.went !== 'all' && attendanceOf(e, day) !== f.went) return false;
   return true;
 }
 
@@ -394,7 +395,7 @@ export function filtersFromQuery(query: string): TableFilters {
     kind: oneOf(p.get('type'), ['any', 'concert', 'festival', 'unknown'] as const, 'any'),
     format: p.get('format') ?? '',
     series: p.get('series') ?? '',
-    went: oneOf(p.get('went'), ['any', 'went', 'upcoming', 'confirm', 'missed'] as const, 'any'),
+    went: oneOf(p.get('went'), ['any', 'all', 'went', 'upcoming', 'confirm', 'missed'] as const, 'any'),
     sort: oneOf(sort, ['date', 'name', 'venue', 'city', 'seen', 'rating', 'price', 'none'] as const, 'date'),
     desc: dir !== 'asc',
   };

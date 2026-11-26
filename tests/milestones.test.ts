@@ -54,5 +54,17 @@ test('artists count distinct acts at attended shows only', () => {
     ev('ahead', { startDate: '2026-12-01', seen: [{ key: 'w', name: 'W', from: 'you' }] }),
     ev('planned', { startDate: '2026-11-01', attendance: 'planned', seen: [{ key: 'v', name: 'V', from: 'you' }] }),
   ];
-  assert.deepEqual(milestoneCounts(events, TODAY), { shows: 5, artists: 2 });
+  assert.deepEqual(milestoneCounts(events, TODAY), { shows: 2, artists: 2 });
+});
+
+test("shows you didn't go to, and upcoming ones, do not count toward a milestone", () => {
+  const counts = milestoneCounts(
+    [
+      ev('a', { startDate: '2026-01-01' }),
+      ev('b', { startDate: '2026-02-01', attendance: 'missed' }),
+      ev('c', { startDate: '2026-12-01', attendance: 'planned' }),
+    ],
+    TODAY,
+  );
+  assert.equal(counts.shows, 1);
 });

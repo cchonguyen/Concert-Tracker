@@ -259,3 +259,19 @@ test('today line indicator sits between future and past events when sorted by da
   // Year range including today's year: today line shows
   assert.equal(todayLineIndex(descRows, { sort: 'date', desc: true, yearFrom: 2026, yearTo: 2026 }, TODAY), 1);
 });
+
+test("the table hides events you didn't go to until you ask for everything", () => {
+  const list = [
+    ev('went', { startDate: '2024-05-01' }),
+    ev('missed', { startDate: '2024-06-01', attendance: 'missed' }),
+    ev('ahead', { startDate: '2999-01-01', attendance: 'planned' }),
+    ev('confirm', { startDate: '2024-07-01', attendance: 'planned' }),
+  ];
+  const ids = (f: Partial<TableFilters>) => filterEvents(list, { ...EMPTY_FILTERS, ...f }).map((e) => e.id).sort();
+  assert.deepEqual(ids({}), ['ahead', 'confirm', 'went']);
+  assert.deepEqual(ids({ went: 'all' }), ['ahead', 'confirm', 'missed', 'went']);
+  assert.deepEqual(ids({ went: 'missed' }), ['missed']);
+  assert.equal(filtersToQuery({ ...EMPTY_FILTERS, went: 'all' }), 'went=all');
+  assert.equal(filtersFromQuery('went=all').went, 'all');
+  assert.equal(filtersFromQuery('').went, 'any');
+});
