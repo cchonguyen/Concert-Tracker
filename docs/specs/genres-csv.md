@@ -4,7 +4,7 @@ Status: designed 2026-11-26 (Level 3 scout); scope approved by Charlie in plain 
 
 ## In plain English
 
-In Table > Genres there is a new button, "Download artists and genres (CSV)". It gives you a spreadsheet with one row per act: its name, what genres the app shows now, where they came from, and an empty "New genres" column. You type genres there (separated by semicolons) for any act you want to change, save the file and upload it back.
+In Manage > Artists > Genres there is a new button, "Download artists and genres (CSV)". It gives you a spreadsheet with one row per act: its name, what genres the app shows now, where they came from, and an empty "New genres" column. You type genres there (separated by semicolons) for any act you want to change, save the file and upload it back.
 
 Before anything is saved you see a table of before and after for every act you filled in. Acts the app could not match for sure, or that you changed in the app after you downloaded the file, are listed and left alone. (For the changed ones you can tick "Replace anyway".) Nothing is saved until you press "Apply". Afterwards one "Undo this upload" button puts everything back. Rows you left blank are never touched. Your genres count as "you" genres, like ones you type in the event panel; music-story and MusicBrainz genres stay stored underneath and come back if you ever reset an act.
 
