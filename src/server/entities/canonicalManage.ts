@@ -5,6 +5,7 @@ import type { CanonicalUndoResult, LineupStore } from '../lineup/store/types';
 import { CanonicalStoreError, editionMatchesStatusFilter, isVerifiedStatus } from '../lineup/store/types';
 import type { CanonicalEditionStatusFilter } from '../lineup/store/types';
 import { currentMember } from '../auth/requestScope';
+import { seriesDisplayName } from '../../services/series';
 import { ArtistAliasRow, ArtistEditionRow, CANONICAL_OPERATIONS, CanonicalChange, Entity, EntityAlias, EntityLink, HistoryEntry } from './types';
 import { applyEntityChangePlan, cleanName, EntityChangePlan, ManageError, planEntityMerge, planEntityRename, undoEntry, UndoResult } from './manage';
 
@@ -939,10 +940,22 @@ async function undoFileCanonicalChange(store: LineupStore, id: string, at: strin
   }
 }
 
+// A series with a brand and a qualifier keeps its stored name equal to the built
+// one ("Dreamstate" + "SoCal" = "Dreamstate SoCal"), so readers of `name` agree
+// with what the app shows. Without a qualifier the name stays as it is.
+export function withBuiltSeriesName(s: SeriesRecord): SeriesRecord {
+  const qualifier = s.qualifier?.trim();
+  const { qualifier: _drop, ...rest } = s;
+  if (!qualifier) return rest;
+  const next = { ...rest, qualifier };
+  return s.brand?.trim() ? { ...next, name: seriesDisplayName(next) } : next;
+}
+
 // Undo for any history entry: a catalog artist change, or a Manage change (manage.ts).
 // Save a canonical series with an undoable history entry (Global archive: type, place, name, brand, and the rest of the record).
 // The entry is written before the save, so undo can put back exactly the record it replaced.
-export async function saveSeriesLogged(store: LineupStore, existing: SeriesRecord, next: SeriesRecord, at = now()): Promise<HistoryEntry | null> {
+export async function saveSeriesLogged(store: LineupStore, existing: SeriesRecord, wanted: SeriesRecord, at = now()): Promise<HistoryEntry | null> {
+  const next = withBuiltSeriesName(wanted);
   if (stable(existing) === stable(next)) {
     await store.upsertSeries(next);
     return null;
