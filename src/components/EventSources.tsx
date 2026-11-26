@@ -1,5 +1,6 @@
 import React from 'react';
-import { ExternalLink, MapPin, Tag } from 'lucide-react';
+import { ExternalLink, Info, MapPin, Tag } from 'lucide-react';
+import { Popover } from './ui/Popover';
 import type { EditionPerformance, SourceType } from '../server/lineup/types';
 import type { EventField } from '../server/events/types';
 import { dateConfirmations } from '../services/format';
@@ -47,6 +48,8 @@ interface EventSourcesProps {
   highlightedKey?: string | null;
   // The Check details button, shown beside the heading, and its results (Check details and Deep search).
   action?: React.ReactNode;
+  // What Check details and Deep search do, shown from an info icon beside the heading.
+  help?: React.ReactNode;
   children?: React.ReactNode;
 }
 
@@ -57,6 +60,7 @@ export const EventSources: React.FC<EventSourcesProps> = ({
   editionId,
   highlightedKey,
   action,
+  help,
   children,
 }) => {
   const isOwner = useIsOwner();
@@ -125,7 +129,16 @@ export const EventSources: React.FC<EventSourcesProps> = ({
   return (
     <section id="event-sources" className="space-y-3 rounded-card border border-line bg-surface-1 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-display text-lg font-normal text-text">Where every detail came from</h3>
+        <div className="flex items-center gap-0.5">
+          <h3 className="font-display text-lg font-normal text-text">Where every detail came from</h3>
+          {help && (
+            <Popover label="About where every detail came from" content={<div className="max-w-xs space-y-2 text-xs leading-relaxed text-text">{help}</div>}>
+              <span className="flex h-9 w-9 items-center justify-center rounded-control text-text-muted hover:text-text sm:h-7 sm:w-7">
+                <Info className="h-4 w-4" aria-hidden="true" />
+              </span>
+            </Popover>
+          )}
+        </div>
         {action}
       </div>
       {children}
@@ -144,29 +157,31 @@ export const EventSources: React.FC<EventSourcesProps> = ({
             const highlighted = highlightedKey === entry.key;
 
             return (
+              // Phones: the source and its link share a line, with what it gave below. Once the card is wide
+              // enough: three columns, the source, what it gave, and its link.
               <li
                 key={entry.key}
-                className={`space-y-1.5 rounded-control border p-3 text-xs ${
+                className={`grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 rounded-control border p-3 text-xs @[760px]:grid-cols-[11rem_minmax(0,1fr)_auto] ${
                   highlighted ? 'border-accent-tint-line bg-accent-tint' : 'border-line bg-surface-2'
                 }`}
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-medium text-text">
-                    {entry.kind === 'edition' ? (
-                      <span className="inline-flex items-center gap-1">
-                        <Tag className="h-3 w-3 shrink-0 text-text-muted" aria-hidden="true" />
-                        <span>{FIELD_SOURCE_LABELS.edition}</span>
-                      </span>
-                    ) : entry.kind === 'venue' ? (
-                      <span className="inline-flex items-center gap-1">
-                        <MapPin className="h-3 w-3 shrink-0 text-text-muted" aria-hidden="true" />
-                        <span>{FIELD_SOURCE_LABELS.venue}</span>
-                      </span>
-                    ) : (
-                      <SourceIcon source={entry.sourceType as SourceType} readBy={entry.readBy} />
-                    )}
-                  </div>
+                <div className="font-medium text-text">
+                  {entry.kind === 'edition' ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Tag className="h-3 w-3 shrink-0 text-text-muted" aria-hidden="true" />
+                      <span>{FIELD_SOURCE_LABELS.edition}</span>
+                    </span>
+                  ) : entry.kind === 'venue' ? (
+                    <span className="inline-flex items-center gap-1">
+                      <MapPin className="h-3 w-3 shrink-0 text-text-muted" aria-hidden="true" />
+                      <span>{FIELD_SOURCE_LABELS.venue}</span>
+                    </span>
+                  ) : (
+                    <SourceIcon source={entry.sourceType as SourceType} readBy={entry.readBy} />
+                  )}
+                </div>
 
+                <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 @[760px]:col-start-3 @[760px]:row-start-1">
                   {entry.kind === 'edition' && isOwner && editionId && (
                     <a
                       href={editionUrl(editionId)}
@@ -196,16 +211,20 @@ export const EventSources: React.FC<EventSourcesProps> = ({
                   )}
                 </div>
 
-                {gaveParts.length > 0 && (
-                  <p className="text-text-muted">
-                    <span className="font-medium text-text">Gave:</span> {gaveParts.join(', ')}
-                  </p>
-                )}
+                {(gaveParts.length > 0 || entry.quote) && (
+                  <div className="col-span-2 min-w-0 space-y-1.5 @[760px]:col-span-1 @[760px]:col-start-2 @[760px]:row-start-1">
+                    {gaveParts.length > 0 && (
+                      <p className="text-text-muted">
+                        <span className="font-medium text-text">Gave:</span> {gaveParts.join(', ')}
+                      </p>
+                    )}
 
-                {entry.quote && (
-                  <blockquote className="line-clamp-3 font-display text-[13px] italic leading-snug text-text">
-                    “{entry.quote}”
-                  </blockquote>
+                    {entry.quote && (
+                      <blockquote className="line-clamp-3 font-display text-[13px] italic leading-snug text-text">
+                        “{entry.quote}”
+                      </blockquote>
+                    )}
+                  </div>
                 )}
               </li>
             );
