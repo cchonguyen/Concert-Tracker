@@ -117,10 +117,10 @@ test('a body without rows, and an undo with no upload, are plain 400s', async ()
   });
 });
 
-test('the CSV routes are open to members (their own genres); music-story and MusicBrainz uploads stay owner-only', () => {
-  assert.equal(ownerOnly('POST', '/api/artist-genres/csv/preview'), false);
-  assert.equal(ownerOnly('POST', '/api/artist-genres/csv/apply'), false);
-  assert.equal(ownerOnly('POST', '/api/artist-genres/csv/undo'), false);
+test('the CSV writes are owner-only for now, like the other genre uploads; export is open to members', () => {
+  assert.equal(ownerOnly('POST', '/api/artist-genres/csv/preview'), true);
+  assert.equal(ownerOnly('POST', '/api/artist-genres/csv/apply'), true);
+  assert.equal(ownerOnly('POST', '/api/artist-genres/csv/undo'), true);
   assert.equal(ownerOnly('GET', '/api/artist-genres/csv/export'), false);
   assert.equal(ownerOnly('POST', '/api/artist-genres/music-story'), true);
   assert.equal(ownerOnly('POST', '/api/artist-genres/musicbrainz'), true);
