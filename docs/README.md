@@ -27,6 +27,7 @@ Statuses were checked against the code on 2026-11-23.
 | [specs/edition-panel-rows.md](specs/edition-panel-rows.md) | The edition panel: one field per aligned row, one info icon for source and notes, dates with checkboxes, Ends and Weekend behind "+", Type as a two-part control. Charlie's request 2026-11-25. |
 | [specs/row-hover.md](specs/row-hover.md) | One stronger hover tint for every row, with a fade-out trail when you sweep across a list. Charlie's request 2026-11-25. |
 | [specs/hide-didnt-go.md](specs/hide-didnt-go.md) | Hide events you didn't go to in the Table by default, with "Everything" to bring them back; milestone and Manage counts only count events you went to. Charlie's request 2026-11-26. |
+| [specs/quiet-tips-table.md](specs/quiet-tips-table.md) | One-line page tips that fold away after 3 visits, a header ? to bring them back and a Show all tips switch; a lean Table toolbar; an All time strip on Stats. Charlie's request 2026-11-26. |
 | [specs/motion-whimsy.md](specs/motion-whimsy.md) | Louder, playful motion on controls, tabs, menus, saves, toasts, stars and bursts, all off under reduced motion. Charlie's request 2026-11-25. |
 | [tier3-specs.md](tier3-specs.md) | TECH-04 and FETCH-01 built. The other Tier 3 tickets not started. |
 | [engineering-ticket-bank.md](engineering-ticket-bank.md) | Backlog of open tickets. Closed ones are in [archive/engineering-ticket-bank-closed.md](archive/engineering-ticket-bank-closed.md). |

@@ -79,3 +79,24 @@ test('a milestone that is not a milestone count is refused', async (t) => {
   assert.equal((await call('PUT', { milestone: { shows: 42 } })).status, 400);
   assert.deepEqual((await call('GET')).body.milestone, { shows: 0, artists: 0 });
 });
+
+test('a tips choice keeps page tip visits, choices, the Show all switch and folded tips', () => {
+  const saved = { dismissed: [], allHidden: false, visits: { table: 2, 'archive-changes': 4 }, choice: { manage: 'off' }, showAll: true, folded: ['table', 'table'] };
+  assert.deepEqual(cleanTips(saved), { ...saved, folded: ['table'] });
+});
+
+test('an older tips choice without page tips still reads, and a tips choice may leave out the Home fields', () => {
+  assert.deepEqual(cleanTips({ dismissed: ['fill'], allHidden: true }), { dismissed: ['fill'], allHidden: true });
+  assert.deepEqual(cleanTips({ showAll: false }), { dismissed: [], allHidden: false, showAll: false });
+});
+
+test('page tip fields with a bad shape are refused', () => {
+  assert.throws(() => cleanTips({ visits: { Table: 1 } }), PrefsError);
+  assert.throws(() => cleanTips({ visits: { table: 11 } }), PrefsError);
+  assert.throws(() => cleanTips({ visits: { table: 1.5 } }), PrefsError);
+  assert.throws(() => cleanTips({ visits: [] }), PrefsError);
+  assert.throws(() => cleanTips({ choice: { table: 'maybe' } }), PrefsError);
+  assert.throws(() => cleanTips({ showAll: 'yes' }), PrefsError);
+  assert.throws(() => cleanTips({ folded: ['-table'] }), PrefsError);
+  assert.throws(() => cleanTips({ folded: Array.from({ length: 31 }, (_, i) => `t${'a'.repeat(i)}`.replace(/[0-9]/g, 'x')) }), PrefsError);
+});
