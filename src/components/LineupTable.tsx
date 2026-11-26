@@ -291,10 +291,10 @@ export const LineupTable: React.FC<LineupTableProps> = ({
                 return (
                   <tr
                     key={slot.id}
-                    className={`min-h-11 border-l-[3px] transition-colors sm:min-h-10 ${
+                    className={`min-h-11 border-l-[3px] sm:min-h-10 ${
                       on
                         ? 'border-l-accent-fill bg-accent-tint/25'
-                        : 'border-l-transparent hover:bg-surface-2'
+                        : 'row-hover border-l-transparent'
                     }`}
                   >
                     <td className="p-0 align-middle">
