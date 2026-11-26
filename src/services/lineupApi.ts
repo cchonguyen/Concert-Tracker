@@ -1,6 +1,5 @@
 import type { VenueLocation, VenueLocationResult } from '../server/canon/venueLocation';
 import type { VenueFillPlan, VenueFillResult } from '../server/canon/venueFill';
-import type { CleanupResult } from '../server/entities/seriesCleanup';
 import type { Edition, EditionInference, EditionWeekend, InferenceField, LookupJob, SeriesKind, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
 import type { InferredField } from '../server/canon/inferences';
 import type { InferredBilling } from '../server/canon/inferredBilling';
@@ -675,11 +674,6 @@ export const canonicalApi = {
   inferencesForReview: () => request<{ inferences: ReviewInference[] }>('/api/manage/inferences'),
   confirmInference: (id: string) => request<{ inference: EditionInference }>(`/api/manage/inferences/${encodeURIComponent(id)}/confirm`, post({})),
   rejectInference: (id: string) => request<{ rows: EditionInference[] }>(`/api/manage/inferences/${encodeURIComponent(id)}/reject`, post({})),
-  // The approved series cleanup (owner only): preview or run steps[from, from + count).
-  seriesCleanupPreview: (from: number, count: number) =>
-    request<{ total: number; results: CleanupResult[] }>(`/api/manage/canonical/series-cleanup?${new URLSearchParams({ from: String(from), count: String(count) }).toString()}`),
-  seriesCleanupRun: (from: number, count: number) =>
-    request<{ total: number; results: CleanupResult[] }>('/api/manage/canonical/series-cleanup', post({ from, count })),
   venueFillPlan: () => request<VenueFillPlan>('/api/manage/canonical/venue-fill'),
   venueFillApply: (body: { editionIds?: string[]; picks?: Array<{ editionId: string; location: VenueLocation }> }) =>
     request<VenueFillResult>('/api/manage/canonical/venue-fill', post(body)),

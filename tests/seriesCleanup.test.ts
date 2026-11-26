@@ -93,31 +93,3 @@ test('apply runs each step through its logged path, and a second run changes not
     );
   });
 });
-
-test('the last steps of the approved list link events that had no shared series', async () => {
-  const { SERIES_CLEANUP_PLAN } = await import('../src/server/entities/seriesCleanupPlan.ts');
-  const from = SERIES_CLEANUP_PLAN.findIndex((s) => s.op === 'series' && s.slug === 'breakaway-music-festival-bay-area');
-  assert.ok(from > 0);
-  const dir = await mkdtemp(path.join(tmpdir(), 'series-cleanup-tail-'));
-  try {
-    const store = new FileLineupStore(dir);
-    await store.upsertSeries({ slug: 'head-in-the-clouds', name: 'Head in the Clouds', brand: 'Head in the Clouds', kind: 'festival' });
-    const hitc = ed('d6780595-3007-4a15-9e87-acea211591c2', 'head-in-the-clouds', 2023, 'Pasadena', { name: 'Head in the Clouds 2023' });
-    const veld = ed('14e37ffe-1e94-4675-85ec-878abd4577bf', '', 2023, 'Toronto', { name: 'VELD', key: 'veld/2023' });
-    delete (veld as Partial<Edition>).seriesSlug;
-    await writeEdition(store, { edition: hitc, actor: 'owner', reason: 'seed' });
-    await writeEdition(store, { edition: veld, actor: 'owner', reason: 'seed' });
-    const typed = { ...newEvent('Head in the Clouds 2023', NOW), editionId: hitc.id, series: 'Head in the Clouds', overrides: { series: 'Head in the Clouds Pasadena' } };
-    const plain = { ...newEvent('VELD', NOW), editionId: veld.id, series: 'VELD' };
-    await store.putEvents([typed as any, plain]);
-
-    const out = await runSeriesCleanup(store, SERIES_CLEANUP_PLAN, { ...OPTS, apply: true, from });
-    assert.ok(!out.some((r) => r.outcome === 'failed'), JSON.stringify(out));
-    assert.equal((await store.getSeries('head-in-the-clouds'))?.name, 'Head in the Clouds Pasadena');
-    const events = new Map((await store.listEvents()).map((e) => [e.id, e]));
-    assert.equal(events.get(typed.id)?.seriesSlug, 'head-in-the-clouds');
-    assert.equal(events.get(plain.id)?.seriesSlug, 'veld');
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
