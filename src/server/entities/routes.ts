@@ -18,6 +18,7 @@ import {
   renameArtist,
   summarizeEdition,
   saveSeriesLogged,
+  withBuiltSeriesName,
   undoHistory,
   unifyArtists,
   withAkas,
@@ -507,6 +508,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
 
       const kind: SeriesKind = 'kind' in body ? parseSeriesKind(body.kind) : 'festival';
       const brand = parseSeriesString(body.brand, 'brand');
+      const qualifier = parseSeriesString(body.qualifier, 'qualifier', 120);
       const city = parseSeriesString(body.city, 'city', 200);
       const region = parseSeriesString(body.region, 'region', 100);
       const country = parseSeriesString(body.country, 'country', 100);
@@ -522,6 +524,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
         name,
         kind,
         ...(brand ? { brand } : {}),
+        ...(qualifier ? { qualifier } : {}),
         ...(city ? { city } : {}),
         ...(region ? { region } : {}),
         ...(country ? { country } : {}),
@@ -529,8 +532,8 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
         ...(lineupUrl ? { lineupUrl } : {}),
         ...(sourcePriority?.length ? { sourcePriority } : {}),
       };
-      await store.upsertSeries(record);
-      res.status(201).json({ series: (await store.getSeries(slug)) ?? record });
+      await store.upsertSeries(withBuiltSeriesName(record));
+      res.status(201).json({ series: (await store.getSeries(slug)) ?? withBuiltSeriesName(record) });
     } catch (err) {
       if (err instanceof ManageError) return res.status(err.status).json({ error: err.message, conflict: err.conflict });
       if (err instanceof EntityIntegrityError) return res.status(409).json({ error: err.message });
@@ -584,6 +587,11 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
         const brand = parseSeriesString(body.brand, 'brand');
         if (brand) next.brand = brand;
         else delete next.brand;
+      }
+      if ('qualifier' in body) {
+        const qualifier = parseSeriesString(body.qualifier, 'qualifier', 120);
+        if (qualifier) next.qualifier = qualifier;
+        else delete next.qualifier;
       }
       if ('aliases' in body) {
         const aliases = body.aliases === null ? [] : parseSeriesAliases(body.aliases);
