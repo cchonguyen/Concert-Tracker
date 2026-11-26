@@ -1,4 +1,5 @@
-import { createContext, Fragment, useContext, type CSSProperties, type ReactNode } from 'react';
+import { createContext, Fragment, useContext, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
+import { NameSep } from './NameList';
 
 // The ticket stub (docs/specs/ticket-stub.md). Presentational only: no data,
 // no rules. The rules live in src/services/ticket.ts. Paper, perforation and notches are
@@ -24,7 +25,7 @@ interface TicketProps {
   torn?: boolean; // stub end slightly askew
 }
 
-// Callers may set --ticket-ground in an inline style to the surface behind the ticket.
+// The notches are real holes, placed where the tear meets the ticket's edge (src/index.css, .ticket-card).
 export function Ticket({ layout, size, body, stub, stubWidth, className = '', label, tearing, torn }: TicketProps) {
   const columns = layout === 'columns';
   const width = stubWidth ?? DEFAULT_STUB_WIDTH[size];
@@ -32,15 +33,33 @@ export function Ticket({ layout, size, body, stub, stubWidth, className = '', la
   const bodyPad = columns && size === 'hero' ? 'px-[26px] pt-[22px] pb-5' : 'px-4 pt-3.5 pb-3.5';
   const bodyGap = size === 'hero' ? 'gap-2.5' : 'gap-1.5';
   const motion = tearing ? 'ticket-tearing' : torn ? 'ticket-torn' : '';
+  // Where the tear meets the edge: the stub's left edge (columns) or top edge (rows), kept current as the ticket resizes.
+  const card = useRef<HTMLElement>(null);
+  const stubRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = card.current;
+    const st = stubRef.current;
+    if (!el || !st) return;
+    const place = () => {
+      el.style.setProperty('--notch-x', `${st.offsetLeft}px`);
+      el.style.setProperty('--notch-y', `${st.offsetTop}px`);
+    };
+    place();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(place);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [columns]);
   return (
     <TicketContext.Provider value={{ size, layout }}>
       <article
+        ref={card}
         aria-label={label}
         style={style}
-        className={`ticket-card ticket-paper ${columns ? 'ticket-cols' : 'ticket-rows'} relative grid min-w-0 border border-perf text-text ${className}`}
+        className={`ticket-card ${columns ? 'ticket-cols' : 'ticket-rows'} relative grid min-w-0 border border-transparent text-text ${className}`}
       >
         <div className={`flex min-w-0 flex-col ${bodyGap} ${bodyPad}`}>{body}</div>
-        <div className={`ticket-stub ${motion}`}>{stub}</div>
+        <div ref={stubRef} className={`ticket-stub ${motion}`}>{stub}</div>
       </article>
     </TicketContext.Provider>
   );
@@ -68,7 +87,7 @@ export function TicketHeadline({ names }: { names: string[] }) {
       {names.map((name, i) => (
         <Fragment key={`${i}-${name}`}>
           {i === 1 && <span className="px-[0.12em] text-accent italic">&amp;</span>}
-          {i >= 2 && ', '}
+          {i >= 2 && <NameSep />}
           {name}
         </Fragment>
       ))}

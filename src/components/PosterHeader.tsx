@@ -10,6 +10,7 @@ import { admitCount, barcodeBars, shortDate, shorthand, stubPieces, stubSentence
 import type { Gap } from '../services/table';
 import { Ticket, TicketEventLine, TicketHeadline, TicketKicker, TicketSmallLine, StubAdmit, StubBarcode, StubCode, StubKV, StubSentence, StubSerial, StubShortDate, StubStamp } from './ui/Ticket';
 import { GAP_LABEL, gapQuestion } from '../services/poster';
+import { NameList } from './ui/NameList';
 
 export type TearState = 'idle' | 'tearing' | 'torn';
 
@@ -58,7 +59,14 @@ export function PosterHeader({ title, dateLine, placeLine, kind, event, state, s
   const kicker = [kind ? KIND_LABELS[kind] : '', year ?? ''].filter(Boolean);
   const moreText =
     lines.moreHeadliners > 0 ? `and ${lines.moreHeadliners} more ${lines.moreHeadliners === 1 ? 'headliner' : 'headliners'}` : '';
-  const smallText = [lines.small.join(', '), moreText].filter(Boolean).join(', ');
+  const smallText =
+    lines.small.length > 0 || moreText ? (
+      <>
+        <NameList names={lines.small} />
+        {lines.small.length > 0 && moreText ? ', ' : ''}
+        {moreText}
+      </>
+    ) : null;
 
   const parts = shortDate(event);
   const admit = event.peopleLocked ? Number.NaN : admitCount(event.companions);
