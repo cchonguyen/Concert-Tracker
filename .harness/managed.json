@@ -133,7 +133,7 @@
     ".harness/templates/spoke/SESSION_HANDOFF.md": "d9a16f610fe13f1f7ee07a785ed6a455c355ce1990de62e3dee123fe6ce11499",
     ".harness/templates/spoke/SYSTEM_SPEC.md": "5b4b99f6e3f51ba8350a8f555074d8a983b73f77e917dc6d110a9830d30afef8",
     ".harness/templates/workflows/harness-issue-commands.yml": "9c049b5c797f4366ea02f2860711554cdc752c726b04153734f5ceb85345655f",
-    ".harness/templates/workflows/harness-issue-status.yml": "d8fef8dfa658fb0eb8721494019aafa71b34d50788dcab0489f1abc4deb0c89c",
+    ".harness/templates/workflows/harness-issue-status.yml": "919201a4f65d64c43f3bbd34adec3145c26db97f5158b7e969ffdff2b624ba15",
     ".harness/templates/workflows/harness-labels.yml": "0db0ddb8813a5cbbcd503f2da569a5c889d2f61a85616052efc48a2ce79a9552",
     ".harness/templates/workflows/harness-main-watch.yml": "d1943094f59d77a6ce348796806e739ad1bee9b9e540573bba08c7a86e0d1bef",
     ".harness/templates/workflows/harness-pr-check.yml": "5a803cea93d103f2dda9a585d2f6e8e9c396a088b7198738d8b89e5060a89040",
@@ -151,9 +151,9 @@
     "plugins/harness/hooks/refresh.mjs": "d5471841f43771f2b26562f36459c7f51010d7941d72dc94668b5e85e07af1b1",
     "plugins/harness/hooks/run.mjs": "cae5416aea4eb83a39c36aad287997af4d0be14d03dd97dd506718a91783720c",
     "plugins/harness/hooks/standing-rules.mjs": "fed9e255cd45e5fddf8454f810c57bac1710c5c0a2633cf719536aca88b5397e",
-    "plugins/harness/setup-script.sh": "5eef9b22b1177d5ad4b4a302822ef188550d8a0c36bfd9a8a45df19ffb2dc6dd",
+    "plugins/harness/setup-script.sh": "7b481291130ee7bb1914c7150e99751a50dd34c1303575f22ca5411311987ee2",
     "plugins/harness/test/refresh.test.mjs": "04012bd7bb651a332470189f2e88544f19364bd90603c7ac67d1f7f7528727ca",
-    "plugins/harness/test/run.test.mjs": "36cfa1020515599a899b82a3eeecd20a9fc23902fcf19e6dda925f2e09f2be5a"
+    "plugins/harness/test/run.test.mjs": "1993fc08d8db7aaf6751e1d5c42c195e958c85f10e9b480f904f4498721a06d5"
   },
   "settingsGenerated": {
     "allow": [
