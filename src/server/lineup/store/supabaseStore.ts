@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import type { AiCallRow, IngestTraceRow, MergeSummary } from './types';
+import type { AiCallRow, GenreChangeQuery, GenreWriteMeta, GenreWriteRow, IngestTraceRow, MergeSummary } from './types';
 import type { CanonicalVenue, EditionChange, EditionInference, InferenceStatus, InferenceVote, NewEditionInference, ReviewQueueItem, ReviewQueueKind } from '../types';
 import { ArtistIdTakenError, assertNoPersonalFields, ExternalIdConflictError, venueIdFor } from './types';
 import {
@@ -27,7 +27,7 @@ import { isCiphertext } from '../../auth/vault';
 import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
-import type { ArtistGenres } from '../../events/genres';
+import type { ArtistGenres, GenreChange } from '../../events/genres';
 import { brandKey } from '../../brands/plan';
 import { findOrCreateBrandId } from '../../brands/store';
 import {
@@ -1507,31 +1507,90 @@ export class SupabaseLineupStore implements LineupStore {
   }
 
   // artist_genres (0013) is optional: only genres need it.
-  // A member (not the owner) keeps only genres they set themselves, in
-  // user_artist_genres (0020); the shared artist_genres come from the owner's
-  // music-story export.
+  // Every scope reads the shared artist_genres through the service client. A
+  // member (not the owner) also gets their own additions from
+  // user_artist_genres (0020), as source 'added', and writes only those.
   private get memberGenres(): boolean {
     return Boolean(this.scope && this.scope.role !== 'owner');
   }
 
+  // Shared genre writes, the change log and the seen-act list are owner and system only.
+  private ownerGenres(): void {
+    if (this.memberGenres) throw new CanonicalStoreError('forbidden', 'Only the owner can do this.');
+  }
+
   async listArtistGenres() {
-    if (this.memberGenres) {
-      const own = this.check(await this.mine(this.own('user_artist_genres').select('*')), 'listArtistGenres (apply 0020_per_member_entities.sql)');
-      return ((own ?? []) as any[]).map((r): ArtistGenres => ({ key: r.artist_key, name: r.name, source: 'you', genres: r.genres ?? [], checkedAt: r.updated_at }));
-    }
     const rows = this.check(await this.db.from('artist_genres').select('*'), 'listArtistGenres (apply 0013_artist_genres.sql)');
-    return ((rows ?? []) as any[]).map(
-      (r): ArtistGenres => ({
-        key: r.artist_key,
-        name: r.name,
-        source: r.source,
-        mbid: r.mbid ?? undefined,
-        genres: r.genres ?? [],
-        sourceUrl: r.source_url ?? undefined,
-        inputs: r.inputs?.length ? r.inputs : undefined,
-        checkedAt: r.checked_at,
-      }),
-    );
+    const shared = ((rows ?? []) as any[]).map(genresFromRow);
+    if (!this.memberGenres) return shared;
+    const own = this.check(await this.mine(this.own('user_artist_genres').select('*')), 'listArtistGenres (apply 0020_per_member_entities.sql)');
+    return [
+      ...shared,
+      ...((own ?? []) as any[]).map((r): ArtistGenres => ({ key: r.artist_key, name: r.name, source: 'added', genres: r.genres ?? [], checkedAt: r.updated_at })),
+    ];
+  }
+
+  async writeArtistGenres(rows: GenreWriteRow[], meta: GenreWriteMeta): Promise<GenreChange[]> {
+    this.ownerGenres();
+    const changes: GenreChange[] = [];
+    for (let i = 0; i < rows.length; i += 500) {
+      const p_rows = rows.slice(i, i + 500).map((r) => ({ artist_key: r.key, source: r.source, row: r.row ? genresRow(r.row) : null }));
+      const { data, error } = await this.db.rpc('artist_genres_write', {
+        p_rows,
+        p_actor: meta.actor,
+        p_reason: meta.reason,
+        p_batch: meta.batchId ?? null,
+      });
+      if (error) throw new Error(`Supabase writeArtistGenres failed (apply 0059_canonical_genres.sql): ${error.message}`);
+      changes.push(...((data ?? []) as any[]).map(genreChangeFromRow));
+    }
+    return changes;
+  }
+
+  async listGenreChanges(q: GenreChangeQuery): Promise<GenreChange[]> {
+    this.ownerGenres();
+    let batchId = q.batchId;
+    if (q.latestBatchReason !== undefined) {
+      const latest = this.check(
+        await this.db
+          .from('artist_genre_changes')
+          .select('batch_id')
+          .eq('reason', q.latestBatchReason)
+          .is('undone_at', null)
+          .not('batch_id', 'is', null)
+          .order('at', { ascending: false })
+          .limit(1),
+        'listGenreChanges (apply 0059_canonical_genres.sql)',
+      ) as any[] | null;
+      batchId = latest?.[0]?.batch_id;
+      if (!batchId) return [];
+    }
+    let query: any = this.db.from('artist_genre_changes').select('*');
+    if (q.key !== undefined) query = query.eq('artist_key', q.key);
+    if (batchId !== undefined) query = query.eq('batch_id', batchId);
+    if (q.latestBatchReason !== undefined) query = query.eq('reason', q.latestBatchReason).is('undone_at', null);
+    query = query.order('at', { ascending: false });
+    if (q.limit !== undefined) query = query.limit(q.limit);
+    const data = this.check(await query, 'listGenreChanges (apply 0059_canonical_genres.sql)') as any[] | null;
+    return (data ?? []).map(genreChangeFromRow);
+  }
+
+  // The log is append-only: only undone_at may be set, once, so rows already undone are skipped.
+  async markGenreChangesUndone(ids: string[], at: string): Promise<void> {
+    this.ownerGenres();
+    for (let i = 0; i < ids.length; i += 200) {
+      this.check(
+        await this.db.from('artist_genre_changes').update({ undone_at: at }).in('id', ids.slice(i, i + 200)).is('undone_at', null),
+        'markGenreChangesUndone (apply 0059_canonical_genres.sql)',
+      );
+    }
+  }
+
+  async listSeenActNames(): Promise<Array<{ key: string; name: string }>> {
+    this.ownerGenres();
+    const { data, error } = await this.db.rpc('seen_act_names');
+    if (error) throw new Error(`Supabase listSeenActNames failed (apply 0059_canonical_genres.sql): ${error.message}`);
+    return ((data ?? []) as any[]).map((r) => ({ key: String(r.artist_key), name: String(r.name) }));
   }
 
   // Entities (0014) -------------------------------------------------------
@@ -1601,29 +1660,21 @@ export class SupabaseLineupStore implements LineupStore {
 
   async putArtistGenres(rows: ArtistGenres[]) {
     if (this.memberGenres) {
-      if (rows.some((r) => r.source !== 'you')) throw new Error('A member can only keep genres they set themselves.');
+      // 'you' is still accepted from callers that have not moved to 'added'.
+      if (rows.some((r) => r.source !== 'added' && r.source !== 'you')) throw new Error('A member can only keep genres they set themselves.');
       const chunk = rows.map((r) => this.stamp({ artist_key: r.key, name: r.name, genres: r.genres, updated_at: r.checkedAt }));
       if (chunk.length) this.check(await this.own('user_artist_genres').upsert(chunk, { onConflict: 'user_id,artist_key' }), 'putArtistGenres (apply 0020_per_member_entities.sql)');
       return;
     }
     for (let i = 0; i < rows.length; i += 500) {
-      const chunk = rows.slice(i, i + 500).map((r) => ({
-        artist_key: r.key,
-        source: r.source,
-        name: r.name,
-        mbid: r.mbid ?? null,
-        genres: r.genres,
-        source_url: r.sourceUrl ?? null,
-        inputs: r.inputs ?? [],
-        checked_at: r.checkedAt,
-      }));
+      const chunk = rows.slice(i, i + 500).map((r) => ({ artist_key: r.key, source: r.source, ...genresRow(r) }));
       if (chunk.length) this.check(await this.db.from('artist_genres').upsert(chunk), 'putArtistGenres (apply 0013_artist_genres.sql)');
     }
   }
 
   async deleteArtistGenres(key: string, source: ArtistGenres['source']) {
     if (this.memberGenres) {
-      if (source === 'you') this.check(await this.mine(this.own('user_artist_genres').delete().eq('artist_key', key)), 'deleteArtistGenres');
+      if (source === 'added' || source === 'you') this.check(await this.mine(this.own('user_artist_genres').delete().eq('artist_key', key)), 'deleteArtistGenres');
       return;
     }
     this.check(
@@ -2207,3 +2258,43 @@ const rowToClaim = (r: any): PerformerClaim => ({
   extractorVersion: r.extractor_version,
   createdAt: r.created_at,
 });
+
+// artist_genres row <-> ArtistGenres. The row's own fields only: artist_key and source are the row's key.
+function genresRow(r: ArtistGenres) {
+  return {
+    name: r.name,
+    mbid: r.mbid ?? null,
+    genres: r.genres,
+    source_url: r.sourceUrl ?? null,
+    inputs: r.inputs ?? [],
+    checked_at: r.checkedAt,
+  };
+}
+
+function genresFromRow(r: any): ArtistGenres {
+  return {
+    key: r.artist_key,
+    name: r.name,
+    source: r.source,
+    mbid: r.mbid ?? undefined,
+    genres: r.genres ?? [],
+    sourceUrl: r.source_url ?? undefined,
+    inputs: r.inputs?.length ? r.inputs : undefined,
+    checkedAt: r.checked_at,
+  };
+}
+
+function genreChangeFromRow(r: any): GenreChange {
+  return {
+    id: r.id,
+    key: r.artist_key,
+    source: r.source,
+    at: r.at,
+    actor: r.actor,
+    reason: r.reason,
+    ...(r.batch_id ? { batchId: r.batch_id } : {}),
+    before: r.before ? genresFromRow(r.before) : null,
+    after: r.after ? genresFromRow(r.after) : null,
+    ...(r.undone_at ? { undoneAt: r.undone_at } : {}),
+  };
+}
