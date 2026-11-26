@@ -402,9 +402,8 @@ const InferredInfo: React.FC<{ items: InferredItem[]; onAct?: (inferenceId: stri
   );
 };
 
-// A read row's info: where its value came from, inferred values, and notes. The row shows it from one icon beside
-// its label: the inferred bulb, else the source's glyph, else an "i".
-function infoFor(opts: { source?: FieldSource; inferred?: Array<InferredItem | false | undefined>; onAct?: (inferenceId: string) => Promise<void>; notes?: React.ReactNode[] }): { info?: React.ReactNode; infoIcon?: LucideIcon; infoLabel?: string } {
+// A read row's info: where its value came from, inferred values, and notes. The row shows it from one "i" icon.
+function infoFor(opts: { source?: FieldSource; inferred?: Array<InferredItem | false | undefined>; onAct?: (inferenceId: string) => Promise<void>; notes?: React.ReactNode[] }): { info?: React.ReactNode; infoLabel?: string } {
   const src = opts.source && opts.source.sourceType !== 'user' ? opts.source : undefined;
   const inferredItems = (opts.inferred ?? []).filter((x): x is InferredItem => Boolean(x));
   const notes = (opts.notes ?? []).filter(Boolean);
@@ -421,7 +420,6 @@ function infoFor(opts: { source?: FieldSource; inferred?: Array<InferredItem | f
         ))}
       </>
     ),
-    infoIcon: inferredItems.length ? Lightbulb : src ? sourceIconFor(src) : Info,
     infoLabel: inferredItems.length ? 'Why this is inferred' : src ? 'Where this came from' : undefined,
   };
 }
@@ -797,7 +795,14 @@ const DayChecks: React.FC<{
   );
 };
 
-// The Date row's "+": adds an end date or a weekend, so those rows stay hidden on the many events that need neither.
+// The day after an ISO date.
+function nextDay(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+// The Date row's "+": adds the next day, or a weekend, so the Weekend row stays hidden on the many events without one.
 const DateAddMenu: React.FC<{ options: Array<{ label: string; onPick: () => void }> }> = ({ options }) => (
   <Popover
     align="end"
@@ -1422,7 +1427,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const [reviewing, setReviewing] = useState(false);
   const [weekendPromptDismissed, setWeekendPromptDismissed] = useState(false);
   const [weekendOpen, setWeekendOpen] = useState(false);
-  const [endsOpen, setEndsOpen] = useState(false);
   const [confirmingMissed, setConfirmingMissed] = useState(false);
   const [highlightedSource, setHighlightedSource] = useState<string | null>(null);
   const [openRow, setOpenRow] = useState<string | null>(null);
@@ -1431,7 +1435,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   useEffect(() => {
     setWeekendPromptDismissed(false);
     setWeekendOpen(false);
-    setEndsOpen(false);
     setHighlightedSource(null);
     setOpenRow(null);
   }, [event.id]);
@@ -1673,8 +1676,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   // The Weekend row shows when the edition has several weekends, one is picked, or you add it from the Date row's "+".
   const showWeekend = Boolean(edition?.weekends && edition.weekends.length > 1) || (Boolean(event.series) && (event.weekend != null || weekendOpen));
   const dateAdds = [
-    ...(event.startDate && !event.endDate && !inferred.endDate && !endsOpen
-      ? [{ label: "Add a day", onPick: () => { setEndsOpen(true); setOpenRow("endDate"); } }]
+    ...(event.startDate && days.length < 14
+      ? [{ label: "Add a day", onPick: () => void save({ endDate: nextDay(event.endDate ?? event.startDate!) }) }]
       : []),
     ...(event.series && !showWeekend ? [{ label: "Add a weekend", onPick: () => setWeekendOpen(true) }] : []),
   ];
@@ -1948,26 +1951,44 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               value={event.startDate ? undefined : inferred.startDate ? <InferredValue parts={[{ text: inferredText(inferred.startDate, "date"), inferred: true }]} /> : undefined}
               emptyText="Not known yet"
               {...infoFor({
-                source: event.sources.startDate,
-                inferred: [!event.startDate && inferred.startDate && { inferred: inferred.startDate, field: "Date" }],
+                source: event.sources.startDate ?? event.sources.endDate,
+                inferred: [
+                  !event.startDate && inferred.startDate && { inferred: inferred.startDate, field: "Date" },
+                  !event.endDate && inferred.endDate && { inferred: inferred.endDate, field: "Last day" },
+                ],
                 onAct: verifyInferred,
                 notes: [days.length > 0 && (state === "went" || state === "missed") ? "Untick a day you missed. Unticking the only day marks the event as one you didn't go to." : null],
               })}
-              flash={flashing.includes("startDate")}
+              flash={flashing.includes("startDate") || flashing.includes("endDate")}
               open={openRow === "date"}
               onOpenChange={(o) => setOpenRow(o ? "date" : null)}
               action={dateAdds.length > 0 ? <DateAddMenu options={dateAdds} /> : undefined}
               editor={() => (
-                <Field
-                  label="Date"
-                  field="startDate"
-                  type="date"
-                  value={event.startDate}
-                  source={event.sources.startDate}
-                  onInferredAct={verifyInferred}
-                  inferred={inferred.startDate}
-                  onSave={(v) => save({ startDate: text(v) })}
-                />
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <Field
+                    label="Date"
+                    field="startDate"
+                    type="date"
+                    value={event.startDate}
+                    source={event.sources.startDate}
+                    onInferredAct={verifyInferred}
+                    inferred={inferred.startDate}
+                    onSave={(v) => save({ startDate: text(v) })}
+                  />
+                  {event.startDate && (
+                    <Field
+                      label="Last day, if more than one"
+                      field="endDate"
+                      type="date"
+                      value={event.endDate ?? event.startDate}
+                      min={event.startDate}
+                      source={event.endDate ? event.sources.endDate : undefined}
+                      onInferredAct={verifyInferred}
+                      inferred={inferred.endDate}
+                      onSave={(v) => save({ endDate: v && v !== event.startDate ? v : null })}
+                    />
+                  )}
+                </div>
               )}
             >
               <DayChecks
@@ -1994,37 +2015,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                 onOpenChange={(o) => setOpenRow(o ? "year" : null)}
                 editor={() => <Field label="Year, if that's all you know" field="year" type="number" value={event.year} placeholder="2024" onSave={(v) => save({ year: v ? Number(v) : null })} />}
               />
-            )}
-
-            {(event.endDate || inferred.endDate || endsOpen) && (
-            <ReadRow
-              icon={CalendarRange}
-              label="Ends"
-              mono
-              value={event.endDate ? (whenLabel({ startDate: event.endDate }) ?? event.endDate) : inferred.endDate ? <InferredValue parts={[{ text: inferredText(inferred.endDate, "date"), inferred: true }]} /> : undefined}
-              {...infoFor({
-                source: event.endDate ? event.sources.endDate : undefined,
-                inferred: [!event.endDate && inferred.endDate && { inferred: inferred.endDate, field: "Ends" }],
-                onAct: verifyInferred,
-              })}
-              emptyText="Not set"
-              flash={flashing.includes("endDate")}
-              open={openRow === "endDate"}
-              onOpenChange={(o) => setOpenRow(o ? "endDate" : null)}
-              editor={() => (
-                <Field
-                  label="Ends"
-                  field="endDate"
-                  type="date"
-                  value={event.endDate ?? event.startDate}
-                  min={event.startDate}
-                  source={event.endDate ? event.sources.endDate : undefined}
-                  onInferredAct={verifyInferred}
-                  inferred={inferred.endDate}
-                  onSave={(v) => save({ endDate: v && v !== event.startDate ? v : null })}
-                />
-              )}
-            />
             )}
 
             <ReadRow
@@ -2203,7 +2193,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                         <CloudSun className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> Via Open-Meteo <ExternalLink className="h-2.5 w-2.5" aria-hidden="true" />
                       </a>
                     ),
-                    infoIcon: CloudSun,
                     infoLabel: "Where this came from",
                   }
                 : {})}
