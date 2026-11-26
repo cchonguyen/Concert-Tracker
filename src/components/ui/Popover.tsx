@@ -18,6 +18,9 @@ export function Popover({ content, label, children, className = '', align = 'cen
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
+  // A short delay before a hover closes, so sweeping the pointer from the trigger to the panel does not drop it.
+  const closeTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(closeTimer.current), []);
   const fine = typeof window !== 'undefined' && window.matchMedia?.('(pointer: fine)').matches;
 
   useEffect(() => {
@@ -40,9 +43,15 @@ export function Popover({ content, label, children, className = '', align = 'cen
     <span
       ref={box}
       className={`relative inline-flex ${className}`}
-      onMouseEnter={() => fine && setOpen(true)}
+      onMouseEnter={() => {
+        if (!fine) return;
+        window.clearTimeout(closeTimer.current);
+        setOpen(true);
+      }}
       onMouseLeave={() => {
-        if (fine && !pinned) setOpen(false);
+        if (!fine || pinned) return;
+        window.clearTimeout(closeTimer.current);
+        closeTimer.current = window.setTimeout(() => setOpen(false), 200);
       }}
     >
       <span
@@ -75,8 +84,9 @@ export function Popover({ content, label, children, className = '', align = 'cen
               setPinned(false);
             }
           }}
-          className={`absolute top-full z-30 mt-1 w-64 ${align === 'end' ? 'right-0' : align === 'start' ? 'left-0' : 'left-1/2 -translate-x-1/2'} ${POPOVER_PANEL}`}>
-          {content}
+          // The panel's top padding bridges the trigger and the card, so there is no gap where the pointer leaves the box.
+          className={`absolute top-full z-30 w-64 pt-1 ${align === 'end' ? 'right-0' : align === 'start' ? 'left-0' : 'left-1/2 -translate-x-1/2'}`}>
+          <span className={`block ${POPOVER_PANEL}`}>{content}</span>
         </span>
       )}
     </span>
