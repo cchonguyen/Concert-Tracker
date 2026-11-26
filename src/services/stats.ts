@@ -1,7 +1,8 @@
 import type { LoggedEvent } from '../server/events/types';
 import { eventYear } from './format';
 import { cityWithRegion } from '../server/events/regions';
-import { wentTo } from '../server/events/attendance';
+import { attendanceOf, wentTo } from '../server/events/attendance';
+import { summarize, type Summary } from './table';
 
 // The Stats view: counts and rankings worked out from your log each time.
 // Only events you went to count (nothing still ahead, nothing you haven't
@@ -206,4 +207,17 @@ export function seriesStats(events: LoggedEvent[]): SeriesStat[] {
     });
   }
   return out.sort((a, b) => b.editions - a.editions || (b.streak?.years ?? 0) - (a.streak?.years ?? 0) || a.name.localeCompare(b.name));
+}
+
+// The "All time" strip at the top of Stats (docs/specs/quiet-tips-table.md): the totals the Table's summary line
+// used to show, counted over events you went to, plus how many cities they were in.
+export interface AllTime extends Summary {
+  cities: number;
+}
+
+export function allTime(events: LoggedEvent[], day = new Date().toISOString().slice(0, 10)): AllTime {
+  const s = summarize(events, day);
+  const went = events.filter((e) => attendanceOf(e, day) === 'went');
+  const cities = new Set(went.flatMap((e) => cityWithRegion(e.city, e.region)?.toLowerCase() ?? []));
+  return { ...s, cities: cities.size };
 }
