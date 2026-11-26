@@ -19,6 +19,8 @@ import { wentTo } from '../server/events/attendance';
 import { entityLabel, KINDS, ManageData } from './ManageView';
 import { SuggestInput } from './SuggestInput';
 import { buildManageUrl, isModifiedClick } from '../services/manageNav';
+import { useIsOwner } from './MeContext';
+import { genresByArtist } from '../services/genres';
 
 // One record in the Manage tab: its events, Rename everywhere, Merge into
 // another, AKAs, and its links (a venue's place, a series' hosts).
@@ -783,7 +785,7 @@ const Insights: React.FC<{
 const SOURCE_NAMES: Record<ArtistGenres['source'], string> = {
   'music-story': 'music-story',
   musicbrainz: 'MusicBrainz',
-  you: 'you',
+  you: 'the site owner',
   owner: 'the site owner',
   added: 'you',
 };
@@ -792,6 +794,7 @@ const ArtistGenresEditor: React.FC<{
   entity: Entity;
   events: LoggedEvent[];
 }> = ({ entity, events }) => {
+  const isOwner = useIsOwner();
   const [rows, setRows] = useState<ArtistGenres[] | null>(null);
   const [known, setKnown] = useState<KnownGenre[]>([]);
   const [hasMap, setHasMap] = useState(false);
@@ -817,34 +820,48 @@ const ArtistGenresEditor: React.FC<{
       .catch(() => setRows(null));
   }, [actKey]);
 
-  const own = useMemo(() => {
-    return (rows ?? []).find((r) => r.key === actKey && r.source === 'you');
-  }, [rows, actKey]);
-
+  const actRows = useMemo(() => (rows ?? []).filter((r) => r.key === actKey), [rows, actKey]);
+  const combined = useMemo(() => genresByArtist(actRows).get(actKey), [actRows, actKey]);
+  const sharedBase = useMemo(() => genresByArtist(actRows.filter((r) => r.source !== 'added')).get(actKey), [actRows, actKey]);
+  const own = useMemo(
+    () => actRows.find((r) => r.source === 'owner') ?? actRows.find((r) => r.source === 'you'),
+    [actRows],
+  );
   const found = useMemo(() => {
-    const list = (rows ?? []).filter((r) => r.key === actKey && r.source !== 'you');
+    const list = actRows.filter((r) => r.source !== 'owner' && r.source !== 'you' && r.source !== 'added');
     const ms = list.find((r) => r.source === 'music-story');
     if (ms?.genres.length) return ms;
     const mb = list.find((r) => r.source === 'musicbrainz');
     if (mb?.genres.length) return mb;
     return ms ?? mb;
-  }, [rows, actKey]);
+  }, [actRows]);
 
-  const shown = own ?? found;
-  const styles = (shown?.genres ?? []).map((g) => g.style);
+  const shown = isOwner ? own ?? found : sharedBase;
+  const sharedStyles = (shown?.genres ?? []).map((g) => g.style);
+  const addedStyles = isOwner ? [] : (combined?.added ?? []);
+  const styles = isOwner ? sharedStyles : [...sharedStyles, ...addedStyles];
   const has = new Set(styles.map((s) => s.toLowerCase()));
   const offers = known.map((g) => g.style).filter((s) => !has.has(s.toLowerCase()));
 
+  const lastChangedAt = useMemo(() => {
+    const times = actRows
+      .filter((r) => r.source !== 'added' && r.checkedAt)
+      .map((r) => r.checkedAt)
+      .sort();
+    return times.length ? times[times.length - 1] : null;
+  }, [actRows]);
+
   const save = async (next: string[] | null) => {
+    const matchSource = (r: ArtistGenres) => (isOwner ? r.source === 'owner' || r.source === 'you' : r.source === 'added');
     setBusy(true);
     setError(null);
     try {
       if (next === null) {
         await genresApi.resetOwn(actKey);
-        setRows((prev) => (prev ?? []).filter((r) => !(r.key === actKey && r.source === 'you')));
+        setRows((prev) => (prev ?? []).filter((r) => !(r.key === actKey && matchSource(r))));
       } else {
         const row = await genresApi.setOwn(actKey, next);
-        setRows((prev) => [...(prev ?? []).filter((r) => !(r.key === actKey && r.source === 'you')), row]);
+        setRows((prev) => [...(prev ?? []).filter((r) => !(r.key === actKey && matchSource(r))), row]);
         setKnown((prev) =>
           row.genres.reduce(
             (list, g) => (list.some((k) => k.style.toLowerCase() === g.style.toLowerCase()) ? list : [...list, { style: g.style, parent: g.parent }]),
@@ -862,7 +879,8 @@ const ArtistGenresEditor: React.FC<{
   const add = (value: string) => {
     const style = value.replace(/\s+/g, ' ').trim();
     setDraft('');
-    if (style && !has.has(style.toLowerCase())) void save([...styles, style]);
+    if (!style || has.has(style.toLowerCase())) return;
+    void save(isOwner ? [...sharedStyles, style] : [...addedStyles, style]);
   };
 
   const lookupMb = async () => {
@@ -881,36 +899,78 @@ const ArtistGenresEditor: React.FC<{
     }
   };
 
+  const undoLastChange = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await genresApi.undo(actKey);
+      setRows((prev) => [...(prev ?? []).filter((r) => !(r.key === actKey && r.source !== 'added')), ...res.rows]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!rows) return null;
+
+  const sharedTooltip = (source: ArtistGenres['source']) => {
+    if (source === 'owner' || source === 'you') return isOwner ? 'Set by you' : 'Set by the site owner';
+    return `From ${SOURCE_NAMES[source]}`;
+  };
 
   return (
     <div className="space-y-1.5">
       <h3 className={sectionTitle}>Genres</h3>
       {styles.length > 0 && (
         <ul className="flex flex-wrap items-center gap-1.5">
-          {styles.map((s) => (
+          {sharedStyles.map((s) => (
             <li
-              key={s}
-              title={own ? 'Set by you' : `From ${SOURCE_NAMES[shown!.source]}`}
+              key={`shared-${s}`}
+              title={isOwner && own ? 'Set by you' : sharedTooltip(shown!.source)}
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
-                own
+                isOwner && own
                   ? 'border-accent-tint-line bg-accent-tint text-accent'
                   : 'border-line-strong bg-surface-1 text-text-muted'
               }`}
             >
               {s}
-              <button
-                type="button"
-                onClick={() => void save(styles.filter((x) => x !== s))}
-                disabled={busy}
-                className="text-text-muted hover:text-bad"
-                aria-label={`Remove genre ${s}`}
-              >
-                <X className="h-3 w-3" />
-              </button>
+              {isOwner && (
+                <button
+                  type="button"
+                  onClick={() => void save(sharedStyles.filter((x) => x !== s))}
+                  disabled={busy}
+                  className="text-text-muted hover:text-bad"
+                  aria-label={`Remove genre ${s}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
             </li>
           ))}
-          {own && found?.genres.length ? (
+          {!isOwner &&
+            addedStyles.map((s) => (
+              <li
+                key={`added-${s}`}
+                title="Added by you"
+                className="inline-flex items-center gap-1 rounded-full border border-accent-tint-line bg-accent-tint px-2 py-0.5 text-xs text-accent"
+              >
+                {s}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = addedStyles.filter((x) => x !== s);
+                    void save(next.length ? next : null);
+                  }}
+                  disabled={busy}
+                  className="text-text-muted hover:text-bad"
+                  aria-label={`Remove genre ${s}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </li>
+            ))}
+          {isOwner && own && found?.genres.length ? (
             <li>
               <button
                 type="button"
@@ -923,12 +983,28 @@ const ArtistGenresEditor: React.FC<{
               </button>
             </li>
           ) : null}
+          {!isOwner && addedStyles.length > 0 && (
+            <li>
+              <button
+                type="button"
+                onClick={() => void save(null)}
+                disabled={busy}
+                className="text-xs text-text-muted hover:text-accent"
+              >
+                Remove my genres
+              </button>
+            </li>
+          )}
         </ul>
       )}
       {!styles.length && (
         <p className="text-xs text-text-muted">
-          {own ? 'None, as you set.' : found?.source === 'musicbrainz' ? 'Checked on MusicBrainz: no genre found.' : 'No genre yet.'}
-          {own && found?.genres.length ? (
+          {isOwner && own
+            ? 'None, as you set.'
+            : found?.source === 'musicbrainz'
+              ? 'Checked on MusicBrainz: no genre found.'
+              : 'No genre yet.'}
+          {isOwner && own && found?.genres.length ? (
             <button
               type="button"
               onClick={() => void save(null)}
@@ -938,7 +1014,7 @@ const ArtistGenresEditor: React.FC<{
               Use {SOURCE_NAMES[found.source]}'s
             </button>
           ) : null}
-          {hasMap && !own && (!found || (!found.genres.length && found.source !== 'musicbrainz')) ? (
+          {isOwner && hasMap && !own && (!found || (!found.genres.length && found.source !== 'musicbrainz')) ? (
             <button
               type="button"
               onClick={() => void lookupMb()}
@@ -977,11 +1053,31 @@ const ArtistGenresEditor: React.FC<{
         </button>
       </form>
       <p className="text-xs text-text-muted">
-        {own
-          ? 'Set by you; overrides imported genres.'
-          : shown
-            ? `From ${SOURCE_NAMES[shown.source]}. Editing sets your own genres.`
-            : 'Typed on an artist, your genres override any found later.'}
+        {isOwner ? (
+          <>
+            {own
+              ? 'Set by you; overrides imported genres.'
+              : shown
+                ? `From ${SOURCE_NAMES[shown.source]}. Editing sets the shared genres.`
+                : 'Genres you set here are shown to everyone.'}
+            {lastChangedAt && (
+              <>
+                {' '}
+                Last change: {new Date(lastChangedAt).toLocaleDateString()}.{' '}
+                <button
+                  type="button"
+                  onClick={() => void undoLastChange()}
+                  disabled={busy}
+                  className="text-text-muted underline hover:text-accent"
+                >
+                  Undo
+                </button>
+              </>
+            )}
+          </>
+        ) : (
+          'Shared genres are set by the site owner. Genres you add show only to you.'
+        )}
       </p>
       {error && <p className="text-xs text-bad">{error}</p>}
     </div>

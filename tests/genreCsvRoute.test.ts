@@ -46,7 +46,7 @@ async function withApp(fn: (app: express.Express, store: FileLineupStore) => Pro
 }
 
 const ownStyles = async (store: FileLineupStore, key: string) =>
-  (await store.listArtistGenres()).find((r) => r.key === key && r.source === 'you')?.genres.map((g) => g.style) ?? null;
+  (await store.listArtistGenres()).find((r) => r.key === key && r.source === 'owner')?.genres.map((g) => g.style) ?? null;
 
 test('GET /api/artist-genres reports whether an upload can be undone', async () => {
   await withApp(async (app) => {
@@ -117,12 +117,45 @@ test('a body without rows, and an undo with no upload, are plain 400s', async ()
   });
 });
 
-test('the CSV writes are owner-only for now, like the other genre uploads; export is open to members', () => {
+test('the genres file and the other genre tools are owner-only; PUT stays open (a member sets only their own additions)', () => {
   assert.equal(ownerOnly('POST', '/api/artist-genres/csv/preview'), true);
   assert.equal(ownerOnly('POST', '/api/artist-genres/csv/apply'), true);
   assert.equal(ownerOnly('POST', '/api/artist-genres/csv/undo'), true);
-  assert.equal(ownerOnly('GET', '/api/artist-genres/csv/export'), false);
+  assert.equal(ownerOnly('GET', '/api/artist-genres/csv/export'), true);
+  assert.equal(ownerOnly('POST', '/api/artist-genres/bonobo/undo'), true);
+  assert.equal(ownerOnly('GET', '/api/artist-genres'), false);
   assert.equal(ownerOnly('POST', '/api/artist-genres/music-story'), true);
   assert.equal(ownerOnly('POST', '/api/artist-genres/musicbrainz'), true);
   assert.equal(ownerOnly('PUT', '/api/artist-genres/bonobo'), false);
+});
+
+test('the owner sets an act\'s shared genres, then undoes it; a second undo is a plain 400', async () => {
+  await withApp(async (app, store) => {
+    const shared = async () => (await store.listArtistGenres()).find((r) => r.key === 'bonobo' && r.source === 'owner')?.genres.map((g) => g.style) ?? null;
+    const put = await dispatch(app, { url: '/api/artist-genres/bonobo', method: 'PUT', headers: json, body: { styles: ['house'] } });
+    assert.equal(put.status, 200);
+    assert.deepEqual(await shared(), ['house']);
+    assert.equal((await store.listGenreChanges({ key: 'bonobo' })).length, 1);
+
+    const undo = await dispatch(app, { url: '/api/artist-genres/bonobo/undo', method: 'POST', headers: json, body: {} });
+    assert.equal(undo.status, 200);
+    const body = (await undo.json()) as { restored: unknown; rows: Array<{ key: string; source: string }> };
+    assert.equal(body.restored, null);
+    assert.ok(body.rows.every((r) => r.key === 'bonobo' && r.source !== 'owner'));
+    assert.equal(await shared(), null);
+
+    const again = await dispatch(app, { url: '/api/artist-genres/bonobo/undo', method: 'POST', headers: json, body: {} });
+    assert.equal(again.status, 400);
+  });
+});
+
+test('undo is refused with 409 when the act\'s genres were changed since', async () => {
+  await withApp(async (app, store) => {
+    await dispatch(app, { url: '/api/artist-genres/bonobo', method: 'PUT', headers: json, body: { styles: ['house'] } });
+    const row = (await store.listArtistGenres()).find((r) => r.key === 'bonobo' && r.source === 'owner')!;
+    await store.putArtistGenres([{ ...row, genres: [{ parent: 'electronic', style: 'techno', weight: 1 }] }]);
+    const undo = await dispatch(app, { url: '/api/artist-genres/bonobo/undo', method: 'POST', headers: json, body: {} });
+    assert.equal(undo.status, 409);
+    assert.equal((undo.json() as { error: string }).error, 'Changed since; nothing undone.');
+  });
 });

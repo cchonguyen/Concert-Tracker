@@ -12,6 +12,7 @@ import { Tooltip } from './ui/Tooltip';
 import { ARTIST_SORTS, artistSummaries, ArtistSort, ArtistSummary, groupArtists, jumpTargets } from '../services/artists';
 import { buildManageUrl, entityUrl, isModifiedClick } from '../services/manageNav';
 import { scrollBehavior } from '../services/motion';
+import { useIsOwner } from './MeContext';
 
 interface ArtistsViewProps {
   events: LoggedEvent[];
@@ -102,13 +103,18 @@ interface ArtistProps {
 }
 
 // Where an act's genres came from, for the tooltip.
-const genreTitle = (g: ArtistGenres) =>
-  `${g.genres.map((x) => `${x.style} (${x.parent}) ${Math.round(x.weight * 100)}%`).join(', ')}\nFrom ${
-    g.source === 'music-story' ? 'your music-story listening history' : `MusicBrainz: ${g.sourceUrl}`
-  }`;
+const genreTitle = (g: ArtistGenres, isOwner: boolean) => {
+  const lines = [g.genres.map((x) => `${x.style} (${x.parent}) ${Math.round(x.weight * 100)}%`).join(', ')];
+  if (g.source === 'owner' || g.source === 'you') lines.push(isOwner ? 'Set by you' : 'Set by the site owner');
+  else if (g.source === 'music-story') lines.push('From music-story');
+  else if (g.source === 'musicbrainz') lines.push(g.sourceUrl ? `From MusicBrainz: ${g.sourceUrl}` : 'From MusicBrainz');
+  if (g.added?.length) lines.push(`Added by you: ${g.added.join(', ')}`);
+  return lines.join('\n');
+};
 
 // Compact: one line per artist; tapping it opens the detailed card in place.
 const ArtistRow: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpenTable, onManage }) => {
+  const isOwner = useIsOwner();
   const [open, setOpen] = useState(false);
   if (open)
     return (
@@ -134,7 +140,7 @@ const ArtistRow: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpe
         {a.headlined > 0 && <Crown className="h-3 w-3 shrink-0 text-warn" aria-label="Headliner" />}
       </span>
       {genre?.genres.length ? (
-        <span className="hidden max-w-[10rem] truncate text-xs text-text-muted lg:block" title={genreTitle(genre)}>
+        <span className="hidden max-w-[10rem] truncate text-xs text-text-muted lg:block" title={genreTitle(genre, isOwner)}>
           {topStyles(genre, 1)[0]}
         </span>
       ) : null}
@@ -152,6 +158,7 @@ const ArtistRow: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpe
 };
 
 const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpenTable, onManage }) => {
+  const isOwner = useIsOwner();
   const [open, setOpen] = useState(false);
   const shown = open ? a.events : a.events.slice(0, SHOWN_EVENTS);
   const span = years(a);
@@ -180,7 +187,7 @@ const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOp
                 </span>
               )}
               {genre?.genres.length ? (
-                <span className="inline-flex min-w-0 items-center gap-1" title={genreTitle(genre)}>
+                <span className="inline-flex min-w-0 items-center gap-1" title={genreTitle(genre, isOwner)}>
                   <Tags className="h-3 w-3 shrink-0" />
                   <span className="truncate">{topStyles(genre).join(', ')}</span>
                 </span>

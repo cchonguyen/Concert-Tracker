@@ -11,6 +11,7 @@ import {
   exportGenresCsv,
   previewGenresCsv,
   undoGenresCsv,
+  genresCsvUndoStatus,
   GENRES_CSV_UNDO_SETTING,
 } from '../src/server/events/genreCsvApply.ts';
 import { genreStamp } from '../src/server/events/genreCsv.ts';
@@ -47,7 +48,7 @@ async function fresh(seen: SeenAct[] = [act('Bonobo')]) {
 
 const line = (name: string, newGenres: string, stamp = '', mbid = '', n = 2) => ({ line: n, name, mbid, newGenres, stamp });
 const ownStyles = async (store: FileLineupStore, key: string) =>
-  (await store.listArtistGenres()).find((r) => r.key === key && r.source === 'you')?.genres.map((g) => g.style) ?? null;
+  (await store.listArtistGenres()).find((r) => r.key === key && r.source === 'owner')?.genres.map((g) => g.style) ?? null;
 
 test('export lists every act once, with the stamp of what shows now', async () => {
   const store = await fresh([act('Bonobo'), act('Bonobo')]);
@@ -120,7 +121,7 @@ test('music-story rows stay stored underneath your genres', async () => {
   ]);
   await applyGenresCsv(store, { rows: [line('Bonobo', 'techno', genreStamp('music-story', ['house']))] }, now);
   const rows = await store.listArtistGenres();
-  assert.deepEqual(rows.map((r) => r.source).sort(), ['music-story', 'you']);
+  assert.deepEqual(rows.map((r) => r.source).sort(), ['music-story', 'owner']);
   assert.deepEqual(genresByArtist(rows).get('bonobo')?.genres.map((g: { style: string }) => g.style), ['techno']);
   // Undo removes yours; the music-story row is still there.
   await undoGenresCsv(store);
@@ -162,19 +163,53 @@ test('an act matched by MusicBrainz ID is kept even with a different name', asyn
   assert.equal(preview.changes[0]?.key, 'bonobo');
 });
 
-test('undo restores the act before the upload, and a later upload replaces the record', async () => {
+test('undo puts back the latest upload from the change log, one upload at a time', async () => {
   const store = await fresh();
   await setOwnGenres(store, 'bonobo', ['indie rock'], now);
   const stamp = genreStamp('you', ['indie rock']);
   await applyGenresCsv(store, { rows: [line('Bonobo', 'house', stamp)] }, now);
-  await applyGenresCsv(store, { rows: [line('Bonobo', 'techno', genreStamp('you', ['house']))] }, later);
-  const record = await store.getSetting<{ rows: Array<{ before: { genres: Array<{ style: string }> } | null }> }>(GENRES_CSV_UNDO_SETTING);
-  assert.deepEqual(record?.rows[0].before?.genres.map((g) => g.style), ['house']);
-  const undone = await undoGenresCsv(store);
+  const second = await applyGenresCsv(store, { rows: [line('Bonobo', 'techno', genreStamp('you', ['house']))] }, later);
+  const latest = await store.listGenreChanges({ latestBatchReason: 'Genres file upload' });
+  assert.deepEqual(latest.map((c) => [c.batchId, c.actor, c.before?.genres.map((g) => g.style)]), [[second.batchId, 'owner', ['house']]]);
+  assert.deepEqual(await genresCsvUndoStatus(store), { at: later.toISOString(), count: 1 });
+
+  const undone = await undoGenresCsv(store, later);
   assert.deepEqual(undone, { restored: 1, leftAlone: [] });
   assert.deepEqual(await ownStyles(store, 'bonobo'), ['house']);
-  assert.equal(await store.getSetting(GENRES_CSV_UNDO_SETTING), null);
+  const undoRow = (await store.listGenreChanges({ key: 'bonobo' }))[0];
+  assert.equal(undoRow.reason, 'Undo genres file upload');
+  assert.equal(undoRow.actor, 'owner');
+  assert.equal((await store.listGenreChanges({ batchId: second.batchId! }))[0].undoneAt, later.toISOString());
+
+  // The earlier upload is now the latest one not undone.
+  assert.deepEqual(await undoGenresCsv(store, later), { restored: 1, leftAlone: [] });
+  assert.deepEqual(await ownStyles(store, 'bonobo'), ['indie rock']);
+  assert.equal(await genresCsvUndoStatus(store), null);
   await assert.rejects(undoGenresCsv(store), /no upload to undo/);
+});
+
+test('export covers the lineup catalog and every seen act, by name only', async () => {
+  const store = await fresh([act('Bonobo')]);
+  await store.upsertArtist({ key: 'caribou', name: 'Caribou', mbid: 'mb-caribou' });
+  const text = await exportGenresCsv(store);
+  const names = text.trimEnd().split('\r\n').slice(1).map((l) => l.split(',').slice(0, 2).join(','));
+  assert.deepEqual(names.sort(), ['Bonobo,', 'Caribou,mb-caribou']);
+  assert.doesNotMatch(text, /e1/);
+});
+
+test('the old undo setting is ignored and cleared', async () => {
+  const store = await fresh();
+  const old = { batchId: 'old', at: '2026-01-01T00:00:00Z', rows: [{ key: 'bonobo', name: 'Bonobo', before: null, after: null }] };
+  await store.putSetting(GENRES_CSV_UNDO_SETTING, old);
+  assert.equal(await genresCsvUndoStatus(store), null);
+  await assert.rejects(undoGenresCsv(store), /no upload to undo/);
+  assert.equal(await store.getSetting(GENRES_CSV_UNDO_SETTING), null);
+
+  await store.putSetting(GENRES_CSV_UNDO_SETTING, old);
+  await applyGenresCsv(store, { rows: [line('Bonobo', 'house', genreStamp('none', []))] }, now);
+  assert.equal(await store.getSetting(GENRES_CSV_UNDO_SETTING), null);
+  assert.deepEqual(await undoGenresCsv(store, later), { restored: 1, leftAlone: [] });
+  assert.equal(await ownStyles(store, 'bonobo'), null);
 });
 
 test('undo removes the act you had no genres for, and leaves later edits alone', async () => {

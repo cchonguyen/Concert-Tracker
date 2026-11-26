@@ -476,6 +476,8 @@ export const genresApi = {
     ),
   resetOwn: (key: string) =>
     request<unknown>(`/api/artist-genres/${encodeURIComponent(key)}`, { method: 'PUT', body: JSON.stringify({ reset: true }) }),
+  undo: (key: string) =>
+    request<{ restored: ArtistGenres | null; rows: ArtistGenres[] }>(`/api/artist-genres/${encodeURIComponent(key)}/undo`, post()),
   importMusicStory: (file: unknown) =>
     request<{ matched: number; seen: number; inFile: number; mapTags: number }>('/api/artist-genres/music-story', post(file)),
   musicBrainz: (keys: string[]) =>
