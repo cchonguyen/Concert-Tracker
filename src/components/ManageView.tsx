@@ -690,7 +690,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
                 const hosts = e.kind === 'series' ? data.links.filter((l) => l.fromId === e.id && l.role === 'hosted_by').length : 0;
                 const hasDup = duplicateOf.has(e.id);
                 return (
-                  <Ledger.Row key={e.id} edge={hasDup ? 'needs' : 'none'} className="hover:border-l-4 hover:bg-surface-2">
+                  <Ledger.Row key={e.id} edge={hasDup ? 'needs' : 'none'} className="row-hover hover:border-l-4">
                     <a
                       href={entityUrl(kind, e.id)}
                       onClick={(ev) => {

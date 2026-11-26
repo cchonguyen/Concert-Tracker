@@ -206,7 +206,7 @@ export function DetailShell({ title, rows, openId, closeDisabled = false, status
                   aria-current={open ? 'true' : undefined}
                   onClick={() => onGo(r.id)}
                   className={`flex w-full items-center gap-2 border-b border-l-[3px] border-b-line py-2.5 pl-3.5 pr-3 text-left ${
-                    open ? 'border-l-accent-fill bg-surface-2' : 'border-l-transparent hover:bg-surface-2'
+                    open ? 'border-l-accent-fill bg-surface-2' : 'row-hover border-l-transparent'
                   }`}
                 >
                   <span className="min-w-0 flex-1">

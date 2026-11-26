@@ -235,7 +235,7 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
           {shown.map((a) => {
             const url = canonicalArtistUrl(a.key, { q: query || undefined });
             return (
-              <Ledger.Row key={a.key} edge="none" className="hover:border-l-4 hover:bg-surface-2">
+              <Ledger.Row key={a.key} edge="none" className="row-hover hover:border-l-4">
                 <a
                   href={url}
                   onClick={(e) => {
@@ -778,7 +778,7 @@ const ArchiveSeries: React.FC<{ query: string }> = ({ query }) => {
             const url = seriesUrl(s.slug, { q: query || undefined });
             const place = s.kind !== 'tour' ? formatPlaceLabel(s) : '';
             return (
-              <Ledger.Row key={s.slug} edge={s.kind === 'festival' ? 'festival' : s.kind === 'tour' ? 'show' : 'none'} className="hover:border-l-4 hover:bg-surface-2">
+              <Ledger.Row key={s.slug} edge={s.kind === 'festival' ? 'festival' : s.kind === 'tour' ? 'show' : 'none'} className="row-hover hover:border-l-4">
                 <a
                   href={url}
                   onClick={(e) => {
@@ -1189,7 +1189,7 @@ const SeriesDetail: React.FC<{
                 ? e.weekends.map((w) => weekendLabel(w, 'WK')).join(' · ')
                 : e.startDate ?? String(e.year);
               return (
-                <Ledger.Row key={e.id} edge="none" className="hover:border-l-4 hover:bg-surface-2">
+                <Ledger.Row key={e.id} edge="none" className="row-hover hover:border-l-4">
                   <a
                     href={url}
                     onClick={(ev) => {
@@ -1451,7 +1451,7 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
                       rememberManageSearch(new URL(url, window.location.origin).search);
                       window.dispatchEvent(new PopStateEvent('popstate'));
                     }}
-                    className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-surface-2/60"
+                    className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 px-3 py-2.5 text-left text-sm row-hover"
                   >
                     <span className="font-medium text-text">{e.name}</span>
                     {e.seriesName && (

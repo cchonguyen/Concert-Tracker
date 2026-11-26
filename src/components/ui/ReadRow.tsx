@@ -133,7 +133,7 @@ export function ReadRow({
   return (
     <div
       id={id}
-      className={`group/row relative ${COLUMNS} px-3 py-1 transition-colors hover:bg-surface-2/50 ${action ? 'sm:pr-11' : ''} ${flash ? 'ring-1 ring-inset ring-good/60' : ''}`}
+      className={`group/row row-hover relative ${COLUMNS} px-3 py-1 ${action ? 'sm:pr-11' : ''} ${flash ? 'ring-1 ring-inset ring-good/60' : ''}`}
     >
       <Icon className="h-4 w-4 shrink-0 self-center text-text-muted" strokeWidth={1.75} aria-hidden="true" />
       <span className="flex min-w-0 items-center gap-1 text-xs font-medium text-text-muted">
@@ -160,9 +160,9 @@ export function ReadRow({
         // Desktop: no column is kept for the edit icon, so the value runs to the row's right edge. On hover the icon
         // lays a square over that edge, tinted like the hovered row, and the square is its own click target.
         <span
-          className={`absolute inset-y-0 right-0 hidden w-10 bg-surface-1 transition-opacity sm:block ${flash ? 'opacity-100' : 'opacity-0 focus-within:opacity-100 group-hover/row:opacity-100'}`}
+          className={`absolute inset-y-0 right-0 hidden w-10 bg-row-hover transition-opacity duration-500 ease-out sm:block ${flash ? 'opacity-100' : 'opacity-0 focus-within:opacity-100 group-hover/row:opacity-100 group-hover/row:duration-[40ms]'}`}
         >
-          <span className="flex h-full w-full items-center justify-center bg-surface-2/50">
+          <span className="flex h-full w-full items-center justify-center">
             {flash ? (
               saved
             ) : (

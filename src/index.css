@@ -290,6 +290,8 @@
   --la-on-accent: #0e0e11;
   --la-accent-tint: color-mix(in oklab, var(--accent-500) 18%, var(--la-surface-1));
   --la-accent-tint-line: color-mix(in oklab, var(--accent-500) 50%, var(--la-surface-1));
+  /* Row hover (docs/specs/row-hover.md): a clear accent-tinted lift, solid so overlays can match it. */
+  --la-row-hover: color-mix(in oklab, var(--accent-500) 16%, var(--la-surface-2));
   --la-good: #34d3a6;
   --la-warn: #fbbf24;
   --la-bad: #f87171;
@@ -314,6 +316,7 @@
   --la-on-accent: #ffffff;
   --la-accent-tint: color-mix(in oklab, var(--accent-500) 7%, var(--la-surface-1));
   --la-accent-tint-line: color-mix(in oklab, var(--accent-500) 30%, var(--la-surface-1));
+  --la-row-hover: color-mix(in oklab, var(--accent-500) 9%, var(--la-surface-2));
   --la-good: #0b7a5c;
   --la-warn: #8a4b08;
   --la-bad: #b91c1c;
@@ -344,6 +347,7 @@
   --color-on-accent: var(--la-on-accent);
   --color-accent-tint: var(--la-accent-tint);
   --color-accent-tint-line: var(--la-accent-tint-line);
+  --color-row-hover: var(--la-row-hover);
   --color-good: var(--la-good);
   --color-warn: var(--la-warn);
   --color-bad: var(--la-bad);
@@ -483,6 +487,23 @@
 .stub-perf::after {
   right: -35px;
   clip-path: inset(0 50% 0 0);
+}
+
+/* Row hover (docs/specs/row-hover.md): one look for every hoverable row. The tint comes in almost at once and
+   fades out slowly, so sweeping the pointer down a list leaves a short trail. Only where a pointer can hover;
+   reduced motion (below) drops the fade. */
+.row-hover {
+  transition: background-color 500ms ease-out;
+}
+@media (hover: hover) {
+  .row-hover:hover {
+    background-color: var(--color-row-hover);
+    transition-duration: 40ms;
+  }
+  /* Faint text is too light on the tint, so a hovered row lifts it to muted (tests/themeContrast.test.ts). */
+  .row-hover:hover .text-text-faint {
+    color: var(--color-text-muted);
+  }
 }
 
 /* Reduced motion: spinners, pulses, transitions and smooth scrolling all stand still (docs/specs/design-refresh-2.md, section 4). */
