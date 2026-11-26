@@ -13,11 +13,13 @@ interface Props<T extends string> {
   value: T;
   onChange: (value: T) => void;
   className?: string;
+  // Smaller segments for a narrow row. On phones the chosen one is marked by its fill and bold text, without the tick.
+  compact?: boolean;
 }
 
 // A row of options where exactly one is chosen. The chosen one has a tick as well as a colour, so the state is not shown by colour alone.
 // Arrow keys move between options and choose the one they land on; Tab leaves the group.
-export function Segmented<T extends string>({ label, options, value, onChange, className = '' }: Props<T>) {
+export function Segmented<T extends string>({ label, options, value, onChange, className = '', compact = false }: Props<T>) {
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
   const chosen = options.findIndex((o) => o.value === value);
   // The chosen option is the one Tab lands on; with none chosen, the first enabled one is.
@@ -58,11 +60,11 @@ export function Segmented<T extends string>({ label, options, value, onChange, c
             disabled={o.disabled}
             onClick={() => onChange(o.value)}
             onKeyDown={(e) => onKeyDown(e, i)}
-            className={`inline-flex min-h-11 items-center gap-1 rounded-control px-3 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-9 ${
+            className={`inline-flex min-h-11 items-center gap-1 rounded-control ${compact ? 'px-2 text-xs sm:px-3 sm:text-sm' : 'px-3 text-sm'} transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-9 ${
               on ? 'bg-accent-tint font-semibold text-text' : 'text-text-muted hover:text-text'
             }`}
           >
-            {on && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
+            {on && <Check className={`h-3.5 w-3.5 ${compact ? 'hidden sm:block' : ''}`} aria-hidden="true" />}
             {o.label}
           </button>
         );
