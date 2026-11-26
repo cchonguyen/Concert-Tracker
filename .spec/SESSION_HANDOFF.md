@@ -23,5 +23,5 @@ What exists now (read these before editing):
 
 Known gap, not in these slices: in a member's request the owner's genre map setting is not returned, so a member's typed genre keeps its own capitals instead of the map's spelling.
 
-## Open gaps
-- The Genres tab in Manage (aliases, merges, umbrella genres; replaces slice 35.13) needs a spec first; Claude writes it.
+- **Open gaps:**
+  - The Genres tab in Manage (aliases, merges, umbrella genres; replaces slice 35.13) needs a spec first; Claude writes it.
