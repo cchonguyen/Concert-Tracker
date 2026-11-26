@@ -25,6 +25,7 @@ import { memberLineupApi } from '../services/lineupApi';
 import { canonicalApi, type ReviewInference } from '../services/lineupApi';
 import { useIsOwner } from './MeContext';
 import { Pill } from './ui/Pill';
+import { NameList } from './ui/NameList';
 
 interface FillGapsProps {
   events: LoggedEvent[]; // the rows the Table shows
@@ -283,9 +284,9 @@ const ReviewRow: React.FC<{ event: LoggedEvent; onDone: (e: LoggedEvent) => void
   return (
     <div className="space-y-1.5">
       <p className="text-xs text-text-muted">
-        {head.slice(0, 8).map((p) => p.name).join(', ')}
+        <NameList names={head.slice(0, 8).map((p) => p.name)} />
         {head.length > 8 && ` +${head.length - 8} more`}
-        {support.length > 0 && <span className="text-text-muted"> · supporting: {support.map((p) => p.name).join(', ')}</span>}
+        {support.length > 0 && <span className="text-text-muted"> · supporting: <NameList names={support.map((p) => p.name)} /></span>}
       </p>
       {acts.length > kept.length && (
         <p className="text-[11px] text-warn">{acts.length - kept.length} low-evidence act(s) left out; open it to look at them.</p>

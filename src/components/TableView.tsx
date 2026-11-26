@@ -53,6 +53,7 @@ import { SET_LABELS, seenSlots, slotId } from '../server/events/seen';
 import { ATTENDANCE_LABELS, attendanceOf, AttendanceState } from '../server/events/attendance';
 import { PersonName } from './PersonName';
 import { nameForms } from '../services/people';
+import { joinNames, NameSep } from './ui/NameList';
 
 interface TableViewProps {
   events: LoggedEvent[];
@@ -224,7 +225,7 @@ const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, 
         const set = new Set(slot.map((s) => s.set)).size === 1 ? slot[0].set : undefined;
         return (
           <React.Fragment key={slotId(slot)}>
-            {i > 0 && ', '}
+            {i > 0 && <NameSep />}
             {slot.some((s) => s.favourite) && <Heart className="mr-0.5 inline h-3 w-3 -translate-y-px fill-bad text-bad" aria-hidden="true" />}
             {slot.map((s, j) => (
               <React.Fragment key={s.key}>
@@ -698,7 +699,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
                             dash
                           )}
                         </div>
-                        <div className="min-w-0" title={e.seen.map((s) => s.name).join(', ')}>
+                        <div className="min-w-0" title={joinNames(e.seen.map((s) => s.name))}>
                           {e.seen.length ? (
                             <div className="flex items-start gap-2">
                               <span className="mt-px shrink-0 rounded-control bg-surface-3 px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-text-muted">

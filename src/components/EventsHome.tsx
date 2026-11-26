@@ -11,6 +11,7 @@ import { StubHeader } from './ui/StubHeader';
 import { KindPill } from './ui/KindPill';
 import { HintPill, type HintTone } from './ui/HintPill';
 import { DateStack } from './ui/DateStack';
+import { NameList } from './ui/NameList';
 
 interface EventsHomeProps {
   events: LoggedEvent[];
@@ -66,7 +67,7 @@ const Row: React.FC<{ event: LoggedEvent; lineup?: LineupSummary; researching: b
   // Over and not confirmed: the one thing it needs is your answer.
   const h: Hint | null = ask ? { text: 'Did you go?', tone: 'needs' } : hint(event, lineup, researching);
   const place = placeLabel(event);
-  const seen = event.seen.map((s) => s.name).join(', ');
+  const seen = event.seen.map((s) => s.name);
   const scale = eventScale(event).kind;
   const kind = scale === 'festival' ? 'festival' : scale === 'concert' ? 'show' : 'unknown';
   const edge: LedgerEdge = h?.tone === 'needs' ? 'needs' : kind === 'unknown' ? 'none' : kind;
@@ -89,7 +90,15 @@ const Row: React.FC<{ event: LoggedEvent; lineup?: LineupSummary; researching: b
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold text-text"><EventTitle event={event} /></span>
-        <span className="block truncate text-xs text-text-muted">{[place, seen && `saw ${seen}`].filter(Boolean).join(' · ')}</span>
+        <span className="block truncate text-xs text-text-muted">
+          {place}
+          {place && seen.length > 0 && ' · '}
+          {seen.length > 0 && (
+            <>
+              saw <NameList names={seen} />
+            </>
+          )}
+        </span>
         {/* Phones put the pills under the name; wider screens put them at the end of the row. */}
         <span className="mt-1.5 flex flex-wrap gap-1.5 sm:hidden">{pills}</span>
       </span>

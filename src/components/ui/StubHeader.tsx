@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 
 // Ticket header for tables and ranked lists (mockup 2b/2c, `.tt`). The header is the stub:
 // a roomy paper band, then one large notched perforation, then the rows. Segments are
@@ -29,10 +29,25 @@ export function StubHeader({
   children,
   className = '',
 }: StubHeaderProps) {
+  // The notches are real holes where the perforation meets the edges (src/index.css, .stub-header), placed at the
+  // bottom of the paper band and kept current as it resizes.
+  const box = useRef<HTMLDivElement>(null);
+  const paper = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = box.current;
+    const band = paper.current;
+    if (!el || !band) return;
+    const place = () => el.style.setProperty('--tear-y', `${band.offsetHeight}px`);
+    place();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(place);
+    ro.observe(band);
+    return () => ro.disconnect();
+  }, []);
   const titleClass = titleSize === 'large' ? 'text-[32px] min-[560px]:text-[40px]' : 'text-[24px] min-[560px]:text-[30px]';
   return (
-    <div className={`stub-header flex min-w-0 flex-col border border-line-strong bg-surface-1 ${className}`}>
-      <div className="ticket-paper flex min-w-0 items-stretch">
+    <div ref={box} className={`stub-header relative flex min-w-0 flex-col border border-transparent ${className}`}>
+      <div ref={paper} className="ticket-paper flex min-w-0 items-stretch">
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5 px-4 py-5 min-[560px]:px-7 min-[560px]:py-[26px]">
           {kicker && <span className="font-mono text-[10.5px] tracking-[0.16em] text-text-muted uppercase">{kicker}</span>}
           <div className={`min-w-0 font-display leading-none text-text [overflow-wrap:anywhere] ${titleClass}`}>
