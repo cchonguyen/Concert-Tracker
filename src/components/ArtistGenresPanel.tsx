@@ -1,34 +1,46 @@
 import { Dialog } from './ui/Dialog';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FileUp, RefreshCw, Square, Tags, X } from 'lucide-react';
+import { Download, FileUp, RefreshCw, Square, Tags, Upload, Undo2, X } from 'lucide-react';
 import { genresApi, LoggedEvent } from '../services/lineupApi';
 import { ArtistGenres, genresByArtist, missingGenreKeys } from '../services/genres';
 import { MAX_MUSICBRAINZ_GENRES } from '../server/events/genreTypes';
+import type { GenreChange, GenreCsvRow, SkippedRow } from '../server/events/genreCsv';
+import { genresCsvFileName, readGenresCsvFile } from '../services/genresCsvFile';
+import { downloadText } from '../services/download';
 import { Equalizer } from './ui/Equalizer';
+import { Button } from './ui/Button';
+import { IconButton } from './ui/IconButton';
+import { Notice } from './ui/Notice';
+import { GenresCsvPreview } from './GenresCsvPreview';
 
-// "Artist genres" in the Table view: import the file music-story exports from
-// your listening history, then, if you ask, look up the acts it does not
-// cover on MusicBrainz. See ARCHITECTURE.md ("Artist genres").
+// "Genres" in the Table view (owner only; ManageView shows the button): import the file music-story
+// exports, look up the acts it does not cover on MusicBrainz, and edit genres in a spreadsheet.
+// See ARCHITECTURE.md ("Artist genres") and docs/specs/genres-csv.md.
 
 interface ArtistGenresPanelProps {
   events: LoggedEvent[];
   onClose: () => void;
 }
 
-const button =
-  'inline-flex min-h-11 sm:min-h-9 items-center gap-1.5 rounded-control border border-line-strong px-3 py-2 text-sm text-text-muted hover:text-text disabled:opacity-40';
-const primary =
-  'inline-flex min-h-11 sm:min-h-9 items-center gap-1.5 rounded-control bg-accent-fill px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill disabled:opacity-40';
+interface CsvPreview {
+  rows: GenreCsvRow[];
+  changes: GenreChange[];
+  skipped: SkippedRow[];
+}
 
 export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, onClose }) => {
   const [rows, setRows] = useState<ArtistGenres[] | null>(null);
   const [hasMap, setHasMap] = useState(false);
+  const [csvUndo, setCsvUndo] = useState<{ at: string; count: number } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [preview, setPreview] = useState<CsvPreview | null>(null);
+  const [overwrite, setOverwrite] = useState<Set<string>>(() => new Set());
   const stop = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const csvInput = useRef<HTMLInputElement>(null);
 
   const load = () =>
     genresApi
@@ -36,6 +48,7 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
       .then((r) => {
         setRows(r.genres);
         setHasMap(r.hasMap);
+        setCsvUndo(r.csvUndo);
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   useEffect(() => {
@@ -110,6 +123,89 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
     }
   };
 
+  // Download: the server writes the file (artist, MusicBrainz ID, current genres, source, blank New genres, version stamp).
+  const downloadCsv = async () => {
+    setBusy('csv-download');
+    setError(null);
+    setMessage(null);
+    try {
+      downloadText(genresCsvFileName(), await genresApi.csvExport());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Upload: read the edited file here, then ask the server to check it. Nothing is saved yet.
+  const checkCsv = async (file: File) => {
+    setBusy('csv-check');
+    setError(null);
+    setMessage(null);
+    setPreview(null);
+    setOverwrite(new Set());
+    try {
+      const read = await readGenresCsvFile(file);
+      if (!read.ok) throw new Error(read.error);
+      if (read.rows.length === 0) {
+        setMessage('No row has a "New genres" entry, so there is nothing to check.');
+        return;
+      }
+      const r = await genresApi.csvPreview(read.rows);
+      setPreview({ rows: read.rows, changes: r.changes as GenreChange[], skipped: r.skipped });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+      if (csvInput.current) csvInput.current.value = '';
+    }
+  };
+
+  const toggleOverwrite = (key: string) =>
+    setOverwrite((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  const applyCsv = async () => {
+    if (!preview) return;
+    setBusy('csv-apply');
+    setError(null);
+    setMessage(null);
+    try {
+      const r = await genresApi.csvApply(preview.rows, [...overwrite]);
+      setPreview(null);
+      setOverwrite(new Set());
+      setMessage(
+        `Saved ${r.saved} ${r.saved === 1 ? 'act' : 'acts'}.${r.skipped.length ? ` ${r.skipped.length} ${r.skipped.length === 1 ? 'row was' : 'rows were'} left out.` : ''} You can undo this upload below.`,
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const undoCsvUpload = async () => {
+    setBusy('csv-undo');
+    setError(null);
+    setMessage(null);
+    try {
+      const r = await genresApi.csvUndo();
+      setMessage(
+        `Put back ${r.restored} ${r.restored === 1 ? 'act' : 'acts'}.${r.leftAlone.length ? ` Left as they are, because you changed them since the upload: ${r.leftAlone.join(', ')}.` : ''}`,
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <Dialog title="Genres" onClose={onClose}>
       <div className="flex-1 space-y-5 overflow-y-auto p-5">
@@ -123,13 +219,11 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
               cover. Acts neither one knows stay without a genre.
             </p>
           </div>
-          <button onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control text-text-muted hover:text-text" aria-label="Close">
-            <X className="h-5 w-5" />
-          </button>
+          <IconButton icon={X} label="Close" onClick={onClose} />
         </div>
 
-        {error && <p className="rounded-card border border-bad/45 bg-bad/10 p-2 text-sm text-bad">{error}</p>}
-        {message && <p className="rounded-card border border-good/45 bg-good/10 p-2 text-sm text-good">{message}</p>}
+        {error && <Notice tone="warning">{error}</Notice>}
+        {message && <Notice tone="success">{message}</Notice>}
 
         {!rows ? (
           <p className="flex items-center gap-2 text-sm text-text-muted">
@@ -162,9 +256,9 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
                 className="hidden"
                 onChange={(e) => e.target.files?.[0] && void importFile(e.target.files[0])}
               />
-              <button className={primary} disabled={Boolean(busy)} onClick={() => fileInput.current?.click()}>
+              <Button variant="primary" disabled={Boolean(busy)} onClick={() => fileInput.current?.click()}>
                 {busy === 'import' ? <Equalizer size="sm" /> : <FileUp className="h-4 w-4" />} Choose file
-              </button>
+              </Button>
             </section>
 
             <section className="space-y-2">
@@ -182,28 +276,76 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
                 <div className="flex items-center gap-3 font-mono text-sm tabular-nums text-text-muted">
                   <Equalizer />
                   {progress && `${progress.done} of ${progress.total}`}
-                  <button className={button} onClick={() => (stop.current = true)}>
+                  <Button variant="secondary" onClick={() => (stop.current = true)}>
                     <Square className="h-3.5 w-3.5" /> Stop
-                  </button>
+                  </Button>
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-2">
                   {missing.length > 0 && (
-                    <button className={button} disabled={!hasMap || Boolean(busy)} onClick={() => void lookUp(missing)}>
+                    <Button variant="secondary" disabled={!hasMap || Boolean(busy)} onClick={() => void lookUp(missing)}>
                       <Tags className="h-4 w-4" /> Look up {missing.length} on MusicBrainz
-                    </button>
+                    </Button>
                   )}
                   {noneKeys.length > 0 && (
-                    <button className={button} disabled={!hasMap || Boolean(busy)} onClick={() => void lookUp(noneKeys)}>
+                    <Button variant="secondary" disabled={!hasMap || Boolean(busy)} onClick={() => void lookUp(noneKeys)}>
                       <RefreshCw className="h-4 w-4" /> Retry MusicBrainz scan ({noneKeys.length})
-                    </button>
+                    </Button>
                   )}
                   {allMbKeys.length > noneKeys.length && (
-                    <button className={button} disabled={!hasMap || Boolean(busy)} onClick={() => void lookUp(allMbKeys)}>
+                    <Button variant="secondary" disabled={!hasMap || Boolean(busy)} onClick={() => void lookUp(allMbKeys)}>
                       <RefreshCw className="h-4 w-4" /> Re-scan all ({allMbKeys.length})
-                    </button>
+                    </Button>
                   )}
                 </div>
+              )}
+            </section>
+
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold text-text">3. Edit in a spreadsheet (CSV)</h3>
+              <p className="text-xs text-text-muted">
+                Download the list, type genres in the New genres column (separate several with semicolons), then upload the file.
+                Blank rows are left alone. You check the changes before anything is saved.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="secondary" disabled={Boolean(busy)} onClick={() => void downloadCsv()}>
+                  {busy === 'csv-download' ? <Equalizer size="sm" /> : <Download className="h-4 w-4" />} Download artists and genres (CSV)
+                </Button>
+                <input
+                  ref={csvInput}
+                  aria-label="Edited artists and genres file"
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && void checkCsv(e.target.files[0])}
+                />
+                <Button variant="secondary" disabled={Boolean(busy)} onClick={() => csvInput.current?.click()}>
+                  {busy === 'csv-check' ? <Equalizer size="sm" /> : <Upload className="h-4 w-4" />} Choose your edited file
+                </Button>
+                {csvUndo && !preview && (
+                  <Button variant="secondary" disabled={Boolean(busy)} onClick={() => void undoCsvUpload()}>
+                    {busy === 'csv-undo' ? <Equalizer size="sm" /> : <Undo2 className="h-4 w-4" />} Undo this upload
+                  </Button>
+                )}
+              </div>
+              {csvUndo && !preview && (
+                <p className="text-xs text-text-muted">
+                  Only the latest upload can be undone. Undo puts back the genres it changed, except acts you have changed since.
+                </p>
+              )}
+              {preview && (
+                <GenresCsvPreview
+                  changes={preview.changes}
+                  skipped={preview.skipped}
+                  overwrite={overwrite}
+                  onToggleOverwrite={toggleOverwrite}
+                  busy={Boolean(busy)}
+                  onApply={() => void applyCsv()}
+                  onCancel={() => {
+                    setPreview(null);
+                    setOverwrite(new Set());
+                  }}
+                />
               )}
             </section>
           </>
