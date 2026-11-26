@@ -674,9 +674,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
             editions={editions}
             onOpen={openEvent}
             onChanged={upsert}
-            onManage={openManage}
             onImport={openImport}
-            onSheets={openSheets}
             onRefresh={() => void refresh()}
           />
         )}
