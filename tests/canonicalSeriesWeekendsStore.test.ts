@@ -407,7 +407,7 @@ test('SupabaseLineupStore: upsertEdition skips event_series when seriesSlug is a
   assert.equal(suggested[0].seriesCountry, 'US');
   assert.equal(suggested[0].region, 'NV');
   assert.equal(editionSelects[0].limit, 60);
-  assert.ok(editionSelects[0].columns?.includes('event_series(name, brand, aliases, kind, city, region, country)'));
+  assert.ok(editionSelects[0].columns?.includes('event_series(name, brand, qualifier, aliases, kind, city, region, country)'));
   assert.ok(editionSelects[0].or?.includes('series_slug.in.("edc-lv")'));
 
   await store.upsertSeries({

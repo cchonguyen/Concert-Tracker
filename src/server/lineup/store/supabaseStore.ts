@@ -356,9 +356,9 @@ export class SupabaseLineupStore implements LineupStore {
   // Canonical -------------------------------------------------------------
 
   private static readonly EDITION_HEADER_COLUMNS =
-    'id, key, series_slug, year, name, start_date, end_date, venue, city, region, country, weekends, status, venue_id, subject_key, has_lineup, confirmed_at, updated_at, fact_source_note, event_series(name, brand, aliases, kind, city, region, country)';
+    'id, key, series_slug, year, name, start_date, end_date, venue, city, region, country, weekends, status, venue_id, subject_key, has_lineup, confirmed_at, updated_at, fact_source_note, subtitle, event_series(name, brand, qualifier, aliases, kind, city, region, country)';
 
-  private static readonly EDITION_SELECT_WITH_SERIES = '*, event_series(name, brand, aliases, kind, city, region, country)';
+  private static readonly EDITION_SELECT_WITH_SERIES = '*, event_series(name, brand, qualifier, aliases, kind, city, region, country)';
 
   private rowToSeries(r: any): SeriesRecord {
     const kind: SeriesKind | undefined = r.kind === 'tour' || r.kind === 'festival' ? r.kind : undefined;
@@ -367,6 +367,7 @@ export class SupabaseLineupStore implements LineupStore {
       name: r.name,
       ...(kind ? { kind } : {}),
       ...(r.brand != null ? { brand: r.brand } : {}),
+      ...(r.qualifier ? { qualifier: r.qualifier } : {}),
       ...(kind !== 'tour' && r.city != null ? { city: r.city } : {}),
       ...(kind !== 'tour' && r.region != null ? { region: r.region } : {}),
       ...(kind !== 'tour' && r.country != null ? { country: r.country } : {}),
@@ -408,6 +409,7 @@ export class SupabaseLineupStore implements LineupStore {
         name: s.name,
         kind,
         brand: s.brand ?? null,
+        qualifier: s.qualifier?.trim() || null,
         ...brandPatch,
         city: isTour ? null : (s.city ?? null),
         region: isTour ? null : (s.region ?? null),
@@ -429,8 +431,14 @@ export class SupabaseLineupStore implements LineupStore {
       p_limit: limit,
     });
     if (error) throw new Error(`listSeries (apply 0046_series_kind_and_place.sql): ${error.message}`);
+    // The summary function predates 0058, so qualifiers are read beside it (one small two-column read).
+    const rows = this.check(
+      await this.db.from('event_series').select('slug, qualifier'),
+      'listSeries.qualifier (apply 0058_series_levels.sql)',
+    ) as Array<{ slug: string; qualifier: string | null }> | null;
+    const qualifiers = new Map((rows ?? []).flatMap((q) => (q.qualifier ? [[q.slug, q.qualifier] as const] : [])));
     return ((data ?? []) as any[]).map((r) => ({
-      ...this.rowToSeries(r),
+      ...this.rowToSeries({ ...r, qualifier: qualifiers.get(r.slug) }),
       editionCount: Number(r.edition_count ?? 0),
     }));
   }
@@ -503,6 +511,7 @@ export class SupabaseLineupStore implements LineupStore {
       ...(row.series_slug != null ? { seriesSlug: row.series_slug } : {}),
       ...(series?.name != null ? { seriesName: series.name } : {}),
       ...(series?.brand != null ? { seriesBrand: series.brand } : {}),
+      ...(series?.qualifier ? { seriesQualifier: series.qualifier } : {}),
       ...(Array.isArray(series?.aliases) && series.aliases.length ? { seriesAliases: series.aliases } : {}),
       ...(seriesKind ? { seriesKind } : {}),
       ...(seriesKind !== 'tour' && series?.city != null ? { seriesCity: series.city } : {}),
@@ -510,6 +519,7 @@ export class SupabaseLineupStore implements LineupStore {
       ...(seriesKind !== 'tour' && series?.country != null ? { seriesCountry: series.country } : {}),
       year: row.year,
       name: row.name,
+      ...(row.subtitle ? { subtitle: row.subtitle } : {}),
       startDate: row.start_date ?? undefined,
       endDate: row.end_date ?? undefined,
       venue: row.venue ?? undefined,
@@ -627,6 +637,8 @@ export class SupabaseLineupStore implements LineupStore {
       status: e.status,
       confirmed_at: e.confirmedAt ?? null,
       fact_source_note: e.factSourceNote ?? null,
+      // Left out when unset, so a save that does not carry the subtitle keeps the stored one; '' clears it.
+      ...(e.subtitle !== undefined ? { subtitle: e.subtitle.trim() || null } : {}),
       // Left out when unset, so an edition save that does not carry weather keeps the stored record.
       ...(e.weather !== undefined ? { weather: e.weather } : {}),
       updated_at: e.updatedAt,

@@ -42,6 +42,46 @@ export function withPlace(name: string, city?: string): string {
   return `${name} ${town}`;
 }
 
+// The shown name of a shared series, built from what each level holds: the
+// brand and the words that set this series apart inside it. A festival reads
+// "Dreamstate SoCal", a tour "Andrew Bayer: Duality Tour", and a series with no
+// qualifier is the brand alone. Without a brand (a tour whose artist is not
+// known) the qualifier stands alone, and a series with neither keeps its name.
+export function seriesDisplayName(s: { name: string; brand?: string; qualifier?: string; kind?: 'festival' | 'tour' }): string {
+  const brand = s.brand?.trim();
+  const qualifier = s.qualifier?.trim();
+  if (!brand) return qualifier || s.name;
+  if (!qualifier) return brand;
+  return s.kind === 'tour' ? `${brand}: ${qualifier}` : `${brand} ${qualifier}`;
+}
+
+// The shown title of a shared edition: its series' name, the year unless it is
+// a tour stop, the night's own subtitle, and the weekend when one is picked
+// ("Coachella 2024 · Weekend 1", "A State of Trance Los Angeles 2025 · 1000").
+// An edition with no series keeps its captured name, which stays stored either
+// way because stage 2 and matching read it.
+export function editionTitle(
+  e: {
+    name: string;
+    year: number;
+    subtitle?: string;
+    seriesSlug?: string;
+    seriesName?: string;
+    seriesBrand?: string;
+    seriesQualifier?: string;
+    seriesKind?: 'festival' | 'tour';
+  },
+  weekend?: number,
+): string {
+  const series = e.seriesSlug && e.seriesName
+    ? seriesDisplayName({ name: e.seriesName, brand: e.seriesBrand, qualifier: e.seriesQualifier, kind: e.seriesKind })
+    : undefined;
+  const parts = [series ? (e.seriesKind === 'tour' ? series : `${series} ${e.year}`) : e.name];
+  if (e.subtitle?.trim()) parts.push(e.subtitle.trim());
+  if (weekend) parts.push(`Weekend ${weekend}`);
+  return parts.join(' · ');
+}
+
 // What the app shows as the event's name: "EDC Las Vegas 2024" in a series
 // (the town from the event's city when the series name lacks it), and
 // "Coachella 2024 · Weekend 1" when you picked the weekend. Outside a series,
