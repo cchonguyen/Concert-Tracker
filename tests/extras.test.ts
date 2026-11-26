@@ -182,7 +182,7 @@ test('Fill gaps finds a missing favourite and weather; CSV has both', () => {
   const fav = { ...ev, seen: [{ ...ev.seen[0], favourite: true }] };
   assert.equal(hasGap(fav, 'favourite'), false);
   const [cols, cells] = parseCsv(eventsToCsv([fav]));
-  assert.equal(cells[cols.indexOf('Favourite set')], 'Porter Robinson');
+  assert.equal(cells[cols.indexOf('Favorite set')], 'Porter Robinson');
   assert.ok(cols.includes('Weather'));
 
   const multiFav = {
@@ -193,7 +193,7 @@ test('Fill gaps finds a missing favourite and weather; CSV has both', () => {
     ],
   };
   const [, multiCells] = parseCsv(eventsToCsv([multiFav]));
-  assert.equal(multiCells[cols.indexOf('Favourite set')], 'Porter Robinson; Wavedash');
+  assert.equal(multiCells[cols.indexOf('Favorite set')], 'Porter Robinson; Wavedash');
 });
 
 test('adding an act suggests ones you entered before, most seen first', () => {

@@ -28,7 +28,7 @@ interface ImportReviewProps {
 
 const FLAG_LABELS: Record<EmailImport['flags'][number], string> = {
   refunded: 'Refunded',
-  cancelled: 'Cancelled',
+  cancelled: 'Canceled',
   transferred_away: 'Tickets sent to someone else',
 };
 

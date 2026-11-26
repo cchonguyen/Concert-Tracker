@@ -129,7 +129,7 @@ export function ThemeControls({ theme }: { theme: Theme }) {
         ))}
       </div>
       <div className="border-t border-line pt-2">
-        <Switch checked={tintOn} onChange={setTint} label="Tint posters by event" helper="A soft colour on each poster, the same for every year of a series." />
+        <Switch checked={tintOn} onChange={setTint} label="Tint posters by event" helper="A soft color on each poster, the same for every year of a series." />
       </div>
     </div>
   );

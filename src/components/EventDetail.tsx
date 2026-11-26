@@ -3,7 +3,7 @@ import { useIsOwner } from './MeContext';
 import { noteView } from '../services/vaultSession';
 import { draftAfterStoredChange } from '../services/fieldDraft';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Calendar, CalendarCheck, CalendarRange, Check, ChevronDown, CircleHelp, CloudSun, ExternalLink, FolderCog, Globe, Heart, History, Layers, ListFilter, ListMusic, Loader2, MapPin, Plus, RefreshCw, Search, StickyNote, Tag, Ticket, Trash2, Type, Users, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Calendar, CalendarCheck, CalendarRange, Check, ChevronDown, CircleHelp, CloudSun, ExternalLink, FolderCog, Globe, Heart, Lightbulb, History, Layers, ListFilter, ListMusic, Loader2, MapPin, Plus, RefreshCw, Search, StickyNote, Tag, Ticket, Trash2, Type, Users, X } from 'lucide-react';
 import {
   ArtistSuggestion,
   canonicalApi,
@@ -54,7 +54,7 @@ import { showNumber as showNumberFor } from '../services/ticket';
 import { Tabs } from './ui/Tabs';
 import { cityWithRegion, sameCountry } from '../server/events/regions';
 import { attendanceOf } from '../server/events/attendance';
-import type { EditionPerformance, InferenceField } from '../server/lineup/types';
+import type { EditionPerformance, InferenceField, SourceType } from '../server/lineup/types';
 import type { InferredField } from '../server/canon/inferences';
 // The inferred value with its member votes and standing, as GET /events/:id returns it.
 type InferredView = InferredField & { votes?: number; standing?: 'inferred' | 'candidate' };
@@ -73,7 +73,8 @@ import { Pill } from './ui/Pill';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
 import { Segmented } from './ui/Segmented';
-import { ReadList, ReadRow } from './ui/ReadRow';
+import { ReadList, ReadRow, ROW_TAG_WORDS } from './ui/ReadRow';
+import { sourceGlyph } from './ui/SourceIcon';
 import { SaveStatus } from './ui/SaveStatus';
 import { beginSave, emptyTrack, failSave, hintVisit, succeedSave, takeFailed, type SaveTrack } from '../services/saveStatus';
 import { scrollBehavior } from '../services/motion';
@@ -218,20 +219,35 @@ const FlashContext = React.createContext<string[]>([]);
 const EditionIdContext = React.createContext<string | undefined>(undefined);
 const SourceHighlightContext = React.createContext<(key: string | null) => void>(() => undefined);
 
+// A field's source, at the right end of its row: the source's icon, with "via Ticketmaster" beside it when the row
+// has room and in the tooltip always.
 const SourceLink: React.FC<{ source?: LoggedEvent['sources'][keyof LoggedEvent['sources']] }> = ({ source }) => {
   const isOwner = useIsOwner();
   const editionId = React.useContext(EditionIdContext);
   const setHighlightedSource = React.useContext(SourceHighlightContext);
   const highlightKey = sourceHighlightKey(source);
   if (!source || source.sourceType === 'user') return null;
+  const hover = {
+    onMouseEnter: () => setHighlightedSource(highlightKey),
+    onMouseLeave: () => setHighlightedSource(null),
+    onFocus: () => setHighlightedSource(highlightKey),
+    onBlur: () => setHighlightedSource(null),
+  };
+  const tag = 'inline-flex min-h-8 items-center gap-1 whitespace-nowrap font-normal text-text-muted';
   if (source.sourceType === 'edition') {
+    const words = `from ${FIELD_SOURCE_LABELS.edition}`;
+    const body = (
+      <>
+        <Tag className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span className={ROW_TAG_WORDS}>{words}</span>
+      </>
+    );
     return isOwner && editionId ? (
       <a
         href={editionUrl(editionId)}
-        onMouseEnter={() => setHighlightedSource(highlightKey)}
-        onMouseLeave={() => setHighlightedSource(null)}
-        onFocus={() => setHighlightedSource(highlightKey)}
-        onBlur={() => setHighlightedSource(null)}
+        {...hover}
+        title={words}
+        aria-label={words}
         onClick={(e) => {
           if (isModifiedClick(e)) return;
           e.preventDefault();
@@ -240,27 +256,31 @@ const SourceLink: React.FC<{ source?: LoggedEvent['sources'][keyof LoggedEvent['
           rememberManageSearch(new URL(url, window.location.origin).search);
           window.dispatchEvent(new PopStateEvent('popstate'));
         }}
-        className="font-normal text-text-muted hover:text-accent hover:underline"
+        className={`${tag} hover:text-accent hover:underline`}
       >
-        from {FIELD_SOURCE_LABELS.edition}
+        {body}
       </a>
     ) : (
-      <span className="font-normal text-text-muted">from {FIELD_SOURCE_LABELS.edition}</span>
+      <span title={words} aria-label={words} className={tag}>
+        {body}
+      </span>
     );
   }
+  const words = `${source.sourceType === 'venue' ? 'from' : 'via'} ${FIELD_SOURCE_LABELS[source.sourceType]}`;
+  const Glyph = source.sourceType === 'venue' ? MapPin : sourceGlyph(source.sourceType as SourceType);
   return (
     <a
       href={source.sourceUrl}
       target="_blank"
       rel="noreferrer"
-      title={source.quote ? `“${source.quote}”` : undefined}
-      onMouseEnter={() => setHighlightedSource(highlightKey)}
-      onMouseLeave={() => setHighlightedSource(null)}
-      onFocus={() => setHighlightedSource(highlightKey)}
-      onBlur={() => setHighlightedSource(null)}
-      className="inline-flex items-center gap-0.5 font-normal text-text-muted hover:text-accent"
+      {...hover}
+      title={source.quote ? `${words}: “${source.quote}”` : words}
+      aria-label={words}
+      className={`${tag} hover:text-accent`}
     >
-      {source.sourceType === 'venue' ? 'from' : 'via'} {FIELD_SOURCE_LABELS[source.sourceType]} <ExternalLink className="h-2.5 w-2.5" />
+      <Glyph className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span className={ROW_TAG_WORDS}>{words}</span>
+      <ExternalLink className={`h-2.5 w-2.5 ${ROW_TAG_WORDS}`} aria-hidden="true" />
     </a>
   );
 };
@@ -309,6 +329,79 @@ const InferredNote: React.FC<{ inferred: InferredView; type: string; onAct?: (in
       )}
       {error && <span role="alert" className="not-italic text-xs text-bad">{error}</span>}
     </div>
+  );
+};
+
+// An inferred value's text, for a read row whose field is empty.
+function inferredText(inferred: InferredView, type: string): string {
+  const raw = String(inferred.value);
+  return type === 'date' ? (whenLabel({ startDate: raw }) ?? raw) : raw;
+}
+const InferredValue: React.FC<{ parts: Array<{ text: string; inferred: boolean }> }> = ({ parts }) => (
+  <>
+    {parts.map((p, i) => (
+      <React.Fragment key={i}>
+        {i > 0 && ', '}
+        <span className={p.inferred ? 'italic text-text-muted' : ''}>{p.text}</span>
+      </React.Fragment>
+    ))}
+  </>
+);
+
+// The inferred tag at the right end of a read row: an icon, with its word beside it when the row has room. A tap
+// opens each inferred value's reason with its Confirm (owner) or Verify (member) button.
+const InferredTag: React.FC<{ items: Array<{ inferred: InferredView; field: string }>; onAct?: (inferenceId: string) => Promise<void> }> = ({ items, onAct }) => {
+  const isOwner = useIsOwner();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  if (!items.length) return null;
+  const candidate = items.find((i) => i.inferred.standing === 'candidate');
+  const votes = candidate?.inferred.votes ?? 0;
+  const word = candidate ? `Candidate, ${votes} member${votes === 1 ? '' : 's'}` : 'Inferred';
+  const act = async (inferenceId: string) => {
+    if (!onAct) return;
+    setBusy(inferenceId);
+    setError(null);
+    try {
+      await onAct(inferenceId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save that.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <Popover
+      align="end"
+      label="Why this is inferred"
+      content={
+        <span className="block space-y-2 text-xs leading-relaxed text-text">
+          {items.map(({ inferred, field }) => (
+            <span key={inferred.inferenceId} className="block space-y-1.5">
+              <span className="block">{`${items.length > 1 ? `${field}: ` : ''}Inferred: ${inferred.reason.replace(/[.\s]+$/, '')}.`}</span>
+              {onAct && (
+                <button
+                  type="button"
+                  onClick={() => void act(inferred.inferenceId)}
+                  disabled={busy === inferred.inferenceId}
+                  title={isOwner ? 'Writes this value into the event as yours.' : 'Your Verify counts toward this value. Two members make it verified.'}
+                  className="inline-flex min-h-9 items-center rounded-control border border-line px-3 text-xs text-text hover:bg-surface-3 disabled:opacity-50"
+                >
+                  {isOwner ? 'Confirm' : 'Verify'}
+                  {items.length > 1 ? ` ${field.toLowerCase()}` : ''}
+                </button>
+              )}
+            </span>
+          ))}
+          {error && <span role="alert" className="block text-bad">{error}</span>}
+        </span>
+      }
+    >
+      <span title={word} className="inline-flex min-h-8 items-center gap-1 whitespace-nowrap rounded-full border border-dashed border-line-strong px-1.5 text-[11px] italic text-text-muted">
+        <Lightbulb className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span className={ROW_TAG_WORDS}>{word}</span>
+      </span>
+    </Popover>
   );
 };
 
@@ -642,7 +735,7 @@ const DaysWent: React.FC<{ days: string[]; attended: string[]; onChange: (days: 
   };
   return (
     <div className={`${inRow ? '' : 'col-span-2 '}flex flex-wrap items-center gap-2 text-xs text-text-muted`}>
-      {!inRow && <span className="font-semibold text-text-muted">Days you went{went.length === days.length ? ' (all)' : ''}:</span>}
+      {!inRow && <span className="font-semibold text-text-muted">Went on{went.length === days.length ? ' (all)' : ''}:</span>}
       {days.map((d) => {
         const on = went.includes(d);
         const last = on && went.length === 1;
@@ -801,13 +894,13 @@ const SeenActs: React.FC<{
     <React.Fragment key={s.asSolo ? `${s.key}:solo` : s.key}>
       <span className="text-sm font-medium text-text">{s.name}</span>
       {s.set && (
-        <Pill tone="info">
+        <span className="text-xs text-text-muted">
           {s.set.toLowerCase() === 'dj' || s.set.toLowerCase() === 'dj set'
             ? 'DJ'
             : s.set.toLowerCase() === 'live' || s.set.toLowerCase() === 'live set'
               ? 'Live'
               : s.set}
-        </Pill>
+        </span>
       )}
       {s.role === 'headliner' && <Pill tone="highlight">Headliner</Pill>}
       {!s.role && inferredBilling[s.key] && <InferredRole inferred={inferredBilling[s.key]} />}
@@ -828,7 +921,6 @@ const SeenActs: React.FC<{
   const slot = (acts: Array<SlotAct<SeenWithMeta>>) => {
     const favourite = acts.some((a) => a.favourite);
     const time = acts.map((a) => sets.get(a.key)).find(Boolean);
-    const untyped = acts.find((a) => !a.set);
     const primary = acts[0];
     const instanceId = primary._instanceId + (primary.asSolo ? ':solo' : '');
     return (
@@ -844,8 +936,8 @@ const SeenActs: React.FC<{
             onChange(toPatch(seen).map((s, i) => (targetIndices.has(i) ? { ...s, favourite: nextOn } : s)));
           }}
           aria-pressed={favourite}
-          aria-label={favourite ? 'Favourite set. Tap to unset.' : 'Mark as favourite set'}
-          title={favourite ? 'Favourite set' : 'Mark as favourite set'}
+          aria-label={favourite ? 'Favorite set. Tap to unset.' : 'Mark as favorite set'}
+          title={favourite ? 'Favorite set' : 'Mark as favorite set'}
           className="flex w-11 shrink-0 items-center justify-center hover:bg-rose-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent sm:w-10"
         >
           <Heart className={`h-4 w-4 ${favourite ? 'fill-rose-400 text-rose-400' : 'text-text-faint'}`} aria-hidden="true" />
@@ -865,14 +957,13 @@ const SeenActs: React.FC<{
             {acts.some((a) => a.alias) && <span className="text-xs text-text-muted mr-0.5">(</span>}
             {acts.map((a, i) => (
               <React.Fragment key={a.key}>
-                {i > 0 && <Pill tone="accent">B2B</Pill>}
+                {i > 0 && <span className="text-xs text-text-muted">B2B</span>}
                 {act(a)}
               </React.Fragment>
             ))}
             {acts.some((a) => a.alias) && <span className="text-xs text-text-muted">)</span>}
           </span>
           {time && <span className="shrink-0 text-xs tabular-nums text-text-muted">{time}</span>}
-          {!time && untyped && <span className="shrink-0 rounded-full border border-warn/45 px-2 py-0.5 text-xs text-warn">Set type?</span>}
         </button>
       </li>
     );
@@ -1125,7 +1216,7 @@ const ActEditor: React.FC<{
             if (v) setBursts((n) => n + 1);
             onChange(toPatch(seen).map((s, i) => (i === targetIndex ? { ...s, favourite: v } : s)));
           }}
-          label="Favourite set"
+          label="Favorite set"
           helper="Mark sets that were highlights of the event."
         />
         <Burst icon={Heart} trigger={bursts} />
@@ -1233,12 +1324,14 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const [showLog, setShowLog] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [weekendPromptDismissed, setWeekendPromptDismissed] = useState(false);
+  const [weekendOpen, setWeekendOpen] = useState(false);
   const [highlightedSource, setHighlightedSource] = useState<string | null>(null);
   const [openRow, setOpenRow] = useState<string | null>(null);
   const whenWhereRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     setWeekendPromptDismissed(false);
+    setWeekendOpen(false);
     setHighlightedSource(null);
     setOpenRow(null);
   }, [event.id]);
@@ -1630,18 +1723,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             <div className="flex items-center gap-0.5">
               <h3 className={cardTitle}>The edition</h3>
               <SectionHelp label="The edition">
-                Check details searches for this date and place and lists what it finds below. Nothing you typed changes until you tap Use on a suggestion.
+                Tap a row to change it. Check details, at the bottom, looks for this date and place in other sources.
               </SectionHelp>
             </div>
-            <button
-              type="button"
-              onClick={() => void run("research", () => eventsApi.research(event.id))}
-              disabled={busy === "research" || busy === "research-gemini"}
-              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-line-strong px-2.5 text-xs text-text hover:border-accent hover:text-accent disabled:opacity-50 sm:min-h-8"
-            >
-              {busy === "research" ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
-              Check details
-            </button>
           </div>
           {needsWeekendPrompt(event, edition) && !weekendPromptDismissed && edition?.weekends && (
             <div className="space-y-2 rounded-lg border border-accent-tint-line bg-accent-tint p-2.5">
@@ -1670,23 +1754,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               </div>
             </div>
           )}
-          <CheckDetails
-            inline
-            busy={busy === "research"}
-            geminiBusy={busy === "research-gemini"}
-            checkedAt={details.checkedAt}
-            status={details.status}
-            candidates={details.candidates}
-            notes={details.notes}
-            lineupStatus={lineupStatus}
-            suggestions={checkOffers}
-            onCheck={() => void run("research", () => eventsApi.research(event.id))}
-            onGemini={() => void run("research-gemini", () => eventsApi.research(event.id, true))}
-            onPick={(id: string) => void run("pick", () => eventsApi.pick(event.id, id))}
-            onNone={() => void run("pick", () => eventsApi.pick(event.id))}
-            onDismissCanon={() => void run("dismiss-canon", () => eventsApi.dismissCanon(event.id))}
-            dismissBusy={busy === "dismiss-canon"}
-          />
 
           <ReadList>
             <ReadRow
@@ -1722,7 +1789,20 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               below={
                 (event.series || (edition?.weekends && edition.weekends.length > 1) || eventTitle(event) !== event.name) ? (
                   <div className="space-y-1.5">
-                    {(event.series || (edition?.weekends && edition.weekends.length > 1)) && (
+                    {/* Most events have one weekend, so the picker stays a small button until the edition has several
+                        weekends, one is already picked, or you open it. */}
+                    {event.series && !(edition?.weekends && edition.weekends.length > 1) && event.weekend == null && !weekendOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setWeekendOpen(true)}
+                        aria-expanded={false}
+                        title="Opens the weekend choices, for a festival that runs more than one weekend."
+                        className="inline-flex min-h-11 items-center gap-1 rounded-control border border-line px-2.5 text-xs text-text-muted hover:border-accent hover:text-text sm:min-h-8"
+                      >
+                        <Plus className="h-3 w-3" aria-hidden="true" /> Weekend
+                      </button>
+                    )}
+                    {((edition?.weekends && edition.weekends.length > 1) || (event.series && (event.weekend != null || weekendOpen))) && (
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-[11px] font-semibold text-text-muted mr-1">Weekend</span>
                         {edition?.weekends && edition.weekends.length > 1
@@ -1783,7 +1863,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               icon={Calendar}
               label="Date"
               mono
-              value={event.startDate ? (whenLabel({ startDate: event.startDate }) ?? event.startDate) : undefined}
+              value={event.startDate ? (whenLabel({ startDate: event.startDate }) ?? event.startDate) : inferred.startDate ? <InferredValue parts={[{ text: inferredText(inferred.startDate, "date"), inferred: true }]} /> : undefined}
+              inferred={!event.startDate && inferred.startDate ? <InferredTag items={[{ inferred: inferred.startDate, field: "Date" }]} onAct={verifyInferred} /> : undefined}
               emptyText="Not known yet"
               source={<SourceLink source={event.sources.startDate} />}
               flash={flashing.includes("startDate")}
@@ -1801,7 +1882,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                   onSave={(v) => save({ startDate: text(v) })}
                 />
               )}
-              below={!event.startDate && inferred.startDate ? <InferredNote inferred={inferred.startDate} type="date" onAct={verifyInferred} /> : undefined}
             />
 
             {!event.startDate && (
@@ -1822,7 +1902,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               icon={CalendarRange}
               label="Last day"
               mono
-              value={event.endDate ? (whenLabel({ startDate: event.endDate }) ?? event.endDate) : undefined}
+              value={event.endDate ? (whenLabel({ startDate: event.endDate }) ?? event.endDate) : inferred.endDate ? <InferredValue parts={[{ text: inferredText(inferred.endDate, "date"), inferred: true }]} /> : undefined}
+              inferred={!event.endDate && inferred.endDate ? <InferredTag items={[{ inferred: inferred.endDate, field: "Last day" }]} onAct={verifyInferred} /> : undefined}
               emptyText="Not known yet"
               source={event.endDate ? <SourceLink source={event.sources.endDate} /> : undefined}
               flash={flashing.includes("endDate")}
@@ -1841,11 +1922,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                   onSave={(v) => save({ endDate: v && v !== event.startDate ? v : null })}
                 />
               )}
-              below={!event.endDate && inferred.endDate ? <InferredNote inferred={inferred.endDate} type="date" onAct={verifyInferred} /> : undefined}
             />
 
             {days.length > 1 && (
-              <ReadRow icon={CalendarCheck} label="Days you went" alwaysOpen>
+              <ReadRow icon={CalendarCheck} label="Went on" alwaysOpen>
                 <DaysWent inRow days={days} attended={event.daysAttended} onChange={(daysAttended) => save({ daysAttended })} />
               </ReadRow>
             )}
@@ -1853,7 +1933,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             <ReadRow
               icon={MapPin}
               label="Venue"
-              value={event.venue}
+              value={event.venue || (inferred.venue ? <InferredValue parts={[{ text: inferredText(inferred.venue, "text"), inferred: true }]} /> : undefined)}
+              inferred={!event.venue && inferred.venue ? <InferredTag items={[{ inferred: inferred.venue, field: "Venue" }]} onAct={verifyInferred} /> : undefined}
               emptyText="Not known yet"
               source={<SourceLink source={event.sources.venue} />}
               flash={flashing.includes("venue")}
@@ -1888,9 +1969,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                 />
               )}
               below={
-                (venueChoices.length > 0 || (!event.venue && inferred.venue)) ? (
+                venueChoices.length > 0 ? (
                   <div className="space-y-1">
-                    {!event.venue && inferred.venue && <InferredNote inferred={inferred.venue} type="text" onAct={verifyInferred} />}
                     {venueChoices.map((c) => (
                       <button
                         key={[c.city, c.region, c.country].join("|")}
@@ -1912,7 +1992,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             <ReadRow
               icon={Globe}
               label="Place"
-              value={[event.city, event.region, event.country].filter(Boolean).join(", ") || undefined}
+              value={(() => {
+                const parts = (["city", "region", "country"] as const).flatMap((f) =>
+                  event[f] ? [{ text: event[f]!, inferred: false }] : inferred[f] ? [{ text: inferredText(inferred[f]!, "text"), inferred: true }] : [],
+                );
+                return parts.length ? <InferredValue parts={parts} /> : undefined;
+              })()}
+              inferred={(() => {
+                const items = ([["city", "City"], ["region", "State"], ["country", "Country"]] as const).flatMap(([f, field]) =>
+                  !event[f] && inferred[f] ? [{ inferred: inferred[f]!, field }] : [],
+                );
+                return items.length ? <InferredTag items={items} onAct={verifyInferred} /> : undefined;
+              })()}
               emptyText="Not known yet"
               source={<SourceLink source={event.sources.city ?? event.sources.region ?? event.sources.country} />}
               flash={flashing.includes("city") || flashing.includes("region") || flashing.includes("country")}
@@ -1959,11 +2050,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                 </div>
               )}
               below={
-                ((!event.city && inferred.city) || (!event.region && inferred.region) || (!event.country && inferred.country) || mapOffer) ? (
+                mapOffer ? (
                   <div className="space-y-1">
-                    {!event.city && inferred.city && <InferredNote inferred={inferred.city} type="text" onAct={verifyInferred} />}
-                    {!event.region && inferred.region && <InferredNote inferred={inferred.region} type="text" onAct={verifyInferred} />}
-                    {!event.country && inferred.country && <InferredNote inferred={inferred.country} type="text" onAct={verifyInferred} />}
                     {mapOffer && (
                       <button
                         type="button"
@@ -2030,8 +2118,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               emptyText="Not known yet"
               source={
                 event.weather ? (
-                  <a href={event.weather.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-text-muted hover:text-accent">
-                    Open-Meteo <ExternalLink className="h-2.5 w-2.5" />
+                  <a href={event.weather.sourceUrl} target="_blank" rel="noreferrer" title="via Open-Meteo" aria-label="via Open-Meteo" className="inline-flex min-h-8 items-center gap-1 whitespace-nowrap text-text-muted hover:text-accent">
+                    <CloudSun className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span className={ROW_TAG_WORDS}>Open-Meteo</span>
+                    <ExternalLink className={`h-2.5 w-2.5 ${ROW_TAG_WORDS}`} aria-hidden="true" />
                   </a>
                 ) : undefined
               }
@@ -2160,13 +2250,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </p>
           )}
         </details>
-        <EventSources
-          event={event}
-          confirmations={confirmations}
-          lineupActs={lineupActs}
-          editionId={event.editionId}
-          highlightedKey={highlightedSource}
-        />
 
           </div>
           <div className="min-w-0">
@@ -2189,7 +2272,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               Who you saw{event.seen.length > 0 && <span className="font-normal text-text-muted"> · {event.seen.length}</span>}
             </h3>
             <SectionHelp label="Who you saw">
-              Each act is a row. Tap the row to set its billing, set type and B2B partners. Tap the heart to mark a favourite set. Acts you add here count as seen.
+              Each act is a row. Tap the row to set its billing, set type and B2B partners. Tap the heart to mark a favorite set. Acts you add here count as seen.
             </SectionHelp>
           </div>
           <SeenActs seen={event.seen} sets={sets} past={pastArtists} pastSets={pastSetsList} inferredBilling={inferredBilling} onChange={(seen) => save({ seen })} />
@@ -2361,6 +2444,44 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
 
           </div>
         </div>
+
+        {/* Where every detail came from, with Check details and Deep search, always last: below Who you saw on every width. */}
+        <EventSources
+          event={event}
+          confirmations={confirmations}
+          lineupActs={lineupActs}
+          editionId={event.editionId}
+          highlightedKey={highlightedSource}
+          action={
+            <button
+              type="button"
+              onClick={() => void run("research", () => eventsApi.research(event.id))}
+              disabled={busy === "research" || busy === "research-gemini"}
+              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-line-strong px-2.5 text-xs text-text hover:border-accent hover:text-accent disabled:opacity-50 sm:min-h-8"
+            >
+              {busy === "research" ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
+              Check details
+            </button>
+          }
+        >
+          <CheckDetails
+            inline
+            busy={busy === "research"}
+            geminiBusy={busy === "research-gemini"}
+            checkedAt={details.checkedAt}
+            status={details.status}
+            candidates={details.candidates}
+            notes={details.notes}
+            lineupStatus={lineupStatus}
+            suggestions={checkOffers}
+            onCheck={() => void run("research", () => eventsApi.research(event.id))}
+            onGemini={() => void run("research-gemini", () => eventsApi.research(event.id, true))}
+            onPick={(id: string) => void run("pick", () => eventsApi.pick(event.id, id))}
+            onNone={() => void run("pick", () => eventsApi.pick(event.id))}
+            onDismissCanon={() => void run("dismiss-canon", () => eventsApi.dismissCanon(event.id))}
+            dismissBusy={busy === "dismiss-canon"}
+          />
+        </EventSources>
 
         <div className="flex items-center justify-between border-t border-line pt-4">
           <div className="flex items-center gap-4">

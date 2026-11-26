@@ -12,7 +12,7 @@ export const emailCard = {
   line: 'LiveArchive reads your Gmail for receipts from Ticketmaster, AXS, DICE, Eventbrite, Resident Advisor and 20+ other sellers, and lists every show it finds for you to tick.',
   badges: ['Reads in your browser', 'Read-only access', 'Nothing added until you tick it'],
   steps: [
-    'Sign in with Google. Google asks you to let LiveArchive read your Gmail. It can’t send, delete or change anything. The permission lasts about an hour and is cancelled the moment the check ends.',
+    'Sign in with Google. Google asks you to let LiveArchive read your Gmail. It can’t send, delete or change anything. The permission lasts about an hour and is canceled the moment the check ends.',
     'Your browser does the reading. The check runs on this page, on your device. Your emails are opened and read here, not on our server.',
     'You pick what counts. Each show it finds lands on a review list, unticked. A ticket isn’t proof you went, so nothing joins your history until you tick it, or match it to a show you already entered.',
   ],

@@ -44,7 +44,7 @@ const GAP_LABELS: Record<Gap, string> = {
   place: 'State & country',
   type: 'Type',
   seen: 'Who you saw',
-  favourite: 'Favourite set',
+  favourite: 'Favorite set',
   review: 'Lineup to review',
   lineup: 'Lineup',
   format: 'Format',

@@ -23,6 +23,7 @@ Statuses were checked against the code on 2026-11-23.
 | [specs/design-refresh-2-back-office.md](specs/design-refresh-2-back-office.md) | Gemini package for design refresh stage 2: global archive, Manage, admin, Artists, map, imports, sharing and log. |
 | [specs/design-refresh-2-detail-gaps.md](specs/design-refresh-2-detail-gaps.md) | Gemini package for design refresh stage 3: event detail lineup table, sources, tabs and read rows. Not started. |
 | [specs/ticket-stub.md](specs/ticket-stub.md) | Design refresh stage 4: the ticket stub (event detail hero, list headers, Home, Stats, Share page in Library). Approved 2026-11-25. Not started. |
+| [specs/event-detail-polish.md](specs/event-detail-polish.md) | Event detail polish: American spelling, "Went on", source and inferred tags at the right of each row, sources and Check details last, quiet set types, weekend button. Charlie's request 2026-11-25. |
 | [tier3-specs.md](tier3-specs.md) | TECH-04 and FETCH-01 built. The other Tier 3 tickets not started. |
 | [engineering-ticket-bank.md](engineering-ticket-bank.md) | Backlog of open tickets. Closed ones are in [archive/engineering-ticket-bank-closed.md](archive/engineering-ticket-bank-closed.md). |
 | [social-features-spec.md](social-features-spec.md) | Not started. Discussion draft. |

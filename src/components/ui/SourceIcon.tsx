@@ -19,6 +19,11 @@ const ICONS: Record<SourceType, LucideIcon> = {
   pasted: ClipboardPaste,
 };
 
+// A source's glyph alone, for places that write its name in a tooltip.
+export function sourceGlyph(source: SourceType): LucideIcon {
+  return ICONS[source] ?? Globe;
+}
+
 // A source's glyph and name, with its label as the tooltip. Pass `readBy` to add
 // "(read by AI)" the way the candidate lists already do.
 export function SourceIcon({ source, readBy }: { source: SourceType; readBy?: string }) {

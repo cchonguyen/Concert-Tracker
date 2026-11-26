@@ -417,7 +417,7 @@ function planLink(world: World, fromId: string, toId: string, role: unknown, add
     if (!current.some(same)) throw new ManageError('There is no such link.', 404);
     links = current.filter((l) => !same(l));
   }
-  const verb = role === 'in' ? 'in' : role === 'has_label' ? 'labelled' : role === 'introduced_me_to' ? 'introduced you to' : 'hosted by';
+  const verb = role === 'in' ? 'in' : role === 'has_label' ? 'labeled' : role === 'introduced_me_to' ? 'introduced you to' : 'hosted by';
   // A venue's place becomes the location of every event there.
   const events = add && role === 'in' ? venueRewrite(world, new Map([[fromId, toId]]), at) : [];
   return {

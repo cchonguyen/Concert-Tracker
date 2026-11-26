@@ -8,11 +8,12 @@ interface Props {
   label: string; // The trigger's name for screen readers.
   children: ReactNode; // The trigger. Give it a button or focusable element so Enter works.
   className?: string;
+  align?: 'center' | 'end'; // 'end' pins the panel to the trigger's right edge, for triggers at the right of a row.
 }
 
 // An anchored panel. A mouse opens it on hover and a touch opens it on tap.
 // Clicking or tapping pins it open until an outside tap or Escape.
-export function Popover({ content, label, children, className = '' }: Props) {
+export function Popover({ content, label, children, className = '', align = 'center' }: Props) {
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
@@ -64,7 +65,7 @@ export function Popover({ content, label, children, className = '' }: Props) {
         {children}
       </span>
       {open && (
-        <span role="dialog" aria-label={label} className={`absolute left-1/2 top-full z-30 mt-1 w-64 -translate-x-1/2 ${POPOVER_PANEL}`}>
+        <span role="dialog" aria-label={label} className={`absolute top-full z-30 mt-1 w-64 ${align === 'end' ? 'right-0' : 'left-1/2 -translate-x-1/2'} ${POPOVER_PANEL}`}>
           {content}
         </span>
       )}

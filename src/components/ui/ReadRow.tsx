@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, Pencil, type LucideIcon } from 'lucide-react';
 
+// Words beside a row tag's icon show only when the row is wide enough; below that the tag is its icon alone.
+export const ROW_TAG_WORDS = 'hidden @[23rem]:inline';
+
 export function ReadList({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
     <div className={`divide-y divide-line rounded-none border border-line bg-surface-1 ${className}`}>
@@ -113,9 +116,10 @@ export function ReadRow({
   }
 
   return (
-    <div id={id} className={`px-3 py-1.5 ${flash ? 'ring-1 ring-inset ring-good/60' : ''}`}>
-      {/* On phones the source drops under the value, so the value keeps the row's width. */}
-      <div className="flex min-h-11 flex-wrap items-center gap-x-2 sm:min-h-10 sm:flex-nowrap">
+    <div id={id} className={`@container px-3 py-1.5 ${flash ? 'ring-1 ring-inset ring-good/60' : ''}`}>
+      {/* The source and inferred tags stay at the right end of the row. In a narrow row they show only their icon,
+          and their words move to the tooltip (ROW_TAG_WORDS). */}
+      <div className="flex min-h-11 items-center gap-x-2 sm:min-h-10">
         <button
           type="button"
           disabled={disabled || !editor}
@@ -139,7 +143,7 @@ export function ReadRow({
         </button>
 
         {(source || inferred) && (
-          <div className="flex w-full shrink-0 items-center gap-2 pb-1.5 pl-[26px] text-xs sm:w-auto sm:pb-0 sm:pl-0">
+          <div className="ml-auto flex shrink-0 flex-col items-end gap-1 text-xs">
             {inferred}
             {source}
           </div>

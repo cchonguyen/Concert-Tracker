@@ -160,7 +160,7 @@ export async function runMemberBackfill(
           externalIds: [],
           trust: 'provisional',
           actor: 'member:entry',
-          reason: 'Member backfill: dated entry from before the shared catalogue',
+          reason: 'Member backfill: dated entry from before the shared catalog',
         });
         if (r.action === 'created') report.created++;
         else if (r.action === 'ambiguous' || r.action === 'skipped_no_date') report.skipped++;

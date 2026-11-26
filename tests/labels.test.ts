@@ -50,7 +50,7 @@ test('a label is added with its group, and a record has one label per group', as
   await addLink(store, venue('shrine'), indoor.id, 'has_label', AT);
   await addLink(store, venue('shrine'), vip.id, 'has_label', AT);
   const swap = await addLink(store, venue('shrine'), outdoor.id, 'has_label', AT);
-  assert.match(swap.summary, /labelled "Outdoor"/);
+  assert.match(swap.summary, /labeled "Outdoor"/);
   const labels = (await store.listEntityLinks()).filter((l) => l.role === 'has_label').map((l) => l.toId).sort();
   assert.deepEqual(labels, [outdoor.id, vip.id].sort());
   await undoEntry(store, swap.id);
