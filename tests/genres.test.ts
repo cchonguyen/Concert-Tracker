@@ -18,7 +18,8 @@ import {
   undoGenreChange,
 } from '../src/server/events/genres.ts';
 import { runAsMember } from '../src/server/auth/requestScope.ts';
-import { genreMix, genresByArtist, missingGenreKeys, topStyles } from '../src/services/genres.ts';
+import { genreMix, genresByArtist, hasGenreUnder, missingGenreKeys, topStyles } from '../src/services/genres.ts';
+import type { GenreVocabulary } from '../src/server/events/genreTypes.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import type { GenreSource } from '../src/server/events/genreTypes.ts';
 import { fakeFetcher } from './fakes.ts';
@@ -483,4 +484,69 @@ test('typed genres fold by genre key, store the resolved spelling, and need a le
   await assert.rejects(setOwnGenres(store, 'bonobo', ['house', '!!!'], now), /A genre needs a letter or a number/);
   const r = await setOwnGenres(store, 'bonobo', ['Deep-House', 'deephouse', 'deep_house'], now);
   assert.deepEqual(r?.genres, [{ style: 'deep house', parent: 'electronic', weight: 1 }]);
+});
+
+// house > tech house, electro house; "bass house" sits under both house and bass.
+const umbrellaVocab: GenreVocabulary = {
+  genres: [
+    { key: 'house', name: 'House', aliases: [], umbrellas: [] },
+    { key: 'techhouse', name: 'tech house', aliases: [], umbrellas: ['house'] },
+    { key: 'electrohouse', name: 'electro house', aliases: [], umbrellas: ['house'] },
+    { key: 'bass', name: 'bass', aliases: [], umbrellas: [] },
+    { key: 'basshouse', name: 'bass house', aliases: [], umbrellas: ['house', 'bass', 'techhouse'] },
+  ],
+};
+
+test('genreMix umbrellas: one act under one umbrella by two genres counts one set, not two', () => {
+  const vocab = { genres: umbrellaVocab.genres.slice(0, 3) }; // house, tech house, electro house
+  const by = genresByArtist([row('a', 'owner', [['electronic', 'tech house', 0.5], ['electronic', 'electro house', 0.5]])], vocab);
+  const mix = genreMix([ev('e1', [act('A')])], by, vocab);
+  assert.deepEqual(mix.umbrellas.map((u) => [u.name, u.sets, u.share]), [['House', 1, 1]]);
+  assert.equal(mix.styles.length, 2);
+});
+
+test('genreMix umbrellas: a genre under two umbrellas counts in both, once each even by two paths', () => {
+  const by = genresByArtist(
+    [
+      // bass house reaches house directly and through tech house: still its weight once.
+      row('a', 'owner', [['electronic', 'bass house', 0.5], ['electronic', 'tech house', 0.5]]),
+      row('b', 'owner', [['electronic', 'techno', 1]]),
+    ],
+    umbrellaVocab,
+  );
+  const mix = genreMix([ev('e1', [act('A'), act('B')])], by, umbrellaVocab);
+  assert.deepEqual(
+    mix.umbrellas.map((u) => [u.name, u.sets]),
+    // tech house is itself an umbrella (of bass house), so it holds both halves.
+    [['House', 1], ['tech house', 1], ['bass', 0.5]],
+  );
+  for (const u of mix.umbrellas) assert.ok(u.sets <= 1);
+  assert.equal(mix.known, 2);
+});
+
+test('genreMix umbrellas: the umbrella itself counts, and none without a vocabulary', () => {
+  const by = genresByArtist([row('a', 'owner', [['electronic', 'house', 1]])]);
+  assert.deepEqual(genreMix([ev('e1', [act('A')])], by, umbrellaVocab).umbrellas.map((u) => [u.name, u.sets]), [['House', 1]]);
+  assert.deepEqual(genreMix([ev('e1', [act('A')])], by).umbrellas, []);
+});
+
+test('hasGenreUnder finds an act by the umbrella or any genre under it, at any depth', () => {
+  const by = genresByArtist([
+    row('a', 'owner', [['electronic', 'bass house', 1]]),
+    row('b', 'owner', [['electronic', 'House', 1]]),
+    row('c', 'owner', [['electronic', 'techno', 1]]),
+  ]);
+  assert.equal(hasGenreUnder(by.get('a'), 'house', umbrellaVocab), true);
+  assert.equal(hasGenreUnder(by.get('a'), 'bass', umbrellaVocab), true);
+  assert.equal(hasGenreUnder(by.get('b'), 'house', umbrellaVocab), true);
+  assert.equal(hasGenreUnder(by.get('c'), 'house', umbrellaVocab), false);
+  assert.equal(hasGenreUnder(by.get('a'), 'house', undefined), false);
+});
+
+test('genresByArtist builds its map from the rows when the given map is empty', () => {
+  const rows = [
+    row('a', 'music-story', [['electronic', 'electro house', 1]]),
+    row('b', 'owner', [['x', 'Electro-House', 1]]),
+  ];
+  assert.deepEqual(genresByArtist(rows, undefined, []).get('b')?.genres.map((g) => [g.style, g.parent]), [['electro house', 'electronic']]);
 });

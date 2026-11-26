@@ -1,6 +1,6 @@
 import type { LoggedEvent } from '../server/events/types';
 import type { ArtistGenres, GenreMapEntry, GenreShare, GenreVocabulary } from '../server/events/genreTypes';
-import { genreKey, genreResolver, NOT_GROUPED, resolveShares } from '../server/events/genreVocabulary';
+import { genreKey, genreResolver, NOT_GROUPED, resolveShares, umbrellaClosure } from '../server/events/genreVocabulary';
 import type { GenreResolver } from '../server/events/genreVocabulary';
 
 export type { ArtistGenres, GenreShare };
@@ -41,7 +41,8 @@ function withAdditions(base: ArtistGenres | undefined, added: ArtistGenres, reso
 }
 
 // Without the genre map, its groups and spellings are read from the music-story and
-// MusicBrainz rows, whose parents and styles are the map's own.
+// MusicBrainz rows, whose parents and styles are the map's own. An empty map is
+// read the same as none.
 function mapFromRows(rows: ArtistGenres[]): GenreMapEntry[] {
   const out: GenreMapEntry[] = [];
   for (const r of rows) {
@@ -65,7 +66,7 @@ export function genresByArtist(
   vocab?: GenreVocabulary,
   map?: GenreMapEntry[],
 ): Map<string, ArtistGenres> {
-  const resolver = genreResolver(vocab, map ?? mapFromRows(rows), rows);
+  const resolver = genreResolver(vocab, map?.length ? map : mapFromRows(rows), rows);
   const out = new Map<string, ArtistGenres>();
   const added = new Map<string, ArtistGenres>();
   for (const raw of rows) {
@@ -108,8 +109,35 @@ export interface GenreCount {
 export interface GenreMix {
   parents: GenreCount[];
   styles: GenreCount[];
+  umbrellas: GenreCount[]; // a set counts once under each umbrella it falls in
   sets: number; // every seen act at every event
   known: number; // those whose act has a genre
+}
+
+// Every umbrella in the vocabulary, by key, with the name to show for it: the
+// umbrella's own vocabulary spelling, else the key.
+export function umbrellaNames(vocab: GenreVocabulary | undefined): Map<string, string> {
+  const names = new Map((vocab?.genres ?? []).map((g) => [g.key, g.name]));
+  const out = new Map<string, string>();
+  for (const g of vocab?.genres ?? []) for (const u of g.umbrellas) if (!out.has(u)) out.set(u, names.get(u) ?? u);
+  return out;
+}
+
+// The umbrellas each genre key falls under, itself included when it is one.
+function umbrellaLookup(vocab: GenreVocabulary | undefined): (key: string) => Set<string> {
+  const closure = umbrellaClosure(vocab);
+  const umbrellas = umbrellaNames(vocab);
+  return (key) => {
+    const out = new Set(closure.get(key) ?? []);
+    if (umbrellas.has(key)) out.add(key);
+    return out;
+  };
+}
+
+// True when an act has the umbrella itself or any genre under it, at any depth.
+export function hasGenreUnder(g: ArtistGenres | undefined, umbrellaKey: string, vocab: GenreVocabulary | undefined): boolean {
+  const ups = umbrellaLookup(vocab);
+  return (g?.genres ?? []).some((x) => ups(genreKey(x.style)).has(umbrellaKey));
 }
 
 // What you see live: every act you saw at every event counts once, split
@@ -117,10 +145,20 @@ export interface GenreMix {
 // spread over the others. Groups and styles are the resolved ones from
 // genresByArtist; a genre with no group counts under "Not grouped", and styles
 // are counted by genreKey so two spellings of one genre are one bar.
-export function genreMix(events: LoggedEvent[], byArtist: Map<string, ArtistGenres>): GenreMix {
+// Umbrellas (docs/specs/genre-vocabulary.md section 7): per set, an umbrella gets
+// the weights of the act's genres at or under it, at any depth, each genre once
+// even when two paths reach the umbrella, so never more than one set.
+export function genreMix(
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  vocab?: GenreVocabulary,
+): GenreMix {
   const parents = new Map<string, number>();
   const styles = new Map<string, number>();
   const styleName = new Map<string, string>();
+  const umbrellas = new Map<string, number>();
+  const names = umbrellaNames(vocab);
+  const ups = umbrellaLookup(vocab);
   let sets = 0;
   let known = 0;
   for (const e of events) {
@@ -129,6 +167,7 @@ export function genreMix(events: LoggedEvent[], byArtist: Map<string, ArtistGenr
       const g = byArtist.get(s.key);
       if (!g?.genres.length) continue;
       known += 1;
+      const genreWeight = new Map<string, number>(); // this set, by genre key
       for (const x of g.genres) {
         const parent = x.parent || NOT_GROUPED;
         parents.set(parent, (parents.get(parent) ?? 0) + x.weight);
@@ -136,7 +175,11 @@ export function genreMix(events: LoggedEvent[], byArtist: Map<string, ArtistGenr
         if (!k) continue;
         if (!styleName.has(k)) styleName.set(k, x.style);
         styles.set(k, (styles.get(k) ?? 0) + x.weight);
+        genreWeight.set(k, (genreWeight.get(k) ?? 0) + x.weight);
       }
+      const perSet = new Map<string, number>();
+      for (const [k, w] of genreWeight) for (const u of ups(k)) perSet.set(u, (perSet.get(u) ?? 0) + w);
+      for (const [u, w] of perSet) umbrellas.set(u, (umbrellas.get(u) ?? 0) + Math.min(1, w));
     }
   }
   const ranked = (m: Map<string, number>) =>
@@ -144,5 +187,6 @@ export function genreMix(events: LoggedEvent[], byArtist: Map<string, ArtistGenr
       .map(([name, n]) => ({ name, sets: n, share: known ? n / known : 0 }))
       .sort((a, b) => b.sets - a.sets || a.name.localeCompare(b.name));
   const named = new Map([...styles].map(([k, n]) => [styleName.get(k)!, n]));
-  return { parents: ranked(parents), styles: ranked(named), sets, known };
+  const umbrellaNamed = new Map([...umbrellas].map(([k, n]) => [names.get(k) ?? styleName.get(k) ?? k, n]));
+  return { parents: ranked(parents), styles: ranked(named), umbrellas: ranked(umbrellaNamed), sets, known };
 }
