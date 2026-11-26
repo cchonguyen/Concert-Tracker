@@ -1,13 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { Archive, ArrowDownUp, FileSpreadsheet, GitMerge, Search, Share2, X } from 'lucide-react';
+import React from 'react';
+import { Archive, ArrowDownUp, FileSpreadsheet, GitMerge, Search, Share2 } from 'lucide-react';
 import type { Page } from '../services/nav';
-import type { TipsSaved } from '../server/auth/prefs';
-import { DEFAULT_TIPS, loadPrefs, TIPS_EVENT, writeTips } from '../services/prefs';
-import { useMe } from './MeContext';
 import { Button } from './ui/Button';
+import { useTip } from './ui/TipsContext';
 
-// Six feature tiles that each open the page where the feature lives. Shown open for up to 4 events,
-// folded at 5 or more. Dismissing is remembered on the account (services/prefs.ts); see ARCHITECTURE.md.
+// The feature tiles, each opening the page where the feature lives. They are Home's tip (`home`): shown on the
+// first visits, then folded into the ? in the header, which brings them back (docs/specs/quiet-tips-table.md).
 interface Tile {
   key: string;
   icon: typeof Search;
@@ -28,84 +26,30 @@ export const TILES: Tile[] = [
   { key: 'years', icon: Archive, title: 'See your years', line: 'A timeline, a calendar heatmap, a map of every city and the artists you’ve seen most.', page: 'agenda', linkLabel: 'Open Timeline' },
 ];
 
-export const FeatureTiles: React.FC<{ eventCount: number; onOpen: (page: Page) => void; onImport: () => void }> = ({ eventCount, onOpen, onImport }) => {
-  const me = useMe();
-  // null until the account's choice arrives; nothing shows meanwhile, so a dismissed tip never flashes back.
-  const [saved, setSaved] = useState<TipsSaved | null>(null);
-  const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
-
-  // "Show tips again" in the Menu or About saves a new choice, so read it again.
-  useEffect(() => {
-    let live = true;
-    const read = () =>
-      loadPrefs(me.email)
-        .then((p) => live && setSaved(p.tips ?? DEFAULT_TIPS))
-        .catch(() => live && setSaved(DEFAULT_TIPS));
-    read();
-    window.addEventListener(TIPS_EVENT, read);
-    return () => {
-      live = false;
-      window.removeEventListener(TIPS_EVENT, read);
-    };
-  }, [me.email]);
-
-  if (saved === null) return null;
-
-  const update = (next: TipsSaved) => {
-    setSaved(next);
-    void writeTips(next);
-  };
-
-  const folded = expandedOverride === null ? eventCount >= 5 : !expandedOverride;
-  const visible = TILES.filter((t) => !saved.dismissed.includes(t.key));
-
-  if (saved.allHidden || visible.length === 0) {
-    return (
-      <div className="flex justify-end">
-        <Button variant="ghost" onClick={() => update({ dismissed: [], allHidden: false })}>
-          Show tips again
-        </Button>
-      </div>
-    );
-  }
-
-  if (folded) {
-    return (
-      <div className="flex justify-end">
-        <Button variant="ghost" onClick={() => setExpandedOverride(true)} aria-expanded={false}>
-          Show tips
-        </Button>
-      </div>
-    );
-  }
+export const FeatureTiles: React.FC<{ onOpen: (page: Page) => void; onImport: () => void }> = ({ onOpen, onImport }) => {
+  const { shown, entering, hide } = useTip('home');
+  if (!shown) return null;
 
   return (
-    <section aria-label="Tips" className="space-y-3">
+    <section aria-label="Tips" className={`space-y-3 ${entering ? 'tip-enter' : ''}`}>
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-display text-lg font-normal text-text">What LiveArchive can do</h2>
-        <Button variant="ghost" onClick={() => update({ ...saved, allHidden: true })}>
+        <Button variant="ghost" onClick={hide}>
           Hide these
         </Button>
       </div>
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {visible.map((t) => {
+        {TILES.map((t) => {
           const Icon = t.icon;
           return (
             <li
               key={t.key}
-              className="relative rounded-card border border-line-strong bg-surface-1 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
+              className="rounded-card border border-line-strong bg-surface-1 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
             >
-              <button
-                aria-label={`Hide tip: ${t.title}`}
-                onClick={() => update({ ...saved, dismissed: [...saved.dismissed, t.key] })}
-                className="absolute right-1 top-1 flex min-h-10 min-w-10 items-center justify-center rounded-control text-text-muted hover:text-text"
-              >
-                <X className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
               <span className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-control border border-accent-tint-line bg-accent-tint text-accent">
                 <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
               </span>
-              <h3 className="pr-8 text-sm font-bold text-text">{t.title}</h3>
+              <h3 className="text-sm font-bold text-text">{t.title}</h3>
               <p className="mt-1 text-sm text-text-muted">{t.line}</p>
               <button
                 onClick={() => (t.action === 'import' ? onImport() : onOpen(t.page))}

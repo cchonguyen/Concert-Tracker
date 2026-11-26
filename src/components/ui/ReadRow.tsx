@@ -160,7 +160,7 @@ export function ReadRow({
         // Desktop: no column is kept for the edit icon, so the value runs to the row's right edge. On hover the icon
         // lays a square over that edge, tinted like the hovered row, and the square is its own click target.
         <span
-          className={`absolute inset-y-0 right-0 hidden w-10 bg-row-hover transition-opacity duration-500 ease-out sm:block ${flash ? 'opacity-100' : 'opacity-0 focus-within:opacity-100 group-hover/row:opacity-100 group-hover/row:duration-[40ms]'}`}
+          className={`absolute inset-y-0 right-0 hidden w-10 bg-row-hover transition-opacity duration-[800ms] ease-out sm:block ${flash ? 'opacity-100' : 'opacity-0 focus-within:opacity-100 group-hover/row:opacity-100 group-hover/row:duration-[40ms]'}`}
         >
           <span className="flex h-full w-full items-center justify-center">
             {flash ? (

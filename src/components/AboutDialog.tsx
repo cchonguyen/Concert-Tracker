@@ -3,9 +3,12 @@ import { copy } from '../services/copy';
 import { LineupStatus, SOURCE_LABELS } from '../services/lineupApi';
 import { useIsOwner } from './MeContext';
 import { readerLine } from './ReaderPanel';
+import { Switch } from './ui/Switch';
+import { useTips } from './ui/TipsContext';
 
 // What the app is, where your data lives, and what leaves your browser. Every claim here must match the code.
-export function AboutDialog({ status, onClose, onShowTips }: { status: LineupStatus | null; onClose: () => void; onShowTips: () => void }) {
+export function AboutDialog({ status, onClose }: { status: LineupStatus | null; onClose: () => void }) {
+  const tips = useTips();
   const owner = useIsOwner();
   return (
     <Dialog title={`About ${copy.appName}`} onClose={onClose} panelClassName="h-full w-full max-w-xl space-y-6 overflow-y-auto border-l border-line bg-page p-5 shadow-2xl">
@@ -60,9 +63,7 @@ export function AboutDialog({ status, onClose, onShowTips }: { status: LineupSta
 
       <section className="space-y-2 text-sm text-text-muted">
         <h3 className="font-display text-base font-normal text-text">Tips</h3>
-        <button onClick={onShowTips} className="inline-flex min-h-11 items-center rounded-control border border-line-strong px-3 py-1.5 text-sm text-text hover:bg-surface-2 sm:min-h-9">
-          Show tips again
-        </button>
+        <Switch checked={tips.showAll} onChange={tips.setAll} label="Show all tips" helper="On: every page shows its tip until you hide it. Off: tips fold into the ? after a few visits." />
       </section>
 
       <section className="space-y-2 text-sm text-text-muted">

@@ -71,9 +71,6 @@ export async function writeTips(saved: TipsSaved) {
   window.dispatchEvent(new Event(TIPS_EVENT));
 }
 
-// "Show tips again" in the Menu and About.
-export const showTipsAgain = () => writeTips(DEFAULT_TIPS);
-
 // Records a milestone card shown on this page. A failed save means the card may show again after a reload.
 export function recordMilestone(part: Partial<MilestoneSaved>) {
   prefsApi.saveMilestone(part).then(
