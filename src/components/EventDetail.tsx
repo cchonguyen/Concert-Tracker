@@ -1045,7 +1045,7 @@ const SeenActs: React.FC<{
           type="button"
           onClick={() => setEditing(instanceId)}
           title="Opens this act's billing, set type and B2B partners."
-          className="flex min-h-11 min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 py-2 pr-3 text-left hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent sm:min-h-0"
+          className="flex min-h-11 min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 py-2 pr-3 text-left row-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent sm:min-h-0"
         >
           <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
             {acts.some((a) => a.alias) && (

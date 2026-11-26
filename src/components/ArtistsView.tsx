@@ -232,7 +232,7 @@ const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOp
               {/* The date gets its own line on a phone and a column wide enough for "May 15 – 17, 2026" above that. */}
               <button
                 onClick={() => onOpenEvent(e.id)}
-                className="group flex min-h-11 w-full flex-col gap-0.5 rounded-control px-2 py-1.5 text-left text-sm hover:bg-surface-2 sm:min-h-9 sm:flex-row sm:items-baseline sm:gap-4"
+                className="group flex min-h-11 w-full flex-col gap-0.5 rounded-control px-2 py-1.5 text-left text-sm row-hover sm:min-h-9 sm:flex-row sm:items-baseline sm:gap-4"
               >
                 <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-text-muted sm:w-36">{shortWhen(e) ?? 'Date unknown'}</span>
                 <span className="min-w-0 truncate text-text group-hover:text-accent">

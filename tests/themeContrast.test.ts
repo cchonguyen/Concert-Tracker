@@ -104,10 +104,11 @@ function tokens(accent: Accent, mode: 'dark' | 'light'): Decls {
 
 // [text token, background tokens it must read on]
 const PAIRS: Array<[string, string[]]> = [
-  ['--la-text', ['--la-page', '--la-surface-1', '--la-surface-2', '--la-surface-3', '--la-sunken', '--la-accent-tint']],
-  ['--la-text-muted', ['--la-page', '--la-surface-1', '--la-surface-2', '--la-surface-3', '--la-sunken', '--la-accent-tint']],
+  ['--la-text', ['--la-page', '--la-surface-1', '--la-surface-2', '--la-surface-3', '--la-sunken', '--la-accent-tint', '--la-row-hover']],
+  ['--la-text-muted', ['--la-page', '--la-surface-1', '--la-surface-2', '--la-surface-3', '--la-sunken', '--la-accent-tint', '--la-row-hover']],
+  // Faint text is not paired with --la-row-hover: a hovered row lifts it to muted (index.css, `.row-hover`).
   ['--la-text-faint', ['--la-page', '--la-surface-1', '--la-surface-2', '--la-sunken']],
-  ['--la-accent', ['--la-page', '--la-surface-1', '--la-surface-2', '--la-surface-3', '--la-accent-tint']],
+  ['--la-accent', ['--la-page', '--la-surface-1', '--la-surface-2', '--la-surface-3', '--la-accent-tint', '--la-row-hover']],
   ['--la-on-accent', ['--la-accent-fill']],
   ['--la-good', ['--la-page', '--la-surface-1', '--la-surface-2']],
   ['--la-warn', ['--la-page', '--la-surface-1', '--la-surface-2']],

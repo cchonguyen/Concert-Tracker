@@ -326,7 +326,7 @@ const Stretch: React.FC<{ shown: TimelineSpan[]; more: number; onOpen: (id: stri
         const place = placeLabel(s.event);
         return (
           <li key={s.id}>
-            <button type="button" onClick={() => onOpen(s.id)} className="w-full rounded-control px-1.5 py-1 text-left hover:bg-surface-2">
+            <button type="button" onClick={() => onOpen(s.id)} className="w-full rounded-control px-1.5 py-1 text-left row-hover">
               <span className="block truncate font-medium text-text">{s.title}</span>
               <span className="block truncate font-mono text-xs tabular-nums text-text-muted">
                 {dateChip(s)}
