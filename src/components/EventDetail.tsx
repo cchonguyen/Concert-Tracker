@@ -72,6 +72,7 @@ import { CheckDetails, type Suggestion } from './CheckDetails';
 import { Pill } from './ui/Pill';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
+import { Equalizer } from './ui/Equalizer';
 import { Segmented } from './ui/Segmented';
 import { ReadList, ReadRow } from './ui/ReadRow';
 import { sourceGlyph } from './ui/SourceIcon';
@@ -1580,6 +1581,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const weatherDay = event.endDate ?? event.startDate;
   const canLookUpWeather = Boolean(weatherDay && event.city && weatherDay < new Date().toISOString().slice(0, 10));
   const text = (v: string) => (v.trim() ? v.trim() : null);
+  // AI reads left today, for Deep search beside Check details and its line in the sources card's tooltip.
+  const aiReadsLeft = lineupStatus?.quota ? Math.max(0, lineupStatus.quota.limit - lineupStatus.quota.used) : null;
+  const sourcesButton =
+    "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-line-strong px-2.5 text-xs text-text hover:border-accent hover:text-accent disabled:opacity-50 sm:min-h-8";
 
   const seenKeys = new Set(event.seen.map((s) => s.key));
   const lineupActs = (edition?.performances ?? []).filter((p) => p.status !== 'cancelled');
@@ -2520,16 +2525,41 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           lineupActs={lineupActs}
           editionId={event.editionId}
           highlightedKey={highlightedSource}
+          help={
+            <>
+              <p>Every detail that came from somewhere other than you is listed here, with what it gave and a quote from it. What you typed is kept as you typed it.</p>
+              <p>Check details searches Ticketmaster, setlist.fm, Clashfinder (when set up) and the web for this date and place. It offers what it finds; nothing you typed changes.</p>
+              {lineupStatus?.gemini && (
+                <p>
+                  Deep search, after a check, has AI read the pages the check found for details it missed.
+                  {aiReadsLeft !== null && lineupStatus.quota ? ` It uses up to 3 of the ${aiReadsLeft} AI reads left today (of ${lineupStatus.quota.limit}).` : ""}
+                </p>
+              )}
+            </>
+          }
           action={
-            <button
-              type="button"
-              onClick={() => void run("research", () => eventsApi.research(event.id))}
-              disabled={busy === "research" || busy === "research-gemini"}
-              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-line-strong px-2.5 text-xs text-text hover:border-accent hover:text-accent disabled:opacity-50 sm:min-h-8"
-            >
-              {busy === "research" ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
-              Check details
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void run("research", () => eventsApi.research(event.id))}
+                disabled={busy === "research" || busy === "research-gemini"}
+                className={sourcesButton}
+              >
+                {busy === "research" ? <Equalizer size="sm" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
+                Check details
+              </button>
+              {lineupStatus?.gemini && details.checkedAt && (
+                <button
+                  type="button"
+                  onClick={() => void run("research-gemini", () => eventsApi.research(event.id, true))}
+                  disabled={busy === "research" || busy === "research-gemini" || aiReadsLeft === 0}
+                  className={sourcesButton}
+                >
+                  {busy === "research-gemini" ? <Equalizer size="sm" /> : <Search className="h-3.5 w-3.5" aria-hidden="true" />}
+                  Deep search with AI
+                </button>
+              )}
+            </div>
           }
         >
           <CheckDetails

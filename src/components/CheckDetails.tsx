@@ -167,9 +167,13 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
       {live}
 
       {rows.length > 0 && (
-        <ul className="space-y-1 text-xs">
+        // The sources it asks sit side by side once the card is wide enough.
+        <ul className="grid gap-1 text-xs @[760px]:grid-cols-3 @[760px]:gap-2">
           {rows.map((r) => (
-            <li key={r.label} className="flex items-center justify-between gap-2 text-text-muted">
+            <li
+              key={r.label}
+              className="flex items-center justify-between gap-2 text-text-muted @[760px]:rounded-control @[760px]:border @[760px]:border-line @[760px]:px-2.5 @[760px]:py-1.5"
+            >
               <span>{r.label}</span>
               <span className={r.state === 'found' ? 'text-good' : 'text-text-muted'}>{ROW_TEXT[r.state]}</span>
             </li>
@@ -251,14 +255,20 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
       ))}
 
       {gemini && lineupStatus && (
-        <div className="space-y-2 border-t border-line pt-3">
-          <p className="text-xs text-text-muted">
-            Still missing something? Deep search has AI read the pages found above for details the quick check missed.
-            {left !== null && lineupStatus.quota ? ` Uses up to 3 of the ${left} AI reads left today (of ${lineupStatus.quota.limit}).` : ''}
-          </p>
-          <Button onClick={onGemini} disabled={busy || geminiBusy || left === 0}>
-            {geminiBusy ? <Equalizer size="sm" /> : <Search className="h-3.5 w-3.5" />} Deep search with AI
-          </Button>
+        // Inline (in "Where every detail came from") the Deep search button sits beside Check details in the card's
+        // header and its explanation is in the card's info tooltip, so only its status lines show here.
+        <div className={inline ? 'space-y-1' : 'space-y-2 border-t border-line pt-3'}>
+          {!inline && (
+            <>
+              <p className="text-xs text-text-muted">
+                Still missing something? Deep search has AI read the pages found above for details the quick check missed.
+                {left !== null && lineupStatus.quota ? ` Uses up to 3 of the ${left} AI reads left today (of ${lineupStatus.quota.limit}).` : ''}
+              </p>
+              <Button onClick={onGemini} disabled={busy || geminiBusy || left === 0}>
+                {geminiBusy ? <Equalizer size="sm" /> : <Search className="h-3.5 w-3.5" />} Deep search with AI
+              </Button>
+            </>
+          )}
           {left === 0 && <p className="text-xs text-warn">No AI reads left today{lineupStatus.quota?.exhaustedUntil ? `; the limit resets ${new Date(lineupStatus.quota.exhaustedUntil).toLocaleString()}` : ''}.</p>}
           {geminiNotes.length > 0 && (
             <ul className="space-y-0.5 text-[11px] text-text-muted">
