@@ -1761,6 +1761,201 @@ export function lineupDna(
   return { levels: taxonomy ? 'taxonomy' : 'groups', bars };
 }
 
+// Event Match (docs/specs/genre-taxonomy-release-2.md section 4 and decisions 3, 4, 7).
+// How well one event's bill fits your own taste. Your vector is your other events' seen sets,
+// smoothed one step over the owner's adjacent genre links, rolled up to families and compared
+// with the bill's whole-bar family vector by cosine. Relations never change Lineup DNA.
+export const MATCH_ALPHA = 0.5;
+export const MATCH_STRONG = 0.6;
+export const MATCH_SOME = 0.3;
+export const MATCH_MIN_SETS = 20;
+export const MATCH_MIN_EVENTS = 5;
+const MATCH_LANE_MAX = 2;
+
+export type MatchBand = 'strong' | 'some' | 'outside';
+
+export interface MatchLaneFamily {
+  key: string; // family key, as lineupDna names them
+  name: string;
+}
+
+export interface EventMatchResult {
+  sets: number; // your sets with a genre at other events (this event left out)
+  events: number; // those other events that contribute at least one such set
+  score: number; // cosine of your smoothed family vector and the bill's, 0 to 1
+  band: MatchBand;
+  lane: MatchLaneFamily[]; // up to 2 families adding most to the score; empty when outside
+  inLane: string[]; // bill act keys whose top genre is one of your genres
+  nearby: string[]; // bill act keys whose top genre is adjacent to one of your genres
+  nearbyUnseen: string[]; // the nearby ones you never marked as seen at any event
+  enough: boolean; // sets and events over the floor, and Lineup DNA's whole-bill floor
+}
+
+// Adjacent links read in both directions. Where both exist, the larger weight wins.
+function adjacencyOf(vocab: GenreVocabulary | undefined): Map<string, Map<string, number>> {
+  const adj = new Map<string, Map<string, number>>();
+  const link = (a: string, b: string, w: number): void => {
+    if (a === b || !(w > 0)) return;
+    let row = adj.get(a);
+    if (!row) adj.set(a, (row = new Map()));
+    if ((row.get(b) ?? 0) < w) row.set(b, w);
+  };
+  for (const g of vocab?.genres ?? []) {
+    for (const r of g.relations ?? []) {
+      if (r.type !== 'adjacent') continue;
+      link(g.key, r.target, r.weight);
+      link(r.target, g.key, r.weight);
+    }
+  }
+  return adj;
+}
+
+export function eventMatch(
+  eventId: string,
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  acts: LineupGenresAct[],
+  vocab: GenreVocabulary | undefined,
+): EventMatchResult {
+  const usableGenres = (row: ArtistGenres | undefined): GenreShare[] =>
+    (row?.genres ?? []).filter((x) => genreKey(x.style) && x.weight > 0);
+
+  // The bill, as lineupDna reads it: billed and performed acts only.
+  const listed = acts.filter((a) => a.status === undefined || a.status === 'billed' || a.status === 'performed');
+  const slotSize = new Map<string, number>();
+  for (const a of listed) if (a.slotId) slotSize.set(a.slotId, (slotSize.get(a.slotId) ?? 0) + 1);
+  const billActs = listed.map((act) => ({ act, genres: usableGenres(byArtist.get(act.key)) }));
+  const taxonomy = (vocab?.genres ?? []).some((g) => levelOf(g) === 'macro')
+    || billActs.some((b) => b.genres.some((x) => x.macro !== undefined));
+  const prefix = taxonomy ? 'family' : 'group';
+
+  const byKey = new Map<string, VocabGenre>();
+  for (const g of vocab?.genres ?? []) byKey.set(g.key, g);
+  // Family (or group) of each genre key as the shares show it; vocabulary for genres with no share.
+  const shownFamily = new Map<string, string>();
+  for (const row of byArtist.values()) {
+    for (const x of usableGenres(row)) {
+      const k = genreKey(x.style);
+      if (!shownFamily.has(k)) shownFamily.set(k, driftBandOf(x, 'family', taxonomy));
+    }
+  }
+  const familyOf = (key: string): string => {
+    const shown = shownFamily.get(key);
+    if (shown !== undefined) return shown;
+    const g = byKey.get(key);
+    if (!taxonomy) return g?.parent || NOT_GROUPED;
+    const fam = g?.primaryParent ? byKey.get(g.primaryParent) : undefined;
+    return fam?.name ?? NOT_GROUPED;
+  };
+
+  // Your vector by genre key. Every seen act at every other event, split by genre weight.
+  const u = new Map<string, number>();
+  let sets = 0;
+  const contributing = new Set<string>();
+  for (const e of events) {
+    if (e.id === eventId || e.attendance === 'planned' || e.attendance === 'missed') continue;
+    const shares = setShares(e);
+    e.seen.forEach((s, si) => {
+      const genres = usableGenres(byArtist.get(s.key));
+      if (!genres.length) return;
+      const share = shares[si];
+      const total = genres.reduce((t, x) => t + x.weight, 0);
+      sets += share;
+      contributing.add(e.id);
+      for (const x of genres) {
+        const k = genreKey(x.style);
+        u.set(k, (u.get(k) ?? 0) + share * x.weight / total);
+      }
+    });
+  }
+  // Every act you ever marked as seen, this event included (for nearbyUnseen).
+  const seenAll = new Set<string>();
+  for (const e of events) for (const s of e.seen) seenAll.add(s.key);
+
+  // One smoothing step: v' = v + alpha * (A-hat v), A-hat = A / sqrt(deg(s) deg(t)).
+  const adj = adjacencyOf(vocab);
+  const deg = new Map<string, number>();
+  for (const [k, row] of adj) deg.set(k, [...row.values()].reduce((t, w) => t + w, 0));
+  const smoothed = new Map<string, number>(u);
+  for (const [t, row] of adj) {
+    for (const [s, w] of row) {
+      const us = u.get(s);
+      if (!us) continue;
+      smoothed.set(t, (smoothed.get(t) ?? 0) + MATCH_ALPHA * w / Math.sqrt((deg.get(t) ?? 0) * (deg.get(s) ?? 0)) * us);
+    }
+  }
+
+  // Roll your smoothed vector up to families.
+  const you = new Map<string, { name: string; w: number }>();
+  for (const [k, w] of smoothed) {
+    if (!(w > 0)) continue;
+    const name = familyOf(k);
+    const key = dnaKey(prefix, name);
+    const cur = you.get(key);
+    if (cur) cur.w += w;
+    else you.set(key, { name, w });
+  }
+
+  // The bill's whole-bar family vector, as lineupDna splits it (not smoothed).
+  const bill = new Map<string, { name: string; w: number }>();
+  for (const { act, genres } of billActs) {
+    if (!genres.length) continue;
+    const base = act.slotId ? 1 / (slotSize.get(act.slotId) ?? 1) : 1;
+    const sum = genres.reduce((t, x) => t + x.weight, 0);
+    for (const x of genres) {
+      const name = driftBandOf(x, 'family', taxonomy);
+      const key = dnaKey(prefix, name);
+      const cur = bill.get(key);
+      const w = base * x.weight / sum;
+      if (cur) cur.w += w;
+      else bill.set(key, { name, w });
+    }
+  }
+
+  let dot = 0;
+  let youSq = 0;
+  let billSq = 0;
+  const contributions: Array<{ key: string; name: string; c: number }> = [];
+  for (const [key, { name, w }] of you) {
+    youSq += w * w;
+    const b = bill.get(key)?.w ?? 0;
+    dot += w * b;
+    if (b > 0) contributions.push({ key, name, c: w * b });
+  }
+  for (const { w } of bill.values()) billSq += w * w;
+  const score = youSq > 0 && billSq > 0 ? dot / Math.sqrt(youSq * billSq) : 0;
+  const band: MatchBand = score >= MATCH_STRONG ? 'strong' : score >= MATCH_SOME ? 'some' : 'outside';
+  const lane: MatchLaneFamily[] = band === 'outside'
+    ? []
+    : contributions
+      .sort((a, b) => b.c - a.c || a.name.localeCompare(b.name))
+      .slice(0, MATCH_LANE_MAX)
+      .map(({ key, name }) => ({ key, name }));
+
+  // Acts whose top genre (largest weight) is yours, or reaches yours through an adjacent link.
+  const inLane: string[] = [];
+  const nearby: string[] = [];
+  const nearbyUnseen: string[] = [];
+  for (const { act, genres } of billActs) {
+    if (!genres.length) continue;
+    const top = [...genres].sort((a, b) => b.weight - a.weight || genreKey(a.style).localeCompare(genreKey(b.style)))[0];
+    const topKey = genreKey(top.style);
+    if ((u.get(topKey) ?? 0) > 0) {
+      inLane.push(act.key);
+      continue;
+    }
+    const near = adj.get(topKey);
+    if (near && [...near.keys()].some((s) => (u.get(s) ?? 0) > 0)) {
+      nearby.push(act.key);
+      if (!seenAll.has(act.key)) nearbyUnseen.push(act.key);
+    }
+  }
+
+  const dna = lineupDna(acts, byArtist, vocab).bars[0];
+  const enough = sets >= MATCH_MIN_SETS && contributing.size >= MATCH_MIN_EVENTS && dna.enough;
+  return { sets, events: contributing.size, score, band, lane, inLane, nearby, nearbyUnseen, enough };
+}
+
 // Sound Drift (docs/specs/genre-taxonomy-release-1.md decisions 1-5, 7 and section 4).
 // Works by calendar year. A year is counted when it has at least DRIFT_MIN_SETS known sets.
 export const DRIFT_MIN_SETS = 10;
