@@ -400,7 +400,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="font-display text-2xl font-normal text-text">Manage</h1>
+        <h1 className="poster-head text-4xl text-text">Manage</h1>
         <p className="text-xs text-text-muted">
           {archive
             ? 'The shared catalog: lineups you look up, the editions they make up, and the artists in them. Nothing here is added to your log.'

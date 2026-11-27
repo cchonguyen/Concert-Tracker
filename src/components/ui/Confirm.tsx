@@ -17,7 +17,7 @@ export function Confirm({ title, message, confirmLabel, typedMatch, onConfirm, o
   const ready = typedMatch === undefined || typed.trim() === typedMatch;
   return (
     <Dialog title={title} onClose={onCancel} placement="center">
-      <h2 className="font-display text-lg font-normal text-text">{title}</h2>
+      <h2 className="poster-head text-2xl text-text">{title}</h2>
       <p className="text-sm text-text-muted">{message}</p>
       {typedMatch !== undefined && (
         <label className="block space-y-1 text-xs text-text-muted">

@@ -24,7 +24,7 @@ export const QuickAdd: React.FC<QuickAddProps> = ({ open, onClose, onCaptured, o
   return (
     <Dialog title="Quick add" onClose={onClose} placement="center">
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-xl font-normal text-text">Quick add</h2>
+        <h2 className="poster-head text-2xl text-text">Quick add</h2>
         <IconButton icon={X} label="Close" onClick={onClose} />
       </div>
       <CaptureBar onCaptured={onCaptured} />

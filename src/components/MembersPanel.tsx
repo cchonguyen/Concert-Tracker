@@ -163,7 +163,7 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
   return (
     <Dialog title="Members" onClose={onClose} panelClassName="h-full w-full max-w-md space-y-4 overflow-y-auto border-l border-line bg-page p-5">
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-xl font-normal text-text">Members</h2>
+        <h2 className="poster-head text-2xl text-text">Members</h2>
         <button onClick={onClose} aria-label="Close" className="flex h-10 w-10 items-center justify-center rounded-control text-text-muted hover:text-text">
           <X className="h-5 w-5" />
         </button>

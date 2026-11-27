@@ -91,7 +91,7 @@ export const GenreStory: React.FC<GenreStoryProps> = ({
 
   return (
     <section className="space-y-4">
-      <h2 className="font-display text-xl font-normal text-text">Your genre story</h2>
+      <h2 className="poster-head text-2xl text-text">Your genre story</h2>
 
       <div className="space-y-3 rounded-card border border-line bg-surface-1 p-4 sm:p-5">
         <div>

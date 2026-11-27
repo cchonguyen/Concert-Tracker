@@ -28,7 +28,7 @@ export const NoticeModal: React.FC<{ onAccepted: () => void }> = ({ onAccepted }
       layer="top"
       panelClassName="max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-card border border-line bg-page p-5"
     >
-      <h2 className="font-display text-xl font-normal">Before you start</h2>
+      <h2 className="poster-head text-2xl">Before you start</h2>
       <ul className="space-y-3 text-sm text-text-muted">
         <li>
           <b>What this is.</b> A personal hobby project run by Charlie, not a business. It is offered as is, with no promise it stays
