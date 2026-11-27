@@ -1,4 +1,5 @@
 import React from 'react';
+import { PosterHeading } from './ui/PosterHeading';
 import { Mail, Search, Ticket } from 'lucide-react';
 import { CaptureBar } from './CaptureBar';
 import { PAGE_ICON } from './pageIcons';
@@ -134,9 +135,9 @@ export const HomePage: React.FC<HomePageProps> = ({
     <div className="space-y-6">
       <section className="space-y-3">
         <div className="space-y-1.5">
-          <h1 className="font-display text-3xl font-normal tracking-tight text-text sm:text-4xl">
-            {empty ? 'Start with the last show you remember' : 'Every show you\u2019ve ever been to, in one place.'}
-          </h1>
+          <PosterHeading as={1} size="xl" second={empty ? 'the last show you remember' : 'In one place.'}>
+            {empty ? 'Start with' : 'Every show you\u2019ve ever been to.'}
+          </PosterHeading>
           <p className="text-sm text-text-muted">
             Type one line about a show. LiveArchive finds the date, the venue and who played, and shows you where every detail came from.
           </p>
@@ -193,7 +194,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       {(Object.keys(SECTIONS) as Section[]).map((section) => (
         <section key={section} className="space-y-3">
-          <h2 className="font-display text-xl font-normal text-text">{SECTIONS[section].label}</h2>
+          <PosterHeading size="md">{SECTIONS[section].label}</PosterHeading>
           <div className={`grid gap-3 sm:grid-cols-2 ${empty ? 'opacity-60' : ''}`}>
             {stripTabsFor(section, { canManage }).map((t) => {
               const Icon = PAGE_ICON[t === 'timeline' ? 'agenda' : t];

@@ -19,7 +19,7 @@ All of it is in one module, `src/styles/landing-look.css`, loaded by `src/index.
 ## Slices
 
 - **45.1 Shared parts and logo.** The module, tokens, `PosterHeading`, `PostIt`, `AppBackdrop`, `Logo`, button motion, the logo in the app header and on the landing page. No screen layout changes.
-- **45.2 Home.** Poster headings, a post-it for the first-run and tips cards, second colour on the year ticket. Stop for Charlie's review.
+- **45.2 Home (built).** Poster headline with its second half in the second colour, poster section headings, and the "What LiveArchive can do" tiles as post-its (tilts and tones repeat in a fixed order). Stop for Charlie's review.
 - **45.3 Event detail.** Poster section headings; post-it for "Check details" tips.
 - **45.4 Ranking, Stats and Library.** Poster headings; post-its for highlights.
 - **45.5 Manage and back office.** Poster headings only.
