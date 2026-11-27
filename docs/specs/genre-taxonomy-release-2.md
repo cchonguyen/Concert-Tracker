@@ -12,7 +12,7 @@ Planned 2026-11-27, after Release 1 ([genre-taxonomy-release-1.md](genre-taxonom
 
 ## Decisions this spec carries
 
-1. Lineup DNA: every act on the lineup counts 1.0, split across its genres by weight, the same as Release 1 decision 1 (Charlie, 2026-11-27). The bill's own B2B pairs share one set, using `setShares`. Acts the lineup lists as `billed` and `performed` both count. Rejected or hidden performers do not.
+1. Lineup DNA: every act on the lineup counts 1.0, split across its genres by weight, the same as Release 1 decision 1 (Charlie, 2026-11-27). A B2B slot with a combo `alias` that has genres counts as 1.0 for the combo; otherwise each act counts 1.0. Acts the lineup lists as `billed` and `performed` both count. Rejected or hidden performers do not.
 2. Stage bars only where the lineup's performers carry `stages`. An act on two stages counts on each stage's bar. An act with no stage goes under "No stage listed", and that bar shows only when at least one other stage exists (Charlie, 2026-11-27).
 3. Event Match floor: 20 sets with a genre over 5 events, the person's own, not counting this event (Charlie, 2026-11-27).
 4. Smoothing follows the brief: one step only, `v_smooth = v + α · (Â · v)`, with α = 0.5 (the middle of the brief's 0.35 to 0.65). `Â` is the `adjacent` links read in both directions, each weight divided by `sqrt(deg(source) · deg(target))`, where `deg` is the sum of a genre's adjacent weights. That is the brief's hub dampening (norm^0.5). `secondary_parent` and `derived_from` links are not used here.
@@ -48,7 +48,7 @@ Planned 2026-11-27, after Release 1 ([genre-taxonomy-release-1.md](genre-taxonom
 
 `eventMatch(eventId, events, byArtist, lineup, vocab)` in `genreInsights.ts`:
 
-- Your vector: every seen set at your other events, with `setShares`, split by genre weight. This event is left out, so a show you went to is scored against what you saw before and after it.
+- Your vector: every seen set at your other events, counted with `countedSets`, split by genre weight. This event is left out, so a show you went to is scored against what you saw before and after it.
 - Smoothing (decision 4) on the genre level, then summed up to families through `primary_parent_key`. The bill's vector is Lineup DNA's whole-bill vector, not smoothed.
 - `score` (cosine), `band` (decision 7), and `lane`: the 1 or 2 families that add the most to the score, named in the copy.
 - `inLane`: acts on the bill whose top genre is one of your own genres (before smoothing). `nearby`: acts whose top genre reaches you only through an adjacent link, split into `nearbyUnseen` (you never marked them as seen anywhere) and the rest.

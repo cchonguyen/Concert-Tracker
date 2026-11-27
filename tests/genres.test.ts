@@ -20,7 +20,7 @@ import {
   undoGenreChange,
 } from '../src/server/events/genres.ts';
 import { runAsMember } from '../src/server/auth/requestScope.ts';
-import { formatSets, genreMix, genresByArtist, hasGenreUnder, missingGenreKeys, setShares, topStyles } from '../src/services/genres.ts';
+import { countedSets, formatSets, genreMix, genresByArtist, hasGenreUnder, missingGenreKeys, setShares, topStyles } from '../src/services/genres.ts';
 import type { GenreVocabulary } from '../src/server/events/genreTypes.ts';
 import { addGenreAlias, createGenre } from '../src/server/events/genreVocabularyManage.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
@@ -207,24 +207,24 @@ test('genreMix splits each seen set by weight and counts unknown sets apart', ()
 
 const b2bAct = (name: string, partners: string[], extra: Partial<SeenAct> = {}): SeenAct => ({ ...act(name), b2b: partners, ...extra });
 
-test('setShares: a solo act gets 1.0, a B2B of two gets 0.5 each, a three-way gets a third each', () => {
+test('setShares: every seen act counts as 1, and a solo flag adds 1 when a B2B partner is present', () => {
   assert.deepEqual(setShares(ev('e1', [act('A')])), [1]);
-  assert.deepEqual(setShares(ev('e2', [b2bAct('A', ['b']), b2bAct('B', ['a'])])), [0.5, 0.5]);
+  assert.deepEqual(setShares(ev('e2', [b2bAct('A', ['b']), b2bAct('B', ['a'])])), [1, 1]);
   assert.deepEqual(
     setShares(ev('e3', [b2bAct('A', ['b', 'c']), b2bAct('B', ['a', 'c']), b2bAct('C', ['a', 'b'])])),
-    [1 / 3, 1 / 3, 1 / 3],
+    [1, 1, 1],
   );
 });
 
-test('setShares: a partner not in the seen list does not count toward n', () => {
-  assert.deepEqual(setShares(ev('e1', [b2bAct('A', ['b', 'z']), b2bAct('B', ['a'])])), [0.5, 0.5]);
+test('setShares: a partner not in the seen list leaves the act at 1', () => {
+  assert.deepEqual(setShares(ev('e1', [b2bAct('A', ['b', 'z']), b2bAct('B', ['a'])])), [1, 1]);
   assert.deepEqual(setShares(ev('e2', [b2bAct('A', ['z'])])), [1]);
 });
 
-test('setShares: a solo flag adds 1.0 for the set the act also played on its own', () => {
+test('setShares: a solo flag adds 1 for the set the act also played on its own', () => {
   assert.deepEqual(
     setShares(ev('e1', [b2bAct('A', ['b'], { solo: true }), b2bAct('B', ['a'])])),
-    [1.5, 0.5],
+    [2, 1],
   );
   // With no partner present the act played one set, so the flag adds nothing.
   assert.deepEqual(setShares(ev('e2', [b2bAct('A', ['z'], { solo: true })])), [1]);
@@ -237,7 +237,7 @@ test('formatSets rounds to the nearest whole number, halves up', () => {
   assert.equal(formatSets(0.5), '1');
 });
 
-test('genreMix counts a B2B set once: known and sets are fractional, each genre gets its share', () => {
+test('genreMix counts each B2B artist as 1 viewing (whole numbers even when B2B links are asymmetric)', () => {
   const events = [
     ev('e1', [b2bAct('A', ['b']), b2bAct('B', ['a'])]),
     ev('e2', [act('C')]),
@@ -247,12 +247,55 @@ test('genreMix counts a B2B set once: known and sets are fractional, each genre 
     row('c', 'music-story', [['rock', 'indie rock', 1]]),
   ]);
   const mix = genreMix(events, by);
-  // The B2B pair is one set (A 0.5, B 0.5); B has no genre, so the set's known part is A's 0.5.
-  assert.equal(mix.sets, 2);
-  assert.equal(mix.known, 1.5);
-  assert.deepEqual(mix.parents.map((p) => [p.name, p.sets]), [['rock', 1], ['electronic', 0.5]]);
-  assert.equal(mix.parents[0].share, 1 / 1.5);
-  assert.equal(mix.parents[1].share, 0.5 / 1.5);
+  // B2B pair counts 1 for A and 1 for B; B has no genre, so known = 2 of 3 sets.
+  assert.equal(mix.sets, 3);
+  assert.equal(mix.known, 2);
+  assert.deepEqual(mix.parents.map((p) => [p.name, p.sets]), [['electronic', 1], ['rock', 1]]);
+  assert.equal(mix.parents[0].share, 0.5);
+  assert.equal(mix.parents[1].share, 0.5);
+
+  // Asymmetric B2B (A lists B, B doesn't list A) still gives whole numbers.
+  const asym = genreMix([ev('e3', [b2bAct('A', ['b']), act('B')])], by);
+  assert.equal(asym.sets, 2);
+  assert.equal(asym.known, 1);
+});
+
+test('countedSets and genreMix use combo alias when it has genres, else each individual artist', () => {
+  const b2bWithAlias = ev('e1', [
+    b2bAct('Deadmau5', ['kaskade'], { alias: 'Kx5', slotId: 's1' }),
+    b2bAct('Kaskade', ['deadmau5'], { alias: 'Kx5', slotId: 's1' }),
+  ]);
+  const withoutComboGenre = genresByArtist([
+    row('deadmau5', 'music-story', [['electronic', 'progressive house', 1]]),
+    row('kaskade', 'music-story', [['electronic', 'house', 1]]),
+  ]);
+  assert.deepEqual(countedSets(b2bWithAlias, withoutComboGenre), [
+    { key: 'deadmau5', name: 'Deadmau5', sets: 1 },
+    { key: 'kaskade', name: 'Kaskade', sets: 1 },
+  ]);
+
+  const withComboGenre = genresByArtist([
+    row('deadmau5', 'music-story', [['electronic', 'progressive house', 1]]),
+    row('kaskade', 'music-story', [['electronic', 'house', 1]]),
+    row('kx5', 'music-story', [['electronic', 'melodic house', 1]]),
+  ]);
+  assert.deepEqual(countedSets(b2bWithAlias, withComboGenre), [
+    { key: 'kx5', name: 'Kx5', sets: 1 },
+  ]);
+  const mix = genreMix([b2bWithAlias], withComboGenre);
+  assert.equal(mix.sets, 1);
+  assert.equal(mix.known, 1);
+  assert.deepEqual(mix.styles.map((s) => [s.name, s.sets]), [['melodic house', 1]]);
+
+  // Legacy solo flag in a combo B2B adds 1 for that artist's solo set.
+  const withSolo = ev('e2', [
+    b2bAct('Deadmau5', ['kaskade'], { alias: 'Kx5', slotId: 's1', solo: true }),
+    b2bAct('Kaskade', ['deadmau5'], { alias: 'Kx5', slotId: 's1' }),
+  ]);
+  assert.deepEqual(countedSets(withSolo, withComboGenre), [
+    { key: 'kx5', name: 'Kx5', sets: 1 },
+    { key: 'deadmau5', name: 'Deadmau5', sets: 1 },
+  ]);
 });
 
 test('your own genres win, an empty list of yours means none, and missing skips them', () => {

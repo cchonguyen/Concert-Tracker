@@ -13,18 +13,17 @@ Planned 2026-11-27, after Phase A ([genre-taxonomy-phase-a.md](genre-taxonomy-ph
 ## Decisions this spec carries
 
 1. Weights: each set counts 1.0. An act's share of it is split across the act's genres by their weights: the owner's ranked genres use the decay from Phase A (1.0, 0.70, 0.45, 0.25, then 0.25, scaled to add up to 1), and music-story and MusicBrainz rows keep their own weights (Charlie, 2026-11-27).
-2. B2B: the acts in one B2B share one set evenly. Two acts get 0.5 each, three get a third. An act you also saw play on its own at the same event (`solo`) gets a further 1.0 for that set (Charlie, 2026-11-27).
+2. B2B: each artist in a B2B counts as 1 viewing (whole numbers, no fractions), unless the B2B has a combo `alias` that has genres, in which case it counts as 1 viewing of the combo. An act you also saw play on its own at the same event (`solo`) gets a further 1 viewing (updated 2026-11-27).
 3. Levels come only from the vocabulary's `primary_parent_key` links, read at view time (Phase A decision 1). A genre with no family counts under "Not grouped" at the family level and the macro level.
 4. Relations (`genre_relations`) never add to these totals. Release 2 uses them for smoothing.
 5. Floors are the Phase A ones: 10 sets for a chart, 10 sets per compared year and 3 such years for Sound Drift.
 6. Proposed here: the genre level inside an opened family shows each genre's share of all sets with a genre, so the genres add up to the family's figure. The family's own total stays on its row.
 7. Proposed here: Sound Drift works by calendar year. Seasons stay on the "kind of night and season" tiles that 38.8 already built.
 
-## 1. B2B split (Slice 40.1)
+## 1. B2B counting (Slice 40.1, updated in Slice 48.1)
 
-- One helper, `setShares(event)` in `src/services/genres.ts`, gives each seen act its share of a set at that event: 1.0 for a solo set, `1 / n` for each of the `n` acts in a B2B (the act plus the partners in its `b2b` list who are also in that event's seen list), plus 1.0 when `solo` is set.
-- `genreMix` and every count in `src/services/genreInsights.ts` that loops over seen acts use it, so set counts can be fractions. Screens round them for display ("12.5 sets" shows as "12½ sets" or "13 sets": the slice picks one and uses it everywhere).
-- Floors compare the fractional total.
+- `countedSets(event, byArtist)` in `src/services/genres.ts` returns whole-number set counts: 1 per artist in a B2B (or 1 for the combo when a combo `alias` has genres in `byArtist`), plus 1 when `solo` is set. `setShares(event)` also returns whole numbers (`1`, or `2` with `solo` and a B2B partner present).
+- `genreMix` and every count in `src/services/genreInsights.ts` that loops over seen acts use `countedSets`.
 
 ## 2. Multi-Zoom maths (Slice 40.2)
 
