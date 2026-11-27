@@ -261,7 +261,7 @@ export const SeriesPanel: React.FC<SeriesPanelProps> = ({ events, onChanged, onO
       {!embedded && (
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="font-display text-xl font-normal text-text">Series</h2>
+            <h2 className="poster-head text-2xl text-text">Series</h2>
             <p className="text-xs text-text-muted">
               Link the years of a festival or tour so they read the same everywhere: EDC Las Vegas 2023, 2024, 2025. The name you typed stays on
               each event.

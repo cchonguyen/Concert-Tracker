@@ -39,7 +39,7 @@ export function Sheet({ open, title, onClose, children }: { open: boolean; title
           <span className="h-1 w-10 rounded-full bg-line-strong" />
         </div>
         <div className="flex items-start justify-between gap-2 px-4 pb-2 pt-2">
-          <h3 className="min-w-0 truncate font-display text-lg font-normal text-text">{title}</h3>
+          <h3 className="min-w-0 truncate poster-head text-2xl text-text">{title}</h3>
           <IconButton icon={X} label="Close" onClick={onClose} />
         </div>
         <div className="space-y-4 overflow-y-auto overscroll-contain px-4 pb-5">{children}</div>

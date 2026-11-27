@@ -14,7 +14,7 @@ export function AboutDialog({ status, onClose }: { status: LineupStatus | null; 
     <Dialog title={`About ${copy.appName}`} onClose={onClose} panelClassName="h-full w-full max-w-xl space-y-6 overflow-y-auto border-l border-line bg-page p-5 shadow-2xl">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="font-display text-xl font-normal text-text">About {copy.appName}</h2>
+          <h2 className="poster-head text-2xl text-text">About {copy.appName}</h2>
           <p className="text-xs text-text-muted">Version {copy.appVersion}</p>
         </div>
         <button onClick={onClose} className="inline-flex min-h-11 items-center rounded-control px-2 py-1 text-sm text-text-muted hover:bg-surface-2 hover:text-text sm:min-h-10">

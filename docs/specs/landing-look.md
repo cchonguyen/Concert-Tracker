@@ -22,6 +22,6 @@ All of it is in one module, `src/styles/landing-look.css`, loaded by `src/index.
 - **45.2 Home (built).** Poster headline with its second half in the second colour, poster section headings, and the "What LiveArchive can do" tiles as post-its (tilts and tones repeat in a fixed order). Stop for Charlie's review.
 - **45.3 Event detail (built).** Card titles (The edition, Who you saw, Lineup, Changes) are poster headings. The ticket hero is unchanged.
 - **45.4 Ranking, Stats and Library (built).** Every page title (the heading under the section tabs), the stub header titles on lists, and the section headings on Stats, Ranking, Map and Log are poster headings.
-- **45.5 Manage and back office.** Poster headings only.
+- **45.5 Manage, panels and dialogs (built).** Manage's title, every panel and dialog title (h2, plus the shared Sheet and Confirm titles) are poster headings. Names of things (an edition, a series, an artist, an event, a month) keep the serif, and small h3 subheads stay as they are.
 
 Each later slice needs Charlie's go after he reviews Home.

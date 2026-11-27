@@ -379,7 +379,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
       <div className="flex-1 space-y-6 overflow-y-auto p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="flex items-center gap-2 font-display text-xl font-normal text-text">
+            <h2 className="flex items-center gap-2 poster-head text-2xl text-text">
               <Mail className="h-4 w-4 text-accent" /> From your ticket emails
             </h2>
             <p className="text-xs text-text-muted">

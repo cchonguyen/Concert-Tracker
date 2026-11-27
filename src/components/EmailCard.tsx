@@ -13,7 +13,7 @@ export const EmailCard: React.FC<{ waiting: number; onCheck: () => void }> = ({ 
     <section className="space-y-4 rounded-card border border-accent-tint-line bg-accent-tint p-5">
       <div className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-accent">{emailCard.eyebrow}</p>
-        <h2 className="font-display text-xl font-normal text-text">{emailCard.title}</h2>
+        <h2 className="poster-head text-2xl text-text">{emailCard.title}</h2>
         <p className="text-sm text-text-muted">{emailCard.line}</p>
         <ul className="flex flex-wrap gap-2 pt-1">
           {emailCard.badges.map((b) => (

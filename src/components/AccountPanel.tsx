@@ -65,7 +65,7 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
   return (
     <Dialog title="Your account" onClose={onClose} panelClassName="h-full w-full max-w-md space-y-5 overflow-y-auto border-l border-line bg-page p-5">
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-xl font-normal">Your account</h2>
+        <h2 className="poster-head text-2xl">Your account</h2>
         <IconButton icon={X} label="Close" onClick={onClose} />
       </div>
       {error && <p className="text-xs text-bad">{error}</p>}

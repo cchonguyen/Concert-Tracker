@@ -627,7 +627,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
     <Dialog title="Fill gaps" onClose={onClose} panelClassName="h-full w-full max-w-2xl space-y-4 overflow-y-auto border-l border-line bg-page p-5 shadow-2xl">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="font-display text-xl font-normal text-text">Fill gaps</h2>
+          <h2 className="poster-head text-2xl text-text">Fill gaps</h2>
           <p className="text-xs text-text-muted">
             Across the {events.length} event{events.length === 1 ? '' : 's'} the Table shows. Pick what's missing, type it in, press Enter.
           </p>
