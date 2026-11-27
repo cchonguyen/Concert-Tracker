@@ -2,10 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { LoggedEvent } from '../services/lineupApi';
 import { ArtistGenres, GenreCount, genreMix } from '../services/genres';
-import { artistsBehind, GenrePeriod, GenreTarget, periodEvents } from '../services/genreInsights';
+import { artistsBehind, GenrePeriod, GenreTarget, genreTree, periodEvents } from '../services/genreInsights';
 import type { GenreVocabulary } from '../server/events/genreTypes';
 import { genreKey } from '../server/events/genreVocabulary';
 import { isModifiedClick } from '../services/manageNav';
+import { GenreTree } from './GenreTree';
 import { useIsOwner } from './MeContext';
 import { Segmented } from './ui/Segmented';
 import { Switch } from './ui/Switch';
@@ -163,12 +164,14 @@ export const GenresRanking: React.FC<GenresRankingProps> = ({
   const years = useMemo(() => eventYears(events), [events]);
 
   const [period, setPeriod] = useState<GenrePeriod>('all');
+  const [viewMode, setViewMode] = useState<'list' | 'tree'>('list');
   const [includeRelated, setIncludeRelated] = useState(false);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   const allTimeMix = useMemo(() => genreMix(events, byArtist, vocabulary), [events, byArtist, vocabulary]);
   const filtered = useMemo(() => periodEvents(events, period, today), [events, period, today]);
   const mix = useMemo(() => genreMix(filtered, byArtist, vocabulary), [filtered, byArtist, vocabulary]);
+  const treeRoots = useMemo(() => genreTree(vocabulary, events, byArtist, today), [vocabulary, events, byArtist, today]);
 
   const toggle = (key: string) => setExpandedKey((cur) => (cur === key ? null : key));
 
@@ -215,83 +218,103 @@ export const GenresRanking: React.FC<GenresRankingProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Segmented
-            label="Time period"
-            compact
-            value={segmentedPeriod}
-            onChange={(v) => {
-              setExpandedKey(null);
-              if (v === 'all') setPeriod('all');
-              else if (v === 'last12') setPeriod('last12');
-              else setPeriod(currentYear);
-            }}
-            options={[
-              { value: 'all', label: 'All time' },
-              { value: 'last12', label: 'Last 12 months' },
-              { value: 'year', label: String(currentYear) },
-            ]}
-          />
-          {years.length > 0 && (
-            <select
-              aria-label="Pick a year"
-              value={pickedOtherYear}
-              onChange={(e) => {
-                if (!e.target.value) return;
-                setExpandedKey(null);
-                setPeriod(Number(e.target.value));
-              }}
-              className="min-h-11 rounded-control border border-line-strong bg-surface-1 px-2.5 text-xs text-text focus:border-accent focus:outline-none sm:min-h-9"
-            >
-              <option value="">Pick a year</option>
-              {years.map((y) => (
-                <option key={y} value={String(y)}>
-                  {y}
-                </option>
-              ))}
-            </select>
+          {treeRoots.length > 0 && (
+            <Segmented
+              label="Genres view"
+              compact
+              value={viewMode}
+              onChange={setViewMode}
+              options={[
+                { value: 'list', label: 'List' },
+                { value: 'tree', label: 'Tree' },
+              ]}
+            />
+          )}
+          {viewMode === 'list' && (
+            <>
+              <Segmented
+                label="Time period"
+                compact
+                value={segmentedPeriod}
+                onChange={(v) => {
+                  setExpandedKey(null);
+                  if (v === 'all') setPeriod('all');
+                  else if (v === 'last12') setPeriod('last12');
+                  else setPeriod(currentYear);
+                }}
+                options={[
+                  { value: 'all', label: 'All time' },
+                  { value: 'last12', label: 'Last 12 months' },
+                  { value: 'year', label: String(currentYear) },
+                ]}
+              />
+              {years.length > 0 && (
+                <select
+                  aria-label="Pick a year"
+                  value={pickedOtherYear}
+                  onChange={(e) => {
+                    if (!e.target.value) return;
+                    setExpandedKey(null);
+                    setPeriod(Number(e.target.value));
+                  }}
+                  className="min-h-11 rounded-control border border-line-strong bg-surface-1 px-2.5 text-xs text-text focus:border-accent focus:outline-none sm:min-h-9"
+                >
+                  <option value="">Pick a year</option>
+                  {years.map((y) => (
+                    <option key={y} value={String(y)}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </>
           )}
         </div>
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2">
-        <GenreColumn
-          heading="Genre"
-          kind="group"
-          rows={mix.parents}
-          filtered={filtered}
-          byArtist={byArtist}
-          vocabulary={vocabulary}
-          expandedKey={expandedKey}
-          onToggle={toggle}
-          onOpenArtistsWithGenre={onOpenArtistsWithGenre}
-        />
-        <GenreColumn
-          heading="Style"
-          kind={styleKind}
-          rows={styleRows}
-          filtered={filtered}
-          byArtist={byArtist}
-          vocabulary={vocabulary}
-          expandedKey={expandedKey}
-          onToggle={toggle}
-          onOpenArtistsWithGenre={onOpenArtistsWithGenre}
-          headerExtra={
-            mix.umbrellas.length > 0 ? (
-              <div className="w-full sm:w-auto">
-                <Switch
-                  checked={includeRelated}
-                  onChange={(next) => {
-                    setExpandedKey(null);
-                    setIncludeRelated(next);
-                  }}
-                  label="Include related genres"
-                />
-              </div>
-            ) : undefined
-          }
-          note={includeRelated && mix.umbrellas.length > 0 ? 'A set counts once under each umbrella it falls in.' : undefined}
-        />
-      </div>
+      {viewMode === 'tree' && treeRoots.length > 0 ? (
+        <GenreTree roots={treeRoots} onOpenArtistsWithGenre={onOpenArtistsWithGenre} />
+      ) : (
+        <div className="grid gap-6 sm:grid-cols-2">
+          <GenreColumn
+            heading="Genre"
+            kind="group"
+            rows={mix.parents}
+            filtered={filtered}
+            byArtist={byArtist}
+            vocabulary={vocabulary}
+            expandedKey={expandedKey}
+            onToggle={toggle}
+            onOpenArtistsWithGenre={onOpenArtistsWithGenre}
+          />
+          <GenreColumn
+            heading="Style"
+            kind={styleKind}
+            rows={styleRows}
+            filtered={filtered}
+            byArtist={byArtist}
+            vocabulary={vocabulary}
+            expandedKey={expandedKey}
+            onToggle={toggle}
+            onOpenArtistsWithGenre={onOpenArtistsWithGenre}
+            headerExtra={
+              mix.umbrellas.length > 0 ? (
+                <div className="w-full sm:w-auto">
+                  <Switch
+                    checked={includeRelated}
+                    onChange={(next) => {
+                      setExpandedKey(null);
+                      setIncludeRelated(next);
+                    }}
+                    label="Include related genres"
+                  />
+                </div>
+              ) : undefined
+            }
+            note={includeRelated && mix.umbrellas.length > 0 ? 'A set counts once under each umbrella it falls in.' : undefined}
+          />
+        </div>
+      )}
     </section>
   );
 };
