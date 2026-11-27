@@ -182,3 +182,101 @@ test('pipeline cache: a verified edition with no acts is looked up, not reported
   assert.equal(job.editionId, undefined);
   assert.equal(job.editionKey, 'empty-edition');
 });
+
+test('findVerifiedEdition: matches by seriesSlug when eventName differs from series slug', async () => {
+  const s = await fresh();
+  await writeEdition(
+    s,
+    {
+      edition: ed({
+        id: 'coachella-2027',
+        key: 'coachella-weekend-1/2027-04-09',
+        seriesSlug: 'coachella-weekend-1',
+        subjectKey: 'coachella-weekend-1',
+        name: 'Coachella 2027 Weekend 1',
+        year: 2027,
+        startDate: '2027-04-09',
+        performances: [{ name: 'Act One' } as any],
+      }),
+      actor: 'a',
+      reason: 'r',
+    },
+  );
+  const hit = await findVerifiedEdition(s, {
+    eventName: 'Coachella',
+    seriesSlug: 'coachella-weekend-1',
+    year: 2027,
+    startDate: '2027-04-09',
+  });
+  assert.equal(hit?.id, 'coachella-2027');
+});
+
+test('findVerifiedEdition: matches via seriesName or seriesAliases when seriesSlug is omitted, and respects date', async () => {
+  const s = await fresh();
+  await s.upsertSeries({
+    slug: 'coachella-weekend-1',
+    name: 'Coachella',
+    aliases: ['Chella'],
+  });
+  await writeEdition(
+    s,
+    {
+      edition: ed({
+        id: 'coachella-2027',
+        key: 'coachella-weekend-1/2027-04-09',
+        seriesSlug: 'coachella-weekend-1',
+        subjectKey: 'coachella-weekend-1',
+        name: 'Coachella 2027 Weekend 1',
+        year: 2027,
+        startDate: '2027-04-09',
+        endDate: '2027-04-11',
+        performances: [{ name: 'Act One' } as any],
+      }),
+      actor: 'a',
+      reason: 'r',
+    },
+  );
+  assert.equal(
+    (await findVerifiedEdition(s, { eventName: 'Coachella', year: 2027, startDate: '2027-04-09' }))?.id,
+    'coachella-2027',
+  );
+  assert.equal(
+    (await findVerifiedEdition(s, { eventName: 'Chella', year: 2027, startDate: '2027-04-10' }))?.id,
+    'coachella-2027',
+  );
+  assert.equal(
+    await findVerifiedEdition(s, { eventName: 'Coachella', year: 2027, startDate: '2027-04-16' }),
+    null,
+  );
+});
+
+test('pipeline cache: hits verified edition by seriesSlug and preserves its editionKey', async () => {
+  const s = await fresh();
+  await writeEdition(
+    s,
+    {
+      edition: ed({
+        id: 'coachella-2027',
+        key: 'coachella-weekend-1/2027-04-09',
+        seriesSlug: 'coachella-weekend-1',
+        subjectKey: 'coachella-weekend-1',
+        name: 'Coachella 2027 Weekend 1',
+        year: 2027,
+        startDate: '2027-04-09',
+        performances: [{ name: 'Act One' } as any],
+      }),
+      actor: 'a',
+      reason: 'r',
+    },
+  );
+  const deps = { store: s, now: () => new Date('2026-11-27T00:00:00Z') } as any;
+  const hit = await createLookup(deps, {
+    eventName: 'Coachella',
+    seriesSlug: 'coachella-weekend-1',
+    year: 2027,
+    startDate: '2027-04-09',
+  });
+  assert.equal(hit.status, 'needs_review');
+  assert.equal(hit.editionId, 'coachella-2027');
+  assert.equal(hit.editionKey, 'coachella-weekend-1/2027-04-09');
+});

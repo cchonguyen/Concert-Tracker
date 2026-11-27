@@ -96,18 +96,25 @@ const messageOf = (err: unknown) => (err instanceof Error ? err.message : String
 
 const field = 'min-h-11 sm:min-h-9 rounded-control border border-line-strong bg-surface-1 px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none';
 
-export const CanonicalArchive: React.FC<{ section: ArchiveSection; query: string; status: EditionStatus; events: LoggedEvent[] }> = ({
+export const CanonicalArchive: React.FC<{
+  section: ArchiveSection;
+  query: string;
+  status: EditionStatus;
+  events: LoggedEvent[];
+  onEventsChanged?: () => void;
+}> = ({
   section,
   query,
   status,
   events,
+  onEventsChanged,
 }) => {
-  if (section === 'lookups') return <ArchiveLookups />;
+  if (section === 'lookups') return <ArchiveLookups onEventsChanged={onEventsChanged} />;
   if (section === 'changes') return <ArchiveChanges />;
   if (section === 'series') return <ArchiveSeries query={query} />;
   if (section === 'brands') return <ArchiveBrands query={query} />;
   if (section === 'genres') return <GenresPanel query={query} events={events} />;
-  if (section === 'editions') return <ArchiveEditions query={query} status={status} />;
+  if (section === 'editions') return <ArchiveEditions query={query} status={status} onEventsChanged={onEventsChanged} />;
   return <ArchiveArtists query={query} />;
 };
 
@@ -1272,7 +1279,7 @@ const SeriesDetail: React.FC<{
   );
 };
 
-const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ query, status }) => {
+const ArchiveEditions: React.FC<{ query: string; status: EditionStatus; onEventsChanged?: () => void }> = ({ query, status, onEventsChanged }) => {
   // The page is the first 200 matches of the filter (searched across the whole catalog); `total` counts every match.
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   const [page, setPage] = useState<{ editions: CanonicalEditionSummary[]; total: number; hasMore: boolean } | null>(null);
@@ -1387,6 +1394,7 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
         onSaved={() => {
           setEditing(false);
           void openEdition(detail.id);
+          onEventsChanged?.();
         }}
       />
     );
@@ -1412,7 +1420,10 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
         <EditionDetail
           edition={detail}
           onEditLineup={() => setEditing(true)}
-          onFactsSaved={setDetail}
+          onFactsSaved={(next) => {
+            setDetail(next);
+            onEventsChanged?.();
+          }}
           onStartMerge={() => setMergeEditions([detail])}
         />
         {mergeEditions && (
@@ -1426,6 +1437,7 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
               window.history.replaceState({ fromManageList: window.history.state?.fromManageList }, '', url);
               rememberManageSearch(new URL(url, window.location.origin).search);
               setDetail(kept);
+              onEventsChanged?.();
             }}
           />
         )}
@@ -1545,6 +1557,7 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
             window.history.pushState({ fromManageList: true }, '', url);
             rememberManageSearch(new URL(url, window.location.origin).search);
             window.dispatchEvent(new PopStateEvent('popstate'));
+            onEventsChanged?.();
           }}
         />
       )}
@@ -1552,7 +1565,7 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
   );
 };
 
-const ArchiveLookups: React.FC = () => {
+const ArchiveLookups: React.FC<{ onEventsChanged?: () => void }> = ({ onEventsChanged }) => {
   const [name, setName] = useState('');
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [url, setUrl] = useState('');
@@ -1637,6 +1650,7 @@ const ArchiveLookups: React.FC = () => {
         onSaved={() => {
           setReviewing(null);
           void loadLookups();
+          onEventsChanged?.();
         }}
       />
     );
