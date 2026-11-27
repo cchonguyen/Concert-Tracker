@@ -39,6 +39,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CachedResponse } from '../responseCache';
 import type { SqlCanonicalEntry } from '../../entities/canonicalManage';
 import type { ArtistCleanupReport, ArtistCleanupRow } from '../../entities/artistCleanupCsv';
+import type { ArtistOrbit, ArtistOrbitChange, ArtistOrbitMeta } from '../../events/artistOrbits';
 
 // One member's view of the store (multi-user mode). Personal rows (events,
 // email imports, lookup jobs, share links, settings) are that member's only.
@@ -497,6 +498,15 @@ export interface LineupStore {
   // Newest first. Owner and system only.
   listGenreVocabChanges(q: GenreVocabChangeQuery): Promise<GenreVocabChange[]>;
   markGenreVocabChangesUndone(ids: string[], at: string): Promise<void>;
+  // Artist orbits (0064): the owner's shared curation. Reads are shared; writes are owner and system only,
+  // logged in artist_orbit_changes and undoable. A member scope throws on the writes.
+  listArtistOrbits(): Promise<ArtistOrbit[]>;
+  // Replaces the orbits named in replaceIds and the ones in next, and logs one change.
+  writeArtistOrbits(next: ArtistOrbit[], replaceIds: string[], meta: ArtistOrbitMeta): Promise<ArtistOrbitChange>;
+  // Newest first.
+  listOrbitChanges(q: { limit: number }): Promise<ArtistOrbitChange[]>;
+  // Refused (409) when the change is already undone or an orbit in it changed since.
+  undoOrbitChange(id: string, actor: string): Promise<ArtistOrbitChange>;
   // Every act any member marked as seen, once per key, names only (seen_act_names()). Owner and system only.
   listSeenActNames(): Promise<Array<{ key: string; name: string }>>;
   // Reusable single-transaction artist entity cleanup (0060). Owner and system only.
