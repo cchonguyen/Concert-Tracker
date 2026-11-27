@@ -1,5 +1,7 @@
 import type { LoggedEvent } from '../server/events/types';
 import type { ArtistGenres, GenreMapEntry, GenreShare, GenreVocabulary } from '../server/events/genreTypes';
+import { findPerformanceGroups } from '../server/events/seen';
+import { normalizeName } from '../server/lineup/normalizeName';
 import {
   genreKey,
   genreResolver,
@@ -108,21 +110,58 @@ export function missingGenreKeys(events: LoggedEvent[], rows: ArtistGenres[]): s
 export const topStyles = (g: ArtistGenres | undefined, max = 3): string[] =>
   (g?.genres ?? []).slice(0, max).map((x) => x.style);
 
-// Each seen act's share of one set at this event (docs/specs/genre-taxonomy-release-1.md
-// section 1). A B2B is one set: the act and the partners in its `b2b`
-// list who are also in this event's seen list share it evenly, 1 / n each. Partners
-// not in the seen list do not count toward n. An act with no partners present gets
-// 1.0. A `solo` flag adds a further 1.0 for the set the act also played on its own.
-// Returns one share per entry of event.seen, in the same order.
+// Each seen act's set count at this event. Every act in a B2B counts as 1
+// viewing (plus 1 when `solo` is set for an act that also played on its own).
+// Returns one whole-number count per entry of event.seen, in the same order.
 export function setShares(event: Pick<LoggedEvent, 'seen'>): number[] {
   const present = new Set(event.seen.map((s) => s.key));
   return event.seen.map((s) => {
     const partners = new Set((s.b2b ?? []).filter((k) => k !== s.key && present.has(k)));
-    // No partner present: one set, whether or not `solo` is set. In a B2B, `solo` adds the
-    // separate set the act also played on its own.
     if (!partners.size) return 1;
-    return 1 / (1 + partners.size) + (s.solo ? 1 : 0);
+    return 1 + (s.solo ? 1 : 0);
   });
+}
+
+export interface CountedSet {
+  key: string;
+  name: string;
+  sets: number; // always a whole number: 1, or 2 for legacy b2b+solo without a combo genre
+}
+
+// Each set counted at an event for genre totals. Every artist in a B2B counts as
+// 1 viewing, unless the B2B has a specified combo name (`alias`) that has genres
+// in `byArtist`, in which case it counts as 1 viewing of the combo instead.
+export function countedSets(
+  event: Pick<LoggedEvent, 'seen'>,
+  byArtist?: Map<string, ArtistGenres>,
+): CountedSet[] {
+  const groups = findPerformanceGroups(
+    event.seen,
+    (s) => s.key,
+    (s) => s.b2b,
+    (s) => s.slotId,
+  );
+  const out: CountedSet[] = [];
+  for (const indices of groups) {
+    const members = indices.map((i) => event.seen[i]);
+    const isB2b = members.length > 1 || members.some((m) => (m.b2b?.length ?? 0) > 0);
+    const alias = members.find((m) => m.alias?.trim())?.alias?.trim();
+    const comboKey = alias ? normalizeName(alias) : '';
+    const hasComboGenre = Boolean(isB2b && comboKey && (byArtist?.get(comboKey)?.genres.length ?? 0) > 0);
+    if (hasComboGenre) {
+      out.push({ key: comboKey, name: alias!, sets: 1 });
+      for (const m of members) {
+        if (members.length > 1 && m.solo) {
+          out.push({ key: m.key, name: m.name, sets: 1 });
+        }
+      }
+    } else {
+      for (const m of members) {
+        out.push({ key: m.key, name: m.name, sets: members.length > 1 && m.solo ? 2 : 1 });
+      }
+    }
+  }
+  return out;
 }
 
 // A set count for display: rounded to the nearest whole number, halves up.
@@ -195,12 +234,11 @@ export function genreMix(
   let sets = 0;
   let known = 0;
   for (const e of events) {
-    const shares = setShares(e);
-    e.seen.forEach((s, i) => {
-      const share = shares[i];
+    for (const s of countedSets(e, byArtist)) {
+      const share = s.sets;
       sets += share;
       const g = byArtist.get(s.key);
-      if (!g?.genres.length) return;
+      if (!g?.genres.length) continue;
       known += share;
       const genreWeight = new Map<string, number>(); // this set, by genre key, times the share
       for (const x of g.genres) {
@@ -219,7 +257,7 @@ export function genreMix(
       const perSet = new Map<string, number>();
       for (const [k, w] of genreWeight) for (const u of ups(k)) perSet.set(u, (perSet.get(u) ?? 0) + w);
       for (const [u, w] of perSet) umbrellas.set(u, (umbrellas.get(u) ?? 0) + Math.min(share, w));
-    });
+    }
   }
   const ranked = (m: Map<string, number>) =>
     [...m]

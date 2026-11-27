@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { LoggedEvent } from '../services/lineupApi';
 import type { ArtistGenres, GenreShare } from '../services/genres';
-import { formatSets, setShares } from '../services/genres';
+import { countedSets, formatSets } from '../services/genres';
 import { OUTSIDE_MIN_WEIGHT } from '../services/genreInsights';
 import type { GenreVocabulary, VocabGenre } from '../server/events/genreTypes';
 import { genreKey, levelOf, NOT_GROUPED } from '../server/events/genreVocabulary';
@@ -133,16 +133,15 @@ function buildModel(
     }
   }
 
-  // Sets by genre key: attended events only, each set split by setShares and by normalised weight.
+  // Sets by genre key: attended events only, each set counted via countedSets and split by normalised weight.
   const sets = new Map<string, number>();
   const listings = new Map<string, Map<string, Listing>>();
   for (const e of events) {
     if (e.attendance === 'planned' || e.attendance === 'missed') continue;
-    const shares = setShares(e);
-    e.seen.forEach((s, si) => {
+    for (const s of countedSets(e, byArtist)) {
       const genres = usable(byArtist.get(s.key));
-      if (!genres.length) return;
-      const share = shares[si];
+      if (!genres.length) continue;
+      const share = s.sets;
       const total = genres.reduce((t, x) => t + x.weight, 0);
       for (const x of genres) {
         const k = genreKey(x.style);
@@ -153,7 +152,7 @@ function buildModel(
         if (!row) byEvent.set(e.id, (row = { eventId: e.id, eventName: e.name, date: dateOf(e), acts: [] }));
         if (!row.acts.includes(s.name)) row.acts.push(s.name);
       }
-    });
+    }
   }
 
   const seenKeys = new Set([...sets.entries()].filter(([, n]) => n > 0).map(([k]) => k));

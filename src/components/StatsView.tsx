@@ -2,7 +2,7 @@ import { levelOf } from '../server/events/genreVocabulary';
 import React, { Fragment, useEffect, useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { genresApi, GenresList, LoggedEvent } from '../services/lineupApi';
-import { genreMix, genresByArtist } from '../services/genres';
+import { formatSets, genreMix, genresByArtist } from '../services/genres';
 import { isModifiedClick } from '../services/manageNav';
 import { whenLabel } from '../services/format';
 import { attendanceOf } from '../server/events/attendance';
@@ -199,8 +199,8 @@ const GenreCard: React.FC<{ events: LoggedEvent[]; data: GenreData }> = ({ event
         <div>
           <h2 className={title}>Genres you see live</h2>
           <p className="text-xs text-text-muted">
-            Share of the sets you saw, from {mix.known} of {plural(mix.sets, 'set')}
-            {mix.sets > mix.known && `; ${mix.sets - mix.known === 1 ? 'the other one has' : `the other ${mix.sets - mix.known} have`} no genre yet (Table, Genres)`}.
+            Share of the sets you saw, from {formatSets(mix.known)} of {formatSets(mix.sets)} {formatSets(mix.sets) === '1' ? 'set' : 'sets'}
+            {mix.sets > mix.known && `; ${formatSets(mix.sets - mix.known) === '1' ? 'the other one has' : `the other ${formatSets(mix.sets - mix.known)} have`} no genre yet (Table, Genres)`}.
           </p>
         </div>
         <a
