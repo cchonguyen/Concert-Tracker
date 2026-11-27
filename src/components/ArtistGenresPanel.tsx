@@ -1,7 +1,8 @@
 import { Dialog } from './ui/Dialog';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, FileUp, RefreshCw, Square, Tags, Upload, Undo2, X } from 'lucide-react';
+import { Check, Copy, Download, FileUp, RefreshCw, Square, Tags, Upload, Undo2, X } from 'lucide-react';
 import { genresApi, LoggedEvent } from '../services/lineupApi';
+import { GENRES_CSV_AI_PROMPT } from '../services/cleanupPrompts';
 import { ArtistGenres, genresByArtist, missingGenreKeys } from '../services/genres';
 import { MAX_MUSICBRAINZ_GENRES } from '../server/events/genreTypes';
 import type { GenreChange, GenreCsvRow, SkippedRow } from '../server/events/genreCsv';
@@ -38,6 +39,17 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
   const [message, setMessage] = useState<string | null>(null);
   const [preview, setPreview] = useState<CsvPreview | null>(null);
   const [overwrite, setOverwrite] = useState<Set<string>>(() => new Set());
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+
+  const copyGenresPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(GENRES_CSV_AI_PROMPT);
+      setCopiedPrompt(true);
+      setTimeout(() => setCopiedPrompt(false), 2000);
+    } catch {
+      setError('Could not copy to clipboard.');
+    }
+  };
   const stop = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const csvInput = useRef<HTMLInputElement>(null);
@@ -321,6 +333,9 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
                 />
                 <Button variant="secondary" disabled={Boolean(busy)} onClick={() => csvInput.current?.click()}>
                   {busy === 'csv-check' ? <Equalizer size="sm" /> : <Upload className="h-4 w-4" />} Choose your edited file
+                </Button>
+                <Button variant="secondary" onClick={() => void copyGenresPrompt()}>
+                  {copiedPrompt ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copiedPrompt ? 'Copied prompt' : 'Copy AI prompt'}
                 </Button>
                 {csvUndo && !preview && (
                   <Button variant="secondary" disabled={Boolean(busy)} onClick={() => void undoCsvUpload()}>
