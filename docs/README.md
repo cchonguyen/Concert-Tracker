@@ -13,6 +13,7 @@ Statuses were checked against the code on 2026-11-23.
 | [specs/event-fetch-upgrade-prd.md](specs/event-fetch-upgrade-prd.md) | Stages 0 to 4 built. Stage 4b and Stage 5 not started. |
 | [specs/global-editions-admin-spec.md](specs/global-editions-admin-spec.md) | Slices 1 to 4 built. Slice 5 (component reuse) not planned yet. |
 | [specs/series-type-fix.md](specs/series-type-fix.md) | Slices 1, 2, 3 and 5 merged. Slice 4 (the nine tours) not recorded as done. |
+| [specs/ticket-stub-styles.md](specs/ticket-stub-styles.md) | Approved 2026-11-27: ticket style picker (44.1 built, a design-system module); animated logo and app look planned. |
 | [specs/landing-page-2.md](specs/landing-page-2.md) | Approved and built 2026-11-27: new landing page (direction D). |
 | [specs/series-cleanup.md](specs/series-cleanup.md) | Approved 2026-11-26: one series list, one naming rule, brand/series/edition words stored once. 5 slices, none built yet. |
 | [specs/series-sync.md](specs/series-sync.md) | Proposed 2026-11-27: auto-link events that exactly match a shared edition (undoable), and series health with one-tap fixes in Data health. |

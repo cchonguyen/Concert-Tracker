@@ -41,3 +41,6 @@ Every slice (41.x) is done; see `.spec/archive/HISTORY-2026-11.md`.
 - [ ] **Slice 43.3: Orbits CSV** [CORE / DATA] (section 4). Target files: src/server/events/artistOrbitsCsv.ts, src/components/GenresPanel.tsx, src/services/lineupApi.ts, tests/artistOrbitsCsv.test.ts | Issue: #1095 | Verify: npm run lint --silent && npm test --silent
 - [ ] **Slice 43.4: Orbit pills and sheet** [UI / VISUAL] (section 5). Target files: src/components/ArtistsView.tsx, src/components/OrbitSheet.tsx | Issue: #1096 | Verify: npm run lint --silent
 - [ ] **Slice 43.9: Release 3 docs** [UI / VISUAL] (section 10). Target files: docs/architecture/07-artist-genres.md, docs/architecture/12-data-model.md, ARCHITECTURE.md | Issue: #1097 | Verify: npm run lint --silent && npm test --silent
+
+## Ticket stub styles (docs/specs/ticket-stub-styles.md, approved by Charlie 2026-11-27)
+- [x] **Slice 44.1: Ticket style picker** [UI / VISUAL] Per-device ticket style: Original, Box office, Hard ticket, Raffle, Riso. Target files: src/services/theme.ts, src/components/ThemePicker.tsx, src/index.css, src/styles/ticket-styles.css, app.html, tests/theme.test.ts, tests/ticketStyles.test.ts, docs/specs/ticket-stub-styles.md, docs/README.md | Issue: #1099 | Verify: npm run lint --silent && npm test --silent
