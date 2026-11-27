@@ -1,7 +1,8 @@
 import React, { useRef, useState } from 'react';
-import { Upload } from 'lucide-react';
+import { Check, Copy, Upload } from 'lucide-react';
 import { canonicalApi } from '../services/lineupApi';
 import { parseCsv } from '../services/listImport';
+import { ARTIST_CLEANUP_AI_PROMPT } from '../services/cleanupPrompts';
 import {
   ARTIST_CLEANUP_ORDER,
   parseArtistCleanupCsv,
@@ -35,6 +36,17 @@ export const ArtistCleanupPanel: React.FC<ArtistCleanupPanelProps> = ({ onApplie
   const [busy, setBusy] = useState<'preview' | 'apply' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+
+  const copyPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(ARTIST_CLEANUP_AI_PROMPT);
+      setCopiedPrompt(true);
+      setTimeout(() => setCopiedPrompt(false), 2000);
+    } catch {
+      setError('Could not copy to clipboard.');
+    }
+  };
 
   const handleFile = async (file: File) => {
     setError(null);
@@ -114,6 +126,10 @@ export const ArtistCleanupPanel: React.FC<ArtistCleanupPanelProps> = ({ onApplie
           >
             <Upload className="size-3.5" aria-hidden="true" />
             {busy === 'preview' ? 'Checking…' : fileName ? 'Upload another CSV' : 'Upload cleanup CSV'}
+          </Button>
+          <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={() => void copyPrompt()}>
+            {copiedPrompt ? <Check className="size-3.5" aria-hidden="true" /> : <Copy className="size-3.5" aria-hidden="true" />}
+            {copiedPrompt ? 'Copied prompt' : 'Copy AI prompt'}
           </Button>
           {report && report.dryRun && (
             <Button variant="primary" className="px-2.5 py-1 text-xs" disabled={!canApply} onClick={() => void apply()}>
