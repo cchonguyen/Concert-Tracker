@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { LoggedEvent } from '../src/server/events/types.ts';
-import type { ArtistGenres, GenreVocabulary } from '../src/server/events/genreTypes.ts';
+import type { ArtistGenres, GenreVocabulary, VocabGenre } from '../src/server/events/genreTypes.ts';
 import { genreMix, genresByArtist } from '../src/services/genres.ts';
 import {
   artistsBehind,
@@ -24,6 +24,11 @@ import {
   periodEvents,
   rising,
   yearGenres,
+  soundDrift,
+  driftDrivers,
+  DRIFT_MIN_SETS,
+  DRIFT_MIN_YEARS,
+  DRIFT_BANDS,
 } from '../src/services/genreInsights.ts';
 
 const TODAY = '2026-11-26';
@@ -704,4 +709,178 @@ test('genreZoom: without a taxonomy it falls back to music-story groups with no 
   assert.deepEqual(z.macros.map((m) => [m.name, m.sets, m.share]), [['Electronic', 1, 1]]);
   assert.deepEqual(z.families, []);
   assert.deepEqual(z.genres, []);
+});
+
+// Sound Drift (docs/specs/genre-taxonomy-release-1.md section 4).
+let driftSeq = 0;
+const setsIn = (year: number, names: string[], n = 1, extra: Partial<LoggedEvent> = {}): LoggedEvent[] =>
+  Array.from({ length: n }, () => ev(`d${driftSeq++}`, `${year}-03-01`, names, extra));
+
+const driftFamilies = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot', 'Golf', 'Hotel', 'Zulu'];
+const driftVocab: GenreVocabulary = {
+  genres: [
+    { key: 'macro:electronic', name: 'Electronic', level: 'macro', aliases: [], umbrellas: [] },
+    ...driftFamilies.map((f): VocabGenre => ({
+      key: `family:${f.toLowerCase()}`, name: f, level: 'family', primaryParent: 'macro:electronic', aliases: [], umbrellas: [],
+    })),
+    ...driftFamilies.map((f): VocabGenre => ({
+      key: `${f.toLowerCase()}style`, name: `${f} style`, primaryParent: `family:${f.toLowerCase()}`, aliases: [], umbrellas: [],
+    })),
+    { key: 'ambient', name: 'Ambient', aliases: [], umbrellas: [] }, // no family: Not grouped
+  ],
+};
+const famAct = (name: string, f: string): ArtistGenres => artist(name, [{ parent: 'Dance', style: `${f} style`, weight: 1 }]);
+const driftRows = (): ArtistGenres[] => [
+  famAct('A1', 'Alpha'), famAct('B1', 'Bravo'), famAct('C1', 'Charlie'), famAct('D1', 'Delta'),
+  famAct('E1', 'Echo'), famAct('F1', 'Foxtrot'), famAct('G1', 'Golf'), famAct('H1', 'Hotel'), famAct('Z1', 'Zulu'),
+  artist('Amb', [{ parent: 'Dance', style: 'Ambient', weight: 1 }]),
+];
+const sumShares = (y: { shares: Record<string, number> }): number => Object.values(y.shares).reduce((t, v) => t + v, 0);
+
+// Years 2020 (Alpha 12, Bravo..Foxtrot 1 each, Golf and Hotel as a B2B pair) and 2019 (Zulu, thin).
+const bandEvents = (): LoggedEvent[] => [
+  ...setsIn(2019, ['Z1'], 5),
+  ...setsIn(2020, ['A1'], 12),
+  ...['B1', 'C1', 'D1', 'E1', 'F1'].flatMap((n) => setsIn(2020, [n])),
+  b2bEvent(ev('gh', '2020-07-01', ['G1', 'H1'])),
+];
+
+test('soundDrift: each year\'s shares add to 1 and only counted years rank bands', () => {
+  const byArtist = genresByArtist(zoomRows(), zoomVocab);
+  const d = soundDrift([...setsIn(2020, ['A', 'B'], 10), ...setsIn(2021, ['A'], 3)], byArtist, zoomVocab, 'family', TODAY);
+
+  assert.equal(d.levels, 'taxonomy');
+  assert.deepEqual(d.years.map((y) => y.year), [2020, 2021]);
+  for (const y of d.years) assert.ok(Math.abs(sumShares(y) - 1) < 1e-9);
+  assert.deepEqual(d.bands, ['House', 'Not grouped']);
+  assert.equal(d.years[0].shares.House, 0.5);
+  assert.equal(d.years[0].shares['Not grouped'], 0.5);
+  assert.equal(d.years[1].counted, false);
+  assert.equal(d.years[1].shares.House, 1);
+});
+
+test('soundDrift: a year with 9.5 known sets is not counted and 10 is', () => {
+  const byArtist = genresByArtist(zoomRows(), zoomVocab);
+  assert.equal(DRIFT_MIN_SETS, 10);
+  const base = setsIn(2020, ['A'], 9);
+
+  // 9 solo sets plus a B2B with an act that has no genre: 9.5 known.
+  const short = soundDrift([...base, b2bEvent(ev('x', '2020-02-01', ['A', 'C']))], byArtist, zoomVocab, 'family', TODAY);
+  assert.equal(short.years[0].known, 9.5);
+  assert.equal(short.years[0].counted, false);
+  assert.equal(short.countedYears, 0);
+
+  const full = soundDrift([...base, b2bEvent(ev('y', '2020-02-01', ['A', 'B']))], byArtist, zoomVocab, 'family', TODAY);
+  assert.equal(full.years[0].known, 10);
+  assert.equal(full.years[0].counted, true);
+  assert.equal(full.countedYears, 1);
+});
+
+test('soundDrift: enough is false with 2 counted years and true with 3', () => {
+  const byArtist = genresByArtist(zoomRows(), zoomVocab);
+  assert.equal(DRIFT_MIN_YEARS, 3);
+  const two = soundDrift([...setsIn(2020, ['A'], 10), ...setsIn(2021, ['A'], 10)], byArtist, zoomVocab, 'family', TODAY);
+  assert.equal(two.countedYears, 2);
+  assert.equal(two.enough, false);
+
+  const three = soundDrift([...setsIn(2020, ['A'], 10), ...setsIn(2021, ['A'], 10), ...setsIn(2022, ['A'], 10)], byArtist, zoomVocab, 'family', TODAY);
+  assert.equal(three.countedYears, 3);
+  assert.equal(three.enough, true);
+});
+
+test('soundDrift: bands are capped at 6 plus Other, ranked from counted years only', () => {
+  const byArtist = genresByArtist(driftRows(), driftVocab);
+  assert.equal(DRIFT_BANDS, 6);
+  const d = soundDrift(bandEvents(), byArtist, driftVocab, 'family', TODAY);
+
+  // Alpha first, then the ties by name; Golf and Hotel (the B2B pair) fall to Other.
+  // Zulu is only in the thin 2019 year, so it is not ranked and its weight is Other.
+  assert.deepEqual(d.bands, ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot', 'Other']);
+  assert.equal(d.years[0].year, 2019);
+  assert.equal(d.years[0].counted, false);
+  assert.equal(d.years[0].shares.Other, 1);
+  assert.equal(d.years[1].year, 2020);
+  assert.ok(Math.abs(d.years[1].shares.Other - 1 / 18) < 1e-9); // G1 and H1 halves of 18 known sets
+  for (const y of d.years) assert.ok(Math.abs(sumShares(y) - 1) < 1e-9);
+});
+
+test('soundDrift: leaders merge consecutive repeats and skip Not grouped when a named band leads', () => {
+  const byArtist = genresByArtist(driftRows(), driftVocab);
+  const events = [
+    ...setsIn(2020, ['A1'], 10),
+    ...setsIn(2021, ['A1'], 10),
+    ...setsIn(2022, ['B1'], 10),
+    ...setsIn(2023, ['A1'], 10),
+    ...setsIn(2024, ['Z1'], 10),
+    ...setsIn(2025, ['Amb'], 10), // Not grouped
+    ...setsIn(2025, ['A1'], 3), // Alpha leads 2025 once Not grouped is set aside
+  ];
+  const d = soundDrift(events, byArtist, driftVocab, 'family', TODAY);
+
+  assert.deepEqual(d.leaders, [
+    { band: 'Alpha', from: 2020, to: 2021 },
+    { band: 'Bravo', from: 2022, to: 2022 },
+    { band: 'Alpha', from: 2023, to: 2023 },
+    { band: 'Zulu', from: 2024, to: 2024 },
+    { band: 'Alpha', from: 2025, to: 2025 },
+  ]);
+});
+
+test('soundDrift: a macro level with no family puts the genre under Not grouped', () => {
+  const byArtist = genresByArtist(driftRows(), driftVocab);
+  const d = soundDrift(setsIn(2025, ['Amb'], 10), byArtist, driftVocab, 'macro', TODAY);
+  assert.deepEqual(d.bands, ['Not grouped']);
+  assert.equal(d.years[0].shares['Not grouped'], 1);
+  assert.deepEqual(d.leaders, [{ band: 'Not grouped', from: 2025, to: 2025 }]);
+});
+
+test('driftDrivers: lists the sets and artists for a band and for Other, with B2B halves', () => {
+  const byArtist = genresByArtist(driftRows(), driftVocab);
+  const events = bandEvents();
+
+  const alpha = driftDrivers(events, byArtist, driftVocab, 'family', TODAY, 2020, 'Alpha');
+  assert.equal(alpha.sets.length, 12);
+  assert.ok(alpha.sets.every((s) => s.act === 'A1' && s.share === 1 && s.date === '2020-03-01'));
+  assert.deepEqual(alpha.artists, [{ key: 'a1', name: 'A1', sets: 12 }]);
+
+  const other = driftDrivers(events, byArtist, driftVocab, 'family', TODAY, 2020, 'Other');
+  assert.deepEqual(other.sets, [
+    { eventId: 'gh', eventName: 'Event gh', date: '2020-07-01', act: 'G1', share: 0.5 },
+    { eventId: 'gh', eventName: 'Event gh', date: '2020-07-01', act: 'H1', share: 0.5 },
+  ]);
+  assert.deepEqual(other.artists, [
+    { key: 'g1', name: 'G1', sets: 0.5 },
+    { key: 'h1', name: 'H1', sets: 0.5 },
+  ]);
+
+  // 2019 is not 2020: Zulu's thin-year sets do not show in 2020 drivers.
+  assert.equal(driftDrivers(events, byArtist, driftVocab, 'family', TODAY, 2020, 'Zulu').sets.length, 0);
+});
+
+test('soundDrift: planned and missed events are excluded, as in genreByYear', () => {
+  const byArtist = genresByArtist(driftRows(), driftVocab);
+  const events = [
+    ...setsIn(2020, ['A1'], 10),
+    ev('planned', '2026-12-10', ['A1'], { attendance: 'planned' }),
+    ev('missed', '2020-04-01', ['A1'], { attendance: 'missed' }),
+  ];
+  const d = soundDrift(events, byArtist, driftVocab, 'family', TODAY);
+  assert.deepEqual(d.years.map((y) => [y.year, y.known]), [[2020, 10]]);
+  assert.equal(driftDrivers(events, byArtist, driftVocab, 'family', TODAY, 2020, 'Alpha').sets.length, 10);
+});
+
+test('soundDrift: without a taxonomy it falls back to music-story groups and ignores level', () => {
+  const rows = [
+    artist('A', [{ parent: 'Electronic', style: 'Deep house', weight: 1 }]),
+    artist('B', [{ parent: 'Rock', style: 'Indie', weight: 1 }]),
+  ];
+  const byArtist = genresByArtist(rows);
+  const events = [...setsIn(2020, ['A'], 10), ...setsIn(2021, ['B'], 10)];
+  const fam = soundDrift(events, byArtist, undefined, 'family', TODAY);
+  const mac = soundDrift(events, byArtist, undefined, 'macro', TODAY);
+
+  assert.equal(fam.levels, 'groups');
+  assert.deepEqual(fam.bands, ['Electronic', 'Rock']);
+  assert.deepEqual(fam, mac);
+  assert.deepEqual(fam.years.map((y) => y.shares), [{ Electronic: 1, Rock: 0 }, { Electronic: 0, Rock: 1 }]);
 });
