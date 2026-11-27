@@ -80,6 +80,8 @@ export interface EventDetails {
   autoLinked?: { editionId: string; at: string; reason: string };
   // Editions this event was unlinked from after an automatic link: never linked to on its own again.
   autoLinkDeclined?: string[];
+  // Set once this linked event's ticked acts (and, for the owner, its venue and place) went to the shared edition.
+  contributedAt?: string;
 }
 
 // How an act played, as you mark it or as billed on a lineup (e.g. "DJ Set", "Live", "Sunrise Set").

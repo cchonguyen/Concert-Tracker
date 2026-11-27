@@ -241,6 +241,11 @@ export function unlinkEvent(event: LoggedEvent, now: Date): LoggedEvent {
     const declined = [...new Set([...(details.autoLinkDeclined ?? []), auto.editionId])];
     out.details = { ...details, autoLinkDeclined: declined };
   }
+  // A later link to another edition contributes again.
+  if (out.details?.contributedAt) {
+    const { contributedAt: _done, ...details } = out.details;
+    out.details = details;
+  }
   const overrides = base.overrides ?? {};
   const captured = base.captured ?? {};
   for (const { field, key } of SHARED) {
