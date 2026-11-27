@@ -3,10 +3,17 @@
 // header can read it and the rules can be tested without the browser.
 
 export type Section = 'library' | 'explore';
-// The four Timeline views are pages of their own now, so the Explore strip
-// lists them next to Map, Stats and Ranking.
+// The four Timeline views are pages of their own in ?view=, while the Explore
+// strip groups them under one Timeline tab.
 export type Page = 'home' | 'summary' | 'table' | 'manage' | 'log' | 'share' | 'agenda' | 'month' | 'heatmap' | 'river' | 'map' | 'stats' | 'ranking';
 export type SubPage = Exclude<Page, 'home'>;
+
+export const TIMELINE_PAGES = ['agenda', 'month', 'heatmap', 'river'] as const;
+export type TimelinePage = (typeof TIMELINE_PAGES)[number];
+export type StripTab = Exclude<SubPage, TimelinePage> | 'timeline';
+
+export const isTimelinePage = (page: Page): page is TimelinePage =>
+  (TIMELINE_PAGES as readonly string[]).includes(page);
 
 // Subtabs in the order the strip shows them.
 export const SECTIONS: Record<Section, { label: string; pages: SubPage[]; first: SubPage }> = {
@@ -63,6 +70,30 @@ export const PAGE_BLURB: Record<SubPage, string> = {
   ranking: 'Everyone you have seen live.',
 };
 
+export const STRIP_LABELS: Record<StripTab, string> = {
+  summary: PAGE_LABELS.summary,
+  table: PAGE_LABELS.table,
+  manage: PAGE_LABELS.manage,
+  log: PAGE_LABELS.log,
+  share: PAGE_LABELS.share,
+  timeline: 'Timeline',
+  map: PAGE_LABELS.map,
+  stats: PAGE_LABELS.stats,
+  ranking: PAGE_LABELS.ranking,
+};
+
+export const STRIP_BLURB: Record<StripTab, string> = {
+  summary: PAGE_BLURB.summary,
+  table: PAGE_BLURB.table,
+  manage: PAGE_BLURB.manage,
+  log: PAGE_BLURB.log,
+  share: PAGE_BLURB.share,
+  timeline: 'Your shows as an agenda, calendar, heatmap or river.',
+  map: PAGE_BLURB.map,
+  stats: PAGE_BLURB.stats,
+  ranking: PAGE_BLURB.ranking,
+};
+
 export interface Access {
   canManage: boolean; // members who cannot see Manage get Summary and Table only
 }
@@ -73,6 +104,15 @@ export const sectionOf = (page: Page): Section | null => (page === 'home' ? null
 // Subtabs a section shows for this viewer.
 export const subPagesFor = (section: Section, access: Access): SubPage[] =>
   SECTIONS[section].pages.filter((p) => p !== 'manage' || access.canManage);
+
+// Strip tabs a section shows (Explore combines its four timeline views under 'timeline').
+export const stripTabsFor = (section: Section, access: Access): StripTab[] =>
+  section === 'library'
+    ? (['summary', 'table', 'manage', 'log', 'share'] as StripTab[]).filter((p) => p !== 'manage' || access.canManage)
+    : ['timeline', 'map', 'stats', 'ranking'];
+
+// Which strip tab is active for a given sub-page.
+export const stripTabFor = (page: SubPage): StripTab => (isTimelinePage(page) ? 'timeline' : page);
 
 // Reads ?view=. Home has no view. Old names (?view=events, ?view=timeline,
 // ?view=artists) are not redirected: they open Home.
@@ -97,11 +137,11 @@ export const NavStorage = undefined;
 
 export const REMEMBER_KEY = 'liveArchive.subtabs';
 
-function readRemembered(storage: NavStorage | null): Partial<Record<Section, string>> {
+function readRemembered(storage: NavStorage | null): Partial<Record<Section | 'timeline', string>> {
   try {
     const raw = storage?.getItem(REMEMBER_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === 'object' ? (parsed as Partial<Record<Section, string>>) : {};
+    return parsed && typeof parsed === 'object' ? (parsed as Partial<Record<Section | 'timeline', string>>) : {};
   } catch {
     return {}; // Blocked or corrupt storage: fall back to the first page.
   }
@@ -116,10 +156,27 @@ export function rememberedPage(section: Section, access: Access, storage: NavSto
 export function rememberPage(page: SubPage, storage: NavStorage | null): void {
   const section = PAGE_SECTION[page];
   try {
-    storage?.setItem(REMEMBER_KEY, JSON.stringify({ ...readRemembered(storage), [section]: page }));
+    const next = { ...readRemembered(storage), [section]: page };
+    if (isTimelinePage(page)) next.timeline = page;
+    storage?.setItem(REMEMBER_KEY, JSON.stringify(next));
   } catch {
     // Storage full or blocked: the subtab is simply not remembered.
   }
+}
+
+export function rememberedTimelinePage(storage: NavStorage | null): TimelinePage {
+  const remembered = readRemembered(storage);
+  if (remembered.timeline && (TIMELINE_PAGES as readonly string[]).includes(remembered.timeline)) {
+    return remembered.timeline as TimelinePage;
+  }
+  if (remembered.explore && (TIMELINE_PAGES as readonly string[]).includes(remembered.explore)) {
+    return remembered.explore as TimelinePage;
+  }
+  return 'agenda';
+}
+
+export function openStripTab(tab: StripTab, storage: NavStorage | null): SubPage {
+  return tab === 'timeline' ? rememberedTimelinePage(storage) : tab;
 }
 
 // The first visit to a phone's icon-only strip shows a one-line hint, once.
