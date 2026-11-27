@@ -19,6 +19,7 @@ import { Ledger } from './ui/Ledger';
 import { Notice } from './ui/Notice';
 import { Pill } from './ui/Pill';
 import { SaveStatus } from './ui/SaveStatus';
+import { ArtistGenresEditor } from './ArtistGenresEditor';
 
 // One catalog artist as a record (Global archive, GA3). Same layout as ManageEntry:
 // name, AKAs, MusicBrainz id, origins, editions billed, community count, appearances.
@@ -335,6 +336,8 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
         <p className="text-xs text-text-muted">Lineups that name this artist by an AKA are matched to it.</p>
         {pendingPanel('aka')}
       </div>
+
+      <ArtistGenresEditor actKey={artist.key} />
 
       <div className="space-y-1.5">
         <h3 className={sectionTitle}>Merge</h3>
