@@ -21,6 +21,11 @@ import { genreKey } from '../server/events/genreVocabulary';
 import { GenresRanking } from './GenresRanking';
 import { PeopleRanking } from './PeopleRanking';
 import { useIsOwner } from './MeContext';
+import { PostIt } from './ui/PostIt';
+
+// The count tiles are post-its (docs/specs/landing-look.md): one tilt and tone per tile.
+const NOTE_TILTS = [-1.25, 1, -0.75];
+const NOTE_TONES = ['paper', 'second', 'accent'] as const;
 
 interface ArtistsViewProps {
   events: LoggedEvent[];
@@ -564,16 +569,16 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
   return (
     <div className="space-y-4">
       {rankingSwitch}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-3 pt-2 sm:gap-4">
         {[
           [artists.length, artists.length === 1 ? 'Artist' : 'Artists'],
           [repeat, 'Seen more than once'],
           [favourites, 'Favorite sets'],
-        ].map(([value, label]) => (
-          <div key={label} className="rounded-card border border-line bg-surface-1 px-4 py-3">
-            <div className="text-2xl font-extrabold tracking-tight tabular-nums text-text">{value}</div>
-            <div className="text-xs text-text-muted">{label}</div>
-          </div>
+        ].map(([value, label], i) => (
+          <PostIt key={label} tilt={NOTE_TILTS[i]} tone={NOTE_TONES[i]} className="h-full !px-3 !py-4 sm:!px-4">
+            <div className="poster-head text-4xl leading-none tabular-nums">{value}</div>
+            <div className="mt-1 font-mono text-xs">{label}</div>
+          </PostIt>
         ))}
       </div>
 

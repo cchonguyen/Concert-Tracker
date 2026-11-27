@@ -27,5 +27,6 @@ The design-system catalogue lists every part (`docs/design-system/design-system.
 - **45.5 Manage, panels and dialogs (built).** Manage's title, every panel and dialog title (h2, plus the shared Sheet and Confirm titles) are poster headings. Names of things (an edition, a series, an artist, an event, a month) keep the serif, and small h3 subheads stay as they are.
 - **45.6 Home page links (built).** The Library and Explore links on Home are tilted post-its: the whole note is one button (`PostIt` with `onClick`), showing the page's icon, its name as a poster heading, its one-line blurb and its live count. Tones alternate within each section (Library paper and second, Explore accent and paper).
 - **45.7 Summary count tiles (built).** The four counts at the top of Summary (Events, Artists seen, Venues, this year) are tilted post-its, each one button that opens the Table with its filter, as before. The number is in the poster face, the label in mono, and tones run paper, second, accent, paper.
+- **45.8 Ranking and Stats count tiles (built).** The same post-it count tiles on Ranking (Artists, Seen more than once, Favorite sets), the Stats "All time" strip and the Stats "By season" tiles. Any new count tile is a `PostIt` with the number in the poster face; no plain bordered boxes for counts.
 
 Each later slice needs Charlie's go after he reviews Home.

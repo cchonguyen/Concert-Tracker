@@ -17,6 +17,11 @@ import { GenreConstellation } from './GenreConstellation';
 import { GenreYearsChart } from './GenreYearsChart';
 import { Pill } from './ui/Pill';
 import { Popover } from './ui/Popover';
+import { PostIt } from './ui/PostIt';
+
+// Count tiles are post-its (docs/specs/landing-look.md): tilts and tones repeat in this order.
+const NOTE_TILTS = [-1.25, 1, -0.75, 1.25, -0.5, 0.75];
+const NOTE_TONES = ['paper', 'second', 'accent', 'paper', 'second', 'accent'] as const;
 
 interface GenreStoryProps {
   events: LoggedEvent[];
@@ -338,28 +343,28 @@ export const GenreStory: React.FC<GenreStoryProps> = ({
             <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-text-muted">By season</h3>
             {bySeason.headline && <p className="mt-1 text-sm font-medium text-text">{bySeason.headline}</p>}
           </div>
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-            {bySeason.tiles.map((tile) => (
-              <div key={tile.label} className="space-y-1 rounded-control border border-line bg-surface-2 p-3">
-                <p className="font-mono text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+          <div className="grid grid-cols-2 gap-4 pt-2 sm:grid-cols-4">
+            {bySeason.tiles.map((tile, i) => (
+              <PostIt key={tile.label} tilt={NOTE_TILTS[i % NOTE_TILTS.length]} tone={NOTE_TONES[i % NOTE_TONES.length]} className="h-full space-y-1 !p-3">
+                <p className="font-mono text-[11px] font-semibold uppercase tracking-wider">
                   {tile.label}
                 </p>
                 {tile.enough && tile.topGroup ? (
                   <>
-                    <p className="truncate text-sm font-semibold text-text">{tile.topGroup.name}</p>
-                    <p className="font-mono text-xs tabular-nums text-text-muted">
+                    <p className="poster-head truncate text-2xl">{tile.topGroup.name}</p>
+                    <p className="font-mono text-xs tabular-nums opacity-75">
                       {Math.round(tile.topGroup.share * 100)}% of {tile.knownSets} sets
                     </p>
                   </>
                 ) : (
                   <>
-                    <p className="text-xs font-medium text-text-muted">Not enough yet</p>
-                    <p className="font-mono text-[11px] tabular-nums text-text-faint">
+                    <p className="text-xs font-medium">Not enough yet</p>
+                    <p className="font-mono text-[11px] tabular-nums opacity-75">
                       {tile.knownSets} {tile.knownSets === 1 ? 'set' : 'sets'} so far
                     </p>
                   </>
                 )}
-              </div>
+              </PostIt>
             ))}
           </div>
         </div>
