@@ -7,9 +7,21 @@ import {
   artistsBehind,
   comingUp,
   cooling,
+  genreByKind,
+  genreBySeason,
+  genreByYear,
+  genreFirsts,
+  genreLabel,
+  genreMilestones,
+  genreRange,
+  genreStoryLine,
+  genreTree,
   goneQuiet,
+  newThisYear,
+  peopleGenres,
   periodEvents,
   rising,
+  yearGenres,
 } from '../src/services/genreInsights.ts';
 
 const TODAY = '2026-11-26';
@@ -31,7 +43,7 @@ function ev(id: string, startDate: string | undefined, seenNames: string[], extr
   };
 }
 
-function artist(name: string, genres: Array<{ parent: string; style: string; weight: number }>, source: ArtistGenres['source'] = 'owner'): ArtistGenres {
+function artist(name: string, genres: Array<{ parent: string; style: string; weight: number }>, source: ArtistGenres['source'] = 'music-story'): ArtistGenres {
   return {
     key: name.toLowerCase(),
     name,
@@ -230,4 +242,270 @@ test('comingUp reads only upcoming planned events, caps at 3, and attaches first
     ['House', 'Act B', 'Club B', undefined],
     ['Trance', 'Act C', 'Club B', undefined],
   ]);
+});
+
+test('genreFirsts orders oldest first, handles month-only dates and ties, and newThisYear picks current year', () => {
+  const byArtist = genresByArtist([
+    artist('Zed', [{ parent: 'Electronic', style: 'House', weight: 1 }]),
+    artist('Alpha', [{ parent: 'Electronic', style: 'House', weight: 1 }]),
+    artist('Beta', [{ parent: 'Electronic', style: 'House', weight: 1 }]),
+    artist('RockAct', [{ parent: 'Rock', style: 'Indie Rock', weight: 1 }]),
+    artist('FreshAct', [{ parent: 'Jazz', style: 'Nu Jazz', weight: 1 }]),
+  ]);
+
+  const events = [
+    ev('e1', undefined, ['RockAct'], { year: 2018, month: 5, name: 'May Rock' }),
+    ev('e2', '2012-06-14', ['Zed', 'Alpha', 'Beta'], { name: 'Early Fest' }),
+    ev('e3', '2026-04-18', ['FreshAct'], { name: 'Spring Jazz' }),
+  ];
+
+  const firsts = genreFirsts(events, byArtist, undefined, TODAY);
+  assert.equal(firsts.knownSets, 5);
+  assert.deepEqual(firsts.items.map((i) => [i.group, i.year, i.acts, i.moreCount]), [
+    ['Electronic', 2012, ['Alpha', 'Beta'], 1],
+    ['Rock', 2018, ['RockAct'], 0],
+    ['Jazz', 2026, ['FreshAct'], 0],
+  ]);
+
+  const nty = newThisYear(events, byArtist, undefined, TODAY);
+  assert.deepEqual(nty.map((x) => [x.name, x.firstAct, x.firstDate]), [['Nu Jazz', 'FreshAct', '2026-04-18']]);
+});
+
+test('genreMilestones tracks 10/25 marks, 10-year anniversaries, and nextUp within 5 sets', () => {
+  const byArtist = genresByArtist([
+    artist('HouseAct', [{ parent: 'Electronic', style: 'House', weight: 1 }]),
+    artist('RockAct', [{ parent: 'Rock', style: 'Indie Rock', weight: 1 }]),
+    artist('OldOnly', [{ parent: 'Jazz', style: 'Bebop', weight: 1 }]),
+  ]);
+
+  const events: LoggedEvent[] = [
+    ev('old-house', '2016-01-01', ['HouseAct']),
+    ...Array.from({ length: 9 }, (_, i) => ev(`h-${i}`, `2026-01-0${i + 1}`, ['HouseAct'])), // total 10 House -> mark 10
+    ...Array.from({ length: 5 }, (_, i) => ev(`r-${i}`, `2026-02-0${i + 1}`, ['RockAct'])), // total 5 Rock -> 5 away from 10 (nextUp)
+    ev('old-jazz', '2015-01-01', ['OldOnly']), // 10+ years ago, but no set in last 12 months
+  ];
+
+  const ms = genreMilestones(events, byArtist, undefined, TODAY);
+  assert.equal(ms.reached.length, 1);
+  assert.equal(ms.reached[0].group, 'Electronic');
+  assert.equal(ms.reached[0].mark, 10);
+  assert.deepEqual(ms.anniversaries, [{ group: 'Electronic', years: 10 }]);
+  assert.deepEqual(ms.nextUp, { group: 'Rock', mark: 10, remaining: 5 });
+
+  // 4 sets -> 6 away from 10 -> nextUp is null
+  const msTooFar = genreMilestones(events.filter((e) => e.id.startsWith('r-')).slice(0, 4), byArtist, undefined, TODAY);
+  assert.equal(msTooFar.nextUp, null);
+});
+
+test('genreRange and genreLabel evaluate 30-set floor and every label in precedence order', () => {
+  const byArtist = genresByArtist([
+    artist('Tech', [{ parent: 'Electronic', style: 'Techno', weight: 1 }]),
+    artist('House', [{ parent: 'Electronic', style: 'House', weight: 1 }]),
+    artist('Rock', [{ parent: 'Rock', style: 'Indie', weight: 1 }]),
+    artist('Jazz', [{ parent: 'Jazz', style: 'Bebop', weight: 1 }]),
+    artist('Folk', [{ parent: 'Folk', style: 'Indie Folk', weight: 1 }]),
+    artist('Soul', [{ parent: 'Soul', style: 'Neo Soul', weight: 1 }]),
+    artist('Pop', [{ parent: 'Pop', style: 'Synthpop', weight: 1 }]),
+  ]);
+
+  // Under 30 sets -> label is null
+  const small = Array.from({ length: 29 }, (_, i) => ev(`s-${i}`, '2026-01-01', ['Tech']));
+  assert.equal(genreLabel(small, byArtist, undefined, TODAY), null);
+
+  const range = genreRange(small, byArtist, undefined, TODAY, ['Electronic', 'Rock', 'Jazz']);
+  assert.equal(range.seenGroupCount, 1);
+  assert.equal(range.totalGroupCount, 3);
+  assert.deepEqual(range.missingGroups, ['Rock', 'Jazz']);
+
+  // 1. Shape-shifter: all-time Electronic, last 12 months Rock (10+)
+  const shapeShifter = [
+    ...Array.from({ length: 20 }, (_, i) => ev(`ss-e-${i}`, '2024-01-01', ['Tech'])),
+    ...Array.from({ length: 10 }, (_, i) => ev(`ss-r-${i}`, '2026-05-01', ['Rock'])),
+  ];
+  assert.equal(genreLabel(shapeShifter, byArtist, undefined, TODAY)?.label, 'Shape-shifter');
+
+  // 2. Devoted: >= 60% in one group (all old so recent < 10)
+  const devoted = [
+    ...Array.from({ length: 20 }, (_, i) => ev(`d-e-${i}`, '2024-01-01', ['Tech'])),
+    ...Array.from({ length: 10 }, (_, i) => ev(`d-r-${i}`, '2024-02-01', ['Rock'])),
+  ];
+  assert.equal(genreLabel(devoted, byArtist, undefined, TODAY)?.label, 'Devoted');
+
+  // 3. Double act: top 2 >= 75%, each >= 25%
+  const doubleAct = [
+    ...Array.from({ length: 15 }, (_, i) => ev(`da-e-${i}`, '2024-01-01', ['Tech'])),
+    ...Array.from({ length: 10 }, (_, i) => ev(`da-r-${i}`, '2024-02-01', ['Rock'])),
+    ...Array.from({ length: 5 }, (_, i) => ev(`da-j-${i}`, '2024-03-01', ['Jazz'])),
+  ];
+  assert.equal(genreLabel(doubleAct, byArtist, undefined, TODAY)?.label, 'Double act');
+
+  // 4. Deep diver: one style >= 25%, no group >= 60% and top2 < 75%
+  const deepDiver = [
+    ...Array.from({ length: 10 }, (_, i) => ev(`dd-e-${i}`, '2024-01-01', ['Tech'])), // Techno 10/36 = 27.8%
+    ...Array.from({ length: 7 }, (_, i) => ev(`dd-h-${i}`, '2024-01-02', ['House'])), // Electronic 17/36 = 47%
+    ...Array.from({ length: 7 }, (_, i) => ev(`dd-r-${i}`, '2024-02-01', ['Rock'])), // Rock 7/36 = 19% (top2 = 66.7%)
+    ...Array.from({ length: 6 }, (_, i) => ev(`dd-j-${i}`, '2024-03-01', ['Jazz'])),
+    ...Array.from({ length: 6 }, (_, i) => ev(`dd-f-${i}`, '2024-04-01', ['Folk'])),
+  ];
+  assert.equal(genreLabel(deepDiver, byArtist, undefined, TODAY)?.label, 'Deep diver');
+
+  // 5. Explorer: 5+ groups, none over 40%, no single style >= 25%
+  const explorer = [
+    ...Array.from({ length: 6 }, (_, i) => ev(`ex-t-${i}`, '2024-01-01', ['Tech'])),
+    ...Array.from({ length: 6 }, (_, i) => ev(`ex-h-${i}`, '2024-01-02', ['House'])), // Electronic 12/36 = 33%
+    ...Array.from({ length: 6 }, (_, i) => ev(`ex-r-${i}`, '2024-02-01', ['Rock'])),
+    ...Array.from({ length: 6 }, (_, i) => ev(`ex-j-${i}`, '2024-03-01', ['Jazz'])),
+    ...Array.from({ length: 6 }, (_, i) => ev(`ex-f-${i}`, '2024-04-01', ['Folk'])),
+    ...Array.from({ length: 6 }, (_, i) => ev(`ex-s-${i}`, '2024-05-01', ['Soul'])),
+  ];
+  assert.equal(genreLabel(explorer, byArtist, undefined, TODAY)?.label, 'Explorer');
+
+  // 6. All-rounder: 3 groups (<5 groups), none >= 60%, top2 < 75%, no style >= 25%
+  const allRounder = [
+    ...Array.from({ length: 7 }, (_, i) => ev(`ar-t-${i}`, '2024-01-01', ['Tech'])),
+    ...Array.from({ length: 7 }, (_, i) => ev(`ar-h-${i}`, '2024-01-02', ['House'])), // Electronic 14/36 = 38.9%
+    ...Array.from({ length: 7 }, (_, i) => ev(`ar-r-${i}`, '2024-02-01', ['Rock'])),
+    ...Array.from({ length: 7 }, (_, i) => ev(`ar-j-${i}`, '2024-03-01', ['Jazz'])),
+    ...Array.from({ length: 8 }, (_, i) => ev(`ar-f-${i}`, '2024-04-01', ['Folk'])), // 4 groups? Wait: 4 groups -> Explorer needs 5!
+  ];
+  // Above has 4 groups (Electronic, Rock, Jazz, Folk) and max style is 8/36 = 22.2% < 25%, top2 = 22/36 = 61% < 75%
+  assert.equal(genreLabel(allRounder, byArtist, undefined, TODAY)?.label, 'All-rounder');
+});
+
+test('genreByYear and genreStoryLine handle thin years and all story line branches', () => {
+  const byArtist = genresByArtist([
+    artist('House', [{ parent: 'Electronic', style: 'House', weight: 1 }]),
+    artist('Rock', [{ parent: 'Rock', style: 'Indie', weight: 1 }]),
+    artist('Jazz', [{ parent: 'Jazz', style: 'Bebop', weight: 1 }]),
+  ]);
+
+  const makeYear = (y: number, act: string, n = 10) =>
+    Array.from({ length: n }, (_, i) => ev(`${y}-${act}-${i}`, `${y}-05-0${(i % 9) + 1}`, [act]));
+
+  // Only 2 counted years + 1 thin year -> story line is null
+  const twoCounted = [...makeYear(2020, 'House', 10), ...makeYear(2021, 'House', 10), ...makeYear(2022, 'Rock', 5)];
+  const by2 = genreByYear(twoCounted, byArtist, undefined, TODAY);
+  assert.equal(by2.countedYears, 2);
+  assert.equal(by2.years[2].thin, true);
+  assert.equal(genreStoryLine(by2), null);
+
+  // Same leader every year
+  const sameLeader = [...makeYear(2020, 'House'), ...makeYear(2021, 'House'), ...makeYear(2022, 'House')];
+  assert.equal(genreStoryLine(genreByYear(sameLeader, byArtist, undefined, TODAY)), 'Electronic has led every year since 2020.');
+
+  // Moved and stayed for 2+ years
+  const moved = [...makeYear(2020, 'House'), ...makeYear(2021, 'Rock'), ...makeYear(2022, 'Rock')];
+  assert.equal(genreStoryLine(genreByYear(moved, byArtist, undefined, TODAY)), 'You moved from electronic to rock around 2021.');
+
+  // Changes year to year
+  const flip = [...makeYear(2020, 'House'), ...makeYear(2021, 'Rock'), ...makeYear(2022, 'Jazz')];
+  assert.equal(genreStoryLine(genreByYear(flip, byArtist, undefined, TODAY)), 'Your top genre changes from year to year.');
+});
+
+test('genreByKind and genreBySeason respect 10-set thresholds and headlines', () => {
+  const byArtist = genresByArtist([
+    artist('House', [{ parent: 'Electronic', style: 'House', weight: 1 }]),
+    artist('Rock', [{ parent: 'Rock', style: 'Indie', weight: 1 }]),
+  ]);
+
+  const events = [
+    ...Array.from({ length: 10 }, (_, i) => ev(`fest-${i}`, `2026-07-0${(i % 9) + 1}`, ['House'], { kind: 'festival', format: 'Club night' })),
+    ...Array.from({ length: 10 }, (_, i) => ev(`conc-${i}`, `2026-01-0${(i % 9) + 1}`, ['Rock'], { kind: 'concert' })),
+    ...Array.from({ length: 5 }, (_, i) => ev(`spring-${i}`, `2026-04-0${i + 1}`, ['House'])), // under 10 for Mar-May
+  ];
+
+  const byKind = genreByKind(events, byArtist, undefined, TODAY);
+  assert.equal(byKind.bars.length, 3); // Festival (10), Concert (10), Club night (10)
+  assert.ok(byKind.headline?.includes('Electronic') || byKind.headline?.includes('electronic'));
+
+  const bySeason = genreBySeason(events, byArtist, undefined, TODAY);
+  const junAug = bySeason.tiles.find((t) => t.label === 'Jun–Aug')!;
+  const marMay = bySeason.tiles.find((t) => t.label === 'Mar–May')!;
+  assert.equal(junAug.enough, true);
+  assert.equal(marMay.enough, false);
+  assert.equal(marMay.topGroup, null);
+  assert.ok(bySeason.headline?.includes('Jun–Aug') || bySeason.headline?.includes('Dec–Feb'));
+});
+
+test('yearGenres enforces 10-set floor, 3-favourite floor, and carries no people fields', () => {
+  const byArtist = genresByArtist([
+    artist('Mira Vale', [{ parent: 'Electronic', style: 'Techno', weight: 1 }]),
+    artist('RockAct', [{ parent: 'Rock', style: 'Indie', weight: 1 }]),
+  ]);
+
+  const smallYear = Array.from({ length: 9 }, (_, i) => ev(`sy-${i}`, '2026-03-01', ['Mira Vale']));
+  assert.equal(yearGenres(smallYear, 2026, byArtist, undefined, TODAY), null);
+
+  const events = [
+    ...Array.from({ length: 5 }, (_, i) => ev(`25-${i}`, '2025-03-01', ['RockAct'])),
+    ...Array.from({ length: 10 }, (_, i) =>
+      ev(`26-${i}`, '2026-04-18', ['Mira Vale'], {
+        seen: [{ key: 'mira vale', name: 'Mira Vale', from: 'you', favourite: i < 2 }],
+        companions: ['Sam'],
+      }),
+    ),
+  ];
+
+  // 2 favourites -> favourites is null
+  const y2fav = yearGenres(events, 2026, byArtist, undefined, TODAY)!;
+  assert.equal(y2fav.favourites, null);
+  assert.equal('companions' in y2fav, false);
+  assert.equal('people' in y2fav, false);
+
+  // 3 favourites -> favourites shown
+  events[7].seen[0].favourite = true;
+  const y3fav = yearGenres(events, 2026, byArtist, undefined, TODAY)!;
+  assert.deepEqual(y3fav.favourites, { total: 3, topStyle: 'Techno', topCount: 3 });
+  assert.equal(y3fav.topStyle.name, 'Techno');
+  assert.equal(y3fav.newestToYou?.name, 'Techno');
+  assert.equal(y3fav.distinctStyles, 1);
+  assert.equal(y3fav.prevDistinctStyles, 1);
+  assert.equal(y3fav.biggestChange?.name, 'Techno');
+});
+
+test('peopleGenres enforces privacy (ignores unknown personIds and locked events) and 3-show/50% thresholds', () => {
+  const byArtist = genresByArtist([
+    artist('Dnb', [{ parent: 'Electronic', style: 'Drum & bass', weight: 1 }]),
+  ]);
+
+  const peopleMap = new Map([['p-sam', 'Sam']]);
+  const events: LoggedEvent[] = [
+    ...Array.from({ length: 3 }, (_, i) => ev(`sam-${i}`, `2026-01-0${i + 1}`, ['Dnb'], { personIds: ['p-sam', 'p-secret'] })),
+    ev('locked', '2026-02-01', ['Dnb'], { personIds: ['p-sam'], peopleLocked: true }),
+    ev('unknown-only', '2026-02-02', ['Dnb'], { personIds: ['p-unknown'] }),
+  ];
+
+  const res = peopleGenres(events, byArtist, undefined, peopleMap, TODAY);
+  assert.equal(res.people.length, 1);
+  assert.equal(res.people[0].name, 'Sam');
+  assert.equal(res.people[0].shows, 3);
+  assert.deepEqual(res.people[0].topGroups, [{ group: 'Electronic', count: 3, totalWithAnyone: 3 }]);
+  assert.equal(res.headline, 'Electronic nights are with Sam.');
+});
+
+test('genreTree builds nested umbrella trees with lit and dimmed branches', () => {
+  const vocab: GenreVocabulary = {
+    genres: [
+      { key: 'electronic', name: 'Electronic', aliases: [], umbrellas: [] },
+      { key: 'house', name: 'House', parent: 'Electronic', aliases: [], umbrellas: ['electronic'] },
+      { key: 'deephouse', name: 'Deep house', parent: 'Electronic', aliases: [], umbrellas: ['house'] },
+      { key: 'afrohouse', name: 'Afro house', parent: 'Electronic', aliases: [], umbrellas: ['house'] },
+    ],
+  };
+  const byArtist = genresByArtist([artist('DeepAct', [{ parent: 'Electronic', style: 'Deep house', weight: 1 }])], vocab);
+  const events = [ev('1', '2026-03-01', ['DeepAct'])];
+
+  assert.deepEqual(genreTree(undefined, events, byArtist, TODAY), []);
+
+  const tree = genreTree(vocab, events, byArtist, TODAY);
+  assert.equal(tree.length, 1);
+  assert.equal(tree[0].name, 'Electronic');
+  assert.equal(tree[0].sets, 1);
+  assert.equal(tree[0].seen, true);
+  assert.equal(tree[0].seenBranches, 2); // House + Deep house
+  assert.equal(tree[0].totalBranches, 3); // House + Deep house + Afro house
+  const houseNode = tree[0].children[0];
+  assert.equal(houseNode.name, 'House');
+  assert.equal(houseNode.seen, true);
+  assert.equal(houseNode.children.find((c) => c.key === 'afrohouse')?.seen, false);
 });
