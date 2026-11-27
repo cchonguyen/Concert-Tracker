@@ -38,7 +38,7 @@ const PANEL_BORDER = { page: 'border-b-page', 'surface-1': 'border-b-surface-1',
 export function Tabs<T extends string>({ label, items, value, onChange, variant = 'folder', panel = 'surface-1', className = '', end, line = true }: Props<T>) {
   const id = useId();
   const still = useReducedMotion();
-  const slide = still ? { duration: 0 } : { type: 'spring' as const, stiffness: 360, damping: 22, mass: 0.7 };
+  const slide = still ? { duration: 0 } : { type: 'spring' as const, stiffness: 90, damping: 11, mass: 0.7 };
   const folder = variant === 'folder';
   // Which way the last change went (-1 left, 1 right), so the seesaw tips the right way.
   const at = items.findIndex((t) => t.value === value);
@@ -49,11 +49,11 @@ export function Tabs<T extends string>({ label, items, value, onChange, variant 
   const { dir, moved } = last.current;
   // Made once per change, so a re-render for another reason (a count ticking up) does not rock it again.
   const rock = useMemo(
-    () => (still || !moved ? undefined : { rotate: [0, dir * 4, dir * -2, 0], transition: { duration: 0.55, times: [0, 0.35, 0.7, 1] } }),
+    () => (still || !moved ? undefined : { rotate: [0, dir * 4, dir * -2, 0], transition: { duration: 1.1, times: [0, 0.35, 0.7, 1] } }),
     [value, still],
   );
   const squash = useMemo(
-    () => (still || !moved ? undefined : { scaleY: [1, 2.5, 1], transition: { duration: 0.45 } }),
+    () => (still || !moved ? undefined : { scaleY: [1, 2.5, 1], transition: { duration: 0.9 } }),
     [value, still],
   );
 
@@ -104,7 +104,7 @@ export function Tabs<T extends string>({ label, items, value, onChange, variant 
                   className="relative inline-flex"
                   initial={{ y: -6, rotate: dir * -14, scale: 1.25 }}
                   animate={{ y: 0, rotate: 0, scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 520, damping: 14 }}
+                  transition={{ type: 'spring', stiffness: 130, damping: 7 }}
                 >
                   <Icon className="h-[15px] w-[15px] text-accent" strokeWidth={1.75} aria-hidden="true" />
                 </motion.span>
