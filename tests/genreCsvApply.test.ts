@@ -270,3 +270,24 @@ test('an alias made after download makes the row stale; a re-spelling does not',
   assert.equal(p.changes[0].stale, true);
   assert.equal(genreStamp('owner', ['Big-Room']), downloaded);
 });
+
+test('SupabaseLineupStore.putSetting deletes row instead of upserting null', async () => {
+  const { SupabaseLineupStore } = await import('../src/server/lineup/store/supabaseStore.ts');
+  const calls: string[] = [];
+  const makeDb = () => ({
+    from: (table: string) => ({
+      delete: () => {
+        calls.push(`delete:${table}`);
+        const chain: any = { eq: (col: string, val: unknown) => { calls.push(`eq:${col}=${val}`); return chain; }, error: null };
+        return chain;
+      },
+      upsert: () => {
+        calls.push(`upsert:${table}`);
+        return { error: null };
+      },
+    }),
+  });
+  const scoped = new SupabaseLineupStore(makeDb() as any, { userId: 'u1', role: 'owner' });
+  await scoped.putSetting('genres_csv_undo', null);
+  assert.deepEqual(calls, ['delete:user_settings', 'eq:user_id=u1', 'eq:key=genres_csv_undo']);
+});

@@ -334,18 +334,21 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
                 </p>
               )}
               {preview && (
-                <GenresCsvPreview
-                  changes={preview.changes}
-                  skipped={preview.skipped}
-                  overwrite={overwrite}
-                  onToggleOverwrite={toggleOverwrite}
-                  busy={Boolean(busy)}
-                  onApply={() => void applyCsv()}
-                  onCancel={() => {
-                    setPreview(null);
-                    setOverwrite(new Set());
-                  }}
-                />
+                <>
+                  {error && <Notice tone="warning">{error}</Notice>}
+                  <GenresCsvPreview
+                    changes={preview.changes}
+                    skipped={preview.skipped}
+                    overwrite={overwrite}
+                    onToggleOverwrite={toggleOverwrite}
+                    busy={Boolean(busy)}
+                    onApply={() => void applyCsv()}
+                    onCancel={() => {
+                      setPreview(null);
+                      setOverwrite(new Set());
+                    }}
+                  />
+                </>
               )}
             </section>
           </>
