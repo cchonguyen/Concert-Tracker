@@ -31,8 +31,13 @@ import {
   DRIFT_BANDS,
   lineupDna,
   LINEUP_DNA_MIN_ACTS,
+  eventMatch,
+  MATCH_ALPHA,
+  MATCH_MIN_EVENTS,
+  MATCH_MIN_SETS,
 } from '../src/services/genreInsights.ts';
 import type { LineupGenresAct } from '../src/services/lineupApi.ts';
+import { genreKey } from '../src/server/events/genreVocabulary.ts';
 
 const TODAY = '2026-11-26';
 
@@ -1084,4 +1089,161 @@ test('lineupDna: without a taxonomy it uses the music-story groups', () => {
   assert.ok(Math.abs(whole.segments[0].share - 0.75) < 1e-9); // Rock 0.5 + 1.0 of 1.5 tagged
   assert.ok(Math.abs(whole.segments[1].share - 0.25) < 1e-9);
   assert.ok(Math.abs(whole.segments.reduce((t, s) => t + s.share, 0) - 1) < 1e-9);
+});
+
+// Event Match (docs/specs/genre-taxonomy-release-2.md section 4). Each genre sits in its own
+// family ("Fam <name>") under one macro, so a family and a genre are the same thing here.
+const emVocab = (names: string[], links: Array<[string, string, number]> = []): GenreVocabulary => {
+  const genres: VocabGenre[] = [{ key: 'macro:electronic', name: 'Electronic', level: 'macro', aliases: [], umbrellas: [] }];
+  for (const n of names) {
+    genres.push({ key: `family:${genreKey(`Fam ${n}`)}`, name: `Fam ${n}`, level: 'family', primaryParent: 'macro:electronic', aliases: [], umbrellas: [] });
+  }
+  for (const n of names) {
+    const relations = links
+      .filter(([s]) => s === n)
+      .map(([, t, w]) => ({ target: genreKey(t), type: 'adjacent' as const, weight: w, origin: 'curated' as const }));
+    genres.push({
+      key: genreKey(n), name: n, primaryParent: `family:${genreKey(`Fam ${n}`)}`, aliases: [], umbrellas: [],
+      ...(relations.length ? { relations } : {}),
+    });
+  }
+  return { genres };
+};
+
+const emRow = (key: string, styles: Array<[string, number]>): ArtistGenres =>
+  artist(key, styles.map(([style, weight]) => ({ parent: 'Electronic', style, weight })));
+
+// Past events, one per size: each has that many acts, all with one genre.
+function emHistory(prefix: string, sizes: number[], style: string): { events: LoggedEvent[]; rows: ArtistGenres[] } {
+  const events: LoggedEvent[] = [];
+  const rows: ArtistGenres[] = [];
+  sizes.forEach((n, i) => {
+    const names = Array.from({ length: n }, (_, j) => `${prefix}${i}x${j}`);
+    events.push(ev(`${prefix}-${i}`, '2025-06-01', names));
+    for (const name of names) rows.push(emRow(name.toLowerCase(), [[style, 1]]));
+  });
+  return { events, rows };
+}
+
+test('eventMatch: one smoothing step reaches B from A on the chain A-B-C, but not C', () => {
+  const chain = emVocab(['Alpha', 'Beta', 'Gamma'], [['Alpha', 'Beta', 1], ['Beta', 'Gamma', 1]]);
+  const hist = emHistory('c', [1], 'Alpha');
+  const byArtist = genresByArtist([...hist.rows, emRow('bl1', [['Beta', 1]]), emRow('bl2', [['Gamma', 1]])], chain);
+
+  const toB = eventMatch('bill', hist.events, byArtist, [dnaAct('bl1')], chain);
+  const toC = eventMatch('bill', hist.events, byArtist, [dnaAct('bl2')], chain);
+
+  // Your vector: Alpha 1. Beta gets alpha * (1 / sqrt(deg Beta * deg Alpha)) = alpha / sqrt(2). Gamma gets 0.
+  const expected = (MATCH_ALPHA / Math.SQRT2) / Math.sqrt(1 + (MATCH_ALPHA * MATCH_ALPHA) / 2);
+  assert.ok(Math.abs(toB.score - expected) < 1e-9, `score ${toB.score}`);
+  assert.ok(toB.score > 0);
+  assert.equal(toC.score, 0);
+  assert.equal(toC.band, 'outside');
+});
+
+test('eventMatch: hub dampening gives a genre linked to many less than one with a single link of the same weight', () => {
+  const hub = emVocab(
+    ['Alpha', 'H', 'G', 'X1', 'X2', 'X3', 'X4'],
+    [['Alpha', 'H', 1], ['Alpha', 'G', 1], ['H', 'X1', 1], ['H', 'X2', 1], ['H', 'X3', 1], ['H', 'X4', 1]],
+  );
+  const hist = emHistory('h', [1], 'Alpha');
+  const byArtist = genresByArtist([...hist.rows, emRow('bh', [['H', 1]]), emRow('bg', [['G', 1]])], hub);
+
+  const toH = eventMatch('bill', hist.events, byArtist, [dnaAct('bh')], hub).score;
+  const toG = eventMatch('bill', hist.events, byArtist, [dnaAct('bg')], hub).score;
+  assert.ok(toH > 0);
+  assert.ok(toG > toH, `G ${toG} should beat H ${toH}`);
+});
+
+test('eventMatch: the event itself is left out of your vector', () => {
+  const vocab = emVocab(['Alpha', 'Beta']);
+  const other = emHistory('o', [5], 'Beta');
+  const focal = ev('bill', '2026-11-20', ['fa', 'fb', 'fc', 'fd', 'fe']);
+  const focalRows = ['fa', 'fb', 'fc', 'fd', 'fe'].map((k) => emRow(k, [['Alpha', 1]]));
+  const byArtist = genresByArtist([...other.rows, ...focalRows, emRow('ba', [['Alpha', 1]])], vocab);
+
+  const res = eventMatch('bill', [...other.events, focal], byArtist, [dnaAct('ba')], vocab);
+  assert.equal(res.sets, 5); // the 5 Beta sets; the focal event's 5 Alpha sets are not counted
+  assert.equal(res.events, 1);
+  assert.equal(res.band, 'outside'); // Alpha is not in your vector
+});
+
+test('eventMatch: strong band with an exact match, some band between 0.3 and 0.6, outside below 0.3', () => {
+  const vocab = emVocab(['Alpha', 'Beta', 'Gamma']);
+  const hist = emHistory('b', [2], 'Alpha');
+
+  const strongRows = [...hist.rows, emRow('bs1', [['Alpha', 1]])];
+  const strong = eventMatch('bill', hist.events, genresByArtist(strongRows, vocab), [dnaAct('bs1')], vocab);
+  assert.ok(Math.abs(strong.score - 1) < 1e-9);
+  assert.equal(strong.band, 'strong');
+
+  // Bill: Alpha 1 and Beta 2 (one act, split 1/3 and 2/3). Cosine with Alpha alone is 1 / sqrt(5), about 0.447.
+  const someRows = [...hist.rows, emRow('bx', [['Alpha', 1], ['Beta', 2]])];
+  const some = eventMatch('bill', hist.events, genresByArtist(someRows, vocab), [dnaAct('bx')], vocab);
+  assert.ok(Math.abs(some.score - 1 / Math.sqrt(5)) < 1e-9, `score ${some.score}`);
+  assert.equal(some.band, 'some');
+
+  const outsideRows = [...hist.rows, emRow('bo', [['Gamma', 1]])];
+  const outside = eventMatch('bill', hist.events, genresByArtist(outsideRows, vocab), [dnaAct('bo')], vocab);
+  assert.equal(outside.score, 0);
+  assert.equal(outside.band, 'outside');
+  assert.deepEqual(outside.lane, []);
+});
+
+test('eventMatch: lane is the two families that add most to the score', () => {
+  const vocab = emVocab(['Alpha', 'Beta', 'Gamma']);
+  const a = emHistory('la', [3], 'Alpha');
+  const b = emHistory('lb', [2], 'Beta');
+  const c = emHistory('lc', [1], 'Gamma');
+  const rows = [...a.rows, ...b.rows, ...c.rows, emRow('l1', [['Alpha', 1]]), emRow('l2', [['Beta', 1]]), emRow('l3', [['Gamma', 1]])];
+  const res = eventMatch('bill', [...a.events, ...b.events, ...c.events], genresByArtist(rows, vocab),
+    [dnaAct('l1'), dnaAct('l2'), dnaAct('l3')], vocab);
+
+  // Your vector 3 : 2 : 1 against an even bill. Dot contributions 3, 2, 1: Alpha and Beta.
+  assert.deepEqual(res.lane, [{ key: 'family:famalpha', name: 'Fam Alpha' }, { key: 'family:fambeta', name: 'Fam Beta' }]);
+  assert.equal(res.band, 'strong');
+});
+
+test('eventMatch: inLane, nearby and nearbyUnseen follow the top genre of each bill act', () => {
+  const vocab = emVocab(['Alpha', 'Beta', 'Gamma'], [['Alpha', 'Beta', 1]]);
+  const hist = emHistory('n', [1], 'Alpha');
+  const focal = ev('bill', '2026-11-20', ['p3']); // p3 is seen at this event, so it is not unseen
+  const rows = [
+    ...hist.rows,
+    emRow('p1', [['Alpha', 1]]), // top Alpha: yours
+    emRow('p2', [['Beta', 1]]), // top Beta: adjacent to Alpha, never seen
+    emRow('p3', [['Beta', 1]]), // top Beta: adjacent, seen at this event
+    emRow('p4', [['Gamma', 1]]), // not adjacent to anything of yours
+  ];
+  const acts = ['p1', 'p2', 'p3', 'p4'].map((k) => dnaAct(k));
+  const res = eventMatch('bill', [...hist.events, focal], genresByArtist(rows, vocab), acts, vocab);
+
+  assert.deepEqual(res.inLane, ['p1']);
+  assert.deepEqual(res.nearby, ['p2', 'p3']);
+  assert.deepEqual(res.nearbyUnseen, ['p2']);
+});
+
+test('eventMatch: floors are 20 sets over 5 events, and Lineup DNA enough', () => {
+  const vocab = emVocab(['Alpha']);
+  const billRows = ['bl1', 'bl2', 'bl3'].map((k) => emRow(k, [['Alpha', 1]]));
+  const bill = ['bl1', 'bl2', 'bl3'].map((k) => dnaAct(k));
+  const run = (sizes: number[], prefix: string) => {
+    const hist = emHistory(prefix, sizes, 'Alpha');
+    return eventMatch('bill', hist.events, genresByArtist([...hist.rows, ...billRows], vocab), bill, vocab);
+  };
+
+  const nineteen = run([4, 4, 4, 4, 3], 'p'); // 19 sets over 5 events
+  assert.equal(nineteen.sets, 19);
+  assert.equal(nineteen.events, 5);
+  assert.equal(nineteen.enough, false);
+
+  const fourEvents = run([5, 5, 5, 5], 'q'); // 20 sets over only 4 events
+  assert.equal(fourEvents.sets, MATCH_MIN_SETS);
+  assert.equal(fourEvents.events, 4);
+  assert.equal(fourEvents.enough, false);
+
+  const passes = run([4, 4, 4, 4, 4], 'r'); // 20 sets over 5 events
+  assert.equal(passes.sets, MATCH_MIN_SETS);
+  assert.equal(passes.events, MATCH_MIN_EVENTS);
+  assert.equal(passes.enough, true);
 });
