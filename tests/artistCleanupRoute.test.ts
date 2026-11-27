@@ -9,6 +9,7 @@ import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import { withEntityLinks } from '../src/server/entities/linkingStore.ts';
 import { entitiesRouter } from '../src/server/entities/routes.ts';
 import { runAsMember } from '../src/server/auth/requestScope.ts';
+import { createApiApp } from '../src/server/app.ts';
 import { parseCsv } from '../src/services/listImport.ts';
 import { parseArtistCleanupCsv } from '../src/server/entities/artistCleanupCsv.ts';
 
@@ -75,4 +76,38 @@ test('artist-cleanup preview/apply routes allow owner and reject members with 40
     });
     assert.equal(applied.status, 403);
   });
+});
+
+test('createApp accepts artist-cleanup JSON payloads larger than Express default 100kb limit', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'artist-cleanup-413-'));
+  try {
+    const store = new FileLineupStore(dir);
+    const app = createApiApp(
+      { store, fetcher: undefined as any } as any,
+      {} as any,
+      { kind: 'local' },
+    );
+    const lines = ['Artist,Entity_Status,Invalid_Reason'];
+    for (let i = 0; i < 450; i++) {
+      lines.push(`Fake Non Artist ${i} With Extra Padding Words To Exceed 100KB,invalid_non_artist,placeholder`);
+    }
+    const { rows } = parseArtistCleanupCsv(parseCsv(lines.join('\r\n')));
+    const payload = JSON.stringify({ rows });
+    assert.ok(payload.length > 150_000, `expected >150kb payload, got ${payload.length}`);
+
+    const res = await runAsMember({ role: 'owner', uid: 'u0' } as any, store as any, () =>
+      dispatch(app, {
+        url: '/api/manage/canonical/artist-cleanup/preview',
+        method: 'POST',
+        headers: json,
+        body: { rows },
+      }),
+    );
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as any;
+    assert.equal(body.dryRun, true);
+    assert.equal(body.totalRows, 450);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
