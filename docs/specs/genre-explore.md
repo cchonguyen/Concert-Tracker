@@ -1,6 +1,6 @@
 # Genres in Explore
 
-Status: ideas and mockups approved by Charlie on 26 Nov 2026 (Pacific). Not started. This spec waits for his OK on the Explore tab changes (section 3) before the slices in section 9 start. Planned for Gemini to build.
+Status: ideas, mockups and the Explore tab changes (section 3) approved by Charlie on 26 Nov 2026 (Pacific). Not started. Planned for Gemini to build.
 
 Mockups: https://claude.ai/artifact/GHxso4yoYwvpzsUT4nHG5u (sample data, made-up acts). The ideas doc with research: https://claude.ai/artifact/BNbgw1XSULuC6An3RbHSAp.
 
