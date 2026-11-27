@@ -1,7 +1,8 @@
 import React, { Fragment, useEffect, useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { genresApi, GenresList, LoggedEvent } from '../services/lineupApi';
-import { GenreCount, genreMix, genresByArtist } from '../services/genres';
+import { genreMix, genresByArtist } from '../services/genres';
+import { isModifiedClick } from '../services/manageNav';
 import { whenLabel } from '../services/format';
 import { attendanceOf } from '../server/events/attendance';
 import { allTime, AllTime, facts, pastEvents, perYear, RankBy, Ranked, seriesStats, SeriesStat, top, YearReview, yearInReview } from '../services/stats';
@@ -172,32 +173,6 @@ const Ranking: React.FC<{ name: string; rows: Ranked[]; empty: string; onPick: (
   );
 };
 
-// What you see live by genre: each set you saw split across its act's genres.
-// Sets whose act has no genre are counted apart, not spread over the rest.
-const GenreBars: React.FC<{ name: string; rows: GenreCount[]; note?: string }> = ({ name, rows, note }) => {
-  const growX = useGrow('x');
-  const max = Math.max(...rows.map((r) => r.share), 0.01);
-  return (
-    <div className="space-y-1.5">
-      <h3 className="text-xs text-text-muted">{name}</h3>
-      {note && <p className="text-xs text-text-faint">{note}</p>}
-      <ol className="space-y-1.5">
-        {rows.map((r) => (
-          <li key={r.name} className="space-y-0.5" title={`${r.name}: ${r.sets.toFixed(1)} sets`}>
-            <span className="flex items-baseline justify-between gap-2 text-sm">
-              <span className="truncate text-text">{r.name}</span>
-              <span className="shrink-0 text-xs tabular-nums text-text-muted">{Math.round(r.share * 100)}%</span>
-            </span>
-            <span className="block h-1.5 w-full rounded-full bg-surface-2">
-              <motion.span {...growX} className="block h-full rounded-full bg-accent-fill" style={{ ...growX.style, width: `${(r.share / max) * 100}%` }} />
-            </span>
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
-};
-
 type GenreData = Pick<GenresList, 'genres' | 'vocabulary' | 'map'>;
 
 const GenreCard: React.FC<{ events: LoggedEvent[]; data: GenreData }> = ({ events, data }) => {
@@ -206,26 +181,46 @@ const GenreCard: React.FC<{ events: LoggedEvent[]; data: GenreData }> = ({ event
     [events, data],
   );
   if (!mix.known) return null;
+  const top3 = mix.parents.slice(0, 3);
+  const max = Math.max(1, ...top3.map((r) => r.sets));
   return (
     <section className={`${card} space-y-3`}>
-      <div>
-        <h2 className={title}>Genres you see live</h2>
-        <p className="text-xs text-text-muted">
-          Share of the sets you saw, from {mix.known} of {plural(mix.sets, 'set')}
-          {mix.sets > mix.known && `; ${mix.sets - mix.known === 1 ? 'the other one has' : `the other ${mix.sets - mix.known} have`} no genre yet (Table, Genres)`}.
-        </p>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <h2 className={title}>Genres you see live</h2>
+          <p className="text-xs text-text-muted">
+            Share of the sets you saw, from {mix.known} of {plural(mix.sets, 'set')}
+            {mix.sets > mix.known && `; ${mix.sets - mix.known === 1 ? 'the other one has' : `the other ${mix.sets - mix.known} have`} no genre yet (Table, Genres)`}.
+          </p>
+        </div>
+        <a
+          href="?view=ranking&by=genres"
+          onClick={(e) => {
+            if (isModifiedClick(e)) return;
+            e.preventDefault();
+            window.history.pushState(null, '', '?view=ranking&by=genres');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }}
+          className="inline-flex min-h-11 items-center text-xs font-medium text-accent hover:underline sm:min-h-9"
+        >
+          See all
+        </a>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <GenreBars name="Genre" rows={mix.parents.slice(0, 8)} />
-        <GenreBars name="Style" rows={mix.styles.slice(0, 10)} />
-        {mix.umbrellas.length > 0 && (
-          <GenreBars
-            name="Including related genres"
-            note="A set counts once under each umbrella it falls in."
-            rows={mix.umbrellas.slice(0, 10)}
-          />
-        )}
-      </div>
+      <ol className="space-y-2">
+        {top3.map((r) => (
+          <li key={r.name} className="space-y-1">
+            <div className="flex items-baseline justify-between gap-2 text-sm">
+              <span className="truncate text-text">{r.name}</span>
+              <span className="shrink-0 font-mono text-xs tabular-nums text-text-muted">
+                {Math.round(r.share * 100)}% · {plural(Math.round(r.sets), 'set')}
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-surface-3">
+              <div className="h-1.5 rounded-full bg-accent-fill" style={{ width: `${(r.sets / max) * 100}%` }} />
+            </div>
+          </li>
+        ))}
+      </ol>
     </section>
   );
 };
