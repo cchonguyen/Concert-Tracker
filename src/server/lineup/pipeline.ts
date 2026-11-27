@@ -75,6 +75,7 @@ export function validateInput(raw: Partial<LookupInput>): LookupInput {
     venue: text(raw.venue),
     city: text(raw.city),
     country: text(raw.country),
+    ...(text(raw.seriesSlug) ? { seriesSlug: text(raw.seriesSlug) } : {}),
     lineupUrl: text(raw.lineupUrl),
     notes: text(raw.notes),
     ...(pastedInput(raw.pasted) ? { pasted: pastedInput(raw.pasted) } : {}),
