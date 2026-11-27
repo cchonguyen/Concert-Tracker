@@ -63,7 +63,7 @@ export const PeopleRanking: React.FC<PeopleRankingProps> = ({
   return (
     <section className="space-y-4 rounded-card border border-line bg-surface-1 p-4 sm:p-5">
       <div className="space-y-1">
-        <h2 className="font-display text-lg font-normal text-text">People &amp; genres</h2>
+        <h2 className="poster-head text-2xl text-text">People &amp; genres</h2>
         {res.headline && <p className="text-sm font-medium text-text">{res.headline}</p>}
       </div>
 
