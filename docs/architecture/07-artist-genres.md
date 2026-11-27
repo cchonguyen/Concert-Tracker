@@ -102,3 +102,31 @@ Release 2 of the genre taxonomy is built in Slices 41.1 to 41.5 ([docs/specs/gen
 - Event Match needs 20 sets with a genre over 5 events, plus the whole-bill bar's own floor. Below that, the line says what is missing.
 - Relations never change the Lineup DNA bar, only the match.
 - Sample mode shows neither, because the sample events have no lineup edition.
+
+## Orbits, bill links and the Constellation
+
+Release 3 of the genre taxonomy is built in Slices 43.0 to 43.8 ([docs/specs/genre-taxonomy-release-3.md](../specs/genre-taxonomy-release-3.md)). It has one migration, 0064 (see [12-data-model.md](12-data-model.md)).
+
+**Orbits** (`src/server/events/artistOrbits.ts`). An orbit is a small scene named after the acts that define it, such as "Porter Robinson · Madeon lane". It is not a genre word and never adds to a total.
+
+- Each orbit has 2 to 4 anchors, core peers and crossovers (centrality 1.0, 0.5 and 0.25). An act can be in several orbits. Only the owner's `curated` orbits exist today.
+- Every change goes through `writeArtistOrbits`, which writes one `artist_orbit_changes` row and can be undone. An undo is refused when an orbit changed after it.
+- `GET /api/artist-orbits` gives the owner every orbit and the last 20 changes. A member gets only the orbits that include an act from their own events or records (`memberActKeys`), each with its full roster by name. `POST /api/artist-orbits/undo/:id` is owner only.
+- The owner edits orbits as a spreadsheet in Manage > Genres (`src/server/events/artistOrbitsCsv.ts`). The columns are `orbit_id, label, parent_genre, anchors, core, crossover`, with acts separated by `;` and matched by MusicBrainz ID or exact name. The file replaces the whole set. The preview lists added, removed and changed orbits and refuses an unknown anchor or parent genre, or fewer than 2 or more than 4 anchors. Apply writes with actor `owner` and the reason "Orbits spreadsheet".
+- In Ranking > Artists, an act in an orbit shows a pill with the orbit's label. Tapping it opens `OrbitSheet` (`src/components/OrbitSheet.tsx`): the roster, which acts you have seen, and your own events with any member on the lineup, planned ones first. With no orbits, nothing shows.
+
+**Bill links** (`src/server/events/lineupCooccur.ts`). A job learns which genres are booked together, from shared lineups only (`performances` and `artist_genres`).
+
+- A bill is one stage at one edition, or the whole edition when its lineup has no stages. Each act brings its top 3 genres, resolved through the vocabulary. Cancelled sets are left out, and a B2B pair counts once per bill.
+- For each pair it computes NPMI over the bills that have a genre. A pair is kept when it is on at least 3 bills with NPMI of 0.2 or more, and each genre keeps at most its 5 strongest. The weight is the NPMI.
+- The owner presses "Learn links from lineups" in Manage > Genres. `POST /api/artist-genres/relations/lineup/preview` shows the added, removed and changed links and the number of bills and genres used. `/apply` writes them through `writeGenreVocabulary` as `lineup_cooccur` adjacent links, with actor `system:lineup-cooccur` and the reason "Learned from shared lineups", and can be undone.
+- The job replaces only its own earlier rows. It skips any pair that already has a `curated` or `artist_cooccur` link in either direction. It never runs on a schedule.
+- Event Match and "One step outside your lane" pick the links up with no further change.
+
+**One step outside your lane** (`outsideLane` in `src/services/genreInsights.ts`, a card in `GenreStory.tsx`). It names up to 3 genres that sit next to your top 5 genres by sets (adjacent weight 0.25 or more) and that you have never seen live. Each comes with "next to {your genre}", the acts in it from your planned events, and the orbits that hold those acts. It needs the Event Match floor of 20 sets over 5 events. When there is nothing to show, the card does not show.
+
+**Constellation** (`src/components/GenreConstellation.tsx`). An opt-in map opened from "Open the Constellation" in Your genre story, never on the logging path.
+
+- It is a fixed radial layout in SVG: macro sectors, family arcs and genre dots, with no new library, so it looks the same on every visit.
+- Genres you have seen are filled and sized by the square root of your sets. Unseen genres one step away (weight 0.25 or more) are outlined and pulse, unless reduced motion is on.
+- Tapping a genre lists your sets and acts in it, and Escape closes the list. A visually hidden table gives the same data to screen readers.
