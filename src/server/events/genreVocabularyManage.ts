@@ -9,8 +9,8 @@ import { GENRE_MAP_SETTING, MAX_GENRE_LENGTH } from './genreTypes';
 import type { ArtistGenres, GenreMapEntry, GenreVocabChange, GenreVocabOperation, GenreVocabulary, VocabGenre } from './genreTypes';
 import { GENRE_NEEDS_LETTER, genreKey, genreResolver, wouldMakeUmbrellaLoop } from './genreVocabulary';
 import type { GenreResolver } from './genreVocabulary';
-import { planGenreVocabCsvImport } from './genreVocabCsv';
-import type { GenreVocabCsvPreview, GenreVocabCsvRow } from './genreVocabCsv';
+import { planGenreVocabUpload } from './genreVocabCsv';
+import type { GenreVocabCsvPlan, GenreVocabCsvPreview, GenreVocabCsvRow, StoredGenreRef } from './genreVocabCsv';
 
 export const OWNER_GENRE_REASON = 'Changed by the owner in Manage';
 export const GENRES_CHANGED_SINCE = 'Those genres changed after this. Undo the later change first.';
@@ -327,28 +327,48 @@ export async function undoGenreVocabChange(store: LineupStore, id: string, at: D
   return undo;
 }
 
+// The genres the shared artist rows resolve to, for a tree upload's "no family yet" list.
+function storedGenreRefs(ctx: Ctx): StoredGenreRef[] {
+  const seen = new Map<string, string>();
+  for (const r of ctx.rows) {
+    for (const s of r.genres) {
+      if (!genreKey(s.style)) continue;
+      const resolved = ctx.resolver.resolve(s.style);
+      if (!seen.has(resolved.key)) seen.set(resolved.key, resolved.name);
+    }
+  }
+  return [...seen].map(([key, name]) => ({ key, name }));
+}
+
+async function planVocabUpload(store: LineupStore, rows: GenreVocabCsvRow[]): Promise<GenreVocabCsvPlan> {
+  const ctx = await load(store);
+  return planGenreVocabUpload(rows, ctx.vocab, storedGenreRefs(ctx));
+}
+
 export async function previewGenreVocabCsv(store: LineupStore, rows: GenreVocabCsvRow[]): Promise<GenreVocabCsvPreview> {
-  const vocab = await store.getGenreVocabulary();
-  return planGenreVocabCsvImport(rows, vocab).preview;
+  return (await planVocabUpload(store, rows)).preview;
 }
 
 export async function applyGenreVocabCsv(
   store: LineupStore,
   rows: GenreVocabCsvRow[],
 ): Promise<{ preview: GenreVocabCsvPreview; change: GenreVocabChange | null }> {
-  const vocab = await store.getGenreVocabulary();
-  const plan = planGenreVocabCsvImport(rows, vocab);
+  const plan = await planVocabUpload(store, rows);
   if (plan.preview.errors.length > 0) {
     throw new ManageError(plan.preview.errors[0], 400);
   }
   if (plan.after.length === 0) {
     return { preview: plan.preview, change: null };
   }
-  const summary = `CSV upload: ${plan.preview.created} created, ${plan.preview.updated} updated`;
+  // A tree upload is one logged change. Its images are full (level, primary parent, tier, links) and are not passed through image().
+  const tree = rows.some((r) => r.tree);
+  const summary = tree
+    ? `Genre tree CSV upload: ${plan.preview.created} created, ${plan.preview.updated} updated`
+    : `CSV upload: ${plan.preview.created} created, ${plan.preview.updated} updated`;
   const change = await store.writeGenreVocabulary(plan.after, {
-    operation: 'create',
+    operation: tree ? 'taxonomy-import' : 'create',
     actor: 'owner',
-    reason: 'Genre vocabulary CSV upload',
+    reason: tree ? 'Genre tree CSV upload' : 'Genre vocabulary CSV upload',
     summary,
   });
   return { preview: plan.preview, change };

@@ -38,7 +38,8 @@ test('0060 keeps the operation names in step with GenreVocabOperation', () => {
   const types = readFileSync('src/server/events/genreTypes.ts', 'utf8');
   const union = types.match(/export type GenreVocabOperation =([^;]*);/);
   assert.ok(union);
-  assert.deepEqual([...union[1].matchAll(/'([^']+)'/g)].map((m) => m[1]).sort(), [...ops].sort());
+  const unionOps = [...union[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  for (const op of ops) assert.ok(unionOps.includes(op), `GenreVocabOperation keeps ${op}`);
   const check = tableBody('genre_changes').match(/operation in \(([^)]*)\)/i);
   assert.ok(check);
   assert.deepEqual([...check[1].matchAll(/'([^']+)'/g)].map((m) => m[1]).sort(), [...ops].sort());
