@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Pause, Play, Table2, X } from 'lucide-react';
-import { eventsApi, LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
+import { eventsApi, genresApi, type GenresList, LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
+import { genresByArtist, hasGenreUnder, umbrellaNames } from '../services/genres';
 import { eventYear, whenLabel } from '../services/format';
 import { activeFilterCount, EMPTY_FILTERS, filterEvents, filterOptions, filtersFromQuery, filtersToQuery, TableFilters } from '../services/table';
 import { FilterButton, FilterPanel, FilterSelect } from './ui/FilterControls';
@@ -91,6 +92,8 @@ function useCityPoints(events: LoggedEvent[], pointFor?: MapViewProps['pointFor'
 }
 
 const readQuery = () => filtersFromQuery(window.location.search);
+type GenreData = Pick<GenresList, 'genres' | 'vocabulary' | 'map'>;
+const NO_GENRES: GenreData = { genres: [], vocabulary: { genres: [] }, map: [] };
 
 export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onOpen, onOpenTable, pointFor }) => {
   const [filters, setFilters] = useState<TableFilters>(readQuery);
@@ -98,6 +101,53 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
   const [showFilters, setShowFilters] = useState(() => activeFilterCount(readQuery()) > 0);
   const [playYear, setPlayYear] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [genreData, setGenreData] = useState<GenreData>(NO_GENRES);
+  const [pickedGenre, setPickedGenre] = useState('');
+  useEffect(() => {
+    genresApi
+      .list()
+      .then((r) => setGenreData({ genres: r.genres, vocabulary: r.vocabulary, map: r.map }))
+      .catch(() => setGenreData(NO_GENRES));
+  }, []);
+  const byArtist = useMemo(
+    () => genresByArtist(genreData.genres, genreData.vocabulary, genreData.map),
+    [genreData],
+  );
+  const vocabulary = genreData.vocabulary;
+  const genreParents = useMemo(
+    () =>
+      [
+        ...new Set(
+          events.flatMap((e) => e.seen.flatMap((s) => (byArtist.get(s.key)?.genres ?? []).map((x) => x.parent))),
+        ),
+      ].sort(),
+    [events, byArtist],
+  );
+  const genreUmbrellas = useMemo(
+    () =>
+      [...umbrellaNames(vocabulary)]
+        .filter(([key]) => events.some((e) => e.seen.some((s) => hasGenreUnder(byArtist.get(s.key), key, vocabulary))))
+        .sort((a, b) => a[1].localeCompare(b[1])),
+    [events, byArtist, vocabulary],
+  );
+  const eventMatchesGenre = useMemo(() => {
+    return (e: LoggedEvent, picked: string): boolean => {
+      if (!picked) return true;
+      if (picked.startsWith('u:')) {
+        const key = picked.slice(2);
+        return e.seen.some((s) => hasGenreUnder(byArtist.get(s.key), key, vocabulary));
+      }
+      const group = picked.slice(2);
+      return e.seen.some((s) => (byArtist.get(s.key)?.genres ?? []).some((x) => x.parent === group));
+    };
+  }, [byArtist, vocabulary]);
+  const pickedGenreLabel = useMemo(() => {
+    if (!pickedGenre) return '';
+    if (pickedGenre.startsWith('u:')) {
+      return genreUmbrellas.find(([k]) => k === pickedGenre.slice(2))?.[1] ?? pickedGenre.slice(2);
+    }
+    return pickedGenre.slice(2);
+  }, [pickedGenre, genreUmbrellas]);
   const points = useCityPoints(events, pointFor);
   const options = useMemo(() => filterOptions(events), [events]);
   const filtered = useMemo(() => filterEvents(events, filters, lineups, editions), [events, filters, lineups, editions]);
@@ -164,12 +214,14 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
     const max = Math.max(1, ...data.places.map((p) => p.events.length));
     for (const p of [...data.places].reverse()) {
       const n = p.events.length;
+      const hasMatch = !pickedGenre || p.events.some((e) => eventMatchesGenre(e, pickedGenre));
       L.circleMarker([p.point.lat, p.point.lon], {
         radius: 5 + 17 * Math.sqrt(n / max),
         // Colors come from the map-place rules in index.css, so they follow the theme.
         className: p.key === selected ? 'map-place is-selected' : 'map-place',
         weight: p.key === selected ? 2 : 1,
-        fillOpacity: 0.55,
+        opacity: pickedGenre ? (hasMatch ? 1 : 0.25) : 1,
+        fillOpacity: pickedGenre ? (hasMatch ? 0.75 : 0.12) : 0.55,
       })
         .bindTooltip(`${p.city}: ${plural(n, 'event')}${p.point.match === 'name' ? ' (placed by name only)' : ''}`)
         .on('click', () => setSelected(p.key))
@@ -181,7 +233,7 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
         { className: 'map-route', weight: 2, opacity: 0.8, dashArray: '4 6' },
       ).addTo(group);
     }
-  }, [data, selected, stops]);
+  }, [data, selected, stops, pickedGenre, eventMatchesGenre]);
 
   // Fit to the filtered places when the filters change, not during playback.
   useEffect(() => {
@@ -191,11 +243,46 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
   }, [all.places.length, filters]);
 
   const tableQuery = filtersToQuery({ ...filters, sort: EMPTY_FILTERS.sort, desc: EMPTY_FILTERS.desc });
+  const topCityHeadline = useMemo(() => {
+    if (!pickedGenre || !pickedGenreLabel) return null;
+    const ranked = data.places
+      .map((p) => ({
+        city: p.city,
+        count: p.events.filter((e) => eventMatchesGenre(e, pickedGenre)).length,
+      }))
+      .filter((x) => x.count >= 3)
+      .sort((a, b) => b.count - a.count || a.city.localeCompare(b.city));
+    return ranked.length > 0 ? `Your ${pickedGenreLabel.toLowerCase()} city is ${ranked[0].city}.` : null;
+  }, [pickedGenre, pickedGenreLabel, data.places, eventMatchesGenre]);
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <input value={filters.q} onChange={(e) => set({ q: e.target.value })} placeholder="Events, venues, acts, people" className={`${control} min-w-0 flex-1 py-2`} />
+        {(genreParents.length > 0 || genreUmbrellas.length > 0) && (
+          <select
+            aria-label="Genre"
+            value={pickedGenre}
+            onChange={(e) => setPickedGenre(e.target.value)}
+            className="min-h-11 shrink-0 rounded-control border border-line-strong bg-surface-1 px-3 py-2 text-sm text-text focus:border-accent focus:outline-none sm:min-h-9"
+          >
+            <option value="">All genres</option>
+            {genreParents.map((p) => (
+              <option key={p} value={`g:${p}`}>
+                {p}
+              </option>
+            ))}
+            {genreUmbrellas.length > 0 && (
+              <optgroup label="Including related genres">
+                {genreUmbrellas.map(([key, name]) => (
+                  <option key={key} value={`u:${key}`}>
+                    {name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+        )}
         <FilterButton open={showFilters} count={activeFilterCount(filters)} onClick={() => setShowFilters((s) => !s)} />
       </div>
       {showFilters && (
@@ -281,6 +368,8 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
           </button>
         </span>
       </div>
+
+      {topCityHeadline && <p className="text-sm font-medium text-text">{topCityHeadline}</p>}
 
       <div className="relative isolate overflow-hidden rounded-card border border-line">
         <div ref={box} className="h-[60vh] min-h-[320px] w-full bg-page" />
