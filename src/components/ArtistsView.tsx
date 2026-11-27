@@ -8,10 +8,14 @@ import { EventTitle } from './EventTitle';
 import { Ledger } from './ui/Ledger';
 import { StubHeader } from './ui/StubHeader';
 import { Pill as UiPill } from './ui/Pill';
+import { Segmented } from './ui/Segmented';
 import { Tooltip } from './ui/Tooltip';
 import { ARTIST_SORTS, artistSummaries, ArtistSort, ArtistSummary, groupArtists, jumpTargets } from '../services/artists';
 import { buildManageUrl, entityUrl, isModifiedClick } from '../services/manageNav';
+import { rankingByFromParam, type RankingBy } from '../services/nav';
 import { scrollBehavior } from '../services/motion';
+import { genreKey } from '../server/events/genreVocabulary';
+import { GenresRanking } from './GenresRanking';
 import { useIsOwner } from './MeContext';
 
 interface ArtistsViewProps {
@@ -102,17 +106,22 @@ interface ArtistProps {
   onManage?: (key: string) => void;
 }
 
-// The genre filter holds a group ("g:" and its name) or an umbrella ("u:" and its key).
+// The genre filter holds a group ("g:" and its name), an umbrella ("u:" and its key), or a style ("s:" and its key).
 const GROUP = 'g:';
 const UMBRELLA = 'u:';
+const STYLE = 's:';
 const matchesGenre = (g: ArtistGenres | undefined, picked: string, vocab: GenresList['vocabulary'] | undefined): boolean =>
   picked.startsWith(UMBRELLA)
     ? hasGenreUnder(g, picked.slice(UMBRELLA.length), vocab)
-    : (g?.genres ?? []).some((x) => x.parent === picked.slice(GROUP.length));
-const genreLabel = (picked: string, umbrellas: Array<[string, string]>): string =>
+    : picked.startsWith(STYLE)
+      ? (g?.genres ?? []).some((x) => genreKey(x.style) === picked.slice(STYLE.length))
+      : (g?.genres ?? []).some((x) => x.parent === picked.slice(GROUP.length));
+const genreLabel = (picked: string, umbrellas: Array<[string, string]>, styles: Array<[string, string]>): string =>
   picked.startsWith(UMBRELLA)
     ? (umbrellas.find(([k]) => k === picked.slice(UMBRELLA.length))?.[1] ?? picked.slice(UMBRELLA.length))
-    : picked.slice(GROUP.length);
+    : picked.startsWith(STYLE)
+      ? (styles.find(([k]) => k === picked.slice(STYLE.length))?.[1] ?? picked.slice(STYLE.length))
+      : picked.slice(GROUP.length);
 
 // Where an act's genres came from, for the tooltip.
 const genreTitle = (g: ArtistGenres, isOwner: boolean) => {
@@ -303,6 +312,23 @@ const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOp
 // Everyone you've seen, from the acts you marked on each event, in groups you
 // can scan: by how often, when you last or first saw them, or by name.
 export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, onOpenTable, onManage }) => {
+  const [by, setByState] = useState<RankingBy>(() =>
+    rankingByFromParam(typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('by') : null),
+  );
+  const setBy = (next: RankingBy) => {
+    setByState(next);
+    if (typeof window === 'undefined') return;
+    const url = next === 'artists' ? `${window.location.pathname}?view=ranking` : `${window.location.pathname}?view=ranking&by=${next}`;
+    window.history.replaceState(null, '', url);
+  };
+  useEffect(() => {
+    const onPop = () => {
+      setByState(rankingByFromParam(new URLSearchParams(window.location.search).get('by')));
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   const [filter, setFilter] = useState('');
   const [sort, setSortState] = useState<ArtistSort>(readSort);
   const setSort = (s: ArtistSort) => {
@@ -341,6 +367,16 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
         .sort((a, b) => a[1].localeCompare(b[1])),
     [artists, genres, vocabulary],
   );
+  const styles = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of artists) {
+      for (const x of genres.get(a.key)?.genres ?? []) {
+        const k = genreKey(x.style);
+        if (k && !map.has(k)) map.set(k, x.style);
+      }
+    }
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [artists, genres]);
   const [genre, setGenre] = useState('');
   const q = filter.trim().toLowerCase();
   const groups = useMemo(
@@ -397,8 +433,52 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
       </p>
     );
   }
+
+  const rankingSwitch = (
+    <Segmented
+      label="Ranking view"
+      compact
+      value={by}
+      onChange={setBy}
+      options={[
+        { value: 'artists', label: 'Artists' },
+        { value: 'genres', label: 'Genres' },
+        { value: 'people', label: 'People' },
+      ]}
+    />
+  );
+
+  if (by === 'genres') {
+    return (
+      <div className="space-y-4">
+        {rankingSwitch}
+        <GenresRanking
+          events={events}
+          byArtist={genres}
+          vocabulary={vocabulary}
+          onOpenArtistsWithGenre={(f) => {
+            setGenre(f);
+            setBy('artists');
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (by === 'people') {
+    return (
+      <div className="space-y-4">
+        {rankingSwitch}
+        <p className="rounded-card border border-dashed border-line-strong p-6 text-center text-sm text-text-muted">
+          People ranking is coming next.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {rankingSwitch}
       <div className="grid grid-cols-3 gap-2">
         {[
           [artists.length, artists.length === 1 ? 'Artist' : 'Artists'],
@@ -423,7 +503,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
             className="min-h-11 w-full rounded-control border border-line-strong bg-surface-1 py-2 pl-9 pr-4 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none sm:min-h-9"
           />
         </label>
-        {(parents.length > 0 || umbrellas.length > 0) && (
+        {(parents.length > 0 || umbrellas.length > 0 || styles.length > 0) && (
           <select
             value={genre}
             onChange={(e) => setGenre(e.target.value)}
@@ -440,6 +520,15 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
               <optgroup label="Including related genres">
                 {umbrellas.map(([key, name]) => (
                   <option key={key} value={UMBRELLA + key}>
+                    {name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {styles.length > 0 && (
+              <optgroup label="Styles">
+                {styles.map(([key, name]) => (
+                  <option key={key} value={STYLE + key}>
                     {name}
                   </option>
                 ))}
@@ -513,7 +602,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
 
       {groups.length === 0 ? (
         <p className="rounded-card border border-dashed border-line-strong p-6 text-center text-sm text-text-muted">
-          No artist matches{filter ? ` “${filter}”` : ''}{genre ? ` in ${genreLabel(genre, umbrellas)}` : ''}.
+          No artist matches{filter ? ` “${filter}”` : ''}{genre ? ` in ${genreLabel(genre, umbrellas, styles)}` : ''}.
         </p>
       ) : (
         groups.map((g) => (
