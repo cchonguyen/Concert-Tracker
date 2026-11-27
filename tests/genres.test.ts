@@ -10,6 +10,8 @@ import {
   mapTags,
   matchMusicStory,
   musicBrainzGenres,
+  normalizeShares,
+  rankedWeights,
   readMusicStory,
   knownGenres,
   setOwnGenres,
@@ -230,8 +232,8 @@ test('setOwnGenres keeps known spellings and parents, adds new genres, and reset
   await assert.rejects(setOwnGenres(store, 'bonobo', ['x'.repeat(61)], now), /at most 60/);
   const r = await setOwnGenres(store, 'bonobo', ['HOUSE', ' Downtempo  vibes ', 'house', ''], now);
   assert.deepEqual(r?.genres, [
-    { style: 'house', parent: 'electronic', weight: 0.5 },
-    { style: 'Downtempo vibes', parent: 'Not grouped', weight: 0.5 },
+    { style: 'house', parent: 'electronic', weight: rankedWeights(2)[0], rank: 1 },
+    { style: 'Downtempo vibes', parent: 'Not grouped', weight: rankedWeights(2)[1], rank: 2 },
   ]);
   // A genre you made up is offered from then on.
   const rows = await store.listArtistGenres();
@@ -258,7 +260,7 @@ test('setOwnGenres allows setting genres for an artist entity from Manage', asyn
   const now = new Date('2026-10-27T00:00:00Z');
   const r = await setOwnGenres(store, 'caribou', ['house'], now);
   assert.equal(r?.name, 'Caribou');
-  assert.deepEqual(r?.genres, [{ style: 'house', parent: 'electronic', weight: 1 }]);
+  assert.deepEqual(r?.genres, [{ style: 'house', parent: 'electronic', weight: 1, rank: 1 }]);
 
   // musicBrainzGenres also works for artist entity
   const { fetcher } = fakeFetcher({
@@ -484,7 +486,7 @@ test('typed genres fold by genre key, store the resolved spelling, and need a le
   const now = new Date('2026-11-26T00:00:00Z');
   await assert.rejects(setOwnGenres(store, 'bonobo', ['house', '!!!'], now), /A genre needs a letter or a number/);
   const r = await setOwnGenres(store, 'bonobo', ['Deep-House', 'deephouse', 'deep_house'], now);
-  assert.deepEqual(r?.genres, [{ style: 'deep house', parent: 'electronic', weight: 1 }]);
+  assert.deepEqual(r?.genres, [{ style: 'deep house', parent: 'electronic', weight: 1, rank: 1 }]);
 });
 
 // house > tech house, electro house; "bass house" sits under both house and bass.
@@ -590,4 +592,66 @@ test('setOwnerGenres resolves an alias typed by the owner to the vocabulary spel
   await addGenreAlias(store, 'UK Garage', '2-Step');
   const r = await setOwnerGenres(store, 'burial', ['2-Step'], new Date('2026-11-26T00:00:00Z'));
   assert.deepEqual(r?.genres.map((g) => [g.style, g.parent]), [['UK Garage', 'electronic']]);
+});
+
+test('rankedWeights decays by rank, sums to 1, and keeps 5 to 10 equal', () => {
+  assert.deepEqual(rankedWeights(1), [1]);
+  for (const n of [1, 2, 3, 4, 5, 10]) {
+    const w = rankedWeights(n);
+    assert.equal(w.length, n);
+    assert.ok(Math.abs(w.reduce((s, x) => s + x, 0) - 1) < 0.001, `sum for ${n}`);
+  }
+  const four = rankedWeights(4);
+  assert.deepEqual(four, [0.4167, 0.2917, 0.1875, 0.1042]);
+  assert.ok(four[0] > four[1] && four[1] > four[2] && four[2] > four[3]);
+  const ten = rankedWeights(10);
+  assert.ok(ten[2] > ten[3] && ten[3] === ten[4] && ten[4] === ten[9]);
+});
+
+test('owner genres are stored with rank and decay weights in typed order', async () => {
+  const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'genres-rank-')));
+  await store.forUser(ANN).putEvent(ev('e1', [act('Moon Garden')]));
+  await store.putSetting(GENRE_MAP_SETTING, map);
+  const r = await setOwnerGenres(store, 'moon garden', ['techno', 'house', 'indie rock', 'ambient'], new Date('2026-11-26T00:00:00Z'));
+  assert.deepEqual(r?.genres.map((g) => [g.style, g.rank]), [
+    ['techno', 1],
+    ['house', 2],
+    ['indie rock', 3],
+    ['ambient', 4],
+  ]);
+  assert.deepEqual(r?.genres.map((g) => g.weight), rankedWeights(4));
+});
+
+test('the normalizer sorts by rank when every genre has one, ties at 5 and up included', () => {
+  const ranked = normalizeShares([
+    { parent: 'rock', style: 'x', weight: 0.25, rank: 6 },
+    { parent: 'rock', style: 'y', weight: 0.25, rank: 5 },
+    { parent: 'rock', style: 'a', weight: 1, rank: 1 },
+  ]);
+  assert.deepEqual(ranked.map((g) => [g.style, g.rank]), [
+    ['a', 1],
+    ['y', 5],
+    ['x', 6],
+  ]);
+  const byWeight = normalizeShares([
+    { parent: 'rock', style: 'b', weight: 1 },
+    { parent: 'rock', style: 'a', weight: 3 },
+  ]);
+  assert.deepEqual(byWeight.map((g) => g.style), ['a', 'b']);
+  assert.ok(byWeight.every((g) => g.rank === undefined));
+});
+
+test('rows without a rank (music-story, MusicBrainz) keep their weights and carry no rank', () => {
+  const shares = mapTags(
+    [
+      { name: 'house', count: 30 },
+      { name: 'techno', count: 10 },
+    ],
+    map,
+  );
+  assert.deepEqual(shares.map((g) => [g.style, g.weight]), [
+    ['house', 0.75],
+    ['techno', 0.25],
+  ]);
+  assert.ok(shares.every((g) => g.rank === undefined));
 });

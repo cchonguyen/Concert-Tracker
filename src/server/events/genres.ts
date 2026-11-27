@@ -61,12 +61,27 @@ export function readMusicStory(raw: unknown): { map: GenreMapEntry[]; artists: M
   return { map, artists };
 }
 
-// Weights rescaled to sum to 1, largest first.
-function normalizeShares(genres: GenreShare[]): GenreShare[] {
+// Weights rescaled to sum to 1, largest first. When every genre has a rank,
+// by rank instead.
+export function normalizeShares(genres: GenreShare[]): GenreShare[] {
   const total = genres.reduce((s, g) => s + g.weight, 0);
+  const ranked = genres.length > 0 && genres.every((g) => typeof g.rank === 'number');
   return genres
     .map((g) => ({ ...g, weight: Math.round((g.weight / total) * 10_000) / 10_000 }))
-    .sort((a, b) => b.weight - a.weight || a.style.localeCompare(b.style));
+    .sort((a, b) =>
+      ranked ? (a.rank! - b.rank!) : b.weight - a.weight || a.style.localeCompare(b.style),
+    );
+}
+
+// Owner's genres are weighted by the order they are typed in. Raw decay by
+// rank: 1.0, 0.70, 0.45, 0.25, and 0.25 for the fifth to the tenth.
+export const OWN_GENRE_DECAY: readonly number[] = [1, 0.7, 0.45, 0.25];
+
+// Weights for n ranked genres (index 0 is rank 1): the decay, scaled to sum to 1.
+export function rankedWeights(n: number): number[] {
+  const raw = Array.from({ length: Math.max(0, n) }, (_, i) => OWN_GENRE_DECAY[Math.min(i, OWN_GENRE_DECAY.length - 1)]);
+  const total = raw.reduce((s, x) => s + x, 0);
+  return raw.map((x) => Math.round((x / total) * 10_000) / 10_000);
 }
 
 // Tags with counts mapped through the genre map: unmapped tags are ignored,
@@ -213,10 +228,12 @@ export function knownGenreMap(map: GenreMapEntry[], rows: ArtistGenres[], vocabu
   return new Map(knownGenres(map, rows, vocabulary).map((g) => [genreKey(g.style), g]));
 }
 
-// A genre row typed in the app or a file: the styles, equal weights, a known
-// style (same genreKey) stored in its resolved spelling and group, a new one as
-// typed and "Not grouped". A style with no letter or digit is refused. An empty
-// list means "none". Throws InputError past the limits. Pure: no store.
+// A genre row typed in the app or a file: the styles, a known style (same
+// genreKey) stored in its resolved spelling and group, a new one as typed and
+// "Not grouped". A style with no letter or digit is refused. An empty list means
+// "none". Owner rows (`owner`, legacy `you`) keep the typed order as a rank and
+// weigh by rank (rankedWeights); other rows get equal weights. Throws InputError
+// past the limits. Pure: no store.
 function typedGenreRow(
   source: GenreSource,
   known: ReadonlyMap<string, KnownGenre>,
@@ -235,12 +252,15 @@ function typedGenreRow(
     if (!picked.has(k)) picked.set(k, known.get(k) ?? { style, parent: NOT_GROUPED });
   }
   if (picked.size > MAX_OWN_GENRES) throw new InputError(`At most ${MAX_OWN_GENRES} genres per act.`);
-  const weight = picked.size ? Math.round((1 / picked.size) * 10_000) / 10_000 : 0;
+  const ranked = source === 'owner' || source === 'you';
+  const weights = ranked
+    ? rankedWeights(picked.size)
+    : Array.from({ length: picked.size }, () => (picked.size ? Math.round((1 / picked.size) * 10_000) / 10_000 : 0));
   return {
     key,
     name,
     source,
-    genres: [...picked.values()].map((g) => ({ ...g, weight })),
+    genres: [...picked.values()].map((g, i) => (ranked ? { ...g, weight: weights[i], rank: i + 1 } : { ...g, weight: weights[i] })),
     checkedAt: now.toISOString(),
   };
 }
