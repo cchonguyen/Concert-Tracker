@@ -1304,6 +1304,20 @@ export class SupabaseLineupStore implements LineupStore {
   }
 
   async putSetting<T>(key: string, data: T) {
+    if (data === null || data === undefined) {
+      if (this.scope) {
+        this.check(
+          await this.own('user_settings').delete().eq('user_id', this.scope.userId).eq('key', key),
+          'putSetting (apply 0017_members_and_user_id.sql)',
+        );
+        return;
+      }
+      this.check(
+        await this.db.from('app_settings').delete().eq('key', key),
+        'putSetting (apply 0006_app_settings.sql)',
+      );
+      return;
+    }
     if (this.scope) {
       this.check(
         await this.own('user_settings').upsert({ user_id: this.scope.userId, key, data, updated_at: new Date().toISOString() }),
