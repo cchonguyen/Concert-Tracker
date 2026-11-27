@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { LoggedEvent } from '../services/lineupApi';
 import type { ArtistGenres } from '../services/genres';
 import {
@@ -10,8 +10,10 @@ import {
   genreMilestones,
   genreRange,
   newThisYear,
+  outsideLane,
 } from '../services/genreInsights';
 import type { GenreVocabulary } from '../server/events/genreTypes';
+import { GenreConstellation } from './GenreConstellation';
 import { GenreYearsChart } from './GenreYearsChart';
 import { Pill } from './ui/Pill';
 import { Popover } from './ui/Popover';
@@ -80,6 +82,8 @@ export const GenreStory: React.FC<GenreStoryProps> = ({
   const label = useMemo(() => genreLabel(events, byArtist, vocabulary, today), [events, byArtist, vocabulary, today]);
   const byKind = useMemo(() => genreByKind(events, byArtist, vocabulary, today), [events, byArtist, vocabulary, today]);
   const bySeason = useMemo(() => genreBySeason(events, byArtist, vocabulary, today), [events, byArtist, vocabulary, today]);
+  const outside = useMemo(() => outsideLane(events, byArtist, vocabulary), [events, byArtist, vocabulary]);
+  const [constellationOpen, setConstellationOpen] = useState(false);
 
   if (firsts.knownSets < FIRSTS_MIN_SETS) return null;
 
@@ -241,6 +245,49 @@ export const GenreStory: React.FC<GenreStoryProps> = ({
       </div>
 
       <GenreYearsChart events={events} byArtist={byArtist} vocabulary={vocabulary} today={today} />
+
+      {outside.enough && outside.items.length > 0 && (
+        <div className="space-y-3 rounded-card border border-line bg-surface-1 p-4 sm:p-5">
+          <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-text-muted">
+            One step outside your lane
+          </h3>
+          <ul className="space-y-2">
+            {outside.items.map((item) => (
+              <li key={item.key} className="rounded-control border border-line bg-surface-2 px-3 py-2 text-xs">
+                <p className="font-semibold text-text">
+                  {item.name}, next to your {item.via.name}
+                </p>
+                {item.acts.length > 0 && (
+                  <p className="mt-0.5 text-text-muted">On your list: {item.acts.map((a) => a.name).join(', ')}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {!constellationOpen && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setConstellationOpen(true)}
+            className="min-h-11 text-xs font-medium text-accent underline underline-offset-4 hover:text-text sm:min-h-9"
+          >
+            Open the Constellation
+          </button>
+        </div>
+      )}
+
+      {constellationOpen && (
+        <div className="rounded-card border border-line bg-surface-1 p-4 sm:p-5">
+          <GenreConstellation
+            events={events}
+            byArtist={byArtist}
+            vocabulary={vocabulary}
+            onClose={() => setConstellationOpen(false)}
+          />
+        </div>
+      )}
 
       {byKind.bars.length > 0 && (
         <div className="space-y-3 rounded-card border border-line bg-surface-1 p-4 sm:p-5">
