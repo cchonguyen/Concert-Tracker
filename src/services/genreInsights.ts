@@ -1467,3 +1467,128 @@ export function genreTree(
     };
   });
 }
+
+// Multi-zoom genre breakdown (docs/specs/genre-taxonomy-release-1.md decisions 1-6 and section 2).
+// Macro, then family, then genre, each level summing to `known`. Weighting is the same as
+// genreMix: a set's share times the genre's weight. Sets with no genre are `unknown`.
+export const ZOOM_MIN_SETS = 10;
+
+export interface ZoomRow {
+  key: string;
+  name: string;
+  sets: number;
+  share: number; // sets / known
+  parentKey?: string;
+  children?: ZoomRow[];
+}
+
+export interface GenreZoomResult {
+  levels: 'taxonomy' | 'groups';
+  macros: ZoomRow[]; // taxonomy: macros with families as children; groups: music-story groups
+  families: ZoomRow[]; // taxonomy only: families with genres as children
+  genres: ZoomRow[]; // taxonomy only: genres with parentKey = family key
+  known: number;
+  unknown: number;
+  enough: boolean; // known >= ZOOM_MIN_SETS
+}
+
+const NOT_GROUPED_KEY = 'not-grouped';
+
+function zoomKey(prefix: 'macro' | 'family', name: string): string {
+  return name === NOT_GROUPED ? `${prefix}:${NOT_GROUPED_KEY}` : `${prefix}:${genreKey(name)}`;
+}
+
+function byZoomSort(a: { sets: number; name: string }, b: { sets: number; name: string }): number {
+  return b.sets - a.sets || a.name.localeCompare(b.name);
+}
+
+export function genreZoom(
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  vocab?: GenreVocabulary,
+): GenreZoomResult {
+  const live = events.filter((e) => e.attendance !== 'planned' && e.attendance !== 'missed');
+  const vocabHasMacro = (vocab?.genres ?? []).some((g) => levelOf(g) === 'macro');
+
+  interface Contribution {
+    w: number;
+    style: string;
+    group: string;
+    macro?: string;
+    family?: string;
+  }
+  const contributions: Contribution[] = [];
+  let known = 0;
+  let unknown = 0;
+
+  for (const e of live) {
+    const shares = setShares(e);
+    e.seen.forEach((s, si) => {
+      const share = shares[si];
+      const genres = (byArtist.get(s.key)?.genres ?? []).filter((x) => genreKey(x.style));
+      if (!genres.length) {
+        unknown += share;
+        return;
+      }
+      known += share;
+      for (const x of genres) {
+        contributions.push({
+          w: x.weight * share,
+          style: x.style,
+          group: shareGroup(x),
+          macro: x.macro,
+          family: x.family,
+        });
+      }
+    });
+  }
+
+  const taxonomy = vocabHasMacro || contributions.some((c) => c.macro !== undefined);
+  const share = (sets: number): number => (known ? sets / known : 0);
+  type Acc = { key: string; name: string; sets: number; parentKey?: string };
+  const bump = (m: Map<string, Acc>, key: string, name: string, add: number, parentKey?: string) => {
+    const cur = m.get(key);
+    if (cur) cur.sets += add;
+    else m.set(key, { key, name, sets: add, parentKey });
+  };
+  const toRow = (a: Acc): ZoomRow => {
+    const row: ZoomRow = { key: a.key, name: a.name, sets: a.sets, share: share(a.sets) };
+    if (a.parentKey !== undefined) row.parentKey = a.parentKey;
+    return row;
+  };
+
+  if (!taxonomy) {
+    const groups = new Map<string, Acc>();
+    for (const c of contributions) bump(groups, zoomKey('macro', c.group), c.group, c.w);
+    const macros = [...groups.values()].map(toRow).sort(byZoomSort);
+    return { levels: 'groups', macros, families: [], genres: [], known, unknown, enough: known >= ZOOM_MIN_SETS };
+  }
+
+  const macroAcc = new Map<string, Acc>();
+  const familyAcc = new Map<string, Acc>();
+  const genreAcc = new Map<string, Acc>();
+  for (const c of contributions) {
+    const familyName = c.family ?? NOT_GROUPED;
+    // A genre with no family is under "Not grouped" at both levels.
+    const macroName = familyName === NOT_GROUPED ? NOT_GROUPED : (c.macro ?? NOT_GROUPED);
+    const macroKey = zoomKey('macro', macroName);
+    const familyKey = zoomKey('family', familyName);
+    bump(macroAcc, macroKey, macroName, c.w);
+    bump(familyAcc, familyKey, familyName, c.w, macroKey);
+    bump(genreAcc, genreKey(c.style), c.style, c.w, familyKey);
+  }
+
+  const genres = [...genreAcc.values()].map(toRow).sort(byZoomSort);
+  const families = [...familyAcc.values()].map((a) => {
+    const row = toRow(a);
+    row.children = genres.filter((g) => g.parentKey === a.key);
+    return row;
+  }).sort(byZoomSort);
+  const macros = [...macroAcc.values()].map((a) => {
+    const row = toRow(a);
+    row.children = families.filter((f) => f.parentKey === a.key);
+    return row;
+  }).sort(byZoomSort);
+
+  return { levels: 'taxonomy', macros, families, genres, known, unknown, enough: known >= ZOOM_MIN_SETS };
+}
