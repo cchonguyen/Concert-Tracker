@@ -1,6 +1,6 @@
 # Keeping events and series in sync (auto-link and series health)
 
-Status: proposed 2026-11-27. Charlie: "I would like to better automate this process so there's less opportunity for desync." He chose "Link automatically, undoable" for exact matches. Brands and missing series stay one-tap.
+Status: approved 2026-11-27 (Charlie chose "Everyone's, start building": slices 1 to 4). Slice 1 built 2026-11-27. Charlie: "I would like to better automate this process so there's less opportunity for desync." He chose "Link automatically, undoable" for exact matches. Brands and missing series stay one-tap.
 
 ## Why things drift today
 
@@ -32,10 +32,7 @@ If no edition passes, or two or more do, nothing is linked.
 - Data health lists the automatic links from the last 30 days. Each one has Unlink.
 - An event that was unlinked is never auto-linked again, because `details.autoLinkDeclined` is set.
 
-**When it runs.**
-- (a) Inside the canon backfill, right after `upsertOccurrence` creates or matches the edition from that same event.
-- (b) In a nightly sweep, in batches inside the subrequest budget, with a cursor in settings, like the member backfill.
-- (c) When an event is saved and stage 1 finds a `same` match. That path already auto-uses a `same` match for research (`details.ts`).
+**When it runs.** Hourly, at minute 2, from the Worker cron (`runAutoLink`, `src/server/canon/autoLink.ts`). The run covers the owner and every member who isn't blocked, each through their own scoped store. It reads the verified edition headers and the shared series once per run. Per member it costs one `listEvents` and, when something links, one `putEvents`. At most 50 links per member per run. An event saved or made into an edition is linked within the hour. A hook inside the backfill or the save path was left out, because the hourly run covers both and keeps one code path.
 
 ## Rule 2: series health, one tap
 
@@ -53,6 +50,6 @@ Each fix goes through `saveSeriesLogged` or `writeEdition` with actor `owner` an
 1. **Auto-link core.** New `src/server/canon/autoLink.ts` (match and link, pure plus store), the `backfill.ts` hook, the nightly sweep in `worker/index.ts`, and tests. [CORE / DATA]
 2. **Undo surface.** Event detail note with Unlink, plus the "Linked automatically" list in Data health (`EventDetail.tsx`, `DataHealth.tsx`, `services/dataHealth.ts`). [UI / VISUAL]
 3. **Series health.** New `src/server/entities/seriesHealth.ts` (issues and offers), owner routes, Data health section with one-tap fixes, and tests. [CORE / DATA]
-4. **Members' events** (only if Charlie says yes): the sweep also walks members who accepted the current notice, through their scoped store, with the same rule. [CORE / DATA]
+4. **Members' events.** Folded into slice 1 (Charlie chose everyone's): the run walks every member who isn't blocked. [CORE / DATA]
 
 ARCHITECTURE.md sections 02 and 12 change with slices 1 and 3. No migration: `details` is already JSON.

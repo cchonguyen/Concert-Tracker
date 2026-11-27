@@ -76,6 +76,10 @@ export interface EventDetails {
   notes: string[];
   checkedAt?: string;
   skipCanon?: boolean;
+  // Set when the app linked this event to a shared edition on its own (docs/specs/series-sync.md).
+  autoLinked?: { editionId: string; at: string; reason: string };
+  // Editions this event was unlinked from after an automatic link: never linked to on its own again.
+  autoLinkDeclined?: string[];
 }
 
 // How an act played, as you mark it or as billed on a lineup (e.g. "DJ Set", "Live", "Sunrise Set").

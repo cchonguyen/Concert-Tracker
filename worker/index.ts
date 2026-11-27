@@ -25,6 +25,7 @@ import { membersResearchOn, RESEARCH_MEMBERS_SETTING, runResearchBackfill } from
 import { loadRefusals, refusalFetcher, saveRefusals } from '../src/server/events/refusedHosts';
 import { rung4Urls, runReaderPage } from '../src/server/events/detailsGemini';
 import { currentBudget, makeBudget, runWithBudget } from '../src/server/lineup/budget';
+import { runAutoLink } from '../src/server/canon/autoLink';
 
 // Cloudflare Worker entry. Static files are served from ./dist by Workers
 // static assets (wrangler.jsonc); only /api/*, the share page (/s/*) and the
@@ -214,6 +215,18 @@ async function runCron(env: Env): Promise<void> {
     } catch {
       // Best effort: the budget may be spent.
     }
+  }
+  // Hourly at minute 2: link each member's events (owner included) that match exactly one verified edition by
+  // date, name and venue (docs/specs/series-sync.md). Each link is recorded on the event and undone by Unlink.
+  try {
+    const db = multiUserFromEnv(settings) && now.getUTCMinutes() === 2 ? getSupabaseClient() : null;
+    if (db) {
+      const members = await supabaseMemberDirectory(db).listMembers();
+      const report = await runAutoLink(deps.store, members, { now });
+      if (report) console.log(`Auto-link: ${JSON.stringify(report)}`);
+    }
+  } catch (err) {
+    console.error('Auto-link failed:', err instanceof Error ? err.message : String(err));
   }
   // Backfill shared editions from the owner's events and email imports, up to 20 a run (fewer when
   // the subrequest budget is short). Owner only: with multi-user on it reads the owner's scoped store.
