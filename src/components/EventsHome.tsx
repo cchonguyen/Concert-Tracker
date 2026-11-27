@@ -12,6 +12,11 @@ import { KindPill } from './ui/KindPill';
 import { HintPill, type HintTone } from './ui/HintPill';
 import { DateStack } from './ui/DateStack';
 import { NameList } from './ui/NameList';
+import { PostIt } from './ui/PostIt';
+
+// The count tiles are post-its (docs/specs/landing-look.md): tilts and tones repeat in this order.
+const TILE_TILTS = [-1.25, 1, -0.75, 1.25];
+const TILE_TONES = ['paper', 'second', 'accent', 'paper'] as const;
 
 interface EventsHomeProps {
   events: LoggedEvent[];
@@ -224,21 +229,19 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {tiles.map(([label, value, query, Icon]) => (
-          <button
-            key={label}
-            onClick={() => onOpenTable(query)}
-            className="flex items-center gap-3 rounded-card border border-line bg-surface-1 px-3.5 py-3 text-left hover:border-line-strong hover:bg-surface-2"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-accent-tint text-accent">
-              <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} aria-hidden="true" />
+      <div className="grid grid-cols-2 gap-4 pt-2 sm:grid-cols-4">
+        {tiles.map(([label, value, query, Icon], i) => (
+          <PostIt key={label} onClick={() => onOpenTable(query)} tilt={TILE_TILTS[i % TILE_TILTS.length]} tone={TILE_TONES[i % TILE_TONES.length]} className="h-full !p-4">
+            <span className="flex items-center gap-3">
+              <span aria-hidden="true" className="postit-icon flex h-9 w-9 shrink-0 items-center justify-center">
+                <Icon className="h-6 w-6" strokeWidth={2} />
+              </span>
+              <span className="min-w-0">
+                <span className="poster-head block text-4xl leading-none tabular-nums">{value}</span>
+                <span className="mt-1 block truncate font-mono text-xs">{label}</span>
+              </span>
             </span>
-            <span className="min-w-0">
-              <span className="block text-2xl font-extrabold leading-none tracking-tight tabular-nums text-text">{value}</span>
-              <span className="mt-1 block truncate text-xs text-text-muted">{label}</span>
-            </span>
-          </button>
+          </PostIt>
         ))}
       </div>
 
