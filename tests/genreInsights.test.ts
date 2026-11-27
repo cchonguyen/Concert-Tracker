@@ -180,6 +180,37 @@ test('cooling requires >= 5 sets before and <= half after, capped at 2', () => {
   ]);
 });
 
+// Marks every act in the event as B2B with the others in it (docs/specs/genre-taxonomy-release-1.md section 1).
+const b2bEvent = (e: LoggedEvent): LoggedEvent => ({
+  ...e,
+  seen: e.seen.map((s) => ({ ...s, b2b: e.seen.filter((x) => x.key !== s.key).map((x) => x.key) })),
+});
+
+test('artistsBehind counts a B2B act half a set, and goneQuiet compares its floor on the fractional total', () => {
+  const rows: ArtistGenres[] = [
+    artist('Zed', [{ parent: 'Electronic', style: 'Techno', weight: 1 }]),
+    artist('Alpha', [{ parent: 'Electronic', style: 'Techno', weight: 1 }]),
+  ];
+  const byArtist = genresByArtist(rows);
+  const b2b = b2bEvent(ev('1', '2026-03-01', ['Zed', 'Alpha']));
+  const behind = artistsBehind([b2b], byArtist, undefined, { kind: 'style', name: 'Techno' });
+  assert.deepEqual(behind.map((r) => [r.name, r.weightedSets, r.sets]), [
+    ['Alpha', 0.5, 0.5],
+    ['Zed', 0.5, 0.5],
+  ]);
+
+  // Halcyon Drift in nine B2B nights is 4.5 sets: under the 5-set floor. A tenth night makes 5.
+  const halcyon = genresByArtist([artist('Halcyon Drift', [{ parent: 'Electronic', style: 'Trance', weight: 1 }])]);
+  const nights = (count: number) =>
+    Array.from({ length: count }, (_, i) =>
+      b2bEvent(ev(`tr-${i}`, `2024-01-${String(i + 1).padStart(2, '0')}`, ['Halcyon Drift', 'Partner'])),
+    );
+  assert.equal(goneQuiet(nights(9), halcyon, undefined, TODAY), null);
+  const q = goneQuiet(nights(10), halcyon, undefined, TODAY);
+  assert.ok(q);
+  assert.equal(q.sets, 5);
+});
+
 test('goneQuiet enforces 5-set minimum and exact 18-month cutoff, and handles month-only dates', () => {
   const byArtist = genresByArtist([
     artist('Halcyon Drift', [{ parent: 'Electronic', style: 'Trance', weight: 1 }]),

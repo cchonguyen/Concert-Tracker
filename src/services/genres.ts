@@ -108,6 +108,26 @@ export function missingGenreKeys(events: LoggedEvent[], rows: ArtistGenres[]): s
 export const topStyles = (g: ArtistGenres | undefined, max = 3): string[] =>
   (g?.genres ?? []).slice(0, max).map((x) => x.style);
 
+// Each seen act's share of one set at this event (docs/specs/genre-taxonomy-release-1.md
+// section 1). A B2B is one set: the act and the partners in its `b2b`
+// list who are also in this event's seen list share it evenly, 1 / n each. Partners
+// not in the seen list do not count toward n. An act with no partners present gets
+// 1.0. A `solo` flag adds a further 1.0 for the set the act also played on its own.
+// Returns one share per entry of event.seen, in the same order.
+export function setShares(event: Pick<LoggedEvent, 'seen'>): number[] {
+  const present = new Set(event.seen.map((s) => s.key));
+  return event.seen.map((s) => {
+    const partners = new Set((s.b2b ?? []).filter((k) => k !== s.key && present.has(k)));
+    // No partner present: one set, whether or not `solo` is set. In a B2B, `solo` adds the
+    // separate set the act also played on its own.
+    if (!partners.size) return 1;
+    return 1 / (1 + partners.size) + (s.solo ? 1 : 0);
+  });
+}
+
+// A set count for display: rounded to the nearest whole number, halves up.
+export const formatSets = (n: number): string => String(Math.floor(n + 0.5));
+
 export interface GenreCount {
   name: string;
   sets: number; // seen sets, each split across its act's genres by weight
@@ -175,28 +195,31 @@ export function genreMix(
   let sets = 0;
   let known = 0;
   for (const e of events) {
-    for (const s of e.seen) {
-      sets += 1;
+    const shares = setShares(e);
+    e.seen.forEach((s, i) => {
+      const share = shares[i];
+      sets += share;
       const g = byArtist.get(s.key);
-      if (!g?.genres.length) continue;
-      known += 1;
-      const genreWeight = new Map<string, number>(); // this set, by genre key
+      if (!g?.genres.length) return;
+      known += share;
+      const genreWeight = new Map<string, number>(); // this set, by genre key, times the share
       for (const x of g.genres) {
         const group = shareGroup(x);
-        parents.set(group, (parents.get(group) ?? 0) + x.weight);
+        parents.set(group, (parents.get(group) ?? 0) + x.weight * share);
         const family = shareFamily(x);
         // A genre with no family is not a family: it has no row in the Family list.
-        if (family && family !== NOT_GROUPED) families.set(family, (families.get(family) ?? 0) + x.weight);
+        if (family && family !== NOT_GROUPED) families.set(family, (families.get(family) ?? 0) + x.weight * share);
         const k = genreKey(x.style);
         if (!k) continue;
         if (!styleName.has(k)) styleName.set(k, x.style);
-        styles.set(k, (styles.get(k) ?? 0) + x.weight);
-        genreWeight.set(k, (genreWeight.get(k) ?? 0) + x.weight);
+        styles.set(k, (styles.get(k) ?? 0) + x.weight * share);
+        genreWeight.set(k, (genreWeight.get(k) ?? 0) + x.weight * share);
       }
+      // An umbrella gets at most the act's share of the set, however many of its genres the act has.
       const perSet = new Map<string, number>();
       for (const [k, w] of genreWeight) for (const u of ups(k)) perSet.set(u, (perSet.get(u) ?? 0) + w);
-      for (const [u, w] of perSet) umbrellas.set(u, (umbrellas.get(u) ?? 0) + Math.min(1, w));
-    }
+      for (const [u, w] of perSet) umbrellas.set(u, (umbrellas.get(u) ?? 0) + Math.min(share, w));
+    });
   }
   const ranked = (m: Map<string, number>) =>
     [...m]
