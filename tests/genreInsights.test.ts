@@ -559,7 +559,7 @@ test('genreTree builds nested umbrella trees with lit and dimmed branches', () =
   assert.equal(houseNode.children.find((c) => c.key === 'afrohouse')?.seen, false);
 });
 
-test('taxonomy: groups roll up to macros, families sit between macro and genre, and the tree runs macro, family, genre', () => {
+test('taxonomy: groups are scene families, families sit between macro and genre, and the tree runs macro, family, genre', () => {
   const vocab: GenreVocabulary = {
     genres: [
       { key: 'macro:electronic', name: 'Electronic', level: 'macro', aliases: [], umbrellas: [] },
@@ -585,7 +585,7 @@ test('taxonomy: groups roll up to macros, families sit between macro and genre, 
   assert.deepEqual(
     mix.parents.map((p) => [p.name, Math.round(p.sets * 1000) / 1000]),
     [
-      ['Electronic', 1],
+      ['House', 1],
       ['Not grouped', 1],
     ],
   );

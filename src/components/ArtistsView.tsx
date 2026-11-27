@@ -437,9 +437,13 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
     () => [...new Set(artists.flatMap((a) => (genres.get(a.key)?.genres ?? []).map((g) => shareGroup(g))))].sort(),
     [artists, genres],
   );
+  // The top-level groups are already families when the taxonomy is in use; list only the rest.
   const families = useMemo(
-    () => [...new Set(artists.flatMap((a) => (genres.get(a.key)?.genres ?? []).flatMap((g) => (g.family ? [g.family] : []))))].sort(),
-    [artists, genres],
+    () =>
+      [...new Set(artists.flatMap((a) => (genres.get(a.key)?.genres ?? []).flatMap((g) => (g.family ? [g.family] : []))))]
+        .filter((f) => !parents.includes(f))
+        .sort(),
+    [artists, genres, parents],
   );
   // Umbrellas that at least one artist here falls under; picking one shows the
   // artists with it or any genre under it. Pills still show only their own genres.
