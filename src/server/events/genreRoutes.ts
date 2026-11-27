@@ -93,7 +93,7 @@ export function genresRouter(deps: PipelineDeps): Router {
       const body: Record<string, unknown> = {
         genres,
         hasMap: Boolean(map?.length),
-        known: knownGenres(map ?? [], genres),
+        known: knownGenres(map ?? [], genres, vocabulary),
         csvUndo,
         vocabulary,
         map: map ?? [],

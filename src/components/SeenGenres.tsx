@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Tags, X } from 'lucide-react';
 import { genresApi, LoggedEvent } from '../services/lineupApi';
 import { ArtistGenres, genresByArtist } from '../services/genres';
-import type { KnownGenre } from '../server/events/genreTypes';
+import type { GenreMapEntry, GenreVocabulary, KnownGenre } from '../server/events/genreTypes';
 import { SuggestInput } from './SuggestInput';
 import { useIsOwner } from './MeContext';
 
@@ -31,7 +31,7 @@ const ActGenres: React.FC<{
 }> = ({ act, isOwner, own, found, shared, added, known, onSave }) => {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const shown = isOwner ? own ?? found : shared;
+  const shown = shared;
   const sharedStyles = (shown?.genres ?? []).map((g) => g.style);
   const styles = isOwner ? sharedStyles : [...sharedStyles, ...added];
   const has = new Set(styles.map((s) => s.toLowerCase()));
@@ -147,6 +147,8 @@ export const SeenGenres: React.FC<{ event: LoggedEvent }> = ({ event }) => {
   const isOwner = useIsOwner();
   const [rows, setRows] = useState<ArtistGenres[] | null>(null);
   const [known, setKnown] = useState<KnownGenre[]>([]);
+  const [vocabulary, setVocabulary] = useState<GenreVocabulary | undefined>(undefined);
+  const [map, setMap] = useState<GenreMapEntry[] | undefined>(undefined);
   const [open, setOpen] = useState(false);
   useEffect(() => {
     genresApi
@@ -154,15 +156,17 @@ export const SeenGenres: React.FC<{ event: LoggedEvent }> = ({ event }) => {
       .then((r) => {
         setRows(r.genres);
         setKnown(r.known);
+        setVocabulary(r.vocabulary);
+        setMap(r.map);
       })
       .catch(() => setRows(null)); // before 0013 is applied: no genres here
   }, [event.id]);
   const acts = useMemo(() => [...new Map(event.seen.map((s) => [s.key, { key: s.key, name: s.name }])).values()], [event.seen]);
-  const combined = useMemo(() => genresByArtist(rows ?? []), [rows]);
-  const sharedBase = useMemo(() => genresByArtist((rows ?? []).filter((r) => r.source !== 'added')), [rows]);
+  const combined = useMemo(() => genresByArtist(rows ?? [], vocabulary, map), [rows, vocabulary, map]);
+  const sharedBase = useMemo(() => genresByArtist((rows ?? []).filter((r) => r.source !== 'added'), vocabulary, map), [rows, vocabulary, map]);
   const found = useMemo(
-    () => genresByArtist((rows ?? []).filter((r) => r.source !== 'owner' && r.source !== 'you' && r.source !== 'added')),
-    [rows],
+    () => genresByArtist((rows ?? []).filter((r) => r.source !== 'owner' && r.source !== 'you' && r.source !== 'added'), vocabulary, map),
+    [rows, vocabulary, map],
   );
   const own = useMemo(() => {
     const m = new Map<string, ArtistGenres>();

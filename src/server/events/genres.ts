@@ -8,7 +8,7 @@ import { currentMember } from '../auth/requestScope';
 import { genreUniverse } from './genreCatalog';
 import type { LoggedEvent } from './types';
 import { GENRE_MAP_SETTING, MAX_GENRE_LENGTH, MAX_MUSICBRAINZ_GENRES, MAX_OWN_GENRES, MIN_SHARE, MUSIC_STORY_FORMAT } from './genreTypes';
-import type { ArtistGenres, GenreChange, GenreMapEntry, GenreShare, GenreSource, KnownGenre } from './genreTypes';
+import type { ArtistGenres, GenreChange, GenreMapEntry, GenreShare, GenreSource, GenreVocabulary, KnownGenre } from './genreTypes';
 import { GENRE_NEEDS_LETTER, NOT_GROUPED, genreKey, genreResolver } from './genreVocabulary';
 
 export * from './genreTypes';
@@ -192,24 +192,25 @@ export async function musicBrainzGenres(store: LineupStore, fetcher: Fetcher, ke
   return rows;
 }
 
-// Every genre you can pick: the genre map's styles and those on stored acts,
-// yours included, once per genreKey, in the resolved spelling and group (a genre
-// with no group is "Not grouped"). No vocabulary yet: spellings fold by key alone.
-export function knownGenres(map: GenreMapEntry[], rows: ArtistGenres[]): KnownGenre[] {
-  const resolver = genreResolver(undefined, map, rows);
+// Every genre you can pick: the vocabulary's genres, the genre map's styles and
+// those on stored acts, once per genreKey, in the resolved spelling and group
+// (a genre with no group is "Not grouped").
+export function knownGenres(map: GenreMapEntry[], rows: ArtistGenres[], vocabulary?: GenreVocabulary): KnownGenre[] {
+  const resolver = genreResolver(vocabulary, map, rows);
   const out = new Map<string, KnownGenre>();
   const add = (style: string) => {
     const r = resolver.resolve(style);
     if (r.key && !out.has(r.key)) out.set(r.key, { style: r.name, parent: r.parent ?? NOT_GROUPED });
   };
+  for (const g of vocabulary?.genres ?? []) add(g.name);
   for (const m of map) add(m.style);
   for (const r of rows) for (const g of r.genres) add(g.style);
   return [...out.values()].sort((a, b) => a.style.localeCompare(b.style));
 }
 
 // Known genres keyed by genreKey, for the genre rows below.
-export function knownGenreMap(map: GenreMapEntry[], rows: ArtistGenres[]): Map<string, KnownGenre> {
-  return new Map(knownGenres(map, rows).map((g) => [genreKey(g.style), g]));
+export function knownGenreMap(map: GenreMapEntry[], rows: ArtistGenres[], vocabulary?: GenreVocabulary): Map<string, KnownGenre> {
+  return new Map(knownGenres(map, rows, vocabulary).map((g) => [genreKey(g.style), g]));
 }
 
 // A genre row typed in the app or a file: the styles, equal weights, a known
@@ -255,8 +256,18 @@ export function ownGenreRow(known: ReadonlyMap<string, KnownGenre>, key: string,
 }
 
 async function knownFor(store: LineupStore): Promise<Map<string, KnownGenre>> {
-  const [map, rows] = await Promise.all([store.getSetting<GenreMapEntry[]>(GENRE_MAP_SETTING), store.listArtistGenres()]);
-  return knownGenreMap(map ?? [], rows);
+  const [map, rows, vocabulary] = await Promise.all([
+    store.getSetting<GenreMapEntry[]>(GENRE_MAP_SETTING),
+    store.listArtistGenres(),
+    store.getGenreVocabulary(),
+  ]);
+  const out = knownGenreMap(map ?? [], rows, vocabulary);
+  for (const g of vocabulary?.genres ?? []) {
+    const resolved = out.get(g.key);
+    if (!resolved) continue;
+    for (const a of g.aliases) if (!out.has(a.key)) out.set(a.key, resolved);
+  }
+  return out;
 }
 
 // The owner sets the shared genres of one act in the genre universe. An empty
