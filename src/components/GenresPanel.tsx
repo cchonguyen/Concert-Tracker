@@ -1,7 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { genresApi, type GenresList, type LoggedEvent } from '../services/lineupApi';
 import { parseCsv } from '../services/listImport';
-import { parseGenreVocabCsv, type GenreVocabCsvPreview, type GenreVocabCsvRow } from '../server/events/genreVocabCsv';
+import {
+  parseGenreVocabCsv,
+  type GenreTaxonomyPreview,
+  type GenreVocabCsvPreview,
+  type GenreVocabCsvRow,
+} from '../server/events/genreVocabCsv';
 import { genreResolver, NOT_GROUPED } from '../server/events/genreVocabulary';
 import type { GenreCollision, GenreVocabChange } from '../server/events/genreTypes';
 import { ArtistGenresPanel } from './ArtistGenresPanel';
@@ -103,6 +108,42 @@ const CollisionItem: React.FC<{ c: GenreCollision; busy: boolean; onPick: (key: 
     </ul>
   </Ledger.Row>
 );
+
+// The tree upload's preview, in plain words.
+const TaxonomyPreviewLines: React.FC<{ preview: GenreTaxonomyPreview }> = ({ preview }) => {
+  const { macros, families, genres, withoutFamily } = preview;
+  const macroTotal = macros.created + macros.updated + macros.unchanged;
+  const familyTotal = families.created + families.updated + families.unchanged;
+  const genreTotal = genres.created + genres.updated + genres.unchanged;
+  const hidden = withoutFamily.count - withoutFamily.names.length;
+  return (
+    <div className="space-y-1 text-sm text-text">
+      <p>
+        {macroTotal} macro genres, {familyTotal} families, {genreTotal} genres: {genres.created} new, {genres.updated} updated
+      </p>
+      <p className="text-xs text-text-muted">
+        Macros: {macros.created} new, {macros.updated} updated · Families: {families.created} new, {families.updated} updated · Moved
+        to another family: {genres.familyMoved} · Tier changed: {genres.tierChanged} · Spellings added: {preview.aliasesAdded} ·
+        Spellings skipped (same as the genre&apos;s name): {preview.aliasesSkipped} · Secondary families added:{' '}
+        {preview.secondaryAdded}, removed: {preview.secondaryRemoved}
+      </p>
+      {withoutFamily.count > 0 && (
+        <div className="flex flex-wrap items-center gap-1 text-xs text-text-muted">
+          <span>
+            {withoutFamily.count} {withoutFamily.count === 1 ? 'genre has' : 'genres have'} no family after this upload
+            {withoutFamily.checked === 'vocabulary only' ? ' (checked against the vocabulary only)' : ''}:
+          </span>
+          {withoutFamily.names.map((n) => (
+            <Pill key={n} tone="neutral">
+              {n}
+            </Pill>
+          ))}
+          {hidden > 0 && <span>+{hidden} more</span>}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = ({ query, events }) => {
   const [data, setData] = useState<GenresList | null>(null);
@@ -320,10 +361,14 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
 
       {csvPreview && csvRows && (
         <div className="space-y-2 rounded-card border border-line bg-surface-1 p-3">
-          <p className="text-sm text-text">
-            Created {csvPreview.created} · Updated {csvPreview.updated} · Unchanged {csvPreview.unchanged} · Aliases added{' '}
-            {csvPreview.aliasesAdded} · Umbrellas added {csvPreview.umbrellasAdded}
-          </p>
+          {csvPreview.taxonomy ? (
+            <TaxonomyPreviewLines preview={csvPreview.taxonomy} />
+          ) : (
+            <p className="text-sm text-text">
+              Created {csvPreview.created} · Updated {csvPreview.updated} · Unchanged {csvPreview.unchanged} · Aliases added{' '}
+              {csvPreview.aliasesAdded} · Umbrellas added {csvPreview.umbrellasAdded}
+            </p>
+          )}
           {csvPreview.skippedAliases.length > 0 && (
             <p className="text-xs text-text-muted">
               Skipped {csvPreview.skippedAliases.length} colliding {csvPreview.skippedAliases.length === 1 ? 'alias' : 'aliases'}:{' '}
