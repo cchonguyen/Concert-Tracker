@@ -12,8 +12,8 @@ import {
   type GenreRelationsCsvPreview,
   type GenreRelationsCsvRow,
 } from '../server/events/genreRelationsCsv';
-import { genreResolver, NOT_GROUPED } from '../server/events/genreVocabulary';
-import type { GenreCollision, GenreVocabChange } from '../server/events/genreTypes';
+import { genreResolver, levelOf, NOT_GROUPED } from '../server/events/genreVocabulary';
+import type { GenreCollision, GenreLevel, GenreVocabChange, GenreVocabulary } from '../server/events/genreTypes';
 import { ArtistGenresPanel } from './ArtistGenresPanel';
 import { GenreRecord } from './GenreRecord';
 import { Button } from './ui/Button';
@@ -37,18 +37,51 @@ const ALL = '__all';
 export interface GenreListRow {
   key: string;
   name: string;
-  group: string; // NOT_GROUPED when it has none
-  aliases: string[]; // the owner's other spellings
+  level: GenreLevel; // 'genre', or a family or macro row (genre-taxonomy-phase-a.md section 6)
+  // A genre: its family's shown name, NOT_GROUPED when it has none. A family: its macro's name.
+  group: string;
+  aliases: string[]; // the owner's other spellings (genres only)
   spellings: string[]; // every spelling seen with this genre's key or an alias of it
   umbrellas: string[]; // shown names of the genres this one sits under
-  artists: number; // shared rows with this genre, after resolving
+  artists: number; // shared rows with a genre in this row (a family or macro counts the genres under it)
 }
 
-// Every vocabulary genre, every genre map style and every style on shared rows,
-// resolved so each genre appears once.
-function genreRows(data: GenresList): { rows: GenreListRow[]; groups: string[] } {
+// A family to choose in a family menu, with the macro it sits under.
+export interface FamilyChoice {
+  key: string;
+  name: string;
+  macroKey: string;
+  macro: string; // shown name; NOT_GROUPED when the family has no macro
+}
+
+// The genre keys a family or macro holds: a family's genres, or a macro's families' genres. A genre holds none.
+export function membersOf(vocab: GenreVocabulary, key: string): string[] {
+  const self = vocab.genres.find((g) => g.key === key);
+  if (!self || levelOf(self) === 'genre') return [];
+  const families =
+    levelOf(self) === 'family' ? [key] : vocab.genres.filter((g) => levelOf(g) === 'family' && g.primaryParent === key).map((g) => g.key);
+  return vocab.genres
+    .filter((g) => levelOf(g) === 'genre' && g.primaryParent !== undefined && families.includes(g.primaryParent))
+    .map((g) => g.key);
+}
+
+export function familyChoices(vocab: GenreVocabulary): FamilyChoice[] {
+  const byKey = new Map(vocab.genres.map((g) => [g.key, g]));
+  return vocab.genres
+    .filter((g) => levelOf(g) === 'family')
+    .map((g) => {
+      const macro = g.primaryParent ? byKey.get(g.primaryParent) : undefined;
+      return { key: g.key, name: g.name, macroKey: macro?.key ?? '', macro: macro?.name ?? NOT_GROUPED };
+    })
+    .sort((a, b) => a.macro.localeCompare(b.macro) || a.name.localeCompare(b.name));
+}
+
+// Every vocabulary genre, family and macro, every genre map style and every style on
+// shared rows, resolved so each genre appears once.
+function genreRows(data: GenresList): { rows: GenreListRow[]; families: FamilyChoice[] } {
   const shared = data.genres.filter((r) => r.source !== 'added');
   const resolver = genreResolver(data.vocabulary, data.map, shared);
+  const vocabByKey = new Map(data.vocabulary.genres.map((g) => [g.key, g]));
   const byKey = new Map<string, GenreListRow>();
   const artistsByKey = new Map<string, Set<string>>();
   const add = (style: string): string | undefined => {
@@ -56,14 +89,19 @@ function genreRows(data: GenresList): { rows: GenreListRow[]; groups: string[] }
     if (!r.key) return undefined;
     let row = byKey.get(r.key);
     if (!row) {
-      row = { key: r.key, name: r.name, group: r.parent ?? NOT_GROUPED, aliases: [], spellings: [], umbrellas: [], artists: 0 };
+      row = { key: r.key, name: r.name, level: 'genre', group: NOT_GROUPED, aliases: [], spellings: [], umbrellas: [], artists: 0 };
       byKey.set(r.key, row);
     }
     const s = style.trim();
     if (s && !row.spellings.includes(s)) row.spellings.push(s);
     return r.key;
   };
-  for (const g of data.vocabulary.genres) add(g.name);
+  // A family or macro is a row of its own: its name is not a genre spelling.
+  for (const g of data.vocabulary.genres) {
+    if (levelOf(g) === 'genre') add(g.name);
+    else
+      byKey.set(g.key, { key: g.key, name: g.name, level: levelOf(g), group: NOT_GROUPED, aliases: [], spellings: [g.name], umbrellas: [], artists: 0 });
+  }
   for (const m of data.map) add(m.style);
   for (const r of shared) {
     for (const s of r.genres) {
@@ -76,19 +114,25 @@ function genreRows(data: GenresList): { rows: GenreListRow[]; groups: string[] }
   }
   for (const g of data.vocabulary.genres) {
     const row = byKey.get(g.key);
-    if (!row) continue;
+    if (!row || row.level !== 'genre') continue;
     row.aliases = g.aliases.map((a) => a.alias);
     row.umbrellas = g.umbrellas.map((u) => byKey.get(u)?.name ?? resolver.resolve(u).name);
+    row.group = (g.primaryParent ? vocabByKey.get(g.primaryParent)?.name : undefined) ?? NOT_GROUPED;
   }
   for (const [k, set] of artistsByKey) {
     const row = byKey.get(k);
     if (row) row.artists = set.size;
   }
+  const families = familyChoices(data.vocabulary);
+  for (const row of byKey.values()) {
+    if (row.level === 'genre') continue;
+    const artists = new Set<string>();
+    for (const gk of membersOf(data.vocabulary, row.key)) for (const a of artistsByKey.get(gk) ?? []) artists.add(a);
+    row.artists = artists.size;
+    if (row.level === 'family') row.group = families.find((f) => f.key === row.key)?.macro ?? NOT_GROUPED;
+  }
   const rows = [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name));
-  const groups = [...new Set([...resolver.groups, ...rows.map((r) => r.group).filter((g) => g !== NOT_GROUPED)])].sort((a, b) =>
-    a.localeCompare(b),
-  );
-  return { rows, groups };
+  return { rows, families };
 }
 
 const CollisionItem: React.FC<{ c: GenreCollision; busy: boolean; onPick: (key: string, spelling: string) => void }> = ({ c, busy, onPick }) => (
@@ -181,6 +225,7 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [group, setGroup] = useState<string>(ALL);
+  const [level, setLevel] = useState<string>(ALL);
   const [showCollisions, setShowCollisions] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -212,26 +257,38 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
     void load();
   }, [load]);
 
-  const { rows, groups } = useMemo(() => (data ? genreRows(data) : { rows: [], groups: [] }), [data]);
+  const { rows, families } = useMemo(() => (data ? genreRows(data) : { rows: [], families: [] }), [data]);
+  // The old map groups, still the choices for a new genre's group (Create genre).
+  const groups = useMemo(
+    () => (data ? genreResolver(data.vocabulary, data.map, data.genres.filter((r) => r.source !== 'added')).groups : []),
+    [data],
+  );
   const collisions = data?.collisions ?? [];
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
+      if (level !== ALL && r.level !== level) return false;
       if (group !== ALL && r.group !== group) return false;
       if (!q) return true;
       return [r.name, ...r.aliases, ...r.spellings].some((n) => n.toLowerCase().includes(q));
     });
-  }, [rows, query, group]);
+  }, [rows, query, group, level]);
 
   const groupOptions: MenuOption<string>[] = useMemo(
     () => [
-      { value: ALL, label: 'All groups' },
-      ...groups.map((g) => ({ value: g, label: g })),
+      { value: ALL, label: 'All families' },
+      ...families.map((f) => ({ value: f.name, label: `${f.name} (${f.macro})` })),
       { value: NOT_GROUPED, label: NOT_GROUPED },
     ],
-    [groups],
+    [families],
   );
+  const levelOptions: MenuOption<string>[] = [
+    { value: ALL, label: 'Everything' },
+    { value: 'genre', label: 'Genres' },
+    { value: 'family', label: 'Families' },
+    { value: 'macro', label: 'Macros' },
+  ];
 
   const run = async (action: () => Promise<GenreVocabChange>): Promise<boolean> => {
     setBusy(true);
@@ -401,7 +458,8 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
 
       {data && (
         <div className="flex flex-wrap items-center gap-2">
-          <MenuButton label="Genre group" value={group} options={groupOptions} onChange={setGroup} />
+          <MenuButton label="Show" value={level} options={levelOptions} onChange={setLevel} />
+          <MenuButton label="Genre family" value={group} options={groupOptions} onChange={setGroup} />
           <input
             ref={fileRef}
             type="file"
@@ -556,7 +614,8 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
         <GenreRecord
           row={selectedRow}
           rows={rows}
-          groups={groups}
+          families={families}
+          members={membersOf(data.vocabulary, selectedRow.key)}
           data={data}
           onChanged={changed}
           onSelect={setSelected}
@@ -589,7 +648,11 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
                   </span>
                 </span>
                 <span className="flex flex-wrap items-center gap-1.5">
-                  <Pill tone={r.group === NOT_GROUPED ? 'neutral' : 'accent'}>{r.group}</Pill>
+                  {r.level === 'genre' ? (
+                    <Pill tone={r.group === NOT_GROUPED ? 'neutral' : 'accent'}>{r.group}</Pill>
+                  ) : (
+                    <Pill tone="info">{r.level === 'family' ? `Family in ${r.group}` : 'Macro'}</Pill>
+                  )}
                   {r.umbrellas.map((u) => (
                     <Pill key={u} tone="info">
                       Under {u}
@@ -603,7 +666,8 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
                   <GenreRecord
                     row={r}
                     rows={rows}
-                    groups={groups}
+                    families={families}
+                    members={membersOf(data.vocabulary, r.key)}
                     data={data}
                     onChanged={changed}
                     onSelect={setSelected}

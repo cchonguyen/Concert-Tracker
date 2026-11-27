@@ -23,7 +23,7 @@ import type { LineupFacts } from '../server/events/scale';
 import type { CityPoint, PlaceGuess } from '../server/events/place';
 import type { GenreVocabCsvPreview, GenreVocabCsvRow } from '../server/events/genreVocabCsv';
 import type { GenreRelationsCsvPreview, GenreRelationsCsvRow } from '../server/events/genreRelationsCsv';
-import type { ArtistGenres, GenreCollision, GenreMapEntry, GenreVocabChange, GenreVocabulary, KnownGenre } from '../server/events/genreTypes';
+import type { ArtistGenres, GenreCollision, GenreMapEntry, GenreRelationType, GenreVocabChange, GenreVocabulary, KnownGenre } from '../server/events/genreTypes';
 import type { GenreMergePlan } from '../server/events/genreVocabularyManage';
 import type { MilestoneSaved, Prefs, TipsSaved } from '../server/auth/prefs';
 import { dehydrateBody, hydrateEvent, type PeopleBook, type PeopleServer } from './vaultPeople';
@@ -483,6 +483,15 @@ export const genresApi = {
   removeGenreAlias: (genre: string, alias: string) => vocabWrite('alias-remove', { genre, alias }),
   // null clears the owner's group: it comes from the genre map again.
   setGenreParent: (genre: string, parent: string | null) => vocabWrite('parent', { genre, parent }),
+  // null or '' clears the family: the genre is "Not grouped" (genre-taxonomy-phase-a.md section 6).
+  setGenreFamily: (genre: string, family: string | null) => vocabWrite('family', { genre, family }),
+  // A link's strength is above 0 and up to 1. A secondary family's target is a family key; the others take a genre key.
+  addGenreRelation: (source: string, target: string, type: GenreRelationType, weight: number) =>
+    vocabWrite('relation-add', { source, target, type, weight }),
+  removeGenreRelation: (source: string, target: string, type: GenreRelationType) =>
+    vocabWrite('relation-remove', { source, target, type }),
+  setGenreRelationWeight: (source: string, target: string, type: GenreRelationType, weight: number) =>
+    vocabWrite('relation-weight', { source, target, type, weight }),
   addGenreUmbrella: (genre: string, umbrella: string) => vocabWrite('umbrella-add', { genre, umbrella }),
   removeGenreUmbrella: (genre: string, umbrella: string) => vocabWrite('umbrella-remove', { genre, umbrella }),
   pickGenreSpelling: (key: string, spelling: string) => vocabWrite('spelling', { key, spelling }),

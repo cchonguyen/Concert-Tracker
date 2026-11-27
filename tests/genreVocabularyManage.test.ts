@@ -6,9 +6,10 @@ import path from 'node:path';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import { ManageError } from '../src/server/entities/manage.ts';
 import { GENRE_MAP_SETTING } from '../src/server/events/genreTypes.ts';
-import type { ArtistGenres, GenreMapEntry } from '../src/server/events/genreTypes.ts';
+import type { ArtistGenres, GenreMapEntry, VocabGenre } from '../src/server/events/genreTypes.ts';
 import {
   addGenreAlias,
+  addGenreRelation,
   addGenreUmbrella,
   createGenre,
   GENRES_CHANGED_SINCE,
@@ -16,9 +17,12 @@ import {
   pickGenreSpelling,
   planGenreMerge,
   removeGenreAlias,
+  removeGenreRelation,
   removeGenreUmbrella,
   renameGenre,
+  setGenreFamily,
   setGenreParent,
+  setGenreRelationWeight,
   undoGenreVocabChange,
 } from '../src/server/events/genreVocabularyManage.ts';
 
@@ -201,4 +205,133 @@ test('undo of a create is refused when a later change put another genre under it
   const first = await createGenre(s, { name: 'dance' });
   await addGenreUmbrella(s, 'house', 'dance');
   await assert.rejects(undoGenreVocabChange(s, first.id), refused(GENRES_CHANGED_SINCE, 409));
+});
+
+// ---- Taxonomy (genre-taxonomy-phase-a.md section 6) --------------------------
+
+// One macro, two families, and four genres: house (in House), techhouse (no family),
+// techno (no family). Written as full images, the way the tree upload writes them.
+async function seedTaxonomy(s: FileLineupStore) {
+  const g = (x: VocabGenre) => ({ key: x.key, image: x });
+  await s.writeGenreVocabulary(
+    [
+      g({ key: 'macro:electronic', name: 'Electronic', level: 'macro', aliases: [], umbrellas: [] }),
+      g({ key: 'family:house', name: 'House', level: 'family', primaryParent: 'macro:electronic', aliases: [], umbrellas: [] }),
+      g({ key: 'family:techno', name: 'Techno', level: 'family', primaryParent: 'macro:electronic', aliases: [], umbrellas: [] }),
+      g({ key: 'house', name: 'House', level: 'genre', primaryParent: 'family:house', tier: 'specific', aliases: [], umbrellas: [] }),
+      g({ key: 'techhouse', name: 'Tech house', level: 'genre', tier: 'specific', aliases: [], umbrellas: [] }),
+      g({ key: 'techno', name: 'Techno', level: 'genre', tier: 'specific', aliases: [], umbrellas: [] }),
+    ],
+    { operation: 'taxonomy-import', actor: 'owner', reason: 'test', summary: 'test taxonomy' },
+  );
+}
+
+async function vocabOf(s: FileLineupStore, key: string): Promise<VocabGenre> {
+  const g = (await s.getGenreVocabulary()).genres.find((x) => x.key === key);
+  assert.ok(g, `no row ${key}`);
+  return g;
+}
+
+test('setGenreFamily puts a genre in a family, clears it, and refuses a macro or an unknown family', async () => {
+  const s = await setup();
+  await seedTaxonomy(s);
+  const change = await setGenreFamily(s, 'techhouse', 'Techno');
+  assert.equal(change.operation, 'family');
+  assert.equal((await vocabOf(s, 'techhouse')).primaryParent, 'family:techno');
+  await setGenreFamily(s, 'techhouse', '');
+  assert.equal((await vocabOf(s, 'techhouse')).primaryParent, undefined);
+  await assert.rejects(setGenreFamily(s, 'techhouse', ''), refused(/not grouped already/, 400));
+  await assert.rejects(setGenreFamily(s, 'techhouse', 'macro:electronic'), refused(/is not a family/, 400));
+  await assert.rejects(setGenreFamily(s, 'techhouse', 'Nowhere'), refused(/No such family/, 404));
+});
+
+test('addGenreRelation adds adjacent, derived-from and secondary family links as curated', async () => {
+  const s = await setup();
+  await seedTaxonomy(s);
+  const a = await addGenreRelation(s, 'house', 'techhouse', 'adjacent', 0.6);
+  assert.equal(a.operation, 'relation-add');
+  assert.deepEqual((await vocabOf(s, 'house')).relations, [{ target: 'techhouse', type: 'adjacent', weight: 0.6, origin: 'curated' }]);
+  await addGenreRelation(s, 'techno', 'house', 'derived_from');
+  assert.deepEqual((await vocabOf(s, 'techno')).relations, [{ target: 'house', type: 'derived_from', weight: 1, origin: 'curated' }]);
+  await addGenreRelation(s, 'house', 'Techno', 'secondary_parent');
+  assert.deepEqual((await vocabOf(s, 'house')).relations?.find((r) => r.type === 'secondary_parent'), {
+    target: 'family:techno',
+    type: 'secondary_parent',
+    weight: 1,
+    origin: 'curated',
+  });
+});
+
+test('addGenreRelation refuses a reversed adjacent pair, a self link, a derived-from loop, a bad weight and a wrong target', async () => {
+  const s = await setup();
+  await seedTaxonomy(s);
+  await addGenreRelation(s, 'techhouse', 'house', 'adjacent');
+  await assert.rejects(addGenreRelation(s, 'house', 'techhouse', 'adjacent'), refused(/adjacent pair is stored once/, 409));
+  await assert.rejects(addGenreRelation(s, 'house', 'house', 'adjacent'), refused(/cannot link to itself/, 400));
+  await addGenreRelation(s, 'techno', 'house', 'derived_from');
+  await assert.rejects(addGenreRelation(s, 'house', 'techno', 'derived_from'), refused(/under itself/, 400));
+  for (const w of [0, 1.5, -0.2, 'x']) {
+    await assert.rejects(addGenreRelation(s, 'techno', 'techhouse', 'adjacent', w), refused(/above 0 and up to 1/, 400));
+  }
+  await assert.rejects(addGenreRelation(s, 'house', 'family:techno', 'adjacent'), refused(/No such genre/, 404));
+  await assert.rejects(addGenreRelation(s, 'house', 'rock', 'secondary_parent'), refused(/No such family/, 404));
+});
+
+test('removeGenreRelation takes a link out; setGenreRelationWeight changes it and makes it curated', async () => {
+  const s = await setup();
+  await seedTaxonomy(s);
+  // A co-occurrence link written by the shared-data job, not the owner.
+  await s.writeGenreVocabulary(
+    [{ key: 'house', image: { ...(await vocabOf(s, 'house')), level: 'genre', relations: [{ target: 'techhouse', type: 'adjacent', weight: 0.4, origin: 'artist_cooccur' }] } }],
+    { operation: 'relations-import', actor: 'owner', reason: 'test', summary: 'test link' },
+  );
+  const w = await setGenreRelationWeight(s, 'house', 'techhouse', 'adjacent', 0.8);
+  assert.equal(w.operation, 'relation-weight');
+  assert.deepEqual((await vocabOf(s, 'house')).relations, [{ target: 'techhouse', type: 'adjacent', weight: 0.8, origin: 'curated' }]);
+  await assert.rejects(setGenreRelationWeight(s, 'house', 'techhouse', 'adjacent', 0.8), refused(/already its strength/, 400));
+  const r = await removeGenreRelation(s, 'house', 'techhouse', 'adjacent');
+  assert.equal(r.operation, 'relation-remove');
+  assert.deepEqual((await vocabOf(s, 'house')).relations ?? [], []);
+  await assert.rejects(removeGenreRelation(s, 'house', 'techhouse', 'adjacent'), refused(/no link/, 404));
+});
+
+test('renameGenre renames a family, moves the genres under it, and keeps no alias', async () => {
+  const s = await setup();
+  await seedTaxonomy(s);
+  const c = await renameGenre(s, 'family:house', 'Dance house');
+  assert.equal(c.operation, 'rename');
+  const vocab = await s.getGenreVocabulary();
+  const family = vocab.genres.find((g) => g.key === 'family:dancehouse');
+  assert.ok(family);
+  assert.equal(family.level, 'family');
+  assert.equal(family.primaryParent, 'macro:electronic');
+  assert.equal(family.aliases.length, 0);
+  assert.ok(!vocab.genres.some((g) => g.key === 'family:house'));
+  assert.equal((await vocabOf(s, 'house')).primaryParent, 'family:dancehouse');
+});
+
+test('mergeGenres and planGenreMerge refuse a family or a macro', async () => {
+  const s = await setup();
+  await seedTaxonomy(s);
+  const message = "A family or macro can't be merged with a genre.";
+  await assert.rejects(mergeGenres(s, 'family:house', 'techhouse'), refused(message, 400));
+  await assert.rejects(planGenreMerge(s, 'techhouse', 'macro:electronic'), refused(message, 400));
+});
+
+test('a merge moves links from other genres to the kept genre', async () => {
+  const s = await setup();
+  await seedTaxonomy(s);
+  await addGenreRelation(s, 'techno', 'techhouse', 'derived_from', 0.5);
+  await mergeGenres(s, 'techhouse', 'house');
+  assert.deepEqual((await vocabOf(s, 'techno')).relations, [{ target: 'house', type: 'derived_from', weight: 0.5, origin: 'curated' }]);
+});
+
+test('undo of a relation-add restores the earlier links', async () => {
+  const s = await setup();
+  await seedTaxonomy(s);
+  const c = await addGenreRelation(s, 'house', 'techhouse', 'adjacent', 0.5);
+  assert.equal((await vocabOf(s, 'house')).relations?.length, 1);
+  await undoGenreVocabChange(s, c.id);
+  assert.deepEqual((await vocabOf(s, 'house')).relations ?? [], []);
+  assert.equal((await vocabOf(s, 'house')).primaryParent, 'family:house');
 });
