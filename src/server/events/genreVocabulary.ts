@@ -232,10 +232,10 @@ export function resolveShares(shares: GenreShare[], resolver: GenreResolver): Ge
   return out;
 }
 
-// The group a share shows: its macro genre when the vocabulary has a taxonomy, else its
-// music-story parent (or "Not grouped").
+// The group a share shows: its scene family when the vocabulary has a taxonomy (macros are
+// too broad to tell scenes apart), else its music-story parent (or "Not grouped").
 export function shareGroup(x: GenreShare): string {
-  return x.macro ?? (x.parent || NOT_GROUPED);
+  return x.family ?? x.macro ?? (x.parent || NOT_GROUPED);
 }
 
 // The family a share shows, when it was read through a taxonomy.

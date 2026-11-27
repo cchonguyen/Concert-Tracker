@@ -321,7 +321,7 @@ test('a stored row parent never becomes the macro', () => {
   assert.equal(out[0].macro, 'Electronic');
   assert.notEqual(out[1].macro, 'Dance');
   assert.equal(out[1].macro, NOT_GROUPED);
-  assert.equal(shareGroup(out[0]), 'Electronic');
+  assert.equal(shareGroup(out[0]), 'House');
   assert.equal(shareFamily(out[0]), 'House');
 });
 

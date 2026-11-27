@@ -135,7 +135,7 @@ export interface GenreCount {
 }
 
 export interface GenreMix {
-  // The group of each genre: its macro genre when the vocabulary has a taxonomy (else the
+  // The group of each genre: its scene family when the vocabulary has a taxonomy (else the
   // music-story parent). The field keeps its name so existing callers still work.
   parents: GenreCount[];
   families: GenreCount[]; // by family name, only for genres that have a family
