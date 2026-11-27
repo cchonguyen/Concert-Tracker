@@ -41,7 +41,7 @@ function eventYears(events: LoggedEvent[]): number[] {
 
 const GenreColumn: React.FC<{
   heading: string;
-  kind: 'group' | 'style' | 'umbrella';
+  kind: 'group' | 'family' | 'style' | 'umbrella';
   rows: GenreCount[];
   filtered: LoggedEvent[];
   byArtist: Map<string, ArtistGenres>;
@@ -85,7 +85,13 @@ const GenreColumn: React.FC<{
             const behind = open ? artistsBehind(filtered, byArtist, vocabulary, target) : [];
             const top5 = behind.slice(0, 5);
             const filterVal =
-              kind === 'group' ? `g:${r.name}` : kind === 'umbrella' ? `u:${genreKey(r.name)}` : `s:${genreKey(r.name)}`;
+              kind === 'group'
+                ? `g:${r.name}`
+                : kind === 'family'
+                  ? `f:${r.name}`
+                  : kind === 'umbrella'
+                    ? `u:${genreKey(r.name)}`
+                    : `s:${genreKey(r.name)}`;
             return (
               <li key={rowId} className="rounded-control border border-transparent">
                 <button
@@ -276,17 +282,32 @@ export const GenresRanking: React.FC<GenresRankingProps> = ({
         <GenreTree roots={treeRoots} onOpenArtistsWithGenre={onOpenArtistsWithGenre} />
       ) : (
         <div className="grid gap-6 sm:grid-cols-2">
-          <GenreColumn
-            heading="Genre"
-            kind="group"
-            rows={mix.parents}
-            filtered={filtered}
-            byArtist={byArtist}
-            vocabulary={vocabulary}
-            expandedKey={expandedKey}
-            onToggle={toggle}
-            onOpenArtistsWithGenre={onOpenArtistsWithGenre}
-          />
+          <div className="space-y-6">
+            <GenreColumn
+              heading="Macro"
+              kind="group"
+              rows={mix.parents}
+              filtered={filtered}
+              byArtist={byArtist}
+              vocabulary={vocabulary}
+              expandedKey={expandedKey}
+              onToggle={toggle}
+              onOpenArtistsWithGenre={onOpenArtistsWithGenre}
+            />
+            {mix.families.length > 0 && (
+              <GenreColumn
+                heading="Family"
+                kind="family"
+                rows={mix.families}
+                filtered={filtered}
+                byArtist={byArtist}
+                vocabulary={vocabulary}
+                expandedKey={expandedKey}
+                onToggle={toggle}
+                onOpenArtistsWithGenre={onOpenArtistsWithGenre}
+              />
+            )}
+          </div>
           <GenreColumn
             heading="Style"
             kind={styleKind}

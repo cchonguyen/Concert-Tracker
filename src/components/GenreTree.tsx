@@ -16,7 +16,8 @@ const TreeBranch: React.FC<{
   return (
     <ul className="space-y-1 border-l border-line pl-4">
       {nodes.map((node) => {
-        const filterVal = node.children.length > 0 ? `u:${node.key}` : `s:${node.key}`;
+        const filterVal =
+          node.level === 'family' ? `f:${node.name}` : node.children.length > 0 ? `u:${node.key}` : `s:${node.key}`;
         return (
           <li key={node.key} className="space-y-1">
             {node.seen ? (

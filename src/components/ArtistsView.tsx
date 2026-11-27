@@ -10,6 +10,7 @@ import { StubHeader } from './ui/StubHeader';
 import { Pill as UiPill } from './ui/Pill';
 import { Segmented } from './ui/Segmented';
 import { Tooltip } from './ui/Tooltip';
+import { shareGroup } from '../server/events/genreVocabulary';
 import { ARTIST_SORTS, artistSummaries, ArtistSort, ArtistSummary, groupArtists, jumpTargets } from '../services/artists';
 import { buildManageUrl, entityUrl, isModifiedClick } from '../services/manageNav';
 import { rankingByFromParam, type RankingBy } from '../services/nav';
@@ -109,6 +110,7 @@ interface ArtistProps {
 
 // The genre filter holds a group ("g:" and its name), an umbrella ("u:" and its key), or a style ("s:" and its key).
 const GROUP = 'g:';
+const FAMILY = 'f:';
 const UMBRELLA = 'u:';
 const STYLE = 's:';
 const matchesGenre = (g: ArtistGenres | undefined, picked: string, vocab: GenresList['vocabulary'] | undefined): boolean =>
@@ -116,7 +118,9 @@ const matchesGenre = (g: ArtistGenres | undefined, picked: string, vocab: Genres
     ? hasGenreUnder(g, picked.slice(UMBRELLA.length), vocab)
     : picked.startsWith(STYLE)
       ? (g?.genres ?? []).some((x) => genreKey(x.style) === picked.slice(STYLE.length))
-      : (g?.genres ?? []).some((x) => x.parent === picked.slice(GROUP.length));
+      : picked.startsWith(FAMILY)
+        ? (g?.genres ?? []).some((x) => x.family === picked.slice(FAMILY.length))
+        : (g?.genres ?? []).some((x) => shareGroup(x) === picked.slice(GROUP.length));
 const genreLabel = (picked: string, umbrellas: Array<[string, string]>, styles: Array<[string, string]>): string =>
   picked.startsWith(UMBRELLA)
     ? (umbrellas.find(([k]) => k === picked.slice(UMBRELLA.length))?.[1] ?? picked.slice(UMBRELLA.length))
@@ -126,7 +130,7 @@ const genreLabel = (picked: string, umbrellas: Array<[string, string]>, styles: 
 
 // Where an act's genres came from, for the tooltip.
 const genreTitle = (g: ArtistGenres, isOwner: boolean) => {
-  const lines = [g.genres.map((x) => `${x.style} (${x.parent}) ${Math.round(x.weight * 100)}%`).join(', ')];
+  const lines = [g.genres.map((x) => `${x.style} (${shareGroup(x)}) ${Math.round(x.weight * 100)}%`).join(', ')];
   if (g.source === 'owner' || g.source === 'you') lines.push(isOwner ? 'Set by you' : 'Set by the site owner');
   else if (g.source === 'music-story') lines.push('From music-story');
   else if (g.source === 'musicbrainz') lines.push(g.sourceUrl ? `From MusicBrainz: ${g.sourceUrl}` : 'From MusicBrainz');
@@ -356,7 +360,11 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
     [genreData],
   );
   const parents = useMemo(
-    () => [...new Set(artists.flatMap((a) => (genres.get(a.key)?.genres ?? []).map((g) => g.parent)))].sort(),
+    () => [...new Set(artists.flatMap((a) => (genres.get(a.key)?.genres ?? []).map((g) => shareGroup(g))))].sort(),
+    [artists, genres],
+  );
+  const families = useMemo(
+    () => [...new Set(artists.flatMap((a) => (genres.get(a.key)?.genres ?? []).flatMap((g) => (g.family ? [g.family] : []))))].sort(),
     [artists, genres],
   );
   // Umbrellas that at least one artist here falls under; picking one shows the
@@ -502,7 +510,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
             className="min-h-11 w-full rounded-control border border-line-strong bg-surface-1 py-2 pl-9 pr-4 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none sm:min-h-9"
           />
         </label>
-        {(parents.length > 0 || umbrellas.length > 0 || styles.length > 0) && (
+        {(parents.length > 0 || families.length > 0 || umbrellas.length > 0 || styles.length > 0) && (
           <select
             value={genre}
             onChange={(e) => setGenre(e.target.value)}
@@ -515,6 +523,15 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
                 {p}
               </option>
             ))}
+            {families.length > 0 && (
+              <optgroup label="Families">
+                {families.map((f) => (
+                  <option key={f} value={FAMILY + f}>
+                    {f}
+                  </option>
+                ))}
+              </optgroup>
+            )}
             {umbrellas.length > 0 && (
               <optgroup label="Including related genres">
                 {umbrellas.map(([key, name]) => (
