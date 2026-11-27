@@ -17,7 +17,7 @@ Planned 2026-11-27 from Charlie's brief "Genre Taxonomy, Visualizations & Relati
 3. There is no `user_cooccur`. Release 3 may add a logged, undoable system job that writes `artist_cooccur` and `lineup_cooccur` rows from shared tables only, never over a `curated` row. The rule wording is in section 9.
 4. Crew overlap is parked. "Who you go with, by genre" (private, already built in 38.10) stands in for it.
 5. The Multi-Zoom Breakdown and Sound Drift replace the Genres ranking (38.5) and the over-the-years chart (38.8). Both slices are built, so Release 1 upgrades those screens once Phase A has merged and its files are applied. Phase A changes them only enough to show macros and families (Slice 39.8).
-6. Weights and floors for the releases: each set counts 1.0, and a B2B splits it evenly across its acts. In Lineup DNA every act counts equally (1.0), with per-stage bars where `performances.stages` exist. Decay applies to owner-typed rows only. A chart needs at least 10 sets, and Event Match needs 20 sets across 5 events. Sound Drift needs 10 or more sets in each year it compares. **Open:** it needs either 3 years or 2 years of data. This spec assumes 3 until Charlie says otherwise.
+6. Weights and floors for the releases: each set counts 1.0, and a B2B splits it evenly across its acts. In Lineup DNA every act counts equally (1.0), with per-stage bars where `performances.stages` exist. Decay applies to owner-typed rows only. A chart needs at least 10 sets, and Event Match needs 20 sets across 5 events. Sound Drift needs 10 or more sets in each year it compares. It needs at least 3 years of data (Charlie, 2026-11-27).
 
 ## 1. What the three files hold (checked 2026-11-27)
 
