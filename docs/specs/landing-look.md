@@ -25,5 +25,6 @@ The design-system catalogue lists every part (`docs/design-system/design-system.
 - **45.3 Event detail (built).** Card titles (The edition, Who you saw, Lineup, Changes) are poster headings. The ticket hero is unchanged.
 - **45.4 Ranking, Stats and Library (built).** Every page title (the heading under the section tabs), the stub header titles on lists, and the section headings on Stats, Ranking, Map and Log are poster headings.
 - **45.5 Manage, panels and dialogs (built).** Manage's title, every panel and dialog title (h2, plus the shared Sheet and Confirm titles) are poster headings. Names of things (an edition, a series, an artist, an event, a month) keep the serif, and small h3 subheads stay as they are.
+- **45.6 Home page links (built).** The Library and Explore links on Home are tilted post-its: the whole note is one button (`PostIt` with `onClick`), showing the page's icon, its name as a poster heading, its one-line blurb and its live count. Tones alternate within each section (Library paper and second, Explore accent and paper).
 
 Each later slice needs Charlie's go after he reviews Home.
