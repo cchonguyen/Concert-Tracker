@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { genresApi, type GenresList } from '../services/lineupApi';
+import { genresApi, type GenresList, type LoggedEvent } from '../services/lineupApi';
 import { parseCsv } from '../services/listImport';
 import { parseGenreVocabCsv, type GenreVocabCsvPreview, type GenreVocabCsvRow } from '../server/events/genreVocabCsv';
 import { genreResolver, NOT_GROUPED } from '../server/events/genreVocabulary';
 import type { GenreCollision, GenreVocabChange } from '../server/events/genreTypes';
+import { ArtistGenresPanel } from './ArtistGenresPanel';
 import { GenreRecord } from './GenreRecord';
 import { Button } from './ui/Button';
 import { Equalizer } from './ui/Equalizer';
@@ -103,7 +104,7 @@ const CollisionItem: React.FC<{ c: GenreCollision; busy: boolean; onPick: (key: 
   </Ledger.Row>
 );
 
-export const GenresPanel: React.FC<{ query: string }> = ({ query }) => {
+export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = ({ query, events }) => {
   const [data, setData] = useState<GenresList | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -119,6 +120,7 @@ export const GenresPanel: React.FC<{ query: string }> = ({ query }) => {
   const fileRef = useRef<HTMLInputElement>(null);
   const [csvRows, setCsvRows] = useState<GenreVocabCsvRow[] | null>(null);
   const [csvPreview, setCsvPreview] = useState<GenreVocabCsvPreview | null>(null);
+  const [artistGenresOpen, setArtistGenresOpen] = useState(false);
 
   const load = useCallback(
     () =>
@@ -294,13 +296,26 @@ export const GenresPanel: React.FC<{ query: string }> = ({ query }) => {
               void onCsvFile(file);
             }}
           />
-          <Button onClick={() => fileRef.current?.click()} disabled={busy} className="ml-auto">
+          <Button onClick={() => setArtistGenresOpen(true)} disabled={busy} className="ml-auto">
+            Artist genres CSV
+          </Button>
+          <Button onClick={() => fileRef.current?.click()} disabled={busy}>
             Upload vocabulary CSV
           </Button>
           <Button onClick={() => setCreating((v) => !v)} disabled={busy}>
             New genre
           </Button>
         </div>
+      )}
+
+      {artistGenresOpen && (
+        <ArtistGenresPanel
+          events={events}
+          onClose={() => {
+            setArtistGenresOpen(false);
+            void load();
+          }}
+        />
       )}
 
       {csvPreview && csvRows && (
@@ -377,7 +392,7 @@ export const GenresPanel: React.FC<{ query: string }> = ({ query }) => {
         </form>
       )}
 
-      {selectedRow && data && (
+      {selectedRow && data && !visible.some((r) => r.key === selectedRow.key) && (
         <GenreRecord
           row={selectedRow}
           rows={rows}
@@ -400,29 +415,43 @@ export const GenresPanel: React.FC<{ query: string }> = ({ query }) => {
       {visible.length > 0 && (
         <Ledger>
           {visible.map((r) => (
-            <Ledger.Row
-              key={r.key}
-              edge="none"
-              selected={selected === r.key}
-              onOpen={() => setSelected((s) => (s === r.key ? null : r.key))}
-              className="flex-col items-stretch gap-1 p-3"
-            >
-              <span className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="font-medium text-text">{r.name}</span>
-                <span className="font-mono text-xs tabular-nums text-text-muted">
-                  {r.artists} {r.artists === 1 ? 'artist' : 'artists'}
+            <React.Fragment key={r.key}>
+              <Ledger.Row
+                edge="none"
+                selected={selected === r.key}
+                onOpen={() => setSelected((s) => (s === r.key ? null : r.key))}
+                className="flex-col items-stretch gap-1 p-3"
+              >
+                <span className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="font-medium text-text">{r.name}</span>
+                  <span className="font-mono text-xs tabular-nums text-text-muted">
+                    {r.artists} {r.artists === 1 ? 'artist' : 'artists'}
+                  </span>
                 </span>
-              </span>
-              <span className="flex flex-wrap items-center gap-1.5">
-                <Pill tone={r.group === NOT_GROUPED ? 'neutral' : 'accent'}>{r.group}</Pill>
-                {r.umbrellas.map((u) => (
-                  <Pill key={u} tone="info">
-                    Under {u}
-                  </Pill>
-                ))}
-              </span>
-              {r.aliases.length > 0 && <span className="text-xs text-text-faint">Also spelled {r.aliases.join(', ')}</span>}
-            </Ledger.Row>
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <Pill tone={r.group === NOT_GROUPED ? 'neutral' : 'accent'}>{r.group}</Pill>
+                  {r.umbrellas.map((u) => (
+                    <Pill key={u} tone="info">
+                      Under {u}
+                    </Pill>
+                  ))}
+                </span>
+                {r.aliases.length > 0 && <span className="text-xs text-text-faint">Also spelled {r.aliases.join(', ')}</span>}
+              </Ledger.Row>
+              {selected === r.key && data && (
+                <div className="border-b border-line bg-surface-0 p-3">
+                  <GenreRecord
+                    row={r}
+                    rows={rows}
+                    groups={groups}
+                    data={data}
+                    onChanged={changed}
+                    onSelect={setSelected}
+                    onClose={() => setSelected(null)}
+                  />
+                </div>
+              )}
+            </React.Fragment>
           ))}
         </Ledger>
       )}
