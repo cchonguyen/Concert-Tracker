@@ -1,5 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { genresApi, type GenresList } from '../services/lineupApi';
+import { parseCsv } from '../services/listImport';
+import { parseGenreVocabCsv, type GenreVocabCsvPreview, type GenreVocabCsvRow } from '../server/events/genreVocabCsv';
 import { genreResolver, NOT_GROUPED } from '../server/events/genreVocabulary';
 import type { GenreCollision, GenreVocabChange } from '../server/events/genreTypes';
 import { GenreRecord } from './GenreRecord';
@@ -114,6 +116,9 @@ export const GenresPanel: React.FC<{ query: string }> = ({ query }) => {
   const [selected, setSelected] = useState<string | null>(null);
   // The last change and its Undo.
   const [notice, setNotice] = useState<{ text: string; undoId?: string } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [csvRows, setCsvRows] = useState<GenreVocabCsvRow[] | null>(null);
+  const [csvPreview, setCsvPreview] = useState<GenreVocabCsvPreview | null>(null);
 
   const load = useCallback(
     () =>
@@ -192,6 +197,48 @@ export const GenresPanel: React.FC<{ query: string }> = ({ query }) => {
     }
   };
 
+  const onCsvFile = async (file: File | undefined) => {
+    if (!file) return;
+    setError(null);
+    setCsvPreview(null);
+    setCsvRows(null);
+    try {
+      const parsed = parseGenreVocabCsv(parseCsv(await file.text()));
+      if (parsed.errors.length > 0) {
+        setError(parsed.errors[0]);
+        return;
+      }
+      setBusy(true);
+      const preview = await genresApi.vocabCsvPreview(parsed.rows);
+      setCsvRows(parsed.rows);
+      setCsvPreview(preview);
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const applyCsv = async () => {
+    if (!csvRows) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await genresApi.vocabCsvApply(csvRows);
+      setCsvRows(null);
+      setCsvPreview(null);
+      setNotice({
+        text: res.change ? res.change.summary : 'No vocabulary changes to apply.',
+        undoId: res.change?.id,
+      });
+      await load();
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const selectedRow = selected ? rows.find((r) => r.key === selected) : undefined;
 
   return (
@@ -236,9 +283,61 @@ export const GenresPanel: React.FC<{ query: string }> = ({ query }) => {
       {data && (
         <div className="flex flex-wrap items-center gap-2">
           <MenuButton label="Genre group" value={group} options={groupOptions} onChange={setGroup} />
-          <Button onClick={() => setCreating((v) => !v)} disabled={busy} className="ml-auto">
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              void onCsvFile(file);
+            }}
+          />
+          <Button onClick={() => fileRef.current?.click()} disabled={busy} className="ml-auto">
+            Upload vocabulary CSV
+          </Button>
+          <Button onClick={() => setCreating((v) => !v)} disabled={busy}>
             New genre
           </Button>
+        </div>
+      )}
+
+      {csvPreview && csvRows && (
+        <div className="space-y-2 rounded-card border border-line bg-surface-1 p-3">
+          <p className="text-sm text-text">
+            Created {csvPreview.created} · Updated {csvPreview.updated} · Unchanged {csvPreview.unchanged} · Aliases added{' '}
+            {csvPreview.aliasesAdded} · Umbrellas added {csvPreview.umbrellasAdded}
+          </p>
+          {csvPreview.skippedAliases.length > 0 && (
+            <p className="text-xs text-text-muted">
+              Skipped {csvPreview.skippedAliases.length} colliding {csvPreview.skippedAliases.length === 1 ? 'alias' : 'aliases'}:{' '}
+              {csvPreview.skippedAliases
+                .slice(0, 5)
+                .map((s) => `${s.alias} (${s.reason.toLowerCase()})`)
+                .join(', ')}
+              {csvPreview.skippedAliases.length > 5 ? ` +${csvPreview.skippedAliases.length - 5} more` : ''}
+            </p>
+          )}
+          {csvPreview.errors.length > 0 && <Notice tone="warning">{csvPreview.errors[0]}</Notice>}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="primary"
+              disabled={busy || csvPreview.errors.length > 0 || (csvPreview.created === 0 && csvPreview.updated === 0)}
+              onClick={() => void applyCsv()}
+            >
+              Apply vocabulary
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={() => {
+                setCsvRows(null);
+                setCsvPreview(null);
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
         </div>
       )}
 

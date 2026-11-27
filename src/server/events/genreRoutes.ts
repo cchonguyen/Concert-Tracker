@@ -24,10 +24,12 @@ import { genreCollisions } from './genreVocabulary';
 import {
   addGenreAlias,
   addGenreUmbrella,
+  applyGenreVocabCsv,
   createGenre,
   mergeGenres,
   pickGenreSpelling,
   planGenreMerge,
+  previewGenreVocabCsv,
   removeGenreAlias,
   removeGenreUmbrella,
   renameGenre,
@@ -168,6 +170,28 @@ export function genresRouter(deps: PipelineDeps): Router {
   // The owner's vocabulary writes. OWNER_ONLY in requestScope.ts already
   // refuses a member's POST here; the route refuses it too. Registered before
   // '/artist-genres/:key/undo' so 'vocabulary' is never read as an act's key.
+  router.post('/artist-genres/vocabulary/csv/preview', async (req, res) => {
+    if (isMember()) return res.status(403).json({ error: MEMBER_REFUSED });
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
+    if (!rows) return res.status(400).json({ error: 'rows must be an array.' });
+    try {
+      res.json({ preview: await previewGenreVocabCsv(deps.store, rows) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post('/artist-genres/vocabulary/csv/apply', async (req, res) => {
+    if (isMember()) return res.status(403).json({ error: MEMBER_REFUSED });
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
+    if (!rows) return res.status(400).json({ error: 'rows must be an array.' });
+    try {
+      res.json(await applyGenreVocabCsv(deps.store, rows));
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
   router.post('/artist-genres/vocabulary/undo/:id', async (req, res) => {
     if (isMember()) return res.status(403).json({ error: MEMBER_REFUSED });
     try {

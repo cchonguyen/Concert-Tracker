@@ -9,6 +9,8 @@ import { GENRE_MAP_SETTING, MAX_GENRE_LENGTH } from './genreTypes';
 import type { ArtistGenres, GenreMapEntry, GenreVocabChange, GenreVocabOperation, GenreVocabulary, VocabGenre } from './genreTypes';
 import { GENRE_NEEDS_LETTER, genreKey, genreResolver, wouldMakeUmbrellaLoop } from './genreVocabulary';
 import type { GenreResolver } from './genreVocabulary';
+import { planGenreVocabCsvImport } from './genreVocabCsv';
+import type { GenreVocabCsvPreview, GenreVocabCsvRow } from './genreVocabCsv';
 
 export const OWNER_GENRE_REASON = 'Changed by the owner in Manage';
 export const GENRES_CHANGED_SINCE = 'Those genres changed after this. Undo the later change first.';
@@ -323,4 +325,31 @@ export async function undoGenreVocabChange(store: LineupStore, id: string, at: D
   const undo = await store.writeGenreVocabulary(rows, { operation: 'undo', actor: 'owner', reason: OWNER_GENRE_REASON, summary: `Undo: ${change.summary}` });
   await store.markGenreVocabChangesUndone([change.id], at.toISOString());
   return undo;
+}
+
+export async function previewGenreVocabCsv(store: LineupStore, rows: GenreVocabCsvRow[]): Promise<GenreVocabCsvPreview> {
+  const vocab = await store.getGenreVocabulary();
+  return planGenreVocabCsvImport(rows, vocab).preview;
+}
+
+export async function applyGenreVocabCsv(
+  store: LineupStore,
+  rows: GenreVocabCsvRow[],
+): Promise<{ preview: GenreVocabCsvPreview; change: GenreVocabChange | null }> {
+  const vocab = await store.getGenreVocabulary();
+  const plan = planGenreVocabCsvImport(rows, vocab);
+  if (plan.preview.errors.length > 0) {
+    throw new ManageError(plan.preview.errors[0], 400);
+  }
+  if (plan.after.length === 0) {
+    return { preview: plan.preview, change: null };
+  }
+  const summary = `CSV upload: ${plan.preview.created} created, ${plan.preview.updated} updated`;
+  const change = await store.writeGenreVocabulary(plan.after, {
+    operation: 'create',
+    actor: 'owner',
+    reason: 'Genre vocabulary CSV upload',
+    summary,
+  });
+  return { preview: plan.preview, change };
 }
