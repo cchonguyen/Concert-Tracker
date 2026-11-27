@@ -345,9 +345,9 @@ export const GenresRanking: React.FC<GenresRankingProps> = ({
         <div>
           <h2 className="poster-head text-2xl text-text">Genres you see live</h2>
           <p className="text-xs text-text-muted">
-            Share of the sets you saw, from {mix.known} of {plural(mix.sets, 'set')}
+            Share of the sets you saw, from {formatSets(mix.known)} of {setsLabel(mix.sets)}
             {mix.sets > mix.known &&
-              `; ${mix.sets - mix.known === 1 ? 'the other one has' : `the other ${mix.sets - mix.known} have`} no genre yet`}
+              `; ${formatSets(mix.sets - mix.known) === '1' ? 'the other one has' : `the other ${formatSets(mix.sets - mix.known)} have`} no genre yet`}
             .
           </p>
         </div>

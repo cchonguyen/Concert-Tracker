@@ -1,11 +1,13 @@
 import { useId, useRef, type KeyboardEvent } from 'react';
-import { Check } from 'lucide-react';
+import { Check, type LucideIcon } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 
 export interface SegmentedOption<T extends string> {
   value: T;
   label: string;
   disabled?: boolean;
+  /** Shown before the label; with `iconOnly` on the group, it stands in for the label (which stays the button's name). */
+  icon?: LucideIcon;
 }
 
 interface Props<T extends string> {
@@ -16,11 +18,15 @@ interface Props<T extends string> {
   className?: string;
   // Smaller segments for a narrow row. On phones the chosen one is marked by its fill and bold text, without the tick.
   compact?: boolean;
+  // Options share the row's width equally (a full-width row on a phone).
+  stretch?: boolean;
+  // Icons only, with no tick: the label becomes the button's name and tooltip.
+  iconOnly?: boolean;
 }
 
 // A row of options where exactly one is chosen. The chosen one has a tick as well as a colour, so the state is not shown by colour alone.
 // Arrow keys move between options and choose the one they land on; Tab leaves the group.
-export function Segmented<T extends string>({ label, options, value, onChange, className = '', compact = false }: Props<T>) {
+export function Segmented<T extends string>({ label, options, value, onChange, className = '', compact = false, stretch = false, iconOnly = false }: Props<T>) {
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
   // The chosen fill slides to the new option with a little bounce; with reduced motion it moves at once.
   const id = useId();
@@ -52,6 +58,7 @@ export function Segmented<T extends string>({ label, options, value, onChange, c
     <div role="radiogroup" aria-label={label} className={`inline-flex flex-wrap gap-1 rounded-control border border-line bg-surface-1 p-1 ${className}`}>
       {options.map((o, i) => {
         const on = i === chosen;
+        const Icon = o.icon;
         return (
           <button
             key={o.value}
@@ -65,13 +72,16 @@ export function Segmented<T extends string>({ label, options, value, onChange, c
             disabled={o.disabled}
             onClick={() => onChange(o.value)}
             onKeyDown={(e) => onKeyDown(e, i)}
-            className={`relative inline-flex min-h-11 items-center gap-1 rounded-control ${compact ? 'px-2 text-xs sm:px-3 sm:text-sm' : 'px-3 text-sm'} transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-9 ${
+            aria-label={iconOnly ? o.label : undefined}
+            title={iconOnly ? o.label : undefined}
+            className={`relative inline-flex min-h-11 items-center gap-1 rounded-control ${stretch ? 'flex-1 justify-center whitespace-nowrap' : ''} ${compact ? 'px-2 text-xs sm:px-3 sm:text-sm' : 'px-3 text-sm'} transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-9 ${
               on ? 'font-semibold text-text' : 'text-text-muted hover:text-text'
             }`}
           >
             {on && <motion.span layoutId={`${id}-fill`} transition={slide} aria-hidden="true" className="absolute inset-0 rounded-control bg-accent-tint" />}
-            {on && <Check className={`relative h-3.5 w-3.5 ${compact ? 'hidden sm:block' : ''}`} aria-hidden="true" />}
-            <span className="relative">{o.label}</span>
+            {on && !iconOnly && <Check className={`relative h-3.5 w-3.5 ${compact ? 'hidden sm:block' : ''}`} aria-hidden="true" />}
+            {Icon && <Icon className="relative h-3.5 w-3.5" aria-hidden="true" />}
+            {!iconOnly && <span className="relative">{o.label}</span>}
           </button>
         );
       })}

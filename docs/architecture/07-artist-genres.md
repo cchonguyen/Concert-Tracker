@@ -52,13 +52,13 @@ Each link has a weight above 0 and at most 1, and an origin. `curated` links are
 
 **Manage (owner).** In Manage > Global archive > Genres, `GenresPanel.tsx` lists the tree by macro, then family, then genre. `GenreRecord.tsx` has a Family menu grouped by macro, lists each genre's links with strength and origin, and adds, removes or re-weights links. Families and macros can be renamed. Merge refuses a family or a macro. Each change is one `genre_vocabulary_write` call, logged in `genre_changes` and undoable, and refused when those genres changed since. Create genre takes a family from a menu grouped by macro, or Not grouped. Undo of a change made after migration 0063 is also refused when a genre's family, tier or links changed since, as it already is for its name, aliases and umbrellas.
 
-**Explore.** `src/services/genres.ts` (`genreMix`, `setShares`) splits each set across its act's genres, with the B2B split, and groups "Genres you see live" by scene family when a tree exists (Charlie, 2026-11-27: macros were too broad, almost everything was Electronic). The same family grouping (`shareGroup`) drives Stats, Your genre story, the Map and Timeline genre filters, the River colours and the people list. The Multi-Zoom Breakdown and Sound Drift still offer Macro as a level. `src/services/genreInsights.ts` (`genreZoom`, `soundDrift`) reads the same links at view time for the Multi-Zoom Breakdown and Sound Drift. A genre or family with no parent is "Not grouped". The screens are described in Explore genres below.
+**Explore.** `src/services/genres.ts` (`genreMix`, `countedSets`, `setShares`) counts each act's genres, and groups "Genres you see live" by scene family when a tree exists (Charlie, 2026-11-27: macros were too broad, almost everything was Electronic). The same family grouping (`shareGroup`) drives Stats, Your genre story, the Map and Timeline genre filters, the River colours and the people list. The Multi-Zoom Breakdown and Sound Drift still offer Macro as a level. `src/services/genreInsights.ts` (`genreZoom`, `soundDrift`) reads the same links at view time for the Multi-Zoom Breakdown and Sound Drift. A genre or family with no parent is "Not grouped". The screens are described in Explore genres below.
 
 ## Explore genres
 
 Release 1 of the genre taxonomy is built in Slices 40.1 to 40.7 ([docs/specs/genre-taxonomy-release-1.md](../specs/genre-taxonomy-release-1.md)). Everything is worked out in the browser from the person's own events and the shared genre rows. Nothing new is stored, and no one's events are read for another person.
 
-**B2B split.** A B2B is one set. Its acts share 1.0 between them evenly: two acts get 0.5 each, three get a third. Only partners who are also in that event's seen list count. An act the person also saw play solo at the same event gets a further 1.0 for that set (`setShares` in `src/services/genres.ts`). Every genre total on Explore uses it, so set counts can be fractions. Screens show whole sets, with halves rounded up (`formatSets`). Floors compare the fractional totals.
+**B2B counting.** Each artist in a B2B counts as 1 viewing (whole numbers, never fractions), unless the B2B has a specified combo name (`alias`) that has genres in `byArtist`, in which case it counts as 1 viewing of the combo instead. An act the person also saw play solo at the same event (`solo`) gets a further 1 viewing (`countedSets` and `setShares` in `src/services/genres.ts`). Every genre total on Explore uses `countedSets`.
 
 **Multi-Zoom Breakdown** (Ranking > Genres, `src/components/GenresRanking.tsx`, `genreZoom` in `src/services/genreInsights.ts`).
 
@@ -87,7 +87,7 @@ Release 2 of the genre taxonomy is built in Slices 41.1 to 41.5 ([docs/specs/gen
 
 **Lineup DNA** (`src/components/LineupDna.tsx`, `lineupDna` in `src/services/genreInsights.ts`).
 
-- Every act on the bill counts 1.0, split across its genres by weight. Acts that share a B2B slot share one set.
+- Every act on the bill counts 1.0, split across its genres by weight. A B2B slot with a combo `alias` that has genres counts as 1.0 for the combo; otherwise each act counts 1.0.
 - There is one bar for the whole bill. When the lineup has stages, each stage gets its own bar as well. An act on two stages counts on both stage bars and once on the whole bill. Acts with no stage go on "No stage listed", which shows only when other stages exist.
 - Each bar shows its 4 largest families. A 5th family shows only when it is at least 10% of the bar, and the rest is grouped as Other. Tapping a segment lists its top genres and acts.
 - When fewer than 60% of the acts have a genre, the bar notes "N of M acts have a genre." A bar needs 3 acts with a genre. Below that, the page says so and shows no bar.
@@ -95,7 +95,7 @@ Release 2 of the genre taxonomy is built in Slices 41.1 to 41.5 ([docs/specs/gen
 
 **Event Match** (`eventMatch` in `src/services/genreInsights.ts`).
 
-- Your vector is every seen set at your other attended events, split with `setShares`. The event being matched is left out, and so are planned and missed events.
+- Your vector is every seen set at your other attended events, counted with `countedSets`. The event being matched is left out, and so are planned and missed events.
 - That vector is smoothed one step over the owner's `adjacent` links only: `u + 0.5 · Â·u`. The links are read both ways, and each weight is divided by `sqrt(deg(a) · deg(b))`, so a genre linked to almost everything is toned down. It never goes two steps. `secondary_parent` and `derived_from` links are not used.
 - The score is the cosine between your smoothed families and the bill's families. The bands are "Strong fit" at 0.6 or more, "Some overlap" from 0.3, and "Outside your usual" below 0.3. The line names your lane, the 1 or 2 families that add most to the score, with the number of acts in your lane and of nearby acts you haven't seen.
 - The lineup table marks those acts with "Your lane" and "Nearby" pills.

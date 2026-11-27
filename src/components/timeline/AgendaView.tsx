@@ -21,6 +21,7 @@ import { KindPill, type EventKind } from '../ui/KindPill';
 import { HintPill } from '../ui/HintPill';
 import { ConfirmMark, DayDots, Rating } from './parts';
 import { scrollBehavior } from '../../services/motion';
+import { Segmented } from '../ui/Segmented';
 
 // Agenda: one line per event under year separators (no month headers), newest first unless
 // you picked oldest first (remembered on this device), opening at the Today line.
@@ -173,21 +174,16 @@ export const AgendaView: React.FC<TimelineViewProps> = ({ model, range, selected
         <span className="font-mono tabular-nums">
           {count} event{count === 1 ? '' : 's'}
         </span>
-        <div role="group" aria-label="Order" className="flex items-center gap-1 rounded-control border border-line-strong bg-surface-1 p-0.5">
-          {(['newest', 'oldest'] as const).map((o) => (
-            <button
-              key={o}
-              type="button"
-              aria-pressed={order === o}
-              onClick={() => choose(o)}
-              className={`min-h-11 rounded-[6px] px-2.5 py-1 font-medium transition-colors sm:min-h-9 ${
-                order === o ? 'bg-accent-fill text-on-accent' : 'text-text-muted hover:text-text'
-              }`}
-            >
-              {o === 'newest' ? 'Newest first' : 'Oldest first'}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label="Order"
+          value={order}
+          onChange={choose}
+          compact
+          options={[
+            { value: 'newest', label: 'Newest first' },
+            { value: 'oldest', label: 'Oldest first' },
+          ]}
+        />
       </div>
       <Ledger>
         {groups.map((g, gi) => (

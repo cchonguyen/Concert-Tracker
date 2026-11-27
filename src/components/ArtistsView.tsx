@@ -11,7 +11,6 @@ import { Ledger } from './ui/Ledger';
 import { StubHeader } from './ui/StubHeader';
 import { Pill as UiPill } from './ui/Pill';
 import { Segmented } from './ui/Segmented';
-import { Tooltip } from './ui/Tooltip';
 import { shareGroup } from '../server/events/genreVocabulary';
 import { ARTIST_SORTS, artistSummaries, ArtistSort, ArtistSummary, groupArtists, jumpTargets } from '../services/artists';
 import { buildManageUrl, entityUrl, isModifiedClick } from '../services/manageNav';
@@ -635,41 +634,26 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
             )}
           </select>
         )}
-        <div role="radiogroup" aria-label="Order" className="order-last flex w-full rounded-control border border-line-strong bg-surface-1 p-0.5 text-xs sm:order-none sm:w-auto sm:shrink-0">
-          {ARTIST_SORTS.map((s) => (
-            <button
-              key={s.value}
-              role="radio"
-              aria-checked={sort === s.value}
-              onClick={() => setSort(s.value)}
-              className={`min-h-11 flex-1 whitespace-nowrap rounded-control px-2.5 py-1.5 font-medium sm:min-h-9 ${
-                sort === s.value ? 'bg-accent-fill text-on-accent' : 'text-text-muted hover:text-text'
-              }`}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-        <div role="radiogroup" aria-label="View" className="flex shrink-0 rounded-control border border-line-strong bg-surface-1 p-0.5">
-          {(
-            [
-              ['compact', List, 'Compact'],
-              ['detailed', LayoutList, 'Detailed'],
-            ] as const
-          ).map(([value, Icon, label]) => (
-            <Tooltip key={value} label={label}>
-              <button
-                role="radio"
-                aria-checked={density === value}
-                aria-label={label}
-                onClick={() => setDensity(value)}
-                className={`flex min-h-11 items-center justify-center rounded-control px-2.5 py-1.5 sm:min-h-9 ${density === value ? 'bg-accent-fill text-on-accent' : 'text-text-muted hover:text-text'}`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-              </button>
-            </Tooltip>
-          ))}
-        </div>
+        <Segmented
+          label="Order"
+          value={sort}
+          onChange={setSort}
+          stretch
+          compact
+          className="order-last w-full flex-nowrap! sm:order-none sm:w-auto sm:shrink-0"
+          options={ARTIST_SORTS.map((s) => ({ value: s.value, label: s.label }))}
+        />
+        <Segmented
+          label="View"
+          value={density}
+          onChange={setDensity}
+          iconOnly
+          className="shrink-0 flex-nowrap!"
+          options={[
+            { value: 'compact', label: 'Compact', icon: List },
+            { value: 'detailed', label: 'Detailed', icon: LayoutList },
+          ]}
+        />
       </div>
 
       {jumps.length > 0 && groups.length > 0 && (
