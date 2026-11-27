@@ -25,6 +25,7 @@ import { CheckDetails, type Suggestion } from './CheckDetails';
 import { LineupReview } from './LineupReview';
 import { EditionNameGaps } from './EditionNameGaps';
 import { VenueFillPanel } from './VenueFillPanel';
+import { SeriesCleanupPanel } from './SeriesCleanupPanel';
 import { ArtistCleanupPanel } from './ArtistCleanupPanel';
 import { MergeEditionModal } from './MergeEditionModal';
 import { usePlaceAutofill } from './PlaceFields';
@@ -1437,6 +1438,7 @@ const ArchiveEditions: React.FC<{ query: string; status: EditionStatus }> = ({ q
       {error && <p role="alert" className="text-sm text-bad">{error}</p>}
       <EditionNameGaps />
       <VenueFillPanel />
+      <SeriesCleanupPanel />
       {page === null ? (
         <Equalizer />
       ) : page.editions.length === 0 ? (
