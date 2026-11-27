@@ -28,6 +28,10 @@ test('the cleanup list ends by relinking events and names each series once', () 
   assert.equal(SERIES_CLEANUP_PLAN[SERIES_CLEANUP_PLAN.length - 1].op, 'linkEvents');
   const slugs = SERIES_CLEANUP_PLAN.flatMap((s) => (s.op === 'series' ? [s.slug] : []));
   assert.equal(new Set(slugs).size, slugs.length);
+  // A series the list creates carries its own name, and any edition the list moves goes into a series it names.
+  for (const s of SERIES_CLEANUP_PLAN) if (s.op === 'series' && s.create) assert.ok(s.name && s.name.trim());
+  const known = new Set(slugs);
+  for (const s of SERIES_CLEANUP_PLAN) if (s.op === 'edition' && s.seriesSlug) assert.ok(known.has(s.seriesSlug), s.seriesSlug);
 });
 
 test('the owner previews the cleanup list in batches without changing anything', async () => {
