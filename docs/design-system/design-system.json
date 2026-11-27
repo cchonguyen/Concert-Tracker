@@ -384,7 +384,7 @@
   "components": [
     {
       "name": "Button",
-      "purpose": "The one text button.",
+      "purpose": "The one text button. Lifts 1.5px, grows 2% and glows in the accent on hover (btn-pop, about half the landing page's); IconButton, MenuButton and Quick add share it.",
       "props": {
         "variant": "primary | secondary (default) | ghost | danger",
         "...button attributes": ""
@@ -469,15 +469,18 @@
     },
     {
       "name": "Segmented",
-      "purpose": "Exactly one of a few options.",
+      "purpose": "Exactly one of a few side-by-side options; the chosen fill slides to the new choice. Use it for every such row (order, view, year, weekend), never a hand-built row of toggle buttons.",
       "props": {
         "label": "string",
-        "options": "{value,label,disabled?}[]",
+        "options": "{value,label,disabled?,icon?}[]",
         "value": "T",
-        "onChange": "(T) => void"
+        "onChange": "(T) => void",
+        "compact": "boolean: smaller segments for a narrow row",
+        "stretch": "boolean: options share the row's width (full-width row on a phone)",
+        "iconOnly": "boolean: icons only; the label becomes the button's name and tooltip"
       },
       "states": [
-        "chosen (tick + tint)",
+        "chosen (tick + tint, slides with a spring; at once under reduced motion)",
         "unchosen",
         "disabled"
       ],

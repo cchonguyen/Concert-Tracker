@@ -11,6 +11,7 @@ import type { Gap } from '../services/table';
 import { Ticket, TicketEventLine, TicketHeadline, TicketKicker, TicketSmallLine, StubAdmit, StubBarcode, StubCode, StubKV, StubSentence, StubSerial, StubShortDate, StubStamp } from './ui/Ticket';
 import { GAP_LABEL, gapQuestion } from '../services/poster';
 import { NameList } from './ui/NameList';
+import { Segmented } from './ui/Segmented';
 
 export type TearState = 'idle' | 'tearing' | 'torn';
 
@@ -184,22 +185,13 @@ export function ThingsLeft({ gaps, current, needsWeekend, onPick, onNext }: Stri
       <span className="text-text-faint" aria-hidden="true">
         ·
       </span>
-      <ul className="flex flex-wrap gap-1.5">
-        {gaps.map((g) => (
-          <li key={g}>
-            <button
-              type="button"
-              aria-pressed={g === current}
-              onClick={() => onPick(g)}
-              className={`min-h-11 rounded-control border px-3 text-sm sm:min-h-9 ${
-                g === current ? 'border-accent bg-surface-1 font-semibold text-text' : 'border-line-strong text-text-muted hover:border-accent hover:text-text'
-              }`}
-            >
-              {GAP_LABEL[g]}
-            </button>
-          </li>
-        ))}
-      </ul>
+      <Segmented
+        label="Things left"
+        compact
+        value={current ?? ''}
+        onChange={(g) => onPick(g as typeof gaps[number])}
+        options={gaps.map((g) => ({ value: g, label: GAP_LABEL[g] }))}
+      />
       {current && <span className="min-w-0 text-sm text-text">{gapQuestion(current, { needsWeekend })}</span>}
       <span className="grow" />
       <button
