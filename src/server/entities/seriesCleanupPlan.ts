@@ -5,35 +5,26 @@ import type { CleanupStep } from './seriesCleanup';
 // on the day it was written. Nothing matches against it, so it is not a hardcoded festival or artist list.
 // Once it has run and the read-only check passes, the list is emptied and the Global Archive panel hides.
 //
-// 2026-11-27 (Charlie: "Clean up the loose ends. The goal is to have data consistency."): every series name is
-// built from its brand and its qualifier, so a place or tour title written into a name moves into the qualifier.
+// 2026-11-27, second list (Charlie: "The eight series do have stored acts."): the first loose-ends list of the day has run.
+// Each tour below takes as its brand the act stored on Charlie's own event of the same name, and its old name
+// becomes the qualifier. KCON LA 2025 gets the series its event names.
 const festival = 'festival' as const;
+const tour = 'tour' as const;
 
 export const SERIES_CLEANUP_PLAN: CleanupStep[] = [
-  // Places and event words that were written into the name: the shown name stays the same.
-  { op: 'series', slug: 'dreamstate-socal', qualifier: 'SoCal' },
-  { op: 'series', slug: 'dreamstate-san-francisco', qualifier: 'San Francisco' },
-  { op: 'series', slug: 'dreamstate-vancouver', qualifier: 'Vancouver' },
-  { op: 'series', slug: 'edc-las-vegas', qualifier: 'Las Vegas' },
-  { op: 'series', slug: 'edc-pool-party', qualifier: 'Pool Party' },
-  { op: 'series', slug: 'day-trip-feat-westend-justin-martin-dansyn-marta', qualifier: 'LA' },
-  { op: 'series', slug: 'white-party-bangkok', qualifier: 'Bangkok' },
-  { op: 'series', slug: 'beyond-wonderland-pnw', qualifier: 'PNW' },
-  { op: 'series', slug: 'countdown-nye', qualifier: 'NYE' },
-  { op: 'series', slug: 'above-and-beyond-group-therapy-700', qualifier: 'Group Therapy Weekender' },
-  // Names that change to the shared pattern (the old name is kept as an alias, beside the aliases already there): "Brand Place" for a festival, "Artist: Tour" for a tour.
-  { op: 'series', slug: 'outloud-music-festival-in-west-hollywood', qualifier: 'West Hollywood', aliases: ['Outloud', 'Outloud Pride', 'Outloud Music Festival', 'OUTLOUD Music Festival in West Hollywood'] },
-  { op: 'series', slug: 'illenium-gorge', qualifier: 'The Gorge', aliases: ['Illenium @ the Gorge', 'Illenium at the Gorge'] },
-  { op: 'series', slug: 'kx5-la-memorial-coliseum', qualifier: 'Kx5', aliases: ['Kx5'] },
-  { op: 'series', slug: 'our-house-meduza-and-james-hype-ages-18-with-valid-id', qualifier: 'Our House', aliases: ['Our House'] },
-  // Series with a stored lineup of many acts and no kind yet.
-  { op: 'series', slug: 'breakaway-music-festival-bay-area', kind: festival },
-  { op: 'series', slug: 'veld', kind: festival },
-  { op: 'series', slug: 'planet-pride', kind: festival },
-  // Series with no brand: the brand is the series' own name.
-  { op: 'series', slug: 'insomnia', brand: 'Insomnia' },
-  { op: 'series', slug: 'agents-of-time-henri-bergmann', brand: 'Agents of Time, Henri Bergmann' },
-  { op: 'series', slug: 'porter-robinson-and-ninajirachi', brand: 'Porter Robinson & Ninajirachi' },
-  { op: 'series', slug: 'telykast-x-dubvision', brand: 'Telykast x DubVision' },
+  // Tours whose brand is the one act on the event.
+  { op: 'series', slug: 'alive', brand: 'Daft Punk', qualifier: 'Alive', aliases: ['Alive'] },
+  { op: 'series', slug: 'anti-world-tour', brand: 'Rihanna', qualifier: 'Anti World Tour', aliases: ['Anti World Tour'] },
+  { op: 'series', slug: 'new-evolution-global-tour', brand: '2NE1', qualifier: 'New Evolution Global Tour', aliases: ['New Evolution Global Tour'] },
+  { op: 'series', slug: 'tension-tour', brand: 'Kylie Minogue', qualifier: 'Tension Tour', aliases: ['Tension Tour'] },
+  { op: 'series', slug: 'the-monster-ball-tour', brand: 'Lady Gaga', qualifier: 'The Monster Ball Tour', aliases: ['The Monster Ball Tour'] },
+  { op: 'series', slug: 'griff', brand: 'Griff', qualifier: 'Vertigo', aliases: ['Vertigo', 'Vertigo World Tour'] },
+  // A one-act residency stored as a festival.
+  { op: 'series', slug: 'vegas-residency', brand: 'Zedd', qualifier: 'Vegas Residency', kind: tour, aliases: ['Vegas Residency'] },
+  // A multi-act night: the brand is its name, the place its qualifier.
+  { op: 'series', slug: 'double-u-los-angeles', brand: 'Double-u', qualifier: 'Los Angeles', kind: festival, aliases: ['Double-u los angeles'] },
+  // KCON LA 2025 has no series; its event names "KCON".
+  { op: 'series', slug: 'kcon-la', create: true, name: 'KCON LA', brand: 'KCON', qualifier: 'LA', kind: festival, aliases: ['KCON'] },
+  { op: 'edition', id: '62e634eb-bae1-4080-9c5c-b6ea384a12ef', seriesSlug: 'kcon-la' },
   { op: 'linkEvents' },
 ];
