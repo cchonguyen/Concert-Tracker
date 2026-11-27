@@ -60,7 +60,7 @@ export const GenresCsvPreview: React.FC<GenresCsvPreviewProps> = ({
                 <tr key={c.key} className="border-b border-line align-top">
                   <td className="py-2 pr-3 text-text">{c.name}</td>
                   <td className="py-2 pr-3 text-text-muted">{c.before.length ? c.before.join(', ') : 'No genres'}</td>
-                  <td className="py-2 pr-3 text-text">{c.after.length ? c.after.map((a) => a.style).join(', ') : 'No genres'}</td>
+                  <td className="py-2 pr-3 text-text">{c.after.length ? c.after.map((a) => (a.typed ? `${a.typed} → ${a.style}` : a.style)).join(', ') : 'No genres'}</td>
                   <td className="py-2 pr-3">
                     <RowNotes change={c} />
                     {c.stale && !c.sameAsNow && (

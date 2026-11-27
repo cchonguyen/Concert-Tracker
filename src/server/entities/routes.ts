@@ -23,8 +23,6 @@ import {
   unifyArtists,
   withAkas,
 } from './canonicalManage';
-import { runSeriesCleanup } from './seriesCleanup';
-import { SERIES_CLEANUP_PLAN } from './seriesCleanupPlan';
 import { MAX_CLEANUP_ROWS, type ArtistCleanupRow } from './artistCleanupCsv';
 import { CanonicalHistoryCursorError, CanonicalHistoryEntry, CanonicalStoreError, EditionOccurrenceConflictError, isVerifiedStatus } from '../lineup/store/types';
 import { currentMember } from '../auth/requestScope';
@@ -639,36 +637,6 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     }
   });
 
-  // The approved series cleanup (docs/specs/series-cleanup.md): preview, then run, in batches of steps so one
-  // request stays inside the call budget. Every change goes through its logged path and can be undone.
-  const cleanupBatch = (q: Record<string, unknown>, max: number) => {
-    const from = Number(q.from ?? 0);
-    const count = Number(q.count ?? max);
-    return {
-      from: Number.isInteger(from) && from >= 0 ? from : 0,
-      count: Number.isInteger(count) && count > 0 ? Math.min(count, max) : max,
-    };
-  };
-  const CLEANUP_BY = { actor: 'system:series-cleanup', reason: 'Series cleanup approved by Charlie 2026-11-26 (cleanup-list.md)' };
-  router.get('/manage/canonical/series-cleanup', ownerOnly as any, async (req, res) => {
-    try {
-      const batch = cleanupBatch(req.query as Record<string, unknown>, 20);
-      const results = await runSeriesCleanup(store, SERIES_CLEANUP_PLAN, { ...CLEANUP_BY, apply: false, ...batch });
-      res.json({ total: SERIES_CLEANUP_PLAN.length, results });
-    } catch (err) {
-      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
-    }
-  });
-  router.post('/manage/canonical/series-cleanup', ownerOnly as any, async (req, res) => {
-    try {
-      const batch = cleanupBatch((req.body ?? {}) as Record<string, unknown>, 3);
-      const results = await runSeriesCleanup(store, SERIES_CLEANUP_PLAN, { ...CLEANUP_BY, apply: true, ...batch });
-      res.json({ total: SERIES_CLEANUP_PLAN.length, results });
-    } catch (err) {
-      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
-    }
-  });
-
   // Reusable single-transaction artist entity cleanup (docs/specs/artist-entity-cleanup.md).
   const ARTIST_CLEANUP_BY = { actor: 'system:artist-cleanup', reason: 'Artist entity cleanup' };
   const readCleanupRows = (body: unknown): ArtistCleanupRow[] => {
@@ -697,7 +665,6 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
-
   // Bulk fill of editions' empty city, state and country from their own "City, ST" text and their venue's one known
   // location (docs/specs/venue-location-fill.md). Preview, then apply; each write is logged and can be undone.
   router.get('/manage/canonical/venue-fill', ownerOnly as any, async (_req, res) => {

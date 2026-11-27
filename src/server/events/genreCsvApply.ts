@@ -7,8 +7,17 @@ import { CanonicalStoreError } from '../lineup/store/types';
 import type { LineupStore } from '../lineup/store/types';
 import { genreUniverse } from './genreCatalog';
 import { genresByArtist } from '../../services/genres';
-import { GENRE_MAP_SETTING, knownGenreMap, knownGenres, ownerGenreRow } from './genres';
-import type { ArtistGenres, GenreChange as LoggedGenreChange, GenreMapEntry, GenreShare, KnownGenre } from './genreTypes';
+import { GENRE_MAP_SETTING, ownerGenreRow } from './genres';
+import { NOT_GROUPED, genreKey, genreResolver } from './genreVocabulary';
+import type { GenreResolver } from './genreVocabulary';
+import type {
+  ArtistGenres,
+  GenreChange as LoggedGenreChange,
+  GenreMapEntry,
+  GenreShare,
+  GenreVocabulary,
+  KnownGenre,
+} from './genreTypes';
 import {
   MAX_CSV_ROWS,
   changesToSave,
@@ -35,20 +44,40 @@ interface Catalog {
   aliases: Record<string, string>;
   known: KnownGenre[];
   knownMap: Map<string, KnownGenre>;
+  resolver: GenreResolver;
   rows: ArtistGenres[];
+}
+
+// Every genre the app knows (the genre map, the stored rows, the owner's
+// vocabulary), each once, resolved through the vocabulary: its shown spelling and
+// group. A genre the vocabulary only aliases is known under the genre it points to.
+function resolvedKnown(resolver: GenreResolver, map: GenreMapEntry[], rows: ArtistGenres[], vocab: GenreVocabulary): KnownGenre[] {
+  const out = new Map<string, KnownGenre>();
+  const add = (style: string) => {
+    const r = resolver.resolve(style);
+    if (r.key && !out.has(r.key)) out.set(r.key, { style: r.name, parent: r.parent ?? NOT_GROUPED });
+  };
+  for (const m of map) add(m.style);
+  for (const r of rows) for (const g of r.genres) add(g.style);
+  for (const g of vocab.genres) add(g.name);
+  return [...out.values()].sort((a, b) => a.style.localeCompare(b.style));
 }
 
 // Every act that can have shared genres (genreUniverse: the lineup catalog with
 // its MusicBrainz IDs, every member's seen acts by name only, the owner's
-// records), once by key. Each row shows what genresByArtist shows.
+// records), once by key. Each row shows what genresByArtist shows, resolved
+// through the owner's vocabulary. Stored rows are read, never rewritten.
 async function loadCatalog(store: LineupStore): Promise<Catalog> {
-  const [universe, map, rows, aliases] = await Promise.all([
+  const [universe, setting, rows, aliases, vocab] = await Promise.all([
     genreUniverse(store),
     store.getSetting<GenreMapEntry[]>(GENRE_MAP_SETTING),
     store.listArtistGenres(),
     store.getAliases(),
+    store.getGenreVocabulary(),
   ]);
-  const shown = genresByArtist(rows);
+  const map = setting ?? [];
+  const resolver = genreResolver(vocab, map, rows);
+  const shown = genresByArtist(rows, vocab, map);
   const acts: CsvAct[] = universe.map((a) => {
     const g = shown.get(a.key);
     return {
@@ -59,8 +88,9 @@ async function loadCatalog(store: LineupStore): Promise<Catalog> {
       genres: (g?.genres ?? []).map((x: GenreShare) => ({ style: x.style, weight: x.weight })),
     };
   });
-  const known = knownGenres(map ?? [], rows);
-  return { acts, aliases, known, knownMap: knownGenreMap(map ?? [], rows), rows };
+  const known = resolvedKnown(resolver, map, rows, vocab);
+  const knownMap = new Map(known.map((g) => [genreKey(g.style), g]));
+  return { acts, aliases, known, knownMap, resolver, rows };
 }
 
 const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
@@ -104,7 +134,7 @@ export async function exportGenresCsv(store: LineupStore): Promise<string> {
 export async function previewGenresCsv(store: LineupStore, input: unknown): Promise<{ changes: GenreChange[]; skipped: SkippedRow[] }> {
   const rows = readUploadRows(input);
   const cat = await loadCatalog(store);
-  return previewRows(rows, cat.acts, cat.aliases, cat.known);
+  return previewRows(rows, cat.acts, cat.aliases, cat.known, cat.resolver);
 }
 
 export interface GenresCsvApplyResult {
@@ -120,7 +150,7 @@ export async function applyGenresCsv(store: LineupStore, input: unknown, now: Da
   const rows = readUploadRows(input);
   const overwrite = readOverwrite(input);
   const cat = await loadCatalog(store);
-  const { changes, skipped } = previewRows(rows, cat.acts, cat.aliases, cat.known);
+  const { changes, skipped } = previewRows(rows, cat.acts, cat.aliases, cat.known, cat.resolver);
   for (const c of changes) {
     if (c.stale && !c.sameAsNow && !overwrite.has(c.key)) {
       skipped.push({ line: c.line, name: c.name, reason: 'changed in the app after you downloaded the file (tick "Replace anyway" to overwrite)' });

@@ -8,6 +8,7 @@ import {
   exportTable,
   fnv1a,
   genreStamp,
+  legacyGenreStamp,
   matchCsvRows,
   parseGenreList,
   previewGenresCsv,
@@ -16,6 +17,7 @@ import {
   safeCell,
 } from '../src/server/events/genreCsv.ts';
 import type { CsvAct, GenreCsvRow } from '../src/server/events/genreCsv.ts';
+import { genreResolver } from '../src/server/events/genreVocabulary.ts';
 
 const act = (over: Partial<CsvAct> & { key: string; name: string }): CsvAct => ({
   source: 'you',
@@ -394,7 +396,7 @@ test('previewGenresCsv gives before and after, marking unknown genres as new', (
       before: ['techno'],
       beforeSource: 'music-story',
       after: [
-        { style: 'Deep House', parent: 'house', isNew: false },
+        { style: 'Deep House', parent: 'house', isNew: false, typed: 'deep house' },
         { style: 'Dub Techno', parent: 'Dub Techno', isNew: true },
       ],
       stale: false,
@@ -511,4 +513,73 @@ test('a file downloaded with legacy you rows is not stale once they are owner ro
   assert.equal(changes[0].stale, false);
   const same = previewGenresCsv([{ line: 2, name: 'A', mbid: '', newGenres: 'House', stamp }], [after], {}, []);
   assert.equal(same.changes[0].sameAsNow, true);
+});
+
+// ---- resolving through the vocabulary ----
+
+const vocab = {
+  genres: [
+    { key: 'electrohouse', name: 'electro house', aliases: [{ key: 'bigroom', alias: 'big room' }], umbrellas: [] },
+  ],
+};
+const vocabMap = [{ tag: 'electro house', style: 'electro house', parent: 'electronic' }];
+const vocabKnown = [{ style: 'electro house', parent: 'electronic' }];
+
+test('the stamp hashes genre keys: a re-spelling of one genre is not stale, a different genre is', () => {
+  assert.equal(genreStamp('owner', ['Electro-House']), genreStamp('owner', ['electro house']));
+  assert.notEqual(genreStamp('owner', ['big room']), genreStamp('owner', ['electro house']));
+  assert.equal(legacyGenreStamp('owner', ['Techno']), legacyGenreStamp('you', ['techno']));
+});
+
+test('preview resolves typed genres and shows typed and stored where they differ', () => {
+  const resolver = genreResolver(vocab, vocabMap);
+  const { changes, skipped } = previewGenresCsv(
+    [row({ name: 'A', newGenres: 'Electro-House; Big Room; Dub Techno' })],
+    [act({ key: 'a', name: 'A' })],
+    {},
+    vocabKnown,
+    resolver,
+  );
+  assert.deepEqual(skipped, []);
+  // "Electro-House" and the alias "Big Room" are one genre.
+  assert.deepEqual(changes[0].after, [
+    { style: 'electro house', parent: 'electronic', isNew: false, typed: 'Electro-House' },
+    { style: 'Dub Techno', parent: 'Dub Techno', isNew: true },
+  ]);
+});
+
+test('a row equal to the current genres after resolving is no change', () => {
+  const resolver = genreResolver(vocab, vocabMap);
+  const shown = [{ style: 'electro house', weight: 1 }];
+  const { changes } = previewGenresCsv(
+    [row({ name: 'A', newGenres: 'big room', stamp: genreStamp('owner', ['electro house']) })],
+    [act({ key: 'a', name: 'A', source: 'owner', genres: shown })],
+    {},
+    vocabKnown,
+    resolver,
+  );
+  assert.equal(changes[0].sameAsNow, true);
+  assert.equal(changes[0].stale, false);
+});
+
+test('a stamp from before keys were hashed is still accepted', () => {
+  const shown = [{ style: 'Deep House', weight: 1 }];
+  const { changes } = previewGenresCsv(
+    [row({ name: 'A', newGenres: 'techno', stamp: legacyGenreStamp('music-story', ['Deep House']) })],
+    [act({ key: 'a', name: 'A', source: 'music-story', genres: shown })],
+    {},
+    [],
+  );
+  assert.equal(changes[0].stale, false);
+});
+
+test('a typed genre with no letter or digit refuses the row', () => {
+  const { changes, skipped } = previewGenresCsv(
+    [row({ name: 'A', newGenres: 'house; --' })],
+    [act({ key: 'a', name: 'A' })],
+    {},
+    [],
+  );
+  assert.deepEqual(changes, []);
+  assert.deepEqual(skipped, [{ line: 2, name: 'A', reason: 'A genre needs a letter or a number.' }]);
 });

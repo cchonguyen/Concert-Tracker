@@ -4,8 +4,8 @@
 - **Branch Owner:** Claude (`claude/project-thread-ccwuqr`). Gemini works on its own branch, one per slice: `antigravity/35.10`, `antigravity/35.11`, `antigravity/35.12`.
 - **Active Branch / State:** `main` is current. Shared genres (`docs/specs/canonical-genres.md`): slices 35.1 to 35.9 merged (#939, #940, #942, #944, #945, #946, #947, #949, #951). Migration 0059 is applied in production (329 owner genres moved from `you` to `owner`). No slice is `[IN_PROGRESS]`.
 - **Files Modified in Last Turn:** `.spec/SESSION_HANDOFF.md`
-- **Verification Status:** Verified via finish-slice.mjs (Slice 36.1)
-- **Immediate Next Step:** Slices 35.10, 35.11 and 35.12 in `.spec/PROGRESS.md` are ready for an external implementor (Gemini), in that order, one branch and one PR each. Start each with `node .harness/scripts/start-slice.mjs` and finish with `node .harness/scripts/finish-slice.mjs "<msg>"`.
+- **Verification Status:** Verified via finish-slice.mjs (Slice 36.12)
+- **Immediate Next Step:** Merge PR #950 (removes the one-time series cleanup list, approved by Charlie 2026-11-26 17:40Z) when green.
 
 ## Notes for the three open slices
 
@@ -24,4 +24,4 @@ What exists now (read these before editing):
 Known gap, not in these slices: in a member's request the owner's genre map setting is not returned, so a member's typed genre keeps its own capitals instead of the map's spelling.
 
 - **Open gaps:**
-  - The Genres tab in Manage (aliases, merges, umbrella genres; replaces slice 35.13) needs a spec first; Claude writes it.
+  - Genre vocabulary (docs/specs/genre-vocabulary.md, slices 36.1 to 36.12) is built; migration 0060 is applied. SeenGenres.tsx, ArtistGenresPanel.tsx and ManageEntry.tsx still call `genresByArtist` without the vocabulary, so aliases and owner groups do not show there yet (spellings still fold).

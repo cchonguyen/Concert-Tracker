@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import type { AiCallRow, GenreChangeQuery, GenreWriteMeta, GenreWriteRow, IngestTraceRow, MergeSummary } from './types';
+import type { AiCallRow, GenreChangeQuery, GenreVocabChangeQuery, GenreVocabWriteMeta, GenreVocabWriteRow, GenreWriteMeta, GenreWriteRow, IngestTraceRow, MergeSummary } from './types';
 import type { CanonicalVenue, EditionChange, EditionInference, InferenceStatus, InferenceVote, NewEditionInference, ReviewQueueItem, ReviewQueueKind } from '../types';
 import { ArtistIdTakenError, assertNoPersonalFields, ExternalIdConflictError, venueIdFor } from './types';
 import {
@@ -28,6 +28,7 @@ import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres, GenreChange } from '../../events/genres';
+import type { GenreVocabChange, GenreVocabulary, VocabGenre } from '../../events/genreTypes';
 import { brandKey } from '../../brands/plan';
 import { findOrCreateBrandId } from '../../brands/store';
 import {
@@ -1606,8 +1607,76 @@ export class SupabaseLineupStore implements LineupStore {
       p_reason: opts.reason,
       p_owner_user_id: this.scope?.userId ?? null,
     });
-    if (error) throw new Error(`Supabase runArtistCleanup failed (apply 0060_artist_cleanup.sql): ${error.message}`);
+    if (error) throw new Error(`Supabase runArtistCleanup failed (apply 0061_artist_cleanup.sql): ${error.message}`);
     return data as ArtistCleanupReport;
+  }
+
+  // Genre vocabulary (0060). Every scope reads it through the service client: it holds no personal fields.
+  private async vocabRows(table: string): Promise<any[]> {
+    const out: any[] = [];
+    for (let from = 0; ; from += 1000) {
+      const rows = (this.check(await this.db.from(table).select('*').range(from, from + 999), 'getGenreVocabulary (apply 0060_genre_vocabulary.sql)') ?? []) as any[];
+      out.push(...rows);
+      if (rows.length < 1000) return out;
+    }
+  }
+
+  async getGenreVocabulary(): Promise<GenreVocabulary> {
+    const [genres, aliases, umbrellas] = await Promise.all([this.vocabRows('genres'), this.vocabRows('genre_aliases'), this.vocabRows('genre_umbrellas')]);
+    const byKey = new Map<string, VocabGenre>();
+    for (const g of [...genres].sort((a, b) => cmp(a.key, b.key))) {
+      byKey.set(g.key, { key: g.key, name: g.name, ...(g.parent ? { parent: g.parent } : {}), aliases: [], umbrellas: [] });
+    }
+    for (const a of [...aliases].sort((x, y) => cmp(x.alias_key, y.alias_key))) byKey.get(a.genre_key)?.aliases.push({ key: a.alias_key, alias: a.alias });
+    for (const u of [...umbrellas].sort((x, y) => cmp(x.umbrella_key, y.umbrella_key))) byKey.get(u.genre_key)?.umbrellas.push(u.umbrella_key);
+    return { genres: [...byKey.values()] };
+  }
+
+  async writeGenreVocabulary(after: GenreVocabWriteRow[], meta: GenreVocabWriteMeta): Promise<GenreVocabChange> {
+    this.ownerGenres();
+    const p_after = after.map((r) => ({
+      key: r.key,
+      image: r.image
+        ? {
+            name: r.image.name,
+            parent: r.image.parent ?? null,
+            aliases: r.image.aliases.map((a) => ({ alias_key: a.key, alias: a.alias })),
+            umbrellas: r.image.umbrellas,
+          }
+        : null,
+    }));
+    const { data, error } = await this.db.rpc('genre_vocabulary_write', {
+      p_after,
+      p_operation: meta.operation,
+      p_actor: meta.actor,
+      p_reason: meta.reason,
+      p_summary: meta.summary,
+    });
+    if (error) throw new Error(`Supabase writeGenreVocabulary failed (apply 0060_genre_vocabulary.sql): ${error.message}`);
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) throw new Error('Supabase writeGenreVocabulary returned no change.');
+    return vocabChangeFromRow(row);
+  }
+
+  async listGenreVocabChanges(q: GenreVocabChangeQuery): Promise<GenreVocabChange[]> {
+    this.ownerGenres();
+    let query: any = this.db.from('genre_changes').select('*');
+    if (q.id !== undefined) query = query.eq('id', q.id);
+    query = query.order('at', { ascending: false });
+    if (q.limit !== undefined) query = query.limit(q.limit);
+    const data = this.check(await query, 'listGenreVocabChanges (apply 0060_genre_vocabulary.sql)') as any[] | null;
+    return (data ?? []).map(vocabChangeFromRow);
+  }
+
+  // The log is append-only: only undone_at may be set, once, so rows already undone are skipped.
+  async markGenreVocabChangesUndone(ids: string[], at: string): Promise<void> {
+    this.ownerGenres();
+    for (let i = 0; i < ids.length; i += 200) {
+      this.check(
+        await this.db.from('genre_changes').update({ undone_at: at }).in('id', ids.slice(i, i + 200)).is('undone_at', null),
+        'markGenreVocabChangesUndone (apply 0060_genre_vocabulary.sql)',
+      );
+    }
   }
 
   // Entities (0014) -------------------------------------------------------
@@ -2312,6 +2381,33 @@ function genreChangeFromRow(r: any): GenreChange {
     ...(r.batch_id ? { batchId: r.batch_id } : {}),
     before: r.before ? genresFromRow(r.before) : null,
     after: r.after ? genresFromRow(r.after) : null,
+    ...(r.undone_at ? { undoneAt: r.undone_at } : {}),
+  };
+}
+
+const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+// A genre image from genre_changes or the write: aliases may carry key or alias_key.
+function vocabGenreFromImage(g: any): VocabGenre {
+  return {
+    key: String(g.key),
+    name: String(g.name),
+    ...(g.parent ? { parent: String(g.parent) } : {}),
+    aliases: ((g.aliases ?? []) as any[]).map((a) => ({ key: String(a.key ?? a.alias_key), alias: String(a.alias) })),
+    umbrellas: ((g.umbrellas ?? []) as any[]).map(String),
+  };
+}
+
+function vocabChangeFromRow(r: any): GenreVocabChange {
+  return {
+    id: r.id,
+    at: r.at,
+    actor: r.actor,
+    operation: r.operation,
+    reason: r.reason,
+    summary: r.summary,
+    before: ((r.before ?? []) as any[]).map(vocabGenreFromImage),
+    after: ((r.after ?? []) as any[]).map(vocabGenreFromImage),
     ...(r.undone_at ? { undoneAt: r.undone_at } : {}),
   };
 }

@@ -58,3 +58,56 @@ export interface KnownGenre {
   style: string;
   parent: string;
 }
+
+// The owner's genre vocabulary (docs/specs/genre-vocabulary.md section 2). A genre
+// nobody has changed has no entry: it resolves to itself by its key (genreKey).
+export interface VocabGenre {
+  key: string; // genreKey(name)
+  name: string; // the spelling shown everywhere
+  parent?: string; // the owner's group; absent: from the genre map
+  aliases: Array<{ key: string; alias: string }>; // other spellings, by their own keys
+  umbrellas: string[]; // keys of the genres this one sits under
+}
+
+export interface GenreVocabulary {
+  genres: VocabGenre[];
+}
+
+export type GenreVocabOperation =
+  | 'rename'
+  | 'alias-add'
+  | 'alias-remove'
+  | 'merge'
+  | 'parent'
+  | 'umbrella-add'
+  | 'umbrella-remove'
+  | 'spelling'
+  | 'create'
+  | 'undo';
+
+// One row of genre_changes: the genres it touched as they were and as they became.
+export interface GenreVocabChange {
+  id: string;
+  at: string;
+  actor: 'owner' | `system:${string}`;
+  operation: GenreVocabOperation;
+  reason: string;
+  summary: string;
+  before: VocabGenre[]; // empty: none of them had a row
+  after: VocabGenre[];
+  undoneAt?: string;
+}
+
+// What any stored or typed spelling resolves to. No parent: shown as "Not grouped".
+export interface ResolvedGenre {
+  key: string;
+  name: string;
+  parent?: string;
+}
+
+// One key with two or more spellings and no chosen spelling yet (spec section 5).
+export interface GenreCollision {
+  key: string;
+  spellings: Array<{ name: string; artists: number }>; // most artists first
+  shown: string; // the spelling shown today
+}

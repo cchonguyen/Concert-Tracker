@@ -32,6 +32,7 @@ import type { ActivityEntry } from '../../events/activityLog';
 import type { LineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres, GenreChange } from '../../events/genres';
+import type { GenreVocabChange, GenreVocabOperation, GenreVocabulary, VocabGenre } from '../../events/genreTypes';
 import { ArtistEditionRow, CANONICAL_OPERATIONS, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import type { ShareLink } from '../../share/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -487,6 +488,15 @@ export interface LineupStore {
   // Newest first. latestBatchReason: only the changes of the newest batch with that reason that is not undone.
   listGenreChanges(q: GenreChangeQuery): Promise<GenreChange[]>;
   markGenreChangesUndone(ids: string[], at: string): Promise<void>;
+  // The owner's genre vocabulary (0060): genres with their aliases and umbrellas. Every scope reads it
+  // through the service client; it holds no personal fields.
+  getGenreVocabulary(): Promise<GenreVocabulary>;
+  // genre_vocabulary_write (0060): replaces the listed genres (image null deletes one) and logs one
+  // change in the same transaction. Owner and system only: a member scope throws.
+  writeGenreVocabulary(after: GenreVocabWriteRow[], meta: GenreVocabWriteMeta): Promise<GenreVocabChange>;
+  // Newest first. Owner and system only.
+  listGenreVocabChanges(q: GenreVocabChangeQuery): Promise<GenreVocabChange[]>;
+  markGenreVocabChangesUndone(ids: string[], at: string): Promise<void>;
   // Every act any member marked as seen, once per key, names only (seen_act_names()). Owner and system only.
   listSeenActNames(): Promise<Array<{ key: string; name: string }>>;
   // Reusable single-transaction artist entity cleanup (0060). Owner and system only.
@@ -750,4 +760,22 @@ export interface GenreChangeQuery {
   batchId?: string;
   latestBatchReason?: string;
   limit?: number;
+}
+
+// One genre of a vocabulary write; image null deletes the genre.
+export interface GenreVocabWriteRow {
+  key: string;
+  image: VocabGenre | null;
+}
+
+export interface GenreVocabWriteMeta {
+  operation: GenreVocabOperation;
+  actor: GenreVocabChange['actor'];
+  reason: string;
+  summary: string;
+}
+
+export interface GenreVocabChangeQuery {
+  limit?: number;
+  id?: string;
 }

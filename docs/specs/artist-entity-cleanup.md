@@ -1,6 +1,6 @@
 # Phase 1 Artist Entity Cleanup & Remap Specification
 
-Status: approved by Charlie 2026-11-26 (1B + reusable CSV upload UI, 2A `alter_ego_of` FK + `extraction_blocklist.reason`, 3A canonical catalog + owner's own records/events). Migration: `supabase/migrations/0060_artist_cleanup.sql` (apply in Supabase before running Apply in production).
+Status: approved by Charlie 2026-11-26 (1B + reusable CSV upload UI, 2A `alter_ego_of` FK + `extraction_blocklist.reason`, 3A canonical catalog + owner's own records/events). Migration: `supabase/migrations/0061_artist_cleanup.sql` (apply in Supabase before running Apply in production).
 
 ## 1. Purpose & Execution Model
 

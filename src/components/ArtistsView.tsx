@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ChevronDown, ChevronRight, Crown, FolderCog, Heart, LayoutList, List, MapPin, Search, Table2, Tags } from 'lucide-react';
-import { genresApi, LoggedEvent } from '../services/lineupApi';
-import { ArtistGenres, genresByArtist, topStyles } from '../services/genres';
+import { genresApi, GenresList, LoggedEvent } from '../services/lineupApi';
+import { ArtistGenres, genresByArtist, hasGenreUnder, topStyles, umbrellaNames } from '../services/genres';
 import { artistGaps, spanLabel } from '../services/insights';
 import { whenLabel } from '../services/format';
 import { EventTitle } from './EventTitle';
@@ -101,6 +101,18 @@ interface ArtistProps {
   onOpenTable: (query: string) => void;
   onManage?: (key: string) => void;
 }
+
+// The genre filter holds a group ("g:" and its name) or an umbrella ("u:" and its key).
+const GROUP = 'g:';
+const UMBRELLA = 'u:';
+const matchesGenre = (g: ArtistGenres | undefined, picked: string, vocab: GenresList['vocabulary'] | undefined): boolean =>
+  picked.startsWith(UMBRELLA)
+    ? hasGenreUnder(g, picked.slice(UMBRELLA.length), vocab)
+    : (g?.genres ?? []).some((x) => x.parent === picked.slice(GROUP.length));
+const genreLabel = (picked: string, umbrellas: Array<[string, string]>): string =>
+  picked.startsWith(UMBRELLA)
+    ? (umbrellas.find(([k]) => k === picked.slice(UMBRELLA.length))?.[1] ?? picked.slice(UMBRELLA.length))
+    : picked.slice(GROUP.length);
 
 // Where an act's genres came from, for the tooltip.
 const genreTitle = (g: ArtistGenres, isOwner: boolean) => {
@@ -304,17 +316,30 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
   };
   const artists = useMemo(() => artistSummaries(events), [events]);
   // Genres are optional: without them (or before 0013 is applied) the view is unchanged.
-  const [genreRows, setGenreRows] = useState<ArtistGenres[]>([]);
+  const [genreData, setGenreData] = useState<Pick<GenresList, 'genres' | 'vocabulary' | 'map'> | null>(null);
   useEffect(() => {
     genresApi
       .list()
-      .then((r) => setGenreRows(r.genres))
-      .catch(() => setGenreRows([]));
+      .then((r) => setGenreData({ genres: r.genres, vocabulary: r.vocabulary, map: r.map }))
+      .catch(() => setGenreData(null));
   }, []);
-  const genres = useMemo(() => genresByArtist(genreRows), [genreRows]);
+  const vocabulary = genreData?.vocabulary;
+  const genres = useMemo(
+    () => genresByArtist(genreData?.genres ?? [], genreData?.vocabulary, genreData?.map),
+    [genreData],
+  );
   const parents = useMemo(
     () => [...new Set(artists.flatMap((a) => (genres.get(a.key)?.genres ?? []).map((g) => g.parent)))].sort(),
     [artists, genres],
+  );
+  // Umbrellas that at least one artist here falls under; picking one shows the
+  // artists with it or any genre under it. Pills still show only their own genres.
+  const umbrellas = useMemo(
+    () =>
+      [...umbrellaNames(vocabulary)]
+        .filter(([key]) => artists.some((a) => hasGenreUnder(genres.get(a.key), key, vocabulary)))
+        .sort((a, b) => a[1].localeCompare(b[1])),
+    [artists, genres, vocabulary],
   );
   const [genre, setGenre] = useState('');
   const q = filter.trim().toLowerCase();
@@ -324,11 +349,11 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
         artists.filter(
           (a) =>
             (!q || a.name.toLowerCase().includes(q)) &&
-            (!genre || (genres.get(a.key)?.genres ?? []).some((g) => g.parent === genre)),
+            (!genre || matchesGenre(genres.get(a.key), genre, vocabulary)),
         ),
         sort,
       ),
-    [artists, q, sort, genre, genres],
+    [artists, q, sort, genre, genres, vocabulary],
   );
   const jumps = useMemo(() => jumpTargets(groups, sort), [groups, sort]);
   // The page header is sticky; the jump bar and group headings sit just under it.
@@ -398,7 +423,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
             className="min-h-11 w-full rounded-control border border-line-strong bg-surface-1 py-2 pl-9 pr-4 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none sm:min-h-9"
           />
         </label>
-        {parents.length > 0 && (
+        {(parents.length > 0 || umbrellas.length > 0) && (
           <select
             value={genre}
             onChange={(e) => setGenre(e.target.value)}
@@ -407,10 +432,19 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
           >
             <option value="">All genres</option>
             {parents.map((p) => (
-              <option key={p} value={p}>
+              <option key={p} value={GROUP + p}>
                 {p}
               </option>
             ))}
+            {umbrellas.length > 0 && (
+              <optgroup label="Including related genres">
+                {umbrellas.map(([key, name]) => (
+                  <option key={key} value={UMBRELLA + key}>
+                    {name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         )}
         <div role="radiogroup" aria-label="Order" className="order-last flex w-full rounded-control border border-line-strong bg-surface-1 p-0.5 text-xs sm:order-none sm:w-auto sm:shrink-0">
@@ -479,7 +513,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
 
       {groups.length === 0 ? (
         <p className="rounded-card border border-dashed border-line-strong p-6 text-center text-sm text-text-muted">
-          No artist matches{filter ? ` “${filter}”` : ''}{genre ? ` in ${genre}` : ''}.
+          No artist matches{filter ? ` “${filter}”` : ''}{genre ? ` in ${genreLabel(genre, umbrellas)}` : ''}.
         </p>
       ) : (
         groups.map((g) => (

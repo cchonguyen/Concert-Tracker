@@ -1,4 +1,4 @@
--- 0060 artist entity cleanup (docs/specs/artist-entity-cleanup.md). Apply only on Charlie's go.
+-- 0061 artist entity cleanup (docs/specs/artist-entity-cleanup.md). Apply only on Charlie's go.
 -- Adds canonical_artists.alter_ego_of (FK to canonical_artists.key) and extraction_blocklist.reason,
 -- plus the reusable single-transaction RPC public.canonical_artist_cleanup(...) with dry-run rollback.
 
