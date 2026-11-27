@@ -373,10 +373,10 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
     () => genresByArtist(genreData.genres, genreData.vocabulary, genreData.map),
     [genreData],
   );
-  // The macro genres of the vocabulary when it has a taxonomy, else the genre map's parents.
+  // The scene families of the vocabulary when it has a taxonomy, else the genre map's parents.
   const mapGroups = useMemo(() => {
-    const macros = (genreData.vocabulary?.genres ?? []).filter((g) => levelOf(g) === 'macro').map((g) => g.name);
-    return macros.length ? macros : [...new Set(genreData.map.map((m) => m.parent).filter(Boolean))];
+    const families = (genreData.vocabulary?.genres ?? []).filter((g) => levelOf(g) === 'family').map((g) => g.name);
+    return families.length ? families : [...new Set(genreData.map.map((m) => m.parent).filter(Boolean))];
   }, [genreData.map, genreData.vocabulary]);
   const { years, undated } = useMemo(() => perYear(past), [past]);
   const [pickedYear, setPickedYear] = useState<number | null>(null);
