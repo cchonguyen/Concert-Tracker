@@ -29,7 +29,10 @@ import {
   DRIFT_MIN_SETS,
   DRIFT_MIN_YEARS,
   DRIFT_BANDS,
+  lineupDna,
+  LINEUP_DNA_MIN_ACTS,
 } from '../src/services/genreInsights.ts';
+import type { LineupGenresAct } from '../src/services/lineupApi.ts';
 
 const TODAY = '2026-11-26';
 
@@ -883,4 +886,202 @@ test('soundDrift: without a taxonomy it falls back to music-story groups and ign
   assert.deepEqual(fam.bands, ['Electronic', 'Rock']);
   assert.deepEqual(fam, mac);
   assert.deepEqual(fam.years.map((y) => y.shares), [{ Electronic: 1, Rock: 0 }, { Electronic: 0, Rock: 1 }]);
+});
+
+// Lineup DNA (docs/specs/genre-taxonomy-release-2.md section 2 and decisions 1, 2, 5).
+const dnaFamilies = ['House', 'Techno', 'Trance', 'Garage', 'Dubstep', 'Jazz', 'Folk'];
+const dnaVocab: GenreVocabulary = {
+  genres: [
+    { key: 'macro:electronic', name: 'Electronic', level: 'macro', aliases: [], umbrellas: [] },
+    ...dnaFamilies.map((f) => ({
+      key: `family:${f.toLowerCase()}`, name: f, level: 'family' as const, primaryParent: 'macro:electronic', aliases: [], umbrellas: [],
+    })),
+    ...dnaFamilies.map((f) => ({
+      key: `${f.toLowerCase()}core`, name: `${f} core`, primaryParent: `family:${f.toLowerCase()}`, aliases: [], umbrellas: [],
+    })),
+  ],
+};
+
+const dnaAct = (key: string, extra: Partial<LineupGenresAct> = {}): LineupGenresAct => ({
+  key, name: key.toUpperCase(), stages: [], days: [], ...extra,
+});
+
+// A row whose one genre sits in the given family of dnaVocab.
+const dnaRow = (key: string, parts: Array<{ family: string; weight: number }>): ArtistGenres =>
+  artist(key, parts.map((p) => ({ parent: 'Electronic', style: `${p.family} core`, weight: p.weight })));
+
+const dnaSegShares = (bar: { segments: Array<{ name: string; share: number }> }): Record<string, number> =>
+  Object.fromEntries(bar.segments.map((s) => [s.name, s.share]));
+
+test('lineupDna: shares add up to 1 per bar and every bar', () => {
+  const acts = [dnaAct('a', { stages: ['Main', 'Second'] }), dnaAct('b', { stages: ['Main'] }), dnaAct('c')];
+  const byArtist = genresByArtist([
+    dnaRow('a', [{ family: 'House', weight: 0.6 }, { family: 'Techno', weight: 0.4 }]),
+    dnaRow('b', [{ family: 'Trance', weight: 1 }]),
+    dnaRow('c', [{ family: 'Jazz', weight: 1 }]),
+  ], dnaVocab);
+  const res = lineupDna(acts, byArtist, dnaVocab);
+
+  assert.equal(res.levels, 'taxonomy');
+  for (const bar of res.bars) {
+    const sum = bar.segments.reduce((t, s) => t + s.share, 0);
+    assert.ok(Math.abs(sum - 1) < 1e-9, `${bar.id} sums to ${sum}`);
+    for (const s of bar.segments) {
+      const gsum = s.genres.reduce((t, g) => t + g.share, 0);
+      assert.ok(gsum <= s.share + 1e-9, `${bar.id} ${s.name} genres exceed the family`);
+    }
+  }
+});
+
+test('lineupDna: a B2B pair shares one set (1/2 each) and the rest count 1.0', () => {
+  const acts = [
+    dnaAct('a', { slotId: 's1' }),
+    dnaAct('b', { slotId: 's1' }),
+    dnaAct('c'),
+  ];
+  const byArtist = genresByArtist([
+    dnaRow('a', [{ family: 'House', weight: 1 }]),
+    dnaRow('b', [{ family: 'Techno', weight: 1 }]),
+    dnaRow('c', [{ family: 'House', weight: 1 }]),
+  ], dnaVocab);
+  const whole = lineupDna(acts, byArtist, dnaVocab).bars[0];
+
+  assert.equal(whole.id, 'all');
+  assert.equal(whole.total, 3);
+  assert.equal(whole.tagged, 3);
+  const shares = dnaSegShares(whole);
+  assert.ok(Math.abs(shares.House - 0.75) < 1e-9); // a 0.5 + c 1.0 of 2.0
+  assert.ok(Math.abs(shares.Techno - 0.25) < 1e-9); // b 0.5 of 2.0
+  const house = whole.segments.find((s) => s.name === 'House')!;
+  assert.deepEqual(house.acts, ['c', 'a']); // by contribution: c 1.0, a 0.5
+});
+
+test('lineupDna: an act on two stages counts on both stage bars and once on the whole bill', () => {
+  const acts = [
+    dnaAct('a', { stages: ['Main', 'Second'] }),
+    dnaAct('b', { stages: ['Main'] }),
+    dnaAct('c', { stages: ['Second'] }),
+  ];
+  const byArtist = genresByArtist([
+    dnaRow('a', [{ family: 'House', weight: 1 }]),
+    dnaRow('b', [{ family: 'Techno', weight: 1 }]),
+    dnaRow('c', [{ family: 'Techno', weight: 1 }]),
+  ], dnaVocab);
+  const res = lineupDna(acts, byArtist, dnaVocab);
+
+  assert.deepEqual(res.bars.map((b) => b.id), ['all', 'stage:Main', 'stage:Second']);
+  const [whole, main, second] = res.bars;
+  assert.equal(whole.total, 3);
+  assert.ok(Math.abs(whole.segments.find((s) => s.name === 'House')!.share - 1 / 3) < 1e-9);
+  assert.equal(main.total, 2);
+  assert.equal(main.tagged, 2);
+  assert.ok(Math.abs(dnaSegShares(main).House - 0.5) < 1e-9);
+  assert.equal(second.total, 2);
+  assert.ok(Math.abs(dnaSegShares(second).House - 0.5) < 1e-9);
+});
+
+test('lineupDna: no-stage bar appears only when a named stage exists', () => {
+  const rows = [
+    dnaRow('a', [{ family: 'House', weight: 1 }]),
+    dnaRow('b', [{ family: 'Techno', weight: 1 }]),
+  ];
+  const byArtist = genresByArtist(rows, dnaVocab);
+
+  // No stage anywhere: whole bill only.
+  const none = lineupDna([dnaAct('a'), dnaAct('b')], byArtist, dnaVocab);
+  assert.deepEqual(none.bars.map((b) => b.id), ['all']);
+
+  // A named stage and an act without one: the no-stage bar shows last.
+  const mixed = lineupDna([dnaAct('a', { stages: ['Main'] }), dnaAct('b')], byArtist, dnaVocab);
+  assert.deepEqual(mixed.bars.map((b) => b.id), ['all', 'stage:Main', 'no-stage']);
+  assert.equal(mixed.bars[2].name, 'No stage listed');
+  assert.equal(mixed.bars[2].total, 1);
+
+  // Every act on a stage: no no-stage bar.
+  const full = lineupDna([dnaAct('a', { stages: ['Main'] }), dnaAct('b', { stages: ['Main'] })], byArtist, dnaVocab);
+  assert.deepEqual(full.bars.map((b) => b.id), ['all', 'stage:Main']);
+});
+
+test('lineupDna: Other collects the tail, and a 5th family shows only at 10% or more', () => {
+  // 14 acts: House 4, Techno 3, Garage 2, Trance 2, Dubstep 1, Jazz 1, Folk 1.
+  const counts: Array<[string, number]> = [['House', 4], ['Techno', 3], ['Garage', 2], ['Trance', 2], ['Dubstep', 1], ['Jazz', 1], ['Folk', 1]];
+  const acts: LineupGenresAct[] = [];
+  const rows: ArtistGenres[] = [];
+  for (const [fam, n] of counts) {
+    for (let i = 0; i < n; i++) {
+      const key = `${fam.toLowerCase()}${i}`;
+      acts.push(dnaAct(key));
+      rows.push(dnaRow(key, [{ family: fam, weight: 1 }]));
+    }
+  }
+  const whole = lineupDna(acts, genresByArtist(rows, dnaVocab), dnaVocab).bars[0];
+
+  // Fifth family Dubstep is 1/14 (under 10%): not shown; Dubstep, Jazz and Folk go to Other.
+  assert.deepEqual(whole.segments.map((s) => s.key), ['family:house', 'family:techno', 'family:garage', 'family:trance', 'other']);
+  const other = whole.segments[4];
+  assert.equal(other.name, 'Other');
+  assert.ok(Math.abs(other.share - 3 / 14) < 1e-9);
+  assert.ok(Math.abs(whole.segments[0].share - 4 / 14) < 1e-9);
+  assert.deepEqual(other.acts.slice().sort(), ['dubstep0', 'folk0', 'jazz0']);
+});
+
+test('lineupDna: a fifth family at 10% or more gets its own segment; the sixth onwards goes to Other', () => {
+  // Seven acts, one per family: each 1/7 (about 14%), so the fifth shows and the sixth and seventh go to Other.
+  const acts = dnaFamilies.map((f) => dnaAct(f.toLowerCase()));
+  const rows = dnaFamilies.map((f) => dnaRow(f.toLowerCase(), [{ family: f, weight: 1 }]));
+  const whole = lineupDna(acts, genresByArtist(rows, dnaVocab), dnaVocab).bars[0];
+
+  assert.deepEqual(whole.segments.map((s) => s.name), ['Dubstep', 'Folk', 'Garage', 'House', 'Jazz', 'Other']);
+  assert.ok(Math.abs(whole.segments[4].share - 1 / 7) < 1e-9);
+  assert.ok(Math.abs(whole.segments[5].share - 2 / 7) < 1e-9);
+});
+
+test('lineupDna: coverage, lowCoverage and enough flags', () => {
+  const acts = [dnaAct('a'), dnaAct('b'), dnaAct('c'), dnaAct('d'), dnaAct('e')];
+  const rows = [
+    dnaRow('a', [{ family: 'House', weight: 1 }]),
+    dnaRow('b', [{ family: 'House', weight: 1 }]),
+    dnaRow('c', [{ family: 'Techno', weight: 1 }]),
+    dnaRow('d', []), // checked, no genres: untagged
+  ];
+  const byArtist = genresByArtist(rows, dnaVocab);
+
+  // 3 tagged of 5 acts: coverage exactly 0.6 is not low; 3 is the floor.
+  const three = lineupDna(acts, byArtist, dnaVocab).bars[0];
+  assert.equal(three.tagged, 3);
+  assert.equal(three.total, 5);
+  assert.equal(three.coverage, 0.6);
+  assert.equal(three.lowCoverage, false);
+  assert.equal(three.enough, true);
+  assert.equal(LINEUP_DNA_MIN_ACTS, 3);
+
+  // 2 tagged of 5: low coverage and under the floor.
+  const two = lineupDna(acts.slice(0, 2).concat(acts.slice(3)), byArtist, dnaVocab).bars[0];
+  assert.equal(two.tagged, 2);
+  assert.equal(two.total, 4);
+  assert.equal(two.lowCoverage, true);
+  assert.equal(two.enough, false);
+
+  // An empty lineup: nothing tagged, coverage 0.
+  const empty = lineupDna([], byArtist, dnaVocab).bars[0];
+  assert.equal(empty.total, 0);
+  assert.equal(empty.coverage, 0);
+  assert.equal(empty.enough, false);
+  assert.deepEqual(empty.segments, []);
+});
+
+test('lineupDna: without a taxonomy it uses the music-story groups', () => {
+  const rows = [
+    artist('A', [{ parent: 'Electronic', style: 'Deep house', weight: 0.5 }, { parent: 'Rock', style: 'Indie', weight: 0.5 }]),
+    artist('B', [{ parent: 'Rock', style: 'Punk', weight: 1 }]),
+  ];
+  const byArtist = genresByArtist(rows);
+  const res = lineupDna([dnaAct('a'), dnaAct('b')], byArtist, undefined);
+
+  assert.equal(res.levels, 'groups');
+  const whole = res.bars[0];
+  assert.deepEqual(whole.segments.map((s) => [s.key, s.name]), [['group:rock', 'Rock'], ['group:electronic', 'Electronic']]);
+  assert.ok(Math.abs(whole.segments[0].share - 0.75) < 1e-9); // Rock 0.5 + 1.0 of 1.5 tagged
+  assert.ok(Math.abs(whole.segments[1].share - 0.25) < 1e-9);
+  assert.ok(Math.abs(whole.segments.reduce((t, s) => t + s.share, 0) - 1) < 1e-9);
 });

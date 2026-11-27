@@ -1,6 +1,7 @@
 import type { LoggedEvent } from '../server/events/types';
 import { attendanceOf, wentTo } from '../server/events/attendance';
 import type { ArtistGenres, GenreLevel, GenreShare, GenreVocabulary, VocabGenre } from '../server/events/genreTypes';
+import type { LineupGenresAct } from './lineupApi';
 import {
   genreKey,
   genreResolver,
@@ -1592,6 +1593,172 @@ export function genreZoom(
   }).sort(byZoomSort);
 
   return { levels: 'taxonomy', macros, families, genres, known, unknown, enough: known >= ZOOM_MIN_SETS };
+}
+
+// Lineup DNA (docs/specs/genre-taxonomy-release-2.md section 2 and decisions 1, 2, 5).
+// Every act on the bill counts 1.0, split across its genres by weight. Acts sharing a slotId
+// (a B2B) share one set: 1/n each. Bars: the whole bill, one per stage, then "No stage listed".
+export const LINEUP_DNA_MIN_ACTS = 3;
+export const LINEUP_DNA_MIN_COVERAGE = 0.6;
+const DNA_TOP_FAMILIES = 4;
+const DNA_FIFTH_MIN_SHARE = 0.10;
+const DNA_TOP_GENRES = 5;
+
+export interface DnaGenre {
+  name: string;
+  share: number; // of the bar's tagged weight
+}
+
+export interface DnaSegment {
+  key: string; // family key ('family:...'), group key ('group:...') in fallback mode, or 'other'
+  name: string;
+  share: number; // of the bar's tagged weight
+  genres: DnaGenre[]; // top 5 by share
+  acts: string[]; // act keys contributing, by contribution desc
+}
+
+export interface DnaBar {
+  id: string; // 'all', 'stage:<name>' or 'no-stage'
+  name: string;
+  segments: DnaSegment[]; // shares add up to 1 when tagged > 0
+  tagged: number; // acts on the bar with at least one genre
+  total: number; // acts on the bar
+  coverage: number; // tagged / total, 0 when total is 0
+  lowCoverage: boolean; // coverage under LINEUP_DNA_MIN_COVERAGE
+  enough: boolean; // tagged >= LINEUP_DNA_MIN_ACTS
+}
+
+export interface LineupDnaResult {
+  levels: 'taxonomy' | 'groups';
+  bars: DnaBar[];
+}
+
+interface DnaPlanAct {
+  key: string;
+  stages: string[];
+  genres: Array<{ name: string; family: string; w: number }>; // w: the act's share of the bill in this genre
+}
+
+interface DnaAcc {
+  key: string;
+  name: string;
+  weight: number;
+  genres: Map<string, { name: string; weight: number }>; // by genreKey
+  acts: Map<string, number>; // by act key
+}
+
+function dnaKey(prefix: 'family' | 'group', name: string): string {
+  return name === NOT_GROUPED ? `${prefix}:${NOT_GROUPED_KEY}` : `${prefix}:${genreKey(name)}`;
+}
+
+export function lineupDna(
+  acts: LineupGenresAct[],
+  byArtist: Map<string, ArtistGenres>,
+  vocab: GenreVocabulary | undefined,
+): LineupDnaResult {
+  const listed = acts.filter((a) => a.status === undefined || a.status === 'billed' || a.status === 'performed');
+  const slotSize = new Map<string, number>();
+  for (const a of listed) if (a.slotId) slotSize.set(a.slotId, (slotSize.get(a.slotId) ?? 0) + 1);
+
+  const usable = listed.map((act) => ({
+    act,
+    genres: (byArtist.get(act.key)?.genres ?? []).filter((x) => genreKey(x.style) && x.weight > 0),
+  }));
+  // Same test as genreZoom: a taxonomy when the vocabulary has a macro or a shown genre carries one.
+  const taxonomy = (vocab?.genres ?? []).some((g) => levelOf(g) === 'macro')
+    || usable.some((u) => u.genres.some((x) => x.macro !== undefined));
+  const prefix = taxonomy ? 'family' : 'group';
+
+  const plans: DnaPlanAct[] = usable.map(({ act, genres }) => {
+    const base = act.slotId ? 1 / (slotSize.get(act.slotId) ?? 1) : 1;
+    const sum = genres.reduce((t, x) => t + x.weight, 0);
+    return {
+      key: act.key,
+      stages: [...new Set(act.stages.map((s) => s.trim()).filter(Boolean))],
+      genres: genres.map((x) => ({ name: x.style, family: driftBandOf(x, 'family', taxonomy), w: base * x.weight / sum })),
+    };
+  });
+
+  const bar = (id: string, name: string, members: DnaPlanAct[]): DnaBar => {
+    const fams = new Map<string, DnaAcc>();
+    let taggedWeight = 0;
+    let tagged = 0;
+    for (const m of members) {
+      if (!m.genres.length) continue;
+      tagged += 1;
+      for (const g of m.genres) {
+        taggedWeight += g.w;
+        const famKey = dnaKey(prefix, g.family);
+        let f = fams.get(famKey);
+        if (!f) {
+          f = { key: famKey, name: g.family, weight: 0, genres: new Map(), acts: new Map() };
+          fams.set(famKey, f);
+        }
+        f.weight += g.w;
+        const gk = genreKey(g.name);
+        const gg = f.genres.get(gk);
+        if (gg) gg.weight += g.w;
+        else f.genres.set(gk, { name: g.name, weight: g.w });
+        f.acts.set(m.key, (f.acts.get(m.key) ?? 0) + g.w);
+      }
+    }
+
+    const share = (w: number): number => (taggedWeight ? w / taggedWeight : 0);
+    const segment = (s: DnaAcc): DnaSegment => ({
+      key: s.key,
+      name: s.name,
+      share: share(s.weight),
+      genres: [...s.genres.values()]
+        .sort((a, b) => b.weight - a.weight || a.name.localeCompare(b.name))
+        .slice(0, DNA_TOP_GENRES)
+        .map((g) => ({ name: g.name, share: share(g.weight) })),
+      acts: [...s.acts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k]) => k),
+    });
+
+    const ranked = [...fams.values()].sort(
+      (a, b) => b.weight - a.weight || a.name.localeCompare(b.name) || a.key.localeCompare(b.key),
+    );
+    const shown = ranked.slice(0, DNA_TOP_FAMILIES);
+    const fifth = ranked[DNA_TOP_FAMILIES];
+    if (fifth && share(fifth.weight) >= DNA_FIFTH_MIN_SHARE) shown.push(fifth);
+    const tail = ranked.slice(shown.length);
+    const segments = shown.map(segment);
+    if (tail.length) {
+      const other: DnaAcc = { key: 'other', name: 'Other', weight: 0, genres: new Map(), acts: new Map() };
+      for (const t of tail) {
+        other.weight += t.weight;
+        for (const [gk, g] of t.genres) {
+          const cur = other.genres.get(gk);
+          if (cur) cur.weight += g.weight;
+          else other.genres.set(gk, { name: g.name, weight: g.weight });
+        }
+        for (const [ak, w] of t.acts) other.acts.set(ak, (other.acts.get(ak) ?? 0) + w);
+      }
+      segments.push(segment(other));
+    }
+
+    const total = members.length;
+    const coverage = total ? tagged / total : 0;
+    return {
+      id,
+      name,
+      segments,
+      tagged,
+      total,
+      coverage,
+      lowCoverage: coverage < LINEUP_DNA_MIN_COVERAGE,
+      enough: tagged >= LINEUP_DNA_MIN_ACTS,
+    };
+  };
+
+  const bars: DnaBar[] = [bar('all', 'Whole bill', plans)];
+  const stageNames = [...new Set(plans.flatMap((p) => p.stages))].sort((a, b) => a.localeCompare(b));
+  if (stageNames.length) {
+    for (const s of stageNames) bars.push(bar(`stage:${s}`, s, plans.filter((p) => p.stages.includes(s))));
+    const noStage = plans.filter((p) => !p.stages.length);
+    if (noStage.length) bars.push(bar('no-stage', 'No stage listed', noStage));
+  }
+  return { levels: taxonomy ? 'taxonomy' : 'groups', bars };
 }
 
 // Sound Drift (docs/specs/genre-taxonomy-release-1.md decisions 1-5, 7 and section 4).
