@@ -12,6 +12,11 @@ import {
   parseAccent,
   parseMode,
   resolveMode,
+  parseStubStyle,
+  STUB_STYLE_KEY,
+  STUB_STYLE_LABELS,
+  STUB_STYLES,
+  StubStyle,
   ThemeMode,
 } from '../services/theme';
 
@@ -43,6 +48,8 @@ export interface Theme {
   pickAccent: (a: Accent) => void;
   tintOn: boolean;
   setTint: (on: boolean) => void;
+  stubStyle: StubStyle;
+  pickStubStyle: (s: StubStyle) => void;
 }
 
 // Mode and accent, saved on this device and applied to <html> (see index.css).
@@ -51,6 +58,7 @@ export function useTheme(): Theme {
   const [mode, setMode] = useState<ThemeMode>(() => parseMode(read(MODE_KEY)));
   const [accent, setAccent] = useState<Accent>(() => parseAccent(read(ACCENT_KEY)));
   const [tintOn, setTintOn] = useState<boolean>(() => parseTintOn(read(TINT_KEY)));
+  const [stubStyle, setStubStyle] = useState<StubStyle>(() => parseStubStyle(read(STUB_STYLE_KEY)));
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: light)');
@@ -68,6 +76,11 @@ export function useTheme(): Theme {
   useEffect(() => {
     document.documentElement.dataset.accent = accent;
   }, [accent]);
+
+  // index.css restyles every .ticket-card for this value.
+  useEffect(() => {
+    document.documentElement.dataset.stub = stubStyle;
+  }, [stubStyle]);
 
   // index.css hides the poster wash and series dots when this is "off".
   useEffect(() => {
@@ -88,12 +101,17 @@ export function useTheme(): Theme {
     write(TINT_KEY, on ? 'on' : 'off');
   };
 
-  return { mode, accent, pickMode, pickAccent, tintOn, setTint };
+  const pickStubStyle = (s: StubStyle) => {
+    setStubStyle(s);
+    write(STUB_STYLE_KEY, s);
+  };
+
+  return { mode, accent, pickMode, pickAccent, tintOn, setTint, stubStyle, pickStubStyle };
 }
 
 // The theme choices, shown inline inside the menu.
 export function ThemeControls({ theme }: { theme: Theme }) {
-  const { mode, accent, pickMode, pickAccent, tintOn, setTint } = theme;
+  const { mode, accent, pickMode, pickAccent, tintOn, setTint, stubStyle, pickStubStyle } = theme;
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-3 gap-1">
@@ -128,6 +146,26 @@ export function ThemeControls({ theme }: { theme: Theme }) {
           </Tooltip>
         ))}
       </div>
+      <fieldset className="border-t border-line pt-3">
+        <legend className="mb-2 text-xs font-semibold text-text-muted">Ticket style</legend>
+        <div className="grid grid-cols-5 gap-1">
+          {STUB_STYLES.map((s) => (
+            <Tooltip key={s} label={STUB_STYLE_LABELS[s]}>
+              <button
+                type="button"
+                onClick={() => pickStubStyle(s)}
+                aria-label={`${STUB_STYLE_LABELS[s]} ticket style`}
+                aria-pressed={stubStyle === s}
+                data-stub={s}
+                className={`stub-swatch h-9 w-full rounded-md ring-offset-2 ring-offset-surface-1 ${
+                  stubStyle === s ? 'ring-2 ring-accent' : 'hover:ring-2 hover:ring-line-strong'
+                }`}
+              />
+            </Tooltip>
+          ))}
+        </div>
+        <p className="mt-1.5 text-xs text-text-faint">{STUB_STYLE_LABELS[stubStyle]}</p>
+      </fieldset>
       <div className="border-t border-line pt-2">
         <Switch checked={tintOn} onChange={setTint} label="Tint posters by event" helper="A soft color on each poster, the same for every year of a series." />
       </div>

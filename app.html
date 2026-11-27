@@ -12,15 +12,17 @@
     <script>
       // Apply the saved theme before the app draws (same keys as src/services/theme.ts).
       (function () {
-        var mode = 'dark', accent = 'violet';
+        var mode = 'dark', accent = 'violet', stub = 'original';
         try {
           mode = localStorage.getItem('livearchive.themeMode.v1') || mode;
           accent = localStorage.getItem('livearchive.accent.v1') || accent;
+          stub = localStorage.getItem('livearchive.stubStyle.v1') || stub;
         } catch (e) {}
         var light = mode === 'light' || (mode === 'system' && matchMedia('(prefers-color-scheme: light)').matches);
         var root = document.documentElement;
         root.dataset.theme = light ? 'light' : 'dark';
         root.dataset.accent = accent;
+        root.dataset.stub = stub;
         if (light) document.querySelector('meta[name="theme-color"]').setAttribute('content', '#f7f7f8');
       })();
     </script>
@@ -31,7 +33,7 @@
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..500;1,6..72,300..500&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..500;1,6..72,300..500&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Anton&family=VT323&family=Rubik+Mono+One&family=Special+Elite&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
   </head>
   <body>
     <div id="root"></div>
