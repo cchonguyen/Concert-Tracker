@@ -30,7 +30,7 @@ interface Selection {
   band: string;
 }
 
-const PALETTE = [
+export const PALETTE = [
   'var(--accent, #e11d48)',
   '#38bdf8',
   '#34d399',

@@ -27,6 +27,7 @@ import { actSets, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
 import { LineupTable } from './LineupTable';
+import { LineupDna } from './LineupDna';
 import { EventSources, sourceHighlightKey } from './EventSources';
 import { LogView } from './LogView';
 import { pendingReplacement } from '../services/reviewRows';
@@ -2406,6 +2407,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               }
               onReview={() => setReviewing(true)}
             />
+          )}
+          {lineupActs.length > 0 && (
+            <LineupDna eventId={event.id} refreshKey={`${edition?.id ?? ''}:${lineupActs.length}`} />
           )}
           {lineupActs.length > 0 && (
             <LineupTable
