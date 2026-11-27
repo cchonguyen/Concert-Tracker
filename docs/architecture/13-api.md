@@ -62,6 +62,8 @@ Part of [ARCHITECTURE.md](../../ARCHITECTURE.md).
 | `POST /api/manage/canonical/artists/:key/merge` | Owner only. Merge this artist into `into` (an artist key); the target's MBID wins, else the source's |
 | `POST /api/manage/canonical/artists/:key/aliases` | Owner only. Add an AKA (`name`) |
 | `DELETE /api/manage/canonical/artists/:key/aliases?name=` | Owner only. Remove an AKA |
+| `POST /api/manage/canonical/artist-cleanup/preview` | Owner only. Dry-run preview of a 15-column artist entity cleanup CSV (`canonical_artist_cleanup(..., p_dry_run => true)`, migration 0061) |
+| `POST /api/manage/canonical/artist-cleanup/apply` | Owner only. Single-transaction apply of a 15-column artist entity cleanup CSV (`canonical_artist_cleanup(..., p_dry_run => false)`, migration 0061) |
 | `POST /api/lookups/:id/run` | Retry now |
 | `POST /api/lookups/:id/stop` | Owner only: stop a queued or waiting lookup (it becomes `failed`, "Stopped by you."); Retry still works |
 | `POST /api/lookups/:id/confirm` | Save the reviewed lineup and learning data, and the event's seen acts |

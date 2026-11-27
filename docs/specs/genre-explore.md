@@ -207,23 +207,23 @@ Each slice is one pull request, at most 5 files apart from docs. Run `npm run li
 
 | Slice | What | Tag | Ideas |
 | --- | --- | --- | --- |
-| 37.1 | This spec, listed in `docs/README.md` and `.spec/PROGRESS.md` | docs | all |
-| 37.2 | Explore strip: one Timeline tab with the view switch; Home card; nav docs and tests | CORE | section 3 |
-| 37.3 | `genreInsights.ts` part 1: period, artists behind, rising, cooling, gone quiet, coming up | CORE | 1, 2, 6 |
-| 37.4 | `genreInsights.ts` part 2: firsts, milestones, new this year, range, label, by year, story line, kind, season, year genres, people, tree | CORE | 3, 4, 5, 7, 9, 10, 11 |
-| 37.5 | Ranking switch (Artists, Genres, People shell) and Genres ranking with artists behind; Stats card shrinks to top 3 | UI | 1 |
-| 37.6 | Stats: Lately card | UI | 2, 6 |
-| 37.7 | Stats: Your genre story, part 1 (firsts, milestones, range and label) | UI | 3, 10 |
-| 37.8 | Stats: Your genre story, part 2 (over the years chart, kind and season) | UI | 5, 11 |
-| 37.9 | Year in review genre row and the Year in genres share card | UI | 4 |
-| 37.10 | Ranking, People, and the person insights line | UI | 7 |
-| 37.11 | Map genre picker | UI | 8 |
-| 37.12 | River colour by genre | UI | 5b |
-| 37.13 | Genre family tree in Ranking, Genres | UI | 9 |
+| 38.1 | This spec, listed in `docs/README.md` and `.spec/PROGRESS.md` | docs | all |
+| 38.2 | Explore strip: one Timeline tab with the view switch; Home card; nav docs and tests | CORE | section 3 |
+| 38.3 | `genreInsights.ts` part 1: period, artists behind, rising, cooling, gone quiet, coming up | CORE | 1, 2, 6 |
+| 38.4 | `genreInsights.ts` part 2: firsts, milestones, new this year, range, label, by year, story line, kind, season, year genres, people, tree | CORE | 3, 4, 5, 7, 9, 10, 11 |
+| 38.5 | Ranking switch (Artists, Genres, People shell) and Genres ranking with artists behind; Stats card shrinks to top 3 | UI | 1 |
+| 38.6 | Stats: Lately card | UI | 2, 6 |
+| 38.7 | Stats: Your genre story, part 1 (firsts, milestones, range and label) | UI | 3, 10 |
+| 38.8 | Stats: Your genre story, part 2 (over the years chart, kind and season) | UI | 5, 11 |
+| 38.9 | Year in review genre row and the Year in genres share card | UI | 4 |
+| 38.10 | Ranking, People, and the person insights line | UI | 7 |
+| 38.11 | Map genre picker | UI | 8 |
+| 38.12 | River colour by genre | UI | 5b |
+| 38.13 | Genre family tree in Ranking, Genres | UI | 9 |
 
-Order: 37.2 to 37.6 first (the reshaped tabs and the three ideas Charlie liked most), then 37.7 to 37.10, then 37.11 to 37.13.
+Order: 38.2 to 38.6 first (the reshaped tabs and the three ideas Charlie liked most), then 38.7 to 38.10, then 38.11 to 38.13.
 
 ## 10. Open checks for the builder
 
 - Do planned events carry their lineup in the browser (idea 6)? Do lineup acts' genre rows reach a member (idea 9)? If not, build without that part and say so in the PR. Don't add a route for it without asking.
-- Does Ranking, Artists already filter by a single style? If not, slice 37.5 adds a `s:` filter value next to `g:` and `u:`.
+- Does Ranking, Artists already filter by a single style? If not, slice 38.5 adds a `s:` filter value next to `g:` and `u:`.

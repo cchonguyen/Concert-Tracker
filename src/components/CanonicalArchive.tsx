@@ -24,6 +24,7 @@ import { CheckDetails, type Suggestion } from './CheckDetails';
 import { LineupReview } from './LineupReview';
 import { EditionNameGaps } from './EditionNameGaps';
 import { VenueFillPanel } from './VenueFillPanel';
+import { ArtistCleanupPanel } from './ArtistCleanupPanel';
 import { MergeEditionModal } from './MergeEditionModal';
 import { usePlaceAutofill } from './PlaceFields';
 import { SuggestInput } from './SuggestInput';
@@ -226,6 +227,7 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
 
   return (
     <section className="space-y-2">
+      <ArtistCleanupPanel onApplied={() => void loadList()} />
       {noticeLine}
       {error && <p role="alert" className="text-sm text-bad">{error}</p>}
       {artists === null ? (

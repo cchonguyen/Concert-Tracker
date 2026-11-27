@@ -1,5 +1,6 @@
 import type { VenueLocation, VenueLocationResult } from '../server/canon/venueLocation';
 import type { VenueFillPlan, VenueFillResult } from '../server/canon/venueFill';
+import type { ArtistCleanupReport, ArtistCleanupRow } from '../server/entities/artistCleanupCsv';
 import type { Edition, EditionInference, EditionWeekend, InferenceField, LookupJob, SeriesKind, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
 import type { InferredField } from '../server/canon/inferences';
 import type { InferredBilling } from '../server/canon/inferredBilling';
@@ -707,6 +708,10 @@ export const canonicalApi = {
   inferencesForReview: () => request<{ inferences: ReviewInference[] }>('/api/manage/inferences'),
   confirmInference: (id: string) => request<{ inference: EditionInference }>(`/api/manage/inferences/${encodeURIComponent(id)}/confirm`, post({})),
   rejectInference: (id: string) => request<{ rows: EditionInference[] }>(`/api/manage/inferences/${encodeURIComponent(id)}/reject`, post({})),
+  artistCleanupPreview: (rows: ArtistCleanupRow[]) =>
+    request<ArtistCleanupReport>('/api/manage/canonical/artist-cleanup/preview', post({ rows })),
+  artistCleanupApply: (rows: ArtistCleanupRow[]) =>
+    request<ArtistCleanupReport>('/api/manage/canonical/artist-cleanup/apply', post({ rows })),
   venueFillPlan: () => request<VenueFillPlan>('/api/manage/canonical/venue-fill'),
   venueFillApply: (body: { editionIds?: string[]; picks?: Array<{ editionId: string; location: VenueLocation }> }) =>
     request<VenueFillResult>('/api/manage/canonical/venue-fill', post(body)),
