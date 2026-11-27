@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" />
-    <title>LiveArchive · Remember every show you went to</title>
+    <title>LiveArchive · Every show. Every act. Every friend there.</title>
     <meta name="description" content="Remember every show you went to and everyone you saw there. A personal concert log that reads lineups from their sources and never guesses." />
     <link rel="canonical" href="__SITE_ORIGIN__/" />
     <meta property="og:title" content="LiveArchive" />
@@ -25,163 +25,362 @@
     </script>
     <style>
       :root {
-        --bg: #0e0e11;
-        --surface-1: #141418;
-        --surface-2: #1a1a1f;
-        --ink: #ededf0;
-        --muted: #a1a1aa;
-        --accent: #c4b5fd;
-        --accent-fill: #a78bfa;
-        --on-accent: #0e0e11;
-        --line: #2a2a31;
-        --line-strong: #3d3d46;
+        --bg: #0b0b0e; --surface: #141418; --ink: #ededf0; --muted: #a1a1aa; --line: #2a2a31; --line-strong: #3d3d46;
+        --violet: #a78bfa; --violet-soft: #c4b5fd; --violet-deep: #7c3aed; --pink: #f472b6; --pink-soft: #f9a8d4;
+        --paper: #f4efe6; --paper-ink: #121016;
       }
-      :root[data-theme="light"] {
-        --bg: #f7f7f8;
-        --surface-1: #ffffff;
-        --surface-2: #f7f7f8;
-        --ink: #18181b;
-        --muted: #52525b;
-        --accent: #6d28d9;
-        --accent-fill: #7c3aed;
-        --on-accent: #ffffff;
-        --line: #e4e4e7;
-        --line-strong: #c4c4cc;
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+      a { color: var(--violet-soft); }
+      .serif { font-family: 'Newsreader', ui-serif, Georgia, serif; }
+      .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+      .wrap { position: relative; max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+      main { overflow-x: clip; }
+      html, body { overflow-x: clip; }
+      .bg { position: fixed; inset: 0; width: 100%; height: 100%; opacity: .16; pointer-events: none; z-index: -1; animation: drift 50s ease-in-out infinite alternate; transform-origin: 50% 30%; }
+      .glow { position: absolute; top: -200px; left: 0; right: 0; height: 700px; background: radial-gradient(450px 350px at 50% 50%, rgba(124,58,237,.45), transparent); animation: glow 6s ease-in-out infinite; pointer-events: none; z-index: -1; }
+      @keyframes drift { from { transform: scale(1.15); } to { transform: scale(1.4) translate(-7%, -5%) rotate(5deg); } }
+      @keyframes glow { 0%,100% { opacity: .45; } 50% { opacity: .85; } }
+      @keyframes up { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
+      @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes paste { 0% { opacity: 0; transform: translateY(60px) rotate(var(--r,0deg)) scale(.96); } 60% { opacity: 1; transform: translateY(-6px) rotate(var(--r,0deg)); } 100% { opacity: 1; transform: rotate(var(--r,0deg)); } }
+      @keyframes stamp { 0% { opacity: 0; transform: scale(2.2) rotate(-18deg); } 60% { opacity: 1; transform: scale(.92) rotate(-12deg); } 100% { opacity: 1; transform: rotate(-12deg); } }
+      @keyframes hop { 0%,100% { transform: none; } 40% { transform: translateY(-10px) scale(1.15); } 70% { transform: translateY(2px) scale(.95); } }
+      @keyframes slidein { from { transform: translateX(100%); } to { transform: none; } }
+      /* Entrance animations wait until the element scrolls into view (.in is added by the script). */
+      .js .reveal { opacity: 0; }
+      .js .reveal.in { animation: up .8s cubic-bezier(.2,.9,.3,1.25) both; animation-delay: var(--d, 0s); }
+      .js .reveal.pasted.in { animation-name: paste; animation-timing-function: cubic-bezier(.2,.9,.3,1.4); }
+      nav.top { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; padding: 24px 0; }
+      .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--ink); text-decoration: none; }
+      .navlinks { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; font-size: 14px; }
+      .navlinks a.plain { color: var(--muted); text-decoration: none; transition: color .2s; }
+      .navlinks a.plain:hover { color: var(--ink); }
+      .btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 24px; border-radius: 4px; font-weight: 800; text-decoration: none; text-transform: uppercase; font-size: 15px; transition: transform .2s cubic-bezier(.2,.9,.3,2), background .2s, box-shadow .2s, border-color .2s; }
+      .btn:hover { transform: translateY(-3px) scale(1.04); }
+      .btn.demo { background: var(--pink); color: var(--paper-ink); }
+      .btn.demo:hover { background: var(--pink-soft); box-shadow: 0 10px 24px -10px var(--pink); }
+      .btn.small { min-height: 40px; padding: 0 16px; font-size: 13px; }
+      .btn.ghost { border: 2px solid var(--line-strong); color: var(--ink); text-transform: none; font-weight: 700; }
+      .btn.ghost:hover { background: #1a1a1f; border-color: var(--violet); }
+      .hero { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: center; padding: 56px 0 88px; }
+      h1.poster { font-weight: 800; text-transform: uppercase; font-size: clamp(48px, 7.5vw, 104px); line-height: .88; letter-spacing: -.04em; margin: 0; }
+      h1.poster .pink, h2 .pink { color: var(--pink); }
+      h1.poster .soft, h2 .soft { font-family: 'Newsreader', serif; font-weight: 400; font-style: italic; text-transform: none; letter-spacing: -.02em; color: var(--violet-soft); }
+      .lede { font-size: 19px; color: var(--muted); max-width: 34rem; margin: 26px 0 28px; }
+      .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+      .stubs { position: relative; z-index: 1; max-width: 440px; margin: 0 0 190px -90px; justify-self: end; transform: rotate(7deg); animation: fade .8s .35s both; }
+      .stub { position: relative; display: flex; background: linear-gradient(135deg, #2e1065, #1a1a1f 70%); border: 1px solid #4c1d95; border-radius: 14px; overflow: hidden; transition: transform .35s cubic-bezier(.2,.9,.3,1.4), box-shadow .35s; }
+      .stubs:hover .stub { transform: translateY(-8px) rotate(-1.2deg); box-shadow: 0 22px 40px -18px rgba(167,139,250,.55); }
+      .stub .main { flex: 1; padding: 26px; border-right: 2px dashed #6d28d9; }
+      .stub .main, .back-stub .main { position: relative; }
+      .stub .main::before, .stub .main::after, .back-stub .main::before, .back-stub .main::after { content: ""; position: absolute; right: -12px; width: 22px; height: 22px; border-radius: 50%; background: var(--bg); border: 1px solid #4c1d95; }
+      .stub .main::before, .back-stub .main::before { top: -12px; }
+      .stub .main::after, .back-stub .main::after { bottom: -12px; }
+      .stub .end { width: 120px; flex: none; padding: 24px 14px; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; transition: transform .35s cubic-bezier(.2,.9,.3,1.6); }
+      .stubs:hover .stub .end { transform: translateX(10px) rotate(6deg); }
+      .stub .kicker { font-size: 11px; letter-spacing: .2em; color: var(--violet-soft); }
+      .stub .name { font-size: 34px; line-height: 1.05; margin: 8px 0; }
+      .stub .edition { font-style: italic; color: var(--violet-soft); font-size: 20px; }
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+      .chips span { font-size: 12px; padding: 4px 10px; border-radius: 999px; }
+      .stub .where { font-size: 14px; color: var(--muted); margin-top: 18px; }
+      .back-stub { position: absolute; display: flex; background: linear-gradient(135deg, #24104d, #16161b 70%); border: 1px solid #3b1d7a; border-radius: 12px; overflow: hidden; transition: transform .5s cubic-bezier(.2,.9,.3,1.4); }
+      .back-stub .main { flex: 1; border-right: 2px dashed #4c1d95; padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+      .back-stub .main span { height: 10px; border-radius: 4px; background: #2e1a5c; }
+      .back-stub .end { width: 22%; }
+      .s2 { z-index: -1; right: 2%; top: 88%; width: 84%; height: 62%; transform: rotate(-11deg); }
+      .s3 { z-index: -2; right: 6%; top: 142%; width: 68%; height: 48%; transform: rotate(6deg); }
+      .stubs:hover .s2 { transform: rotate(-15deg) translateY(16px); }
+      .stubs:hover .s3 { transform: rotate(10deg) translateY(30px); }
+      .went { position: absolute; right: -10px; top: -26px; border: 3px solid var(--pink); color: var(--pink); font-weight: 600; padding: 6px 12px; border-radius: 6px; animation: stamp .6s .9s both; }
+      section { padding: 40px 0 80px; }
+      h2.loud { font-weight: 800; text-transform: uppercase; font-size: clamp(40px, 6vw, 56px); letter-spacing: -.03em; line-height: 1; margin: 0 0 40px; }
+      .bill { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 30px; }
+      .postit { position: relative; color: var(--paper-ink); box-shadow: 6px 8px 0 #000; transform: rotate(var(--r,0deg)); transition: transform .3s cubic-bezier(.2,.9,.3,1.8), box-shadow .3s; }
+      .postit:hover { transform: rotate(0deg) scale(1.04) translateY(-6px); box-shadow: 12px 14px 0 var(--violet-deep); z-index: 2; }
+      .tape { position: absolute; top: -10px; left: 20px; width: 64px; height: 20px; background: rgba(244,239,230,.6); transform: rotate(-6deg); transform-origin: 100% 50%; transition: transform .35s cubic-bezier(.2,.9,.3,1.8); }
+      .postit:hover .tape { transform: rotate(-22deg) translate(-6px,-8px); }
+      .tape.pink { background: rgba(244,114,182,.8); }
+      .postit .slot { font-size: 12px; margin-top: 14px; letter-spacing: .1em; transition: letter-spacing .3s, color .3s; }
+      .postit:hover .slot { letter-spacing: .3em; color: var(--violet-deep); }
+      .postit:hover .icon { animation: hop .55s cubic-bezier(.2,.9,.3,1.6); }
+      .bill .postit { padding: 24px; }
+      .bill h3 { font-weight: 800; text-transform: uppercase; font-size: 26px; line-height: .95; margin: 6px 0 12px; letter-spacing: -.02em; }
+      .bill p { margin: 0; line-height: 1.5; font-weight: 500; }
+      .split { display: flex; flex-wrap: wrap; gap: 40px 48px; align-items: center; }
+      .split > .rows { flex: 1 1 420px; min-width: 0; }
+      .row { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 16px; align-items: center; padding: 20px 6px; border-bottom: 1px solid var(--line); transition: background .25s, padding-left .3s cubic-bezier(.2,.9,.3,1.6); }
+      .row:hover { background: linear-gradient(90deg, rgba(167,139,250,.16), transparent); padding-left: 18px; }
+      .row .ic { width: 46px; height: 46px; border-radius: 12px; background: #1e1b2e; display: flex; align-items: center; justify-content: center; transition: transform .3s cubic-bezier(.2,.9,.3,2); }
+      .row:hover .ic { transform: scale(1.2) rotate(-8deg); }
+      .row h3 { font-family: 'Newsreader', serif; font-weight: 400; font-size: 24px; margin: 0; display: inline; }
+      .row .tag { font-size: 11px; color: var(--violet); letter-spacing: .12em; margin-left: 10px; }
+      .row p { margin: 6px 0 0; color: var(--muted); line-height: 1.55; }
+      .carousel { position: relative; transform: rotate(2deg); flex: 1 1 460px; min-width: 0; align-self: flex-start; background: var(--paper); padding: 14px 14px 0; box-shadow: 10px 12px 0 var(--violet-deep); }
+      .carousel.reveal.in { animation-name: fade; }
+      .carousel .tape { left: 40%; width: 110px; height: 28px; top: -14px; z-index: 1; }
+      .viewport { overflow: hidden; }
+      .track { display: flex; transition: transform .7s cubic-bezier(.6,0,.2,1); }
+      .track img { flex: 0 0 100%; width: 100%; height: 460px; object-fit: cover; display: block; }
+      .carousel .bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 4px; color: var(--paper-ink); }
+      .carousel .caption { font-weight: 800; text-transform: uppercase; font-size: 14px; }
+      .dots { display: flex; gap: 6px; }
+      .dots button { width: 10px; height: 10px; border-radius: 999px; border: 0; padding: 0; cursor: pointer; background: #c9c1b3; transition: width .3s, background .3s; }
+      .dots button[aria-current="true"] { width: 26px; background: var(--violet-deep); }
+      .data-note { flex: 0 1 380px; background: var(--paper); padding: 40px 36px; box-shadow: 10px 12px 0 var(--violet-deep); }
+      .data-note .tape { left: auto; right: 50px; top: -14px; width: 110px; height: 28px; transform: rotate(5deg); transform-origin: 0 50%; }
+      .data-note h2 { font-weight: 800; text-transform: uppercase; font-size: 56px; line-height: .92; letter-spacing: -.03em; margin: 12px 0 0; }
+      .doors { text-align: center; padding: 20px 0 100px; }
+      .doors h2 { font-weight: 800; text-transform: uppercase; font-size: clamp(48px, 8vw, 96px); letter-spacing: -.04em; line-height: .9; margin: 0 0 28px; }
+      footer { border-top: 1px solid var(--line); padding: 24px 0 48px; display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; font-size: 14px; color: var(--muted); }
+      footer a { display: inline-flex; align-items: center; min-height: 44px; }
+      .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(3px); z-index: 10; }
+      .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100%); background: var(--surface); border-left: 1px solid var(--line-strong); z-index: 11; padding: 24px 28px 40px; overflow-y: auto; box-shadow: -30px 0 60px -20px rgba(124,58,237,.5); animation: slidein .45s cubic-bezier(.2,.9,.3,1.1) both; }
+      .drawer[hidden], .scrim[hidden] { display: none; }
+      .drawer .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 14px; position: sticky; top: -24px; background: var(--surface); }
+      .drawer .head h2 { font-family: 'Newsreader', serif; font-weight: 400; font-size: 32px; margin: 0; }
+      .drawer .close { width: 44px; height: 44px; border-radius: 999px; border: 1px solid var(--line-strong); background: none; color: var(--ink); cursor: pointer; font-size: 18px; }
+      .drawer .body { color: #cfcfd6; font-size: 15px; }
+      .drawer .body h1 { display: none; }
+      .drawer .body h2 { font-family: 'Newsreader', serif; font-weight: 400; font-size: 22px; margin: 24px 0 8px; color: var(--ink); }
+      @media (max-width: 760px) {
+        .hero { grid-template-columns: 1fr; gap: 40px; padding-top: 32px; }
+        .stubs { margin: 0; justify-self: start; width: 78%; transform: rotate(3deg); }
+        .s2 { right: -22%; top: 8%; width: 70%; height: 84%; transform: rotate(9deg); }
+        .s3 { right: -34%; top: 16%; width: 56%; height: 68%; transform: rotate(16deg); }
+        .stubs:hover .s2, .stubs:hover .s3 { transform: none; }
+        .track img { height: 300px; }
+        .data-note h2 { font-size: 44px; }
+        .stub .end { width: 86px; }
+        .stub .end svg { width: 60px; }
       }
-      @media (prefers-color-scheme: light) {
-        :root:not([data-theme="dark"]) {
-          --bg: #f7f7f8;
-          --surface-1: #ffffff;
-          --surface-2: #f7f7f8;
-          --ink: #18181b;
-          --muted: #52525b;
-          --accent: #6d28d9;
-          --accent-fill: #7c3aed;
-          --on-accent: #ffffff;
-          --line: #e4e4e7;
-          --line-strong: #c4c4cc;
-        }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation: none !important; transition: none !important; }
+        .js .reveal { opacity: 1; }
       }
-      body {
-        margin: 0;
-        background: var(--bg);
-        color: var(--ink);
-        font: 16px/1.6 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
-        -webkit-font-smoothing: antialiased;
-      }
-      main { max-width: 56rem; margin: 0 auto; padding: 0 16px 64px; }
-      a { color: var(--accent); }
-      header, section { padding: 48px 0; border-bottom: 1px solid var(--line); }
-      header { padding-top: 64px; }
-      h1, h2 {
-        font-family: 'Newsreader', ui-serif, Georgia, serif;
-        font-weight: 400;
-        letter-spacing: -0.015em;
-      }
-      h1 { font-size: clamp(2.15rem, 6vw, 3.35rem); line-height: 1.08; margin: 0 0 16px; }
-      h2 { font-size: 1.65rem; line-height: 1.2; margin: 0 0 18px; }
-      h3 { font-size: 1rem; font-weight: 600; margin: 0 0 8px; color: var(--ink); }
-      p { margin: 0 0 12px; }
-      .lede { font-size: 1.15rem; color: var(--muted); max-width: 40rem; }
-      .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
-      .button {
-        display: inline-flex;
-        align-items: center;
-        min-height: 44px;
-        padding: 0 18px;
-        border-radius: 8px;
-        border: 1px solid var(--line-strong);
-        background: var(--surface-1);
-        color: var(--ink);
-        font-weight: 500;
-        text-decoration: none;
-      }
-      .button:hover { background: var(--surface-2); }
-      .button.primary {
-        background: var(--accent-fill);
-        border-color: transparent;
-        color: var(--on-accent);
-        font-weight: 600;
-      }
-      .button.primary:hover { filter: brightness(1.08); }
-      .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-      .card {
-        background: var(--surface-1);
-        border: 1px solid var(--line-strong);
-        border-radius: 12px;
-        padding: 18px;
-        box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
-      }
-      .card p { color: var(--muted); font-size: 0.95rem; margin: 0; }
-      footer { padding: 32px 0; color: var(--muted); font-size: 0.9rem; }
-      footer nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
     </style>
   </head>
   <body>
-    <main>
-      <header id="about">
-        <img src="/logo.svg" alt="" width="64" height="64" style="display: block; margin-bottom: 16px" />
-        <h1>LiveArchive</h1>
-        <p class="lede">Remember every show you went to and everyone you saw there.</p>
-        <p>Type one line about a concert or festival. LiveArchive finds the date, venue and lineup from the sources it reads, shows where each name came from, and keeps your record of who you saw.</p>
-        <div class="actions">
-          <a class="button primary" href="/demo">See the demo</a>
-          <a class="button" href="/app">Log in (invite only)</a>
+    <svg class="bg" aria-hidden="true" viewBox="0 0 1200 1200" preserveAspectRatio="xMidYMid slice">
+      <filter id="topo"><feTurbulence type="fractalNoise" baseFrequency=".004" numOctaves="2" seed="7" /><feComponentTransfer><feFuncA type="discrete" tableValues="0 1 0 1 0 1 0 1 0 1 0 1 0" /></feComponentTransfer><feMorphology operator="erode" radius="1" /><feColorMatrix values="0 0 0 0 .45  0 0 0 0 .35  0 0 0 0 .85  0 0 0 .5 0" /></filter>
+      <rect width="1200" height="1200" filter="url(#topo)" />
+    </svg>
+    <div class="glow" aria-hidden="true"></div>
+    <div class="wrap">
+      <nav class="top" aria-label="Main">
+        <a class="brand" href="/"><img src="/logo.svg" alt="" width="32" height="32" />LiveArchive</a>
+        <div class="navlinks">
+          <a class="plain" href="#features">Features</a>
+          <a class="plain" href="#your-data">Your data</a>
+          <a class="btn demo small" href="/demo">See the demo</a>
         </div>
-      </header>
+      </nav>
 
-      <section>
-        <h2>How it works</h2>
-        <div class="grid">
-          <div class="card"><h3>1. Type one line</h3><p>"Portola 2025" or "Coachella, April". Text the app cannot place stays in the name, so nothing is guessed.</p></div>
-          <div class="card"><h3>2. Read the lineup</h3><p>Lineups come from the sources that publish them, such as festival timetables, promoter pages and Ticketmaster. Each act links back to where it was read.</p></div>
-          <div class="card"><h3>3. Tick who you saw</h3><p>Nothing joins your record until you tick it. Set times, stages and back-to-back sets are kept only where a source gives them.</p></div>
-        </div>
-      </section>
+      <main>
+        <header class="hero" id="about">
+          <div>
+            <h1 class="poster reveal pasted">Every show.<br /><span class="pink">Every act.</span><br /><span class="soft">Every friend there.</span></h1>
+            <p class="lede reveal" style="--d: .15s">Your ticket emails sync in, one line covers the rest, and LiveArchive fills in lineups, genres, weather and series, with a source for every word.</p>
+            <div class="actions reveal" style="--d: .25s">
+              <a class="btn demo" href="/demo">See the demo</a>
+              <a class="btn ghost" href="/app">Log in (Request Invite)</a>
+            </div>
+          </div>
+          <div class="stubs" aria-label="Sample ticket stub">
+            <div class="back-stub s2" aria-hidden="true"><div class="main"><span style="width: 30%"></span><span style="width: 70%; height: 16px"></span><span style="width: 50%"></span></div><div class="end"></div></div>
+            <div class="back-stub s3" aria-hidden="true"><div class="main"><span style="width: 30%"></span><span style="width: 70%; height: 16px"></span><span style="width: 50%"></span></div><div class="end"></div></div>
+            <div class="stub">
+              <div class="main">
+                <div class="kicker mono">FESTIVAL · 2025</div>
+                <div class="name serif">Velvet Orchards</div>
+                <div class="edition serif">Mesa Lights Festival 2025</div>
+                <div class="chips">
+                  <span style="background: #312e81; color: #e0e7ff">Indie electronic</span>
+                  <span style="background: #3b0764; color: #f5d0fe">Year 3 of 3</span>
+                  <span style="background: #1e3a8a; color: #dbeafe">27°C, clear</span>
+                </div>
+                <div class="where">19 Sep 2025 · Canyon Field · Austin, TX</div>
+              </div>
+              <div class="end mono" aria-hidden="true">
+                <div style="font-size: 11px; color: var(--violet-soft)">ADMIT</div>
+                <div style="font-size: 36px; font-weight: 600">2</div>
+                <svg width="84" height="40"><g fill="#ededf0"><rect x="0" width="3" height="40" /><rect x="6" width="1" height="40" /><rect x="10" width="4" height="40" /><rect x="17" width="2" height="40" /><rect x="22" width="1" height="40" /><rect x="26" width="5" height="40" /><rect x="34" width="2" height="40" /><rect x="39" width="1" height="40" /><rect x="43" width="3" height="40" /><rect x="49" width="1" height="40" /><rect x="53" width="4" height="40" /><rect x="60" width="2" height="40" /><rect x="65" width="1" height="40" /><rect x="69" width="5" height="40" /><rect x="77" width="2" height="40" /><rect x="81" width="3" height="40" /></g></svg>
+              </div>
+            </div>
+            <div class="went mono" aria-hidden="true">WENT ✓</div>
+          </div>
+        </header>
 
-      <section>
-        <h2>What you get</h2>
-        <div class="grid">
-          <div class="card"><h3>Summary and Table</h3><p>Every event as a row, with filters, sorting and CSV export.</p></div>
-          <div class="card"><h3>Timeline</h3><p>Your shows laid out by month, year and season.</p></div>
-          <div class="card"><h3>Map</h3><p>A dot for each city you went to, with year playback.</p></div>
-          <div class="card"><h3>Stats and Ranking</h3><p>Events per year, streaks, your most-seen acts and series you went back to.</p></div>
-          <div class="card"><h3>Share</h3><p>A read-only page of your history that you can send to a friend.</p></div>
-          <div class="card"><h3>Google Sheets</h3><p>An optional one-way copy of your log into a sheet you choose.</p></div>
-        </div>
-      </section>
+        <section id="features">
+          <h2 class="loud">Tonight's <span class="pink">bill</span></h2>
+          <div class="bill">
+            <div class="postit reveal pasted" style="--r: -2deg; --d: .05s; background: #f4efe6">
+              <div class="tape"></div>
+              <svg class="icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#121016" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18v12H3z M3 7l9 6 9-6" /></svg>
+              <div class="slot mono">HEADLINER</div>
+              <h3>Email sync</h3>
+              <p>Connect Gmail and your ticket confirmations line up as shows to tick. Dates, venues, even what you paid.</p>
+            </div>
+            <div class="postit reveal pasted" style="--r: 1.5deg; --d: .15s; background: #c4b5fd">
+              <div class="tape"></div>
+              <svg class="icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#121016" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13 M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0z M21 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" /></svg>
+              <div class="slot mono">SPECIAL GUEST</div>
+              <h3>Real lineups</h3>
+              <p>Read from festival timetables and promoter pages, each act quoted from its source.</p>
+            </div>
+            <div class="postit reveal pasted" style="--r: -1deg; --d: .25s; background: #f9a8d4">
+              <div class="tape"></div>
+              <svg class="icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#121016" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 18a5 5 0 1 0-9.9-1H6a3 3 0 0 0 0 6h11" /></svg>
+              <div class="slot mono">SUPPORT</div>
+              <h3>Genres + weather</h3>
+              <p>Genres for every act you saw, and the weather on the day you were there.</p>
+            </div>
+            <div class="postit reveal pasted" style="--r: 2.5deg; --d: .35s; background: #fde68a">
+              <div class="tape"></div>
+              <svg class="icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#121016" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4 M3 11V9a4 4 0 0 1 4-4h14 M7 23l-4-4 4-4 M21 13v2a4 4 0 0 1-4 4H3" /></svg>
+              <div class="slot mono">DOORS</div>
+              <h3>Series + streaks</h3>
+              <p>Year three at the same festival? It notices, and counts the streak.</p>
+            </div>
+          </div>
+        </section>
 
-      <section>
-        <h2>Honest by design</h2>
-        <div class="grid">
-          <div class="card"><h3>It never guesses a lineup</h3><p>A date, venue, act or set time is stored only when a source gives it. Missing data stays missing, and the app says so.</p></div>
-          <div class="card"><h3>Every act has a source</h3><p>Each name links to the page it came from, with the exact words that named it.</p></div>
-          <div class="card"><h3>Ticket emails stay out of AI</h3><p>Ticket emails are read by code written for each seller. An AI model never reads them.</p></div>
-        </div>
-        <p style="margin-top: 16px">Lineup sources are credited on each event. LiveArchive does not sell tickets.</p>
-      </section>
+        <section>
+          <h2 class="loud" style="border-bottom: 1px solid var(--line-strong); padding-bottom: 10px; margin-bottom: 8px">What it <span class="soft">does</span></h2>
+          <div class="split">
+            <div class="rows">
+              <div class="row reveal" style="--d: .05s"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18v12H3z M3 7l9 6 9-6" /></svg></div><div><h3>Email sync</h3><span class="tag mono">SET AND FORGET</span><p>Connect Gmail once. Ticket confirmations become shows waiting for a tick, with the date, venue and price filled in.</p></div></div>
+              <div class="row reveal" style="--d: .12s"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" /></svg></div><div><h3>One-line entry</h3><span class="tag mono">TEN SECONDS</span><p>Type it the way you would text a friend. The date, venue and city are placed for you; anything else stays as you wrote it.</p></div></div>
+              <div class="row reveal" style="--d: .19s"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13 M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" /></svg></div><div><h3>Lineups with receipts</h3><span class="tag mono">SOURCED</span><p>Every act carries the quote that named it. Nothing is guessed, and missing stays missing.</p></div></div>
+              <div class="row reveal" style="--d: .26s"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 18a5 5 0 1 0-9.9-1H6a3 3 0 0 0 0 6h11" /></svg></div><div><h3>Genres and weather</h3><span class="tag mono">AUTOMATIC</span><p>Genres for every act, and the historic weather for the day and city.</p></div></div>
+              <div class="row reveal" style="--d: .33s"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4 M3 11V9a4 4 0 0 1 4-4h14" /></svg></div><div><h3>Series and streaks</h3><span class="tag mono">YEAR OVER YEAR</span><p>The festival you keep going back to is linked across the years.</p></div></div>
+            </div>
+            <figure class="carousel reveal" style="margin: 0" aria-roledescription="carousel" aria-label="Screens from the sample archive">
+              <div class="tape pink"></div>
+              <div class="viewport">
+                <div class="track">
+                  <img src="./src/landing/detail.jpg" alt="Event detail: the ticket, lineup and who you saw" style="object-position: 72% 20%" />
+                  <img src="./src/landing/home.jpg" alt="Home: your last show as a ticket stub" style="object-position: 50% 55%" loading="lazy" />
+                  <img src="./src/landing/timeline.jpg" alt="Timeline: every year, every night out" style="object-position: 50% 35%" loading="lazy" />
+                  <img src="./src/landing/ranking.jpg" alt="Ranking: the acts you have seen most" style="object-position: 40% 15%" loading="lazy" />
+                </div>
+              </div>
+              <figcaption class="bar"><span class="caption" aria-live="polite">Event: the ticket, lineup and who you saw</span><span class="dots"></span></figcaption>
+            </figure>
+          </div>
+        </section>
 
-      <section>
-        <h2>Your privacy</h2>
-        <p>Your log is yours. Companions and notes can be encrypted in your browser, so the server never holds the key. The <a href="/privacy">privacy page</a> says exactly what is stored, what Google data is read, and what other services receive.</p>
-      </section>
+        <section id="your-data">
+          <div class="split">
+            <div class="data-note postit reveal pasted" style="--r: -3deg">
+              <div class="tape pink"></div>
+              <svg class="icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#121016" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z M9 12l2 2 4-4" /></svg>
+              <div class="slot mono">NO SECURITY AT THE DOOR NEEDED</div>
+              <h2>Your data<br />is yours.</h2>
+            </div>
+            <div class="rows">
+              <div class="row reveal" style="--d: .05s"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11h14v10H5z M8 11V7a4 4 0 0 1 8 0v4" /></svg></div><div><h3>Encrypted in your browser</h3><span class="tag mono">YOUR KEY</span><p>Companions and notes can be locked with a key the server never holds.</p></div></div>
+              <div class="row reveal" style="--d: .13s"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18v12H3z M3 7l9 6 9-6" /></svg></div><div><h3>Ticket emails never meet AI</h3><span class="tag mono">INBOX STAYS PRIVATE</span><p>Code written for each seller reads them, and you pick which become shows.</p></div></div>
+              <div class="row reveal" style="--d: .21s"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12 M7 10l5 5 5-5 M5 21h14" /></svg></div><div><h3>Take it all with you</h3><span class="tag mono">EXPORT</span><p>Download a CSV, or keep a live copy in your own Google Sheet.</p></div></div>
+              <div class="row reveal" style="--d: .29s"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1 M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" /></svg></div><div><h3>Never guessed</h3><span class="tag mono">SOURCED</span><p>Each act links to the page that named it.</p></div></div>
+            </div>
+          </div>
+        </section>
 
-      <section>
-        <h2>Invite only for now</h2>
-        <p>LiveArchive is invite only. Sign-in goes through Google, and an account that is not on the invite list is shown "not invited" and gets no access. There is no sign-up form. Read the <a href="/terms">terms</a> before you use it.</p>
-        <div class="actions"><a class="button" href="/app">Log in (invite only)</a></div>
-      </section>
+        <section class="doors">
+          <h2 class="reveal pasted">Doors<br /><span class="pink">open.</span></h2>
+          <a class="btn demo" href="/demo">See the demo</a>
+        </section>
+      </main>
 
       <footer>
-        <nav>
-          <a href="/">Home</a>
-          <a href="#about">About</a>
-          <a href="/demo">Demo</a>
-          <a href="/privacy">Privacy</a>
-          <a href="/terms">Terms</a>
-          <span>© 2026 Charlie Cho Nguyen</span>
-        </nav>
+        <span>© 2026 Charlie Cho Nguyen</span>
+        <a href="/demo">Demo</a>
+        <a href="/privacy" data-drawer="Privacy">Privacy</a>
+        <a href="/terms" data-drawer="Terms">Terms</a>
+        <a href="/app">Log in (Request Invite)</a>
       </footer>
-    </main>
+    </div>
+
+    <div class="scrim" hidden></div>
+    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden>
+      <div class="head"><h2 id="drawer-title">Privacy</h2><button class="close" type="button" aria-label="Close">✕</button></div>
+      <div class="body"></div>
+    </aside>
+
+    <script>
+      (function () {
+        var doc = document.documentElement;
+        doc.classList.add('js');
+        var calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        // Entrance animations play once, when each block scrolls into view.
+        var reveals = document.querySelectorAll('.reveal');
+        if (!('IntersectionObserver' in window) || calm) {
+          reveals.forEach(function (el) { el.classList.add('in'); });
+        } else {
+          var io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+          }, { threshold: 0.15 });
+          reveals.forEach(function (el) { io.observe(el); });
+        }
+
+        // Screenshot carousel: moves on its own until someone picks a screen.
+        var track = document.querySelector('.track');
+        var slides = track.querySelectorAll('img');
+        var caption = document.querySelector('.carousel .caption');
+        var dots = document.querySelector('.carousel .dots');
+        var index = 0, timer = null;
+        function show(i) {
+          index = i;
+          track.style.transform = 'translateX(-' + i * 100 + '%)';
+          caption.textContent = slides[i].alt;
+          dots.querySelectorAll('button').forEach(function (b, k) { b.setAttribute('aria-current', k === i ? 'true' : 'false'); });
+        }
+        slides.forEach(function (img, k) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.setAttribute('aria-label', 'Show ' + img.alt.split(':')[0]);
+          b.addEventListener('click', function () { clearInterval(timer); show(k); });
+          dots.appendChild(b);
+        });
+        show(0);
+        if (!calm) timer = setInterval(function () { show((index + 1) % slides.length); }, 3500);
+
+        // Privacy and Terms open in a side drawer; the links still go to the pages without JavaScript.
+        var drawer = document.querySelector('.drawer');
+        var scrim = document.querySelector('.scrim');
+        var title = document.getElementById('drawer-title');
+        var body = drawer.querySelector('.body');
+        var opener = null;
+        function close() {
+          drawer.hidden = true; scrim.hidden = true;
+          if (opener) opener.focus();
+        }
+        document.querySelectorAll('a[data-drawer]').forEach(function (link) {
+          link.addEventListener('click', function (event) {
+            event.preventDefault();
+            opener = link;
+            title.textContent = link.dataset.drawer;
+            body.textContent = 'Loading…';
+            drawer.hidden = false; scrim.hidden = false;
+            drawer.querySelector('.close').focus();
+            fetch(link.getAttribute('href'))
+              .then(function (res) { if (!res.ok) throw new Error(String(res.status)); return res.text(); })
+              .then(function (html) {
+                var page = new DOMParser().parseFromString(html, 'text/html');
+                var main = page.querySelector('main');
+                if (main) main.querySelectorAll('footer, nav, p.top').forEach(function (n) { n.remove(); });
+                body.replaceChildren.apply(body, main ? Array.prototype.slice.call(main.childNodes) : []);
+              })
+              .catch(function () { window.location.href = link.getAttribute('href'); });
+          });
+        });
+        drawer.querySelector('.close').addEventListener('click', close);
+        scrim.addEventListener('click', close);
+        document.addEventListener('keydown', function (event) { if (event.key === 'Escape' && !drawer.hidden) close(); });
+      })();
+    </script>
   </body>
 </html>

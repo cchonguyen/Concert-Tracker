@@ -49,3 +49,6 @@ Every slice (38.x) is done; see `.spec/archive/HISTORY-2026-11.md`. 38.5 and 38.
 - [x] **Slice 41.4: Event Match maths** [CORE / DATA] eventMatch with one-step smoothing, bands, lane and nearby acts, floor (section 4). Target files: src/services/genreInsights.ts, tests/genreInsights.test.ts | Issue: #1079 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 41.5: Event Match screen** [UI / VISUAL] Match line and lineup pills (section 5). Target files: src/components/LineupDna.tsx, src/components/LineupTable.tsx, src/components/EventDetail.tsx | Issue: #1080 | Verify: npm run lint --silent
 - [x] **Slice 41.6: Release 2 docs** [UI / VISUAL] (section 6). Target files: docs/architecture/07-artist-genres.md, ARCHITECTURE.md | Issue: #1081 | Verify: npm run lint --silent && npm test --silent
+
+## Landing page 2 (docs/specs/landing-page-2.md, approved by Charlie 2026-11-27)
+- [x] **Slice 42.1: Landing page 2** [UI / VISUAL] Direction D landing page (docs/specs/landing-page-2.md). Target files: index.html, src/landing/home.jpg, src/landing/timeline.jpg, src/landing/ranking.jpg, src/landing/detail.jpg, docs/specs/landing-page-2.md, docs/architecture/18-public-pages.md | Issue: #1083 | Verify: npm run lint --silent && npm test --silent
