@@ -574,7 +574,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
       ) : (
         <>
           <div
-            className="hidden max-h-[calc(100vh-11rem)] overflow-auto border border-line-strong bg-surface-1 md:block"
+            className="relative hidden max-h-[calc(100vh-11rem)] overflow-auto border border-line-strong bg-surface-1 md:block"
             onKeyDown={(k) => {
               if (k.key !== 'ArrowUp' && k.key !== 'ArrowDown' && k.key !== 'Home' && k.key !== 'End') return;
               const target = k.target;
