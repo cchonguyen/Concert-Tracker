@@ -126,7 +126,7 @@ export function LogView({
       {!compact && (
         <section className="space-y-3">
           <div>
-            <h2 className="font-display text-xl font-normal text-text">Recently deleted</h2>
+            <h2 className="poster-head text-2xl text-text">Recently deleted</h2>
             <p className="text-xs text-text-muted">Deleted shows stay here for 90 days. Restore brings one back with everything it had.</p>
           </div>
           {trash !== null && trash.length > 0 && (
@@ -178,7 +178,7 @@ export function LogView({
       <section className="space-y-3">
         {!compact && (
           <div>
-            <h2 className="font-display text-xl font-normal text-text">Changes</h2>
+            <h2 className="poster-head text-2xl text-text">Changes</h2>
             <p className="text-xs text-text-muted">Every save, delete and restore, newest first. Kept for a year. Notes and companions show that they changed, not what they say.</p>
           </div>
         )}

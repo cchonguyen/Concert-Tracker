@@ -628,7 +628,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
         {section && <p className="text-xs text-text-muted sm:hidden">{`${SECTIONS[section].label} › ${PAGE_LABELS[shown]}`}</p>}
         {HEADED.includes(shown) && (
           <div>
-            <h1 className="font-display text-2xl font-normal text-text">{PAGE_LABELS[shown]}</h1>
+            <h1 className="poster-head text-4xl text-text">{PAGE_LABELS[shown]}</h1>
             <p className="text-xs text-text-muted">{PAGE_BLURB[shown as SubPage]}</p>
           </div>
         )}

@@ -437,7 +437,7 @@ const PlacePanel: React.FC<{ place: MapPlace; onOpen: (id: string) => void; onCl
 }) => (
   <section className="space-y-2 rounded-card border border-line bg-surface-1 p-3">
     <div className="flex items-center justify-between gap-2">
-      <h2 className="font-display text-lg font-normal text-text">
+      <h2 className="poster-head text-2xl text-text">
         {place.city} <span className="font-mono text-xs font-normal tabular-nums text-text-muted">{plural(place.events.length, 'event')}</span>
       </h2>
       <span className="flex items-center gap-3 text-xs">
