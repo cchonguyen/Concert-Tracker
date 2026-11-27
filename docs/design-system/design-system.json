@@ -487,6 +487,24 @@
       "a11y": "role=radiogroup/radio; roving tabindex; arrows move and choose."
     },
     {
+      "name": "Tabs",
+      "purpose": "Navigation between pages or views: the top Home/Library/Explore row and every page strip.",
+      "props": {
+        "label": "string",
+        "items": "{value,label,icon?,count?,compact?}[]",
+        "value": "T",
+        "onChange": "(T) => void",
+        "variant": "folder (default) | underline",
+        "panel": "page | surface-1 | surface-2"
+      },
+      "states": [
+        "open (bold, raised folder or underline, aria-current=page)",
+        "closed",
+        "changing: the folder slides and rocks like a seesaw toward where it went, the underline slides with a squash, the new tab's icon hops; all off under reduced motion"
+      ],
+      "a11y": "nav with aria-label; aria-current=page on the open tab; compact tabs keep their label as the name."
+    },
+    {
       "name": "Switch",
       "purpose": "On/off setting.",
       "props": {
