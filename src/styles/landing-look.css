@@ -1,0 +1,103 @@
+/* Landing look (docs/specs/landing-look.md): the public landing page's language as the app standard.
+   A design-system module. Components use it through the shared parts in src/components/ui/
+   (PosterHeading, PostIt, AppBackdrop, Logo, Button) and the tokens below; nothing else needs to know it exists.
+
+   Tokens
+     --la-second / --la-second-soft  The second colour: pink beside the default violet. Every accent has its
+                                     own partner, in dark and light. Tailwind: text-second, bg-second, border-second.
+     --font-poster                   The condensed poster face (Anton), always set in capitals. Tailwind: font-poster.
+     --ease-pop                      The springy ease the landing page's buttons and post-its use.
+   Every movement here stops under prefers-reduced-motion. */
+
+:root {
+  --la-second: #f472b6;
+  --la-second-soft: #f9a8d4;
+  --la-on-second: #121016;
+  --ease-pop: cubic-bezier(0.2, 0.9, 0.3, 1.8);
+  --la-backdrop-opacity: 0.07;
+  --la-postit-paper: #f4efe6;
+  --la-postit-ink: #121016;
+}
+[data-accent='indigo'] { --la-second: #fcd34d; --la-second-soft: #fde68a; }
+[data-accent='pink'] { --la-second: #a78bfa; --la-second-soft: #c4b5fd; }
+[data-accent='teal'] { --la-second: #f472b6; --la-second-soft: #f9a8d4; }
+[data-accent='orange'] { --la-second: #38bdf8; --la-second-soft: #7dd3fc; }
+:root[data-theme='light'] { --la-second: #db2777; --la-second-soft: #fbcfe8; --la-on-second: #ffffff; --la-backdrop-opacity: 0.045; }
+:root[data-theme='light'][data-accent='indigo'] { --la-second: #b45309; --la-second-soft: #fde68a; }
+:root[data-theme='light'][data-accent='pink'] { --la-second: #7c3aed; --la-second-soft: #ddd6fe; }
+:root[data-theme='light'][data-accent='teal'] { --la-second: #db2777; --la-second-soft: #fbcfe8; }
+:root[data-theme='light'][data-accent='orange'] { --la-second: #0369a1; --la-second-soft: #bae6fd; }
+
+/* Poster headings: condensed, capitals, tight. Sizes come from the component. */
+.poster-head {
+  font-family: var(--font-poster);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  line-height: 0.95;
+}
+
+/* The drifting contour background, tinted with the accent. */
+.app-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--la-accent);
+  opacity: var(--la-backdrop-opacity);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 1200' preserveAspectRatio='xMidYMid slice'%3E%3Cfilter id='t'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.004' numOctaves='2' seed='7'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='discrete' tableValues='0 1 0 1 0 1 0 1 0 1 0 1 0'/%3E%3C/feComponentTransfer%3E%3CfeMorphology operator='erode' radius='1'/%3E%3C/filter%3E%3Crect width='1200' height='1200' filter='url(%23t)'/%3E%3C/svg%3E") center / cover no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 1200' preserveAspectRatio='xMidYMid slice'%3E%3Cfilter id='t'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.004' numOctaves='2' seed='7'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='discrete' tableValues='0 1 0 1 0 1 0 1 0 1 0 1 0'/%3E%3C/feComponentTransfer%3E%3CfeMorphology operator='erode' radius='1'/%3E%3C/filter%3E%3Crect width='1200' height='1200' filter='url(%23t)'/%3E%3C/svg%3E") center / cover no-repeat;
+  transform-origin: 50% 30%;
+  animation: la-drift 50s ease-in-out infinite alternate;
+}
+@keyframes la-drift {
+  from { transform: scale(1.15); }
+  to { transform: scale(1.4) translate(-7%, -5%) rotate(5deg); }
+}
+
+/* Buttons lift and grow a little on hover, never tilt. */
+.btn-pop {
+  transition: transform 0.2s var(--ease-pop), background-color 0.2s, border-color 0.2s, box-shadow 0.2s, filter 0.2s, color 0.2s;
+}
+.btn-pop:not(:disabled):hover { transform: translateY(-2px) scale(1.03); }
+.btn-pop:not(:disabled):active { transform: scale(0.97); }
+
+/* Post-it: paper, tape, a resting tilt; it straightens and lifts on hover, and its icon hops. */
+.postit {
+  position: relative;
+  background: var(--postit-bg, var(--la-postit-paper));
+  color: var(--la-postit-ink);
+  box-shadow: 6px 8px 0 rgb(0 0 0 / 0.55);
+  transform: rotate(var(--r, 0deg));
+  transition: transform 0.3s var(--ease-pop), box-shadow 0.3s;
+}
+.postit:hover { transform: rotate(0deg) scale(1.02) translateY(-4px); box-shadow: 10px 12px 0 var(--la-accent); z-index: 2; }
+.postit-tape {
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  width: 64px;
+  height: 20px;
+  background: color-mix(in oklab, var(--la-second) 75%, transparent);
+  transform: rotate(-6deg);
+  transform-origin: 100% 50%;
+  transition: transform 0.35s var(--ease-pop);
+}
+.postit:hover .postit-tape { transform: rotate(-22deg) translate(-6px, -8px); }
+.postit:hover .postit-icon { animation: la-hop 0.55s var(--ease-pop); }
+.postit[data-tone='second'] { --postit-bg: var(--la-second-soft); }
+.postit[data-tone='accent'] { --postit-bg: var(--accent-200); }
+@keyframes la-hop {
+  0%, 100% { transform: none; }
+  40% { transform: translateY(-8px) scale(1.15); }
+  70% { transform: translateY(2px) scale(0.95); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-backdrop { animation: none; transform: scale(1.15); }
+  .btn-pop, .postit, .postit-tape { transition: none; }
+  .btn-pop:not(:disabled):hover, .btn-pop:not(:disabled):active { transform: none; }
+  .postit:hover { transform: rotate(var(--r, 0deg)); }
+  .postit:hover .postit-tape { transform: rotate(-6deg); }
+  .postit:hover .postit-icon { animation: none; }
+}

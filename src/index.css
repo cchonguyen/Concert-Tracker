@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./styles/ticket-styles.css";
+@import "./styles/landing-look.css";
 
 /*
   Themes. The interface is written in Tailwind's zinc (surfaces and text) and
@@ -353,6 +354,9 @@
   --color-warn: var(--la-warn);
   --color-bad: var(--la-bad);
   --color-perf: var(--la-perf);
+  --color-second: var(--la-second);
+  --color-second-soft: var(--la-second-soft);
+  --color-on-second: var(--la-on-second);
 }
 
 /* Type roles: Jakarta for everything people read or tap, Newsreader for headings only, Mono for dates, times, counts and prices. */
@@ -360,6 +364,7 @@
   --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
   --font-display: 'Newsreader', ui-serif, Georgia, serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-poster: 'Anton', Impact, 'Arial Narrow', sans-serif;
 }
 
 /* A just-added ledger row slides in at the top and glows for 1.5 s (design-refresh-2.md, section 4). */

@@ -1,0 +1,36 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { ACCENTS } from '../src/services/theme.ts';
+import { isPublicPath } from '../src/server/site/publicPaths.ts';
+
+const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
+const css = read('src/styles/landing-look.css');
+
+test('every accent has a second colour in dark and light', () => {
+  for (const a of ACCENTS) {
+    if (a === 'violet') continue; // the default, set on :root
+    assert.match(css, new RegExp(`^\\[data-accent='${a}'\\] \\{ --la-second:`, 'm'), `dark ${a}`);
+    assert.match(css, new RegExp(`:root\\[data-theme='light'\\]\\[data-accent='${a}'\\] \\{ --la-second:`), `light ${a}`);
+  }
+});
+
+test('every movement in the module stops under reduced motion', () => {
+  const reduced = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
+  for (const cls of ['.app-backdrop', '.btn-pop', '.postit', '.postit-icon']) assert.ok(reduced.includes(cls), cls);
+});
+
+test('the heartbeat logo is public, animated, and has a still fallback', () => {
+  const svg = read('public/logo-heartbeat.svg');
+  assert.match(svg, /<animate /);
+  assert.ok(!svg.includes('<metadata>'), 'no embedded metadata');
+  assert.ok(isPublicPath('/logo-heartbeat.svg'));
+  assert.match(read('src/components/ui/Logo.tsx'), /prefers-reduced-motion: reduce\)" srcSet="\/logo.svg"/);
+});
+
+test('index.css loads the module and exposes its tokens', () => {
+  const index = read('src/index.css');
+  assert.match(index, /@import "\.\/styles\/landing-look\.css";/);
+  assert.match(index, /--font-poster:/);
+  assert.match(index, /--color-second: var\(--la-second\);/);
+});
