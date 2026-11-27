@@ -49,12 +49,12 @@ const relationForm = (r: GenreRelation) => [r.target, r.type, r.weight, r.origin
 const pairKey = (type: string, origin: string): string => `${type}\u0000${origin}`;
 const linkKey = (source: string, target: string, type: string): string => `${source}\u0000${target}\u0000${type}`;
 
-function sameRelations(a: GenreRelation[], b: GenreRelation[]): boolean {
+export function sameRelations(a: GenreRelation[], b: GenreRelation[]): boolean {
   return JSON.stringify([...a].sort(relationOrder).map(relationForm)) === JSON.stringify([...b].sort(relationOrder).map(relationForm));
 }
 
 // The full image of a genre with its links replaced (level, group, family, tier and spellings included).
-function imageWith(g: VocabGenre, relations: GenreRelation[]): VocabGenre {
+export function imageWith(g: VocabGenre, relations: GenreRelation[]): VocabGenre {
   return {
     key: g.key,
     name: g.name,

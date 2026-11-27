@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
 import { currentMember } from '../auth/requestScope';
-import type { LineupStore } from '../lineup/store/types';
+import type { GenreVocabWriteRow, LineupStore } from '../lineup/store/types';
 import {
   ArtistGenres,
   GENRE_MAP_SETTING,
@@ -20,8 +20,10 @@ import {
   previewGenresCsv,
   undoGenresCsv,
 } from './genreCsvApply';
-import { genreCollisions } from './genreVocabulary';
-import type { GenreVocabulary } from './genreTypes';
+import { genreCollisions, genreResolver, levelOf } from './genreVocabulary';
+import type { GenreRelation, GenreVocabChange, GenreVocabulary } from './genreTypes';
+import { billsFrom, lineupCooccur, type CooccurPerformance } from './lineupCooccur';
+import { genresByArtist } from '../../services/genres';
 import {
   addGenreAlias,
   addGenreUmbrella,
@@ -41,7 +43,7 @@ import {
   setGenreRelationWeight,
   undoGenreVocabChange,
 } from './genreVocabularyManage';
-import { applyGenreRelationsCsv, previewGenreRelationsCsv } from './genreRelationsCsv';
+import { applyGenreRelationsCsv, imageWith, previewGenreRelationsCsv, sameRelations } from './genreRelationsCsv';
 import { ManageError } from '../entities/manage';
 import { eventPerformers } from './artists';
 import { normalizeName } from '../lineup/text';
@@ -144,6 +146,145 @@ async function visibleGenres(store: LineupStore): Promise<ArtistGenres[]> {
   const keys = new Set<string>(events.flatMap((e) => e.seen.map((s) => s.key)));
   for (const e of entities) if (e.kind === 'artist' && !e.mergedIntoId) keys.add(e.nameNormalized);
   return rows.filter((r) => r.source === 'added' || keys.has(r.key));
+}
+
+// Bill links (docs/specs/genre-taxonomy-release-3.md section 7). Learns 'adjacent' links from shared lineups.
+// Reads shared tables only (editions, performances, artist_genres, the vocabulary). Apply replaces the
+// origin 'lineup_cooccur' rows through writeGenreVocabulary, the same write the links CSV uses, so undo
+// is the existing genre_changes undo. Other origins are never touched.
+const LINEUP_ORIGIN = 'lineup_cooccur';
+const LINEUP_ACTOR = 'system:lineup-cooccur';
+const LINEUP_REASON = 'Learned from shared lineups';
+// Every edition is read: the job needs every shared bill.
+const LINEUP_EDITIONS_LIMIT = 100000;
+
+export interface LineupLinkAdded {
+  source: string;
+  target: string;
+  sourceName: string;
+  targetName: string;
+  weight: number;
+  bills: number;
+}
+
+export interface LineupLinksPreview {
+  billsUsed: number;
+  genres: number;
+  added: number;
+  removed: number;
+  changed: number;
+  unchanged: number;
+  addedLinks: LineupLinkAdded[];
+}
+
+const pairId = (a: string, b: string): string => (a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`);
+
+// Plans the lineup links from the shared data. Writes nothing.
+async function planLineupLinks(store: LineupStore): Promise<{ preview: LineupLinksPreview; after: GenreVocabWriteRow[] }> {
+  const [vocab, rows, map, editions] = await Promise.all([
+    store.getGenreVocabulary(),
+    store.listArtistGenres(),
+    store.getSetting<GenreMapEntry[]>(GENRE_MAP_SETTING),
+    store.listEditions(LINEUP_EDITIONS_LIMIT),
+  ]);
+  const genreMap = map ?? [];
+  const byKey = new Map(vocab.genres.map((g) => [g.key, g]));
+  const isGenre = (k: string): boolean => {
+    const g = byKey.get(k);
+    return g !== undefined && levelOf(g) === 'genre';
+  };
+
+  // The row the app shows for each act: owner, then music-story, then MusicBrainz. Member additions are not used.
+  const base = rows.filter((r) => r.source !== 'added');
+  const shown = genresByArtist(base, vocab, genreMap);
+  const resolver = genreResolver(vocab, genreMap, base);
+  const genresOf = (artistKey: string): string[] => {
+    const row = shown.get(artistKey);
+    if (!row) return [];
+    return row.genres.map((g) => resolver.resolve(g.style).key).filter((k) => k !== '');
+  };
+
+  // Pairs never learned: every curated link (any type) and the owner's artist_cooccur adjacent pairs.
+  // Stored lineup_cooccur rows are the ones this job replaces.
+  const skip = new Set<string>();
+  const current = new Map<string, { source: string; target: string; weight: number }>();
+  for (const g of vocab.genres) {
+    for (const r of g.relations ?? []) {
+      if (r.origin === 'curated' || (r.type === 'adjacent' && r.origin === 'artist_cooccur')) skip.add(`${g.key}|${r.target}`);
+      if (r.type === 'adjacent' && r.origin === LINEUP_ORIGIN) current.set(pairId(g.key, r.target), { source: g.key, target: r.target, weight: r.weight });
+    }
+  }
+
+  const perfs: CooccurPerformance[] = editions.flatMap((e) =>
+    (e.performances ?? []).map((p) => ({ editionId: e.id, artistKey: p.artistKey, stages: p.stages ?? [], status: p.status, slotId: p.slotId })),
+  );
+  const result = lineupCooccur(billsFrom(perfs), genresOf, { curated: skip });
+  // Only links whose both genres are genre rows in the vocabulary are kept.
+  const links = result.links.filter((l) => isGenre(l.source) && isGenre(l.target));
+
+  const next = new Set<string>();
+  const addedLinks: LineupLinkAdded[] = [];
+  let changed = 0;
+  let unchanged = 0;
+  const fresh = new Map<string, GenreRelation[]>();
+  for (const l of links) {
+    const id = pairId(l.source, l.target);
+    next.add(id);
+    const old = current.get(id);
+    if (!old) {
+      addedLinks.push({
+        source: l.source,
+        target: l.target,
+        sourceName: byKey.get(l.source)?.name ?? l.source,
+        targetName: byKey.get(l.target)?.name ?? l.target,
+        weight: l.weight,
+        bills: l.bills,
+      });
+    } else if (old.weight !== l.weight) changed++;
+    else unchanged++;
+    const list = fresh.get(l.source) ?? [];
+    list.push({ target: l.target, type: 'adjacent', weight: l.weight, origin: LINEUP_ORIGIN });
+    fresh.set(l.source, list);
+  }
+  const removed = [...current.keys()].filter((id) => !next.has(id)).length;
+
+  // Each genre whose links change gets a full image, built the same way the links CSV builds it.
+  const after: GenreVocabWriteRow[] = [];
+  for (const g of vocab.genres) {
+    const stored = g.relations ?? [];
+    const kept = stored.filter((r) => !(r.type === 'adjacent' && r.origin === LINEUP_ORIGIN));
+    const relations = [...kept, ...(fresh.get(g.key) ?? [])];
+    if (sameRelations(stored, relations)) continue;
+    after.push({ key: g.key, image: imageWith(g, relations) });
+  }
+  after.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+
+  return {
+    after,
+    preview: {
+      billsUsed: result.billsUsed,
+      genres: result.genres.length,
+      added: addedLinks.length,
+      removed,
+      changed,
+      unchanged,
+      addedLinks,
+    },
+  };
+}
+
+// Writes the planned links as one logged change (operation 'relations-import', as the links CSV does).
+async function applyLineupLinks(store: LineupStore): Promise<{ preview: LineupLinksPreview; change: GenreVocabChange | null }> {
+  const plan = await planLineupLinks(store);
+  const p = plan.preview;
+  if (plan.after.length === 0) return { preview: p, change: null };
+  const change = await store.writeGenreVocabulary(plan.after, {
+    operation: 'relations-import',
+    actor: LINEUP_ACTOR,
+    reason: LINEUP_REASON,
+    summary: `Learned lineup links: ${p.added} added, ${p.removed} removed, ${p.changed} weight changed across ${plan.after.length} genres`,
+  });
+  return { preview: p, change };
 }
 
 // /api/artist-genres: genres of the acts you saw (see ARCHITECTURE.md, Artist genres).
@@ -285,6 +426,25 @@ export function genresRouter(deps: PipelineDeps): Router {
     if (!rows) return res.status(400).json({ error: 'rows must be an array.' });
     try {
       res.json(await applyGenreRelationsCsv(deps.store, rows));
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // The bill links job (genre taxonomy release 3, section 7). Preview changes nothing; apply writes the links as one undoable change.
+  router.post('/artist-genres/relations/lineup/preview', async (_req, res) => {
+    if (isMember()) return res.status(403).json({ error: MEMBER_REFUSED });
+    try {
+      res.json({ preview: (await planLineupLinks(deps.store)).preview });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post('/artist-genres/relations/lineup/apply', async (req, res) => {
+    if (isMember()) return res.status(403).json({ error: MEMBER_REFUSED });
+    try {
+      res.json(await applyLineupLinks(deps.store));
     } catch (err) {
       fail(res, err);
     }

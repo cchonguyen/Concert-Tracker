@@ -1,6 +1,6 @@
 # Genre taxonomy, Release 3: Orbits, bill links and the Constellation
 
-Planned 2026-11-27, after Release 2 ([genre-taxonomy-release-2.md](genre-taxonomy-release-2.md)) merged. It follows Charlie's brief "Genre Taxonomy, Visualizations & Relational Discovery" (Release 3, its Phase B schema, the "Live Stage Co-Occurrence Learning" and "One Step Outside Your Lane" rows) and the Phase A decision on the system job. Slices are 42.x. It has one migration, 0064, which Charlie applies.
+Planned 2026-11-27, after Release 2 ([genre-taxonomy-release-2.md](genre-taxonomy-release-2.md)) merged. It follows Charlie's brief "Genre Taxonomy, Visualizations & Relational Discovery" (Release 3, its Phase B schema, the "Live Stage Co-Occurrence Learning" and "One Step Outside Your Lane" rows) and the Phase A decision on the system job. Slices are 43.x. It has one migration, 0064, which Charlie applies.
 
 ## In plain English
 
@@ -14,7 +14,7 @@ Planned 2026-11-27, after Release 2 ([genre-taxonomy-release-2.md](genre-taxonom
 ## Decisions this spec carries
 
 1. Orbits are curated only in this release: origin `curated`, from the owner's upload. The schema keeps `lineup_cluster` and `hybrid` for later, but no code writes them (brief: "curated first").
-2. Proposed: a member is sent the orbits that include at least one act from their own events or records, with each orbit's full roster by name. A roster is the owner's shared curation and holds no personal fields. This widens what a member gets, so slice 42.0 adds one sentence to AGENTS.md (needs Charlie's tap).
+2. Proposed: a member is sent the orbits that include at least one act from their own events or records, with each orbit's full roster by name. A roster is the owner's shared curation and holds no personal fields. This widens what a member gets, so slice 43.0 adds one sentence to AGENTS.md (needs Charlie's tap).
 3. The job writes only `lineup_cooccur` rows. It replaces its own earlier rows on each apply, never writes over a `curated` row or the `artist_cooccur` rows from the owner's file, and skips any pair that already has a curated link in either direction. This is what AGENTS.md already allows.
 4. Proposed: the job runs only when the owner presses the button, with a preview first. No schedule. A schedule can come later once the numbers look right.
 5. Proposed job maths:
@@ -26,11 +26,11 @@ Planned 2026-11-27, after Release 2 ([genre-taxonomy-release-2.md](genre-taxonom
 6. Proposed: "One step outside your lane" uses your top 5 genres by sets, the brief's 0.25 link weight, and genres with 0 sets for you. It needs the Event Match floor (20 sets over 5 events).
 7. Proposed: the Constellation uses a fixed radial layout (macro sectors, family arcs, genre dots), drawn in SVG with no new library, so it looks the same on every visit and needs no `package.json` change.
 
-## 1. Rule wording (Slice 42.0)
+## 1. Rule wording (Slice 43.0)
 
 One sentence is added to AGENTS.md's genre rule: "Artist orbits (`artist_orbits`, `artist_orbit_members`) are the owner's shared curation: changed only by the owner through `writeArtistOrbits`, recorded in `artist_orbit_changes` and undoable, never counted in a total; a member is sent the orbits that include an act from their own events or records, with each orbit's roster by name." The same sentence goes into ARCHITECTURE.md. This is a tripwire file, so it needs Charlie's tap and an `Approved-Tripwire` trailer.
 
-## 2. Migration 0064 (Slice 42.1)
+## 2. Migration 0064 (Slice 43.1)
 
 `supabase/migrations/0064_artist_orbits.sql`:
 
@@ -40,26 +40,26 @@ One sentence is added to AGENTS.md's genre rule: "Artist orbits (`artist_orbits`
 - RLS the same as `genres`: members read, only the service role writes.
 - The PR is held until Charlie says it is applied.
 
-## 3. Orbit store and write path (Slice 42.2)
+## 3. Orbit store and write path (Slice 43.2)
 
 - `writeArtistOrbits(store, next, actor, reason)` in `src/server/events/artistOrbits.ts` replaces the orbits it is given, writes one `artist_orbit_changes` row with the old and new images, and can be undone (refused when an orbit changed after the change, as genre undo does).
 - The Postgres and file stores get `listArtistOrbits`, `putArtistOrbits`, `listOrbitChanges` and `undoOrbitChange`.
 - `GET /api/artist-orbits`: the owner gets every orbit, and a member gets those touching their acts (decision 2).
 - Tests cover the write, the undo, the stale undo, member filtering and the anchor-must-be-member rule.
 
-## 4. Orbits spreadsheet (Slice 42.3)
+## 4. Orbits spreadsheet (Slice 43.3)
 
 - In Manage > Genres there is an Orbits CSV, with download, preview and apply. Its columns are `orbit_id, label, parent_genre, anchors, core, crossover`. Each act list is names separated by `;`, matched by MusicBrainz ID or exact name, the same as the genres CSV.
 - The preview lists added, removed and changed orbits. It refuses a row whose anchor is unknown, that has fewer than 2 or more than 4 anchors, or whose parent genre is unknown.
 - Apply goes through `writeArtistOrbits` with actor `owner`.
 
-## 5. Orbits on screen (Slice 42.4)
+## 5. Orbits on screen (Slice 43.4)
 
 - `orbitLabel(orbit, names)` gives "A · B · C lane" from the anchors, then the working label as a subtitle.
 - Ranking > Artists shows an orbit pill on each act in an orbit. A new `OrbitSheet` shows the roster (anchors, core, crossover), which acts you've seen, and your events with any member on the lineup, planned ones first.
 - With no orbits uploaded, nothing shows.
 
-## 6. Bill links maths (Slice 42.5)
+## 6. Bill links maths (Slice 43.5)
 
 `lineupCooccur(bills, genreOf, vocab)` in `src/server/events/lineupCooccur.ts` is a pure function that returns `{ source, target, weight }[]` by decision 5, along with the counts it used. Tests cover:
 
@@ -70,24 +70,24 @@ One sentence is added to AGENTS.md's genre rule: "Artist orbits (`artist_orbits`
 - B2B partners counted once per bill
 - stages used as bills
 
-## 7. Bill links job (Slice 42.6)
+## 7. Bill links job (Slice 43.6)
 
 - `POST /api/artist-genres/relations/lineup/preview` and `/apply` (owner only) read `performances` and `artist_genres`, run `lineupCooccur`, and compare the result with the current `lineup_cooccur` rows.
 - Apply writes through `writeGenreVocabulary` with actor `system:lineup-cooccur` and the reason "Learned from shared lineups", and can be undone.
 - Manage > Genres gets a "Learn links from lineups" button with the preview (added, removed, changed, and the numbers of bills and genres used).
 - Event Match and the next card pick the links up with no further change.
 
-## 8. One step outside your lane (Slice 42.7)
+## 8. One step outside your lane (Slice 43.7)
 
 `outsideLane(events, byArtist, vocab, orbits)` in `genreInsights.ts`, and a card in Your genre story (`GenreStory.tsx`) per decision 6. It shows up to 3 genres, each with "next to {your genre}", the acts in it from your planned events, and the orbits holding those acts. When there are none, the card does not show.
 
-## 9. Constellation (Slice 42.8)
+## 9. Constellation (Slice 43.8)
 
 - `src/components/GenreConstellation.tsx` is opened from an "Open the Constellation" link in Your genre story, and is never shown on its own.
 - It uses the radial layout from decision 7, with node size by sets (square root). Seen genres are filled, and unseen one-step neighbours (weight 0.25 or more) are outlined and pulse, unless reduced motion is on.
 - Tapping a node lists your sets and acts in that genre. Escape closes the list. A table gives the same data for screen readers.
 
-## 10. Docs (Slice 42.9)
+## 10. Docs (Slice 43.9)
 
 `docs/architecture/07-artist-genres.md`, `docs/architecture/12-data-model.md` (0064), and `ARCHITECTURE.md`.
 
@@ -95,18 +95,18 @@ One sentence is added to AGENTS.md's genre rule: "Artist orbits (`artist_orbits`
 
 | Slice | Tag | What | Target files |
 |---|---|---|---|
-| 42.0 | CORE / DATA | Rule wording for orbits | `AGENTS.md`, `ARCHITECTURE.md` |
-| 42.1 | CORE / DATA | Migration 0064 (held until applied) | `supabase/migrations/0064_artist_orbits.sql`, `tests/migration0064.test.ts` |
-| 42.2 | CORE / DATA | Orbit store, write path, route | `src/server/events/artistOrbits.ts`, `src/server/lineup/store/*.ts`, `src/server/events/genreRoutes.ts`, `tests/artistOrbits.test.ts` |
-| 42.3 | CORE / DATA | Orbits CSV preview and apply | `src/server/events/artistOrbitsCsv.ts`, `src/components/GenresPanel.tsx`, `src/services/lineupApi.ts`, `tests/artistOrbitsCsv.test.ts` |
-| 42.4 | UI / VISUAL | Orbit pills and sheet | `src/components/ArtistsView.tsx`, `src/components/OrbitSheet.tsx` |
-| 42.5 | CORE / DATA | Bill links maths | `src/server/events/lineupCooccur.ts`, `tests/lineupCooccur.test.ts` |
-| 42.6 | CORE / DATA | Bill links job and button | `src/server/events/genreRoutes.ts`, `src/components/GenresPanel.tsx`, `src/services/lineupApi.ts`, `tests/lineupCooccurRoute.test.ts` |
-| 42.7 | CORE / DATA | One step outside your lane | `src/services/genreInsights.ts`, `src/components/GenreStory.tsx`, `tests/genreInsights.test.ts` |
-| 42.8 | UI / VISUAL | Constellation | `src/components/GenreConstellation.tsx`, `src/components/GenreStory.tsx` |
-| 42.9 | UI / VISUAL | Docs | `docs/architecture/07-artist-genres.md`, `docs/architecture/12-data-model.md`, `ARCHITECTURE.md` |
+| 43.0 | CORE / DATA | Rule wording for orbits | `AGENTS.md`, `ARCHITECTURE.md` |
+| 43.1 | CORE / DATA | Migration 0064 (held until applied) | `supabase/migrations/0064_artist_orbits.sql`, `tests/migration0064.test.ts` |
+| 43.2 | CORE / DATA | Orbit store, write path, route | `src/server/events/artistOrbits.ts`, `src/server/lineup/store/*.ts`, `src/server/events/genreRoutes.ts`, `tests/artistOrbits.test.ts` |
+| 43.3 | CORE / DATA | Orbits CSV preview and apply | `src/server/events/artistOrbitsCsv.ts`, `src/components/GenresPanel.tsx`, `src/services/lineupApi.ts`, `tests/artistOrbitsCsv.test.ts` |
+| 43.4 | UI / VISUAL | Orbit pills and sheet | `src/components/ArtistsView.tsx`, `src/components/OrbitSheet.tsx` |
+| 43.5 | CORE / DATA | Bill links maths | `src/server/events/lineupCooccur.ts`, `tests/lineupCooccur.test.ts` |
+| 43.6 | CORE / DATA | Bill links job and button | `src/server/events/genreRoutes.ts`, `src/components/GenresPanel.tsx`, `src/services/lineupApi.ts`, `tests/lineupCooccurRoute.test.ts` |
+| 43.7 | CORE / DATA | One step outside your lane | `src/services/genreInsights.ts`, `src/components/GenreStory.tsx`, `tests/genreInsights.test.ts` |
+| 43.8 | UI / VISUAL | Constellation | `src/components/GenreConstellation.tsx`, `src/components/GenreStory.tsx` |
+| 43.9 | UI / VISUAL | Docs | `docs/architecture/07-artist-genres.md`, `docs/architecture/12-data-model.md`, `ARCHITECTURE.md` |
 
-The order is 42.5 to 42.8 first, since they need no migration, then 42.0 to 42.4 once Charlie has tapped the rule and applied 0064, then 42.9.
+The order is 43.5 to 43.8 first, since they need no migration, then 43.0 to 43.4 once Charlie has tapped the rule and applied 0064, then 43.9.
 
 ## 12. Not in Release 3
 
