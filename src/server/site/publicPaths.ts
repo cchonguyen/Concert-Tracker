@@ -22,6 +22,7 @@ export const PUBLIC_EXACT_PATHS: readonly string[] = [
   '/favicon-32.png',
   '/apple-touch-icon.png',
   '/logo.svg',
+  '/logo-heartbeat.svg',
   '/manifest.webmanifest',
 ];
 

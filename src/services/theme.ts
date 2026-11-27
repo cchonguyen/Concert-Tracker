@@ -23,3 +23,19 @@ export const resolveMode = (mode: ThemeMode, systemLight: boolean): 'dark' | 'li
 
 // The browser bar color for each resolved mode: the page color (--la-page in index.css).
 export const BAR_COLORS = { dark: '#0e0e11', light: '#f7f7f8' } as const;
+
+// Ticket stub style (docs/specs/ticket-stub-styles.md): how every ticket stub is printed.
+// index.css restyles .ticket-card for each value of data-stub on <html>.
+export const STUB_STYLES = ['original', 'thermal', 'hard', 'raffle', 'riso'] as const;
+export type StubStyle = (typeof STUB_STYLES)[number];
+export const STUB_STYLE_LABELS: Record<StubStyle, string> = {
+  original: 'Original',
+  thermal: 'Box office',
+  hard: 'Hard ticket',
+  raffle: 'Raffle',
+  riso: 'Riso',
+};
+export const STUB_STYLE_KEY = 'livearchive.stubStyle.v1';
+
+export const parseStubStyle = (v: string | null | undefined): StubStyle =>
+  STUB_STYLES.includes(v as StubStyle) ? (v as StubStyle) : 'original';

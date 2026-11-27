@@ -1,0 +1,114 @@
+/* Ticket styles: a design-system module (docs/specs/ticket-stub-styles.md).
+
+   Contract. A style is one block that sets only these tokens; nothing else in the app changes.
+     Paper and ink:  --la-paper, --la-paper-2, --la-text, --la-text-muted, --la-text-faint,
+                     --la-perf, --la-accent, --la-bad
+     Type:           --font-display, --font-mono, --stub-font-body,
+                     --stub-head-transform, --stub-head-color, --stub-head-shadow
+     Texture:        --stub-texture, --stub-texture-size, --stub-texture-blend, --stub-texture-opacity
+     Frame:          --stub-rule (an inset outline; none by default)
+
+   Scope. A style applies wherever data-stub is set: on <html> (the picker, every ticket in the app)
+   or on one element (a preview, a swatch, a single ticket). Tokens land on the ticket itself, so the
+   rest of the page keeps its own colours.
+
+   Add a style: write one block below, add its id and label to STUB_STYLES in src/services/theme.ts,
+   and load its fonts in app.html. The picker, swatches and saved setting follow on their own. */
+
+/* Every ticket and swatch reads the contract. Defaults are the Original look. */
+.ticket-card,
+.stub-swatch {
+  --stub-texture: none;
+  --stub-texture-size: auto;
+  --stub-texture-blend: normal;
+  --stub-texture-opacity: 1;
+  --stub-rule: none;
+  --stub-head-transform: none;
+  --stub-head-color: inherit;
+  --stub-head-shadow: none;
+}
+[data-stub] .ticket-card,
+.ticket-card[data-stub] {
+  color: var(--la-text);
+  font-family: var(--stub-font-body, inherit);
+  outline: var(--stub-rule);
+  outline-offset: -8px;
+}
+:is([data-stub] .ticket-card, .ticket-card[data-stub]) .font-display {
+  text-transform: var(--stub-head-transform);
+  color: var(--stub-head-color);
+  text-shadow: var(--stub-head-shadow);
+}
+/* Texture sits between the paper (::before) and the content, cut by the same notches. */
+:is([data-stub] .ticket-card, .ticket-card[data-stub])::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--stub-texture);
+  background-size: var(--stub-texture-size);
+  mix-blend-mode: var(--stub-texture-blend);
+  opacity: var(--stub-texture-opacity);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  mask-image:
+    radial-gradient(circle 11px at var(--notch-a), transparent 10.5px, #000 11px),
+    radial-gradient(circle 11px at var(--notch-b), transparent 10.5px, #000 11px);
+}
+.stub-swatch {
+  background: var(--stub-texture), linear-gradient(120deg, var(--la-paper) 0%, var(--la-paper-2) 100%);
+  background-size: var(--stub-texture-size), auto;
+  box-shadow: inset 0 0 0 2px var(--la-paper), inset 0 0 0 3px var(--la-perf);
+  transition: transform 0.15s ease;
+}
+.stub-swatch:hover { transform: translateY(-2px); }
+@media (prefers-reduced-motion: reduce) { .stub-swatch:hover { transform: none; } }
+
+/* Shared textures. */
+.ticket-card, .stub-swatch {
+  --stub-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ---- Styles ---- */
+
+/* Box office: thermal paper, dot-matrix ink. */
+:is([data-stub='thermal'] :is(.ticket-card, .stub-swatch), :is(.ticket-card, .stub-swatch)[data-stub='thermal']) {
+  --la-paper: #f1ecdf; --la-paper-2: #ebe5d6;
+  --la-text: #3b4a63; --la-text-muted: #5a6780; --la-text-faint: #8590a3;
+  --la-perf: #b9b2a0; --la-accent: #3b4a63; --la-bad: #a33a3a;
+  --font-display: 'VT323', ui-monospace, monospace; --font-mono: 'VT323', ui-monospace, monospace;
+  --stub-font-body: 'VT323', ui-monospace, monospace;
+  --stub-texture: var(--stub-grain); --stub-texture-blend: multiply; --stub-texture-opacity: 0.35;
+}
+
+/* Hard ticket: pink card stock, poster headline, red serial, double rule. */
+:is([data-stub='hard'] :is(.ticket-card, .stub-swatch), :is(.ticket-card, .stub-swatch)[data-stub='hard']) {
+  --la-paper: #f9a8d4; --la-paper-2: #f4c3df;
+  --la-text: #2a0e2a; --la-text-muted: #5b2a4f; --la-text-faint: #8a5578;
+  --la-perf: #b4123c; --la-accent: #b4123c; --la-bad: #b4123c;
+  --font-display: 'Anton', Impact, sans-serif; --font-mono: 'Courier Prime', ui-monospace, monospace;
+  --stub-head-transform: uppercase;
+  --stub-rule: 3px double rgb(180 18 60 / 0.55);
+  --stub-texture: var(--stub-grain); --stub-texture-blend: multiply; --stub-texture-opacity: 0.3;
+}
+
+/* Raffle: violet roll ticket, chunky mono, diagonal pattern. */
+:is([data-stub='raffle'] :is(.ticket-card, .stub-swatch), :is(.ticket-card, .stub-swatch)[data-stub='raffle']) {
+  --la-paper: #7c3aed; --la-paper-2: #6d28d9;
+  --la-text: #f5f3ff; --la-text-muted: #ddd6fe; --la-text-faint: #c4b5fd;
+  --la-perf: #a78bfa; --la-accent: #fde68a; --la-bad: #fecaca;
+  --font-display: 'Rubik Mono One', Impact, sans-serif;
+  --stub-texture: repeating-linear-gradient(-30deg, rgb(255 255 255 / 0.06) 0 14px, transparent 14px 28px);
+}
+
+/* Riso: black paper, off-register pink and blue headline, halftone. */
+:is([data-stub='riso'] :is(.ticket-card, .stub-swatch), :is(.ticket-card, .stub-swatch)[data-stub='riso']) {
+  --la-paper: #17131f; --la-paper-2: #221c2e;
+  --la-text: #f3e8ff; --la-text-muted: #c9bfdc; --la-text-faint: #8f84a6;
+  --la-perf: #4b3f63; --la-accent: #f472b6; --la-bad: #fca5a5;
+  --font-display: 'Anton', Impact, sans-serif; --font-mono: 'Special Elite', ui-monospace, monospace;
+  --stub-head-transform: uppercase; --stub-head-color: #93c5fd; --stub-head-shadow: 3px 2px 0 #f472b6;
+  --stub-texture: radial-gradient(rgb(244 114 182 / 0.22) 1px, transparent 1.4px);
+  --stub-texture-size: 6px 6px; --stub-texture-blend: screen;
+}

@@ -31,8 +31,8 @@ React with TypeScript, Tailwind CSS v4 (CSS-first, `@import "tailwindcss"` and `
 
 LiveArchive has no tokens for these. Use Tailwind defaults and do not invent named tokens until the new app needs them:
 
-- Typography: no font tokens or type scale. The app uses Tailwind's default sans stack and sizes (`text-xs`, `text-sm`, `text-base`). The public pages use `system-ui` at 16px/1.6.
+- Typography: no type scale. Font roles are tokens in `src/index.css` (`--font-sans`, `--font-display`, `--font-mono`, and `--font-poster` for capitals poster headings, `docs/specs/landing-look.md`); sizes are Tailwind's defaults.
 - Spacing: no spacing tokens. Tailwind's default scale.
-- Motion: no duration or easing tokens. Durations are inline per component (listed in `design-system.json` under `motion.used`).
+- Motion: one easing token, `--ease-pop` (buttons and post-its, `src/styles/landing-look.css`). Other durations are inline per component (listed in `design-system.json` under `motion.used`).
 - Shadows and z-index: inline Tailwind classes, no scale.
 - Elevation of named surfaces beyond the `zinc` steps.
