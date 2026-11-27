@@ -1,27 +1,76 @@
-import { useEffect, useState, type FC } from 'react';
-import { genresApi, type LineupGenresAct } from '../services/lineupApi';
-import { genresByArtist } from '../services/genres';
-import { lineupDna, LINEUP_DNA_MIN_ACTS, type DnaBar, type DnaSegment, type LineupDnaResult } from '../services/genreInsights';
+import { useEffect, useMemo, useState, type FC } from 'react';
+import { genresApi, type LineupGenresAct, type LoggedEvent } from '../services/lineupApi';
+import { formatSets, genresByArtist, type ArtistGenres } from '../services/genres';
+import {
+  eventMatch,
+  lineupDna,
+  LINEUP_DNA_MIN_ACTS,
+  MATCH_MIN_EVENTS,
+  MATCH_MIN_SETS,
+  type DnaBar,
+  type DnaSegment,
+  type EventMatchResult,
+  type LineupDnaResult,
+} from '../services/genreInsights';
+import type { GenreMapEntry, GenreVocabulary } from '../server/events/genreTypes';
 import { POPOVER_PANEL } from './ui/Popover';
 import { PALETTE } from './GenreYearsChart';
 
 interface Props {
   eventId: string;
   refreshKey?: string | number; // Changes when the lineup changes, so the bar is worked out again.
+  events?: LoggedEvent[]; // Your events, for the Event Match line.
+  onMatch?: (match: LaneMatch) => void; // The bill's acts in your lane and the nearby ones you have not seen.
+}
+
+// Act keys (normalized names), as LineupTable marks its rows.
+export interface LaneMatch {
+  inLane: Set<string>;
+  nearbyUnseen: Set<string>;
 }
 
 // Other is a neutral token.
 const OTHER_FILL = 'var(--line-strong)';
 
 const pct = (share: number): string => `${Math.round(share * 100)}%`;
+const noun = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+
+// Your genre rows and the lineup's, one per act and source. The first copy wins.
+function mergeRows(first: ArtistGenres[], second: ArtistGenres[]): ArtistGenres[] {
+  const byKey = new Map<string, ArtistGenres>();
+  for (const r of [...first, ...second]) {
+    const k = `${r.key}|${r.source}`;
+    if (!byKey.has(k)) byKey.set(k, r);
+  }
+  return [...byKey.values()];
+}
+
+// The line under the whole-bill bar (genre-taxonomy-release-2.md section 5).
+function matchLine(m: EventMatchResult): string {
+  const lane = m.lane.map((f) => f.name).join(' and ');
+  const head = m.band === 'strong'
+    ? `Strong fit for your ${lane} history`
+    : m.band === 'some'
+      ? `Some overlap with your ${lane} history`
+      : 'Outside your usual';
+  const parts = [
+    m.inLane.length > 0 && `${noun(m.inLane.length, 'act', 'acts')} in your lane`,
+    m.nearbyUnseen.length > 0 && `${noun(m.nearbyUnseen.length, 'nearby act', 'nearby acts')} you haven't seen`,
+  ].filter((p): p is string => Boolean(p));
+  return parts.length > 0 ? `${head}: ${parts.join(', ')}.` : `${head}.`;
+}
 
 interface Loaded {
   dna: LineupDnaResult;
   names: Map<string, string>;
+  acts: LineupGenresAct[];
+  matchRows: ArtistGenres[]; // your rows and the lineup's, for Event Match
+  vocabulary: GenreVocabulary;
+  map: GenreMapEntry[];
 }
 
 // The bar shows nothing until the lineup has genres; a failed request shows nothing at all.
-export const LineupDna: FC<Props> = ({ eventId, refreshKey }) => {
+export const LineupDna: FC<Props> = ({ eventId, refreshKey, events, onMatch }) => {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [open, setOpen] = useState<string | null>(null); // 'barId|segmentKey' of the panel showing
 
@@ -36,7 +85,14 @@ export const LineupDna: FC<Props> = ({ eventId, refreshKey }) => {
         if (acts.length === 0) return;
         const byArtist = genresByArtist(lineup.genres, list.vocabulary, list.map);
         const dna = lineupDna(acts, byArtist, list.vocabulary);
-        setLoaded({ dna, names: new Map(acts.map((a) => [a.key, a.name])) });
+        setLoaded({
+          dna,
+          names: new Map(acts.map((a) => [a.key, a.name])),
+          acts,
+          matchRows: mergeRows(list.genres, lineup.genres),
+          vocabulary: list.vocabulary,
+          map: list.map,
+        });
       })
       .catch(() => {
         if (live) setLoaded(null);
@@ -45,6 +101,20 @@ export const LineupDna: FC<Props> = ({ eventId, refreshKey }) => {
       live = false;
     };
   }, [eventId, refreshKey]);
+
+  const match = useMemo<EventMatchResult | null>(
+    () =>
+      loaded
+        ? eventMatch(eventId, events ?? [], genresByArtist(loaded.matchRows, loaded.vocabulary, loaded.map), loaded.acts, loaded.vocabulary)
+        : null,
+    [loaded, events, eventId],
+  );
+
+  // Tells the lineup table which acts to mark; empty while nothing is loaded.
+  useEffect(() => {
+    if (!onMatch) return;
+    onMatch({ inLane: new Set(match?.inLane ?? []), nearbyUnseen: new Set(match?.nearbyUnseen ?? []) });
+  }, [match, onMatch]);
 
   // Escape closes the open panel.
   useEffect(() => {
@@ -58,6 +128,10 @@ export const LineupDna: FC<Props> = ({ eventId, refreshKey }) => {
 
   if (!loaded) return null;
   const { dna, names } = loaded;
+  const sets = match ? Number(formatSets(match.sets)) : 0;
+  const floorLine = match
+    ? `Event Match needs ${MATCH_MIN_SETS} sets with a genre over ${MATCH_MIN_EVENTS} events. You have ${noun(sets, 'set', 'sets')} over ${noun(match.events, 'event', 'events')}.`
+    : null;
   // Colours follow the segment order within each bar, as Sound Drift does; Other is neutral.
   const colourFor = (seg: DnaSegment, index: number): string => (seg.key === 'other' ? OTHER_FILL : PALETTE[index % PALETTE.length]);
 
@@ -113,6 +187,9 @@ export const LineupDna: FC<Props> = ({ eventId, refreshKey }) => {
                       <p className="text-xs text-text-muted">{current.acts.map((k) => names.get(k) ?? k).join(', ')}</p>
                     )}
                   </div>
+                )}
+                {bar.id === 'all' && match && (
+                  <p className="text-xs text-text">{match.enough ? matchLine(match) : floorLine}</p>
                 )}
                 {bar.lowCoverage && (
                   <p className="text-xs text-text-muted">

@@ -35,6 +35,8 @@ interface LineupTableProps {
   daysAttended?: string[];
   inferredBilling: Record<string, InferredBilling>;
   onSeenChange: (seen: SeenPatch) => void;
+  inLane?: Set<string>; // act keys in your lane (Event Match); no pill when absent
+  nearby?: Set<string>; // act keys nearby that you have not seen
 }
 
 export const LineupTable: React.FC<LineupTableProps> = ({
@@ -45,6 +47,8 @@ export const LineupTable: React.FC<LineupTableProps> = ({
   daysAttended = [],
   inferredBilling,
   onSeenChange,
+  inLane,
+  nearby,
 }) => {
   const [lineupStage, setLineupStage] = useState<string>('all');
   const [lineupDay, setLineupDay] = useState<string>('all');
@@ -323,6 +327,8 @@ export const LineupTable: React.FC<LineupTableProps> = ({
                         {!isSolo && (
 <span className="text-xs text-text-muted">B2B</span>
                         )}
+                        {slot.items.some((it) => inLane?.has(it.item.artistKey)) && <Pill tone="accent">Your lane</Pill>}
+                        {slot.items.some((it) => nearby?.has(it.item.artistKey)) && <Pill tone="neutral">Nearby</Pill>}
                       </span>
                     </td>
                     <td className="px-2 py-2 align-middle">
