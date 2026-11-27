@@ -570,6 +570,7 @@ export const genresApi = {
 export interface LineupGenresAct {
   key: string;
   name: string;
+  alias?: string;
   stages: string[];
   days: string[];
   status?: 'billed' | 'performed'; // absent when no source stored one

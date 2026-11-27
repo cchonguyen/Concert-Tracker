@@ -204,7 +204,7 @@ const b2bEvent = (e: LoggedEvent): LoggedEvent => ({
   seen: e.seen.map((s) => ({ ...s, b2b: e.seen.filter((x) => x.key !== s.key).map((x) => x.key) })),
 });
 
-test('artistsBehind counts a B2B act half a set, and goneQuiet compares its floor on the fractional total', () => {
+test('artistsBehind counts each B2B act as 1 set, and goneQuiet compares its floor on that total', () => {
   const rows: ArtistGenres[] = [
     artist('Zed', [{ parent: 'Electronic', style: 'Techno', weight: 1 }]),
     artist('Alpha', [{ parent: 'Electronic', style: 'Techno', weight: 1 }]),
@@ -213,18 +213,18 @@ test('artistsBehind counts a B2B act half a set, and goneQuiet compares its floo
   const b2b = b2bEvent(ev('1', '2026-03-01', ['Zed', 'Alpha']));
   const behind = artistsBehind([b2b], byArtist, undefined, { kind: 'style', name: 'Techno' });
   assert.deepEqual(behind.map((r) => [r.name, r.weightedSets, r.sets]), [
-    ['Alpha', 0.5, 0.5],
-    ['Zed', 0.5, 0.5],
+    ['Alpha', 1, 1],
+    ['Zed', 1, 1],
   ]);
 
-  // Halcyon Drift in nine B2B nights is 4.5 sets: under the 5-set floor. A tenth night makes 5.
+  // Halcyon Drift in 4 B2B nights is 4 sets: under the 5-set floor. A 5th night makes 5.
   const halcyon = genresByArtist([artist('Halcyon Drift', [{ parent: 'Electronic', style: 'Trance', weight: 1 }])]);
   const nights = (count: number) =>
     Array.from({ length: count }, (_, i) =>
       b2bEvent(ev(`tr-${i}`, `2024-01-${String(i + 1).padStart(2, '0')}`, ['Halcyon Drift', 'Partner'])),
     );
-  assert.equal(goneQuiet(nights(9), halcyon, undefined, TODAY), null);
-  const q = goneQuiet(nights(10), halcyon, undefined, TODAY);
+  assert.equal(goneQuiet(nights(4), halcyon, undefined, TODAY), null);
+  const q = goneQuiet(nights(5), halcyon, undefined, TODAY);
   assert.ok(q);
   assert.equal(q.sets, 5);
 });
@@ -685,28 +685,28 @@ test('genreZoom: sets of acts with no genre are unknown and not in known', () =>
   assert.ok(Math.abs(sumOf(z.macros) - 1) < 1e-9);
 });
 
-test('genreZoom: a B2B set counts half for each act', () => {
+test('genreZoom: a B2B set counts 1 for each act', () => {
   const byArtist = genresByArtist(zoomRows(), zoomVocab);
   const z = genreZoom([b2bEvent(ev('1', '2026-03-01', ['A', 'B']))], byArtist, zoomVocab);
 
-  assert.equal(z.known, 1);
-  assert.equal(z.macros.find((m) => m.name === 'Electronic')!.sets, 0.5);
-  assert.equal(z.macros.find((m) => m.name === 'Not grouped')!.sets, 0.5);
-  assert.equal(z.families.find((f) => f.name === 'House')!.sets, 0.5);
+  assert.equal(z.known, 2);
+  assert.equal(z.macros.find((m) => m.name === 'Electronic')!.sets, 1);
+  assert.equal(z.macros.find((m) => m.name === 'Not grouped')!.sets, 1);
+  assert.equal(z.families.find((f) => f.name === 'House')!.sets, 1);
 });
 
-test('genreZoom: enough is false at 9.5 known sets and true at 10', () => {
+test('genreZoom: enough is false at 9 known sets and true at 10', () => {
   const byArtist = genresByArtist(zoomRows(), zoomVocab);
-  const base = Array.from({ length: 9 }, (_, i) => ev(`solo-${i}`, '2026-01-01', ['A']));
+  const base = Array.from({ length: 8 }, (_, i) => ev(`solo-${i}`, '2026-01-01', ['A']));
 
-  // 9 solo sets plus a B2B with an act that has no genre: 9.5 known.
+  // 8 solo sets plus a B2B with an act that has no genre: 9 known, 1 unknown.
   const short = genreZoom([...base, b2bEvent(ev('x', '2026-02-01', ['A', 'C']))], byArtist, zoomVocab);
-  assert.equal(short.known, 9.5);
-  assert.equal(short.unknown, 0.5);
+  assert.equal(short.known, 9);
+  assert.equal(short.unknown, 1);
   assert.equal(ZOOM_MIN_SETS, 10);
   assert.equal(short.enough, false);
 
-  // 9 solo sets plus a B2B with a known act: 10 known.
+  // 8 solo sets plus a B2B with a known act: 10 known.
   const full = genreZoom([...base, b2bEvent(ev('y', '2026-02-01', ['A', 'B']))], byArtist, zoomVocab);
   assert.equal(full.known, 10);
   assert.equal(full.enough, true);
@@ -770,14 +770,14 @@ test('soundDrift: each year\'s shares add to 1 and only counted years rank bands
   assert.equal(d.years[1].shares.House, 1);
 });
 
-test('soundDrift: a year with 9.5 known sets is not counted and 10 is', () => {
+test('soundDrift: a year with 9 known sets is not counted and 10 is', () => {
   const byArtist = genresByArtist(zoomRows(), zoomVocab);
   assert.equal(DRIFT_MIN_SETS, 10);
-  const base = setsIn(2020, ['A'], 9);
+  const base = setsIn(2020, ['A'], 8);
 
-  // 9 solo sets plus a B2B with an act that has no genre: 9.5 known.
+  // 8 solo sets plus a B2B with an act that has no genre: 9 known.
   const short = soundDrift([...base, b2bEvent(ev('x', '2020-02-01', ['A', 'C']))], byArtist, zoomVocab, 'family', TODAY);
-  assert.equal(short.years[0].known, 9.5);
+  assert.equal(short.years[0].known, 9);
   assert.equal(short.years[0].counted, false);
   assert.equal(short.countedYears, 0);
 
@@ -811,7 +811,7 @@ test('soundDrift: bands are capped at 6 plus Other, ranked from counted years on
   assert.equal(d.years[0].counted, false);
   assert.equal(d.years[0].shares.Other, 1);
   assert.equal(d.years[1].year, 2020);
-  assert.ok(Math.abs(d.years[1].shares.Other - 1 / 18) < 1e-9); // G1 and H1 halves of 18 known sets
+  assert.ok(Math.abs(d.years[1].shares.Other - 2 / 19) < 1e-9); // G1 and H1 are 1 each of 19 known sets
   for (const y of d.years) assert.ok(Math.abs(sumShares(y) - 1) < 1e-9);
 });
 
@@ -845,7 +845,7 @@ test('soundDrift: a macro level with no family puts the genre under Not grouped'
   assert.deepEqual(d.leaders, [{ band: 'Not grouped', from: 2025, to: 2025 }]);
 });
 
-test('driftDrivers: lists the sets and artists for a band and for Other, with B2B halves', () => {
+test('driftDrivers: lists the sets and artists for a band and for Other, with 1 per B2B act', () => {
   const byArtist = genresByArtist(driftRows(), driftVocab);
   const events = bandEvents();
 
@@ -856,12 +856,12 @@ test('driftDrivers: lists the sets and artists for a band and for Other, with B2
 
   const other = driftDrivers(events, byArtist, driftVocab, 'family', TODAY, 2020, 'Other');
   assert.deepEqual(other.sets, [
-    { eventId: 'gh', eventName: 'Event gh', date: '2020-07-01', act: 'G1', share: 0.5 },
-    { eventId: 'gh', eventName: 'Event gh', date: '2020-07-01', act: 'H1', share: 0.5 },
+    { eventId: 'gh', eventName: 'Event gh', date: '2020-07-01', act: 'G1', share: 1 },
+    { eventId: 'gh', eventName: 'Event gh', date: '2020-07-01', act: 'H1', share: 1 },
   ]);
   assert.deepEqual(other.artists, [
-    { key: 'g1', name: 'G1', sets: 0.5 },
-    { key: 'h1', name: 'H1', sets: 0.5 },
+    { key: 'g1', name: 'G1', sets: 1 },
+    { key: 'h1', name: 'H1', sets: 1 },
   ]);
 
   // 2019 is not 2020: Zulu's thin-year sets do not show in 2020 drivers.
@@ -941,7 +941,7 @@ test('lineupDna: shares add up to 1 per bar and every bar', () => {
   }
 });
 
-test('lineupDna: a B2B pair shares one set (1/2 each) and the rest count 1.0', () => {
+test('lineupDna: each act in a B2B pair counts 1.0, or 1.0 for the combo when alias has genres', () => {
   const acts = [
     dnaAct('a', { slotId: 's1' }),
     dnaAct('b', { slotId: 's1' }),
@@ -958,10 +958,29 @@ test('lineupDna: a B2B pair shares one set (1/2 each) and the rest count 1.0', (
   assert.equal(whole.total, 3);
   assert.equal(whole.tagged, 3);
   const shares = dnaSegShares(whole);
-  assert.ok(Math.abs(shares.House - 0.75) < 1e-9); // a 0.5 + c 1.0 of 2.0
-  assert.ok(Math.abs(shares.Techno - 0.25) < 1e-9); // b 0.5 of 2.0
+  assert.ok(Math.abs(shares.House - 2 / 3) < 1e-9); // a 1.0 + c 1.0 of 3.0
+  assert.ok(Math.abs(shares.Techno - 1 / 3) < 1e-9); // b 1.0 of 3.0
   const house = whole.segments.find((s) => s.name === 'House')!;
-  assert.deepEqual(house.acts, ['c', 'a']); // by contribution: c 1.0, a 0.5
+  assert.deepEqual(house.acts, ['a', 'c']);
+
+  // With a combo alias that has genres, the B2B slot collapses to 1 combo viewing.
+  const comboActs = [
+    dnaAct('a', { slotId: 's1', alias: 'AB Combo' }),
+    dnaAct('b', { slotId: 's1', alias: 'AB Combo' }),
+    dnaAct('c'),
+  ];
+  const withCombo = genresByArtist([
+    dnaRow('a', [{ family: 'House', weight: 1 }]),
+    dnaRow('b', [{ family: 'Techno', weight: 1 }]),
+    dnaRow('c', [{ family: 'House', weight: 1 }]),
+    dnaRow('ab combo', [{ family: 'Trance', weight: 1 }]),
+  ], dnaVocab);
+  const comboWhole = lineupDna(comboActs, withCombo, dnaVocab).bars[0];
+  assert.equal(comboWhole.total, 2);
+  assert.equal(comboWhole.tagged, 2);
+  const comboShares = dnaSegShares(comboWhole);
+  assert.ok(Math.abs(comboShares.Trance - 0.5) < 1e-9);
+  assert.ok(Math.abs(comboShares.House - 0.5) < 1e-9);
 });
 
 test('lineupDna: an act on two stages counts on both stage bars and once on the whole bill', () => {

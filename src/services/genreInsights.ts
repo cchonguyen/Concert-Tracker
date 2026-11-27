@@ -13,7 +13,8 @@ import {
   umbrellaClosure,
 } from '../server/events/genreVocabulary';
 import { eventScale, type LineupFacts } from '../server/events/scale';
-import { formatSets, genreMix, setShares, umbrellaNames } from './genres';
+import { normalizeName } from '../server/lineup/normalizeName';
+import { countedSets, formatSets, genreMix, setShares, umbrellaNames } from './genres';
 
 // Pure browser-side genre maths (docs/specs/genre-explore.md sections 5 and 6).
 // Never reads the system clock: `today` (YYYY-MM-DD) is always passed in.
@@ -192,8 +193,8 @@ export function artistsBehind(
     if (e.attendance === 'planned' || e.attendance === 'missed') continue;
     const sortDate = eventSortDate(e);
     const displayDate = eventDisplayDate(e);
-    for (const [si, s] of e.seen.entries()) {
-      const share = setShares(e)[si]; // a B2B act counts its share of the set (genres.ts setShares)
+    for (const s of countedSets(e, byArtist)) {
+      const share = s.sets;
       const g = byArtist.get(s.key);
       if (!g?.genres.length) continue;
       let w = 0;
@@ -270,8 +271,8 @@ function collectWindowStats(
   };
 
   for (const e of events) {
-    for (const [si, s] of e.seen.entries()) {
-      const share = setShares(e)[si]; // genres.ts setShares
+    for (const s of countedSets(e, byArtist)) {
+      const share = s.sets;
       const g = byArtist.get(s.key);
       if (!g?.genres.length) continue;
       knownSets += share;
@@ -440,8 +441,8 @@ export function allGoneQuiet(
     const sortDate = eventSortDate(e);
     if (!sortDate) continue;
     const displayDate = eventDisplayDate(e);
-    for (const [si, s] of e.seen.entries()) {
-      const share = setShares(e)[si]; // genres.ts setShares
+    for (const s of countedSets(e, byArtist)) {
+      const share = s.sets;
       const g = byArtist.get(s.key);
       if (!g?.genres.length) continue;
       const seenKeys = new Set<string>();
@@ -557,10 +558,9 @@ export function genreFirsts(
   const dated: Array<{ e: LoggedEvent; sortDate: string; displayDate: string }> = [];
 
   for (const e of went) {
-    const shares = setShares(e);
-    e.seen.forEach((s, si) => {
-      if (byArtist.get(s.key)?.genres.length) knownSets += shares[si];
-    });
+    for (const s of countedSets(e, byArtist)) {
+      if (byArtist.get(s.key)?.genres.length) knownSets += s.sets;
+    }
     const sortDate = eventSortDate(e);
     const displayDate = eventDisplayDate(e);
     if (sortDate && displayDate) dated.push({ e, sortDate, displayDate });
@@ -702,11 +702,10 @@ export function genreMilestones(
     const sortDate = eventSortDate(e);
     const displayDate = eventDisplayDate(e);
     const inRecent = Boolean(sortDate && sortDate >= recentStart && sortDate <= today);
-    const shares = setShares(e);
-    e.seen.forEach((s, si) => {
-      const share = shares[si];
+    for (const s of countedSets(e, byArtist)) {
+      const share = s.sets;
       const g = byArtist.get(s.key);
-      if (!g?.genres.length) return;
+      if (!g?.genres.length) continue;
       knownSets += share;
       const seenGroups = new Set<string>();
       for (const x of g.genres) {
@@ -735,7 +734,7 @@ export function genreMilestones(
           }
         }
       }
-    });
+    }
   }
 
   const reached = allReached
@@ -1304,8 +1303,8 @@ function taxonomyTree(
     : events.filter((e) => e.attendance !== 'planned' && e.attendance !== 'missed');
   const counts = new Map<string, number>();
   for (const e of went) {
-    for (const [si, s] of e.seen.entries()) {
-      const share = setShares(e)[si]; // genres.ts setShares
+    for (const s of countedSets(e, byArtist)) {
+      const share = s.sets;
       const g = byArtist.get(s.key);
       if (!g?.genres.length) continue;
       const keys = new Set<string>();
@@ -1400,8 +1399,8 @@ export function genreTree(
 
   const counts = new Map<string, number>();
   for (const e of went) {
-    for (const [si, s] of e.seen.entries()) {
-      const share = setShares(e)[si]; // genres.ts setShares
+    for (const s of countedSets(e, byArtist)) {
+      const share = s.sets;
       const g = byArtist.get(s.key);
       if (!g?.genres.length) continue;
       const seenKeys = new Set<string>();
@@ -1524,13 +1523,12 @@ export function genreZoom(
   let unknown = 0;
 
   for (const e of live) {
-    const shares = setShares(e);
-    e.seen.forEach((s, si) => {
-      const share = shares[si];
+    for (const s of countedSets(e, byArtist)) {
+      const share = s.sets;
       const genres = (byArtist.get(s.key)?.genres ?? []).filter((x) => genreKey(x.style));
       if (!genres.length) {
         unknown += share;
-        return;
+        continue;
       }
       known += share;
       for (const x of genres) {
@@ -1542,7 +1540,7 @@ export function genreZoom(
           family: x.family,
         });
       }
-    });
+    }
   }
 
   const taxonomy = vocabHasMacro || contributions.some((c) => c.macro !== undefined);
@@ -1651,31 +1649,63 @@ function dnaKey(prefix: 'family' | 'group', name: string): string {
   return name === NOT_GROUPED ? `${prefix}:${NOT_GROUPED_KEY}` : `${prefix}:${genreKey(name)}`;
 }
 
+// Collapse B2B slots that have a combo alias with genres in `byArtist` into one
+// combo act; otherwise every listed act counts as 1 viewing.
+function collapseBillActs(
+  listed: LineupGenresAct[],
+  byArtist: Map<string, ArtistGenres>,
+): Array<{ act: LineupGenresAct; genres: GenreShare[] }> {
+  const usable = (key: string) =>
+    (byArtist.get(key)?.genres ?? []).filter((x) => genreKey(x.style) && x.weight > 0);
+  const bySlot = new Map<string, LineupGenresAct[]>();
+  for (const a of listed) {
+    if (!a.slotId) continue;
+    const list = bySlot.get(a.slotId) ?? [];
+    list.push(a);
+    bySlot.set(a.slotId, list);
+  }
+  const doneSlots = new Set<string>();
+  const out: Array<{ act: LineupGenresAct; genres: GenreShare[] }> = [];
+  for (const act of listed) {
+    if (act.slotId) {
+      if (doneSlots.has(act.slotId)) continue;
+      const members = bySlot.get(act.slotId) ?? [act];
+      if (members.length > 1) {
+        const alias = members.find((m) => m.alias?.trim())?.alias?.trim();
+        const comboKey = alias ? normalizeName(alias) : '';
+        const comboGenres = comboKey ? usable(comboKey) : [];
+        if (comboGenres.length > 0) {
+          doneSlots.add(act.slotId);
+          const stages = [...new Set(members.flatMap((m) => m.stages))];
+          const days = [...new Set(members.flatMap((m) => m.days))];
+          out.push({ act: { key: comboKey, name: alias!, stages, days }, genres: comboGenres });
+          continue;
+        }
+      }
+    }
+    out.push({ act, genres: usable(act.key) });
+  }
+  return out;
+}
+
 export function lineupDna(
   acts: LineupGenresAct[],
   byArtist: Map<string, ArtistGenres>,
   vocab: GenreVocabulary | undefined,
 ): LineupDnaResult {
   const listed = acts.filter((a) => a.status === undefined || a.status === 'billed' || a.status === 'performed');
-  const slotSize = new Map<string, number>();
-  for (const a of listed) if (a.slotId) slotSize.set(a.slotId, (slotSize.get(a.slotId) ?? 0) + 1);
-
-  const usable = listed.map((act) => ({
-    act,
-    genres: (byArtist.get(act.key)?.genres ?? []).filter((x) => genreKey(x.style) && x.weight > 0),
-  }));
+  const usable = collapseBillActs(listed, byArtist);
   // Same test as genreZoom: a taxonomy when the vocabulary has a macro or a shown genre carries one.
   const taxonomy = (vocab?.genres ?? []).some((g) => levelOf(g) === 'macro')
     || usable.some((u) => u.genres.some((x) => x.macro !== undefined));
   const prefix = taxonomy ? 'family' : 'group';
 
   const plans: DnaPlanAct[] = usable.map(({ act, genres }) => {
-    const base = act.slotId ? 1 / (slotSize.get(act.slotId) ?? 1) : 1;
     const sum = genres.reduce((t, x) => t + x.weight, 0);
     return {
       key: act.key,
       stages: [...new Set(act.stages.map((s) => s.trim()).filter(Boolean))],
-      genres: genres.map((x) => ({ name: x.style, family: driftBandOf(x, 'family', taxonomy), w: base * x.weight / sum })),
+      genres: genres.map((x) => ({ name: x.style, family: driftBandOf(x, 'family', taxonomy), w: x.weight / sum })),
     };
   });
 
@@ -1822,9 +1852,7 @@ export function eventMatch(
 
   // The bill, as lineupDna reads it: billed and performed acts only.
   const listed = acts.filter((a) => a.status === undefined || a.status === 'billed' || a.status === 'performed');
-  const slotSize = new Map<string, number>();
-  for (const a of listed) if (a.slotId) slotSize.set(a.slotId, (slotSize.get(a.slotId) ?? 0) + 1);
-  const billActs = listed.map((act) => ({ act, genres: usableGenres(byArtist.get(act.key)) }));
+  const billActs = collapseBillActs(listed, byArtist);
   const taxonomy = (vocab?.genres ?? []).some((g) => levelOf(g) === 'macro')
     || billActs.some((b) => b.genres.some((x) => x.macro !== undefined));
   const prefix = taxonomy ? 'family' : 'group';
@@ -1854,11 +1882,10 @@ export function eventMatch(
   const contributing = new Set<string>();
   for (const e of events) {
     if (e.id === eventId || e.attendance === 'planned' || e.attendance === 'missed') continue;
-    const shares = setShares(e);
-    e.seen.forEach((s, si) => {
+    for (const s of countedSets(e, byArtist)) {
       const genres = usableGenres(byArtist.get(s.key));
-      if (!genres.length) return;
-      const share = shares[si];
+      if (!genres.length) continue;
+      const share = s.sets;
       const total = genres.reduce((t, x) => t + x.weight, 0);
       sets += share;
       contributing.add(e.id);
@@ -1866,7 +1893,7 @@ export function eventMatch(
         const k = genreKey(x.style);
         u.set(k, (u.get(k) ?? 0) + share * x.weight / total);
       }
-    });
+    }
   }
   // Every act you ever marked as seen, this event included (for nearbyUnseen).
   const seenAll = new Set<string>();
@@ -1898,15 +1925,14 @@ export function eventMatch(
 
   // The bill's whole-bar family vector, as lineupDna splits it (not smoothed).
   const bill = new Map<string, { name: string; w: number }>();
-  for (const { act, genres } of billActs) {
+  for (const { genres } of billActs) {
     if (!genres.length) continue;
-    const base = act.slotId ? 1 / (slotSize.get(act.slotId) ?? 1) : 1;
     const sum = genres.reduce((t, x) => t + x.weight, 0);
     for (const x of genres) {
       const name = driftBandOf(x, 'family', taxonomy);
       const key = dnaKey(prefix, name);
       const cur = bill.get(key);
-      const w = base * x.weight / sum;
+      const w = x.weight / sum;
       if (cur) cur.w += w;
       else bill.set(key, { name, w });
     }
@@ -2010,11 +2036,10 @@ export function outsideLane(
   const contributing = new Set<string>();
   for (const e of events) {
     if (e.attendance === 'planned' || e.attendance === 'missed') continue;
-    const shares = setShares(e);
-    e.seen.forEach((s, si) => {
+    for (const s of countedSets(e, byArtist)) {
       const genres = usableGenres(byArtist.get(s.key));
-      if (!genres.length) return;
-      const share = shares[si];
+      if (!genres.length) continue;
+      const share = s.sets;
       const total = genres.reduce((t, x) => t + x.weight, 0);
       totalSets += share;
       contributing.add(e.id);
@@ -2022,7 +2047,7 @@ export function outsideLane(
         const k = genreKey(x.style);
         sets.set(k, (sets.get(k) ?? 0) + share * x.weight / total);
       }
-    });
+    }
   }
 
   const yours = [...sets.entries()]
@@ -2173,11 +2198,10 @@ function driftRawYears(
   for (const e of wentTo(events, today)) {
     const y = eventYearValue(e);
     if (!y) continue;
-    const shares = setShares(e);
-    e.seen.forEach((s, si) => {
+    for (const s of countedSets(e, byArtist)) {
       const genres = driftGenres(byArtist, s.key);
-      if (!genres.length) return;
-      const share = shares[si];
+      if (!genres.length) continue;
+      const share = s.sets;
       let cur = byYr.get(y);
       if (!cur) byYr.set(y, (cur = { year: y, known: 0, weights: new Map() }));
       cur.known += share;
@@ -2185,7 +2209,7 @@ function driftRawYears(
         const b = driftBandOf(x, level, taxonomy);
         cur.weights.set(b, (cur.weights.get(b) ?? 0) + x.weight * share);
       }
-    });
+    }
   }
   return [...byYr.values()].sort((a, b) => a.year - b.year);
 }
@@ -2269,12 +2293,11 @@ export function driftDrivers(
   const artists = new Map<string, DriftArtistRow>();
   for (const e of wentTo(events, today)) {
     if (eventYearValue(e) !== year) continue;
-    const shares = setShares(e);
-    e.seen.forEach((s, si) => {
+    for (const s of countedSets(e, byArtist)) {
       let w = 0;
       for (const x of driftGenres(byArtist, s.key)) if (inBand(driftBandOf(x, level, taxonomy))) w += x.weight;
-      if (w <= 0) return;
-      const share = shares[si] * w;
+      if (w <= 0) continue;
+      const share = s.sets * w;
       rows.push({
         sort: eventSortDate(e) ?? '',
         row: { eventId: e.id, eventName: e.name, date: eventDisplayDate(e) ?? '', act: s.name, share },
@@ -2282,7 +2305,7 @@ export function driftDrivers(
       const cur = artists.get(s.key);
       if (cur) cur.sets += share;
       else artists.set(s.key, { key: s.key, name: s.name, sets: share });
-    });
+    }
   }
 
   return {

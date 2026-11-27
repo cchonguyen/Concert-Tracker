@@ -56,6 +56,7 @@ import type { LoggedEvent } from './types';
 export interface LineupGenresAct {
   key: string;
   name: string;
+  alias?: string;
   stages: string[];
   days: string[];
   status?: 'billed' | 'performed';
@@ -72,10 +73,10 @@ function lineupInfo(event: LoggedEvent, job: LookupJob | null, edition: Edition 
     if (key && !info.has(key)) info.set(key, i);
   };
   for (const p of edition?.performances ?? []) {
-    if (p.status !== 'cancelled') note(p.name, { stages: p.stages ?? [], days: p.days ?? [], status: p.status, slotId: p.slotId });
+    if (p.status !== 'cancelled') note(p.name, { stages: p.stages ?? [], days: p.days ?? [], status: p.status, slotId: p.slotId, ...(p.alias ? { alias: p.alias } : {}) });
   }
   for (const p of job?.candidate?.performers ?? []) {
-    note(p.name, { stages: p.stages ?? [], days: p.days ?? [], status: p.status, slotId: p.slotId });
+    note(p.name, { stages: p.stages ?? [], days: p.days ?? [], status: p.status, slotId: p.slotId, ...(p.alias ? { alias: p.alias } : {}) });
   }
   return info;
 }
@@ -91,7 +92,7 @@ export function lineupActs(event: LoggedEvent, job: LookupJob | null, edition: E
     if (!key || seen.has(key)) continue;
     seen.add(key);
     const i = info.get(key);
-    out.push({ key, name: p.name, stages: i?.stages ?? [], days: i?.days ?? [], ...(i?.status ? { status: i.status } : {}), ...(i?.slotId ? { slotId: i.slotId } : {}) });
+    out.push({ key, name: p.name, ...(i?.alias ? { alias: i.alias } : {}), stages: i?.stages ?? [], days: i?.days ?? [], ...(i?.status ? { status: i.status } : {}), ...(i?.slotId ? { slotId: i.slotId } : {}) });
   }
   return out;
 }
