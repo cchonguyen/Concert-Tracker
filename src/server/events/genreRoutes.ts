@@ -22,6 +22,7 @@ import {
 } from './genreCsvApply';
 import { genreCollisions, genreResolver, levelOf } from './genreVocabulary';
 import { ArtistOrbitError, isMissingOrbitFunction, orbitsForMember } from './artistOrbits';
+import { applyArtistOrbitsCsv, exportArtistOrbitsCsv, previewArtistOrbitsCsv } from './artistOrbitsCsv';
 import type { GenreRelation, GenreVocabChange, GenreVocabulary } from './genreTypes';
 import { billsFrom, lineupCooccur, type CooccurPerformance } from './lineupCooccur';
 import { genresByArtist } from '../../services/genres';
@@ -528,6 +529,41 @@ export function genresRouter(deps: PipelineDeps): Router {
     try {
       const change = await deps.store.undoOrbitChange(req.params.id, 'owner');
       res.json({ change });
+    } catch (err) {
+      if (err instanceof ArtistOrbitError) return res.status(err.status).json({ error: err.message });
+      fail(res, err);
+    }
+  });
+
+  // The orbits as a CSV (owner only). The file replaces the whole orbit set (docs/specs/genre-taxonomy-release-3.md section 4).
+  router.get('/artist-orbits/csv', async (_req, res) => {
+    if (isMember()) return res.status(403).json({ error: ORBIT_MEMBER_REFUSED });
+    try {
+      const day = deps.now().toISOString().slice(0, 10);
+      res.setHeader('Content-Disposition', `attachment; filename="artist-orbits-${day}.csv"`);
+      res.type('text/csv; charset=utf-8').send(await exportArtistOrbitsCsv(deps.store));
+    } catch (err) {
+      if (err instanceof ArtistOrbitError) return res.status(err.status).json({ error: err.message });
+      fail(res, err);
+    }
+  });
+
+  // Checks an uploaded orbits file. Changes nothing.
+  router.post('/artist-orbits/csv/preview', async (req, res) => {
+    if (isMember()) return res.status(403).json({ error: ORBIT_MEMBER_REFUSED });
+    try {
+      res.json(await previewArtistOrbitsCsv(deps.store, req.body?.csv));
+    } catch (err) {
+      if (err instanceof ArtistOrbitError) return res.status(err.status).json({ error: err.message });
+      fail(res, err);
+    }
+  });
+
+  // Replaces the orbit set with the file as one logged change. Refused while the preview has errors.
+  router.post('/artist-orbits/csv/apply', async (req, res) => {
+    if (isMember()) return res.status(403).json({ error: ORBIT_MEMBER_REFUSED });
+    try {
+      res.json(await applyArtistOrbitsCsv(deps.store, req.body?.csv));
     } catch (err) {
       if (err instanceof ArtistOrbitError) return res.status(err.status).json({ error: err.message });
       fail(res, err);

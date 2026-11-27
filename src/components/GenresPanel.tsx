@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { genresApi, type GenresList, type LoggedEvent } from '../services/lineupApi';
+import { genresApi, orbitsApi, type GenresList, type LoggedEvent } from '../services/lineupApi';
+import type { OrbitsCsvPreview } from '../server/events/artistOrbitsCsv';
 import { parseCsv } from '../services/listImport';
 import {
   parseGenreVocabCsv,
@@ -221,6 +222,26 @@ const RelationsPreviewLines: React.FC<{ preview: GenreRelationsCsvPreview }> = (
   </div>
 );
 
+// The orbits upload's preview, in plain words. The file replaces the whole set, so what it leaves out goes.
+const OrbitPreviewLines: React.FC<{ preview: OrbitsCsvPreview }> = ({ preview }) => (
+  <div className="space-y-1 text-sm text-text">
+    <p>
+      {preview.added} added · {preview.removed} removed · {preview.changed} changed · {preview.unchanged} unchanged
+    </p>
+    <p className="text-xs text-text-muted">The file replaces every orbit. Orbits not in the file are removed.</p>
+    {preview.errors.length > 0 && (
+      <ul className="space-y-1">
+        {preview.errors.slice(0, 5).map((e, i) => (
+          <li key={`${e.row}-${i}`}>
+            <Notice tone="warning">{`Line ${e.row}: ${e.message}`}</Notice>
+          </li>
+        ))}
+        {preview.errors.length > 5 && <li className="text-xs text-text-muted">+{preview.errors.length - 5} more</li>}
+      </ul>
+    )}
+  </div>
+);
+
 export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = ({ query, events }) => {
   const [data, setData] = useState<GenresList | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -235,13 +256,17 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
   // The genre whose record is open, by key.
   const [selected, setSelected] = useState<string | null>(null);
   // The last change and its Undo.
-  const [notice, setNotice] = useState<{ text: string; undoId?: string } | null>(null);
+  const [notice, setNotice] = useState<{ text: string; undoId?: string; kind?: 'orbits' } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [csvRows, setCsvRows] = useState<GenreVocabCsvRow[] | null>(null);
   const [csvPreview, setCsvPreview] = useState<GenreVocabCsvPreview | null>(null);
   const relFileRef = useRef<HTMLInputElement>(null);
   const [relRows, setRelRows] = useState<GenreRelationsCsvRow[] | null>(null);
   const [relPreview, setRelPreview] = useState<GenreRelationsCsvPreview | null>(null);
+  const orbitFileRef = useRef<HTMLInputElement>(null);
+  // The orbits file's text is kept so Apply sends what the preview checked.
+  const [orbitCsv, setOrbitCsv] = useState<string | null>(null);
+  const [orbitPreview, setOrbitPreview] = useState<OrbitsCsvPreview | null>(null);
   const [artistGenresOpen, setArtistGenresOpen] = useState(false);
   const [lineupPreview, setLineupPreview] = useState<LineupLinksPreview | null>(null);
 
@@ -331,7 +356,8 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
     setBusy(true);
     setError(null);
     try {
-      await genresApi.undoVocabulary(id);
+      if (notice.kind === 'orbits') await orbitsApi.undo(id);
+      else await genresApi.undoVocabulary(id);
       setNotice({ text: 'Undone.' });
       await load();
     } catch (err) {
@@ -418,6 +444,63 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
         undoId: res.change?.id,
       });
       await load();
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const downloadOrbits = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const text = await orbitsApi.csvExport();
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `artist-orbits-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onOrbitsFile = async (file: File | undefined) => {
+    if (!file) return;
+    setError(null);
+    setOrbitPreview(null);
+    setOrbitCsv(null);
+    setBusy(true);
+    try {
+      const text = await file.text();
+      const preview = await orbitsApi.csvPreview(text);
+      setOrbitCsv(text);
+      setOrbitPreview(preview);
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const applyOrbits = async () => {
+    if (orbitCsv === null || !orbitPreview) return;
+    const p = orbitPreview;
+    setBusy(true);
+    setError(null);
+    try {
+      const change = await orbitsApi.csvApply(orbitCsv);
+      setOrbitCsv(null);
+      setOrbitPreview(null);
+      setNotice(
+        change
+          ? { text: `Orbits replaced: ${p.added} added, ${p.removed} removed, ${p.changed} changed.`, undoId: change.id, kind: 'orbits' }
+          : { text: 'No orbit changes to apply.' },
+      );
     } catch (err) {
       setError(messageOf(err));
     } finally {
@@ -533,6 +616,23 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
           <Button onClick={() => relFileRef.current?.click()} disabled={busy}>
             Upload genre links CSV
           </Button>
+          <input
+            ref={orbitFileRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              void onOrbitsFile(file);
+            }}
+          />
+          <Button onClick={() => void downloadOrbits()} disabled={busy}>
+            Download orbits
+          </Button>
+          <Button onClick={() => orbitFileRef.current?.click()} disabled={busy}>
+            Upload orbits
+          </Button>
           <Button onClick={() => void previewLineup()} disabled={busy}>
             Learn links from lineups
           </Button>
@@ -611,6 +711,30 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
               onClick={() => {
                 setRelRows(null);
                 setRelPreview(null);
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {orbitPreview && orbitCsv !== null && (
+        <div className="space-y-2 rounded-card border border-line bg-surface-1 p-3">
+          <OrbitPreviewLines preview={orbitPreview} />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="primary"
+              disabled={busy || orbitPreview.errors.length > 0 || orbitPreview.added + orbitPreview.removed + orbitPreview.changed === 0}
+              onClick={() => void applyOrbits()}
+            >
+              Replace orbits with this file
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={() => {
+                setOrbitCsv(null);
+                setOrbitPreview(null);
               }}
             >
               Cancel
