@@ -16,6 +16,9 @@ import { normalizeName, seriesSlugFor } from '../lineup/text';
 import { editionCoversDate, subjectOf } from './match';
 import { eventSeriesSlug } from '../events/routes';
 import { currentBudget } from '../lineup/budget';
+import { recordWhoISawTicks } from './memberTick';
+import { writeEdition } from './editions';
+import type { Edition } from '../lineup/types';
 
 const FULL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const SCAN_LIMIT = 5000;
@@ -103,6 +106,62 @@ export function linkedToEdition(event: LoggedEvent, edition: EditionHeader, now:
   };
 }
 
+// Contribute back (Charlie 2026-11-27: "If we're both entering in information and information lines up, it
+// should be added to shared editions"). Once per linked event, automatic or by tap:
+//   - each act the person ticked joins the edition's lineup as a candidate (recordWhoISawTicks: never verified);
+//   - the owner's own event fills only the edition's empty venue, city, state, country and end date, the same
+//     facts the owner backfill already trusts (backfill.ts), through writeEdition: logged and undoable.
+// A member's typed facts never fill a verified edition. Only public facts go in; no personal field is read.
+const FILLABLE = ['venue', 'city', 'region', 'country', 'endDate'] as const;
+const CONTRIBUTE_REASON = "Filled from the owner's event linked to this edition";
+
+export function editionFilledFrom(edition: Edition, event: LoggedEvent): Edition | null {
+  const next: Edition = { ...edition };
+  let changed = false;
+  for (const f of FILLABLE) {
+    const mine = text(event[f]);
+    if (mine === undefined || text(edition[f]) !== undefined) continue;
+    if (f === 'endDate' && (!FULL_DATE.test(mine) || (edition.startDate && mine < edition.startDate))) continue;
+    next[f] = mine;
+    changed = true;
+  }
+  return changed ? next : null;
+}
+
+export interface ContributeReport {
+  events: number;
+  acts: number;
+  filled: number;
+}
+
+// Cost of one event, worst case: the edition read and one write per new act, plus a fill.
+const contributeCost = (e: LoggedEvent) => 4 + 3 * (e.seen ?? []).filter((s) => s.from === 'you').length;
+
+export async function contributeBack(
+  service: LineupStore,
+  event: LoggedEvent,
+  isOwner: boolean,
+  now: Date,
+  report: ContributeReport,
+): Promise<LoggedEvent> {
+  if (!event.editionId) return event;
+  const edition = await service.getEdition(event.editionId);
+  if (edition) {
+    const added = await recordWhoISawTicks(service, edition, event.seen ?? []);
+    report.acts += added.length;
+    if (isOwner) {
+      const fresh = added.length ? await service.getEdition(edition.id) : edition;
+      const filled = fresh && editionFilledFrom(fresh, event);
+      if (filled) {
+        await writeEdition(service, { edition: { ...filled, updatedAt: now.toISOString() }, actor: AUTO_LINK_ACTOR, reason: CONTRIBUTE_REASON });
+        report.filled++;
+      }
+    }
+  }
+  report.events++;
+  return { ...event, details: { ...event.details, contributedAt: now.toISOString() } };
+}
+
 export interface AutoLinkMember {
   userId: string | null;
   role: string;
@@ -113,6 +172,7 @@ export interface AutoLinkReport {
   members: number;
   linked: number;
   ambiguous: number; // candidates with no single edition (none or several)
+  contributed: ContributeReport;
 }
 
 export interface AutoLinkOptions {
@@ -146,7 +206,7 @@ function withSeriesCache(store: LineupStore): LineupStore {
 export async function runAutoLink(service: LineupStore, members: AutoLinkMember[], opts: AutoLinkOptions): Promise<AutoLinkReport | null> {
   const budgetLeft = opts.budgetLeft ?? defaultBudgetLeft;
   const maxPerMember = Math.max(1, opts.maxPerMember ?? 50);
-  const report: AutoLinkReport = { members: 0, linked: 0, ambiguous: 0 };
+  const report: AutoLinkReport = { members: 0, linked: 0, ambiguous: 0, contributed: { events: 0, acts: 0, filled: 0 } };
   if (budgetLeft() < 1 + MEMBER_COST) return null;
   const headers = (await service.listEditionHeaders({ limit: SCAN_LIMIT, status: 'verified' })).filter((e) => isVerifiedStatus(e.status));
   if (!headers.length) return null;
@@ -158,7 +218,8 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
     if (!scoped) continue;
     report.members++;
     const changed: LoggedEvent[] = [];
-    for (const e of await scoped.listEvents()) {
+    const events = await scoped.listEvents();
+    for (const e of events) {
       if (changed.length >= maxPerMember) break;
       if (!isAutoLinkCandidate(e)) continue;
       const edition = autoLinkEdition(e, headers);
@@ -171,10 +232,15 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
       const { seriesSlug: _old, ...rest } = linked;
       changed.push(slug ? { ...rest, seriesSlug: slug } : rest);
     }
-    if (changed.length) {
-      await scoped.putEvents(changed);
-      report.linked += changed.length;
+    report.linked += changed.length;
+    // Every linked event not yet contributed, the ones just linked included, while the budget allows.
+    const byId = new Map(changed.map((e) => [e.id, e]));
+    const linkedNow = events.map((e) => byId.get(e.id) ?? e).filter((e) => e.editionId && !e.deletedAt && !e.details?.contributedAt);
+    for (const e of linkedNow) {
+      if (budgetLeft() < contributeCost(e) + 1) break;
+      byId.set(e.id, await contributeBack(service, e, m.role === 'owner', opts.now, report.contributed));
     }
+    if (byId.size) await scoped.putEvents([...byId.values()]);
   }
-  return report.linked ? report : null;
+  return report.linked || report.contributed.events ? report : null;
 }

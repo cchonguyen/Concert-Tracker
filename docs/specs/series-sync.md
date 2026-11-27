@@ -34,6 +34,17 @@ If no edition passes, or two or more do, nothing is linked.
 
 **When it runs.** Hourly, at minute 2, from the Worker cron (`runAutoLink`, `src/server/canon/autoLink.ts`). The run covers the owner and every member who isn't blocked, each through their own scoped store. It reads the verified edition headers and the shared series once per run. Per member it costs one `listEvents` and, when something links, one `putEvents`. At most 50 links per member per run. An event saved or made into an edition is linked within the hour. A hook inside the backfill or the save path was left out, because the hourly run covers both and keeps one code path.
 
+## Rule 1b: a linked event contributes back
+
+Charlie, 2026-11-27: "I want to avoid splitting canonical information between 'mine' and 'theirs'. If we're both entering in information and information lines up, it should be added to shared editions whenever possible."
+
+Once per linked event, whether it was linked automatically or by a tap, the hourly run does two things (`contributeBack`, `src/server/canon/autoLink.ts`):
+
+- Each act the person ticked under Who I Saw joins the edition's lineup as a candidate, sourced "your entry" (`recordWhoISawTicks`). Ticks never verify an act, which is the existing rule.
+- The owner's own event fills only the edition's empty venue, city, state, country and end date, through `writeEdition` with actor `system:auto-link` and a reason. These are the same facts the owner backfill already trusts. A member's typed facts never fill a verified edition. They reach shared editions only through their own provisional entry.
+
+`details.contributedAt` marks the event as done. Unlinking clears it, so a later link contributes again. No personal field is read.
+
 ## Rule 2: series health, one tap
 
 There is a nightly read-only check, also shown on demand in Data health (owner only). It lists:
@@ -48,8 +59,9 @@ Each fix goes through `saveSeriesLogged` or `writeEdition` with actor `owner` an
 ## Slices
 
 1. **Auto-link core.** New `src/server/canon/autoLink.ts` (match and link, pure plus store), the `backfill.ts` hook, the nightly sweep in `worker/index.ts`, and tests. [CORE / DATA]
-2. **Undo surface.** Event detail note with Unlink, plus the "Linked automatically" list in Data health (`EventDetail.tsx`, `DataHealth.tsx`, `services/dataHealth.ts`). [UI / VISUAL]
-3. **Series health.** New `src/server/entities/seriesHealth.ts` (issues and offers), owner routes, Data health section with one-tap fixes, and tests. [CORE / DATA]
-4. **Members' events.** Folded into slice 1 (Charlie chose everyone's): the run walks every member who isn't blocked. [CORE / DATA]
+2. **Contribute back** (Rule 1b). Built 2026-11-27. [CORE / DATA]
+3. **Undo surface.** Event detail note with Unlink, plus the "Linked automatically" list in Data health (`EventDetail.tsx`, `DataHealth.tsx`, `services/dataHealth.ts`). [UI / VISUAL]
+4. **Series health.** New `src/server/entities/seriesHealth.ts` (issues and offers), owner routes, Data health section with one-tap fixes, and tests. [CORE / DATA]
+5. **Members' events.** Folded into slice 1 (Charlie chose everyone's): the run walks every member who isn't blocked. [CORE / DATA]
 
 ARCHITECTURE.md sections 02 and 12 change with slices 1 and 3. No migration: `details` is already JSON.
