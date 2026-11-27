@@ -46,6 +46,8 @@ import type { CanonicalVenue, EditionChange, EditionInference, InferenceStatus, 
 import { ArtistIdTakenError, assertNoPersonalFields, EditionOccurrenceConflictError, ExternalIdConflictError, venueIdFor } from './types';
 import { normalizeName } from '../normalizeName';
 import type { CachedResponse } from '../responseCache';
+import type { ArtistCleanupReport, ArtistCleanupRow } from '../../entities/artistCleanupCsv';
+import { emptyStatusCounts } from '../../entities/artistCleanupCsv';
 import {
   canonicalEditionPage,
   editionMatchesStatusFilter,
@@ -1066,6 +1068,454 @@ export class FileLineupStore implements LineupStore {
     return [...names].map(([key, name]) => ({ key, name }));
   }
 
+  // canonical_artist_cleanup() (0060): single-transaction parity for tests and local store.
+  async runArtistCleanup(
+    rows: ArtistCleanupRow[],
+    opts: { dryRun: boolean; actor: string; reason: string },
+    ownerUserId?: string,
+  ): Promise<ArtistCleanupReport> {
+    const state = await this.load();
+    const snapshot = clone(state);
+    try {
+      state.artists ??= {};
+      state.aliases ??= {};
+      state.blocklist ??= [];
+      state.artistGenres ??= {};
+      state.genreChanges ??= [];
+      state.owners ??= {};
+
+      const counts = emptyStatusCounts();
+      const failedResolutions: ArtistCleanupReport['failedResolutions'] = [];
+      let performancesMigrated = 0;
+      let performancesDeduped = 0;
+      let newArtistsInserted = 0;
+      let parentStubsInserted = 0;
+      let ownerEventsUpdated = 0;
+      const deprecatedKeys: string[] = [];
+      const invalidNorms = new Set<string>();
+
+      // Pre-rename snapshot so artist:<Original> targets resolve pre-rename names.
+      const origByName = new Map<string, ArtistIdentity>();
+      for (const a of Object.values(state.artists)) {
+        if (!origByName.has(a.name)) origByName.set(a.name, clone(a));
+      }
+
+      const findSource = (mbid: string, artist: string, artistKey: string): ArtistIdentity | undefined => {
+        if (mbid) {
+          const byMbid = Object.values(state.artists).find((a) => a.mbid === mbid);
+          if (byMbid) return byMbid;
+        }
+        const byName = Object.values(state.artists).find((a) => a.name === artist);
+        if (byName) return byName;
+        if (artistKey) return state.artists[artistKey];
+        return undefined;
+      };
+
+      const findTarget = (rawKey: string, normKey: string): ArtistIdentity | undefined => {
+        if (rawKey.startsWith('mbid:')) {
+          const mbid = rawKey.slice('mbid:'.length);
+          return Object.values(state.artists).find((a) => a.mbid === mbid);
+        }
+        if (rawKey.startsWith('artist:')) {
+          const rawName = rawKey.slice('artist:'.length);
+          const orig = origByName.get(rawName);
+          if (orig && state.artists[orig.key]) return state.artists[orig.key];
+          if (normKey && state.artists[normKey]) return state.artists[normKey];
+        }
+        return undefined;
+      };
+
+      const isOwnerEvent = (eventId: string): boolean => {
+        if (!ownerUserId) return true;
+        const owner = state.owners?.[`event:${eventId}`];
+        return owner === undefined || owner === ownerUserId;
+      };
+
+      const recordGenreDelete = (artistKey: string, tag: string) => {
+        for (const [id, g] of Object.entries(state.artistGenres ?? {})) {
+          if (g.key !== artistKey) continue;
+          state.genreChanges!.push({
+            id: crypto.randomUUID(),
+            key: g.key,
+            source: g.source,
+            at: new Date().toISOString(),
+            actor: opts.actor as GenreChange['actor'],
+            reason: `${opts.reason} (${tag})`,
+            before: clone(g),
+            after: null,
+          });
+          delete state.artistGenres![id];
+        }
+      };
+
+      const order = ['invalid_non_artist', 'merge_duplicate', 'remap_set', 'split_multi_artist', 'rename', 'link_alter_ego'] as const;
+      const sorted = [...rows].sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status) || a.line - b.line);
+
+      for (const r of sorted) {
+        counts[r.status] = (counts[r.status] ?? 0) + 1;
+        const src = findSource(r.mbid, r.artist, r.artistKey);
+
+        if (r.status === 'invalid_non_artist') {
+          const norm = r.artistKey || r.artist.trim().toLowerCase();
+          invalidNorms.add(norm);
+          const existingBl = state.blocklist.find((b) => b.domain === '*' && b.normalized === norm);
+          if (existingBl) {
+            existingBl.rejections += 1;
+            if (r.invalidReason) existingBl.reason = r.invalidReason;
+          } else {
+            state.blocklist.push({ domain: '*', normalized: norm, rejections: 1, ...(r.invalidReason ? { reason: r.invalidReason } : {}) });
+          }
+          if (src) {
+            deprecatedKeys.push(src.key);
+            for (const ed of Object.values(state.editions)) {
+              ed.performances = ed.performances.filter((p) => p.artistKey !== src.key);
+            }
+            recordGenreDelete(src.key, 'invalid_non_artist');
+            for (const a of Object.values(state.artists)) {
+              if (a.alterEgoOf === src.key) delete a.alterEgoOf;
+            }
+            delete state.artists[src.key];
+          }
+          for (const ev of Object.values(state.events)) {
+            if (ev.deletedAt || !Array.isArray(ev.seen) || !isOwnerEvent(ev.id)) continue;
+            const next = ev.seen.filter((s) => !((src && s.key === src.key) || (r.artistKey && s.key === r.artistKey) || s.name === r.artist));
+            if (next.length !== ev.seen.length) {
+              ev.seen = next;
+              ownerEventsUpdated += 1;
+            }
+          }
+        } else if (r.status === 'merge_duplicate' || r.status === 'remap_set') {
+          const tgt = findTarget(r.canonicalKey, r.canonicalTargetKey);
+          if (!tgt) {
+            failedResolutions.push({ line: r.line, artist: r.artist, status: r.status, targetKey: r.canonicalKey, reason: 'Target artist not found' });
+            continue;
+          }
+          if (r.artistKey && r.artistKey !== tgt.key) {
+            state.aliases[r.artistKey] = tgt.name;
+          }
+          if (src && src.key !== tgt.key) {
+            deprecatedKeys.push(src.key);
+            if (r.status === 'merge_duplicate' && src.mbid && !tgt.mbid) {
+              tgt.mbid = src.mbid;
+            }
+            for (const ed of Object.values(state.editions)) {
+              const moved: EditionPerformance[] = [];
+              for (const p of ed.performances) {
+                if (p.artistKey !== src.key) {
+                  moved.push(p);
+                  continue;
+                }
+                const existing = ed.performances.find((x) => x !== p && x.artistKey === tgt.key && (x.slotId ?? '') === (p.slotId ?? ''));
+                if (existing) {
+                  existing.days = [...new Set([...existing.days, ...p.days])].sort();
+                  existing.stages = [...new Set([...existing.stages, ...p.stages])];
+                  existing.billing = existing.billing ?? p.billing;
+                  existing.sources = [...existing.sources, ...p.sources];
+                  if (r.status === 'remap_set' && !existing.set) existing.set = r.setQualifier || p.set;
+                  performancesDeduped += 1;
+                } else {
+                  moved.push({
+                    ...p,
+                    artistKey: tgt.key,
+                    name: tgt.name,
+                    ...(r.status === 'remap_set' && r.setQualifier ? { set: r.setQualifier } : {}),
+                  });
+                  performancesMigrated += 1;
+                }
+              }
+              ed.performances = moved;
+            }
+            if (r.status === 'merge_duplicate') {
+              for (const g of Object.values(state.artistGenres)) {
+                if (g.key !== src.key) continue;
+                const tgtId = `${g.source}|${tgt.key}`;
+                if (!state.artistGenres[tgtId]) {
+                  const copied: ArtistGenres = { ...clone(g), key: tgt.key, name: tgt.name, ...(tgt.mbid ? { mbid: tgt.mbid } : {}) };
+                  state.artistGenres[tgtId] = copied;
+                  state.genreChanges.push({
+                    id: crypto.randomUUID(),
+                    key: tgt.key,
+                    source: g.source,
+                    at: new Date().toISOString(),
+                    actor: opts.actor as GenreChange['actor'],
+                    reason: `${opts.reason} (merge_duplicate copy)`,
+                    before: null,
+                    after: clone(copied),
+                  });
+                }
+              }
+            }
+            recordGenreDelete(src.key, r.status);
+            for (const [ak, av] of Object.entries(state.aliases)) {
+              if (av === src.name) state.aliases[ak] = tgt.name;
+            }
+            for (const a of Object.values(state.artists)) {
+              if (a.alterEgoOf === src.key) a.alterEgoOf = tgt.key;
+            }
+            delete state.artists[src.key];
+          }
+          for (const ev of Object.values(state.events)) {
+            if (ev.deletedAt || !Array.isArray(ev.seen) || !isOwnerEvent(ev.id)) continue;
+            let changed = false;
+            for (const s of ev.seen) {
+              if ((src && s.key === src.key) || (r.artistKey && s.key === r.artistKey) || s.name === r.artist) {
+                changed = true;
+                s.key = tgt.key;
+                s.name = tgt.name;
+                if (r.status === 'remap_set' && r.setQualifier && !s.set) s.set = r.setQualifier;
+              }
+            }
+            if (changed) ownerEventsUpdated += 1;
+          }
+        } else if (r.status === 'split_multi_artist') {
+          const resolved: ArtistIdentity[] = [];
+          for (const item of r.splitItems) {
+            let t = findTarget(item.key, item.normalizedKey);
+            if (!t && item.key === 'NEW' && item.normalizedKey) {
+              t = state.artists[item.normalizedKey];
+              if (!t) {
+                t = { key: item.normalizedKey, name: item.name };
+                state.artists[t.key] = t;
+                newArtistsInserted += 1;
+              }
+            }
+            if (!t) {
+              failedResolutions.push({ line: r.line, artist: r.artist, status: r.status, targetKey: item.key, reason: `Split constituent not found: ${item.name}` });
+            } else {
+              resolved.push(t);
+            }
+          }
+          if (resolved.length < 2) continue;
+
+          if (src) {
+            deprecatedKeys.push(src.key);
+            for (const ed of Object.values(state.editions)) {
+              const nextPerfs: EditionPerformance[] = [];
+              for (const p of ed.performances) {
+                if (p.artistKey !== src.key) {
+                  nextPerfs.push(p);
+                  continue;
+                }
+                const slotId = p.slotId || crypto.randomUUID();
+                for (let i = 0; i < resolved.length; i++) {
+                  const c = resolved[i];
+                  const b2b = resolved.filter((_, idx) => idx !== i).map((x) => x.key);
+                  const existing = ed.performances.find((x) => x.artistKey === c.key && (x.slotId ?? '') === slotId);
+                  if (existing) {
+                    if (r.comboAlias && !existing.alias) existing.alias = r.comboAlias;
+                    if ((r.setQualifier || p.set) && !existing.set) existing.set = r.setQualifier || p.set;
+                    performancesDeduped += 1;
+                  } else {
+                    nextPerfs.push({
+                      ...clone(p),
+                      artistKey: c.key,
+                      name: c.name,
+                      slotId,
+                      b2b,
+                      ...(r.comboAlias ? { alias: r.comboAlias } : {}),
+                      ...(r.setQualifier || p.set ? { set: r.setQualifier || p.set } : {}),
+                    });
+                    performancesMigrated += 1;
+                  }
+                }
+              }
+              ed.performances = nextPerfs;
+            }
+            recordGenreDelete(src.key, 'split_multi_artist');
+            for (const a of Object.values(state.artists)) {
+              if (a.alterEgoOf === src.key) delete a.alterEgoOf;
+            }
+            delete state.artists[src.key];
+          }
+          for (const ev of Object.values(state.events)) {
+            if (ev.deletedAt || !Array.isArray(ev.seen) || !isOwnerEvent(ev.id)) continue;
+            let changed = false;
+            const nextSeen: typeof ev.seen = [];
+            for (const s of ev.seen) {
+              if ((src && s.key === src.key) || (r.artistKey && s.key === r.artistKey) || s.name === r.artist) {
+                changed = true;
+                const slotId = s.slotId || crypto.randomUUID();
+                for (let i = 0; i < resolved.length; i++) {
+                  const c = resolved[i];
+                  const b2b = resolved.filter((_, idx) => idx !== i).map((x) => x.key);
+                  nextSeen.push({
+                    ...clone(s),
+                    key: c.key,
+                    name: c.name,
+                    slotId,
+                    b2b,
+                    ...(r.comboAlias ? { alias: r.comboAlias } : {}),
+                    ...(r.setQualifier ? { set: r.setQualifier } : {}),
+                  });
+                }
+              } else {
+                nextSeen.push(s);
+              }
+            }
+            if (changed) {
+              ev.seen = nextSeen;
+              ownerEventsUpdated += 1;
+            }
+          }
+        } else if (r.status === 'rename') {
+          if (!src) {
+            failedResolutions.push({ line: r.line, artist: r.artist, status: r.status, targetKey: r.canonicalArtist, reason: 'Source artist not found' });
+            continue;
+          }
+          let finalArtist = src;
+          if (!r.canonicalNewKey || r.canonicalNewKey === src.key) {
+            src.name = r.canonicalArtist;
+            if (r.setQualifier) {
+              for (const ed of Object.values(state.editions)) {
+                for (const p of ed.performances) {
+                  if (p.artistKey === src.key && !p.set) p.set = r.setQualifier;
+                }
+              }
+            }
+          } else {
+            let tgt = state.artists[r.canonicalNewKey];
+            if (!tgt) {
+              tgt = { ...clone(src), key: r.canonicalNewKey, name: r.canonicalArtist };
+              state.artists[tgt.key] = tgt;
+            } else if (src.mbid && !tgt.mbid) {
+              tgt.mbid = src.mbid;
+            }
+            for (const ed of Object.values(state.editions)) {
+              const nextPerfs: EditionPerformance[] = [];
+              for (const p of ed.performances) {
+                if (p.artistKey !== src.key) {
+                  nextPerfs.push(p);
+                  continue;
+                }
+                const existing = ed.performances.find((x) => x !== p && x.artistKey === tgt.key && (x.slotId ?? '') === (p.slotId ?? ''));
+                if (existing) {
+                  existing.days = [...new Set([...existing.days, ...p.days])].sort();
+                  existing.stages = [...new Set([...existing.stages, ...p.stages])];
+                  existing.sources = [...existing.sources, ...p.sources];
+                  if (r.setQualifier && !existing.set) existing.set = r.setQualifier;
+                  performancesDeduped += 1;
+                } else {
+                  nextPerfs.push({ ...p, artistKey: tgt.key, name: r.canonicalArtist, ...(r.setQualifier && !p.set ? { set: r.setQualifier } : {}) });
+                  performancesMigrated += 1;
+                }
+              }
+              ed.performances = nextPerfs;
+            }
+            for (const g of Object.values(state.artistGenres)) {
+              if (g.key !== src.key) continue;
+              const tgtId = `${g.source}|${tgt.key}`;
+              if (!state.artistGenres[tgtId]) {
+                const moved: ArtistGenres = { ...clone(g), key: tgt.key, name: r.canonicalArtist };
+                state.artistGenres[tgtId] = moved;
+                state.genreChanges.push({
+                  id: crypto.randomUUID(),
+                  key: tgt.key,
+                  source: g.source,
+                  at: new Date().toISOString(),
+                  actor: opts.actor as GenreChange['actor'],
+                  reason: `${opts.reason} (rename move)`,
+                  before: null,
+                  after: clone(moved),
+                });
+              }
+            }
+            recordGenreDelete(src.key, 'rename');
+            for (const a of Object.values(state.artists)) {
+              if (a.alterEgoOf === src.key) a.alterEgoOf = tgt.key;
+            }
+            delete state.artists[src.key];
+            finalArtist = tgt;
+          }
+          if (r.artistKey && r.artistKey !== finalArtist.key) state.aliases[r.artistKey] = r.canonicalArtist;
+          for (const [ak, av] of Object.entries(state.aliases)) {
+            if (av === r.artist) state.aliases[ak] = r.canonicalArtist;
+          }
+          for (const ev of Object.values(state.events)) {
+            if (ev.deletedAt || !Array.isArray(ev.seen) || !isOwnerEvent(ev.id)) continue;
+            let changed = false;
+            for (const s of ev.seen) {
+              if ((r.artistKey && s.key === r.artistKey) || s.name === r.artist) {
+                changed = true;
+                s.key = finalArtist.key;
+                s.name = r.canonicalArtist;
+                if (r.setQualifier && !s.set) s.set = r.setQualifier;
+              }
+            }
+            if (changed) ownerEventsUpdated += 1;
+          }
+          if (r.alterEgoOf) {
+            let parent = findTarget(r.alterEgoOfKey, r.alterEgoTargetKey);
+            if (!parent && r.alterEgoOfKey === 'NEW' && r.alterEgoTargetKey) {
+              parent = state.artists[r.alterEgoTargetKey];
+              if (!parent) {
+                parent = { key: r.alterEgoTargetKey, name: r.alterEgoOf };
+                state.artists[parent.key] = parent;
+                parentStubsInserted += 1;
+              }
+            }
+            if (!parent) {
+              failedResolutions.push({ line: r.line, artist: r.artist, status: r.status, targetKey: r.alterEgoOfKey, reason: `Alter-ego parent not found: ${r.alterEgoOf}` });
+            } else {
+              finalArtist.alterEgoOf = parent.key;
+            }
+          }
+        } else if (r.status === 'link_alter_ego') {
+          if (!src) {
+            failedResolutions.push({ line: r.line, artist: r.artist, status: r.status, targetKey: r.artist, reason: 'Alter-ego artist not found' });
+            continue;
+          }
+          let parent = findTarget(r.alterEgoOfKey, r.alterEgoTargetKey);
+          if (!parent && r.alterEgoOfKey === 'NEW' && r.alterEgoTargetKey) {
+            parent = state.artists[r.alterEgoTargetKey];
+            if (!parent) {
+              parent = { key: r.alterEgoTargetKey, name: r.alterEgoOf };
+              state.artists[parent.key] = parent;
+              parentStubsInserted += 1;
+            }
+          }
+          if (!parent) {
+            failedResolutions.push({ line: r.line, artist: r.artist, status: r.status, targetKey: r.alterEgoOfKey, reason: `Alter-ego parent not found: ${r.alterEgoOf}` });
+          } else {
+            src.alterEgoOf = parent.key;
+          }
+        }
+      }
+
+      const remainingDeprecatedActive = deprecatedKeys.filter((k) => Boolean(state.artists[k])).length;
+      const orphanedPerformances = Object.values(state.editions)
+        .flatMap((e) => e.performances)
+        .filter((p) => !state.artists[p.artistKey]).length;
+      const missingBlocklistEntries = [...invalidNorms].filter((n) => !state.blocklist.some((b) => b.domain === '*' && b.normalized === n)).length;
+
+      const report: ArtistCleanupReport = {
+        dryRun: opts.dryRun,
+        counts,
+        totalRows: sorted.length,
+        performancesMigrated,
+        performancesDeduped,
+        newArtistsInserted,
+        parentStubsInserted,
+        ownerEventsUpdated,
+        failedResolutions,
+        assertions: {
+          remainingDeprecatedActive,
+          orphanedPerformances,
+          missingBlocklistEntries,
+        },
+      };
+
+      if (opts.dryRun) {
+        this.state = snapshot;
+      } else {
+        await this.save();
+      }
+      return report;
+    } catch (err) {
+      this.state = snapshot;
+      throw err;
+    }
+  }
+
   // The entity tables of one member (Supabase: user_entities and friends), or
   // of the single-owner app (the state itself) when uid is undefined.
   private holder(state: FileState, uid?: string): Pick<FileState, 'entities' | 'entityAliases' | 'entityLinks' | 'entityHistory'> {
@@ -1960,7 +2410,10 @@ function scopedFileStore(base: FileLineupStore, scope: UserScope): LineupStore {
     // A member reads the shared genres plus their own additions (source 'added'), and writes only those.
     // Shared writes, the change log and the seen-act list are owner and system only.
     ...(scope.role === 'owner'
-      ? {}
+      ? {
+          runArtistCleanup: (rows: ArtistCleanupRow[], opts: { dryRun: boolean; actor: string; reason: string }) =>
+            base.runArtistCleanup(rows, opts, scope.userId),
+        }
       : {
           async listArtistGenres() {
             const own = Object.values(await base.memberGenres(scope.userId)).map((r): ArtistGenres => ({ ...clone(r), source: 'added' }));
@@ -1992,6 +2445,21 @@ function scopedFileStore(base: FileLineupStore, scope: UserScope): LineupStore {
           async listSeenActNames() {
             ownerOnly(scope);
             return [];
+          },
+          async runArtistCleanup() {
+            ownerOnly(scope);
+            return {
+              dryRun: true,
+              counts: emptyStatusCounts(),
+              totalRows: 0,
+              performancesMigrated: 0,
+              performancesDeduped: 0,
+              newArtistsInserted: 0,
+              parentStubsInserted: 0,
+              ownerEventsUpdated: 0,
+              failedResolutions: [],
+              assertions: { remainingDeprecatedActive: 0, orphanedPerformances: 0, missingBlocklistEntries: 0 },
+            };
           },
         }),
     // Each member has their own records (user_entities and friends in Supabase).

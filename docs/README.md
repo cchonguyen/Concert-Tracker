@@ -33,6 +33,7 @@ Statuses were checked against the code on 2026-11-23.
 | [specs/quiet-tips-table.md](specs/quiet-tips-table.md) | One-line page tips that fold away after 3 visits, a header ? to bring them back and a Show all tips switch; a lean Table toolbar; an All time strip on Stats. Charlie's request 2026-11-26. |
 | [specs/motion-whimsy.md](specs/motion-whimsy.md) | Louder, playful motion on controls, tabs, menus, saves, toasts, stars and bursts, all off under reduced motion. Charlie's request 2026-11-25. |
 | [specs/poster-lineups-and-notches.md](specs/poster-lineups-and-notches.md) | Acts listed with a diamond between names, like a lineup poster; ticket notches cut as real holes. Charlie's requests 2026-11-26. |
+| [specs/artist-entity-cleanup.md](specs/artist-entity-cleanup.md) | Reusable single-transaction artist entity cleanup RPC (migration 0060) and Global Archive CSV upload/preview/apply UI. Approved 2026-11-26. |
 | [tier3-specs.md](tier3-specs.md) | TECH-04 and FETCH-01 built. The other Tier 3 tickets not started. |
 | [engineering-ticket-bank.md](engineering-ticket-bank.md) | Backlog of open tickets. Closed ones are in [archive/engineering-ticket-bank-closed.md](archive/engineering-ticket-bank-closed.md). |
 | [social-features-spec.md](social-features-spec.md) | Not started. Discussion draft. |

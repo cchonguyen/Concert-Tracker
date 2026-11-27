@@ -37,6 +37,7 @@ import type { ShareLink } from '../../share/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CachedResponse } from '../responseCache';
 import type { SqlCanonicalEntry } from '../../entities/canonicalManage';
+import type { ArtistCleanupReport, ArtistCleanupRow } from '../../entities/artistCleanupCsv';
 
 // One member's view of the store (multi-user mode). Personal rows (events,
 // email imports, lookup jobs, share links, settings) are that member's only.
@@ -488,6 +489,8 @@ export interface LineupStore {
   markGenreChangesUndone(ids: string[], at: string): Promise<void>;
   // Every act any member marked as seen, once per key, names only (seen_act_names()). Owner and system only.
   listSeenActNames(): Promise<Array<{ key: string; name: string }>>;
+  // Reusable single-transaction artist entity cleanup (0060). Owner and system only.
+  runArtistCleanup(rows: ArtistCleanupRow[], opts: { dryRun: boolean; actor: string; reason: string }): Promise<ArtistCleanupReport>;
   // Records with permanent IDs (0014, src/server/entities/). Optional until
   // the Manage tab: createStore only links events when the tables exist.
   // Both stores enforce entities/integrity.ts.

@@ -25,6 +25,7 @@ import {
 } from './canonicalManage';
 import { runSeriesCleanup } from './seriesCleanup';
 import { SERIES_CLEANUP_PLAN } from './seriesCleanupPlan';
+import { MAX_CLEANUP_ROWS, type ArtistCleanupRow } from './artistCleanupCsv';
 import { CanonicalHistoryCursorError, CanonicalHistoryEntry, CanonicalStoreError, EditionOccurrenceConflictError, isVerifiedStatus } from '../lineup/store/types';
 import { currentMember } from '../auth/requestScope';
 import { brandsRouter } from '../brands/routes';
@@ -664,6 +665,35 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
       const results = await runSeriesCleanup(store, SERIES_CLEANUP_PLAN, { ...CLEANUP_BY, apply: true, ...batch });
       res.json({ total: SERIES_CLEANUP_PLAN.length, results });
     } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Reusable single-transaction artist entity cleanup (docs/specs/artist-entity-cleanup.md).
+  const ARTIST_CLEANUP_BY = { actor: 'system:artist-cleanup', reason: 'Artist entity cleanup' };
+  const readCleanupRows = (body: unknown): ArtistCleanupRow[] => {
+    const raw = (body as { rows?: unknown } | null)?.rows;
+    if (!Array.isArray(raw) || raw.length === 0) throw new ManageError('rows must be a non-empty array.', 400);
+    if (raw.length > MAX_CLEANUP_ROWS) throw new ManageError(`At most ${MAX_CLEANUP_ROWS} rows per upload.`, 400);
+    return raw as ArtistCleanupRow[];
+  };
+  router.post('/manage/canonical/artist-cleanup/preview', ownerOnly as any, async (req, res) => {
+    try {
+      const rows = readCleanupRows(req.body);
+      res.json(await store.runArtistCleanup(rows, { dryRun: true, ...ARTIST_CLEANUP_BY }));
+    } catch (err) {
+      if (err instanceof ManageError) return res.status(err.status).json({ error: err.message });
+      if (err instanceof CanonicalStoreError && err.code === 'forbidden') return res.status(403).json({ error: err.message });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+  router.post('/manage/canonical/artist-cleanup/apply', ownerOnly as any, async (req, res) => {
+    try {
+      const rows = readCleanupRows(req.body);
+      res.json(await store.runArtistCleanup(rows, { dryRun: false, ...ARTIST_CLEANUP_BY }));
+    } catch (err) {
+      if (err instanceof ManageError) return res.status(err.status).json({ error: err.message });
+      if (err instanceof CanonicalStoreError && err.code === 'forbidden') return res.status(403).json({ error: err.message });
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
