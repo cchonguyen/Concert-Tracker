@@ -103,7 +103,13 @@ export type GenreVocabOperation =
   | 'umbrella-remove'
   | 'spelling'
   | 'create'
-  | 'undo';
+  | 'undo'
+  | 'taxonomy-import'
+  | 'relations-import'
+  | 'relation-add'
+  | 'relation-remove'
+  | 'relation-weight'
+  | 'family';
 
 // One row of genre_changes: the genres it touched as they were and as they became.
 export interface GenreVocabChange {
