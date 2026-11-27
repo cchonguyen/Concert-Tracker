@@ -24,6 +24,8 @@ import type { CityPoint, PlaceGuess } from '../server/events/place';
 import type { GenreVocabCsvPreview, GenreVocabCsvRow } from '../server/events/genreVocabCsv';
 import type { GenreRelationsCsvPreview, GenreRelationsCsvRow } from '../server/events/genreRelationsCsv';
 import type { LineupLinksPreview } from '../server/events/genreRoutes';
+import type { ArtistOrbit, ArtistOrbitChange } from '../server/events/artistOrbits';
+import type { OrbitsCsvPreview } from '../server/events/artistOrbitsCsv';
 import type { ArtistGenres, GenreCollision, GenreMapEntry, GenreRelationType, GenreVocabChange, GenreVocabulary, KnownGenre } from '../server/events/genreTypes';
 import type { GenreMergePlan } from '../server/events/genreVocabularyManage';
 import type { MilestoneSaved, Prefs, TipsSaved } from '../server/auth/prefs';
@@ -455,6 +457,23 @@ export const peopleApi: PeopleServer = {
 export const accountApi = {
   exportUrl: '/api/account/export',
   remove: (confirm: string) => request<unknown>('/api/account', { method: 'DELETE', body: JSON.stringify({ confirm }) }),
+};
+
+// Artist orbits (docs/specs/genre-taxonomy-release-3.md section 4). The owner's CSV: the file replaces the whole set.
+export const orbitsApi = {
+  // The orbits a member may see (the owner's list also carries the recent changes, which are not read here).
+  list: () => request<{ orbits: ArtistOrbit[] }>('/api/artist-orbits').then((r) => r.orbits),
+  // The CSV text of the orbits as they are stored (the browser downloads it).
+  csvExport: async (): Promise<string> => {
+    const init = await outgoing();
+    const res = await fetch('/api/artist-orbits/csv', init);
+    if (!res.ok) throw new Error(`Request failed with HTTP ${res.status}`);
+    return res.text();
+  },
+  csvPreview: (csv: string) => request<OrbitsCsvPreview>('/api/artist-orbits/csv/preview', post({ csv })),
+  csvApply: (csv: string) => request<{ change: ArtistOrbitChange | null }>('/api/artist-orbits/csv/apply', post({ csv })).then((r) => r.change),
+  // Takes back one orbit change (the change id from csvApply).
+  undo: (id: string) => request<{ change: ArtistOrbitChange }>(`/api/artist-orbits/undo/${encodeURIComponent(id)}`, post()).then((r) => r.change),
 };
 
 // Genres of the acts you saw: the music-story file, then MusicBrainz on request.

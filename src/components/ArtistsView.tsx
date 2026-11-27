@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ChevronDown, ChevronRight, Crown, FolderCog, Heart, LayoutList, List, MapPin, Search, Table2, Tags } from 'lucide-react';
-import { genresApi, GenresList, LoggedEvent } from '../services/lineupApi';
+import { genresApi, GenresList, LoggedEvent, orbitsApi } from '../services/lineupApi';
+import type { ArtistOrbit } from '../server/events/artistOrbits';
+import { OrbitSheet, orbitLabel } from './OrbitSheet';
 import { ArtistGenres, genresByArtist, hasGenreUnder, topStyles, umbrellaNames } from '../services/genres';
 import { artistGaps, spanLabel } from '../services/insights';
 import { whenLabel } from '../services/format';
@@ -106,7 +108,55 @@ interface ArtistProps {
   onOpenEvent: (id: string) => void;
   onOpenTable: (query: string) => void;
   onManage?: (key: string) => void;
+  orbits?: ArtistOrbit[]; // the orbits this act is in (shared, from the owner)
+  nameOf?: (key: string) => string;
+  onOpenOrbit?: (orbit: ArtistOrbit) => void;
 }
+
+// The orbit an act sits in, as a tap target. Shows the first orbit, and "+N" when there are more.
+// Inside a row button it is a span with role button, since a button cannot hold a button.
+const OrbitPill: React.FC<{ orbits: ArtistOrbit[]; nameOf: (key: string) => string; onOpen: (orbit: ArtistOrbit) => void; nested?: boolean }> = ({
+  orbits,
+  nameOf,
+  onOpen,
+  nested,
+}) => {
+  const first = orbitLabel(orbits[0], nameOf);
+  const text = orbits.length > 1 ? `${first} +${orbits.length - 1}` : first;
+  const pill = (
+    <UiPill tone="accent">
+      <span className="truncate">{text}</span>
+    </UiPill>
+  );
+  const cls = 'min-w-0 max-w-[14rem] cursor-pointer rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent';
+  if (nested)
+    return (
+      <span
+        role="button"
+        tabIndex={0}
+        title={`Orbit: ${text}. Tap for the roster.`}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onOpen(orbits[0]);
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          e.stopPropagation();
+          onOpen(orbits[0]);
+        }}
+        className={cls}
+      >
+        {pill}
+      </span>
+    );
+  return (
+    <button type="button" title={`Orbit: ${text}. Tap for the roster.`} onClick={() => onOpen(orbits[0])} className={cls}>
+      {pill}
+    </button>
+  );
+};
 
 // The genre filter holds a group ("g:" and its name), an umbrella ("u:" and its key), or a style ("s:" and its key).
 const GROUP = 'g:';
@@ -139,7 +189,7 @@ const genreTitle = (g: ArtistGenres, isOwner: boolean) => {
 };
 
 // Compact: one line per artist; tapping it opens the detailed card in place.
-const ArtistRow: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpenTable, onManage }) => {
+const ArtistRow: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpenTable, onManage, orbits, nameOf, onOpenOrbit }) => {
   const isOwner = useIsOwner();
   const [open, setOpen] = useState(false);
   if (open)
@@ -153,7 +203,7 @@ const ArtistRow: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpe
             <ChevronDown className="h-3 w-3" /> Collapse
           </button>
         </li>
-        <ArtistCard artist={a} genre={genre} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} onManage={onManage} />
+        <ArtistCard artist={a} genre={genre} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} onManage={onManage} orbits={orbits} nameOf={nameOf} onOpenOrbit={onOpenOrbit} />
       </>
     );
   const span = years(a);
@@ -164,6 +214,7 @@ const ArtistRow: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpe
         <span className="truncate text-sm font-medium text-text">{a.name}</span>
         {a.favourites > 0 && <Heart className="h-3 w-3 shrink-0 fill-current text-bad" aria-label="Favorite set" />}
         {a.headlined > 0 && <Crown className="h-3 w-3 shrink-0 text-warn" aria-label="Headliner" />}
+        {orbits?.length && nameOf && onOpenOrbit ? <OrbitPill orbits={orbits} nameOf={nameOf} onOpen={onOpenOrbit} nested /> : null}
       </span>
       {genre?.genres.length ? (
         <span className="hidden max-w-[10rem] truncate text-xs text-text-muted lg:block" title={genreTitle(genre, isOwner)}>
@@ -183,7 +234,7 @@ const ArtistRow: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpe
   );
 };
 
-const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpenTable, onManage }) => {
+const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOpenTable, onManage, orbits, nameOf, onOpenOrbit }) => {
   const isOwner = useIsOwner();
   const [open, setOpen] = useState(false);
   const shown = open ? a.events : a.events.slice(0, SHOWN_EVENTS);
@@ -258,6 +309,12 @@ const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOp
             )}
           </div>
         )}
+
+        {orbits?.length && nameOf && onOpenOrbit ? (
+          <div className="flex flex-wrap gap-1.5">
+            <OrbitPill orbits={orbits} nameOf={nameOf} onOpen={onOpenOrbit} />
+          </div>
+        ) : null}
 
         <ul className="-mx-2 divide-y divide-line">
           {shown.map((e) => (
@@ -355,6 +412,23 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
       .catch(() => setGenreData(null));
   }, []);
   const vocabulary = genreData?.vocabulary;
+  // Orbits are optional too: on a failure, or with none, nothing new shows.
+  const [orbits, setOrbits] = useState<ArtistOrbit[]>([]);
+  useEffect(() => {
+    orbitsApi
+      .list()
+      .then((r) => setOrbits(Array.isArray(r) ? r : []))
+      .catch(() => setOrbits([]));
+  }, []);
+  const [openOrbit, setOpenOrbit] = useState<ArtistOrbit | null>(null);
+  const nameByKey = useMemo(() => new Map(artists.map((a) => [a.key, a.name])), [artists]);
+  const nameOf = (key: string) => nameByKey.get(key) ?? key;
+  const seenKeys = useMemo(() => new Set(artists.map((a) => a.key)), [artists]);
+  const orbitsByKey = useMemo(() => {
+    const map = new Map<string, ArtistOrbit[]>();
+    for (const o of orbits) for (const m of o.members) map.set(m.artistKey, [...(map.get(m.artistKey) ?? []), o]);
+    return map;
+  }, [orbits]);
   const genres = useMemo(
     () => genresByArtist(genreData?.genres ?? [], genreData?.vocabulary, genreData?.map),
     [genreData],
@@ -627,9 +701,9 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
               <Ledger bare>
                 {g.artists.map((a) =>
                   density === 'compact' ? (
-                    <ArtistRow key={a.key} artist={a} genre={genres.get(a.key)} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} onManage={onManage} />
+                    <ArtistRow key={a.key} artist={a} genre={genres.get(a.key)} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} onManage={onManage} orbits={orbitsByKey.get(a.key)} nameOf={nameOf} onOpenOrbit={setOpenOrbit} />
                   ) : (
-                    <ArtistCard key={a.key} artist={a} genre={genres.get(a.key)} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} onManage={onManage} />
+                    <ArtistCard key={a.key} artist={a} genre={genres.get(a.key)} onOpenEvent={onOpenEvent} onOpenTable={onOpenTable} onManage={onManage} orbits={orbitsByKey.get(a.key)} nameOf={nameOf} onOpenOrbit={setOpenOrbit} />
                   ),
                 )}
               </Ledger>
@@ -638,6 +712,16 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
         ))
       )}
 
+      {openOrbit && (
+        <OrbitSheet
+          orbit={openOrbit}
+          nameOf={nameOf}
+          seen={seenKeys}
+          events={events}
+          onOpenEvent={onOpenEvent}
+          onClose={() => setOpenOrbit(null)}
+        />
+      )}
     </div>
   );
 };

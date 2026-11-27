@@ -26,6 +26,7 @@ import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres, GenreChange } from '../../events/genres';
 import type { GenreVocabChange, GenreVocabulary, VocabGenre } from '../../events/genreTypes';
+import { ArtistOrbitError, checkOrbitActor, normalizeArtistOrbits, type ArtistOrbit, type ArtistOrbitChange, type ArtistOrbitMeta } from '../../events/artistOrbits';
 import { diffEvent, type ActivityDraft, type ActivityEntry } from '../../events/activityLog';
 import { isCiphertext } from '../../auth/vault';
 import { ArtistAliasRow, ArtistEditionRow, CANONICAL_OPERATIONS, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
@@ -98,6 +99,8 @@ interface FileState {
   genreChanges?: GenreChange[]; // artist_genre_changes: append-only, only undoneAt is ever set
   genreVocab?: Record<string, VocabGenre>; // genres with their aliases and umbrellas (0060), by key
   genreVocabChanges?: GenreVocabChange[]; // genre_changes: append-only, only undoneAt is ever set
+  artistOrbits?: Record<string, ArtistOrbit>; // artist orbits (0064), by id
+  artistOrbitChanges?: ArtistOrbitChange[]; // artist_orbit_changes: append-only, only undoneAt and undoneBy are ever set
   entities?: Record<string, Entity>;
   entityAliases?: EntityAlias[];
   entityLinks?: EntityLink[];
@@ -146,6 +149,12 @@ function emptyState(): FileState {
 }
 
 const clone = <T>(v: T): T => structuredClone(v);
+
+// Orbit images (0064) by id, in id order. ids null: every orbit. Only the orbits that exist.
+function orbitImagesOf(orbits: Record<string, ArtistOrbit>, ids: string[] | null): ArtistOrbit[] {
+  const want = ids === null ? Object.keys(orbits) : [...new Set(ids)];
+  return want.filter((id) => orbits[id]).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).map((id) => clone(orbits[id]));
+}
 
 // JSON-file store for local development. Document bodies live in separate
 // files so the main state file stays small.
@@ -1174,6 +1183,73 @@ export class FileLineupStore implements LineupStore {
     const want = new Set(ids);
     for (const c of state.genreVocabChanges ?? []) if (want.has(c.id) && !c.undoneAt) c.undoneAt = at;
     await this.save();
+  }
+
+  // Artist orbits (0064). The same checks and refusals as artist_orbits_write and artist_orbits_undo.
+  async listArtistOrbits(): Promise<ArtistOrbit[]> {
+    return orbitImagesOf((await this.load()).artistOrbits ?? {}, null);
+  }
+
+  async writeArtistOrbits(next: ArtistOrbit[], replaceIds: string[], meta: ArtistOrbitMeta): Promise<ArtistOrbitChange> {
+    checkOrbitActor(meta.actor);
+    if (!meta.reason?.trim()) throw new ArtistOrbitError('A reason is required.', 400);
+    const state = await this.load();
+    const orbits = normalizeArtistOrbits(next, new Set(Object.keys(state.genreVocab ?? {})));
+    const replace = (replaceIds ?? []).map((id) => (typeof id === 'string' ? id.trim() : ''));
+    if (replace.some((id) => !id)) throw new ArtistOrbitError('An orbit id is required.', 400);
+    let change: ArtistOrbitChange | undefined;
+    await this.mutateCanonical(state, () => {
+      const store = (state.artistOrbits ??= {});
+      state.artistOrbitChanges ??= [];
+      const touched = [...new Set([...replace, ...orbits.map((o) => o.id)])];
+      const old = orbitImagesOf(store, touched);
+      for (const id of touched) delete store[id];
+      for (const o of orbits) store[o.id] = clone(o);
+      change = {
+        id: crypto.randomUUID(),
+        at: new Date().toISOString(),
+        actor: meta.actor,
+        reason: meta.reason.trim(),
+        old,
+        new: orbitImagesOf(store, orbits.map((o) => o.id)),
+      };
+      state.artistOrbitChanges.push(change);
+    });
+    return clone(change!);
+  }
+
+  // Newest first.
+  async listOrbitChanges(q: { limit: number }): Promise<ArtistOrbitChange[]> {
+    const newest = [...((await this.load()).artistOrbitChanges ?? [])].reverse();
+    return clone(newest.slice(0, q.limit));
+  }
+
+  // Refused: unknown (404), already undone (409), or an orbit in the change's 'new' image changed since (409).
+  async undoOrbitChange(id: string, actor: string): Promise<ArtistOrbitChange> {
+    checkOrbitActor(actor);
+    const state = await this.load();
+    let log: ArtistOrbitChange | undefined;
+    await this.mutateCanonical(state, () => {
+      const changes = (state.artistOrbitChanges ??= []);
+      const change = changes.find((c) => c.id === id);
+      if (!change) throw new ArtistOrbitError('No such orbit change.', 404);
+      if (change.undoneAt) throw new ArtistOrbitError('That change was already undone.', 409);
+      const store = (state.artistOrbits ??= {});
+      const newIds = change.new.map((o) => o.id);
+      if (JSON.stringify(orbitImagesOf(store, newIds)) !== JSON.stringify(change.new)) {
+        throw new ArtistOrbitError('Changed since: an orbit changed after this change. Undo the later change first.', 409);
+      }
+      const ids = [...new Set([...newIds, ...change.old.map((o) => o.id)])];
+      const before = orbitImagesOf(store, ids);
+      for (const oid of ids) delete store[oid];
+      for (const o of change.old) store[o.id] = clone(o);
+      const at = new Date().toISOString();
+      change.undoneAt = at;
+      change.undoneBy = actor;
+      log = { id: crypto.randomUUID(), at, actor, reason: 'Undo', old: before, new: orbitImagesOf(store, ids) };
+      changes.push(log);
+    });
+    return clone(log!);
   }
 
   // seen_act_names() (0059): one row per key across every member's live events, the lowest spelling,
@@ -2723,6 +2799,21 @@ function scopedFileStore(base: FileLineupStore, scope: UserScope): LineupStore {
           },
           async markGenreVocabChangesUndone() {
             ownerOnly(scope);
+          },
+          async listArtistOrbits() {
+            return base.listArtistOrbits();
+          },
+          async writeArtistOrbits() {
+            ownerOnly(scope);
+            throw new Error('unreachable');
+          },
+          async listOrbitChanges() {
+            ownerOnly(scope);
+            return [];
+          },
+          async undoOrbitChange() {
+            ownerOnly(scope);
+            throw new Error('unreachable');
           },
         }),
     // Each member has their own records (user_entities and friends in Supabase).
