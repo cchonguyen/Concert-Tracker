@@ -341,7 +341,7 @@ export async function confirmLookup(store: LineupStore, job: LookupJob, req: Con
   await store.putAliases(aliases);
   await store.ensureArtists(performances.map((p) => ({ key: p.artistKey, name: p.name })));
 
-  const existing = await store.getEditionByKey(job.editionKey);
+  const existing = (job.editionId ? await store.getEdition(job.editionId) : null) ?? (await store.getEditionByKey(job.editionKey));
   // An existing series by its slug, name or other names; a confirm never makes one.
   const series = existing?.seriesSlug ? null : await findSeries(store, job.input.eventName);
   const seriesSlug = existing?.seriesSlug ?? series?.slug;
@@ -453,7 +453,7 @@ export async function confirmLookupForMember(store: LineupStore, job: LookupJob,
     ticked.push(act);
   }
 
-  const existing = await store.getEditionByKey(job.editionKey);
+  const existing = (job.editionId ? await store.getEdition(job.editionId) : null) ?? (await store.getEditionByKey(job.editionKey));
   const updated: LoggedEvent = {
     ...event,
     editionId: existing?.id ?? event.editionId,

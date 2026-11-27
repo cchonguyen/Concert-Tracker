@@ -251,6 +251,7 @@ export async function startLineupLookup(
       venue: event.venue,
       city: cityWithRegion(event.city, event.region),
       country: event.country,
+      seriesSlug: event.seriesSlug,
       lineupUrl: text(lineupUrl),
       ...(opts.pasted ? { pasted: opts.pasted } : {}),
     },
