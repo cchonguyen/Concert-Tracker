@@ -15,6 +15,7 @@ import {
 import { genreResolver, levelOf, NOT_GROUPED } from '../server/events/genreVocabulary';
 import type { GenreCollision, GenreLevel, GenreVocabChange, GenreVocabulary } from '../server/events/genreTypes';
 import { ArtistGenresPanel } from './ArtistGenresPanel';
+import type { LineupLinksPreview } from '../server/events/genreRoutes';
 import { GenreRecord } from './GenreRecord';
 import { Button } from './ui/Button';
 import { Equalizer } from './ui/Equalizer';
@@ -242,6 +243,7 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
   const [relRows, setRelRows] = useState<GenreRelationsCsvRow[] | null>(null);
   const [relPreview, setRelPreview] = useState<GenreRelationsCsvPreview | null>(null);
   const [artistGenresOpen, setArtistGenresOpen] = useState(false);
+  const [lineupPreview, setLineupPreview] = useState<LineupLinksPreview | null>(null);
 
   const load = useCallback(
     () =>
@@ -423,6 +425,38 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
     }
   };
 
+  // Bill links: the preview reads shared lineups and changes nothing; Apply writes the links as one undoable change.
+  const previewLineup = async () => {
+    setError(null);
+    setLineupPreview(null);
+    setBusy(true);
+    try {
+      setLineupPreview(await genresApi.previewLineupLinks());
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const applyLineup = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await genresApi.applyLineupLinks();
+      setLineupPreview(null);
+      setNotice({
+        text: res.change ? res.change.summary : 'No lineup links to change.',
+        undoId: res.change?.id,
+      });
+      await load();
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const selectedRow = selected ? rows.find((r) => r.key === selected) : undefined;
 
   return (
@@ -498,6 +532,9 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
           />
           <Button onClick={() => relFileRef.current?.click()} disabled={busy}>
             Upload genre links CSV
+          </Button>
+          <Button onClick={() => void previewLineup()} disabled={busy}>
+            Learn links from lineups
           </Button>
           <Button onClick={() => setCreating((v) => !v)} disabled={busy}>
             New genre
@@ -576,6 +613,44 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
                 setRelPreview(null);
               }}
             >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {lineupPreview && (
+        <div className="space-y-2 rounded-card border border-line bg-surface-1 p-3">
+          <div className="space-y-1 text-sm text-text">
+            <p>
+              {lineupPreview.added} to add · {lineupPreview.removed} to remove · {lineupPreview.changed} weight changed · {lineupPreview.unchanged} unchanged
+            </p>
+            <p className="text-xs text-text-muted">
+              Learned from {lineupPreview.billsUsed} shared {lineupPreview.billsUsed === 1 ? 'bill' : 'bills'} across {lineupPreview.genres}{' '}
+              {lineupPreview.genres === 1 ? 'genre' : 'genres'}. Links you set and links from shared artists are never changed.
+            </p>
+          </div>
+          {lineupPreview.addedLinks.length > 0 && (
+            <ul className="space-y-1 text-xs text-text-muted">
+              {lineupPreview.addedLinks.slice(0, 20).map((l) => (
+                <li key={`${l.source}|${l.target}`}>
+                  {l.sourceName} and {l.targetName}: weight {l.weight.toFixed(2)}, on {l.bills} {l.bills === 1 ? 'bill' : 'bills'}
+                </li>
+              ))}
+            </ul>
+          )}
+          {lineupPreview.addedLinks.length > 20 && (
+            <p className="text-xs text-text-muted">Showing 20 of {lineupPreview.addedLinks.length} links to add.</p>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="primary"
+              disabled={busy || lineupPreview.added + lineupPreview.removed + lineupPreview.changed === 0}
+              onClick={() => void applyLineup()}
+            >
+              Apply lineup links
+            </Button>
+            <Button disabled={busy} onClick={() => setLineupPreview(null)}>
               Cancel
             </Button>
           </div>

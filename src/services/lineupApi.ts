@@ -23,6 +23,7 @@ import type { LineupFacts } from '../server/events/scale';
 import type { CityPoint, PlaceGuess } from '../server/events/place';
 import type { GenreVocabCsvPreview, GenreVocabCsvRow } from '../server/events/genreVocabCsv';
 import type { GenreRelationsCsvPreview, GenreRelationsCsvRow } from '../server/events/genreRelationsCsv';
+import type { LineupLinksPreview } from '../server/events/genreRoutes';
 import type { ArtistGenres, GenreCollision, GenreMapEntry, GenreRelationType, GenreVocabChange, GenreVocabulary, KnownGenre } from '../server/events/genreTypes';
 import type { GenreMergePlan } from '../server/events/genreVocabularyManage';
 import type { MilestoneSaved, Prefs, TipsSaved } from '../server/auth/prefs';
@@ -510,6 +511,11 @@ export const genresApi = {
     request<{ preview: GenreRelationsCsvPreview }>('/api/artist-genres/relations/csv/preview', post({ rows })).then((r) => r.preview),
   relationsCsvApply: (rows: GenreRelationsCsvRow[]) =>
     request<{ preview: GenreRelationsCsvPreview; change: GenreVocabChange | null }>('/api/artist-genres/relations/csv/apply', post({ rows })),
+  // Bill links (genre taxonomy release 3, section 7): the owner previews, then applies, learned links.
+  previewLineupLinks: () =>
+    request<{ preview: LineupLinksPreview }>('/api/artist-genres/relations/lineup/preview', post()).then((r) => r.preview),
+  applyLineupLinks: () =>
+    request<{ preview: LineupLinksPreview; change: GenreVocabChange | null }>('/api/artist-genres/relations/lineup/apply', post()),
   // The CSV text of the acts you can give genres (the browser downloads it).
   csvExport: async (): Promise<string> => {
     const init = await outgoing();
