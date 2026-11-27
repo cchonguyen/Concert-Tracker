@@ -3,13 +3,18 @@ import type { LoggedEvent } from '../services/lineupApi';
 import type { ArtistGenres } from '../services/genres';
 import {
   FIRSTS_MIN_SETS,
+  genreByKind,
+  genreBySeason,
+  genreByYear,
   genreFirsts,
   genreLabel,
   genreMilestones,
   genreRange,
+  genreStoryLine,
   newThisYear,
 } from '../services/genreInsights';
 import type { GenreVocabulary } from '../server/events/genreTypes';
+import { GenreYearsChart } from './GenreYearsChart';
 import { Pill } from './ui/Pill';
 import { Popover } from './ui/Popover';
 
@@ -75,6 +80,10 @@ export const GenreStory: React.FC<GenreStoryProps> = ({
     [events, byArtist, vocabulary, today, mapGroups],
   );
   const label = useMemo(() => genreLabel(events, byArtist, vocabulary, today), [events, byArtist, vocabulary, today]);
+  const byYear = useMemo(() => genreByYear(events, byArtist, vocabulary, today), [events, byArtist, vocabulary, today]);
+  const storyLine = useMemo(() => genreStoryLine(byYear), [byYear]);
+  const byKind = useMemo(() => genreByKind(events, byArtist, vocabulary, today), [events, byArtist, vocabulary, today]);
+  const bySeason = useMemo(() => genreBySeason(events, byArtist, vocabulary, today), [events, byArtist, vocabulary, today]);
 
   if (firsts.knownSets < FIRSTS_MIN_SETS) return null;
 
@@ -234,6 +243,84 @@ export const GenreStory: React.FC<GenreStoryProps> = ({
           <p className="text-[11px] text-text-faint">Shares split each set across its act&apos;s genres by weight.</p>
         </div>
       </div>
+
+      <GenreYearsChart data={byYear} storyLine={storyLine} />
+
+      {byKind.bars.length > 0 && (
+        <div className="space-y-3 rounded-card border border-line bg-surface-1 p-4 sm:p-5">
+          <div>
+            <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-text-muted">
+              By kind of night
+            </h3>
+            {byKind.headline && <p className="mt-1 text-sm font-medium text-text">{byKind.headline}</p>}
+          </div>
+          <ul className="space-y-2.5">
+            {byKind.bars.map((bar) => {
+              const palette = ['var(--accent, #e11d48)', '#38bdf8', '#34d399', '#f59e0b', '#94a3b8'];
+              const top4 = bar.segments.slice(0, 4);
+              const otherShare = bar.segments.slice(4).reduce((sum, s) => sum + s.share, 0);
+              const segs = otherShare > 0 ? [...top4, { group: 'Other', sets: 0, share: otherShare }] : top4;
+              return (
+                <li key={bar.label} className="space-y-1">
+                  <div className="flex items-baseline justify-between gap-2 text-xs">
+                    <span className="font-medium text-text">
+                      {bar.label} <span className="font-normal text-text-muted">({bar.knownSets} sets)</span>
+                    </span>
+                    <span className="font-mono tabular-nums text-text-muted">
+                      {bar.topGroup} {Math.round((bar.segments[0]?.share ?? 0) * 100)}%
+                    </span>
+                  </div>
+                  <div className="flex h-2.5 overflow-hidden rounded-full bg-surface-3">
+                    {segs.map((seg, i) => (
+                      <div
+                        key={seg.group}
+                        title={`${seg.group}: ${Math.round(seg.share * 100)}%`}
+                        style={{
+                          width: `${seg.share * 100}%`,
+                          backgroundColor: palette[i % palette.length],
+                        }}
+                      />
+                    ))}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {bySeason.tiles.some((t) => t.knownSets > 0) && (
+        <div className="space-y-3 rounded-card border border-line bg-surface-1 p-4 sm:p-5">
+          <div>
+            <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-text-muted">By season</h3>
+            {bySeason.headline && <p className="mt-1 text-sm font-medium text-text">{bySeason.headline}</p>}
+          </div>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            {bySeason.tiles.map((tile) => (
+              <div key={tile.label} className="space-y-1 rounded-control border border-line bg-surface-2 p-3">
+                <p className="font-mono text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                  {tile.label}
+                </p>
+                {tile.enough && tile.topGroup ? (
+                  <>
+                    <p className="truncate text-sm font-semibold text-text">{tile.topGroup.name}</p>
+                    <p className="font-mono text-xs tabular-nums text-text-muted">
+                      {Math.round(tile.topGroup.share * 100)}% of {tile.knownSets} sets
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs font-medium text-text-muted">Not enough yet</p>
+                    <p className="font-mono text-[11px] tabular-nums text-text-faint">
+                      {tile.knownSets} {tile.knownSets === 1 ? 'set' : 'sets'} so far
+                    </p>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 };
