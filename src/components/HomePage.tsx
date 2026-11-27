@@ -2,7 +2,7 @@ import React from 'react';
 import { Mail, Search, Ticket } from 'lucide-react';
 import { CaptureBar } from './CaptureBar';
 import { PAGE_ICON } from './pageIcons';
-import { Page, PAGE_BLURB, PAGE_LABELS, Section, SECTIONS, subPagesFor, SubPage } from '../services/nav';
+import { Page, Section, SECTIONS, STRIP_BLURB, STRIP_LABELS, StripTab, stripTabsFor } from '../services/nav';
 import { LoggedEvent } from '../services/lineupApi';
 import { EmailCard } from './EmailCard';
 import { FeatureTiles } from './FeatureTiles';
@@ -31,6 +31,7 @@ interface HomePageProps {
   onImport: () => void;
   onReviewEmail: () => void;
   onOpenSummary: () => void;
+  onOpenTimeline: () => void;
   onOpen: (page: Page) => void;
 }
 
@@ -111,14 +112,16 @@ export const HomePage: React.FC<HomePageProps> = ({
   onImport,
   onReviewEmail,
   onOpenSummary,
+  onOpenTimeline,
   onOpen,
 }) => {
   const yearsAgo = onThisDay ? Number(today.slice(0, 4)) - Number(onThisDay.startDate!.slice(0, 4)) : 0;
   const empty = eventCount === 0;
-  const live = (p: SubPage): { n: number; unit: string } | null => {
-    if (p === 'summary') return { n: eventCount, unit: eventCount === 1 ? 'event' : 'events' };
-    if (p === 'map') return { n: cityCount, unit: cityCount === 1 ? 'city' : 'cities' };
-    if (p === 'ranking') return { n: artistCount, unit: artistCount === 1 ? 'artist' : 'artists' };
+  const live = (t: StripTab): { n: number; unit: string } | null => {
+    if (t === 'summary') return { n: eventCount, unit: eventCount === 1 ? 'event' : 'events' };
+    if (t === 'timeline') return { n: eventCount, unit: eventCount === 1 ? 'show' : 'shows' };
+    if (t === 'map') return { n: cityCount, unit: cityCount === 1 ? 'city' : 'cities' };
+    if (t === 'ranking') return { n: artistCount, unit: artistCount === 1 ? 'artist' : 'artists' };
     return null;
   };
   const alerts = [
@@ -192,21 +195,21 @@ export const HomePage: React.FC<HomePageProps> = ({
         <section key={section} className="space-y-3">
           <h2 className="font-display text-xl font-normal text-text">{SECTIONS[section].label}</h2>
           <div className={`grid gap-3 sm:grid-cols-2 ${empty ? 'opacity-60' : ''}`}>
-            {subPagesFor(section, { canManage }).map((p) => {
-              const Icon = PAGE_ICON[p];
-              const count = live(p);
+            {stripTabsFor(section, { canManage }).map((t) => {
+              const Icon = PAGE_ICON[t === 'timeline' ? 'agenda' : t];
+              const count = live(t);
               return (
                 <button
-                  key={p}
-                  onClick={() => onOpen(p)}
+                  key={t}
+                  onClick={() => (t === 'timeline' ? onOpenTimeline() : onOpen(t))}
                   className={`group flex items-center gap-4 rounded-card border p-4 text-left shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] transition duration-150 hover:-translate-y-0.5 hover:border-accent-tint-line hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.99] motion-reduce:transform-none motion-reduce:transition-none ${TINT[section]}`}
                 >
                   <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-control border border-accent-tint-line bg-accent-tint text-accent transition duration-150 group-hover:scale-105 motion-reduce:transform-none">
                     <Icon className="h-6 w-6" strokeWidth={1.75} aria-hidden="true" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-base font-semibold text-text">{PAGE_LABELS[p]}</span>
-                    <span className="block text-sm text-text-muted">{PAGE_BLURB[p]}</span>
+                    <span className="block text-base font-semibold text-text">{STRIP_LABELS[t]}</span>
+                    <span className="block text-sm text-text-muted">{STRIP_BLURB[t]}</span>
                   </span>
                   {count && (
                     <span className="shrink-0 text-right">

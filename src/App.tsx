@@ -49,7 +49,7 @@ import { AccountPanel } from './components/AccountPanel';
 import { VaultProvider } from './components/VaultContext';
 import { PeopleProvider } from './components/PersonName';
 import { wentTo } from './server/events/attendance';
-import { hintSeen, markHintSeen, NavStorage, Page, PAGE_BLURB, SubPage, PAGE_LABELS, pageFromView, rememberedPage, rememberPage, sectionOf, SECTIONS, subPagesFor, viewFor, buildManageSearch, rememberManageSearch, rememberedManageSearch } from './services/nav';
+import { hintSeen, markHintSeen, NavStorage, openStripTab, Page, PAGE_BLURB, SubPage, PAGE_LABELS, pageFromView, rememberedPage, rememberedTimelinePage, rememberPage, sectionOf, SECTIONS, STRIP_LABELS, stripTabFor, stripTabsFor, TIMELINE_PAGES, viewFor, buildManageSearch, rememberManageSearch, rememberedManageSearch } from './services/nav';
 import { PAGE_ICON, SECTION_ICON } from './components/pageIcons';
 import { HomePage } from './components/HomePage';
 import { BackToTop } from './components/ui/BackToTop';
@@ -71,7 +71,6 @@ import { homeSummary } from './services/home';
 
 // The Table, the four timeline views and the Map keep their filters in the address (?view=table&...).
 const FILTERED: Page[] = ['table', 'agenda', 'month', 'heatmap', 'river', 'map'];
-const TIMELINE_PAGES: Page[] = ['agenda', 'month', 'heatmap', 'river'];
 // Pages with a title line, and long pages that get Back to top (Agenda and Table have their own).
 const HEADED: Page[] = ['stats', 'map', 'ranking', 'share'];
 const BACK_TO_TOP: Page[] = ['summary', 'month', 'heatmap', 'stats', 'map', 'ranking', 'manage'];
@@ -599,13 +598,13 @@ export default function App({ initialMe }: { initialMe?: Me }) {
               variant="underline"
               line={false}
               className={`mx-auto ${headerWidth} px-4`}
-              value={shown as SubPage}
-              onChange={(p) => openTab(p)}
-              items={subPagesFor(section, { canManage }).map((p) => ({
-                value: p,
-                label: PAGE_LABELS[p],
-                icon: PAGE_ICON[p],
-                count: p === 'summary' ? events.length : undefined,
+              value={stripTabFor(shown as SubPage)}
+              onChange={(t) => openTab(openStripTab(t, navStorage()))}
+              items={stripTabsFor(section, { canManage }).map((t) => ({
+                value: t,
+                label: STRIP_LABELS[t],
+                icon: PAGE_ICON[t === 'timeline' ? 'agenda' : t],
+                count: t === 'summary' ? events.length : undefined,
                 compact: true,
               }))}
             />
@@ -651,6 +650,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
             onImport={openImport}
             onReviewEmail={openReview}
             onOpenSummary={() => openTab('summary')}
+            onOpenTimeline={() => openTab(rememberedTimelinePage(navStorage()))}
             onOpen={openTab}
           />
         )}
@@ -681,9 +681,10 @@ export default function App({ initialMe }: { initialMe?: Me }) {
             onRefresh={() => void refresh()}
           />
         )}
-        {TIMELINE_PAGES.includes(shown) && (
+        {TIMELINE_PAGES.includes(shown as (typeof TIMELINE_PAGES)[number]) && (
           <TimelineTab
             mode={shown as 'agenda' | 'month' | 'heatmap' | 'river'}
+            onModeChange={openTab}
             focusEventId={agendaFocus}
             events={events}
             lineups={lineups}

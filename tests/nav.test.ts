@@ -4,14 +4,20 @@ import {
   hintSeen,
   markHintSeen,
   NavStorage,
+  openStripTab,
   PAGE_BLURB,
   PAGE_LABELS,
   PAGES,
   pageFromView,
   rememberedPage,
+  rememberedTimelinePage,
   rememberPage,
   REMEMBER_KEY,
   sectionOf,
+  STRIP_BLURB,
+  STRIP_LABELS,
+  stripTabFor,
+  stripTabsFor,
   subPagesFor,
   viewFor,
   buildManageSearch,
@@ -191,4 +197,46 @@ test('manage query persistence round trips via rememberedManageSearch and integr
 
   // Verify pageFromView still extracts manage correctly from the stored query
   assert.equal(pageFromView(new URLSearchParams(search).get('view'), OWNER), 'manage');
+});
+
+test('Explore strip shows four tabs (Timeline, Map, Stats, Ranking) and Library keeps five', () => {
+  assert.deepEqual(stripTabsFor('explore', OWNER), ['timeline', 'map', 'stats', 'ranking']);
+  assert.deepEqual(stripTabsFor('explore', MEMBER), ['timeline', 'map', 'stats', 'ranking']);
+  assert.deepEqual(stripTabsFor('library', OWNER), ['summary', 'table', 'manage', 'log', 'share']);
+  assert.deepEqual(stripTabsFor('library', MEMBER), ['summary', 'table', 'log', 'share']);
+  assert.equal(STRIP_LABELS.timeline, 'Timeline');
+  assert.ok(STRIP_BLURB.timeline.length > 0);
+});
+
+test('stripTabFor marks Timeline active for all four timeline views and keeps other views as-is', () => {
+  for (const p of ['agenda', 'month', 'heatmap', 'river'] as const) {
+    assert.equal(stripTabFor(p), 'timeline');
+  }
+  assert.equal(stripTabFor('map'), 'map');
+  assert.equal(stripTabFor('stats'), 'stats');
+  assert.equal(stripTabFor('ranking'), 'ranking');
+  assert.equal(stripTabFor('summary'), 'summary');
+});
+
+test('openStripTab(timeline) defaults to agenda, remembers the last timeline view, and ignores corrupt storage', () => {
+  const storage = memoryStorage();
+  assert.equal(openStripTab('timeline', storage), 'agenda');
+  assert.equal(openStripTab('map', storage), 'map');
+
+  rememberPage('river', storage);
+  rememberPage('map', storage);
+  assert.equal(rememberedPage('explore', OWNER, storage), 'map');
+  assert.equal(rememberedTimelinePage(storage), 'river');
+  assert.equal(openStripTab('timeline', storage), 'river');
+
+  assert.equal(openStripTab('timeline', memoryStorage({ [REMEMBER_KEY]: '{not json' })), 'agenda');
+  const blocked: NavStorage = {
+    getItem: () => {
+      throw new Error('denied');
+    },
+    setItem: () => {
+      throw new Error('denied');
+    },
+  };
+  assert.equal(openStripTab('timeline', blocked), 'agenda');
 });

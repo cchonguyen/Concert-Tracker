@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarRange, Table2 } from 'lucide-react';
 import { FilterButton, FilterPanel, FilterSelect } from '../ui/FilterControls';
+import { Segmented } from '../ui/Segmented';
 import type { LineupFacts, LineupSummary, LoggedEvent } from '../../services/lineupApi';
 import { activeFilterCount, EMPTY_FILTERS, filterEvents, filterOptions, filtersFromQuery, filtersToQuery, TableFilters } from '../../services/table';
 import { buildTimelineModel, firstToConfirm, monthFromQuery, monthToQuery, TimelineMode, TimelineRange } from '../../services/timeline';
@@ -17,6 +18,7 @@ import { NoDateTray } from './parts';
 
 interface TimelineTabProps {
   mode: TimelineMode;
+  onModeChange: (mode: TimelineMode) => void;
   focusEventId?: string | null; // Opened from the "to confirm" chip on another view
   events: LoggedEvent[];
   lineups: Record<string, LineupSummary>;
@@ -26,11 +28,18 @@ interface TimelineTabProps {
   onShowInAgenda: (id: string) => void;
 }
 
+const TIMELINE_OPTIONS: Array<{ value: TimelineMode; label: string }> = [
+  { value: 'agenda', label: 'Agenda' },
+  { value: 'month', label: 'Month' },
+  { value: 'heatmap', label: 'Heatmap' },
+  { value: 'river', label: 'River' },
+];
+
 const control =
   'min-h-11 w-full rounded-control border border-line bg-surface-1 px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none sm:min-h-9';
 const ALL: TimelineRange = { kind: 'all' };
 
-export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, focusEventId = null, events, lineups, editions, onOpen, onOpenTable, onShowInAgenda }) => {
+export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, onModeChange, focusEventId = null, events, lineups, editions, onOpen, onOpenTable, onShowInAgenda }) => {
   const [filters, setFilters] = useState<TableFilters>(() => filtersFromQuery(window.location.search));
   const [selectedEventId, setSelectedEventId] = useState<string | null>(focusEventId);
   const [showFilters, setShowFilters] = useState(() => activeFilterCount(filters) > 0);
@@ -57,7 +66,8 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, focusEventId = n
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Segmented label="Timeline view" compact value={mode} onChange={onModeChange} options={TIMELINE_OPTIONS} />
         <div className="flex items-center gap-3 text-xs">
           {model.toConfirm > 0 && confirmId && (
             <button
