@@ -1914,23 +1914,16 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             {showWeekend && (
               <ReadRow id="weekend-row" icon={CalendarRange} label="Weekend" alwaysOpen>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  {(edition?.weekends && edition.weekends.length > 1
-                    ? edition.weekends.map((w) => ({ n: w.weekend, label: weekendLabel(w, "WK") }))
-                    : [1, 2].map((n) => ({ n, label: `WK${n}` }))
-                  ).map(({ n, label }) => {
-                    const on = event.weekend === n;
-                    return (
-                      <button
-                        key={n}
-                        type="button"
-                        aria-pressed={on}
-                        onClick={() => void save({ weekend: n })}
-                        className={`min-h-11 rounded-control border px-3 text-sm sm:min-h-8 ${on ? "border-accent bg-accent-tint text-text" : "border-line-strong text-text-muted hover:border-accent"}`}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
+                  <Segmented
+                    label="Weekend"
+                    compact
+                    value={event.weekend != null ? String(event.weekend) : ""}
+                    onChange={(n) => void save({ weekend: Number(n) })}
+                    options={(edition?.weekends && edition.weekends.length > 1
+                      ? edition.weekends.map((w) => ({ n: w.weekend, label: weekendLabel(w, "WK") }))
+                      : [1, 2].map((n) => ({ n, label: `WK${n}` }))
+                    ).map(({ n, label }) => ({ value: String(n), label }))}
+                  />
                   {event.weekend != null && (
                     <button type="button" onClick={() => void save({ weekend: null })} className="min-h-11 px-2 text-xs text-text-muted hover:text-text sm:min-h-8">
                       Clear

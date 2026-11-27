@@ -17,6 +17,7 @@ import { StubBarcode, StubSentence, StubSerial, Ticket, TicketKicker, TicketSmal
 import { MONTH_NAMES } from '../server/lineup/months';
 import { NameList } from './ui/NameList';
 import { PostIt } from './ui/PostIt';
+import { Segmented } from './ui/Segmented';
 
 // Count tiles are post-its (docs/specs/landing-look.md): tilts and tones repeat in this order.
 const NOTE_TILTS = [-1.25, 1, -0.75, 1.25, -0.5, 0.75];
@@ -468,16 +469,13 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className={title}>Year in review</h2>
             <div className="flex flex-wrap gap-1">
-              {reviewYears.slice(0, 8).map((y) => (
-                <button
-                  key={y}
-                  onClick={() => setPickedYear(y)}
-                  aria-pressed={y === year}
-                  className={`min-h-11 rounded-control border px-2 font-mono text-xs tabular-nums sm:min-h-9 ${y === year ? 'border-accent-tint-line bg-accent-tint font-semibold text-text' : 'border-transparent text-text-muted hover:text-text'}`}
-                >
-                  {y}
-                </button>
-              ))}
+              <Segmented
+                label="Year"
+                compact
+                value={String(year)}
+                onChange={(y) => setPickedYear(Number(y))}
+                options={reviewYears.slice(0, 8).map((y) => ({ value: String(y), label: String(y) }))}
+              />
               {reviewYears.length > 8 && (
                 <select
                   value={reviewYears.slice(0, 8).includes(year) ? '' : year}
