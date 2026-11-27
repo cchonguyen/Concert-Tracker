@@ -10,7 +10,7 @@ Builds on `docs/specs/canonical-genres.md` (shared genres, `artist_genres`, `art
 2. A Genres tab in Manage, where the owner can add aliases for a genre or merge two genres, the same way series and editions work today.
 3. Related genres: the owner can put "electro house" and "tech house" under a "house" umbrella, or "melodic dubstep" and "future bass" under "melodic bass".
 
-Decided by Charlie: a genre may sit under several umbrellas. music-story's parent groups (13 today) stay the top level, and the owner can override a genre's group.
+Decided by Charlie: a genre may sit under several umbrellas. music-story's parent groups (13 today) stay the top level, and the owner can override a genre's group. (Superseded 2026-11-27: 8 macro genres and 28 scene families replace music-story's groups as the top level; see [genre-taxonomy-phase-a.md](genre-taxonomy-phase-a.md).)
 
 ## In plain English
 
