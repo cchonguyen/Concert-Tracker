@@ -12,6 +12,8 @@ import {
   genreByYear,
   genreFirsts,
   genreLabel,
+  genreZoom,
+  ZOOM_MIN_SETS,
   genreMilestones,
   genreRange,
   genreStoryLine,
@@ -592,4 +594,114 @@ test('legacy fallback: without a taxonomy the mix groups by the stored parent an
   const mix = genreMix([ev('1', '2026-03-01', ['A'])], byArtist, undefined);
   assert.deepEqual(mix.parents.map((p) => p.name), ['Electronic']);
   assert.deepEqual(mix.families, []);
+});
+
+// Multi-zoom (docs/specs/genre-taxonomy-release-1.md decisions 1-6 and section 2).
+const zoomVocab: GenreVocabulary = {
+  genres: [
+    { key: 'macro:electronic', name: 'Electronic', level: 'macro', aliases: [], umbrellas: [] },
+    { key: 'family:house', name: 'House', level: 'family', primaryParent: 'macro:electronic', aliases: [], umbrellas: [] },
+    { key: 'deephouse', name: 'Deep house', primaryParent: 'family:house', aliases: [], umbrellas: [] },
+    { key: 'techhouse', name: 'Tech house', primaryParent: 'family:house', aliases: [], umbrellas: [] },
+    { key: 'ambient', name: 'Ambient', aliases: [], umbrellas: [] },
+  ],
+};
+
+const zoomRows = (): ArtistGenres[] => [
+  artist('A', [
+    { parent: 'Dance', style: 'Deep house', weight: 0.6 },
+    { parent: 'Dance', style: 'Tech house', weight: 0.4 },
+  ]),
+  artist('B', [{ parent: 'Ambient', style: 'Ambient', weight: 1 }]),
+];
+
+const sumOf = (rows: Array<{ sets: number }>): number => rows.reduce((t, r) => t + r.sets, 0);
+
+test('genreZoom: each level sums to known, and family and macro children sum to their parent', () => {
+  const byArtist = genresByArtist(zoomRows(), zoomVocab);
+  const events = [ev('1', '2026-03-01', ['A', 'B'])];
+  const z = genreZoom(events, byArtist, zoomVocab);
+
+  assert.equal(z.levels, 'taxonomy');
+  assert.equal(z.known, 2);
+  assert.equal(z.unknown, 0);
+  for (const list of [z.macros, z.families, z.genres]) {
+    assert.ok(Math.abs(sumOf(list) - z.known) < 1e-9);
+    assert.ok(Math.abs(list.reduce((t, r) => t + r.share, 0) - 1) < 1e-9);
+  }
+
+  const electronic = z.macros.find((m) => m.name === 'Electronic')!;
+  assert.equal(electronic.key, 'macro:electronic');
+  assert.equal(electronic.sets, 1);
+  assert.equal(electronic.share, 0.5);
+  assert.equal(sumOf(electronic.children ?? []), electronic.sets);
+
+  const house = z.families.find((f) => f.name === 'House')!;
+  assert.equal(house.key, 'family:house');
+  assert.equal(house.parentKey, 'macro:electronic');
+  assert.ok(Math.abs(sumOf(house.children ?? []) - house.sets) < 1e-9);
+  assert.deepEqual((house.children ?? []).map((g) => [g.name, g.parentKey]), [
+    ['Deep house', 'family:house'],
+    ['Tech house', 'family:house'],
+  ]);
+});
+
+test('genreZoom: a genre with no family sits under Not grouped at both levels', () => {
+  const byArtist = genresByArtist(zoomRows(), zoomVocab);
+  const z = genreZoom([ev('1', '2026-03-01', ['B'])], byArtist, zoomVocab);
+
+  const ambient = z.genres.find((g) => g.name === 'Ambient')!;
+  assert.equal(ambient.parentKey, 'family:not-grouped');
+  const notGroupedFamily = z.families.find((f) => f.name === 'Not grouped')!;
+  assert.equal(notGroupedFamily.key, 'family:not-grouped');
+  assert.equal(notGroupedFamily.parentKey, 'macro:not-grouped');
+  assert.equal(z.macros.find((m) => m.name === 'Not grouped')!.sets, 1);
+  assert.equal(z.macros.find((m) => m.name === 'Not grouped')!.key, 'macro:not-grouped');
+});
+
+test('genreZoom: sets of acts with no genre are unknown and not in known', () => {
+  const byArtist = genresByArtist([...zoomRows(), artist('Empty', [])], zoomVocab);
+  const z = genreZoom([ev('1', '2026-03-01', ['A', 'C', 'Empty'])], byArtist, zoomVocab);
+
+  assert.equal(z.known, 1);
+  assert.equal(z.unknown, 2);
+  assert.equal(z.enough, false);
+  assert.ok(Math.abs(sumOf(z.macros) - 1) < 1e-9);
+});
+
+test('genreZoom: a B2B set counts half for each act', () => {
+  const byArtist = genresByArtist(zoomRows(), zoomVocab);
+  const z = genreZoom([b2bEvent(ev('1', '2026-03-01', ['A', 'B']))], byArtist, zoomVocab);
+
+  assert.equal(z.known, 1);
+  assert.equal(z.macros.find((m) => m.name === 'Electronic')!.sets, 0.5);
+  assert.equal(z.macros.find((m) => m.name === 'Not grouped')!.sets, 0.5);
+  assert.equal(z.families.find((f) => f.name === 'House')!.sets, 0.5);
+});
+
+test('genreZoom: enough is false at 9.5 known sets and true at 10', () => {
+  const byArtist = genresByArtist(zoomRows(), zoomVocab);
+  const base = Array.from({ length: 9 }, (_, i) => ev(`solo-${i}`, '2026-01-01', ['A']));
+
+  // 9 solo sets plus a B2B with an act that has no genre: 9.5 known.
+  const short = genreZoom([...base, b2bEvent(ev('x', '2026-02-01', ['A', 'C']))], byArtist, zoomVocab);
+  assert.equal(short.known, 9.5);
+  assert.equal(short.unknown, 0.5);
+  assert.equal(ZOOM_MIN_SETS, 10);
+  assert.equal(short.enough, false);
+
+  // 9 solo sets plus a B2B with a known act: 10 known.
+  const full = genreZoom([...base, b2bEvent(ev('y', '2026-02-01', ['A', 'B']))], byArtist, zoomVocab);
+  assert.equal(full.known, 10);
+  assert.equal(full.enough, true);
+});
+
+test('genreZoom: without a taxonomy it falls back to music-story groups with no families or genres', () => {
+  const byArtist = genresByArtist([artist('A', [{ parent: 'Electronic', style: 'Deep house', weight: 1 }])]);
+  const z = genreZoom([ev('1', '2026-03-01', ['A'])], byArtist, undefined);
+
+  assert.equal(z.levels, 'groups');
+  assert.deepEqual(z.macros.map((m) => [m.name, m.sets, m.share]), [['Electronic', 1, 1]]);
+  assert.deepEqual(z.families, []);
+  assert.deepEqual(z.genres, []);
 });
