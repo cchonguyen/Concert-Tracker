@@ -28,10 +28,10 @@ Every slice (40.x) is done; see `.spec/archive/HISTORY-2026-11.md`.
 Every slice (41.x) is done; see `.spec/archive/HISTORY-2026-11.md`.
 
 ## Landing page 2 (docs/specs/landing-page-2.md, approved by Charlie 2026-11-27)
-- [x] **Slice 42.1: Landing page 2** [UI / VISUAL] Direction D landing page (docs/specs/landing-page-2.md). Target files: index.html, src/landing/home.jpg, src/landing/timeline.jpg, src/landing/ranking.jpg, src/landing/detail.jpg, docs/specs/landing-page-2.md, docs/architecture/18-public-pages.md | Issue: #1083 | Verify: npm run lint --silent && npm test --silent
+Done; see `.spec/archive/HISTORY-2026-11.md`.
 
 ## Genre taxonomy, Release 3 (docs/specs/genre-taxonomy-release-3.md, plan approved by Charlie 2026-11-27 PT with the AGENTS.md line; migration 0064, held until applied)
-Every slice (43.x, plus re-verify slices 45.1106 to 45.1115) is done; see `.spec/archive/HISTORY-2026-11.md`.
+Every slice (43.x, plus its re-verify slices) is done; see `.spec/archive/HISTORY-2026-11.md`.
 
 ## Genre charts by family (Charlie 2026-11-27: macros too broad; no migration)
 - [x] **Slice 47.1: Group genre charts by scene family** [CORE / DATA] shareGroup returns the family under a taxonomy; Stats genre map lists families. Target files: src/server/events/genreVocabulary.ts, src/components/StatsView.tsx, src/components/ArtistsView.tsx, src/components/PeopleRanking.tsx, src/services/genres.ts, tests/genreInsights.test.ts, tests/genreTaxonomy.test.ts, docs/architecture/07-artist-genres.md | Issue: #1121 | Verify: npm run lint --silent && npm test --silent
@@ -44,5 +44,7 @@ Every slice (43.x, plus re-verify slices 45.1106 to 45.1115) is done; see `.spec
 - [x] **Slice 45.3: Landing look on Event detail** [UI / VISUAL] docs/specs/landing-look.md. Target files: src/components/EventDetail.tsx, docs/specs/landing-look.md | Issue: #1108 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 45.4: Landing look on Library and Explore pages** [UI / VISUAL] docs/specs/landing-look.md. Target files: src/App.tsx, src/components/ui/StubHeader.tsx, src/components/StatsView.tsx, src/components/PeopleRanking.tsx, src/components/GenresRanking.tsx, src/components/MapView.tsx, src/components/LogView.tsx, docs/specs/landing-look.md | Issue: #1111 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 45.5: Landing look on Manage, panels and dialogs** [UI / VISUAL] docs/specs/landing-look.md. Target files: src/components/ManageView.tsx, src/components/ui/Sheet.tsx, src/components/ui/Confirm.tsx, src/components/ImportReview.tsx, src/components/AccountPanel.tsx, src/components/ListImport.tsx, src/components/SeriesPanel.tsx, src/components/FillGaps.tsx, src/components/ArtistGenresPanel.tsx, src/components/EmailCard.tsx, src/components/AboutDialog.tsx, src/components/LegalDialog.tsx, src/components/MembersPanel.tsx, src/components/SheetSync.tsx, src/components/NoticeModal.tsx, src/components/GenreStory.tsx, src/components/QuickAdd.tsx, docs/specs/landing-look.md | Issue: #1114 | Verify: npm run lint --silent && npm test --silent
+- [x] **Slice 45.6: Home page links as post-its** [UI / VISUAL] docs/specs/landing-look.md. Target files: src/components/HomePage.tsx, src/components/ui/PostIt.tsx, docs/specs/landing-look.md, docs/design-system/design-system.json | Issue: #1123 | Verify: npm run lint --silent && npm test --silent
+
 ## Global Archive & Table sync
 - [x] **Slice 38.996: Match verified editions by seriesSlug/aliases and refresh events after Global Archive edits** [CORE / DATA] Pass seriesSlug through LookupInput/startLineupLookup, match verified editions by seriesSlug/seriesName/seriesAliases in findVerifiedEdition, fall back from job.editionId in confirmLookup, and refresh App events after Global Archive edits. Target files: src/server/lineup/types.ts, src/server/lineup/pipeline.ts, src/server/canon/match.ts, src/server/events/service.ts, src/server/lineup/learning.ts, src/components/ManageView.tsx, src/components/CanonicalArchive.tsx, tests/canonMatch.test.ts | Coords: [400, 12-data-model, 13-api] | Verify: npm run typecheck --silent && npm run lint --silent && npm test --silent

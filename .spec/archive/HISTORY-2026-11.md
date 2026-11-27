@@ -227,7 +227,8 @@ Finished slices moved out of `.spec/PROGRESS.md` on 2026-11-25. Earlier history 
 - [x] **Slice 41.5: Event Match screen** [UI / VISUAL] Match line and lineup pills (section 5). Target files: src/components/LineupDna.tsx, src/components/LineupTable.tsx, src/components/EventDetail.tsx | Issue: #1080 | Verify: npm run lint --silent
 - [x] **Slice 41.6: Release 2 docs** [UI / VISUAL] (section 6). Target files: docs/architecture/07-artist-genres.md, ARCHITECTURE.md | Issue: #1081 | Verify: npm run lint --silent && npm test --silent
 
-## Genre taxonomy, Release 3 (docs/specs/genre-taxonomy-release-3.md)
+## Landing page 2 and genre taxonomy Release 3 (moved from PROGRESS 2026-11-27)
+- [x] **Slice 42.1: Landing page 2** [UI / VISUAL] Direction D landing page (docs/specs/landing-page-2.md). Target files: index.html, src/landing/home.jpg, src/landing/timeline.jpg, src/landing/ranking.jpg, src/landing/detail.jpg, docs/specs/landing-page-2.md, docs/architecture/18-public-pages.md | Issue: #1083 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 43.5: Bill links maths** [CORE / DATA] lineupCooccur NPMI over stage or edition bills (section 6). Target files: src/server/events/lineupCooccur.ts, tests/lineupCooccur.test.ts | Issue: #1088 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 43.6: Bill links job** [CORE / DATA] owner preview and apply of lineup_cooccur links, undoable (section 7). Target files: src/server/events/genreRoutes.ts, src/components/GenresPanel.tsx, src/services/lineupApi.ts, src/server/events/genreRelationsCsv.ts, tests/lineupCooccurRoute.test.ts | Issue: #1089 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 43.7: One step outside your lane** [CORE / DATA] outsideLane and its card (section 8). Target files: src/services/genreInsights.ts, src/components/GenreStory.tsx, tests/genreInsights.test.ts | Issue: #1090 | Verify: npm run lint --silent && npm test --silent
