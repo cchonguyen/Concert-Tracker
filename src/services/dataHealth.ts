@@ -127,3 +127,19 @@ export function placeOfferVenues(entities: Entity[]): Array<{ venue: Entity; off
     .filter((e) => e.kind === 'venue' && !e.mergedIntoId && Array.isArray(e.attrs.placeOffers) && (e.attrs.placeOffers as unknown[]).length > 0)
     .map((venue) => ({ venue, offers: venue.attrs.placeOffers as Array<{ city: string; region?: string; country?: string; eventId: string; from: string }> }));
 }
+
+// Events the app linked to a shared edition on its own in the last 30 days (docs/specs/series-sync.md),
+// newest first. Each one can be unlinked from Data health or from the event.
+export function recentAutoLinks<E extends { id: string; details?: { autoLinked?: { editionId: string; at: string } } }>(
+  events: E[],
+  now: Date,
+  days = 30,
+): E[] {
+  const since = now.getTime() - days * 86_400_000;
+  return events
+    .filter((e) => {
+      const at = Date.parse(e.details?.autoLinked?.at ?? '');
+      return Number.isFinite(at) && at >= since;
+    })
+    .sort((a, b) => (b.details!.autoLinked!.at).localeCompare(a.details!.autoLinked!.at));
+}
