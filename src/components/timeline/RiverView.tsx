@@ -1,8 +1,12 @@
 import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
+import { genresApi, type GenresList } from '../../services/lineupApi';
+import { genresByArtist } from '../../services/genres';
+import { NOT_GROUPED } from '../../server/events/genreVocabulary';
 import { placeLabel } from '../../services/format';
 import { dateChip, RIVER_ZOOMS, riverLayout, RiverItem, riverStretch, TimelineSpan, TimelineViewProps } from '../../services/timeline';
 import { Popover } from '../ui/Popover';
+import { Switch } from '../ui/Switch';
 
 // River: events along a vertical top-to-bottom time axis you drag or scroll
 // through, zoomed from about a decade down to a month, with a light grid in
@@ -51,9 +55,43 @@ const RING_STROKE_CLASS = (item: RiverItem) => {
   return item.span.kind === 'festival' ? 'stroke-accent' : 'stroke-accent-fill';
 };
 
+const RIVER_GENRE_KEY = 'liveArchive.riverColorByGenre';
+const GENRE_PALETTE = ['#e11d48', '#38bdf8', '#34d399', '#f59e0b', '#a78bfa', '#f472b6', '#2dd4bf', '#fb923c'];
+
+type GenreData = Pick<GenresList, 'genres' | 'vocabulary' | 'map'>;
+const NO_GENRES: GenreData = { genres: [], vocabulary: { genres: [] }, map: [] };
+
+function readColorByGenre(): boolean {
+  try {
+    return window.localStorage.getItem(RIVER_GENRE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda }) => {
   const [zoom, setZoom] = useState(1);
   const [containerWidth, setContainerWidth] = useState(800);
+  const [colorByGenre, setColorByGenre] = useState(readColorByGenre);
+  const [genreData, setGenreData] = useState<GenreData>(NO_GENRES);
+  useEffect(() => {
+    genresApi
+      .list()
+      .then((r) => setGenreData({ genres: r.genres, vocabulary: r.vocabulary, map: r.map }))
+      .catch(() => setGenreData(NO_GENRES));
+  }, []);
+  const byArtist = useMemo(
+    () => genresByArtist(genreData.genres, genreData.vocabulary, genreData.map),
+    [genreData],
+  );
+  const toggleColorByGenre = (next: boolean) => {
+    setColorByGenre(next);
+    try {
+      window.localStorage.setItem(RIVER_GENRE_KEY, next ? '1' : '0');
+    } catch {
+      // Storage blocked or full: still works for this session.
+    }
+  };
   const gridId = useId();
   const layout = useMemo(() => riverLayout(model, RIVER_ZOOMS[zoom]), [model, zoom]);
   const box = useRef<HTMLDivElement>(null);
@@ -142,15 +180,46 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
     });
   }, [layout, containerWidth]);
 
+  const { topGroupByEventId, legendGroups, colorForGroup } = useMemo(() => {
+    const topByEvent = new Map<string, string>();
+    const counts = new Map<string, number>();
+    for (const { item } of placed) {
+      const e = item.span.event;
+      const weights = new Map<string, number>();
+      for (const s of e.seen) {
+        const g = byArtist.get(s.key);
+        if (!g?.genres.length) continue;
+        for (const x of g.genres) {
+          const grp = x.parent || NOT_GROUPED;
+          weights.set(grp, (weights.get(grp) ?? 0) + x.weight);
+        }
+      }
+      if (!weights.size) continue;
+      const top = [...weights.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
+      topByEvent.set(e.id, top);
+      counts.set(top, (counts.get(top) ?? 0) + 1);
+    }
+    const ordered = [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([g]) => g);
+    const colorMap = new Map(ordered.map((g, i) => [g, GENRE_PALETTE[i % GENRE_PALETTE.length]]));
+    return { topGroupByEventId: topByEvent, legendGroups: ordered, colorForGroup: colorMap };
+  }, [placed, byArtist]);
+
   if (!layout) return <p className="py-10 text-center text-sm text-text-muted">No dated events match these filters.</p>;
 
   const todayY = PAD_Y + layout.todayX;
+  const showGenreColors = colorByGenre && legendGroups.length > 0;
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between text-xs text-text-muted">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-text-muted">
         <span>Drag or scroll up and down. Tap a mark to open it.</span>
-        <span className="flex items-center gap-1">
+        <span className="flex flex-wrap items-center gap-2">
+          {legendGroups.length > 0 && (
+            <Switch checked={colorByGenre} onChange={toggleColorByGenre} label="Colour by genre" />
+          )}
+          <span className="flex items-center gap-1">
           <button
             onClick={() => zoomTo(zoom - 1)}
             disabled={zoom === 0}
@@ -167,8 +236,23 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
+          </span>
         </span>
       </div>
+      {showGenreColors && (
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-muted">
+          {legendGroups.map((g) => (
+            <span key={g} className="inline-flex items-center gap-1.5">
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: colorForGroup.get(g) }}
+                aria-hidden="true"
+              />
+              <span>{g}</span>
+            </span>
+          ))}
+        </div>
+      )}
       <div
         ref={box}
         className="h-[65vh] min-h-[420px] max-h-[760px] cursor-grab overflow-x-hidden overflow-y-auto rounded-card border border-line-strong bg-surface-1 active:cursor-grabbing"
@@ -235,10 +319,13 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
             </text>
             {placed.map(({ item, cx, cy, vr, barH, rings, outerPad }) => {
               const outlined = item.span.attendance !== 'went';
+              const grp = showGenreColors ? topGroupByEventId.get(item.span.event.id) : undefined;
+              const genreColor = grp ? colorForGroup.get(grp) : undefined;
               const common = {
                 className: `${MARK_CLASS(item)} cursor-pointer hover:brightness-110`,
                 strokeWidth: outlined ? 2 : 0,
                 strokeDasharray: outlined ? '4 3' : undefined,
+                style: genreColor ? (outlined ? { stroke: genreColor } : { fill: genreColor }) : undefined,
               };
               const ringClass = RING_STROKE_CLASS(item);
               const ringIndices = Array.from({ length: rings }, (_, idx) => rings - idx);
@@ -261,6 +348,7 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
                         rx={vr + ringPad}
                         fill="none"
                         className={ringClass}
+                        style={genreColor ? { stroke: genreColor } : undefined}
                         strokeWidth={1.5}
                         strokeOpacity={opacity}
                       />
@@ -272,6 +360,7 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
                         r={vr + ringPad}
                         fill="none"
                         className={ringClass}
+                        style={genreColor ? { stroke: genreColor } : undefined}
                         strokeWidth={1.5}
                         strokeOpacity={opacity}
                       />
