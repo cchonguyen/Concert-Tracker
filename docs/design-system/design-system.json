@@ -701,6 +701,7 @@
         "tone": "paper (default) | second | accent",
         "icon": "optional node, hops on hover",
         "title": "optional, shown as a poster heading",
+        "onClick": "optional; makes the whole note one button (a link card) with the focus ring",
         "children": ""
       },
       "states": [
