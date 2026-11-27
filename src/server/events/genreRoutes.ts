@@ -21,6 +21,7 @@ import {
   undoGenresCsv,
 } from './genreCsvApply';
 import { genreCollisions, genreResolver, levelOf } from './genreVocabulary';
+import { ArtistOrbitError, isMissingOrbitFunction, orbitsForMember } from './artistOrbits';
 import type { GenreRelation, GenreVocabChange, GenreVocabulary } from './genreTypes';
 import { billsFrom, lineupCooccur, type CooccurPerformance } from './lineupCooccur';
 import { genresByArtist } from '../../services/genres';
@@ -114,6 +115,8 @@ export function taxonomyPayload(vocabulary: GenreVocabulary): {
 export const VOCAB_CHANGES_LIMIT = 100;
 
 const isMember = () => currentMember()?.role === 'member';
+export const ORBIT_CHANGES_LIMIT = 20;
+const ORBIT_MEMBER_REFUSED = 'Only the owner changes artist orbits.';
 
 // The owner's vocabulary writes, by the last part of the path. Each gets the
 // request body and returns the change it wrote.
@@ -139,12 +142,18 @@ const MEMBER_REFUSED = 'Only the owner changes the genre list.';
 // A member is sent shared genre rows only for acts in their own events or
 // artist records; their own additions always come back. The owner (and a
 // request outside multi-user mode) gets every row.
-async function visibleGenres(store: LineupStore): Promise<ArtistGenres[]> {
-  const rows = await store.listArtistGenres();
-  if (!isMember()) return rows;
+// The act keys a member has: the acts on their own events, and their own artist records.
+async function memberActKeys(store: LineupStore): Promise<Set<string>> {
   const [events, entities] = await Promise.all([store.listEvents(), store.listEntities()]);
   const keys = new Set<string>(events.flatMap((e) => e.seen.map((s) => s.key)));
   for (const e of entities) if (e.kind === 'artist' && !e.mergedIntoId) keys.add(e.nameNormalized);
+  return keys;
+}
+
+async function visibleGenres(store: LineupStore): Promise<ArtistGenres[]> {
+  const rows = await store.listArtistGenres();
+  if (!isMember()) return rows;
+  const keys = await memberActKeys(store);
   return rows.filter((r) => r.source === 'added' || keys.has(r.key));
 }
 
@@ -494,6 +503,33 @@ export function genresRouter(deps: PipelineDeps): Router {
       res.json({ restored, rows });
     } catch (err) {
       if (err instanceof InputError && /^Changed since/.test(err.message)) return res.status(409).json({ error: err.message });
+      fail(res, err);
+    }
+  });
+
+  // Artist orbits (0064). The owner gets every orbit and the last ORBIT_CHANGES_LIMIT changes. A member gets the
+  // orbits holding an act of their own (full roster) and no changes. Without migration 0064 the answer is no orbits.
+  router.get('/artist-orbits', async (_req, res) => {
+    try {
+      const orbits = await deps.store.listArtistOrbits();
+      if (isMember()) return res.json({ orbits: orbitsForMember(orbits, await memberActKeys(deps.store)) });
+      const changes = await deps.store.listOrbitChanges({ limit: ORBIT_CHANGES_LIMIT });
+      res.json({ orbits, changes });
+    } catch (err) {
+      if (isMissingOrbitFunction(err)) return res.json({ orbits: [] });
+      if (err instanceof ArtistOrbitError) return res.status(err.status).json({ error: err.message });
+      fail(res, err);
+    }
+  });
+
+  // Undoes one orbit change, owner only. Refused here for a member, as the other owner writes are.
+  router.post('/artist-orbits/undo/:id', async (req, res) => {
+    if (isMember()) return res.status(403).json({ error: ORBIT_MEMBER_REFUSED });
+    try {
+      const change = await deps.store.undoOrbitChange(req.params.id, 'owner');
+      res.json({ change });
+    } catch (err) {
+      if (err instanceof ArtistOrbitError) return res.status(err.status).json({ error: err.message });
       fail(res, err);
     }
   });

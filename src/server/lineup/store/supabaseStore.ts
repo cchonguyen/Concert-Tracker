@@ -29,6 +29,7 @@ import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres, GenreChange } from '../../events/genres';
 import type { GenreLevel, GenreRelation, GenreTier, GenreVocabChange, GenreVocabulary, VocabGenre } from '../../events/genreTypes';
+import { ArtistOrbitError, type ArtistOrbit, type ArtistOrbitChange, type ArtistOrbitMeta } from '../../events/artistOrbits';
 import { brandKey } from '../../brands/plan';
 import { findOrCreateBrandId } from '../../brands/store';
 import {
@@ -1732,6 +1733,46 @@ export class SupabaseLineupStore implements LineupStore {
     }
   }
 
+  // Artist orbits (0064). The RPCs run with the service key. Without migration 0064 the call fails with
+  // PGRST202 or 42883, which the genre routes answer with no orbits.
+  async listArtistOrbits(): Promise<ArtistOrbit[]> {
+    const { data, error } = await this.db.rpc('artist_orbits_images', { ids: null });
+    if (error) throw orbitRpcError('listArtistOrbits', error);
+    return ((data ?? []) as any[]).map(orbitFromImage);
+  }
+
+  async writeArtistOrbits(next: ArtistOrbit[], replaceIds: string[], meta: ArtistOrbitMeta): Promise<ArtistOrbitChange> {
+    this.ownerGenres();
+    const { data, error } = await this.db.rpc('artist_orbits_write', {
+      next,
+      replace_ids: replaceIds,
+      actor: meta.actor,
+      reason: meta.reason,
+    });
+    if (error) throw orbitRpcError('writeArtistOrbits', error);
+    return this.orbitChangeById(data as string);
+  }
+
+  async listOrbitChanges(q: { limit: number }): Promise<ArtistOrbitChange[]> {
+    this.ownerGenres();
+    const { data, error } = await this.db.from('artist_orbit_changes').select('*').order('at', { ascending: false }).limit(q.limit);
+    if (error) throw orbitRpcError('listOrbitChanges', error);
+    return ((data ?? []) as any[]).map(orbitChangeFromRow);
+  }
+
+  async undoOrbitChange(id: string, actor: string): Promise<ArtistOrbitChange> {
+    this.ownerGenres();
+    const { data, error } = await this.db.rpc('artist_orbits_undo', { change_id: id, actor });
+    if (error) throw orbitRpcError('undoOrbitChange', error);
+    return this.orbitChangeById(data as string);
+  }
+
+  private async orbitChangeById(id: string): Promise<ArtistOrbitChange> {
+    const { data, error } = await this.db.from('artist_orbit_changes').select('*').eq('id', id).single();
+    if (error) throw orbitRpcError('orbit change', error);
+    return orbitChangeFromRow(data);
+  }
+
   // Entities (0014) -------------------------------------------------------
 
   // A member's records live in their own tables (0020): user_entities and
@@ -2492,6 +2533,43 @@ function vocabImageForWrite(img: VocabGenre) {
         }
       : {}),
   };
+}
+
+// An orbit image (artist_orbits_images) as the store's ArtistOrbit.
+function orbitFromImage(x: any): ArtistOrbit {
+  return {
+    id: x.id,
+    anchorKeys: x.anchorKeys ?? [],
+    ...(x.workingLabel ? { workingLabel: x.workingLabel } : {}),
+    ...(x.parentGenreKey ? { parentGenreKey: x.parentGenreKey } : {}),
+    origin: x.origin,
+    members: ((x.members ?? []) as any[]).map((m) => ({ artistKey: m.artistKey, centrality: Number(m.centrality) as ArtistOrbit['members'][number]['centrality'] })),
+  };
+}
+
+function orbitChangeFromRow(r: any): ArtistOrbitChange {
+  return {
+    id: r.id,
+    old: ((r.old ?? []) as any[]).map(orbitFromImage),
+    new: ((r.new ?? []) as any[]).map(orbitFromImage),
+    actor: r.actor,
+    reason: r.reason ?? '',
+    at: r.at,
+    ...(r.undone_at ? { undoneAt: r.undone_at } : {}),
+    ...(r.undone_by ? { undoneBy: r.undone_by } : {}),
+  };
+}
+
+// Raised exceptions from the orbit functions keep their meaning (stale and undone 409, no such change 404,
+// other raised messages 400). Anything else is an error that carries its code, so the route can spot a missing function.
+function orbitRpcError(op: string, error: { code?: string; message?: string }): Error {
+  const msg = error.message ?? '';
+  if (/stale|already undone/.test(msg)) return new ArtistOrbitError(msg, 409);
+  if (/no such change/.test(msg)) return new ArtistOrbitError(msg, 404);
+  if (error.code === 'P0001') return new ArtistOrbitError(msg, 400);
+  const e = new Error(`Supabase ${op} failed (apply 0064_artist_orbits.sql): ${msg}`) as Error & { code?: string };
+  e.code = error.code;
+  return e;
 }
 
 function vocabChangeFromRow(r: any): GenreVocabChange {
