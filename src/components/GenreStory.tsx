@@ -5,12 +5,10 @@ import {
   FIRSTS_MIN_SETS,
   genreByKind,
   genreBySeason,
-  genreByYear,
   genreFirsts,
   genreLabel,
   genreMilestones,
   genreRange,
-  genreStoryLine,
   newThisYear,
 } from '../services/genreInsights';
 import type { GenreVocabulary } from '../server/events/genreTypes';
@@ -80,8 +78,6 @@ export const GenreStory: React.FC<GenreStoryProps> = ({
     [events, byArtist, vocabulary, today, mapGroups],
   );
   const label = useMemo(() => genreLabel(events, byArtist, vocabulary, today), [events, byArtist, vocabulary, today]);
-  const byYear = useMemo(() => genreByYear(events, byArtist, vocabulary, today), [events, byArtist, vocabulary, today]);
-  const storyLine = useMemo(() => genreStoryLine(byYear), [byYear]);
   const byKind = useMemo(() => genreByKind(events, byArtist, vocabulary, today), [events, byArtist, vocabulary, today]);
   const bySeason = useMemo(() => genreBySeason(events, byArtist, vocabulary, today), [events, byArtist, vocabulary, today]);
 
@@ -244,7 +240,7 @@ export const GenreStory: React.FC<GenreStoryProps> = ({
         </div>
       </div>
 
-      <GenreYearsChart data={byYear} storyLine={storyLine} />
+      <GenreYearsChart events={events} byArtist={byArtist} vocabulary={vocabulary} today={today} />
 
       {byKind.bars.length > 0 && (
         <div className="space-y-3 rounded-card border border-line bg-surface-1 p-4 sm:p-5">

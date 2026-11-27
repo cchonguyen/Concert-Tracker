@@ -18,7 +18,7 @@ Genres are shared: one set of genres per artist in `artist_genres`, the same for
    - **The owner's vocabulary** (migration 0060: `genres`, `genre_aliases`, `genre_umbrellas`, `genre_changes`, all server only) holds a genre's shown spelling, its group (the genre map's until a tree is uploaded, then the macro genre; see Genre taxonomy), other spellings (aliases), and umbrella genres. Umbrellas may nest, and loops are refused. Every change is one `genre_vocabulary_write` call through `writeGenreVocabulary`, with actor `owner`, logged with before and after and undoable from the newest change (refused when the genres changed since).
    - **Resolving** (`genreResolver`): vocabulary key or alias, then the genre map, then the style as typed under "Not grouped". Within one act, spellings of one genre become one with their weights added.
    - **Manage > Global archive > Genres** (`GenresPanel.tsx`, `GenreRecord.tsx`, owner only) lists every genre once with its group, umbrellas and artist count. It lists spellings to pick ("N genres have more than one spelling. Pick one.") and opens a record with rename (the old spelling becomes an alias), aliases ("Merge instead" when a spelling is already a genre), group, umbrellas, merge with a preview, and history with Undo. Routes: `POST /api/artist-genres/vocabulary/:operation` and `/vocabulary/undo/:id`. A member gets 403, and a member's `GET /api/artist-genres` has the vocabulary and map but no change log or collisions.
-   - **Stats and Artists / Ranking.** `genreMix` adds `umbrellas`: per set, an umbrella gets the weights of the act's genres at or under it, each genre once, never more than one set. Ranking (`?view=ranking&by=artists|genres|people`, `ArtistsView.tsx` + `GenresRanking.tsx` + `src/services/genreInsights.ts`) holds the full "Genres you see live" breakdown with a period picker (`All time`, `Last 12 months`, current year, or any year), `Genre` and `Style` columns (with `"Include related genres"`), tap-to-expand `"The artists behind it"` (top 5 acts), and `"See all ... acts in Artists"` (filtering `ArtistsView` by `g:`, `u:`, or `s:`). `StatsView.tsx` keeps a top-3 summary of `"Genres you see live"` with a `"See all"` link to `?view=ranking&by=genres`.
+   - **Stats and Artists / Ranking.** `genreMix` adds `umbrellas`: per set, an umbrella gets the weights of the act's genres at or under it, each genre once, never more than one set. Ranking (`?view=ranking&by=artists|genres|people`, `ArtistsView.tsx` + `GenresRanking.tsx` + `src/services/genreInsights.ts`) holds the full "Genres you see live" breakdown with a period picker (`All time`, `Last 12 months`, current year, or any year), the Multi-Zoom Breakdown (see Explore genres below), `"Include related genres"`, tap-to-expand `"The artists behind it"` (top 5 acts), and `"See all ... acts in Artists"` (filtering `ArtistsView` by `g:`, `u:`, or `s:`). `StatsView.tsx` keeps a top-3 summary of `"Genres you see live"` with a `"See all"` link to `?view=ranking&by=genres`.
    - **Genres file.** The export lists resolved names. The stamp hashes resolved keys, and older files still match through `legacyGenreStamp`. The preview shows "typed → stored", and a row equal after resolving is "No change".
 
 ## Genre taxonomy
@@ -50,6 +50,55 @@ Each link has a weight above 0 and at most 1, and an origin. `curated` links are
 1. **Genre tree file** (`POST /api/artist-genres/vocabulary/csv/preview`, then `.../apply`). Columns: `genre`, `group`, `other spellings`, and for a tree `family`, `macro`, `tier` and `secondary families`. A file with a `family` column is a tree (operation `taxonomy-import`). Without it, the same route is a plain vocabulary upload (operation `create`). If any row breaks a rule, the file is refused and nothing is written.
 2. **Links file** (`POST /api/artist-genres/relations/csv/preview`, then `.../apply`). Columns: `source`, `target`, `type`, `weight`, `origin`. A secondary parent is a family name; the other types are genre names. The file replaces every stored link of each (type, origin) pair it contains, across all genres. Pairs it does not contain stay as they are. Apply is one `relations-import` change.
 
-**Manage (owner).** In Manage > Global archive > Genres, `GenresPanel.tsx` lists the tree by macro, then family, then genre. `GenreRecord.tsx` has a Family menu grouped by macro, lists each genre's links with strength and origin, and adds, removes or re-weights links. Families and macros can be renamed. Merge refuses a family or a macro. Each change is one `genre_vocabulary_write` call, logged in `genre_changes` and undoable, and refused when those genres changed since.
+**Manage (owner).** In Manage > Global archive > Genres, `GenresPanel.tsx` lists the tree by macro, then family, then genre. `GenreRecord.tsx` has a Family menu grouped by macro, lists each genre's links with strength and origin, and adds, removes or re-weights links. Families and macros can be renamed. Merge refuses a family or a macro. Each change is one `genre_vocabulary_write` call, logged in `genre_changes` and undoable, and refused when those genres changed since. Create genre takes a family from a menu grouped by macro, or Not grouped. Undo of a change made after migration 0063 is also refused when a genre's family, tier or links changed since, as it already is for its name, aliases and umbrellas.
 
-**Explore.** `src/services/genres.ts` groups "Genres you see live" by macro when a tree exists, and lists families (only genres that have one). `src/services/genreInsights.ts` shows the tree as macro, then family, then genre, with "Not grouped" for a genre or family with no parent.
+**Explore.** `src/services/genres.ts` (`genreMix`, `setShares`) splits each set across its act's genres, with the B2B split, and groups "Genres you see live" by macro when a tree exists. `src/services/genreInsights.ts` (`genreZoom`, `soundDrift`) reads the same links at view time for the Multi-Zoom Breakdown and Sound Drift. A genre or family with no parent is "Not grouped". The screens are described in Explore genres below.
+
+## Explore genres
+
+Release 1 of the genre taxonomy is built in Slices 40.1 to 40.7 ([docs/specs/genre-taxonomy-release-1.md](../specs/genre-taxonomy-release-1.md)). Everything is worked out in the browser from the person's own events and the shared genre rows. Nothing new is stored, and no one's events are read for another person.
+
+**B2B split.** A B2B is one set. Its acts share 1.0 between them evenly: two acts get 0.5 each, three get a third. Only partners who are also in that event's seen list count. An act the person also saw play solo at the same event gets a further 1.0 for that set (`setShares` in `src/services/genres.ts`). Every genre total on Explore uses it, so set counts can be fractions. Screens show whole sets, with halves rounded up (`formatSets`). Floors compare the fractional totals.
+
+**Multi-Zoom Breakdown** (Ranking > Genres, `src/components/GenresRanking.tsx`, `genreZoom` in `src/services/genreInsights.ts`).
+
+- Three levels: Macro, Family and Genre. Family is the default.
+- Each level has one 100% bar and a ranked list. Each level adds up to 100% of the sets with a genre.
+- A family opens to its genres. Each genre's share is of all sets with a genre, so the genres add up to the family's own figure.
+- Tapping a row's name lists the artists behind it, the top 5, with a link to See all in Artists.
+- Sets with no genre are not spread over the others. A note under the list says how many there were: "N sets had no genre and are not counted."
+- The chart needs 10 sets with a genre. Below that, the screen says "Genres show once you have 10 sets with a genre. You have N sets." and shows no chart.
+- Without a tree in the vocabulary, the zoom falls back to the music-story groups as one level, shown as Macro.
+
+**Sound Drift** (Your genre story, `src/components/GenreYearsChart.tsx`, `soundDrift` and `driftDrivers` in `src/services/genreInsights.ts`).
+
+- A 100% stacked area chart by calendar year, with a Family or Macro switch.
+- Bands are the six largest families (or macros) across counted years, plus Other when a year has one.
+- A year counts when it has 10 or more sets with a genre. Other years are drawn faded and are left out of the lead sound.
+- The lead sound line names the leading band of each counted year, with repeats merged: "Your lead sound: Progressive House (2019 to 2021), then Melodic Bass (2022)."
+- The chart shows only with 3 counted years. Below that: "Sound Drift needs 3 years with at least 10 sets that have a genre. You have N."
+- Tapping a band or a year opens the sets and artists behind it. Tapping again closes it. A table gives the same numbers for screen readers.
+
+## Lineup DNA and Event Match
+
+Release 2 of the genre taxonomy is built in Slices 41.1 to 41.5 ([docs/specs/genre-taxonomy-release-2.md](../specs/genre-taxonomy-release-2.md)). It shows on an event's page, above the lineup table, whenever the event has a lineup. There is no migration and nothing new is stored.
+
+**Lineup genres route.** `GET /api/events/:id/lineup-genres` (`src/server/events/genreRoutes.ts`) answers only for the caller's own event (another person's id gives 404). It returns the lineup acts the event page already shows (`eventPerformers`). Each act comes with its stages and days, read from the edition's performances (cancelled ones left out) or from the lookup's candidate. It also returns the shared genre rows for those acts and the caller's own added rows for them. A member therefore gets the shared genres of acts on their own event's lineup, including acts they did not mark as seen. It only reads: there is no lookup, fetch or model call.
+
+**Lineup DNA** (`src/components/LineupDna.tsx`, `lineupDna` in `src/services/genreInsights.ts`).
+
+- Every act on the bill counts 1.0, split across its genres by weight. Acts that share a B2B slot share one set.
+- There is one bar for the whole bill. When the lineup has stages, each stage gets its own bar as well. An act on two stages counts on both stage bars and once on the whole bill. Acts with no stage go on "No stage listed", which shows only when other stages exist.
+- Each bar shows its 4 largest families. A 5th family shows only when it is at least 10% of the bar, and the rest is grouped as Other. Tapping a segment lists its top genres and acts.
+- When fewer than 60% of the acts have a genre, the bar notes "N of M acts have a genre." A bar needs 3 acts with a genre. Below that, the page says so and shows no bar.
+- Colours are the Sound Drift palette (`PALETTE`, exported from `GenreYearsChart.tsx`).
+
+**Event Match** (`eventMatch` in `src/services/genreInsights.ts`).
+
+- Your vector is every seen set at your other attended events, split with `setShares`. The event being matched is left out, and so are planned and missed events.
+- That vector is smoothed one step over the owner's `adjacent` links only: `u + 0.5 · Â·u`. The links are read both ways, and each weight is divided by `sqrt(deg(a) · deg(b))`, so a genre linked to almost everything is toned down. It never goes two steps. `secondary_parent` and `derived_from` links are not used.
+- The score is the cosine between your smoothed families and the bill's families. The bands are "Strong fit" at 0.6 or more, "Some overlap" from 0.3, and "Outside your usual" below 0.3. The line names your lane, the 1 or 2 families that add most to the score, with the number of acts in your lane and of nearby acts you haven't seen.
+- The lineup table marks those acts with "Your lane" and "Nearby" pills.
+- Event Match needs 20 sets with a genre over 5 events, plus the whole-bill bar's own floor. Below that, the line says what is missing.
+- Relations never change the Lineup DNA bar, only the match.
+- Sample mode shows neither, because the sample events have no lineup edition.

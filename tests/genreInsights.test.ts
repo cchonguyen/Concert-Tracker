@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { LoggedEvent } from '../src/server/events/types.ts';
-import type { ArtistGenres, GenreVocabulary } from '../src/server/events/genreTypes.ts';
+import type { ArtistGenres, GenreVocabulary, VocabGenre } from '../src/server/events/genreTypes.ts';
 import { genreMix, genresByArtist } from '../src/services/genres.ts';
 import {
   artistsBehind,
@@ -24,7 +24,20 @@ import {
   periodEvents,
   rising,
   yearGenres,
+  soundDrift,
+  driftDrivers,
+  DRIFT_MIN_SETS,
+  DRIFT_MIN_YEARS,
+  DRIFT_BANDS,
+  lineupDna,
+  LINEUP_DNA_MIN_ACTS,
+  eventMatch,
+  MATCH_ALPHA,
+  MATCH_MIN_EVENTS,
+  MATCH_MIN_SETS,
 } from '../src/services/genreInsights.ts';
+import type { LineupGenresAct } from '../src/services/lineupApi.ts';
+import { genreKey } from '../src/server/events/genreVocabulary.ts';
 
 const TODAY = '2026-11-26';
 
@@ -704,4 +717,533 @@ test('genreZoom: without a taxonomy it falls back to music-story groups with no 
   assert.deepEqual(z.macros.map((m) => [m.name, m.sets, m.share]), [['Electronic', 1, 1]]);
   assert.deepEqual(z.families, []);
   assert.deepEqual(z.genres, []);
+});
+
+// Sound Drift (docs/specs/genre-taxonomy-release-1.md section 4).
+let driftSeq = 0;
+const setsIn = (year: number, names: string[], n = 1, extra: Partial<LoggedEvent> = {}): LoggedEvent[] =>
+  Array.from({ length: n }, () => ev(`d${driftSeq++}`, `${year}-03-01`, names, extra));
+
+const driftFamilies = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot', 'Golf', 'Hotel', 'Zulu'];
+const driftVocab: GenreVocabulary = {
+  genres: [
+    { key: 'macro:electronic', name: 'Electronic', level: 'macro', aliases: [], umbrellas: [] },
+    ...driftFamilies.map((f): VocabGenre => ({
+      key: `family:${f.toLowerCase()}`, name: f, level: 'family', primaryParent: 'macro:electronic', aliases: [], umbrellas: [],
+    })),
+    ...driftFamilies.map((f): VocabGenre => ({
+      key: `${f.toLowerCase()}style`, name: `${f} style`, primaryParent: `family:${f.toLowerCase()}`, aliases: [], umbrellas: [],
+    })),
+    { key: 'ambient', name: 'Ambient', aliases: [], umbrellas: [] }, // no family: Not grouped
+  ],
+};
+const famAct = (name: string, f: string): ArtistGenres => artist(name, [{ parent: 'Dance', style: `${f} style`, weight: 1 }]);
+const driftRows = (): ArtistGenres[] => [
+  famAct('A1', 'Alpha'), famAct('B1', 'Bravo'), famAct('C1', 'Charlie'), famAct('D1', 'Delta'),
+  famAct('E1', 'Echo'), famAct('F1', 'Foxtrot'), famAct('G1', 'Golf'), famAct('H1', 'Hotel'), famAct('Z1', 'Zulu'),
+  artist('Amb', [{ parent: 'Dance', style: 'Ambient', weight: 1 }]),
+];
+const sumShares = (y: { shares: Record<string, number> }): number => Object.values(y.shares).reduce((t, v) => t + v, 0);
+
+// Years 2020 (Alpha 12, Bravo..Foxtrot 1 each, Golf and Hotel as a B2B pair) and 2019 (Zulu, thin).
+const bandEvents = (): LoggedEvent[] => [
+  ...setsIn(2019, ['Z1'], 5),
+  ...setsIn(2020, ['A1'], 12),
+  ...['B1', 'C1', 'D1', 'E1', 'F1'].flatMap((n) => setsIn(2020, [n])),
+  b2bEvent(ev('gh', '2020-07-01', ['G1', 'H1'])),
+];
+
+test('soundDrift: each year\'s shares add to 1 and only counted years rank bands', () => {
+  const byArtist = genresByArtist(zoomRows(), zoomVocab);
+  const d = soundDrift([...setsIn(2020, ['A', 'B'], 10), ...setsIn(2021, ['A'], 3)], byArtist, zoomVocab, 'family', TODAY);
+
+  assert.equal(d.levels, 'taxonomy');
+  assert.deepEqual(d.years.map((y) => y.year), [2020, 2021]);
+  for (const y of d.years) assert.ok(Math.abs(sumShares(y) - 1) < 1e-9);
+  assert.deepEqual(d.bands, ['House', 'Not grouped']);
+  assert.equal(d.years[0].shares.House, 0.5);
+  assert.equal(d.years[0].shares['Not grouped'], 0.5);
+  assert.equal(d.years[1].counted, false);
+  assert.equal(d.years[1].shares.House, 1);
+});
+
+test('soundDrift: a year with 9.5 known sets is not counted and 10 is', () => {
+  const byArtist = genresByArtist(zoomRows(), zoomVocab);
+  assert.equal(DRIFT_MIN_SETS, 10);
+  const base = setsIn(2020, ['A'], 9);
+
+  // 9 solo sets plus a B2B with an act that has no genre: 9.5 known.
+  const short = soundDrift([...base, b2bEvent(ev('x', '2020-02-01', ['A', 'C']))], byArtist, zoomVocab, 'family', TODAY);
+  assert.equal(short.years[0].known, 9.5);
+  assert.equal(short.years[0].counted, false);
+  assert.equal(short.countedYears, 0);
+
+  const full = soundDrift([...base, b2bEvent(ev('y', '2020-02-01', ['A', 'B']))], byArtist, zoomVocab, 'family', TODAY);
+  assert.equal(full.years[0].known, 10);
+  assert.equal(full.years[0].counted, true);
+  assert.equal(full.countedYears, 1);
+});
+
+test('soundDrift: enough is false with 2 counted years and true with 3', () => {
+  const byArtist = genresByArtist(zoomRows(), zoomVocab);
+  assert.equal(DRIFT_MIN_YEARS, 3);
+  const two = soundDrift([...setsIn(2020, ['A'], 10), ...setsIn(2021, ['A'], 10)], byArtist, zoomVocab, 'family', TODAY);
+  assert.equal(two.countedYears, 2);
+  assert.equal(two.enough, false);
+
+  const three = soundDrift([...setsIn(2020, ['A'], 10), ...setsIn(2021, ['A'], 10), ...setsIn(2022, ['A'], 10)], byArtist, zoomVocab, 'family', TODAY);
+  assert.equal(three.countedYears, 3);
+  assert.equal(three.enough, true);
+});
+
+test('soundDrift: bands are capped at 6 plus Other, ranked from counted years only', () => {
+  const byArtist = genresByArtist(driftRows(), driftVocab);
+  assert.equal(DRIFT_BANDS, 6);
+  const d = soundDrift(bandEvents(), byArtist, driftVocab, 'family', TODAY);
+
+  // Alpha first, then the ties by name; Golf and Hotel (the B2B pair) fall to Other.
+  // Zulu is only in the thin 2019 year, so it is not ranked and its weight is Other.
+  assert.deepEqual(d.bands, ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot', 'Other']);
+  assert.equal(d.years[0].year, 2019);
+  assert.equal(d.years[0].counted, false);
+  assert.equal(d.years[0].shares.Other, 1);
+  assert.equal(d.years[1].year, 2020);
+  assert.ok(Math.abs(d.years[1].shares.Other - 1 / 18) < 1e-9); // G1 and H1 halves of 18 known sets
+  for (const y of d.years) assert.ok(Math.abs(sumShares(y) - 1) < 1e-9);
+});
+
+test('soundDrift: leaders merge consecutive repeats and skip Not grouped when a named band leads', () => {
+  const byArtist = genresByArtist(driftRows(), driftVocab);
+  const events = [
+    ...setsIn(2020, ['A1'], 10),
+    ...setsIn(2021, ['A1'], 10),
+    ...setsIn(2022, ['B1'], 10),
+    ...setsIn(2023, ['A1'], 10),
+    ...setsIn(2024, ['Z1'], 10),
+    ...setsIn(2025, ['Amb'], 10), // Not grouped
+    ...setsIn(2025, ['A1'], 3), // Alpha leads 2025 once Not grouped is set aside
+  ];
+  const d = soundDrift(events, byArtist, driftVocab, 'family', TODAY);
+
+  assert.deepEqual(d.leaders, [
+    { band: 'Alpha', from: 2020, to: 2021 },
+    { band: 'Bravo', from: 2022, to: 2022 },
+    { band: 'Alpha', from: 2023, to: 2023 },
+    { band: 'Zulu', from: 2024, to: 2024 },
+    { band: 'Alpha', from: 2025, to: 2025 },
+  ]);
+});
+
+test('soundDrift: a macro level with no family puts the genre under Not grouped', () => {
+  const byArtist = genresByArtist(driftRows(), driftVocab);
+  const d = soundDrift(setsIn(2025, ['Amb'], 10), byArtist, driftVocab, 'macro', TODAY);
+  assert.deepEqual(d.bands, ['Not grouped']);
+  assert.equal(d.years[0].shares['Not grouped'], 1);
+  assert.deepEqual(d.leaders, [{ band: 'Not grouped', from: 2025, to: 2025 }]);
+});
+
+test('driftDrivers: lists the sets and artists for a band and for Other, with B2B halves', () => {
+  const byArtist = genresByArtist(driftRows(), driftVocab);
+  const events = bandEvents();
+
+  const alpha = driftDrivers(events, byArtist, driftVocab, 'family', TODAY, 2020, 'Alpha');
+  assert.equal(alpha.sets.length, 12);
+  assert.ok(alpha.sets.every((s) => s.act === 'A1' && s.share === 1 && s.date === '2020-03-01'));
+  assert.deepEqual(alpha.artists, [{ key: 'a1', name: 'A1', sets: 12 }]);
+
+  const other = driftDrivers(events, byArtist, driftVocab, 'family', TODAY, 2020, 'Other');
+  assert.deepEqual(other.sets, [
+    { eventId: 'gh', eventName: 'Event gh', date: '2020-07-01', act: 'G1', share: 0.5 },
+    { eventId: 'gh', eventName: 'Event gh', date: '2020-07-01', act: 'H1', share: 0.5 },
+  ]);
+  assert.deepEqual(other.artists, [
+    { key: 'g1', name: 'G1', sets: 0.5 },
+    { key: 'h1', name: 'H1', sets: 0.5 },
+  ]);
+
+  // 2019 is not 2020: Zulu's thin-year sets do not show in 2020 drivers.
+  assert.equal(driftDrivers(events, byArtist, driftVocab, 'family', TODAY, 2020, 'Zulu').sets.length, 0);
+});
+
+test('soundDrift: planned and missed events are excluded, as in genreByYear', () => {
+  const byArtist = genresByArtist(driftRows(), driftVocab);
+  const events = [
+    ...setsIn(2020, ['A1'], 10),
+    ev('planned', '2026-12-10', ['A1'], { attendance: 'planned' }),
+    ev('missed', '2020-04-01', ['A1'], { attendance: 'missed' }),
+  ];
+  const d = soundDrift(events, byArtist, driftVocab, 'family', TODAY);
+  assert.deepEqual(d.years.map((y) => [y.year, y.known]), [[2020, 10]]);
+  assert.equal(driftDrivers(events, byArtist, driftVocab, 'family', TODAY, 2020, 'Alpha').sets.length, 10);
+});
+
+test('soundDrift: without a taxonomy it falls back to music-story groups and ignores level', () => {
+  const rows = [
+    artist('A', [{ parent: 'Electronic', style: 'Deep house', weight: 1 }]),
+    artist('B', [{ parent: 'Rock', style: 'Indie', weight: 1 }]),
+  ];
+  const byArtist = genresByArtist(rows);
+  const events = [...setsIn(2020, ['A'], 10), ...setsIn(2021, ['B'], 10)];
+  const fam = soundDrift(events, byArtist, undefined, 'family', TODAY);
+  const mac = soundDrift(events, byArtist, undefined, 'macro', TODAY);
+
+  assert.equal(fam.levels, 'groups');
+  assert.deepEqual(fam.bands, ['Electronic', 'Rock']);
+  assert.deepEqual(fam, mac);
+  assert.deepEqual(fam.years.map((y) => y.shares), [{ Electronic: 1, Rock: 0 }, { Electronic: 0, Rock: 1 }]);
+});
+
+// Lineup DNA (docs/specs/genre-taxonomy-release-2.md section 2 and decisions 1, 2, 5).
+const dnaFamilies = ['House', 'Techno', 'Trance', 'Garage', 'Dubstep', 'Jazz', 'Folk'];
+const dnaVocab: GenreVocabulary = {
+  genres: [
+    { key: 'macro:electronic', name: 'Electronic', level: 'macro', aliases: [], umbrellas: [] },
+    ...dnaFamilies.map((f) => ({
+      key: `family:${f.toLowerCase()}`, name: f, level: 'family' as const, primaryParent: 'macro:electronic', aliases: [], umbrellas: [],
+    })),
+    ...dnaFamilies.map((f) => ({
+      key: `${f.toLowerCase()}core`, name: `${f} core`, primaryParent: `family:${f.toLowerCase()}`, aliases: [], umbrellas: [],
+    })),
+  ],
+};
+
+const dnaAct = (key: string, extra: Partial<LineupGenresAct> = {}): LineupGenresAct => ({
+  key, name: key.toUpperCase(), stages: [], days: [], ...extra,
+});
+
+// A row whose one genre sits in the given family of dnaVocab.
+const dnaRow = (key: string, parts: Array<{ family: string; weight: number }>): ArtistGenres =>
+  artist(key, parts.map((p) => ({ parent: 'Electronic', style: `${p.family} core`, weight: p.weight })));
+
+const dnaSegShares = (bar: { segments: Array<{ name: string; share: number }> }): Record<string, number> =>
+  Object.fromEntries(bar.segments.map((s) => [s.name, s.share]));
+
+test('lineupDna: shares add up to 1 per bar and every bar', () => {
+  const acts = [dnaAct('a', { stages: ['Main', 'Second'] }), dnaAct('b', { stages: ['Main'] }), dnaAct('c')];
+  const byArtist = genresByArtist([
+    dnaRow('a', [{ family: 'House', weight: 0.6 }, { family: 'Techno', weight: 0.4 }]),
+    dnaRow('b', [{ family: 'Trance', weight: 1 }]),
+    dnaRow('c', [{ family: 'Jazz', weight: 1 }]),
+  ], dnaVocab);
+  const res = lineupDna(acts, byArtist, dnaVocab);
+
+  assert.equal(res.levels, 'taxonomy');
+  for (const bar of res.bars) {
+    const sum = bar.segments.reduce((t, s) => t + s.share, 0);
+    assert.ok(Math.abs(sum - 1) < 1e-9, `${bar.id} sums to ${sum}`);
+    for (const s of bar.segments) {
+      const gsum = s.genres.reduce((t, g) => t + g.share, 0);
+      assert.ok(gsum <= s.share + 1e-9, `${bar.id} ${s.name} genres exceed the family`);
+    }
+  }
+});
+
+test('lineupDna: a B2B pair shares one set (1/2 each) and the rest count 1.0', () => {
+  const acts = [
+    dnaAct('a', { slotId: 's1' }),
+    dnaAct('b', { slotId: 's1' }),
+    dnaAct('c'),
+  ];
+  const byArtist = genresByArtist([
+    dnaRow('a', [{ family: 'House', weight: 1 }]),
+    dnaRow('b', [{ family: 'Techno', weight: 1 }]),
+    dnaRow('c', [{ family: 'House', weight: 1 }]),
+  ], dnaVocab);
+  const whole = lineupDna(acts, byArtist, dnaVocab).bars[0];
+
+  assert.equal(whole.id, 'all');
+  assert.equal(whole.total, 3);
+  assert.equal(whole.tagged, 3);
+  const shares = dnaSegShares(whole);
+  assert.ok(Math.abs(shares.House - 0.75) < 1e-9); // a 0.5 + c 1.0 of 2.0
+  assert.ok(Math.abs(shares.Techno - 0.25) < 1e-9); // b 0.5 of 2.0
+  const house = whole.segments.find((s) => s.name === 'House')!;
+  assert.deepEqual(house.acts, ['c', 'a']); // by contribution: c 1.0, a 0.5
+});
+
+test('lineupDna: an act on two stages counts on both stage bars and once on the whole bill', () => {
+  const acts = [
+    dnaAct('a', { stages: ['Main', 'Second'] }),
+    dnaAct('b', { stages: ['Main'] }),
+    dnaAct('c', { stages: ['Second'] }),
+  ];
+  const byArtist = genresByArtist([
+    dnaRow('a', [{ family: 'House', weight: 1 }]),
+    dnaRow('b', [{ family: 'Techno', weight: 1 }]),
+    dnaRow('c', [{ family: 'Techno', weight: 1 }]),
+  ], dnaVocab);
+  const res = lineupDna(acts, byArtist, dnaVocab);
+
+  assert.deepEqual(res.bars.map((b) => b.id), ['all', 'stage:Main', 'stage:Second']);
+  const [whole, main, second] = res.bars;
+  assert.equal(whole.total, 3);
+  assert.ok(Math.abs(whole.segments.find((s) => s.name === 'House')!.share - 1 / 3) < 1e-9);
+  assert.equal(main.total, 2);
+  assert.equal(main.tagged, 2);
+  assert.ok(Math.abs(dnaSegShares(main).House - 0.5) < 1e-9);
+  assert.equal(second.total, 2);
+  assert.ok(Math.abs(dnaSegShares(second).House - 0.5) < 1e-9);
+});
+
+test('lineupDna: no-stage bar appears only when a named stage exists', () => {
+  const rows = [
+    dnaRow('a', [{ family: 'House', weight: 1 }]),
+    dnaRow('b', [{ family: 'Techno', weight: 1 }]),
+  ];
+  const byArtist = genresByArtist(rows, dnaVocab);
+
+  // No stage anywhere: whole bill only.
+  const none = lineupDna([dnaAct('a'), dnaAct('b')], byArtist, dnaVocab);
+  assert.deepEqual(none.bars.map((b) => b.id), ['all']);
+
+  // A named stage and an act without one: the no-stage bar shows last.
+  const mixed = lineupDna([dnaAct('a', { stages: ['Main'] }), dnaAct('b')], byArtist, dnaVocab);
+  assert.deepEqual(mixed.bars.map((b) => b.id), ['all', 'stage:Main', 'no-stage']);
+  assert.equal(mixed.bars[2].name, 'No stage listed');
+  assert.equal(mixed.bars[2].total, 1);
+
+  // Every act on a stage: no no-stage bar.
+  const full = lineupDna([dnaAct('a', { stages: ['Main'] }), dnaAct('b', { stages: ['Main'] })], byArtist, dnaVocab);
+  assert.deepEqual(full.bars.map((b) => b.id), ['all', 'stage:Main']);
+});
+
+test('lineupDna: Other collects the tail, and a 5th family shows only at 10% or more', () => {
+  // 14 acts: House 4, Techno 3, Garage 2, Trance 2, Dubstep 1, Jazz 1, Folk 1.
+  const counts: Array<[string, number]> = [['House', 4], ['Techno', 3], ['Garage', 2], ['Trance', 2], ['Dubstep', 1], ['Jazz', 1], ['Folk', 1]];
+  const acts: LineupGenresAct[] = [];
+  const rows: ArtistGenres[] = [];
+  for (const [fam, n] of counts) {
+    for (let i = 0; i < n; i++) {
+      const key = `${fam.toLowerCase()}${i}`;
+      acts.push(dnaAct(key));
+      rows.push(dnaRow(key, [{ family: fam, weight: 1 }]));
+    }
+  }
+  const whole = lineupDna(acts, genresByArtist(rows, dnaVocab), dnaVocab).bars[0];
+
+  // Fifth family Dubstep is 1/14 (under 10%): not shown; Dubstep, Jazz and Folk go to Other.
+  assert.deepEqual(whole.segments.map((s) => s.key), ['family:house', 'family:techno', 'family:garage', 'family:trance', 'other']);
+  const other = whole.segments[4];
+  assert.equal(other.name, 'Other');
+  assert.ok(Math.abs(other.share - 3 / 14) < 1e-9);
+  assert.ok(Math.abs(whole.segments[0].share - 4 / 14) < 1e-9);
+  assert.deepEqual(other.acts.slice().sort(), ['dubstep0', 'folk0', 'jazz0']);
+});
+
+test('lineupDna: a fifth family at 10% or more gets its own segment; the sixth onwards goes to Other', () => {
+  // Seven acts, one per family: each 1/7 (about 14%), so the fifth shows and the sixth and seventh go to Other.
+  const acts = dnaFamilies.map((f) => dnaAct(f.toLowerCase()));
+  const rows = dnaFamilies.map((f) => dnaRow(f.toLowerCase(), [{ family: f, weight: 1 }]));
+  const whole = lineupDna(acts, genresByArtist(rows, dnaVocab), dnaVocab).bars[0];
+
+  assert.deepEqual(whole.segments.map((s) => s.name), ['Dubstep', 'Folk', 'Garage', 'House', 'Jazz', 'Other']);
+  assert.ok(Math.abs(whole.segments[4].share - 1 / 7) < 1e-9);
+  assert.ok(Math.abs(whole.segments[5].share - 2 / 7) < 1e-9);
+});
+
+test('lineupDna: coverage, lowCoverage and enough flags', () => {
+  const acts = [dnaAct('a'), dnaAct('b'), dnaAct('c'), dnaAct('d'), dnaAct('e')];
+  const rows = [
+    dnaRow('a', [{ family: 'House', weight: 1 }]),
+    dnaRow('b', [{ family: 'House', weight: 1 }]),
+    dnaRow('c', [{ family: 'Techno', weight: 1 }]),
+    dnaRow('d', []), // checked, no genres: untagged
+  ];
+  const byArtist = genresByArtist(rows, dnaVocab);
+
+  // 3 tagged of 5 acts: coverage exactly 0.6 is not low; 3 is the floor.
+  const three = lineupDna(acts, byArtist, dnaVocab).bars[0];
+  assert.equal(three.tagged, 3);
+  assert.equal(three.total, 5);
+  assert.equal(three.coverage, 0.6);
+  assert.equal(three.lowCoverage, false);
+  assert.equal(three.enough, true);
+  assert.equal(LINEUP_DNA_MIN_ACTS, 3);
+
+  // 2 tagged of 5: low coverage and under the floor.
+  const two = lineupDna(acts.slice(0, 2).concat(acts.slice(3)), byArtist, dnaVocab).bars[0];
+  assert.equal(two.tagged, 2);
+  assert.equal(two.total, 4);
+  assert.equal(two.lowCoverage, true);
+  assert.equal(two.enough, false);
+
+  // An empty lineup: nothing tagged, coverage 0.
+  const empty = lineupDna([], byArtist, dnaVocab).bars[0];
+  assert.equal(empty.total, 0);
+  assert.equal(empty.coverage, 0);
+  assert.equal(empty.enough, false);
+  assert.deepEqual(empty.segments, []);
+});
+
+test('lineupDna: without a taxonomy it uses the music-story groups', () => {
+  const rows = [
+    artist('A', [{ parent: 'Electronic', style: 'Deep house', weight: 0.5 }, { parent: 'Rock', style: 'Indie', weight: 0.5 }]),
+    artist('B', [{ parent: 'Rock', style: 'Punk', weight: 1 }]),
+  ];
+  const byArtist = genresByArtist(rows);
+  const res = lineupDna([dnaAct('a'), dnaAct('b')], byArtist, undefined);
+
+  assert.equal(res.levels, 'groups');
+  const whole = res.bars[0];
+  assert.deepEqual(whole.segments.map((s) => [s.key, s.name]), [['group:rock', 'Rock'], ['group:electronic', 'Electronic']]);
+  assert.ok(Math.abs(whole.segments[0].share - 0.75) < 1e-9); // Rock 0.5 + 1.0 of 1.5 tagged
+  assert.ok(Math.abs(whole.segments[1].share - 0.25) < 1e-9);
+  assert.ok(Math.abs(whole.segments.reduce((t, s) => t + s.share, 0) - 1) < 1e-9);
+});
+
+// Event Match (docs/specs/genre-taxonomy-release-2.md section 4). Each genre sits in its own
+// family ("Fam <name>") under one macro, so a family and a genre are the same thing here.
+const emVocab = (names: string[], links: Array<[string, string, number]> = []): GenreVocabulary => {
+  const genres: VocabGenre[] = [{ key: 'macro:electronic', name: 'Electronic', level: 'macro', aliases: [], umbrellas: [] }];
+  for (const n of names) {
+    genres.push({ key: `family:${genreKey(`Fam ${n}`)}`, name: `Fam ${n}`, level: 'family', primaryParent: 'macro:electronic', aliases: [], umbrellas: [] });
+  }
+  for (const n of names) {
+    const relations = links
+      .filter(([s]) => s === n)
+      .map(([, t, w]) => ({ target: genreKey(t), type: 'adjacent' as const, weight: w, origin: 'curated' as const }));
+    genres.push({
+      key: genreKey(n), name: n, primaryParent: `family:${genreKey(`Fam ${n}`)}`, aliases: [], umbrellas: [],
+      ...(relations.length ? { relations } : {}),
+    });
+  }
+  return { genres };
+};
+
+const emRow = (key: string, styles: Array<[string, number]>): ArtistGenres =>
+  artist(key, styles.map(([style, weight]) => ({ parent: 'Electronic', style, weight })));
+
+// Past events, one per size: each has that many acts, all with one genre.
+function emHistory(prefix: string, sizes: number[], style: string): { events: LoggedEvent[]; rows: ArtistGenres[] } {
+  const events: LoggedEvent[] = [];
+  const rows: ArtistGenres[] = [];
+  sizes.forEach((n, i) => {
+    const names = Array.from({ length: n }, (_, j) => `${prefix}${i}x${j}`);
+    events.push(ev(`${prefix}-${i}`, '2025-06-01', names));
+    for (const name of names) rows.push(emRow(name.toLowerCase(), [[style, 1]]));
+  });
+  return { events, rows };
+}
+
+test('eventMatch: one smoothing step reaches B from A on the chain A-B-C, but not C', () => {
+  const chain = emVocab(['Alpha', 'Beta', 'Gamma'], [['Alpha', 'Beta', 1], ['Beta', 'Gamma', 1]]);
+  const hist = emHistory('c', [1], 'Alpha');
+  const byArtist = genresByArtist([...hist.rows, emRow('bl1', [['Beta', 1]]), emRow('bl2', [['Gamma', 1]])], chain);
+
+  const toB = eventMatch('bill', hist.events, byArtist, [dnaAct('bl1')], chain);
+  const toC = eventMatch('bill', hist.events, byArtist, [dnaAct('bl2')], chain);
+
+  // Your vector: Alpha 1. Beta gets alpha * (1 / sqrt(deg Beta * deg Alpha)) = alpha / sqrt(2). Gamma gets 0.
+  const expected = (MATCH_ALPHA / Math.SQRT2) / Math.sqrt(1 + (MATCH_ALPHA * MATCH_ALPHA) / 2);
+  assert.ok(Math.abs(toB.score - expected) < 1e-9, `score ${toB.score}`);
+  assert.ok(toB.score > 0);
+  assert.equal(toC.score, 0);
+  assert.equal(toC.band, 'outside');
+});
+
+test('eventMatch: hub dampening gives a genre linked to many less than one with a single link of the same weight', () => {
+  const hub = emVocab(
+    ['Alpha', 'H', 'G', 'X1', 'X2', 'X3', 'X4'],
+    [['Alpha', 'H', 1], ['Alpha', 'G', 1], ['H', 'X1', 1], ['H', 'X2', 1], ['H', 'X3', 1], ['H', 'X4', 1]],
+  );
+  const hist = emHistory('h', [1], 'Alpha');
+  const byArtist = genresByArtist([...hist.rows, emRow('bh', [['H', 1]]), emRow('bg', [['G', 1]])], hub);
+
+  const toH = eventMatch('bill', hist.events, byArtist, [dnaAct('bh')], hub).score;
+  const toG = eventMatch('bill', hist.events, byArtist, [dnaAct('bg')], hub).score;
+  assert.ok(toH > 0);
+  assert.ok(toG > toH, `G ${toG} should beat H ${toH}`);
+});
+
+test('eventMatch: the event itself is left out of your vector', () => {
+  const vocab = emVocab(['Alpha', 'Beta']);
+  const other = emHistory('o', [5], 'Beta');
+  const focal = ev('bill', '2026-11-20', ['fa', 'fb', 'fc', 'fd', 'fe']);
+  const focalRows = ['fa', 'fb', 'fc', 'fd', 'fe'].map((k) => emRow(k, [['Alpha', 1]]));
+  const byArtist = genresByArtist([...other.rows, ...focalRows, emRow('ba', [['Alpha', 1]])], vocab);
+
+  const res = eventMatch('bill', [...other.events, focal], byArtist, [dnaAct('ba')], vocab);
+  assert.equal(res.sets, 5); // the 5 Beta sets; the focal event's 5 Alpha sets are not counted
+  assert.equal(res.events, 1);
+  assert.equal(res.band, 'outside'); // Alpha is not in your vector
+});
+
+test('eventMatch: strong band with an exact match, some band between 0.3 and 0.6, outside below 0.3', () => {
+  const vocab = emVocab(['Alpha', 'Beta', 'Gamma']);
+  const hist = emHistory('b', [2], 'Alpha');
+
+  const strongRows = [...hist.rows, emRow('bs1', [['Alpha', 1]])];
+  const strong = eventMatch('bill', hist.events, genresByArtist(strongRows, vocab), [dnaAct('bs1')], vocab);
+  assert.ok(Math.abs(strong.score - 1) < 1e-9);
+  assert.equal(strong.band, 'strong');
+
+  // Bill: Alpha 1 and Beta 2 (one act, split 1/3 and 2/3). Cosine with Alpha alone is 1 / sqrt(5), about 0.447.
+  const someRows = [...hist.rows, emRow('bx', [['Alpha', 1], ['Beta', 2]])];
+  const some = eventMatch('bill', hist.events, genresByArtist(someRows, vocab), [dnaAct('bx')], vocab);
+  assert.ok(Math.abs(some.score - 1 / Math.sqrt(5)) < 1e-9, `score ${some.score}`);
+  assert.equal(some.band, 'some');
+
+  const outsideRows = [...hist.rows, emRow('bo', [['Gamma', 1]])];
+  const outside = eventMatch('bill', hist.events, genresByArtist(outsideRows, vocab), [dnaAct('bo')], vocab);
+  assert.equal(outside.score, 0);
+  assert.equal(outside.band, 'outside');
+  assert.deepEqual(outside.lane, []);
+});
+
+test('eventMatch: lane is the two families that add most to the score', () => {
+  const vocab = emVocab(['Alpha', 'Beta', 'Gamma']);
+  const a = emHistory('la', [3], 'Alpha');
+  const b = emHistory('lb', [2], 'Beta');
+  const c = emHistory('lc', [1], 'Gamma');
+  const rows = [...a.rows, ...b.rows, ...c.rows, emRow('l1', [['Alpha', 1]]), emRow('l2', [['Beta', 1]]), emRow('l3', [['Gamma', 1]])];
+  const res = eventMatch('bill', [...a.events, ...b.events, ...c.events], genresByArtist(rows, vocab),
+    [dnaAct('l1'), dnaAct('l2'), dnaAct('l3')], vocab);
+
+  // Your vector 3 : 2 : 1 against an even bill. Dot contributions 3, 2, 1: Alpha and Beta.
+  assert.deepEqual(res.lane, [{ key: 'family:famalpha', name: 'Fam Alpha' }, { key: 'family:fambeta', name: 'Fam Beta' }]);
+  assert.equal(res.band, 'strong');
+});
+
+test('eventMatch: inLane, nearby and nearbyUnseen follow the top genre of each bill act', () => {
+  const vocab = emVocab(['Alpha', 'Beta', 'Gamma'], [['Alpha', 'Beta', 1]]);
+  const hist = emHistory('n', [1], 'Alpha');
+  const focal = ev('bill', '2026-11-20', ['p3']); // p3 is seen at this event, so it is not unseen
+  const rows = [
+    ...hist.rows,
+    emRow('p1', [['Alpha', 1]]), // top Alpha: yours
+    emRow('p2', [['Beta', 1]]), // top Beta: adjacent to Alpha, never seen
+    emRow('p3', [['Beta', 1]]), // top Beta: adjacent, seen at this event
+    emRow('p4', [['Gamma', 1]]), // not adjacent to anything of yours
+  ];
+  const acts = ['p1', 'p2', 'p3', 'p4'].map((k) => dnaAct(k));
+  const res = eventMatch('bill', [...hist.events, focal], genresByArtist(rows, vocab), acts, vocab);
+
+  assert.deepEqual(res.inLane, ['p1']);
+  assert.deepEqual(res.nearby, ['p2', 'p3']);
+  assert.deepEqual(res.nearbyUnseen, ['p2']);
+});
+
+test('eventMatch: floors are 20 sets over 5 events, and Lineup DNA enough', () => {
+  const vocab = emVocab(['Alpha']);
+  const billRows = ['bl1', 'bl2', 'bl3'].map((k) => emRow(k, [['Alpha', 1]]));
+  const bill = ['bl1', 'bl2', 'bl3'].map((k) => dnaAct(k));
+  const run = (sizes: number[], prefix: string) => {
+    const hist = emHistory(prefix, sizes, 'Alpha');
+    return eventMatch('bill', hist.events, genresByArtist([...hist.rows, ...billRows], vocab), bill, vocab);
+  };
+
+  const nineteen = run([4, 4, 4, 4, 3], 'p'); // 19 sets over 5 events
+  assert.equal(nineteen.sets, 19);
+  assert.equal(nineteen.events, 5);
+  assert.equal(nineteen.enough, false);
+
+  const fourEvents = run([5, 5, 5, 5], 'q'); // 20 sets over only 4 events
+  assert.equal(fourEvents.sets, MATCH_MIN_SETS);
+  assert.equal(fourEvents.events, 4);
+  assert.equal(fourEvents.enough, false);
+
+  const passes = run([4, 4, 4, 4, 4], 'r'); // 20 sets over 5 events
+  assert.equal(passes.sets, MATCH_MIN_SETS);
+  assert.equal(passes.events, MATCH_MIN_EVENTS);
+  assert.equal(passes.enough, true);
 });

@@ -43,6 +43,54 @@ import {
 } from './genreVocabularyManage';
 import { applyGenreRelationsCsv, previewGenreRelationsCsv } from './genreRelationsCsv';
 import { ManageError } from '../entities/manage';
+import { eventPerformers } from './artists';
+import { normalizeName } from '../lineup/text';
+import type { Edition, LookupJob } from '../lineup/types';
+import type { LoggedEvent } from './types';
+
+// One act on an event's lineup: its key and name, and what the lineup says about where and when it plays.
+export interface LineupGenresAct {
+  key: string;
+  name: string;
+  stages: string[];
+  days: string[];
+  status?: 'billed' | 'performed';
+  slotId?: string;
+}
+
+// The stored stage, day and status for each act, from the same sources eventPerformers reads
+// (the edition's performances without cancelled ones, the lookup's candidate, the confirmed listing).
+// The first source to name an act wins. Acts with none get empty stages and days.
+function lineupInfo(event: LoggedEvent, job: LookupJob | null, edition: Edition | null): Map<string, Omit<LineupGenresAct, 'key' | 'name'>> {
+  const info = new Map<string, Omit<LineupGenresAct, 'key' | 'name'>>();
+  const note = (name: string, i: Omit<LineupGenresAct, 'key' | 'name'>) => {
+    const key = normalizeName(name);
+    if (key && !info.has(key)) info.set(key, i);
+  };
+  for (const p of edition?.performances ?? []) {
+    if (p.status !== 'cancelled') note(p.name, { stages: p.stages ?? [], days: p.days ?? [], status: p.status, slotId: p.slotId });
+  }
+  for (const p of job?.candidate?.performers ?? []) {
+    note(p.name, { stages: p.stages ?? [], days: p.days ?? [], status: p.status, slotId: p.slotId });
+  }
+  return info;
+}
+
+// The acts on an event's lineup, one per act (by normalized name), in the order eventPerformers gives them.
+// Nothing is rejected or hidden here: eventPerformers already leaves out what sources did not list.
+export function lineupActs(event: LoggedEvent, job: LookupJob | null, edition: Edition | null): LineupGenresAct[] {
+  const info = lineupInfo(event, job, edition);
+  const out: LineupGenresAct[] = [];
+  const seen = new Set<string>();
+  for (const p of eventPerformers(event, job, edition)) {
+    const key = normalizeName(p.name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const i = info.get(key);
+    out.push({ key, name: p.name, stages: i?.stages ?? [], days: i?.days ?? [], ...(i?.status ? { status: i.status } : {}), ...(i?.slotId ? { slotId: i.slotId } : {}) });
+  }
+  return out;
+}
 
 // The taxonomy as its own keys, read from the vocabulary (no extra query): the families and macros,
 // and every outgoing link. Shared data with no personal fields, so every scope gets it.
@@ -69,7 +117,7 @@ const isMember = () => currentMember()?.role === 'member';
 // request body and returns the change it wrote.
 type VocabWrite = (store: LineupStore, b: Record<string, unknown>) => Promise<unknown>;
 const VOCAB_WRITES: Record<string, VocabWrite> = {
-  create: async (s, b) => ({ change: await createGenre(s, { name: b.name, parent: b.parent }) }),
+  create: async (s, b) => ({ change: await createGenre(s, { name: b.name, parent: b.parent, family: b.family }) }),
   rename: async (s, b) => ({ change: await renameGenre(s, b.genre, b.name) }),
   'alias-add': async (s, b) => ({ change: await addGenreAlias(s, b.genre, b.alias) }),
   'alias-remove': async (s, b) => ({ change: await removeGenreAlias(s, b.genre, b.alias) }),
@@ -286,6 +334,24 @@ export function genresRouter(deps: PipelineDeps): Router {
       res.json({ restored, rows });
     } catch (err) {
       if (err instanceof InputError && /^Changed since/.test(err.message)) return res.status(409).json({ error: err.message });
+      fail(res, err);
+    }
+  });
+
+  // The lineup of one event and the genre rows of its acts (docs/specs/genre-taxonomy-release-2.md section 1). Reads only.
+  // The store scopes the event (a member gets only their own) and the rows (a member's 'added' rows are theirs alone),
+  // so the rows are filtered here to the acts on this lineup.
+  router.get('/events/:id/lineup-genres', async (req, res) => {
+    try {
+      const event = await deps.store.getEvent(req.params.id);
+      if (!event) return res.status(404).json({ error: 'Event not found.' });
+      const job = event.lineupJobId ? await deps.store.getJob(event.lineupJobId) : null;
+      const edition = event.editionId ? await deps.store.getEdition(event.editionId) : null;
+      const acts = lineupActs(event, job, edition);
+      const keys = new Set(acts.map((a) => a.key));
+      const genres = keys.size ? (await deps.store.listArtistGenres()).filter((r) => keys.has(r.key)) : [];
+      res.json({ acts, genres });
+    } catch (err) {
       fail(res, err);
     }
   });

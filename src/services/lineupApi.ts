@@ -477,7 +477,8 @@ export const genresApi = {
   list: () => request<GenresList>('/api/artist-genres'),
   // The owner's genre vocabulary (docs/specs/genre-vocabulary.md section 6).
   // Each write returns the change it recorded, which undoVocabulary takes back.
-  createGenre: (name: string, parent?: string | null) => vocabWrite('create', { name, parent }),
+  // family is a family's key ('family:house') or name; a new genre goes in it (genre-taxonomy-phase-a.md section 6).
+  createGenre: (name: string, parent?: string | null, family?: string | null) => vocabWrite('create', { name, parent, family }),
   renameGenre: (genre: string, name: string) => vocabWrite('rename', { genre, name }),
   addGenreAlias: (genre: string, alias: string) => vocabWrite('alias-add', { genre, alias }),
   removeGenreAlias: (genre: string, alias: string) => vocabWrite('alias-remove', { genre, alias }),
@@ -536,7 +537,25 @@ export const genresApi = {
     request<{ matched: number; seen: number; inFile: number; mapTags: number }>('/api/artist-genres/music-story', post(file)),
   musicBrainz: (keys: string[]) =>
     request<{ genres: ArtistGenres[] }>('/api/artist-genres/musicbrainz', post({ keys })).then((r) => r.genres),
+  // The lineup of one of your events and the genre rows of its acts (GET /api/events/:id/lineup-genres). Reads only.
+  getLineupGenres: (eventId: string) => request<LineupGenres>(`/api/events/${encodeURIComponent(eventId)}/lineup-genres`),
 };
+
+// One act on an event's lineup, as GET /api/events/:id/lineup-genres sends it.
+export interface LineupGenresAct {
+  key: string;
+  name: string;
+  stages: string[];
+  days: string[];
+  status?: 'billed' | 'performed'; // absent when no source stored one
+  slotId?: string;
+}
+
+// What GET /api/events/:id/lineup-genres returns.
+export interface LineupGenres {
+  acts: LineupGenresAct[];
+  genres: ArtistGenres[];
+}
 
 // The records behind your events' names (src/server/entities/).
 // Manage: the records behind your events' names. Every change returns its
