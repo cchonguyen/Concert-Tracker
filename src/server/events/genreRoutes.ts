@@ -21,6 +21,7 @@ import {
   undoGenresCsv,
 } from './genreCsvApply';
 import { genreCollisions } from './genreVocabulary';
+import type { GenreVocabulary } from './genreTypes';
 import {
   addGenreAlias,
   addGenreUmbrella,
@@ -37,6 +38,22 @@ import {
   undoGenreVocabChange,
 } from './genreVocabularyManage';
 import { ManageError } from '../entities/manage';
+
+// The taxonomy as its own keys, read from the vocabulary (no extra query): the families and macros,
+// and every outgoing link. Shared data with no personal fields, so every scope gets it.
+export function taxonomyPayload(vocabulary: GenreVocabulary): {
+  levels: Array<{ key: string; name: string; level: 'family' | 'macro'; primaryParent?: string }>;
+  relations: Array<{ source: string; target: string; type: string; weight: number; origin: string }>;
+} {
+  const levels = vocabulary.genres
+    .filter((g) => g.level === 'family' || g.level === 'macro')
+    .map((g) => ({ key: g.key, name: g.name, level: g.level as 'family' | 'macro', ...(g.primaryParent ? { primaryParent: g.primaryParent } : {}) }))
+    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  const relations = vocabulary.genres
+    .flatMap((g) => (g.relations ?? []).map((r) => ({ source: g.key, target: r.target, type: r.type, weight: r.weight, origin: r.origin })))
+    .sort((a, b) => (a.source < b.source ? -1 : a.source > b.source ? 1 : a.target < b.target ? -1 : a.target > b.target ? 1 : a.type < b.type ? -1 : a.type > b.type ? 1 : 0));
+  return { levels, relations };
+}
 
 // How many of the newest vocabulary changes the owner's GET carries.
 export const VOCAB_CHANGES_LIMIT = 100;
@@ -98,6 +115,7 @@ export function genresRouter(deps: PipelineDeps): Router {
         known: knownGenres(map ?? [], genres, vocabulary),
         csvUndo,
         vocabulary,
+        ...taxonomyPayload(vocabulary),
         map: map ?? [],
       };
       if (!member) {

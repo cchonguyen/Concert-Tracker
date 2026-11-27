@@ -28,7 +28,7 @@ import { splitEventCity } from '../../events/regions';
 import { LineupFacts, lineupFacts } from '../../events/scale';
 import { EmailImport } from '../../events/email/types';
 import type { ArtistGenres, GenreChange } from '../../events/genres';
-import type { GenreVocabChange, GenreVocabulary, VocabGenre } from '../../events/genreTypes';
+import type { GenreLevel, GenreRelation, GenreTier, GenreVocabChange, GenreVocabulary, VocabGenre } from '../../events/genreTypes';
 import { brandKey } from '../../brands/plan';
 import { findOrCreateBrandId } from '../../brands/store';
 import {
@@ -1666,13 +1666,29 @@ export class SupabaseLineupStore implements LineupStore {
   }
 
   async getGenreVocabulary(): Promise<GenreVocabulary> {
-    const [genres, aliases, umbrellas] = await Promise.all([this.vocabRows('genres'), this.vocabRows('genre_aliases'), this.vocabRows('genre_umbrellas')]);
+    const [genres, aliases, umbrellas, relations] = await Promise.all([
+      this.vocabRows('genres'),
+      this.vocabRows('genre_aliases'),
+      this.vocabRows('genre_umbrellas'),
+      this.vocabRows('genre_relations'),
+    ]);
     const byKey = new Map<string, VocabGenre>();
     for (const g of [...genres].sort((a, b) => cmp(a.key, b.key))) {
-      byKey.set(g.key, { key: g.key, name: g.name, ...(g.parent ? { parent: g.parent } : {}), aliases: [], umbrellas: [] });
+      byKey.set(g.key, { key: g.key, name: g.name, ...(g.parent ? { parent: g.parent } : {}), ...vocabTaxonomyFromRow(g), aliases: [], umbrellas: [] });
     }
     for (const a of [...aliases].sort((x, y) => cmp(x.alias_key, y.alias_key))) byKey.get(a.genre_key)?.aliases.push({ key: a.alias_key, alias: a.alias });
     for (const u of [...umbrellas].sort((x, y) => cmp(x.umbrella_key, y.umbrella_key))) byKey.get(u.genre_key)?.umbrellas.push(u.umbrella_key);
+    // Outgoing links only, attached to their source genre. A genre with none has no relations key.
+    const linked = new Map<string, GenreRelation[]>();
+    for (const r of [...relations].sort((x, y) => cmp(x.target_key, y.target_key) || cmp(x.type, y.type))) {
+      const list = linked.get(r.source_key) ?? [];
+      list.push({ target: r.target_key, type: r.type, weight: Number(r.weight), origin: r.origin });
+      linked.set(r.source_key, list);
+    }
+    for (const [key, list] of linked) {
+      const g = byKey.get(key);
+      if (g) g.relations = list;
+    }
     return { genres: [...byKey.values()] };
   }
 
@@ -1680,14 +1696,7 @@ export class SupabaseLineupStore implements LineupStore {
     this.ownerGenres();
     const p_after = after.map((r) => ({
       key: r.key,
-      image: r.image
-        ? {
-            name: r.image.name,
-            parent: r.image.parent ?? null,
-            aliases: r.image.aliases.map((a) => ({ alias_key: a.key, alias: a.alias })),
-            umbrellas: r.image.umbrellas,
-          }
-        : null,
+      image: r.image ? vocabImageForWrite(r.image) : null,
     }));
     const { data, error } = await this.db.rpc('genre_vocabulary_write', {
       p_after,
@@ -2433,12 +2442,55 @@ const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 // A genre image from genre_changes or the write: aliases may carry key or alias_key.
 function vocabGenreFromImage(g: any): VocabGenre {
+  // A log image from 0063 on carries level and relations; a pre-0063 image carries neither.
+  const taxonomy = g.level !== undefined && g.level !== null
+    ? {
+        level: String(g.level) as GenreLevel,
+        ...(g.primaryParent ? { primaryParent: String(g.primaryParent) } : {}),
+        ...(g.tier ? { tier: String(g.tier) as GenreTier } : {}),
+        relations: ((g.relations ?? []) as any[]).map(vocabRelationFromImage),
+      }
+    : {};
   return {
     key: String(g.key),
     name: String(g.name),
     ...(g.parent ? { parent: String(g.parent) } : {}),
+    ...taxonomy,
     aliases: ((g.aliases ?? []) as any[]).map((a) => ({ key: String(a.key ?? a.alias_key), alias: String(a.alias) })),
     umbrellas: ((g.umbrellas ?? []) as any[]).map(String),
+  };
+}
+
+// The taxonomy of a genre row (0063). A plain genre (level 'genre') has no level key, and no
+// relations key unless it has links, so the read looks as it did before 0063.
+function vocabTaxonomyFromRow(g: any): Partial<VocabGenre> {
+  return {
+    ...(g.level && g.level !== 'genre' ? { level: g.level as GenreLevel } : {}),
+    ...(g.primary_parent_key ? { primaryParent: String(g.primary_parent_key) } : {}),
+    ...(g.specificity_tier ? { tier: g.specificity_tier as GenreTier } : {}),
+  };
+}
+
+function vocabRelationFromImage(r: any): GenreRelation {
+  return { target: String(r.target), type: r.type, weight: Number(r.weight), origin: r.origin };
+}
+
+// The image sent to genre_vocabulary_write. With a level, the taxonomy goes too, and relations
+// default to [] so the write replaces them. Without one, the SQL keeps the genre's taxonomy as it is.
+function vocabImageForWrite(img: VocabGenre) {
+  return {
+    name: img.name,
+    parent: img.parent ?? null,
+    aliases: img.aliases.map((a) => ({ alias_key: a.key, alias: a.alias })),
+    umbrellas: img.umbrellas,
+    ...(img.level !== undefined
+      ? {
+          level: img.level,
+          ...(img.primaryParent !== undefined ? { primaryParent: img.primaryParent } : {}),
+          ...(img.tier !== undefined ? { tier: img.tier } : {}),
+          relations: (img.relations ?? []).map((r) => ({ target: r.target, type: r.type, weight: r.weight, origin: r.origin })),
+        }
+      : {}),
   };
 }
 

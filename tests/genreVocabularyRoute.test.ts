@@ -174,3 +174,92 @@ test('a ManageError status becomes the HTTP status; an unknown operation is a 40
     assert.equal((await owner('/api/artist-genres/vocabulary/undo')).status, 404);
   });
 });
+
+// A small taxonomy: macro > family > genre, with one secondary family and one adjacent genre on the genre.
+const TAXONOMY = [
+  { key: 'macro:electronic', name: 'Electronic', level: 'macro', aliases: [], umbrellas: [] },
+  { key: 'family:house', name: 'House', level: 'family', primaryParent: 'macro:electronic', aliases: [], umbrellas: [] },
+  { key: 'family:techno', name: 'Techno', level: 'family', primaryParent: 'macro:electronic', aliases: [], umbrellas: [] },
+  { key: 'house', name: 'House', aliases: [], umbrellas: [] },
+  {
+    key: 'techhouse',
+    name: 'Tech House',
+    level: 'genre',
+    primaryParent: 'family:house',
+    tier: 'specific',
+    aliases: [],
+    umbrellas: [],
+    relations: [
+      { target: 'house', type: 'adjacent', weight: 0.5, origin: 'curated' },
+      { target: 'family:techno', type: 'secondary_parent', weight: 0.3, origin: 'curated' },
+    ],
+  },
+] as const;
+
+const TECH_HOUSE_READ = {
+  key: 'techhouse',
+  name: 'Tech House',
+  primaryParent: 'family:house',
+  tier: 'specific',
+  relations: [
+    { target: 'family:techno', type: 'secondary_parent', weight: 0.3, origin: 'curated' },
+    { target: 'house', type: 'adjacent', weight: 0.5, origin: 'curated' },
+  ],
+  aliases: [],
+  umbrellas: [],
+};
+
+const meta = { operation: 'create' as const, actor: 'owner' as const, reason: 'test taxonomy', summary: 'taxonomy written' };
+
+test('a taxonomy written by the owner reads back with every field', async () => {
+  await withApp(async (_app, store) => {
+    await store.writeGenreVocabulary(TAXONOMY.map((g) => ({ key: g.key, image: g as any })), meta);
+    const genres = (await store.getGenreVocabulary()).genres;
+    assert.deepEqual(genres.find((g) => g.key === 'techhouse'), TECH_HOUSE_READ);
+    assert.deepEqual(genres.find((g) => g.key === 'family:house'), {
+      key: 'family:house', name: 'House', level: 'family', primaryParent: 'macro:electronic', aliases: [], umbrellas: [],
+    });
+    assert.deepEqual(genres.find((g) => g.key === 'macro:electronic'), {
+      key: 'macro:electronic', name: 'Electronic', level: 'macro', aliases: [], umbrellas: [],
+    });
+    // A plain genre looks as it did before 0063: no level, no relations.
+    assert.deepEqual(genres.find((g) => g.key === 'house'), { key: 'house', name: 'House', aliases: [], umbrellas: [] });
+  });
+});
+
+test('a legacy write without a level keeps the taxonomy and relations', async () => {
+  await withApp(async (_app, store) => {
+    await store.writeGenreVocabulary(TAXONOMY.map((g) => ({ key: g.key, image: g as any })), meta);
+    await store.writeGenreVocabulary(
+      [{ key: 'techhouse', image: { key: 'techhouse', name: 'Tech-House', aliases: [], umbrellas: [] } }],
+      { ...meta, operation: 'rename', summary: 'renamed' },
+    );
+    const got = (await store.getGenreVocabulary()).genres.find((g) => g.key === 'techhouse');
+    assert.deepEqual(got, { ...TECH_HOUSE_READ, name: 'Tech-House' });
+  });
+});
+
+test("a member's GET carries the same taxonomy and relations as the owner's, with no artist rows outside their own", async () => {
+  await withApp(async (app, store) => {
+    await store.writeGenreVocabulary(TAXONOMY.map((g) => ({ key: g.key, image: g as any })), meta);
+    const owner = (await asRole('owner', store, () => dispatch(app, { url: '/api/artist-genres' }))).json<any>();
+    const member = (await asRole('member', store, () => dispatch(app, { url: '/api/artist-genres' }))).json<any>();
+
+    assert.deepEqual(member.levels, [
+      { key: 'family:house', name: 'House', level: 'family', primaryParent: 'macro:electronic' },
+      { key: 'family:techno', name: 'Techno', level: 'family', primaryParent: 'macro:electronic' },
+      { key: 'macro:electronic', name: 'Electronic', level: 'macro' },
+    ]);
+    assert.deepEqual(member.relations, [
+      { source: 'techhouse', target: 'family:techno', type: 'secondary_parent', weight: 0.3, origin: 'curated' },
+      { source: 'techhouse', target: 'house', type: 'adjacent', weight: 0.5, origin: 'curated' },
+    ]);
+    assert.deepEqual(member.relations, owner.relations);
+    assert.deepEqual(member.levels, owner.levels);
+    assert.deepEqual(member.vocabulary, owner.vocabulary);
+    assert.deepEqual(member.vocabulary.genres.find((g: { key: string }) => g.key === 'techhouse'), TECH_HOUSE_READ);
+    // Artist rows stay scoped: the member only ever gets acts from their own events.
+    const ownActs = new Set(['bonobo']);
+    assert.ok(member.genres.every((g: { key: string }) => ownActs.has(g.key)));
+  });
+});

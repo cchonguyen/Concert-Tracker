@@ -1079,7 +1079,9 @@ export class FileLineupStore implements LineupStore {
       const deleted = new Set(after.filter((r) => !r.image).map((r) => r.key));
       // Touched: the listed genres, and any genre that sits under one being deleted.
       const touched = new Set(keys);
-      for (const g of Object.values(vocab)) if (g.umbrellas.some((u) => deleted.has(u))) touched.add(g.key);
+      for (const g of Object.values(vocab)) {
+        if (g.umbrellas.some((u) => deleted.has(u)) || (g.primaryParent && deleted.has(g.primaryParent)) || (g.relations ?? []).some((r) => deleted.has(r.target))) touched.add(g.key);
+      }
       const before = vocabImages(vocab, [...touched]);
 
       // Clear the listed genres' own links, and delete the genres with no image with every link to them.
@@ -1092,6 +1094,14 @@ export class FileLineupStore implements LineupStore {
       }
       for (const k of deleted) delete vocab[k];
       for (const g of Object.values(vocab)) g.umbrellas = g.umbrellas.filter((u) => !deleted.has(u));
+      // As the foreign keys do: a deleted genre's links go, and a family or genre it parented is left ungrouped.
+      for (const g of Object.values(vocab)) {
+        if (g.primaryParent && deleted.has(g.primaryParent)) delete g.primaryParent;
+        if (g.relations) {
+          g.relations = g.relations.filter((r) => !deleted.has(r.target));
+          if (!g.relations.length) delete g.relations;
+        }
+      }
 
       const aliasOwner = (aliasKey: string) => Object.values(vocab).find((g) => g.aliases.some((a) => a.key === aliasKey));
       // Every genre with an image first, so links between listed genres resolve.
@@ -1101,7 +1111,9 @@ export class FileLineupStore implements LineupStore {
         if (!name) throw new Error(`genre_vocabulary_write: genre ${r.key} needs a name`);
         if (aliasOwner(r.key)) throw new Error(`genre_vocabulary_write: ${r.key} is already another genre's alias`);
         const parent = typeof r.image.parent === 'string' ? r.image.parent.trim() : '';
-        vocab[r.key] = { key: r.key, name, ...(parent ? { parent } : {}), aliases: [], umbrellas: [] };
+        // An image with a level sets the taxonomy; one without keeps the genre's taxonomy as it is.
+        const taxonomy = taxonomyOf(r.image.level !== undefined ? r.image : (lookup(vocab, r.key) ?? {}));
+        vocab[r.key] = { key: r.key, name, ...(parent ? { parent } : {}), ...taxonomy, aliases: [], umbrellas: [] };
       }
       for (const r of after) {
         if (!r.image) continue;
@@ -2294,7 +2306,25 @@ function assertCanonicalEntry(entry: SqlCanonicalEntry): void {
   if (!ok) throw new CanonicalStoreError('generic', 'The change has no id, a known operation, or a canonical block.');
 }
 
-const VOCAB_OPERATIONS = new Set<string>(['rename', 'alias-add', 'alias-remove', 'merge', 'parent', 'umbrella-add', 'umbrella-remove', 'spelling', 'create', 'undo']);
+const VOCAB_OPERATIONS = new Set<string>(['rename', 'alias-add', 'alias-remove', 'merge', 'parent', 'umbrella-add', 'umbrella-remove', 'spelling', 'create', 'undo',
+  'taxonomy-import', 'relations-import', 'relation-add', 'relation-remove', 'relation-weight', 'family']);
+
+// The taxonomy fields a stored genre keeps: a level other than 'genre', its primary parent, tier and links.
+function taxonomyOf(g: Partial<VocabGenre>): Partial<Pick<VocabGenre, 'level' | 'primaryParent' | 'tier' | 'relations'>> {
+  return {
+    ...(g.level && g.level !== 'genre' ? { level: g.level } : {}),
+    ...(g.primaryParent ? { primaryParent: g.primaryParent } : {}),
+    ...(g.tier ? { tier: g.tier } : {}),
+    ...(g.relations?.length ? { relations: relationsOf(g) } : {}),
+  };
+}
+
+// Outgoing links as genre_relations lists them: by target, then type.
+function relationsOf(g: Partial<VocabGenre>): NonNullable<VocabGenre['relations']> {
+  return (g.relations ?? [])
+    .map((r) => ({ target: r.target, type: r.type, weight: r.weight, origin: r.origin }))
+    .sort((a, b) => (a.target < b.target ? -1 : a.target > b.target ? 1 : a.type < b.type ? -1 : a.type > b.type ? 1 : 0));
+}
 
 // genre_vocabulary_images (0060): the given genres as they are now, ordered by key; a key with no genre is left out.
 function vocabImages(vocab: Record<string, VocabGenre>, keys: string[]): VocabGenre[] {
@@ -2307,6 +2337,7 @@ function vocabImages(vocab: Record<string, VocabGenre>, keys: string[]): VocabGe
         key: g.key,
         name: g.name,
         ...(g.parent ? { parent: g.parent } : {}),
+        ...taxonomyOf(g),
         aliases: [...g.aliases].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)).map((a) => ({ key: a.key, alias: a.alias })),
         umbrellas: [...g.umbrellas].sort(),
       };
