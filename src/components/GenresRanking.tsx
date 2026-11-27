@@ -333,7 +333,7 @@ export const GenresRanking: React.FC<GenresRankingProps> = ({
     <section className="space-y-4 rounded-card border border-line bg-surface-1 p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-display text-lg font-normal text-text">Genres you see live</h2>
+          <h2 className="poster-head text-2xl text-text">Genres you see live</h2>
           <p className="text-xs text-text-muted">
             Share of the sets you saw, from {mix.known} of {plural(mix.sets, 'set')}
             {mix.sets > mix.known &&
