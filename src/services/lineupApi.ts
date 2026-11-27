@@ -477,7 +477,8 @@ export const genresApi = {
   list: () => request<GenresList>('/api/artist-genres'),
   // The owner's genre vocabulary (docs/specs/genre-vocabulary.md section 6).
   // Each write returns the change it recorded, which undoVocabulary takes back.
-  createGenre: (name: string, parent?: string | null) => vocabWrite('create', { name, parent }),
+  // family is a family's key ('family:house') or name; a new genre goes in it (genre-taxonomy-phase-a.md section 6).
+  createGenre: (name: string, parent?: string | null, family?: string | null) => vocabWrite('create', { name, parent, family }),
   renameGenre: (genre: string, name: string) => vocabWrite('rename', { genre, name }),
   addGenreAlias: (genre: string, alias: string) => vocabWrite('alias-add', { genre, alias }),
   removeGenreAlias: (genre: string, alias: string) => vocabWrite('alias-remove', { genre, alias }),

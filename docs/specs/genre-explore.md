@@ -2,6 +2,8 @@
 
 > Update 2026-11-27: the Genres ranking (38.5) and the over-the-years chart (38.8) are upgraded to the Multi-Zoom Breakdown and Sound Drift in Release 1 of the genre taxonomy, after Phase A ([genre-taxonomy-phase-a.md](genre-taxonomy-phase-a.md)). Groups become macro genres and scene families there.
 
+> Note: the Genres table (38.5's Genre, Family and Style columns) and the over-the-years chart (38.8) were replaced by the Multi-Zoom Breakdown and Sound Drift in [genre-taxonomy-release-1.md](genre-taxonomy-release-1.md).
+
 Status: ideas, mockups and the Explore tab changes (section 3) approved by Charlie on 26 Nov 2026 (Pacific). Not started. Planned for Gemini to build.
 
 Mockups: https://claude.ai/artifact/GHxso4yoYwvpzsUT4nHG5u (sample data, made-up acts). The ideas doc with research: https://claude.ai/artifact/BNbgw1XSULuC6An3RbHSAp.

@@ -69,7 +69,7 @@ const isMember = () => currentMember()?.role === 'member';
 // request body and returns the change it wrote.
 type VocabWrite = (store: LineupStore, b: Record<string, unknown>) => Promise<unknown>;
 const VOCAB_WRITES: Record<string, VocabWrite> = {
-  create: async (s, b) => ({ change: await createGenre(s, { name: b.name, parent: b.parent }) }),
+  create: async (s, b) => ({ change: await createGenre(s, { name: b.name, parent: b.parent, family: b.family }) }),
   rename: async (s, b) => ({ change: await renameGenre(s, b.genre, b.name) }),
   'alias-add': async (s, b) => ({ change: await addGenreAlias(s, b.genre, b.alias) }),
   'alias-remove': async (s, b) => ({ change: await removeGenreAlias(s, b.genre, b.alias) }),
