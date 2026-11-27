@@ -174,3 +174,52 @@ test('runArtistCleanup handles all 6 stages, pre-rename targets, genre preservat
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('runArtistCleanup resolves seen-only and genre-only universe artists (ALT1, Sam Gelliatry)', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'artist-cleanup-univ-'));
+  try {
+    const store = new FileLineupStore(dir);
+    await store.upsertArtist({ key: 'sneijder pres alt 1', name: 'Sneijder pres Alt_1' });
+    await store.upsertArtist({ key: 'sneijder', name: 'Sneijder', mbid: 'b1bd5cb7-4a61-4363-89ba-8a5c41c101d8' });
+
+    // ALT1 and Sam Gelliatry exist only in seen_act_names / artist_genres (no canonical_artists row).
+    await store.putEvent(
+      makeEvent('ev-1', [
+        { key: 'alt1', name: 'ALT1', from: 'you' },
+        { key: 'sam gelliatry', name: 'Sam Gelliatry', from: 'you' },
+      ]),
+    );
+    await store.putArtistGenres([
+      {
+        key: 'sam gelliatry',
+        name: 'Sam Gelliatry',
+        source: 'owner',
+        genres: [{ style: 'Future Bass', parent: 'electronic', weight: 1 }],
+        checkedAt: '2026-11-26T00:00:00.000Z',
+      },
+    ]);
+
+    const csv = [
+      'Artist,MusicBrainz ID,Source,Version (leave as it is),Entity_Status,Invalid_Reason,Canonical_Artist,Canonical_Key,Set_Qualifier,Split_Artists,Split_Keys,Combo_Alias,Alter_Ego_Of,Alter_Ego_Of_Key,Cleanup_Notes',
+      'Sneijder pres Alt_1,,none,05f983e5,merge_duplicate,,ALT1,artist:ALT1,,,,,,,presents_alter_ego_dup',
+      'Sam Gelliatry,,owner,245d1f57,rename,,Sam Gellaitry,artist:Sam Gelliatry,,,,,,,typo_fix_owner_row',
+      'ALT1,,none,05f983e5,link_alter_ego,,,,,,,,Sneijder,mbid:b1bd5cb7-4a61-4363-89ba-8a5c41c101d8,',
+    ].join('\r\n');
+
+    const { rows, errors } = parseArtistCleanupCsv(parseCsv(csv));
+    assert.equal(errors.length, 0);
+
+    const applied = await store.runArtistCleanup(rows, { dryRun: false, actor: 'system:artist-cleanup', reason: 'test' });
+    assert.equal(applied.failedResolutions.length, 0);
+
+    assert.equal((await store.getArtist('alt1'))?.alterEgoOf, 'sneijder');
+    const genres = await store.listArtistGenres();
+    assert.equal(genres.find((g) => g.key === 'sam gellaitry' && g.source === 'owner')?.genres[0]?.style, 'Future Bass');
+    assert.equal(genres.find((g) => g.key === 'sam gelliatry'), undefined);
+
+    const ev = await store.getEvent('ev-1');
+    assert.ok(ev?.seen.some((s) => s.key === 'sam gellaitry' && s.name === 'Sam Gellaitry'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
