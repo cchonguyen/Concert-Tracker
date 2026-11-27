@@ -25,7 +25,12 @@ Read docs/design-system/README.md, philosophy-and-voice.md and design-system.jso
 - Write UI in Tailwind zinc (surfaces, text) and violet (accent) classes. Themes remap those variables; do not hardcode hex colours in components.
 - Use rounded-control for buttons, inputs and icon buttons, and rounded-card for cards, panels and notices.
 - Theme mode and accent are per-device choices in localStorage (<prefix>.themeMode.v1, <prefix>.accent.v1), applied to <html> as data-theme and data-accent before the app draws. Keep the pre-paint script and the theme module in step.
-- Do not invent typography, spacing or motion tokens. Add one only when a change needs it, and add it to design-system.json in the same change.
+- Type roles: font-sans for what people read or tap, font-display for names of things, font-mono for dates, times, counts and prices, and PosterHeading (font-poster, capitals) for page, section, panel and dialog titles. Never set a name of a thing in poster capitals.
+- The second colour (text-second, bg-second, bg-second-soft) is for emphasis, tape, stamps and highlights, never for status. Every accent needs its partner in dark and light.
+- Motion uses --ease-pop: buttons lift and grow a little, never tilt; post-its straighten and lift. Everything stops under reduced motion.
+- Callouts and highlights use PostIt; the page background is AppBackdrop, mounted once; the logo is Logo, never a bare img.
+- Ticket styles are tokens only: a new style is one block in the ticket-styles module plus one list entry, never component changes.
+- Do not invent other typography, spacing or motion tokens. Add one only when a change needs it, and add it to design-system.json in the same change.
 
 ### Accessibility
 - Every icon-only control has a required label, used as its aria-label and its tooltip.

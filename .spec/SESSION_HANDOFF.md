@@ -1,12 +1,11 @@
 # Session Handoff
 
 - **Last Active Platform:** Claude Code (project thread)
-- **Branch Owner:** Claude (`claude/project-thread-ccwuqr`). Gemini works on its own branch, one per slice: `antigravity/35.10`, `antigravity/35.11`, `antigravity/35.12`.
-- **Active Branch / State:** `main` is current. Shared genres (`docs/specs/canonical-genres.md`): slices 35.1 to 35.9 merged (#939, #940, #942, #944, #945, #946, #947, #949, #951). Migration 0059 is applied in production (329 owner genres moved from `you` to `owner`). No slice is `[IN_PROGRESS]`.
-- **Files Modified in Last Turn:** `.spec/SESSION_HANDOFF.md`
-- **Verification Status:** Verified via finish-slice.mjs (Slice 45.5)
-- **Verification Status:** Verified via finish-slice.mjs (Slice 45.1115)
-- **Immediate Next Step:** Merge PR #950 (removes the one-time series cleanup list, approved by Charlie 2026-11-26 17:40Z) when green.
+- **Branch Owner:** Claude (`claude/project-thread-lui75g`).
+- **Active Branch / State:** `main` is current. Landing look is the app standard (`docs/specs/landing-look.md`, slices 45.1 to 45.5 merged: #1104, #1107, #1110, #1112, #1116) and the ticket style picker is live (`docs/specs/ticket-stub-styles.md`, 44.1, #1101). This change adds them to the design-system catalogue (`docs/design-system/`). A matching AGENTS.md rule waits on Charlie (AGENTS.md is a red tripwire). No slice is `[IN_PROGRESS]`.
+- **Files Modified in Last Turn:** `docs/design-system/design-system.json`, `docs/design-system/agent-rules.md`, `docs/design-system/README.md`, `docs/specs/landing-look.md`, `.spec/SESSION_HANDOFF.md`
+- **Verification Status:** typecheck and `npm test` pass (2,119 tests).
+- **Immediate Next Step:** None for the design work. Known pre-existing bug: Stats throws "Cannot read properties of undefined (reading 'map')" in sample mode (`/demo`).
 
 ## Notes for the three open slices
 

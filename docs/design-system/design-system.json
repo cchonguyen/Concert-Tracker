@@ -1,6 +1,6 @@
 {
   "name": "LiveArchive design system export",
-  "version": "2026-11-12",
+  "version": "2026-11-27",
   "describes": "What the app does today. Sources: src/index.css, src/services/theme.ts, src/components/ui/, REQUIREMENTS.md section 3, docs/architecture/15-shared-ui.md.",
   "stack": {
     "framework": "React + TypeScript",
@@ -154,6 +154,38 @@
     "posterBase": {
       "dark": "#111114",
       "light": "var(--color-zinc-950)"
+    },
+    "second": {
+      "tokens": [
+        "--la-second",
+        "--la-second-soft",
+        "--la-on-second"
+      ],
+      "classes": "text-second, bg-second, bg-second-soft, border-second, text-on-second",
+      "use": "Emphasis words in poster headings, post-it tape and tones, stamps and highlights. Never for status (good, warn, bad keep theirs).",
+      "pairs": {
+        "violet": {
+          "dark": "#f472b6",
+          "light": "#db2777"
+        },
+        "indigo": {
+          "dark": "#fcd34d",
+          "light": "#b45309"
+        },
+        "pink": {
+          "dark": "#a78bfa",
+          "light": "#7c3aed"
+        },
+        "teal": {
+          "dark": "#f472b6",
+          "light": "#db2777"
+        },
+        "orange": {
+          "dark": "#38bdf8",
+          "light": "#0369a1"
+        }
+      },
+      "rule": "Every accent has a partner in dark and light; tests/landingLook.test.ts fails when one is missing."
     }
   },
   "themes": {
@@ -331,12 +363,22 @@
     "knownGaps": [
       "BackToTop scrolls with behavior \"smooth\" without a reduced-motion check.",
       "SaveStatus spinner has no motion-reduce class."
+    ],
+    "easing": {
+      "--ease-pop": "cubic-bezier(0.2, 0.9, 0.3, 1.8): buttons (btn-pop) and post-its"
+    },
+    "landingLook": [
+      "Buttons lift 2px and grow 3% on hover and press to 97% on tap; never tilt.",
+      "Post-its straighten from their resting tilt, lift and grow 2% on hover; tape lifts; icon hops.",
+      "The backdrop drifts over 50s.",
+      "The heartbeat logo beats every 1.45s; the browser shows the still logo under reduced motion.",
+      "All of these stop under prefers-reduced-motion: reduce."
     ]
   },
   "notDefinedYet": [
-    "typography tokens or type scale (Tailwind default sans and sizes)",
+    "type scale beyond the poster heading sizes (Tailwind default sizes)",
     "spacing tokens (Tailwind default scale)",
-    "motion duration and easing tokens",
+    "motion duration tokens (one easing token, --ease-pop)",
     "shadow and z-index scales"
   ],
   "components": [
@@ -636,9 +678,132 @@
         "2 s burst"
       ],
       "a11y": "Canvas aria-hidden; skipped under reduced motion."
+    },
+    {
+      "name": "PosterHeading",
+      "purpose": "Page, section, panel and dialog titles in the condensed poster face, capitals.",
+      "props": {
+        "as": "1 | 2 (default) | 3",
+        "size": "md | lg (default) | xl",
+        "second": "optional words shown after the text in the second colour",
+        "className": ""
+      },
+      "states": [
+        "default"
+      ],
+      "a11y": "Renders a real h1 to h3; capitals come from CSS, so screen readers hear the words as typed. Not for names of things, which keep font-display."
+    },
+    {
+      "name": "PostIt",
+      "purpose": "A taped paper note for callouts, tips and highlights.",
+      "props": {
+        "tilt": "resting tilt in degrees, keep within -3 to 3 (default 0)",
+        "tone": "paper (default) | second | accent",
+        "icon": "optional node, hops on hover",
+        "title": "optional, shown as a poster heading",
+        "children": ""
+      },
+      "states": [
+        "default",
+        "hover (straightens, lifts, tape lifts)"
+      ],
+      "a11y": "Decorative tape and icon are aria-hidden; content reads the same without motion. Put any action inside as a real button or link."
+    },
+    {
+      "name": "AppBackdrop",
+      "purpose": "The drifting contour texture behind every page, tinted with the accent.",
+      "props": {},
+      "states": [
+        "default"
+      ],
+      "a11y": "aria-hidden, pointer-events none; still under reduced motion. Mount once inside a relative isolate root."
+    },
+    {
+      "name": "Logo",
+      "purpose": "The heartbeat logo: the waveform beats and the pin pulses with it.",
+      "props": {
+        "className": "default h-8 w-8",
+        "alt": "default LiveArchive"
+      },
+      "states": [
+        "animated",
+        "still (reduced motion)"
+      ],
+      "a11y": "A picture element: the browser swaps in /logo.svg under prefers-reduced-motion with no script."
+    },
+    {
+      "name": "Ticket",
+      "purpose": "The true ticket stub for an event (body and stub end, real notches), skinned by the ticket style.",
+      "props": {
+        "layout": "columns | rows",
+        "size": "hero | small",
+        "body": "",
+        "stub": ""
+      },
+      "states": [
+        "default",
+        "per ticket style"
+      ],
+      "a11y": "Stub atoms are aria-hidden; StubSentence gives the one sentence they read. See docs/specs/ticket-stub.md."
+    },
+    {
+      "name": "StubHeader",
+      "purpose": "The framing stub over lists (Summary years, Ranking groups); its title is a poster heading.",
+      "props": {
+        "title": "",
+        "titleSize": "large | default"
+      },
+      "states": [
+        "default"
+      ],
+      "a11y": "Perforations and notches are decorative."
     }
   ],
   "appSpecific": [
     "DemoPrompt (sample-mode explainer) is LiveArchive-only and not part of the export."
-  ]
+  ],
+  "typography": {
+    "roles": {
+      "sans": {
+        "token": "--font-sans",
+        "value": "'Plus Jakarta Sans'",
+        "class": "font-sans",
+        "use": "everything people read or tap"
+      },
+      "display": {
+        "token": "--font-display",
+        "value": "'Newsreader'",
+        "class": "font-display",
+        "use": "names of things (artists, editions, series, events) and the ticket headline"
+      },
+      "mono": {
+        "token": "--font-mono",
+        "value": "'JetBrains Mono'",
+        "class": "font-mono",
+        "use": "dates, times, counts, prices"
+      },
+      "poster": {
+        "token": "--font-poster",
+        "value": "'Anton'",
+        "class": "font-poster / poster-head",
+        "use": "page, section, panel and dialog titles, always in capitals (PosterHeading)"
+      }
+    },
+    "scale": "Tailwind default sizes. Poster headings: md text-2xl sm:text-3xl, lg clamp(32px,5vw,48px), xl clamp(44px,7vw,72px); page titles text-4xl.",
+    "source": "src/index.css (@theme), src/styles/landing-look.css, docs/specs/landing-look.md"
+  },
+  "ticketStyles": {
+    "styles": [
+      "original",
+      "thermal (Box office)",
+      "hard (Hard ticket)",
+      "raffle (Raffle)",
+      "riso (Riso)"
+    ],
+    "attribute": "data-stub on <html> or on any element",
+    "storageKey": "<prefix>.stubStyle.v1",
+    "module": "src/styles/ticket-styles.css",
+    "contract": "A style sets only the module's tokens (paper and ink, type, texture, frame). Add one: a CSS block, an entry in STUB_STYLES (src/services/theme.ts), its fonts in app.html. tests/ticketStyles.test.ts keeps list and module in step.",
+    "spec": "docs/specs/ticket-stub-styles.md"
+  }
 }

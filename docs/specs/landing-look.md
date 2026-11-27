@@ -16,6 +16,8 @@ Approved by Charlie 2026-11-27: "I also want to apply the new landing page desig
 
 All of it is in one module, `src/styles/landing-look.css`, loaded by `src/index.css`. Screens use the shared components and tokens, never their own copies.
 
+The design-system catalogue lists every part (`docs/design-system/design-system.json`: `typography`, `color.second`, `motion.easing`, `ticketStyles` and the components), with the rules in `docs/design-system/agent-rules.md`. Change them in the same change as the code.
+
 ## Slices
 
 - **45.1 Shared parts and logo.** The module, tokens, `PosterHeading`, `PostIt`, `AppBackdrop`, `Logo`, button motion, the logo in the app header and on the landing page. No screen layout changes.

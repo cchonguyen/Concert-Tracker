@@ -23,7 +23,7 @@ React with TypeScript, Tailwind CSS v4 (CSS-first, `@import "tailwindcss"` and `
 3. Write the new app's own ranked principles in its requirements doc. Start from [philosophy-and-voice.md](philosophy-and-voice.md) and keep the ones that fit; reorder them for the new product.
 4. Apply the tokens: copy the theme blocks of LiveArchive's `src/index.css` (accent scales, the violet-to-accent mapping, the `[data-theme='light']` remap, the `@theme` radius block) into the new app's main stylesheet. Write UI in Tailwind's `zinc` and `violet` classes so the themes work.
 5. Copy `src/services/theme.ts` and the pre-paint script from LiveArchive's `app.html` (it sets `data-theme` and `data-accent` on `<html>` before the app draws). Rename the `livearchive.*` storage keys to the new app's prefix in both places.
-6. Copy only the components from `src/components/ui/` that the first screen needs (start with `Button`, `IconButton`, `Tooltip`, `Notice`). Add others when a change needs them.
+6. Copy only the components from `src/components/ui/` that the first screen needs (start with `Button`, `IconButton`, `Tooltip`, `Notice`, and `PosterHeading` for titles). Add others when a change needs them. For the landing look also copy `src/styles/landing-look.css` (imported by the main stylesheet), `AppBackdrop`, `Logo` and `PostIt`; for ticket stubs, `Ticket`, `StubHeader` and `src/styles/ticket-styles.css`.
 7. Check each copied component keeps its accessibility contract from `design-system.json` (`a11y`), then run the new repo's typecheck.
 8. Read the voice rules before writing the first empty state, error or toast.
 
