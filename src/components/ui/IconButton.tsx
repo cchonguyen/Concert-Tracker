@@ -22,7 +22,7 @@ export function IconButton({ icon: Icon, label, size = 'default', busy = false, 
         type="button"
         aria-label={label}
         aria-busy={busy || undefined}
-        className={`icon-wiggle flex items-center justify-center rounded-control ${sizing} text-text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${className}`}
+        className={`btn-pop icon-wiggle flex items-center justify-center rounded-control ${sizing} text-text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${className}`}
         {...rest}
       >
         {busy ? <Equalizer size="sm" /> : <Icon className="h-4 w-4" aria-hidden="true" />}

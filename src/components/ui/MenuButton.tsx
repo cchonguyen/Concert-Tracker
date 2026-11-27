@@ -77,7 +77,7 @@ export function MenuButton<T extends string>({ label, value, options, onChange, 
             setOpen(true);
           }
         }}
-        className="flex min-h-11 items-center gap-2 rounded-control border border-line bg-surface-1 px-3 text-sm text-text hover:border-line-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent sm:min-h-9"
+        className="btn-pop flex min-h-11 items-center gap-2 rounded-control border border-line bg-surface-1 px-3 text-sm text-text hover:border-line-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent sm:min-h-9"
       >
         {CurrentIcon && <CurrentIcon className="h-4 w-4" />}
         <span>{current?.label}</span>
