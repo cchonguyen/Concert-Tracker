@@ -1,12 +1,13 @@
 import type { LoggedEvent } from '../server/events/types';
 import { attendanceOf, wentTo } from '../server/events/attendance';
-import type { ArtistGenres, GenreLevel, GenreVocabulary, VocabGenre } from '../server/events/genreTypes';
+import type { ArtistGenres, GenreLevel, GenreShare, GenreVocabulary, VocabGenre } from '../server/events/genreTypes';
 import {
   genreKey,
   genreResolver,
   genresUnder,
   levelOf,
   NOT_GROUPED,
+  shareFamily,
   shareGroup,
   umbrellaClosure,
 } from '../server/events/genreVocabulary';
@@ -1591,4 +1592,210 @@ export function genreZoom(
   }).sort(byZoomSort);
 
   return { levels: 'taxonomy', macros, families, genres, known, unknown, enough: known >= ZOOM_MIN_SETS };
+}
+
+// Sound Drift (docs/specs/genre-taxonomy-release-1.md decisions 1-5, 7 and section 4).
+// Works by calendar year. A year is counted when it has at least DRIFT_MIN_SETS known sets.
+export const DRIFT_MIN_SETS = 10;
+export const DRIFT_MIN_YEARS = 3;
+export const DRIFT_BANDS = 6;
+const OTHER_BAND = 'Other';
+
+export interface SoundDriftYear {
+  year: number;
+  known: number;
+  counted: boolean;
+  shares: Record<string, number>; // per band (plus Other when any); adds up to 1
+}
+
+export interface SoundDriftLeader {
+  band: string;
+  from: number;
+  to: number;
+}
+
+export interface SoundDriftResult {
+  levels: 'taxonomy' | 'groups';
+  years: SoundDriftYear[];
+  bands: string[];
+  countedYears: number;
+  enough: boolean;
+  leaders: SoundDriftLeader[];
+}
+
+export interface DriftSetRow {
+  eventId: string;
+  eventName: string;
+  date: string;
+  act: string;
+  share: number;
+}
+
+export interface DriftArtistRow {
+  key: string;
+  name: string;
+  sets: number;
+}
+
+export interface DriftDriversResult {
+  sets: DriftSetRow[];
+  artists: DriftArtistRow[];
+}
+
+// Taxonomy levels apply when the vocabulary has a macro, or the shares read through it do.
+function driftTaxonomy(byArtist: Map<string, ArtistGenres>, vocab: GenreVocabulary | undefined): boolean {
+  if ((vocab?.genres ?? []).some((g) => levelOf(g) === 'macro')) return true;
+  for (const a of byArtist.values()) if (a.genres.some((x) => x.macro !== undefined)) return true;
+  return false;
+}
+
+// A genre with no family counts under Not grouped at the family and the macro level.
+function driftBandOf(x: GenreShare, level: 'family' | 'macro', taxonomy: boolean): string {
+  if (!taxonomy) return shareGroup(x);
+  const fam = shareFamily(x);
+  const familyName = fam && fam !== NOT_GROUPED ? fam : NOT_GROUPED;
+  if (level === 'family') return familyName;
+  if (familyName === NOT_GROUPED) return NOT_GROUPED;
+  return x.macro ?? NOT_GROUPED;
+}
+
+function driftGenres(byArtist: Map<string, ArtistGenres>, actKey: string): GenreShare[] {
+  return (byArtist.get(actKey)?.genres ?? []).filter((x) => genreKey(x.style));
+}
+
+interface DriftRawYear {
+  year: number;
+  known: number;
+  weights: Map<string, number>; // band -> summed weight x set share
+}
+
+function driftRawYears(
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  taxonomy: boolean,
+  level: 'family' | 'macro',
+  today: string,
+): DriftRawYear[] {
+  const byYr = new Map<number, DriftRawYear>();
+  for (const e of wentTo(events, today)) {
+    const y = eventYearValue(e);
+    if (!y) continue;
+    const shares = setShares(e);
+    e.seen.forEach((s, si) => {
+      const genres = driftGenres(byArtist, s.key);
+      if (!genres.length) return;
+      const share = shares[si];
+      let cur = byYr.get(y);
+      if (!cur) byYr.set(y, (cur = { year: y, known: 0, weights: new Map() }));
+      cur.known += share;
+      for (const x of genres) {
+        const b = driftBandOf(x, level, taxonomy);
+        cur.weights.set(b, (cur.weights.get(b) ?? 0) + x.weight * share);
+      }
+    });
+  }
+  return [...byYr.values()].sort((a, b) => a.year - b.year);
+}
+
+export function soundDrift(
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  vocab: GenreVocabulary | undefined,
+  level: 'family' | 'macro',
+  today: string,
+): SoundDriftResult {
+  const taxonomy = driftTaxonomy(byArtist, vocab);
+  const raw = driftRawYears(events, byArtist, taxonomy, level, today);
+
+  // Bands are ranked on counted years; with none counted, on all years.
+  const counted = raw.filter((y) => y.known >= DRIFT_MIN_SETS);
+  const rankFrom = counted.length ? counted : raw;
+  const sums = new Map<string, number>();
+  for (const y of rankFrom) for (const [b, w] of y.weights) sums.set(b, (sums.get(b) ?? 0) + w);
+  const ranked = [...sums]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, DRIFT_BANDS)
+    .map(([b]) => b);
+  const bandSet = new Set(ranked);
+
+  const otherOf = (y: DriftRawYear): number => {
+    let o = 0;
+    for (const [b, w] of y.weights) if (!bandSet.has(b)) o += w;
+    return o;
+  };
+  const hasOther = raw.some((y) => otherOf(y) > 0);
+  const bands = hasOther ? [...ranked, OTHER_BAND] : ranked;
+
+  const years: SoundDriftYear[] = raw.map((y) => {
+    const total = [...y.weights.values()].reduce((t, w) => t + w, 0) || 1;
+    const shares: Record<string, number> = {};
+    for (const b of ranked) shares[b] = (y.weights.get(b) ?? 0) / total;
+    if (hasOther) shares[OTHER_BAND] = otherOf(y) / total;
+    return { year: y.year, known: y.known, counted: y.known >= DRIFT_MIN_SETS, shares };
+  });
+
+  // The leader of each counted year: the largest named band, Not grouped only when nothing else.
+  const leaders: SoundDriftLeader[] = [];
+  for (const y of years) {
+    if (!y.counted) continue;
+    const cands = ranked.filter((b) => (y.shares[b] ?? 0) > 0);
+    const named = cands.filter((b) => b !== NOT_GROUPED);
+    const pool = named.length ? named : cands;
+    if (!pool.length) continue;
+    const band = [...pool].sort((a, b) => y.shares[b] - y.shares[a] || a.localeCompare(b))[0];
+    const last = leaders[leaders.length - 1];
+    if (last && last.band === band) last.to = y.year;
+    else leaders.push({ band, from: y.year, to: y.year });
+  }
+
+  const countedYears = years.filter((y) => y.counted).length;
+  return {
+    levels: taxonomy ? 'taxonomy' : 'groups',
+    years,
+    bands,
+    countedYears,
+    enough: countedYears >= DRIFT_MIN_YEARS,
+    leaders,
+  };
+}
+
+export function driftDrivers(
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  vocab: GenreVocabulary | undefined,
+  level: 'family' | 'macro',
+  today: string,
+  year: number,
+  band: string,
+): DriftDriversResult {
+  const taxonomy = driftTaxonomy(byArtist, vocab);
+  const bandSet = new Set(soundDrift(events, byArtist, vocab, level, today).bands);
+  const inBand = (b: string): boolean => (band === OTHER_BAND ? !bandSet.has(b) : b === band);
+
+  const rows: Array<{ sort: string; row: DriftSetRow }> = [];
+  const artists = new Map<string, DriftArtistRow>();
+  for (const e of wentTo(events, today)) {
+    if (eventYearValue(e) !== year) continue;
+    const shares = setShares(e);
+    e.seen.forEach((s, si) => {
+      let w = 0;
+      for (const x of driftGenres(byArtist, s.key)) if (inBand(driftBandOf(x, level, taxonomy))) w += x.weight;
+      if (w <= 0) return;
+      const share = shares[si] * w;
+      rows.push({
+        sort: eventSortDate(e) ?? '',
+        row: { eventId: e.id, eventName: e.name, date: eventDisplayDate(e) ?? '', act: s.name, share },
+      });
+      const cur = artists.get(s.key);
+      if (cur) cur.sets += share;
+      else artists.set(s.key, { key: s.key, name: s.name, sets: share });
+    });
+  }
+
+  return {
+    sets: rows
+      .sort((a, b) => a.sort.localeCompare(b.sort) || a.row.act.localeCompare(b.row.act))
+      .map((r) => r.row),
+    artists: [...artists.values()].sort((a, b) => b.sets - a.sets || a.name.localeCompare(b.name)),
+  };
 }
