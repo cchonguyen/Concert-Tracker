@@ -85,7 +85,7 @@ test('renameGenre keeps the old spelling as an alias and moves the genres under 
 test('a rename to the same letters changes only the spelling', async () => {
   const s = await setup();
   const change = await renameGenre(s, 'house', 'House');
-  assert.deepEqual(change.after, [{ key: 'house', name: 'House', aliases: [], umbrellas: [] }]);
+  assert.deepEqual(change.after, [{ key: 'house', name: 'House', level: 'genre', relations: [], aliases: [], umbrellas: [] }]);
 });
 
 test('addGenreAlias and removeGenreAlias, with Merge instead for a genre', async () => {

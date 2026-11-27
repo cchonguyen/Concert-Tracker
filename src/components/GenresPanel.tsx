@@ -7,6 +7,11 @@ import {
   type GenreVocabCsvPreview,
   type GenreVocabCsvRow,
 } from '../server/events/genreVocabCsv';
+import {
+  parseGenreRelationsCsv,
+  type GenreRelationsCsvPreview,
+  type GenreRelationsCsvRow,
+} from '../server/events/genreRelationsCsv';
 import { genreResolver, NOT_GROUPED } from '../server/events/genreVocabulary';
 import type { GenreCollision, GenreVocabChange } from '../server/events/genreTypes';
 import { ArtistGenresPanel } from './ArtistGenresPanel';
@@ -145,6 +150,32 @@ const TaxonomyPreviewLines: React.FC<{ preview: GenreTaxonomyPreview }> = ({ pre
   );
 };
 
+const RELATION_TYPE_WORDS: Record<string, string> = {
+  secondary_parent: 'Secondary family',
+  adjacent: 'Adjacent',
+  derived_from: 'Derived from',
+};
+const RELATION_ORIGIN_WORDS: Record<string, string> = {
+  curated: 'set by you',
+  artist_cooccur: 'from shared artists',
+};
+
+// The genre links upload's preview, in plain words.
+const RelationsPreviewLines: React.FC<{ preview: GenreRelationsCsvPreview }> = ({ preview }) => (
+  <div className="space-y-1 text-sm text-text">
+    <p>
+      {preview.added} added · {preview.removed} removed · {preview.weightChanged} weight changed · {preview.unchanged} unchanged
+      {' '}across {preview.genresTouched} {preview.genresTouched === 1 ? 'genre' : 'genres'}
+    </p>
+    {preview.pairs.map((p) => (
+      <p key={`${p.type}|${p.origin}`} className="text-xs text-text-muted">
+        {RELATION_TYPE_WORDS[p.type] ?? p.type} ({RELATION_ORIGIN_WORDS[p.origin] ?? p.origin}): {p.added} added, {p.removed} removed,{' '}
+        {p.weightChanged} weight changed, {p.unchanged} unchanged
+      </p>
+    ))}
+  </div>
+);
+
 export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = ({ query, events }) => {
   const [data, setData] = useState<GenresList | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -161,6 +192,9 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
   const fileRef = useRef<HTMLInputElement>(null);
   const [csvRows, setCsvRows] = useState<GenreVocabCsvRow[] | null>(null);
   const [csvPreview, setCsvPreview] = useState<GenreVocabCsvPreview | null>(null);
+  const relFileRef = useRef<HTMLInputElement>(null);
+  const [relRows, setRelRows] = useState<GenreRelationsCsvRow[] | null>(null);
+  const [relPreview, setRelPreview] = useState<GenreRelationsCsvPreview | null>(null);
   const [artistGenresOpen, setArtistGenresOpen] = useState(false);
 
   const load = useCallback(
@@ -282,6 +316,48 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
     }
   };
 
+  const onRelationsFile = async (file: File | undefined) => {
+    if (!file) return;
+    setError(null);
+    setRelPreview(null);
+    setRelRows(null);
+    try {
+      const parsed = parseGenreRelationsCsv(parseCsv(await file.text()));
+      if (parsed.errors.length > 0) {
+        setError(parsed.errors[0]);
+        return;
+      }
+      setBusy(true);
+      const preview = await genresApi.relationsCsvPreview(parsed.rows);
+      setRelRows(parsed.rows);
+      setRelPreview(preview);
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const applyRelations = async () => {
+    if (!relRows) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await genresApi.relationsCsvApply(relRows);
+      setRelRows(null);
+      setRelPreview(null);
+      setNotice({
+        text: res.change ? res.change.summary : 'No genre link changes to apply.',
+        undoId: res.change?.id,
+      });
+      await load();
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const selectedRow = selected ? rows.find((r) => r.key === selected) : undefined;
 
   return (
@@ -343,6 +419,20 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
           <Button onClick={() => fileRef.current?.click()} disabled={busy}>
             Upload vocabulary CSV
           </Button>
+          <input
+            ref={relFileRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              void onRelationsFile(file);
+            }}
+          />
+          <Button onClick={() => relFileRef.current?.click()} disabled={busy}>
+            Upload genre links CSV
+          </Button>
           <Button onClick={() => setCreating((v) => !v)} disabled={busy}>
             New genre
           </Button>
@@ -393,6 +483,31 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
               onClick={() => {
                 setCsvRows(null);
                 setCsvPreview(null);
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {relPreview && relRows && (
+        <div className="space-y-2 rounded-card border border-line bg-surface-1 p-3">
+          <RelationsPreviewLines preview={relPreview} />
+          {relPreview.errors.length > 0 && <Notice tone="warning">{relPreview.errors[0]}</Notice>}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="primary"
+              disabled={busy || relPreview.errors.length > 0 || relPreview.added + relPreview.removed + relPreview.weightChanged === 0}
+              onClick={() => void applyRelations()}
+            >
+              Apply genre links
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={() => {
+                setRelRows(null);
+                setRelPreview(null);
               }}
             >
               Cancel
