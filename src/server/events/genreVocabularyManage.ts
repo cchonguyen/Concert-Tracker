@@ -1,13 +1,27 @@
 // The owner's operations on the genre vocabulary (docs/specs/genre-vocabulary.md
-// section 6). Each one builds the 'after' images of the genres it touches and
-// makes exactly one writeGenreVocabulary call with actor 'owner'. Stored artist
-// genres are never rewritten: they follow the vocabulary when read (section 4).
+// section 6, docs/specs/genre-taxonomy-phase-a.md section 6). Each one builds the
+// 'after' images of the rows it touches and makes exactly one writeGenreVocabulary
+// call with actor 'owner'. Stored artist genres are never rewritten: they follow the
+// vocabulary when read (section 4).
+//
+// An image always carries the taxonomy (level, primary parent, tier and outgoing
+// links), so a full image written to the store never drops a genre's family or links.
 
 import { ManageError } from '../entities/manage';
 import type { LineupStore, GenreVocabWriteRow } from '../lineup/store/types';
 import { GENRE_MAP_SETTING, MAX_GENRE_LENGTH } from './genreTypes';
-import type { ArtistGenres, GenreMapEntry, GenreVocabChange, GenreVocabOperation, GenreVocabulary, VocabGenre } from './genreTypes';
-import { GENRE_NEEDS_LETTER, genreKey, genreResolver, wouldMakeUmbrellaLoop } from './genreVocabulary';
+import type {
+  ArtistGenres,
+  GenreLevel,
+  GenreMapEntry,
+  GenreRelation,
+  GenreRelationType,
+  GenreVocabChange,
+  GenreVocabOperation,
+  GenreVocabulary,
+  VocabGenre,
+} from './genreTypes';
+import { checkTaxonomy, familyKey, GENRE_NEEDS_LETTER, genreKey, genreResolver, levelOf, macroKey, wouldMakeUmbrellaLoop } from './genreVocabulary';
 import type { GenreResolver } from './genreVocabulary';
 import { planGenreVocabUpload } from './genreVocabCsv';
 import type { GenreVocabCsvPlan, GenreVocabCsvPreview, GenreVocabCsvRow, StoredGenreRef } from './genreVocabCsv';
@@ -17,6 +31,15 @@ export const GENRES_CHANGED_SINCE = 'Those genres changed after this. Undo the l
 
 const mergeInstead = (name: string) => `That is already a genre: ${name}. Merge instead.`;
 const loopRefusal = (name: string) => `That would put ${name} under itself.`;
+const NOT_MERGEABLE = "A family or macro can't be merged with a genre.";
+const WEIGHT_RANGE = 'A link strength is a number above 0 and up to 1.';
+const LEVEL_WORD: Record<GenreLevel, string> = { genre: 'genre', family: 'family', macro: 'macro' };
+const RELATION_TYPES: readonly GenreRelationType[] = ['secondary_parent', 'adjacent', 'derived_from'];
+const TYPE_NAME: Record<GenreRelationType, string> = {
+  secondary_parent: 'a secondary family of',
+  adjacent: 'adjacent to',
+  derived_from: 'derived from',
+};
 
 interface Ctx {
   vocab: GenreVocabulary;
@@ -47,14 +70,23 @@ async function load(store: LineupStore): Promise<Ctx> {
   return { vocab, byKey, aliasOf, resolver, known, rows };
 }
 
+const relationOrder = (a: GenreRelation, b: GenreRelation): number =>
+  a.target < b.target ? -1 : a.target > b.target ? 1 : a.type < b.type ? -1 : a.type > b.type ? 1 : 0;
+
 // Sorted like the store's images, so two images compare by their JSON.
 function image(g: VocabGenre): VocabGenre {
   return {
     key: g.key,
     name: g.name,
+    level: levelOf(g),
     ...(g.parent ? { parent: g.parent } : {}),
+    ...(g.primaryParent ? { primaryParent: g.primaryParent } : {}),
+    ...(g.tier ? { tier: g.tier } : {}),
     aliases: [...g.aliases].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)).map((a) => ({ key: a.key, alias: a.alias })),
     umbrellas: [...new Set(g.umbrellas)].sort(),
+    relations: (g.relations ?? [])
+      .map((r) => ({ target: r.target, type: r.type, weight: r.weight, origin: r.origin }))
+      .sort(relationOrder),
   };
 }
 
@@ -78,6 +110,24 @@ function findGenre(ctx: Ctx, spelling: unknown): VocabGenre {
   return image(ctx.byKey.get(resolved.key) ?? { key: resolved.key, name: ctx.resolver.resolve(key).name, aliases: [], umbrellas: [] });
 }
 
+// Any row: a genre by any spelling, or a family or macro by its key ('family:house').
+function findRow(ctx: Ctx, input: unknown): VocabGenre {
+  const raw = typeof input === 'string' ? input.trim() : '';
+  if (raw.includes(':') && ctx.byKey.has(raw)) return image(ctx.byKey.get(raw)!);
+  return findGenre(ctx, input);
+}
+
+// A family or macro row, by its key or by its name.
+function findLevelRow(ctx: Ctx, input: unknown, level: 'family' | 'macro'): VocabGenre {
+  const raw = typeof input === 'string' ? input.trim() : '';
+  if (!raw) throw new ManageError(`Pick a ${LEVEL_WORD[level]}.`, 400);
+  const key = raw.includes(':') ? raw : level === 'family' ? familyKey(raw) : macroKey(raw);
+  const row = ctx.byKey.get(key);
+  if (!row) throw new ManageError(`No such ${LEVEL_WORD[level]}: ${raw}.`, 404);
+  if (levelOf(row) !== level) throw new ManageError(`${row.name} is not a ${LEVEL_WORD[level]}.`, 400);
+  return image(row);
+}
+
 function checkGroup(ctx: Ctx, parent: unknown): string | undefined {
   if (parent === null || parent === undefined || parent === '') return undefined;
   const p = typeof parent === 'string' ? parent.trim() : '';
@@ -92,8 +142,39 @@ function holderName(ctx: Ctx, key: string, self?: string): string | undefined {
   return ctx.byKey.get(genre)?.name ?? ctx.resolver.resolve(key).name;
 }
 
+// Refuses a write that would break the taxonomy rules (checkTaxonomy). Only the
+// messages about the rows being written are reported, so older data does not block an edit.
+function refuseIfBroken(ctx: Ctx, rows: GenreVocabWriteRow[]): void {
+  const next = new Map(ctx.vocab.genres.map((g) => [g.key, g] as const));
+  for (const r of rows) {
+    if (r.image) next.set(r.key, r.image);
+    else next.delete(r.key);
+  }
+  const touched = rows.map((r) => r.key);
+  const errors = checkTaxonomy({ genres: [...next.values()] }).filter((e) => touched.some((k) => e.includes(k)));
+  if (errors.length > 0) throw new ManageError(errors[0], 400);
+}
+
 async function write(store: LineupStore, after: GenreVocabWriteRow[], operation: GenreVocabOperation, summary: string): Promise<GenreVocabChange> {
   return store.writeGenreVocabulary(after, { operation, actor: 'owner', reason: OWNER_GENRE_REASON, summary });
+}
+
+// Every other row whose link points at fromKey now points at toKey: umbrellas, the
+// primary parent and outgoing links. Only rows that change are returned.
+function linksRenamed(ctx: Ctx, fromKey: string, toKey: string): Map<string, VocabGenre> {
+  const out = new Map<string, VocabGenre>();
+  for (const g of ctx.vocab.genres) {
+    if (g.key === fromKey) continue;
+    const hit = g.umbrellas.includes(fromKey) || g.primaryParent === fromKey || (g.relations ?? []).some((r) => r.target === fromKey);
+    if (!hit) continue;
+    out.set(g.key, {
+      ...g,
+      umbrellas: g.umbrellas.map((u) => (u === fromKey ? toKey : u)),
+      ...(g.primaryParent === fromKey ? { primaryParent: toKey } : {}),
+      ...(g.relations ? { relations: g.relations.map((r) => (r.target === fromKey ? { ...r, target: toKey } : r)) } : {}),
+    });
+  }
+  return out;
 }
 
 export async function createGenre(store: LineupStore, input: { name: unknown; parent?: unknown }): Promise<GenreVocabChange> {
@@ -107,26 +188,29 @@ export async function createGenre(store: LineupStore, input: { name: unknown; pa
 }
 
 // The old spelling becomes an alias. A new key moves the genre's row, and every
-// genre under it follows.
+// link to it follows. A family or macro keeps its key space and gets no alias.
 export async function renameGenre(store: LineupStore, genre: unknown, newName: unknown): Promise<GenreVocabChange> {
   const ctx = await load(store);
-  const g = findGenre(ctx, genre);
-  const { name, key } = cleanSpelling(newName);
+  const g = findRow(ctx, genre);
+  const level = levelOf(g);
+  const { name, key: spellingKey } = cleanSpelling(newName);
   if (name === g.name) throw new ManageError(`It is already called ${name}.`, 400);
+  const key = level === 'family' ? familyKey(name) : level === 'macro' ? macroKey(name) : spellingKey;
   if (key === g.key) return write(store, [{ key, image: image({ ...g, name }) }], 'rename', `${g.name} renamed to ${name}`);
-  const taken = holderName(ctx, key, g.key);
-  if (taken !== undefined) throw new ManageError(mergeInstead(taken), 409);
-  const moved = image({
-    ...g,
-    key,
-    name,
-    aliases: [...g.aliases.filter((a) => a.key !== key), { key: g.key, alias: g.name }],
-  });
-  const rows: GenreVocabWriteRow[] = [{ key: g.key, image: null }, { key, image: moved }];
-  for (const child of ctx.vocab.genres) {
-    if (child.key === g.key || !child.umbrellas.includes(g.key)) continue;
-    rows.push({ key: child.key, image: image({ ...child, umbrellas: child.umbrellas.map((u) => (u === g.key ? key : u)) }) });
+  if (level === 'genre') {
+    const taken = holderName(ctx, key, g.key);
+    if (taken !== undefined) throw new ManageError(mergeInstead(taken), 409);
+  } else if (ctx.byKey.has(key)) {
+    throw new ManageError(`That is already a ${LEVEL_WORD[level]}: ${ctx.byKey.get(key)!.name}.`, 409);
   }
+  const moved = image(
+    level === 'genre'
+      ? { ...g, key, name, aliases: [...g.aliases.filter((a) => a.key !== key), { key: g.key, alias: g.name }] }
+      : { ...g, key, name, aliases: [] },
+  );
+  const rows: GenreVocabWriteRow[] = [{ key: g.key, image: null }, { key, image: moved }];
+  for (const [k, child] of linksRenamed(ctx, g.key, key)) rows.push({ key: k, image: image(child) });
+  refuseIfBroken(ctx, rows);
   return write(store, rows, 'rename', `${g.name} renamed to ${name}`);
 }
 
@@ -163,8 +247,23 @@ export async function setGenreParent(store: LineupStore, genre: unknown, parent:
   const g = findGenre(ctx, genre);
   const p = checkGroup(ctx, parent);
   if ((g.parent ?? undefined) === p) throw new ManageError('That is already its group.', 400);
-  const next = image({ key: g.key, name: g.name, ...(p ? { parent: p } : {}), aliases: g.aliases, umbrellas: g.umbrellas });
+  const next = image({ ...g, parent: p });
   return write(store, [{ key: g.key, image: next }], 'parent', p ? `${g.name} grouped under ${p}` : `${g.name} group set back to the genre map`);
+}
+
+// Puts a genre in a family (docs/specs/genre-taxonomy-phase-a.md section 6). Empty clears
+// it: the genre is "Not grouped".
+export async function setGenreFamily(store: LineupStore, genre: unknown, family: unknown): Promise<GenreVocabChange> {
+  const ctx = await load(store);
+  const g = findGenre(ctx, genre);
+  if (levelOf(g) !== 'genre') throw new ManageError('Only a genre goes in a family.', 400);
+  const blank = family === null || family === undefined || (typeof family === 'string' && family.trim() === '');
+  if (blank && !g.primaryParent) throw new ManageError(`${g.name} is not grouped already.`, 400);
+  const f = blank ? undefined : findLevelRow(ctx, family, 'family');
+  if (f && g.primaryParent === f.key) throw new ManageError(`${g.name} is already in ${f.name}.`, 400);
+  const rows: GenreVocabWriteRow[] = [{ key: g.key, image: image({ ...g, primaryParent: f?.key }) }];
+  refuseIfBroken(ctx, rows);
+  return write(store, rows, 'family', f ? `${g.name} put in ${f.name}` : `${g.name} set to Not grouped`);
 }
 
 export async function addGenreUmbrella(store: LineupStore, genre: unknown, umbrella: unknown): Promise<GenreVocabChange> {
@@ -201,6 +300,122 @@ export async function pickGenreSpelling(store: LineupStore, key: unknown, spelli
   return write(store, [{ key: k, image: next }], 'spelling', `${name} chosen as the spelling of ${k}`);
 }
 
+// ---- Links (genre_relations) -------------------------------------------------
+
+function checkType(type: unknown): GenreRelationType {
+  if (typeof type !== 'string' || !RELATION_TYPES.includes(type as GenreRelationType)) {
+    throw new ManageError('Pick a link type: secondary family, adjacent or derived from.', 400);
+  }
+  return type as GenreRelationType;
+}
+
+// A strength is a number above 0 and at most 1. A missing value takes `missing`, or is refused.
+function checkWeight(value: unknown, missing?: number): number {
+  if (value === undefined || value === null || value === '') {
+    if (missing !== undefined) return missing;
+    throw new ManageError(WEIGHT_RANGE, 400);
+  }
+  const n = typeof value === 'number' ? value : Number(String(value).trim());
+  if (!Number.isFinite(n) || n <= 0 || n > 1) throw new ManageError(WEIGHT_RANGE, 400);
+  return n;
+}
+
+// The link's target: a family for a secondary family, otherwise a genre.
+function findTarget(ctx: Ctx, input: unknown, type: GenreRelationType): VocabGenre {
+  if (type === 'secondary_parent') return findLevelRow(ctx, input, 'family');
+  const g = findGenre(ctx, input);
+  if (levelOf(g) !== 'genre') throw new ManageError(`${g.name} is not a genre, so it cannot be linked this way.`, 400);
+  return g;
+}
+
+// The source of a link is always a genre.
+function sourceGenre(ctx: Ctx, source: unknown): VocabGenre {
+  const g = findGenre(ctx, source);
+  if (levelOf(g) !== 'genre') throw new ManageError('Only a genre can have links.', 400);
+  return g;
+}
+
+function linkOf(g: VocabGenre, targetKey: string, type: GenreRelationType): GenreRelation | undefined {
+  return (g.relations ?? []).find((r) => r.target === targetKey && r.type === type);
+}
+
+// True when `from` reaches `to` by links of one type.
+function reaches(ctx: Ctx, from: string, to: string, type: GenreRelationType): boolean {
+  const seen = new Set<string>();
+  const stack = [from];
+  while (stack.length) {
+    const k = stack.pop()!;
+    if (k === to) return true;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    for (const r of ctx.byKey.get(k)?.relations ?? []) if (r.type === type) stack.push(r.target);
+  }
+  return false;
+}
+
+// The owner's link. A link of another origin to the same target is replaced by it.
+export async function addGenreRelation(
+  store: LineupStore,
+  source: unknown,
+  target: unknown,
+  type: unknown,
+  weight?: unknown,
+): Promise<GenreVocabChange> {
+  const ctx = await load(store);
+  const kind = checkType(type);
+  const w = checkWeight(weight, 1);
+  const src = sourceGenre(ctx, source);
+  const tgt = findTarget(ctx, target, kind);
+  if (tgt.key === src.key) throw new ManageError(`${src.name} cannot link to itself.`, 400);
+  if (kind === 'secondary_parent' && src.primaryParent === tgt.key) throw new ManageError(`${tgt.name} is already its family.`, 400);
+  const existing = linkOf(src, tgt.key, kind);
+  if (existing?.origin === 'curated') throw new ManageError(`${src.name} is already ${TYPE_NAME[kind]} ${tgt.name}.`, 409);
+  if (kind === 'adjacent' && (ctx.byKey.get(tgt.key)?.relations ?? []).some((r) => r.type === 'adjacent' && r.target === src.key)) {
+    throw new ManageError(`${tgt.name} and ${src.name} are already adjacent. An adjacent pair is stored once.`, 409);
+  }
+  if (kind === 'derived_from' && reaches(ctx, tgt.key, src.key, 'derived_from')) throw new ManageError(loopRefusal(src.name), 400);
+  const link: GenreRelation = { target: tgt.key, type: kind, weight: w, origin: 'curated' };
+  const next = [...(src.relations ?? []).filter((r) => !(r.target === tgt.key && r.type === kind)), link];
+  const rows: GenreVocabWriteRow[] = [{ key: src.key, image: image({ ...src, relations: next }) }];
+  refuseIfBroken(ctx, rows);
+  return write(store, rows, 'relation-add', `${src.name} linked as ${TYPE_NAME[kind]} ${tgt.name} (${w})`);
+}
+
+export async function removeGenreRelation(store: LineupStore, source: unknown, target: unknown, type: unknown): Promise<GenreVocabChange> {
+  const ctx = await load(store);
+  const kind = checkType(type);
+  const src = sourceGenre(ctx, source);
+  const tgt = findTarget(ctx, target, kind);
+  if (!linkOf(src, tgt.key, kind)) throw new ManageError(`${src.name} has no link to ${tgt.name} of that kind.`, 404);
+  const next = (src.relations ?? []).filter((r) => !(r.target === tgt.key && r.type === kind));
+  return write(store, [{ key: src.key, image: image({ ...src, relations: next }) }], 'relation-remove', `${src.name} unlinked from ${tgt.name} (${TYPE_NAME[kind]})`);
+}
+
+// Changing a strength makes the link the owner's ('curated').
+export async function setGenreRelationWeight(
+  store: LineupStore,
+  source: unknown,
+  target: unknown,
+  type: unknown,
+  weight: unknown,
+): Promise<GenreVocabChange> {
+  const ctx = await load(store);
+  const kind = checkType(type);
+  const w = checkWeight(weight);
+  const src = sourceGenre(ctx, source);
+  const tgt = findTarget(ctx, target, kind);
+  const old = linkOf(src, tgt.key, kind);
+  if (!old) throw new ManageError(`${src.name} has no link to ${tgt.name} of that kind.`, 404);
+  if (old.weight === w && old.origin === 'curated') throw new ManageError('That is already its strength.', 400);
+  const next = (src.relations ?? []).map((r) =>
+    r.target === tgt.key && r.type === kind ? { ...r, weight: w, origin: 'curated' as const } : r,
+  );
+  const rows: GenreVocabWriteRow[] = [{ key: src.key, image: image({ ...src, relations: next }) }];
+  return write(store, rows, 'relation-weight', `${src.name} to ${tgt.name} (${TYPE_NAME[kind]}) set to ${w}`);
+}
+
+// ---- Preview and merge -------------------------------------------------------
+
 export interface GenreLinkPreview {
   genreKey: string;
   genre: string;
@@ -220,8 +435,9 @@ export interface GenreMergePlan {
 }
 
 function buildMerge(ctx: Ctx, dropSpelling: unknown, keepSpelling: unknown): GenreMergePlan {
-  const drop = findGenre(ctx, dropSpelling);
-  const keep = findGenre(ctx, keepSpelling);
+  const drop = findRow(ctx, dropSpelling);
+  const keep = findRow(ctx, keepSpelling);
+  if (levelOf(drop) !== 'genre' || levelOf(keep) !== 'genre') throw new ManageError(NOT_MERGEABLE, 400);
   if (drop.key === keep.key) throw new ManageError('Cannot merge a genre into itself.', 400);
   const nameOf = (k: string) => (k === drop.key ? drop.name : k === keep.key ? keep.name : ctx.byKey.get(k)?.name ?? ctx.resolver.resolve(k).name);
   const link = (g: string, u: string): GenreLinkPreview => ({ genreKey: g, genre: nameOf(g), umbrellaKey: u, umbrella: nameOf(u) });
@@ -272,10 +488,33 @@ function buildMerge(ctx: Ctx, dropSpelling: unknown, keepSpelling: unknown): Gen
     moved.push(link(child.key, keep.key));
   }
 
+  // Links from other genres to the dropped one point at the kept one, unless that would
+  // repeat a link they already have, link the kept genre to itself, or make an adjacent pair twice.
+  const relinked = new Set<string>();
+  for (const g of ctx.vocab.genres) {
+    if (g.key === drop.key || !(g.relations ?? []).some((r) => r.target === drop.key)) continue;
+    const c = sim.get(g.key)!;
+    const current = c.relations ?? [];
+    const next = current.filter((r) => r.target !== drop.key);
+    for (const r of current) {
+      if (r.target !== drop.key) continue;
+      const repeats =
+        g.key === keep.key ||
+        next.some((x) => x.target === keep.key && x.type === r.type) ||
+        (r.type === 'adjacent' && (keepImg.relations ?? []).some((x) => x.type === 'adjacent' && x.target === g.key));
+      if (!repeats) next.push({ ...r, target: keep.key });
+    }
+    c.relations = next;
+    relinked.add(g.key);
+  }
+
   const after: GenreVocabWriteRow[] = [];
   if (ctx.byKey.has(drop.key)) after.push({ key: drop.key, image: null });
   after.push({ key: keep.key, image: image({ ...keepImg, aliases: newAliases }) });
-  for (const k of children) after.push({ key: k, image: sim.get(k)! });
+  const others = new Set<string>([...children, ...relinked]);
+  others.delete(keep.key);
+  for (const k of others) after.push({ key: k, image: image(sim.get(k)!) });
+  refuseIfBroken(ctx, after);
 
   return {
     drop: { key: drop.key, name: drop.name },
