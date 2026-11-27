@@ -20,6 +20,7 @@ import {
 import { runAsMember } from '../src/server/auth/requestScope.ts';
 import { genreMix, genresByArtist, hasGenreUnder, missingGenreKeys, topStyles } from '../src/services/genres.ts';
 import type { GenreVocabulary } from '../src/server/events/genreTypes.ts';
+import { addGenreAlias, createGenre } from '../src/server/events/genreVocabularyManage.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import type { GenreSource } from '../src/server/events/genreTypes.ts';
 import { fakeFetcher } from './fakes.ts';
@@ -549,4 +550,44 @@ test('genresByArtist builds its map from the rows when the given map is empty', 
     row('b', 'owner', [['x', 'Electro-House', 1]]),
   ];
   assert.deepEqual(genresByArtist(rows, undefined, []).get('b')?.genres.map((g) => [g.style, g.parent]), [['electro house', 'electronic']]);
+});
+
+test('knownGenres resolves aliases and includes vocabulary genres', () => {
+  const vocab: GenreVocabulary = {
+    genres: [
+      {
+        key: 'ukgarage',
+        name: 'UK Garage',
+        parent: 'Electronic',
+        aliases: [{ key: '2step', alias: '2-Step' }],
+        umbrellas: [],
+      },
+      {
+        key: 'dubstep',
+        name: 'Dubstep',
+        parent: 'Electronic',
+        aliases: [],
+        umbrellas: [],
+      },
+    ],
+  };
+  const rows = [row('a', 'owner', [['rock', '2-Step', 1]])];
+  const known = knownGenres(map, rows, vocab);
+  assert.deepEqual(
+    known.filter((g) => g.style === 'UK Garage' || g.style === 'Dubstep' || g.style === '2-Step'),
+    [
+      { style: 'Dubstep', parent: 'Electronic' },
+      { style: 'UK Garage', parent: 'Electronic' },
+    ],
+  );
+});
+
+test('setOwnerGenres resolves an alias typed by the owner to the vocabulary spelling', async () => {
+  const store = new FileLineupStore(await mkdtemp(path.join(tmpdir(), 'genres-')));
+  await store.putEvent(ev('e1', [act('Burial')]));
+  await store.putSetting(GENRE_MAP_SETTING, map);
+  await createGenre(store, { name: 'UK Garage', parent: 'electronic' });
+  await addGenreAlias(store, 'UK Garage', '2-Step');
+  const r = await setOwnerGenres(store, 'burial', ['2-Step'], new Date('2026-11-26T00:00:00Z'));
+  assert.deepEqual(r?.genres.map((g) => [g.style, g.parent]), [['UK Garage', 'electronic']]);
 });

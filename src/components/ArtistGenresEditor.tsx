@@ -57,25 +57,26 @@ export const ArtistGenresEditor: React.FC<{ actKey: string }> = ({ actKey }) => 
   }, [actKey]);
 
   const actRows = useMemo(() => (rows ?? []).filter((r) => r.key === actKey), [rows, actKey]);
-  const combined = useMemo(() => genresByArtist(actRows, vocabulary, map).get(actKey), [actRows, actKey, vocabulary, map]);
+  const combined = useMemo(() => genresByArtist(rows ?? [], vocabulary, map).get(actKey), [rows, actKey, vocabulary, map]);
   const sharedBase = useMemo(
-    () => genresByArtist(actRows.filter((r) => r.source !== 'added'), vocabulary, map).get(actKey),
-    [actRows, actKey, vocabulary, map],
+    () => genresByArtist((rows ?? []).filter((r) => r.source !== 'added'), vocabulary, map).get(actKey),
+    [rows, actKey, vocabulary, map],
   );
   const own = useMemo(
     () => actRows.find((r) => r.source === 'owner') ?? actRows.find((r) => r.source === 'you'),
     [actRows],
   );
-  const found = useMemo(() => {
-    const list = actRows.filter((r) => r.source !== 'owner' && r.source !== 'you' && r.source !== 'added');
-    const ms = list.find((r) => r.source === 'music-story');
-    if (ms?.genres.length) return ms;
-    const mb = list.find((r) => r.source === 'musicbrainz');
-    if (mb?.genres.length) return mb;
-    return ms ?? mb;
-  }, [actRows]);
+  const found = useMemo(
+    () =>
+      genresByArtist(
+        (rows ?? []).filter((r) => r.source !== 'owner' && r.source !== 'you' && r.source !== 'added'),
+        vocabulary,
+        map,
+      ).get(actKey),
+    [rows, actKey, vocabulary, map],
+  );
 
-  const shown = isOwner ? own ?? found : sharedBase;
+  const shown = sharedBase;
   const sharedStyles = (shown?.genres ?? []).map((g) => g.style);
   const addedStyles = isOwner ? [] : (combined?.added ?? []);
   const styles = isOwner ? sharedStyles : [...sharedStyles, ...addedStyles];
