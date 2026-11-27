@@ -234,6 +234,13 @@ export function unlinkEvent(event: LoggedEvent, now: Date): LoggedEvent {
   const base = ensureCaptured(event);
   const out: LoggedEvent = { ...base, editionId: undefined, overrides: {}, updatedAt: now.toISOString() };
   delete out.seriesKind;
+  // Undoing an automatic link: that edition is never linked to on its own again (docs/specs/series-sync.md).
+  const auto = base.details?.autoLinked;
+  if (auto) {
+    const { autoLinked: _gone, ...details } = base.details;
+    const declined = [...new Set([...(details.autoLinkDeclined ?? []), auto.editionId])];
+    out.details = { ...details, autoLinkDeclined: declined };
+  }
   const overrides = base.overrides ?? {};
   const captured = base.captured ?? {};
   for (const { field, key } of SHARED) {
