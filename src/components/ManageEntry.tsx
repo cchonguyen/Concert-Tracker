@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { ArrowLeft, GitMerge, Plus, Sparkles, Table2, X } from 'lucide-react';
-import { entitiesApi, collaborationsApi, type CollaborationItem, LoggedEvent } from '../services/lineupApi';
+import { entitiesApi, collaborationsApi, genresApi, type CollaborationItem, type GenresList, LoggedEvent } from '../services/lineupApi';
+import { genresByArtist } from '../services/genres';
 import type { Entity, HistoryEntry, LinkRole } from '../server/entities/types';
 import { whenLabel } from '../services/format';
 import { norm } from '../services/listImport';
@@ -12,7 +13,7 @@ import { EventTitle } from './EventTitle';
 import { personParts } from '../services/people';
 import { attrFields } from '../server/entities/attrs';
 import { categoryGaps, LABELLED, linkedSuggestions } from '../services/dataHealth';
-import { artistGaps, personInsights, seriesStreak, spanLabel } from '../services/insights';
+import { artistGaps, personGenreGroups, personInsights, seriesStreak, spanLabel } from '../services/insights';
 import { wentTo } from '../server/events/attendance';
 import { entityLabel, KINDS, ManageData } from './ManageView';
 import { ArtistGenresEditor } from './ArtistGenresEditor';
@@ -678,6 +679,24 @@ const Insights: React.FC<{
   link: (to: Entity, role: LinkRole, add: boolean) => Promise<void>;
 }> = ({ entity, data, events, allEvents, busy, onOpen, onOpenEvent, link }) => {
   const today = new Date().toISOString().slice(0, 10);
+  const [genreData, setGenreData] = useState<Pick<GenresList, 'genres' | 'vocabulary' | 'map'> | null>(null);
+  useEffect(() => {
+    if (entity.kind !== 'person') return;
+    let live = true;
+    genresApi
+      .list()
+      .then((r) => {
+        if (live) setGenreData({ genres: r.genres, vocabulary: r.vocabulary, map: r.map });
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [entity.kind, entity.id]);
+  const byArtist = useMemo(
+    () => (genreData ? genresByArtist(genreData.genres, genreData.vocabulary, genreData.map) : new Map()),
+    [genreData],
+  );
   const byId = new Map(data.entities.map((e) => [e.id, e]));
   const went = wentTo(events, today);
   const chipClass = 'inline-flex items-center gap-1 rounded-full border border-line-strong px-2 py-0.5 text-xs text-text-muted';
@@ -713,6 +732,10 @@ const Insights: React.FC<{
   if (entity.kind === 'person') {
     const p = personInsights(wentTo(allEvents, today), entity.id);
     if (p.together) lines.push(<>{p.together} show{p.together === 1 ? '' : 's'} together.</>);
+    const sharedGenres = personGenreGroups(wentTo(allEvents, today), entity.id, byArtist);
+    if (sharedGenres.length > 0) {
+      lines.push(<>Your genres together: {sharedGenres.map((g) => g.toLowerCase()).join(', ')}</>);
+    }
     if (p.first)
       lines.push(
         <>

@@ -1,4 +1,6 @@
 import type { LoggedEvent } from '../server/events/types';
+import type { ArtistGenres } from '../server/events/genreTypes';
+import { NOT_GROUPED } from '../server/events/genreVocabulary';
 import { eventYear } from './format';
 
 // The "Do first" insights from the Manage design (step 6), worked out from
@@ -74,6 +76,29 @@ export function personInsights(went: LoggedEvent[], personId: string): PersonIns
     .map(([key, s]) => ({ key, name: s.name, times: s.with }))
     .sort((a, b) => b.times - a.times || a.name.localeCompare(b.name));
   return { together: withThem.length, first: dated[0], onlyWith };
+}
+
+export function personGenreGroups(
+  went: LoggedEvent[],
+  personId: string,
+  byArtist: Map<string, ArtistGenres>,
+): string[] {
+  const counts = new Map<string, number>();
+  for (const e of went) {
+    if (e.peopleLocked || !e.refs?.companionIds.includes(personId)) continue;
+    const groups = new Set<string>();
+    for (const s of e.seen) {
+      const g = byArtist.get(s.key);
+      if (!g?.genres.length) continue;
+      for (const x of g.genres) groups.add(x.parent || NOT_GROUPED);
+    }
+    for (const grp of groups) counts.set(grp, (counts.get(grp) ?? 0) + 1);
+  }
+  return [...counts]
+    .filter(([, count]) => count >= 3)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 2)
+    .map(([grp]) => grp);
 }
 
 export interface SeriesStreak {
