@@ -2,6 +2,8 @@ import React from 'react';
 import { Archive, ArrowDownUp, FileSpreadsheet, GitMerge, Search, Share2 } from 'lucide-react';
 import type { Page } from '../services/nav';
 import { Button } from './ui/Button';
+import { PosterHeading } from './ui/PosterHeading';
+import { PostIt } from './ui/PostIt';
 import { useTip } from './ui/TipsContext';
 
 // The feature tiles, each opening the page where the feature lives. They are Home's tip (`home`): shown on the
@@ -26,6 +28,10 @@ export const TILES: Tile[] = [
   { key: 'years', icon: Archive, title: 'See your years', line: 'A timeline, a calendar heatmap, a map of every city and the artists you’ve seen most.', page: 'agenda', linkLabel: 'Open Timeline' },
 ];
 
+// Post-it tilts and paper tones repeat in this order (docs/specs/landing-look.md).
+const TILTS = [-1.5, 1, -0.5, 1.5, -1, 0.5];
+const TONES = ['paper', 'second', 'paper', 'accent', 'paper', 'second'] as const;
+
 export const FeatureTiles: React.FC<{ onOpen: (page: Page) => void; onImport: () => void }> = ({ onOpen, onImport }) => {
   const { shown, entering, hide } = useTip('home');
   if (!shown) return null;
@@ -33,30 +39,31 @@ export const FeatureTiles: React.FC<{ onOpen: (page: Page) => void; onImport: ()
   return (
     <section aria-label="Tips" className={`space-y-3 ${entering ? 'tip-enter' : ''}`}>
       <div className="flex items-center justify-between gap-3">
-        <h2 className="font-display text-lg font-normal text-text">What LiveArchive can do</h2>
+        <PosterHeading size="md" second="can do">What LiveArchive</PosterHeading>
         <Button variant="ghost" onClick={hide}>
           Hide these
         </Button>
       </div>
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {TILES.map((t) => {
+      <ul className="grid gap-6 pt-2 sm:grid-cols-2 lg:grid-cols-3">
+        {TILES.map((t, i) => {
           const Icon = t.icon;
           return (
-            <li
-              key={t.key}
-              className="rounded-card border border-line-strong bg-surface-1 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
-            >
-              <span className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-control border border-accent-tint-line bg-accent-tint text-accent">
-                <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
-              </span>
-              <h3 className="text-sm font-bold text-text">{t.title}</h3>
-              <p className="mt-1 text-sm text-text-muted">{t.line}</p>
-              <button
-                onClick={() => (t.action === 'import' ? onImport() : onOpen(t.page))}
-                className="mt-2 inline-flex min-h-9 items-center text-sm font-medium text-accent hover:underline"
+            <li key={t.key}>
+              <PostIt
+                tilt={TILTS[i % TILTS.length]}
+                tone={TONES[i % TONES.length]}
+                icon={<Icon className="h-6 w-6" strokeWidth={2} />}
+                title={t.title}
+                className="h-full"
               >
-                {t.linkLabel}
-              </button>
+                <p>{t.line}</p>
+                <button
+                  onClick={() => (t.action === 'import' ? onImport() : onOpen(t.page))}
+                  className="mt-2 inline-flex min-h-9 items-center font-semibold underline decoration-2 underline-offset-4 hover:decoration-[3px]"
+                >
+                  {t.linkLabel}
+                </button>
+              </PostIt>
             </li>
           );
         })}
