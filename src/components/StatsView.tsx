@@ -8,6 +8,7 @@ import { attendanceOf } from '../server/events/attendance';
 import { allTime, AllTime, facts, pastEvents, perYear, RankBy, Ranked, seriesStats, SeriesStat, top, YearReview, yearInReview } from '../services/stats';
 import { barcodeBars } from '../services/ticket';
 import { EventTitle } from './EventTitle';
+import { GenreStory } from './GenreStory';
 import { LatelyCard } from './LatelyCard';
 import { StubHeader } from './ui/StubHeader';
 import { StubBarcode, StubSentence, StubSerial, Ticket, TicketKicker, TicketSmallLine } from './ui/Ticket';
@@ -370,6 +371,10 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
     () => genresByArtist(genreData.genres, genreData.vocabulary, genreData.map),
     [genreData],
   );
+  const mapGroups = useMemo(
+    () => [...new Set(genreData.map.map((m) => m.parent).filter(Boolean))],
+    [genreData.map],
+  );
   const { years, undated } = useMemo(() => perYear(past), [past]);
   const [pickedYear, setPickedYear] = useState<number | null>(null);
   const reviewYears = years.filter((y) => y.events > 0).map((y) => y.year).reverse();
@@ -522,6 +527,15 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
       </section>
 
       <GenreCard events={past} data={genreData} />
+
+      <GenreStory
+        events={past}
+        byArtist={byArtist}
+        vocabulary={genreData.vocabulary}
+        mapGroups={mapGroups}
+        today={today}
+        onOpenEvent={onOpen}
+      />
 
       {series.length > 0 && <SeriesCard rows={series} onPick={(name) => filter('series', name)} />}
 
