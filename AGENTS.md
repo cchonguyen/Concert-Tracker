@@ -45,8 +45,7 @@ Read [REQUIREMENTS.md](REQUIREMENTS.md) first: it says what the app is for (reme
 
 ## Design system
 
-- Shared UI components live in `src/components/ui/` (IconButton, BackToTop, MenuButton, Popover, Pill, and the landing look's PosterHeading, PostIt, AppBackdrop and Logo). Use them for new UI.
-- The landing look is the app's standard (`docs/specs/landing-look.md`): titles use `PosterHeading`, callouts use `PostIt`, the second colour comes from `--la-second` (Tailwind `text-second`), and every new style lives in a design-system module under `src/styles/`. The catalogue is `docs/design-system/design-system.json`; update it in the same change.
+- Shared UI components live in `src/components/ui/` (IconButton, BackToTop, MenuButton, Popover, Pill). Use them for new UI.
 - The design-system approach is wanted: when you touch a component that has its own inline copy of one of these patterns (a dropdown, a tooltip, an icon-only button, a pill, a back-to-top), move it onto the shared component in the same change. Do not build a fresh copy.
 - Only add a shared component when the current change needs it. Do not build the whole library ahead of use.
 
