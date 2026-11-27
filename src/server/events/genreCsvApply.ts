@@ -78,14 +78,24 @@ async function loadCatalog(store: LineupStore): Promise<Catalog> {
   const map = setting ?? [];
   const resolver = genreResolver(vocab, map, rows);
   const shown = genresByArtist(rows, vocab, map);
+  // The owner's ranks, by genreKey: the shown genres keep their order, so export lists by rank.
+  const ownerRanks = new Map<string, Map<string, number>>();
+  for (const r of rows) {
+    if (r.source !== 'owner') continue;
+    ownerRanks.set(r.key, new Map(r.genres.filter((g) => typeof g.rank === 'number').map((g) => [genreKey(g.style), g.rank!])));
+  }
   const acts: CsvAct[] = universe.map((a) => {
     const g = shown.get(a.key);
+    const ranks = g?.source === 'owner' ? ownerRanks.get(a.key) : undefined;
     return {
       key: a.key,
       name: a.name,
       mbid: a.mbid,
       source: g ? g.source : 'none',
-      genres: (g?.genres ?? []).map((x: GenreShare) => ({ style: x.style, weight: x.weight })),
+      genres: (g?.genres ?? []).map((x: GenreShare) => {
+        const rank = ranks?.get(genreKey(x.style));
+        return rank != null ? { style: x.style, weight: x.weight, rank } : { style: x.style, weight: x.weight };
+      }),
     };
   });
   const known = resolvedKnown(resolver, map, rows, vocab);

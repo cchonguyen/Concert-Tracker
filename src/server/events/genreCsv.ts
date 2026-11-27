@@ -28,6 +28,7 @@ export type ShownSource = GenreSource | 'none';
 export interface ShownGenre {
   style: string;
   weight: number;
+  rank?: number; // owner's genres: 1 is first
 }
 
 export interface CsvAct {
@@ -74,6 +75,7 @@ export interface GenreChange {
   after: AfterGenre[];
   stale: boolean; // the act changed in the app after the file was downloaded
   sameAsNow: boolean; // your genres already are exactly these
+  orderChanged?: boolean; // your genres are these, in another order (counts as an update)
 }
 
 const SOURCE_LABEL: Record<ShownSource, string> = {
@@ -129,8 +131,11 @@ export function readCell(value: string): string {
   return /^'+[=+\-@]/.test(v) ? v.slice(1) : v;
 }
 
+// Heaviest first, or by rank when every genre has one (ranks 5 and up tie on weight).
 function shownStyles(act: CsvAct): string[] {
-  return [...act.genres].sort((a, b) => b.weight - a.weight).map((g) => g.style);
+  const ranked = act.genres.length > 0 && act.genres.every((g) => typeof g.rank === 'number');
+  const sorted = [...act.genres].sort((a, b) => (ranked ? a.rank! - b.rank! : b.weight - a.weight));
+  return sorted.map((g) => g.style);
 }
 
 // Export table: header first, then one row per act (once per key). The
@@ -360,6 +365,9 @@ export function previewGenresCsv(
     }
     const beforeKeys = new Set(before.map((s) => resolver.resolve(s).key));
     const same = beforeKeys.size === afterKeys.size && [...afterKeys].every((k) => beforeKeys.has(k));
+    const owned = act.source === 'you' || act.source === 'owner';
+    // Same genres, typed in another order: an update for the owner's row, not "no change".
+    const orderChanged = owned && same && [...beforeKeys].join('\n') !== [...afterKeys].join('\n');
     changes.push({
       line: row.line,
       key: act.key,
@@ -369,7 +377,8 @@ export function previewGenresCsv(
       beforeSource,
       after,
       stale,
-      sameAsNow: (act.source === 'you' || act.source === 'owner') && same,
+      sameAsNow: owned && same && !orderChanged,
+      ...(orderChanged ? { orderChanged } : {}),
     });
   }
   skipped.sort((a, b) => a.line - b.line);

@@ -23,6 +23,7 @@ function RowNotes({ change }: { change: GenreChange }) {
   if (change.sameAsNow) return <Pill>No change</Pill>;
   return (
     <span className="flex flex-wrap gap-1">
+      {change.orderChanged && <Pill>Order changed</Pill>}
       {change.stale && <Pill tone="warn">You changed this in the app after downloading</Pill>}
       {change.after.some((a) => a.isNew) && <Pill tone="accent">New genre, will be added as its own group</Pill>}
     </span>

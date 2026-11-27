@@ -10,6 +10,7 @@ export interface GenreShare {
   parent: string; // one of music-story's parent genres, e.g. "electronic"; a genre you made up is its own parent
   style: string; // e.g. "deep house"; = parent when there is no finer style
   weight: number; // shares of one artist sum to 1
+  rank?: number; // owner's genres only: 1 is the first genre typed, from the rank decay table
 }
 
 export interface ArtistGenres {

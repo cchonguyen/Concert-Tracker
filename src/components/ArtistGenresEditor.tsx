@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react';
 import { genresApi } from '../services/lineupApi';
 import type { GenreMapEntry, GenreVocabulary, KnownGenre } from '../server/events/genreTypes';
 import { ArtistGenres, genresByArtist } from '../services/genres';
@@ -123,6 +123,15 @@ export const ArtistGenresEditor: React.FC<{ actKey: string }> = ({ actKey }) => 
     void save(isOwner ? [...sharedStyles, style] : [...addedStyles, style]);
   };
 
+  // Moves one of the owner's genres up or down; the saved order is the rank.
+  const moveOwn = (index: number, by: -1 | 1) => {
+    const to = index + by;
+    if (to < 0 || to >= sharedStyles.length) return;
+    const next = [...sharedStyles];
+    [next[index], next[to]] = [next[to], next[index]];
+    void save(next);
+  };
+
   const lookupMb = async () => {
     setBusy(true);
     setError(null);
@@ -164,7 +173,7 @@ export const ArtistGenresEditor: React.FC<{ actKey: string }> = ({ actKey }) => 
       <h3 className={sectionTitle}>Genres</h3>
       {styles.length > 0 && (
         <ul className="flex flex-wrap items-center gap-1.5">
-          {sharedStyles.map((s) => (
+          {sharedStyles.map((s, i) => (
             <li
               key={`shared-${s}`}
               title={isOwner && own ? 'Set by you' : sharedTooltip(shown!.source)}
@@ -174,7 +183,25 @@ export const ArtistGenresEditor: React.FC<{ actKey: string }> = ({ actKey }) => 
                   : 'border-line-strong bg-surface-1 text-text-muted'
               }`}
             >
+              {isOwner && own && sharedStyles.length > 1 && (
+                <IconButton
+                  icon={ChevronUp}
+                  label="Move up"
+                  size="chip"
+                  disabled={busy || i === 0}
+                  onClick={() => moveOwn(i, -1)}
+                />
+              )}
               {s}
+              {isOwner && own && sharedStyles.length > 1 && (
+                <IconButton
+                  icon={ChevronDown}
+                  label="Move down"
+                  size="chip"
+                  disabled={busy || i === sharedStyles.length - 1}
+                  onClick={() => moveOwn(i, 1)}
+                />
+              )}
               {isOwner && (
                 <IconButton
                   icon={X}

@@ -15,6 +15,7 @@ import {
   GENRES_CSV_UNDO_SETTING,
 } from '../src/server/events/genreCsvApply.ts';
 import { genreStamp } from '../src/server/events/genreCsv.ts';
+import { setOwnerGenres } from '../src/server/events/genres.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 
 const ev = (id: string, seen: SeenAct[]): LoggedEvent => ({
@@ -290,4 +291,31 @@ test('SupabaseLineupStore.putSetting deletes row instead of upserting null', asy
   const scoped = new SupabaseLineupStore(makeDb() as any, { userId: 'u1', role: 'owner' });
   await scoped.putSetting('genres_csv_undo', null);
   assert.deepEqual(calls, ['delete:user_settings', 'eq:user_id=u1', 'eq:key=genres_csv_undo']);
+});
+
+test('a reordered list of the same owner genres is an update, order changed', async () => {
+  const store = await fresh();
+  await setOwnerGenres(store, 'bonobo', ['house', 'techno', 'ambient'], now);
+  const same = await previewGenresCsv(store, { rows: [line('Bonobo', 'house; techno; ambient', genreStamp('owner', ['house', 'techno', 'ambient']))] });
+  assert.equal(same.changes[0].sameAsNow, true);
+  assert.ok(!same.changes[0].orderChanged);
+  const moved = await previewGenresCsv(store, { rows: [line('Bonobo', 'ambient; house; techno', genreStamp('owner', ['house', 'techno', 'ambient']))] });
+  assert.equal(moved.changes[0].sameAsNow, false);
+  assert.equal(moved.changes[0].orderChanged, true);
+  assert.equal(moved.changes[0].stale, false);
+  const saved = await applyGenresCsv(store, { rows: [line('Bonobo', 'ambient; house; techno', genreStamp('owner', ['house', 'techno', 'ambient']))] }, later);
+  assert.equal(saved.saved, 1);
+  assert.deepEqual(await ownStyles(store, 'bonobo'), ['ambient', 'house', 'techno']);
+});
+
+test('export then upload keeps the owner order: nothing to save', async () => {
+  const store = await fresh();
+  await setOwnerGenres(store, 'bonobo', ['techno', 'house', 'ambient'], now);
+  const csv = await exportGenresCsv(store);
+  assert.ok(csv.includes('techno; house; ambient'));
+  const round = await previewGenresCsv(store, { rows: [line('Bonobo', 'techno; house; ambient', genreStamp('owner', ['techno', 'house', 'ambient']))] });
+  assert.equal(round.changes[0].sameAsNow, true);
+  const saved = await applyGenresCsv(store, { rows: [line('Bonobo', 'techno; house; ambient', genreStamp('owner', ['techno', 'house', 'ambient']))] }, later);
+  assert.equal(saved.saved, 0);
+  assert.deepEqual(await ownStyles(store, 'bonobo'), ['techno', 'house', 'ambient']);
 });
