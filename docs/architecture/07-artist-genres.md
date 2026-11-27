@@ -78,3 +78,27 @@ Release 1 of the genre taxonomy is built in Slices 40.1 to 40.7 ([docs/specs/gen
 - The lead sound line names the leading band of each counted year, with repeats merged: "Your lead sound: Progressive House (2019 to 2021), then Melodic Bass (2022)."
 - The chart shows only with 3 counted years. Below that: "Sound Drift needs 3 years with at least 10 sets that have a genre. You have N."
 - Tapping a band or a year opens the sets and artists behind it. Tapping again closes it. A table gives the same numbers for screen readers.
+
+## Lineup DNA and Event Match
+
+Release 2 of the genre taxonomy is built in Slices 41.1 to 41.5 ([docs/specs/genre-taxonomy-release-2.md](../specs/genre-taxonomy-release-2.md)). It shows on an event's page, above the lineup table, whenever the event has a lineup. There is no migration and nothing new is stored.
+
+**Lineup genres route.** `GET /api/events/:id/lineup-genres` (`src/server/events/genreRoutes.ts`) answers only for the caller's own event (another person's id gives 404). It returns the lineup acts the event page already shows (`eventPerformers`). Each act comes with its stages and days, read from the edition's performances (cancelled ones left out) or from the lookup's candidate. It also returns the shared genre rows for those acts and the caller's own added rows for them. A member therefore gets the shared genres of acts on their own event's lineup, including acts they did not mark as seen. It only reads: there is no lookup, fetch or model call.
+
+**Lineup DNA** (`src/components/LineupDna.tsx`, `lineupDna` in `src/services/genreInsights.ts`).
+
+- Every act on the bill counts 1.0, split across its genres by weight. Acts that share a B2B slot share one set.
+- There is one bar for the whole bill. When the lineup has stages, each stage gets its own bar as well. An act on two stages counts on both stage bars and once on the whole bill. Acts with no stage go on "No stage listed", which shows only when other stages exist.
+- Each bar shows its 4 largest families. A 5th family shows only when it is at least 10% of the bar, and the rest is grouped as Other. Tapping a segment lists its top genres and acts.
+- When fewer than 60% of the acts have a genre, the bar notes "N of M acts have a genre." A bar needs 3 acts with a genre. Below that, the page says so and shows no bar.
+- Colours are the Sound Drift palette (`PALETTE`, exported from `GenreYearsChart.tsx`).
+
+**Event Match** (`eventMatch` in `src/services/genreInsights.ts`).
+
+- Your vector is every seen set at your other attended events, split with `setShares`. The event being matched is left out, and so are planned and missed events.
+- That vector is smoothed one step over the owner's `adjacent` links only: `u + 0.5 · Â·u`. The links are read both ways, and each weight is divided by `sqrt(deg(a) · deg(b))`, so a genre linked to almost everything is toned down. It never goes two steps. `secondary_parent` and `derived_from` links are not used.
+- The score is the cosine between your smoothed families and the bill's families. The bands are "Strong fit" at 0.6 or more, "Some overlap" from 0.3, and "Outside your usual" below 0.3. The line names your lane, the 1 or 2 families that add most to the score, with the number of acts in your lane and of nearby acts you haven't seen.
+- The lineup table marks those acts with "Your lane" and "Nearby" pills.
+- Event Match needs 20 sets with a genre over 5 events, plus the whole-bill bar's own floor. Below that, the line says what is missing.
+- Relations never change the Lineup DNA bar, only the match.
+- Sample mode shows neither, because the sample events have no lineup edition.
