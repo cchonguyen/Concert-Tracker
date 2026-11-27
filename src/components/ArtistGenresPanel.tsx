@@ -5,6 +5,7 @@ import { genresApi, LoggedEvent } from '../services/lineupApi';
 import { GENRES_CSV_AI_PROMPT } from '../services/cleanupPrompts';
 import { ArtistGenres, genresByArtist, missingGenreKeys } from '../services/genres';
 import { MAX_MUSICBRAINZ_GENRES } from '../server/events/genreTypes';
+import type { GenreMapEntry, GenreVocabulary } from '../server/events/genreTypes';
 import type { GenreChange, GenreCsvRow, SkippedRow } from '../server/events/genreCsv';
 import { genresCsvFileName, readGenresCsvFile } from '../services/genresCsvFile';
 import { downloadText } from '../services/download';
@@ -32,6 +33,8 @@ interface CsvPreview {
 export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, onClose }) => {
   const [rows, setRows] = useState<ArtistGenres[] | null>(null);
   const [hasMap, setHasMap] = useState(false);
+  const [vocabulary, setVocabulary] = useState<GenreVocabulary | undefined>(undefined);
+  const [map, setMap] = useState<GenreMapEntry[] | undefined>(undefined);
   const [csvUndo, setCsvUndo] = useState<{ at: string; count: number } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -60,6 +63,8 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
       .then((r) => {
         setRows(r.genres);
         setHasMap(r.hasMap);
+        setVocabulary(r.vocabulary);
+        setMap(r.map);
         setCsvUndo(r.csvUndo);
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
@@ -68,7 +73,7 @@ export const ArtistGenresPanel: React.FC<ArtistGenresPanelProps> = ({ events, on
   }, []);
 
   const seenKeys = useMemo(() => new Set(events.flatMap((e) => e.seen.map((s) => s.key))), [events]);
-  const by = useMemo(() => genresByArtist(rows ?? []), [rows]);
+  const by = useMemo(() => genresByArtist(rows ?? [], vocabulary, map), [rows, vocabulary, map]);
   const known = [...seenKeys].filter((k) => by.get(k)?.genres.length);
   const fromFile = known.filter((k) => by.get(k)?.source === 'music-story').length;
   const fromYou = known.filter((k) => by.get(k)?.source === 'owner' || by.get(k)?.source === 'you').length;
