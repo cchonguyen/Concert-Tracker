@@ -16,6 +16,7 @@ import { rankingByFromParam, type RankingBy } from '../services/nav';
 import { scrollBehavior } from '../services/motion';
 import { genreKey } from '../server/events/genreVocabulary';
 import { GenresRanking } from './GenresRanking';
+import { PeopleRanking } from './PeopleRanking';
 import { useIsOwner } from './MeContext';
 
 interface ArtistsViewProps {
@@ -469,9 +470,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
     return (
       <div className="space-y-4">
         {rankingSwitch}
-        <p className="rounded-card border border-dashed border-line-strong p-6 text-center text-sm text-text-muted">
-          People ranking is coming next.
-        </p>
+        <PeopleRanking events={events} byArtist={genres} vocabulary={vocabulary} onOpenTable={onOpenTable} />
       </div>
     );
   }
