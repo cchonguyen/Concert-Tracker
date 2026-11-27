@@ -34,7 +34,7 @@ test('file store: a write stores genres, aliases and umbrellas, and logs one cha
   const s = await fileStore();
   const first = await s.writeGenreVocabulary([{ key: 'house', image: genre('house', { name: 'House', parent: 'electronic' }) }], meta('create', 'house created'));
   assert.deepEqual(first.before, []);
-  assert.deepEqual(first.after, [{ key: 'house', name: 'House', parent: 'electronic', aliases: [], umbrellas: [] }]);
+  assert.deepEqual(first.after, [{ key: 'house', name: 'House', parent: 'electronic', level: 'genre', relations: [], aliases: [], umbrellas: [] }]);
   assert.equal(first.operation, 'create');
   assert.equal(first.summary, 'house created');
 
@@ -80,7 +80,7 @@ test('file store: deleting a genre removes its links and logs the genre that los
   await s.writeGenreVocabulary([{ key: 'tech house', image: genre('tech house', { umbrellas: ['house'] }) }], meta());
   const change = await s.writeGenreVocabulary([{ key: 'house', image: null }], meta('merge'));
   assert.deepEqual(change.before.map((g) => g.key), ['house', 'tech house']);
-  assert.deepEqual(change.after, [{ key: 'tech house', name: 'tech house', aliases: [], umbrellas: [] }]);
+  assert.deepEqual(change.after, [{ key: 'tech house', name: 'tech house', level: 'genre', relations: [], aliases: [], umbrellas: [] }]);
   assert.deepEqual((await s.getGenreVocabulary()).genres, [{ key: 'tech house', name: 'tech house', aliases: [], umbrellas: [] }]);
 });
 

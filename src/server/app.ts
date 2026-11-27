@@ -55,6 +55,7 @@ export function createApiApp(
   app.use('/api/artist-genres/music-story', express.json({ limit: '25mb' }));
   app.use('/api/artist-genres/csv', express.json({ limit: '5mb' }));
   app.use('/api/artist-genres/vocabulary', express.json({ limit: '5mb' }));
+  app.use('/api/artist-genres/relations', express.json({ limit: '5mb' }));
   app.use('/api/manage/canonical/artist-cleanup', express.json({ limit: '5mb' }));
   app.use(express.json());
 
