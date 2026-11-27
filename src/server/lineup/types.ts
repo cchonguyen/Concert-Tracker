@@ -343,6 +343,7 @@ export interface BlocklistEntry {
   domain: string; // '*' for global
   normalized: string;
   rejections: number;
+  reason?: string;
 }
 
 export interface ExtractionExample {
@@ -363,6 +364,7 @@ export interface ArtistIdentity {
   name: string;
   mbid?: string;
   resolvedAt?: string;
+  alterEgoOf?: string;
 }
 
 // Shared occurrences (migrations 0041 and 0042; not used by code yet) ----------------------------------

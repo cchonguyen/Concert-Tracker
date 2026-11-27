@@ -58,6 +58,7 @@ import {
 } from './types';
 import { normalizeName } from '../normalizeName';
 import type { SqlCanonicalEntry } from '../../entities/canonicalManage';
+import type { ArtistCleanupReport, ArtistCleanupRow } from '../../entities/artistCleanupCsv';
 import { ArtistEditionRow, CANONICAL_OPERATIONS, Entity, EntityAlias, EntityLink, HistoryEntry } from '../../entities/types';
 import { checkLinks } from '../../entities/integrity';
 import type { PreflightReply } from '../../reader/guard';
@@ -1592,6 +1593,22 @@ export class SupabaseLineupStore implements LineupStore {
     const { data, error } = await this.db.rpc('seen_act_names');
     if (error) throw new Error(`Supabase listSeenActNames failed (apply 0059_canonical_genres.sql): ${error.message}`);
     return ((data ?? []) as any[]).map((r) => ({ key: String(r.artist_key), name: String(r.name) }));
+  }
+
+  async runArtistCleanup(
+    rows: ArtistCleanupRow[],
+    opts: { dryRun: boolean; actor: string; reason: string },
+  ): Promise<ArtistCleanupReport> {
+    this.ownerGenres();
+    const { data, error } = await this.db.rpc('canonical_artist_cleanup', {
+      p_rows: rows,
+      p_dry_run: opts.dryRun,
+      p_actor: opts.actor,
+      p_reason: opts.reason,
+      p_owner_user_id: this.scope?.userId ?? null,
+    });
+    if (error) throw new Error(`Supabase runArtistCleanup failed (apply 0061_artist_cleanup.sql): ${error.message}`);
+    return data as ArtistCleanupReport;
   }
 
   // Genre vocabulary (0060). Every scope reads it through the service client: it holds no personal fields.
