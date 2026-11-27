@@ -11,7 +11,7 @@ import {
   umbrellaClosure,
 } from '../server/events/genreVocabulary';
 import { eventScale, type LineupFacts } from '../server/events/scale';
-import { genreMix, umbrellaNames } from './genres';
+import { formatSets, genreMix, setShares, umbrellaNames } from './genres';
 
 // Pure browser-side genre maths (docs/specs/genre-explore.md sections 5 and 6).
 // Never reads the system clock: `today` (YYYY-MM-DD) is always passed in.
@@ -190,7 +190,8 @@ export function artistsBehind(
     if (e.attendance === 'planned' || e.attendance === 'missed') continue;
     const sortDate = eventSortDate(e);
     const displayDate = eventDisplayDate(e);
-    for (const s of e.seen) {
+    for (const [si, s] of e.seen.entries()) {
+      const share = setShares(e)[si]; // a B2B act counts its share of the set (genres.ts setShares)
       const g = byArtist.get(s.key);
       if (!g?.genres.length) continue;
       let w = 0;
@@ -205,7 +206,8 @@ export function artistsBehind(
           if (ups(genreKey(x.style)).has(targetKey)) w += x.weight;
         }
       }
-      if (target.kind === 'umbrella') w = Math.min(1, w);
+      // An umbrella gets at most the act's share of the set; any other genre gets w of its share.
+      w = target.kind === 'umbrella' ? Math.min(share, w * share) : w * share;
       if (w <= 0) continue;
 
       const cur = rows.get(s.key);
@@ -214,13 +216,13 @@ export function artistsBehind(
           key: s.key,
           name: s.name,
           weightedSets: w,
-          sets: 1,
+          sets: share,
           lastSeen: displayDate,
           lastSeenSort: sortDate,
         });
       } else {
         cur.weightedSets += w;
-        cur.sets += 1;
+        cur.sets += share;
         if (sortDate && (!cur.lastSeenSort || sortDate > cur.lastSeenSort)) {
           cur.lastSeenSort = sortDate;
           cur.lastSeen = displayDate;
@@ -266,10 +268,11 @@ function collectWindowStats(
   };
 
   for (const e of events) {
-    for (const s of e.seen) {
+    for (const [si, s] of e.seen.entries()) {
+      const share = setShares(e)[si]; // genres.ts setShares
       const g = byArtist.get(s.key);
       if (!g?.genres.length) continue;
-      knownSets += 1;
+      knownSets += share;
 
       const styleWeight = new Map<string, { name: string; weight: number }>();
       for (const x of g.genres) {
@@ -283,14 +286,14 @@ function collectWindowStats(
       const umbrellaWeight = new Map<string, number>();
       for (const [k, info] of styleWeight) {
         if (!names.has(k)) {
-          add(k, info.name, 'style', info.weight, e.id);
+          add(k, info.name, 'style', info.weight * share, e.id);
         }
         for (const u of ups(k)) {
-          umbrellaWeight.set(u, (umbrellaWeight.get(u) ?? 0) + info.weight);
+          umbrellaWeight.set(u, (umbrellaWeight.get(u) ?? 0) + info.weight * share);
         }
       }
       for (const [u, w] of umbrellaWeight) {
-        add(u, names.get(u) ?? u, 'umbrella', Math.min(1, w), e.id);
+        add(u, names.get(u) ?? u, 'umbrella', Math.min(share, w), e.id);
       }
     }
   }
@@ -435,7 +438,8 @@ export function allGoneQuiet(
     const sortDate = eventSortDate(e);
     if (!sortDate) continue;
     const displayDate = eventDisplayDate(e);
-    for (const s of e.seen) {
+    for (const [si, s] of e.seen.entries()) {
+      const share = setShares(e)[si]; // genres.ts setShares
       const g = byArtist.get(s.key);
       if (!g?.genres.length) continue;
       const seenKeys = new Set<string>();
@@ -448,7 +452,7 @@ export function allGoneQuiet(
           byGenre.set(k, {
             key: k,
             name: x.style,
-            sets: 1,
+            sets: share,
             lastSortDate: sortDate,
             lastDate: displayDate,
             lastEvent: e.name,
@@ -456,7 +460,7 @@ export function allGoneQuiet(
             lastAct: s.name,
           });
         } else {
-          cur.sets += 1;
+          cur.sets += share;
           if (sortDate > cur.lastSortDate || (sortDate === cur.lastSortDate && s.name.localeCompare(cur.lastAct) < 0)) {
             cur.lastSortDate = sortDate;
             cur.lastDate = displayDate;
@@ -551,9 +555,10 @@ export function genreFirsts(
   const dated: Array<{ e: LoggedEvent; sortDate: string; displayDate: string }> = [];
 
   for (const e of went) {
-    for (const s of e.seen) {
-      if (byArtist.get(s.key)?.genres.length) knownSets += 1;
-    }
+    const shares = setShares(e);
+    e.seen.forEach((s, si) => {
+      if (byArtist.get(s.key)?.genres.length) knownSets += shares[si];
+    });
     const sortDate = eventSortDate(e);
     const displayDate = eventDisplayDate(e);
     if (sortDate && displayDate) dated.push({ e, sortDate, displayDate });
@@ -695,32 +700,40 @@ export function genreMilestones(
     const sortDate = eventSortDate(e);
     const displayDate = eventDisplayDate(e);
     const inRecent = Boolean(sortDate && sortDate >= recentStart && sortDate <= today);
-    for (const s of e.seen) {
+    const shares = setShares(e);
+    e.seen.forEach((s, si) => {
+      const share = shares[si];
       const g = byArtist.get(s.key);
-      if (!g?.genres.length) continue;
-      knownSets += 1;
+      if (!g?.genres.length) return;
+      knownSets += share;
       const seenGroups = new Set<string>();
       for (const x of g.genres) {
         const group = shareGroup(x);
         if (seenGroups.has(group)) continue;
         seenGroups.add(group);
-        const next = (counts.get(group) ?? 0) + 1;
+        const prev = counts.get(group) ?? 0;
+        const next = prev + share;
         counts.set(group, next);
         if (sortDate && !firstDateByGroup.has(group)) firstDateByGroup.set(group, sortDate);
         if (inRecent) hasRecentByGroup.add(group);
-        if ((MILESTONE_MARKS as readonly number[]).includes(next) && sortDate) {
-          allReached.push({
-            group,
-            mark: next,
-            actName: s.name,
-            eventName: e.name,
-            eventId: e.id,
-            date: displayDate,
-            sortDate,
-          });
+        // A mark is reached when the running total crosses it (fractions from B2B sets included).
+        if (sortDate) {
+          for (const mark of MILESTONE_MARKS) {
+            if (prev < mark && mark <= next) {
+              allReached.push({
+                group,
+                mark,
+                actName: s.name,
+                eventName: e.name,
+                eventId: e.id,
+                date: displayDate,
+                sortDate,
+              });
+            }
+          }
         }
       }
-    }
+    });
   }
 
   const reached = allReached
@@ -1133,21 +1146,23 @@ export function yearGenres(
   let favTotal = 0;
   const favCounts = new Map<string, { name: string; count: number }>();
   for (const e of yearEvs) {
-    for (const s of e.seen) {
-      if (!s.favourite) continue;
+    const shares = setShares(e);
+    e.seen.forEach((s, si) => {
+      const share = shares[si]; // genres.ts setShares
+      if (!s.favourite) return;
       const g = byArtist.get(s.key);
-      if (!g?.genres.length) continue;
-      favTotal += 1;
+      if (!g?.genres.length) return;
+      favTotal += share;
       const seenKeys = new Set<string>();
       for (const x of g.genres) {
         const k = genreKey(x.style);
         if (!k || seenKeys.has(k)) continue;
         seenKeys.add(k);
         const cur = favCounts.get(k);
-        if (cur) cur.count += 1;
-        else favCounts.set(k, { name: x.style, count: 1 });
+        if (cur) cur.count += share;
+        else favCounts.set(k, { name: x.style, count: share });
       }
-    }
+    });
   }
   const topFav = [...favCounts.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))[0];
 
@@ -1287,7 +1302,8 @@ function taxonomyTree(
     : events.filter((e) => e.attendance !== 'planned' && e.attendance !== 'missed');
   const counts = new Map<string, number>();
   for (const e of went) {
-    for (const s of e.seen) {
+    for (const [si, s] of e.seen.entries()) {
+      const share = setShares(e)[si]; // genres.ts setShares
       const g = byArtist.get(s.key);
       if (!g?.genres.length) continue;
       const keys = new Set<string>();
@@ -1298,7 +1314,7 @@ function taxonomyTree(
         if (r.family) keys.add(r.family.key);
         keys.add(r.macro?.key ?? NONE_MACRO_KEY);
       }
-      for (const k of keys) counts.set(k, (counts.get(k) ?? 0) + 1);
+      for (const k of keys) counts.set(k, (counts.get(k) ?? 0) + share);
     }
   }
 
@@ -1382,7 +1398,8 @@ export function genreTree(
 
   const counts = new Map<string, number>();
   for (const e of went) {
-    for (const s of e.seen) {
+    for (const [si, s] of e.seen.entries()) {
+      const share = setShares(e)[si]; // genres.ts setShares
       const g = byArtist.get(s.key);
       if (!g?.genres.length) continue;
       const seenKeys = new Set<string>();
@@ -1392,7 +1409,7 @@ export function genreTree(
         seenKeys.add(k);
         for (const u of ups(k)) seenKeys.add(u);
       }
-      for (const k of seenKeys) counts.set(k, (counts.get(k) ?? 0) + 1);
+      for (const k of seenKeys) counts.set(k, (counts.get(k) ?? 0) + share);
     }
   }
 
