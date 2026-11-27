@@ -537,7 +537,25 @@ export const genresApi = {
     request<{ matched: number; seen: number; inFile: number; mapTags: number }>('/api/artist-genres/music-story', post(file)),
   musicBrainz: (keys: string[]) =>
     request<{ genres: ArtistGenres[] }>('/api/artist-genres/musicbrainz', post({ keys })).then((r) => r.genres),
+  // The lineup of one of your events and the genre rows of its acts (GET /api/events/:id/lineup-genres). Reads only.
+  getLineupGenres: (eventId: string) => request<LineupGenres>(`/api/events/${encodeURIComponent(eventId)}/lineup-genres`),
 };
+
+// One act on an event's lineup, as GET /api/events/:id/lineup-genres sends it.
+export interface LineupGenresAct {
+  key: string;
+  name: string;
+  stages: string[];
+  days: string[];
+  status?: 'billed' | 'performed'; // absent when no source stored one
+  slotId?: string;
+}
+
+// What GET /api/events/:id/lineup-genres returns.
+export interface LineupGenres {
+  acts: LineupGenresAct[];
+  genres: ArtistGenres[];
+}
 
 // The records behind your events' names (src/server/entities/).
 // Manage: the records behind your events' names. Every change returns its
