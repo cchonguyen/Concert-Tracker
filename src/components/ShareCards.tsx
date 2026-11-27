@@ -1,8 +1,24 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { LoggedEvent } from '../server/events/types';
-import { cardContent, cardEvents, cardFileName, cardText, searchCards, type CardContent, type CardOptions } from '../services/shareCard';
-import { whenLabel } from '../services/format';
+import { genresApi, type GenresList, type LoggedEvent } from '../services/lineupApi';
+import { genresByArtist } from '../services/genres';
+import { yearGenres } from '../services/genreInsights';
+import {
+  cardContent,
+  cardEvents,
+  cardFileName,
+  cardText,
+  searchCards,
+  yearGenreCardContent,
+  yearGenreCardFileName,
+  yearGenreCardText,
+  type CardContent,
+  type CardOptions,
+  type YearGenreCardContent,
+  type YearGenreCardOptions,
+} from '../services/shareCard';
+import { eventYear, whenLabel } from '../services/format';
 import { stubPiecesShared } from '../services/ticket';
+import { Segmented } from './ui/Segmented';
 
 // Event cards: pick a show you went to, choose what shows, and save the card
 // as a PNG. The card is drawn here in the browser; nothing is sent to the
@@ -227,8 +243,148 @@ function drawCard(canvas: HTMLCanvasElement, c: CardContent, p: Palette): void {
   }
 }
 
+function drawYearGenreCard(canvas: HTMLCanvasElement, c: YearGenreCardContent, p: Palette): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  canvas.width = W;
+  canvas.height = H;
+
+  ctx.fillStyle = p.page;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = p.paper;
+  ctx.beginPath();
+  ctx.roundRect(MARGIN, MARGIN, W - MARGIN * 2, H - MARGIN * 2, 18);
+  ctx.fill();
+
+  const notch = (y: number) => {
+    ctx.fillStyle = p.page;
+    ctx.beginPath();
+    ctx.arc(PERF_X, y, 22, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  notch(MARGIN);
+  notch(H - MARGIN);
+
+  ctx.save();
+  ctx.strokeStyle = p.line;
+  ctx.lineWidth = 3;
+  ctx.setLineDash([12, 10]);
+  ctx.beginPath();
+  ctx.moveTo(PERF_X, MARGIN + 26);
+  ctx.lineTo(PERF_X, H - MARGIN - 26);
+  ctx.stroke();
+  ctx.restore();
+
+  const bodyX = MARGIN + 56;
+  const bodyW = PERF_X - bodyX - 60;
+  let y = MARGIN + 78;
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = p.muted;
+  ctx.font = `600 22px ${p.mono}`;
+  ctx.fillText(c.kicker.toUpperCase(), bodyX, y);
+
+  y += 58;
+  ctx.fillStyle = p.ink;
+  ctx.font = `600 46px ${p.display}`;
+  ctx.fillText(c.title, bodyX, y);
+
+  const maxShare = Math.max(0.01, ...c.rows.map((r) => r.share));
+  y += 42;
+  c.rows.slice(0, 5).forEach((r, idx) => {
+    const label = `${idx + 1}. ${r.name}${r.act ? ` · ${r.act}` : ''}`;
+    ctx.font = `500 24px ${p.sans}`;
+    ctx.fillStyle = p.ink;
+    ctx.fillText(fit(ctx, label, bodyW - 90, 1)[0] ?? label, bodyX, y);
+    if (r.pct) {
+      ctx.font = `600 22px ${p.mono}`;
+      ctx.fillStyle = p.muted;
+      ctx.textAlign = 'right';
+      ctx.fillText(r.pct, bodyX + bodyW, y);
+      ctx.textAlign = 'left';
+    }
+    y += 10;
+    ctx.fillStyle = p.line;
+    ctx.fillRect(bodyX, y, bodyW, 8);
+    ctx.fillStyle = p.accent;
+    ctx.fillRect(bodyX, y, Math.max(8, (r.share / maxShare) * bodyW), 8);
+    y += 42;
+  });
+
+  ctx.font = `500 22px ${p.mono}`;
+  ctx.fillStyle = p.muted;
+  ctx.fillText(c.footer, bodyX, H - MARGIN - 46);
+
+  const stubX = PERF_X + 40;
+  const stubW = W - MARGIN - 40 - stubX;
+  const centre = stubX + stubW / 2;
+
+  ctx.font = `700 54px ${p.display}`;
+  ctx.fillStyle = p.accent;
+  ctx.textAlign = 'center';
+  ctx.fillText(c.stub.year, centre, MARGIN + 150);
+
+  ctx.font = `600 32px ${p.mono}`;
+  ctx.fillStyle = p.ink;
+  ctx.fillText(c.stub.code, centre, 380);
+  ctx.textAlign = 'left';
+
+  const unit = 1.5;
+  const total = c.stub.bars.reduce((sum, b) => sum + b * unit, 0);
+  let bx = centre - total / 2;
+  ctx.fillStyle = p.ink;
+  c.stub.bars.forEach((b, i) => {
+    if (i % 2 === 0) ctx.fillRect(bx, 452, b * unit, 90);
+    bx += b * unit;
+  });
+}
+
+type GenreData = Pick<GenresList, 'genres' | 'vocabulary' | 'map'>;
+const NO_GENRES: GenreData = { genres: [], vocabulary: { genres: [] }, map: [] };
+
 export const ShareCards: React.FC<{ events: LoggedEvent[]; today: string; sample?: () => void }> = ({ events, today, sample }) => {
   const cards = useMemo(() => cardEvents(events, today), [events, today]);
+  const [genreData, setGenreData] = useState<GenreData>(NO_GENRES);
+  useEffect(() => {
+    genresApi
+      .list()
+      .then((r) => setGenreData({ genres: r.genres, vocabulary: r.vocabulary, map: r.map }))
+      .catch(() => setGenreData(NO_GENRES));
+  }, []);
+  const byArtist = useMemo(
+    () => genresByArtist(genreData.genres, genreData.vocabulary, genreData.map),
+    [genreData],
+  );
+  const yearResults = useMemo(() => {
+    const years = [...new Set(cards.map((e) => eventYear(e)).filter((y): y is number => Boolean(y)))].sort((a, b) => b - a);
+    return years
+      .map((y) => yearGenres(cards, y, byArtist, genreData.vocabulary, today))
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+  }, [cards, byArtist, genreData.vocabulary, today]);
+
+  const [cardKind, setCardKind] = useState<'event' | 'yearGenres'>('event');
+  const [pickedYear, setPickedYear] = useState<number | null>(null);
+  const [ygOpts, setYgOpts] = useState<YearGenreCardOptions>({ artists: true, percentages: true });
+  const ygCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  const selectedYearData = yearResults.find((r) => r.year === pickedYear) ?? yearResults[0] ?? null;
+  const ygContent = useMemo(
+    () => (selectedYearData ? yearGenreCardContent(selectedYearData, ygOpts) : null),
+    [selectedYearData, ygOpts],
+  );
+
+  useEffect(() => {
+    if (cardKind !== 'yearGenres' || !ygContent) return;
+    let cancelled = false;
+    void document.fonts.ready.then(() => {
+      const canvas = ygCanvasRef.current;
+      if (cancelled || !canvas) return;
+      drawYearGenreCard(canvas, ygContent, palette());
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [cardKind, ygContent]);
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const shown = useMemo(() => searchCards(cards, query), [cards, query]);
@@ -239,7 +395,7 @@ export const ShareCards: React.FC<{ events: LoggedEvent[]; today: string; sample
   const content = useMemo(() => (selected ? cardContent(selected, opts) : null), [selected, opts]);
 
   useEffect(() => {
-    if (!content) return;
+    if (cardKind !== 'event' || !content) return;
     let cancelled = false;
     void document.fonts.ready.then(() => {
       const canvas = canvasRef.current;
@@ -249,7 +405,7 @@ export const ShareCards: React.FC<{ events: LoggedEvent[]; today: string; sample
     return () => {
       cancelled = true;
     };
-  }, [content]);
+  }, [cardKind, content]);
 
   if (cards.length === 0) {
     return (
@@ -258,6 +414,24 @@ export const ShareCards: React.FC<{ events: LoggedEvent[]; today: string; sample
       </div>
     );
   }
+
+  const saveYearGenre = () => {
+    if (sample) {
+      sample();
+      return;
+    }
+    const canvas = ygCanvasRef.current;
+    if (!canvas || !selectedYearData) return;
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = yearGenreCardFileName(selectedYearData.year);
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+  };
 
   const save = () => {
     if (sample) {
@@ -284,7 +458,78 @@ export const ShareCards: React.FC<{ events: LoggedEvent[]; today: string; sample
 
   return (
     <div className="space-y-4" role="region" aria-label="Event cards">
-      <div className="space-y-2">
+      {yearResults.length > 0 && (
+        <Segmented
+          label="Card type"
+          compact
+          value={cardKind}
+          onChange={setCardKind}
+          options={[
+            { value: 'event', label: 'Event card' },
+            { value: 'yearGenres', label: 'Year in genres' },
+          ]}
+        />
+      )}
+
+      {cardKind === 'yearGenres' && selectedYearData && ygContent ? (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="share-year-genres" className="block text-sm text-text-muted">
+              Year
+            </label>
+            <select
+              id="share-year-genres"
+              value={selectedYearData.year}
+              onChange={(e) => setPickedYear(Number(e.target.value))}
+              className="min-h-11 w-full rounded-control border border-line-strong bg-surface-2 px-3 text-sm text-text sm:min-h-9"
+            >
+              {yearResults.map((r) => (
+                <option key={r.year} value={r.year}>
+                  {r.year} ({r.knownSets} sets)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <fieldset className="flex flex-wrap gap-x-5 gap-y-1">
+            <legend className="mb-1 text-sm text-text-muted">What shows on the card</legend>
+            <label className={box}>
+              <input
+                type="checkbox"
+                checked={ygOpts.artists}
+                onChange={(e) => setYgOpts((o) => ({ ...o, artists: e.target.checked }))}
+              />{' '}
+              Artists
+            </label>
+            <label className={box}>
+              <input
+                type="checkbox"
+                checked={ygOpts.percentages}
+                onChange={(e) => setYgOpts((o) => ({ ...o, percentages: e.target.checked }))}
+              />{' '}
+              Percentages
+            </label>
+          </fieldset>
+
+          <canvas
+            ref={ygCanvasRef}
+            role="img"
+            aria-label={yearGenreCardText(ygContent)}
+            style={{ width: '100%', height: 'auto', display: 'block' }}
+            className="rounded-card border border-line"
+          />
+
+          <button
+            type="button"
+            onClick={saveYearGenre}
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-control border border-line-strong bg-surface-2 px-3 py-1.5 text-sm text-text hover:border-warn/60 sm:min-h-9"
+          >
+            Save as image
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="space-y-2">
         <label htmlFor="share-card-search" className="block text-sm text-text-muted">
           Find an event
         </label>
@@ -353,6 +598,8 @@ export const ShareCards: React.FC<{ events: LoggedEvent[]; today: string; sample
       >
         Save image
       </button>
+        </>
+      )}
     </div>
   );
 };

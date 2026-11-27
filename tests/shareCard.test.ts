@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cardContent, cardEvents, cardFileName, cardText } from '../src/services/shareCard.ts';
+import { cardContent, cardEvents, cardFileName, cardText, yearGenreCardContent, yearGenreCardFileName, yearGenreCardText } from '../src/services/shareCard.ts';
+import type { YearGenresResult } from '../src/services/genreInsights.ts';
 import type { LoggedEvent } from '../src/server/events/types.ts';
 
 type Partial_ = Partial<LoggedEvent> & { name: string; id: string };
@@ -178,4 +179,51 @@ test('card search matches name, act, venue, city and year, every word, ignoring 
   assert.deepEqual(ids('2023'), ['b']);
   assert.deepEqual(ids('2024 night'), ['a']);
   assert.deepEqual(ids('2024 dream'), []);
+});
+
+test('yearGenreCardContent respects options, carries no private fields, and formats filename', () => {
+  const data: YearGenresResult = {
+    year: 2026,
+    nights: 14,
+    knownSets: 42,
+    totalSets: 45,
+    topStyle: { name: 'Techno', sets: 14, share: 0.33, topAct: 'Mira Vale' },
+    topStyles: [
+      { name: 'Techno', sets: 14, share: 0.33, topAct: 'Mira Vale' },
+      { name: 'House', sets: 10, share: 0.24, topAct: 'Solis' },
+    ],
+    newestToYou: { name: 'Breakbeat', actName: 'Anvil North', date: '2026-04-18' },
+    distinctStyles: 12,
+    prevDistinctStyles: 10,
+    biggestChange: { name: 'Techno', beforeSets: 6, afterSets: 14, delta: 8 },
+    favourites: { total: 5, topStyle: 'Techno', topCount: 3 },
+  };
+
+  const bothOn = yearGenreCardContent(data, { artists: true, percentages: true });
+  assert.equal(bothOn.title, 'My year in genres');
+  assert.equal(bothOn.rows[0].act, 'Mira Vale');
+  assert.equal(bothOn.rows[0].pct, '33%');
+  assert.equal(bothOn.footer, '12 genres · 42 sets · 14 nights');
+
+  const bothOff = yearGenreCardContent(data, { artists: false, percentages: false });
+  assert.equal(bothOff.rows[0].act, undefined);
+  assert.equal(bothOff.rows[0].pct, undefined);
+
+  const keys = new Set<string>();
+  const walk = (v: unknown) => {
+    if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === 'object') {
+      for (const [k, x] of Object.entries(v)) {
+        keys.add(k);
+        walk(x);
+      }
+    }
+  };
+  walk(bothOn);
+  for (const forbidden of ['companions', 'people', 'personIds', 'with', 'ticketPrice', 'price', 'rating', 'notes']) {
+    assert.ok(!keys.has(forbidden), `key ${forbidden} must not be on the year genre card`);
+  }
+
+  assert.ok(yearGenreCardText(bothOn).includes('My year in genres'));
+  assert.equal(yearGenreCardFileName(2026), 'livearchive-year-in-genres-2026.png');
 });

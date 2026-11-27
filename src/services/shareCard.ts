@@ -10,6 +10,7 @@ import type { LoggedEvent } from '../server/events/types';
 import { wentTo } from '../server/events/attendance';
 import { cityWithRegion } from '../server/events/regions';
 import { eventYear, placeLabel, whenLabel } from './format';
+import type { YearGenresResult } from './genreInsights';
 import { barcodeBars, shortDate, shorthand, ticketLines } from './ticket';
 
 export interface CardOptions {
@@ -135,4 +136,56 @@ export function searchCards(events: LoggedEvent[], query: string): LoggedEvent[]
     );
     return words.every((w) => text.includes(w));
   });
+}
+
+export interface YearGenreCardOptions {
+  artists: boolean;
+  percentages: boolean;
+}
+
+export interface YearGenreCardRow {
+  name: string;
+  act?: string;
+  pct?: string;
+  share: number;
+}
+
+export interface YearGenreCardContent {
+  kicker: string;
+  title: string;
+  rows: YearGenreCardRow[];
+  footer: string;
+  stub: {
+    year: string;
+    code: string;
+    bars: number[];
+  };
+}
+
+export function yearGenreCardContent(data: YearGenresResult, opts: YearGenreCardOptions): YearGenreCardContent {
+  return {
+    kicker: `LiveArchive · ${data.year}`,
+    title: 'My year in genres',
+    rows: data.topStyles.slice(0, 5).map((s) => ({
+      name: s.name,
+      ...(opts.artists && s.topAct ? { act: s.topAct } : {}),
+      ...(opts.percentages ? { pct: `${Math.round(s.share * 100)}%` } : {}),
+      share: s.share,
+    })),
+    footer: `${data.distinctStyles} ${data.distinctStyles === 1 ? 'genre' : 'genres'} · ${data.knownSets} ${data.knownSets === 1 ? 'set' : 'sets'} · ${data.nights} ${data.nights === 1 ? 'night' : 'nights'}`,
+    stub: {
+      year: String(data.year),
+      code: 'YIG',
+      bars: barcodeBars(`year-genres-${data.year}`),
+    },
+  };
+}
+
+export function yearGenreCardText(c: YearGenreCardContent): string {
+  const rowsText = c.rows.map((r) => [r.name, r.act, r.pct].filter(Boolean).join(' ')).join(', ');
+  return `${c.kicker}. ${c.title}. ${rowsText}. ${c.footer}.`;
+}
+
+export function yearGenreCardFileName(year: number): string {
+  return `livearchive-year-in-genres-${year}.png`;
 }

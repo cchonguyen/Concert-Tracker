@@ -6,6 +6,7 @@ import { isModifiedClick } from '../services/manageNav';
 import { whenLabel } from '../services/format';
 import { attendanceOf } from '../server/events/attendance';
 import { allTime, AllTime, facts, pastEvents, perYear, RankBy, Ranked, seriesStats, SeriesStat, top, YearReview, yearInReview } from '../services/stats';
+import { yearGenres } from '../services/genreInsights';
 import { barcodeBars } from '../services/ticket';
 import { EventTitle } from './EventTitle';
 import { GenreStory } from './GenreStory';
@@ -384,6 +385,10 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
     () => (year && years.some((y) => y.year === year - 1 && y.events > 0) ? yearInReview(past, year - 1).events : undefined),
     [past, years, year],
   );
+  const yrGenres = useMemo(
+    () => (year ? yearGenres(past, year, byArtist, genreData.vocabulary, today) : null),
+    [past, year, byArtist, genreData.vocabulary, today],
+  );
   const f = useMemo(() => facts(past), [past]);
   const totals = useMemo(() => allTime(events, today), [events, today]);
   const ranks = useMemo(
@@ -516,6 +521,49 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
               </li>
             )}
           </ul>
+          {yrGenres && (
+            <ul className="space-y-1 border-t border-line pt-3 text-sm text-text-muted">
+              <li>
+                <span>Top genre: </span>
+                {yrGenres.topStyle.name} · {Math.round(yrGenres.topStyle.share * 100)}% ·{' '}
+                {plural(Math.round(yrGenres.topStyle.sets), 'set')}
+                {yrGenres.topStyle.topAct ? ` · mostly ${yrGenres.topStyle.topAct}` : ''}
+              </li>
+              {yrGenres.newestToYou && (
+                <li>
+                  <span>Newest to you: </span>
+                  {yrGenres.newestToYou.name} · First: {yrGenres.newestToYou.actName},{' '}
+                  {whenLabel({ startDate: yrGenres.newestToYou.date }) ?? yrGenres.newestToYou.date}
+                </li>
+              )}
+              <li>
+                <span>Genres explored: </span>
+                {yrGenres.distinctStyles}
+                {yrGenres.prevDistinctStyles !== null &&
+                  (yrGenres.distinctStyles > yrGenres.prevDistinctStyles
+                    ? ` (up from ${yrGenres.prevDistinctStyles} in ${year - 1})`
+                    : yrGenres.distinctStyles < yrGenres.prevDistinctStyles
+                      ? ` (down from ${yrGenres.prevDistinctStyles} in ${year - 1})`
+                      : ` (same as ${year - 1})`)}
+              </li>
+              {yrGenres.biggestChange && (
+                <li>
+                  <span>Biggest change from {year - 1}: </span>
+                  {yrGenres.biggestChange.name}{' '}
+                  {yrGenres.biggestChange.delta > 0 ? 'went up' : 'dropped'} from{' '}
+                  {Math.round(yrGenres.biggestChange.beforeSets)} to{' '}
+                  {Math.round(yrGenres.biggestChange.afterSets)} sets.
+                </li>
+              )}
+              {yrGenres.favourites && (
+                <li>
+                  <span>Your favourite sets, by genre: </span>
+                  {yrGenres.favourites.topCount} of your {yrGenres.favourites.total} favourite sets this year were{' '}
+                  {yrGenres.favourites.topStyle.toLowerCase()}.
+                </li>
+              )}
+            </ul>
+          )}
         </section>
       )}
 
