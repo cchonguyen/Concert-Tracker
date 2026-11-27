@@ -279,7 +279,8 @@ export const GenresRanking: React.FC<GenresRankingProps> = ({
     });
   }
 
-  const renderRow = (row: ZoomRow, kind: GenreTarget['kind'], below: GenreTarget['kind'] | null) => {
+  // A top-level row's dot uses its bar colour; rows past the bar's segments share the Other grey.
+  const renderRow = (row: ZoomRow, kind: GenreTarget['kind'], below: GenreTarget['kind'] | null, index?: number) => {
     const rowId = `${kind}:${row.name}`;
     const artistsOpen = expandedKey === rowId;
     const hasChildren = below !== null && (row.children?.length ?? 0) > 0;
@@ -304,7 +305,16 @@ export const GenresRanking: React.FC<GenresRankingProps> = ({
             onClick={() => toggle(rowId)}
             className="group flex min-h-11 min-w-0 flex-1 items-baseline justify-between gap-2 rounded-control px-1.5 py-1 text-left text-sm hover:bg-surface-2 sm:min-h-9"
           >
-            <span className="truncate font-medium text-text group-hover:text-accent">{row.name}</span>
+            <span className="flex min-w-0 items-center gap-2">
+              {index !== undefined && (
+                <span
+                  aria-hidden="true"
+                  className={`inline-block h-2.5 w-2.5 shrink-0 self-center rounded-full ${index < BAR_SEGMENTS ? '' : 'bg-line-strong'}`}
+                  style={index < BAR_SEGMENTS ? { backgroundColor: SEGMENT_COLOURS[index] } : undefined}
+                />
+              )}
+              <span className="truncate font-medium text-text group-hover:text-accent">{row.name}</span>
+            </span>
             <span className="shrink-0 font-mono text-xs tabular-nums text-text-muted">
               {wholePercent(row.share)}% · {setsLabel(row.sets)}
             </span>
@@ -458,7 +468,7 @@ export const GenresRanking: React.FC<GenresRankingProps> = ({
             {rows.length === 0 ? (
               <p className="text-xs text-text-muted">None in this period.</p>
             ) : (
-              <ol className="space-y-2">{rows.map((r) => renderRow(r, rowKind, childKind))}</ol>
+              <ol className="space-y-2">{rows.map((r, i) => renderRow(r, rowKind, childKind, i))}</ol>
             )}
 
             {zoom.unknown > 0 && (

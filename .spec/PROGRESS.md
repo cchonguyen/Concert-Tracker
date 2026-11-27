@@ -35,6 +35,7 @@ Every slice (43.x, plus its re-verify slices) is done; see `.spec/archive/HISTOR
 
 ## Genre charts by family (Charlie 2026-11-27: macros too broad; no migration)
 - [x] **Slice 47.1: Group genre charts by scene family** [CORE / DATA] shareGroup returns the family under a taxonomy; Stats genre map lists families. Target files: src/server/events/genreVocabulary.ts, src/components/StatsView.tsx, src/components/ArtistsView.tsx, src/components/PeopleRanking.tsx, src/services/genres.ts, tests/genreInsights.test.ts, tests/genreTaxonomy.test.ts, docs/architecture/07-artist-genres.md | Issue: #1121 | Verify: npm run lint --silent && npm test --silent
+- [x] **Slice 47.1125: Colour dots beside genre names in Ranking** [UI / VISUAL] On-the-fly: Charlie asked for colour dots next to genre names in Ranking Target files: src/components/GenresRanking.tsx | Issue: #1125 | Verify: npm run lint --silent
 
 ## Ticket stub styles (docs/specs/ticket-stub-styles.md, approved by Charlie 2026-11-27)
 - [x] **Slice 44.1: Ticket style picker** [UI / VISUAL] Per-device ticket style: Original, Box office, Hard ticket, Raffle, Riso. Target files: src/services/theme.ts, src/components/ThemePicker.tsx, src/index.css, src/styles/ticket-styles.css, app.html, tests/theme.test.ts, tests/ticketStyles.test.ts, docs/specs/ticket-stub-styles.md, docs/README.md | Issue: #1099 | Verify: npm run lint --silent && npm test --silent
