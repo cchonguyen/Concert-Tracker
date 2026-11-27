@@ -1,3 +1,4 @@
+import { levelOf } from '../server/events/genreVocabulary';
 import React, { Fragment, useEffect, useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { genresApi, GenresList, LoggedEvent } from '../services/lineupApi';
@@ -372,10 +373,11 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
     () => genresByArtist(genreData.genres, genreData.vocabulary, genreData.map),
     [genreData],
   );
-  const mapGroups = useMemo(
-    () => [...new Set(genreData.map.map((m) => m.parent).filter(Boolean))],
-    [genreData.map],
-  );
+  // The macro genres of the vocabulary when it has a taxonomy, else the genre map's parents.
+  const mapGroups = useMemo(() => {
+    const macros = (genreData.vocabulary?.genres ?? []).filter((g) => levelOf(g) === 'macro').map((g) => g.name);
+    return macros.length ? macros : [...new Set(genreData.map.map((m) => m.parent).filter(Boolean))];
+  }, [genreData.map, genreData.vocabulary]);
   const { years, undated } = useMemo(() => perYear(past), [past]);
   const [pickedYear, setPickedYear] = useState<number | null>(null);
   const reviewYears = years.filter((y) => y.events > 0).map((y) => y.year).reverse();

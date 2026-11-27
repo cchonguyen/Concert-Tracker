@@ -81,6 +81,7 @@ function bump(m: Map<string, Map<string, number>>, key: string, value: string, b
 export interface GenreResolver {
   resolve(style: string): ResolvedGenre;
   groups: string[]; // the distinct parents of the genre map
+  hasTaxonomy: boolean; // the vocabulary has at least one macro: family and macro are then shown
 }
 
 // Builds the indexes once; resolve() then works for any stored or typed spelling.
@@ -186,7 +187,8 @@ export function genreResolver(
     return p && levelOf(p) === level ? p : undefined;
   };
 
-  return { resolve, groups };
+  const hasTaxonomy = v.genres.some((g) => levelOf(g) === 'macro');
+  return { resolve, groups, hasTaxonomy };
 }
 
 export function resolveGenre(
@@ -200,6 +202,9 @@ export function resolveGenre(
 
 // Inside one act: styles that resolve to the same genre become one, weights added.
 // A style with no letter or digit is dropped.
+// Read side: when the vocabulary has a taxonomy, each share also carries its macro and
+// family names (NOT_GROUPED when the genre has none). Rank survives; two merged styles
+// keep the smaller rank.
 export function resolveShares(shares: GenreShare[], resolver: GenreResolver): GenreShare[] {
   const out: GenreShare[] = [];
   const at = new Map<string, number>();
@@ -208,13 +213,34 @@ export function resolveShares(shares: GenreShare[], resolver: GenreResolver): Ge
     if (!r.key) continue;
     const i = at.get(r.key);
     if (i !== undefined) {
-      out[i] = { ...out[i], weight: out[i].weight + s.weight };
+      const prev = out[i];
+      const merged: GenreShare = { ...prev, weight: prev.weight + s.weight };
+      const rank = prev.rank === undefined ? s.rank : s.rank === undefined ? prev.rank : Math.min(prev.rank, s.rank);
+      if (rank !== undefined) merged.rank = rank;
+      out[i] = merged;
       continue;
     }
     at.set(r.key, out.length);
-    out.push({ parent: r.parent ?? NOT_GROUPED, style: r.name, weight: s.weight });
+    const share: GenreShare = { parent: r.parent ?? NOT_GROUPED, style: r.name, weight: s.weight };
+    if (s.rank !== undefined) share.rank = s.rank;
+    if (resolver.hasTaxonomy) {
+      share.macro = r.macro?.name ?? NOT_GROUPED;
+      share.family = r.family?.name ?? NOT_GROUPED;
+    }
+    out.push(share);
   }
   return out;
+}
+
+// The group a share shows: its macro genre when the vocabulary has a taxonomy, else its
+// music-story parent (or "Not grouped").
+export function shareGroup(x: GenreShare): string {
+  return x.macro ?? (x.parent || NOT_GROUPED);
+}
+
+// The family a share shows, when it was read through a taxonomy.
+export function shareFamily(x: GenreShare): string | undefined {
+  return x.family;
 }
 
 // Every umbrella above each genre, at any depth, itself excluded. A loop already in

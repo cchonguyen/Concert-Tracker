@@ -5,9 +5,14 @@ import {
   checkTaxonomy,
   familyKey,
   genreKey,
+  genreResolver,
   levelOf,
   macroKey,
+  NOT_GROUPED,
   resolveGenre,
+  resolveShares,
+  shareFamily,
+  shareGroup,
 } from '../src/server/events/genreVocabulary.ts';
 
 const vg = (key: string, name: string, extra: Partial<VocabGenre> = {}): VocabGenre => ({
@@ -264,4 +269,64 @@ test('checkTaxonomy: an unknown relation type or origin is refused', () => {
   const errors = checkTaxonomy(v).join('\n');
   assert.match(errors, /unknown type "cousin"/);
   assert.match(errors, /unknown origin "user_cooccur"/);
+});
+
+// Read side: resolveShares carries macro and family names only through the vocabulary.
+const TAX: GenreVocabulary = {
+  genres: [
+    vg(MACRO_ELEC, 'Electronic', { level: 'macro' }),
+    vg(FAM_HOUSE, 'House', { level: 'family', primaryParent: MACRO_ELEC }),
+    vg('techhouse', 'Tech house', { primaryParent: FAM_HOUSE }),
+    vg('ambient', 'Ambient'),
+  ],
+};
+
+test('resolveShares: keeps rank, and a merged genre keeps the smaller rank', () => {
+  const r = genreResolver(TAX, []);
+  const out = resolveShares(
+    [
+      { parent: 'Dance', style: 'Tech house', weight: 0.5, rank: 3 },
+      { parent: 'Dance', style: 'tech-house', weight: 0.25, rank: 1 },
+      { parent: 'Dance', style: 'Ambient', weight: 0.25, rank: 2 },
+    ],
+    r,
+  );
+  assert.deepEqual(out, [
+    { parent: NOT_GROUPED, style: 'Tech house', weight: 0.75, rank: 1, macro: 'Electronic', family: 'House' },
+    { parent: NOT_GROUPED, style: 'Ambient', weight: 0.25, rank: 2, macro: NOT_GROUPED, family: NOT_GROUPED },
+  ]);
+});
+
+test('resolveShares: a genre with no family is Not grouped when the vocabulary has a taxonomy', () => {
+  const out = resolveShares([{ parent: 'Ambient', style: 'Ambient', weight: 1 }], genreResolver(TAX, []));
+  assert.equal(out[0].macro, NOT_GROUPED);
+  assert.equal(out[0].family, NOT_GROUPED);
+});
+
+test('resolveShares: macro and family stay undefined without a taxonomy', () => {
+  const out = resolveShares([{ parent: 'Dance', style: 'Tech house', weight: 1 }], genreResolver(undefined, []));
+  assert.deepEqual(out, [{ parent: NOT_GROUPED, style: 'Tech house', weight: 1 }]);
+  assert.equal('macro' in out[0], false);
+  assert.equal('family' in out[0], false);
+});
+
+test('a stored row parent never becomes the macro', () => {
+  const out = resolveShares(
+    [
+      { parent: 'Dance', style: 'Tech house', weight: 0.5 },
+      { parent: 'Dance', style: 'Ambient', weight: 0.5 },
+    ],
+    genreResolver(TAX, []),
+  );
+  assert.equal(out[0].macro, 'Electronic');
+  assert.notEqual(out[1].macro, 'Dance');
+  assert.equal(out[1].macro, NOT_GROUPED);
+  assert.equal(shareGroup(out[0]), 'Electronic');
+  assert.equal(shareFamily(out[0]), 'House');
+});
+
+test('shareGroup falls back to the stored parent without a macro', () => {
+  assert.equal(shareGroup({ parent: 'electronic', style: 'x', weight: 1 }), 'electronic');
+  assert.equal(shareGroup({ parent: '', style: 'x', weight: 1 }), NOT_GROUPED);
+  assert.equal(shareFamily({ parent: 'electronic', style: 'x', weight: 1 }), undefined);
 });

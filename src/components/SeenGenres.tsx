@@ -1,3 +1,4 @@
+import { shareGroup } from '../server/events/genreVocabulary';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Tags, X } from 'lucide-react';
 import { genresApi, LoggedEvent } from '../services/lineupApi';
@@ -188,7 +189,7 @@ export const SeenGenres: React.FC<{ event: LoggedEvent }> = ({ event }) => {
     setRows((prev) => [...(prev ?? []).filter((r) => !(r.key === key && matchSource(r))), row]);
     setKnown((prev) =>
       row.genres.reduce(
-        (list, g) => (list.some((k) => k.style.toLowerCase() === g.style.toLowerCase()) ? list : [...list, { style: g.style, parent: g.parent }]),
+        (list, g) => (list.some((k) => k.style.toLowerCase() === g.style.toLowerCase()) ? list : [...list, { style: g.style, parent: shareGroup(g) }]),
         prev,
       ),
     );

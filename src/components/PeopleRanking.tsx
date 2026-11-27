@@ -92,7 +92,7 @@ export const PeopleRanking: React.FC<PeopleRankingProps> = ({
       </ol>
 
       <p className="text-[11px] text-text-faint">
-        Counts each show once per genre group when any act you saw there has it.
+        Counts each show once per macro genre when any act you saw there has it.
       </p>
     </section>
   );
