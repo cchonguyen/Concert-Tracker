@@ -2,7 +2,7 @@ import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } f
 import { Minus, Plus } from 'lucide-react';
 import { genresApi, type GenresList } from '../../services/lineupApi';
 import { genresByArtist } from '../../services/genres';
-import { NOT_GROUPED } from '../../server/events/genreVocabulary';
+import { shareGroup } from '../../server/events/genreVocabulary';
 import { placeLabel } from '../../services/format';
 import { dateChip, RIVER_ZOOMS, riverLayout, RiverItem, riverStretch, TimelineSpan, TimelineViewProps } from '../../services/timeline';
 import { Popover } from '../ui/Popover';
@@ -190,7 +190,7 @@ export const RiverView: React.FC<RiverProps> = ({ model, onOpen, onShowInAgenda 
         const g = byArtist.get(s.key);
         if (!g?.genres.length) continue;
         for (const x of g.genres) {
-          const grp = x.parent || NOT_GROUPED;
+          const grp = shareGroup(x);
           weights.set(grp, (weights.get(grp) ?? 0) + x.weight);
         }
       }

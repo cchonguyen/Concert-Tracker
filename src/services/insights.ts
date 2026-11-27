@@ -1,6 +1,6 @@
 import type { LoggedEvent } from '../server/events/types';
 import type { ArtistGenres } from '../server/events/genreTypes';
-import { NOT_GROUPED } from '../server/events/genreVocabulary';
+import { shareGroup } from '../server/events/genreVocabulary';
 import { eventYear } from './format';
 
 // The "Do first" insights from the Manage design (step 6), worked out from
@@ -90,7 +90,7 @@ export function personGenreGroups(
     for (const s of e.seen) {
       const g = byArtist.get(s.key);
       if (!g?.genres.length) continue;
-      for (const x of g.genres) groups.add(x.parent || NOT_GROUPED);
+      for (const x of g.genres) groups.add(shareGroup(x));
     }
     for (const grp of groups) counts.set(grp, (counts.get(grp) ?? 0) + 1);
   }

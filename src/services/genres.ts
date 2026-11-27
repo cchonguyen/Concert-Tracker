@@ -1,6 +1,14 @@
 import type { LoggedEvent } from '../server/events/types';
 import type { ArtistGenres, GenreMapEntry, GenreShare, GenreVocabulary } from '../server/events/genreTypes';
-import { genreKey, genreResolver, NOT_GROUPED, resolveShares, umbrellaClosure } from '../server/events/genreVocabulary';
+import {
+  genreKey,
+  genreResolver,
+  NOT_GROUPED,
+  resolveShares,
+  shareFamily,
+  shareGroup,
+  umbrellaClosure,
+} from '../server/events/genreVocabulary';
 import type { GenreResolver } from '../server/events/genreVocabulary';
 
 export type { ArtistGenres, GenreShare };
@@ -107,7 +115,11 @@ export interface GenreCount {
 }
 
 export interface GenreMix {
+  // The group of each genre: its macro genre when the vocabulary has a taxonomy (else the
+  // music-story parent). The field keeps its name so existing callers still work.
   parents: GenreCount[];
+  families: GenreCount[]; // by family name, only for genres that have a family
+
   styles: GenreCount[];
   umbrellas: GenreCount[]; // a set counts once under each umbrella it falls in
   sets: number; // every seen act at every event
@@ -154,6 +166,7 @@ export function genreMix(
   vocab?: GenreVocabulary,
 ): GenreMix {
   const parents = new Map<string, number>();
+  const families = new Map<string, number>();
   const styles = new Map<string, number>();
   const styleName = new Map<string, string>();
   const umbrellas = new Map<string, number>();
@@ -169,8 +182,11 @@ export function genreMix(
       known += 1;
       const genreWeight = new Map<string, number>(); // this set, by genre key
       for (const x of g.genres) {
-        const parent = x.parent || NOT_GROUPED;
-        parents.set(parent, (parents.get(parent) ?? 0) + x.weight);
+        const group = shareGroup(x);
+        parents.set(group, (parents.get(group) ?? 0) + x.weight);
+        const family = shareFamily(x);
+        // A genre with no family is not a family: it has no row in the Family list.
+        if (family && family !== NOT_GROUPED) families.set(family, (families.get(family) ?? 0) + x.weight);
         const k = genreKey(x.style);
         if (!k) continue;
         if (!styleName.has(k)) styleName.set(k, x.style);
@@ -188,5 +204,12 @@ export function genreMix(
       .sort((a, b) => b.sets - a.sets || a.name.localeCompare(b.name));
   const named = new Map([...styles].map(([k, n]) => [styleName.get(k)!, n]));
   const umbrellaNamed = new Map([...umbrellas].map(([k, n]) => [names.get(k) ?? styleName.get(k) ?? k, n]));
-  return { parents: ranked(parents), styles: ranked(named), umbrellas: ranked(umbrellaNamed), sets, known };
+  return {
+    parents: ranked(parents),
+    families: ranked(families),
+    styles: ranked(named),
+    umbrellas: ranked(umbrellaNamed),
+    sets,
+    known,
+  };
 }

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { LoggedEvent } from '../src/server/events/types.ts';
 import type { ArtistGenres, GenreVocabulary } from '../src/server/events/genreTypes.ts';
-import { genresByArtist } from '../src/services/genres.ts';
+import { genreMix, genresByArtist } from '../src/services/genres.ts';
 import {
   artistsBehind,
   comingUp,
@@ -508,4 +508,57 @@ test('genreTree builds nested umbrella trees with lit and dimmed branches', () =
   assert.equal(houseNode.name, 'House');
   assert.equal(houseNode.seen, true);
   assert.equal(houseNode.children.find((c) => c.key === 'afrohouse')?.seen, false);
+});
+
+test('taxonomy: groups roll up to macros, families sit between macro and genre, and the tree runs macro, family, genre', () => {
+  const vocab: GenreVocabulary = {
+    genres: [
+      { key: 'macro:electronic', name: 'Electronic', level: 'macro', aliases: [], umbrellas: [] },
+      { key: 'family:house', name: 'House', level: 'family', primaryParent: 'macro:electronic', aliases: [], umbrellas: [] },
+      { key: 'deephouse', name: 'Deep house', primaryParent: 'family:house', aliases: [], umbrellas: [] },
+      { key: 'techhouse', name: 'Tech house', primaryParent: 'family:house', aliases: [], umbrellas: [] },
+      { key: 'ambient', name: 'Ambient', aliases: [], umbrellas: [] },
+    ],
+  };
+  const byArtist = genresByArtist(
+    [
+      artist('A', [
+        { parent: 'Dance', style: 'Deep house', weight: 0.6 },
+        { parent: 'Dance', style: 'Tech house', weight: 0.4 },
+      ]),
+      artist('B', [{ parent: 'Ambient', style: 'Ambient', weight: 1 }]),
+    ],
+    vocab,
+  );
+  const events = [ev('1', '2026-03-01', ['A', 'B'])];
+
+  const mix = genreMix(events, byArtist, vocab);
+  assert.deepEqual(
+    mix.parents.map((p) => [p.name, Math.round(p.sets * 1000) / 1000]),
+    [
+      ['Electronic', 1],
+      ['Not grouped', 1],
+    ],
+  );
+  assert.deepEqual(mix.families.map((p) => [p.name, Math.round(p.sets * 1000) / 1000]), [['House', 1]]);
+
+  const roots = genreTree(vocab, events, byArtist, TODAY);
+  assert.deepEqual(roots.map((r) => r.name), ['Electronic', 'Not grouped']);
+  const house = roots[0].children[0];
+  assert.equal(house.level, 'family');
+  assert.equal(house.name, 'House');
+  assert.deepEqual(house.children.map((c) => [c.name, c.level]), [
+    ['Deep house', 'genre'],
+    ['Tech house', 'genre'],
+  ]);
+  assert.equal(roots[0].seenBranches, 3);
+  assert.equal(roots[0].totalBranches, 3);
+  assert.equal(roots[1].children[0].name, 'Ambient');
+});
+
+test('legacy fallback: without a taxonomy the mix groups by the stored parent and has no families', () => {
+  const byArtist = genresByArtist([artist('A', [{ parent: 'Electronic', style: 'Deep house', weight: 1 }])]);
+  const mix = genreMix([ev('1', '2026-03-01', ['A'])], byArtist, undefined);
+  assert.deepEqual(mix.parents.map((p) => p.name), ['Electronic']);
+  assert.deepEqual(mix.families, []);
 });

@@ -11,6 +11,10 @@ export interface GenreShare {
   style: string; // e.g. "deep house"; = parent when there is no finer style
   weight: number; // shares of one artist sum to 1
   rank?: number; // owner's genres only: 1 is the first genre typed, from the rank decay table
+  // Read side only, never stored: set when a row is read through the vocabulary's
+  // primaryParent links (genreVocabulary.ts). Shown names.
+  family?: string; // the genre's family, e.g. "House"
+  macro?: string; // the family's macro genre, e.g. "Electronic"
 }
 
 export interface ArtistGenres {

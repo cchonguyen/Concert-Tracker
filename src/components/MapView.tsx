@@ -1,3 +1,4 @@
+import { shareGroup } from '../server/events/genreVocabulary';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -118,7 +119,7 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
     () =>
       [
         ...new Set(
-          events.flatMap((e) => e.seen.flatMap((s) => (byArtist.get(s.key)?.genres ?? []).map((x) => x.parent))),
+          events.flatMap((e) => e.seen.flatMap((s) => (byArtist.get(s.key)?.genres ?? []).map((x) => shareGroup(x)))),
         ),
       ].sort(),
     [events, byArtist],
@@ -138,7 +139,7 @@ export const MapView: React.FC<MapViewProps> = ({ events, lineups, editions, onO
         return e.seen.some((s) => hasGenreUnder(byArtist.get(s.key), key, vocabulary));
       }
       const group = picked.slice(2);
-      return e.seen.some((s) => (byArtist.get(s.key)?.genres ?? []).some((x) => x.parent === group));
+      return e.seen.some((s) => (byArtist.get(s.key)?.genres ?? []).some((x) => shareGroup(x) === group));
     };
   }, [byArtist, vocabulary]);
   const pickedGenreLabel = useMemo(() => {

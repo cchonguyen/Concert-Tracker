@@ -1,7 +1,15 @@
 import type { LoggedEvent } from '../server/events/types';
 import { attendanceOf, wentTo } from '../server/events/attendance';
-import type { ArtistGenres, GenreVocabulary } from '../server/events/genreTypes';
-import { genreKey, genresUnder, NOT_GROUPED, umbrellaClosure } from '../server/events/genreVocabulary';
+import type { ArtistGenres, GenreLevel, GenreVocabulary, VocabGenre } from '../server/events/genreTypes';
+import {
+  genreKey,
+  genreResolver,
+  genresUnder,
+  levelOf,
+  NOT_GROUPED,
+  shareGroup,
+  umbrellaClosure,
+} from '../server/events/genreVocabulary';
 import { eventScale, type LineupFacts } from '../server/events/scale';
 import { genreMix, umbrellaNames } from './genres';
 
@@ -43,7 +51,8 @@ export const PEOPLE_MIN_GROUP_SHOWS = 3;
 export const PEOPLE_HEADLINE_SHARE = 0.50;
 
 export type GenrePeriod = 'all' | 'last12' | number;
-export type GenreTarget = { kind: 'group' | 'style' | 'umbrella'; name: string };
+// 'group' is the macro genre when the vocabulary has a taxonomy; 'family' is a family.
+export type GenreTarget = { kind: 'group' | 'family' | 'style' | 'umbrella'; name: string };
 
 export interface ArtistBehindRow {
   key: string;
@@ -187,7 +196,9 @@ export function artistsBehind(
       let w = 0;
       for (const x of g.genres) {
         if (target.kind === 'group') {
-          if ((x.parent || NOT_GROUPED) === target.name) w += x.weight;
+          if (shareGroup(x) === target.name) w += x.weight;
+        } else if (target.kind === 'family') {
+          if (x.family !== undefined && genreKey(x.family) === targetKey) w += x.weight;
         } else if (target.kind === 'style') {
           if (genreKey(x.style) === targetKey) w += x.weight;
         } else {
@@ -557,7 +568,7 @@ export function genreFirsts(
       const g = byArtist.get(s.key);
       if (!g?.genres.length) continue;
       for (const x of g.genres) {
-        const group = x.parent || NOT_GROUPED;
+        const group = shareGroup(x);
         if (firstByGroup.has(group)) continue;
         let set = actsByGroup.get(group);
         if (!set) actsByGroup.set(group, (set = new Set()));
@@ -690,7 +701,7 @@ export function genreMilestones(
       knownSets += 1;
       const seenGroups = new Set<string>();
       for (const x of g.genres) {
-        const group = x.parent || NOT_GROUPED;
+        const group = shareGroup(x);
         if (seenGroups.has(group)) continue;
         seenGroups.add(group);
         const next = (counts.get(group) ?? 0) + 1;
@@ -1199,7 +1210,7 @@ export function peopleGenres(
     for (const s of e.seen) {
       const g = byArtist.get(s.key);
       if (!g?.genres.length) continue;
-      for (const x of g.genres) showGroups.add(x.parent || NOT_GROUPED);
+      for (const x of g.genres) showGroups.add(shareGroup(x));
     }
     if (!showGroups.size) continue;
 
@@ -1249,6 +1260,7 @@ export function peopleGenres(
 export interface GenreTreeNode {
   key: string;
   name: string;
+  level?: GenreLevel; // taxonomy tree only: macro, family or genre (absent: umbrella tree)
   sets: number;
   seen: boolean;
   children: GenreTreeNode[];
@@ -1259,6 +1271,100 @@ export interface GenreTreeRoot extends GenreTreeNode {
   totalBranches: number;
 }
 
+// The taxonomy tree (docs/specs/genre-taxonomy-phase-a.md section 7): macro, then family,
+// then genre. A genre with no family, or a family with no macro, sits under "Not grouped",
+// the same as its resolved macro or family. Counts use the vocabulary's links only.
+const NONE_MACRO_KEY = 'macro:';
+function taxonomyTree(
+  vocab: GenreVocabulary,
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  today?: string,
+): GenreTreeRoot[] {
+  const resolver = genreResolver(vocab, [], []);
+  const went = today
+    ? wentTo(events, today)
+    : events.filter((e) => e.attendance !== 'planned' && e.attendance !== 'missed');
+  const counts = new Map<string, number>();
+  for (const e of went) {
+    for (const s of e.seen) {
+      const g = byArtist.get(s.key);
+      if (!g?.genres.length) continue;
+      const keys = new Set<string>();
+      for (const x of g.genres) {
+        const r = resolver.resolve(x.style);
+        if (!r.key) continue;
+        keys.add(r.key);
+        if (r.family) keys.add(r.family.key);
+        keys.add(r.macro?.key ?? NONE_MACRO_KEY);
+      }
+      for (const k of keys) counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+  }
+
+  const macros = vocab.genres.filter((g) => levelOf(g) === 'macro');
+  const families = vocab.genres.filter((g) => levelOf(g) === 'family');
+  const genres = vocab.genres.filter((g) => levelOf(g) === 'genre');
+  const macroKeys = new Set(macros.map((m) => m.key));
+  const familyKeys = new Set(families.map((f) => f.key));
+  const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
+
+  const node = (g: VocabGenre, level: GenreLevel, children: GenreTreeNode[]): GenreTreeNode => {
+    const sets = counts.get(g.key) ?? 0;
+    return { key: g.key, name: g.name, level, sets, seen: sets > 0, children };
+  };
+  const familyNode = (f: VocabGenre): GenreTreeNode =>
+    node(
+      f,
+      'family',
+      genres
+        .filter((g) => g.primaryParent === f.key)
+        .sort(byName)
+        .map((g) => node(g, 'genre', [])),
+    );
+
+  const countBranches = (nodes: GenreTreeNode[]): { seen: number; total: number } => {
+    let seen = 0;
+    let total = 0;
+    for (const n of nodes) {
+      total += 1;
+      if (n.seen) seen += 1;
+      const sub = countBranches(n.children);
+      seen += sub.seen;
+      total += sub.total;
+    }
+    return { seen, total };
+  };
+
+  const macroRoots: GenreTreeNode[] = macros
+    .sort(byName)
+    .map((m) =>
+      node(
+        m,
+        'macro',
+        families
+          .filter((f) => f.primaryParent === m.key)
+          .sort(byName)
+          .map(familyNode),
+      ),
+    );
+  const noneChildren: GenreTreeNode[] = [
+    ...families.filter((f) => !f.primaryParent || !macroKeys.has(f.primaryParent)).map(familyNode),
+    ...genres
+      .filter((g) => !g.primaryParent || !familyKeys.has(g.primaryParent))
+      .map((g) => node(g, 'genre', [])),
+  ].sort(byName);
+  const noneSets = counts.get(NONE_MACRO_KEY) ?? 0;
+  const roots: GenreTreeNode[] = [...macroRoots];
+  if (noneChildren.length) {
+    roots.push({ key: NONE_MACRO_KEY, name: NOT_GROUPED, level: 'macro', sets: noneSets, seen: noneSets > 0, children: noneChildren });
+  }
+  return roots.map((n) => {
+    const { seen, total } = countBranches(n.children);
+    return { ...n, seenBranches: seen, totalBranches: total };
+  });
+}
+
 export function genreTree(
   vocab: GenreVocabulary | undefined,
   events: LoggedEvent[],
@@ -1266,6 +1372,7 @@ export function genreTree(
   today?: string,
 ): GenreTreeRoot[] {
   if (!vocab?.genres.length) return [];
+  if (vocab.genres.some((g) => levelOf(g) === 'macro')) return taxonomyTree(vocab, events, byArtist, today);
   const { names, ups } = buildUmbrellaLookup(vocab);
   if (!names.size) return [];
 
