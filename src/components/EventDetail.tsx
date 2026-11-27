@@ -197,8 +197,8 @@ const NotesReadRow: React.FC<{
 const input =
   'w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-text placeholder-text-faint focus:border-accent focus:outline-none';
 const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-text-muted';
-// A card's own title, as in the design: plain words, not small capitals.
-const cardTitle = 'text-base font-semibold text-text';
+// A card's own title: the poster heading of the landing look (docs/specs/landing-look.md).
+const cardTitle = 'poster-head text-2xl text-text';
 const card = 'scroll-mt-16 space-y-3 rounded-card border border-line bg-surface-1 p-4';
 // A card under folder tabs: square on top, with the tab row's stronger line.
 const tabbedCard = 'scroll-mt-16 space-y-3 rounded-b-card border border-t-0 border-line-strong bg-surface-1 p-4';
