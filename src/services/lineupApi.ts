@@ -24,7 +24,7 @@ import type { CityPoint, PlaceGuess } from '../server/events/place';
 import type { GenreVocabCsvPreview, GenreVocabCsvRow } from '../server/events/genreVocabCsv';
 import type { GenreRelationsCsvPreview, GenreRelationsCsvRow } from '../server/events/genreRelationsCsv';
 import type { LineupLinksPreview } from '../server/events/genreRoutes';
-import type { ArtistOrbitChange } from '../server/events/artistOrbits';
+import type { ArtistOrbit, ArtistOrbitChange } from '../server/events/artistOrbits';
 import type { OrbitsCsvPreview } from '../server/events/artistOrbitsCsv';
 import type { ArtistGenres, GenreCollision, GenreMapEntry, GenreRelationType, GenreVocabChange, GenreVocabulary, KnownGenre } from '../server/events/genreTypes';
 import type { GenreMergePlan } from '../server/events/genreVocabularyManage';
@@ -461,6 +461,8 @@ export const accountApi = {
 
 // Artist orbits (docs/specs/genre-taxonomy-release-3.md section 4). The owner's CSV: the file replaces the whole set.
 export const orbitsApi = {
+  // The orbits a member may see (the owner's list also carries the recent changes, which are not read here).
+  list: () => request<{ orbits: ArtistOrbit[] }>('/api/artist-orbits').then((r) => r.orbits),
   // The CSV text of the orbits as they are stored (the browser downloads it).
   csvExport: async (): Promise<string> => {
     const init = await outgoing();
