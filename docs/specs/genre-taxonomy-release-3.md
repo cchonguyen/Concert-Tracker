@@ -35,9 +35,9 @@ One sentence is added to AGENTS.md's genre rule: "Artist orbits (`artist_orbits`
 `supabase/migrations/0064_artist_orbits.sql`:
 
 - `artist_orbits`: `id text primary key`, `anchor_keys text[]` (2 to 4), `working_label text null`, `parent_genre_key text null` (references `genres.key`), `origin text` check in (`curated`, `lineup_cluster`, `hybrid`), `updated_at`.
-- `artist_orbit_members`: `orbit_id` (cascade), `artist_key`, `centrality numeric` check in (1.0, 0.5, 0.25), primary key (`orbit_id`, `artist_key`). Every anchor is also a member with centrality 1.0, which a check trigger enforces.
+- `artist_orbit_members`: `orbit_id` (cascade), `artist_key`, `centrality numeric` check in (1.0, 0.5, 0.25), primary key (`orbit_id`, `artist_key`). Every anchor is also a member with centrality 1.0: the write function adds a missing anchor at 1.0 and refuses an anchor listed at another centrality.
 - `artist_orbit_changes`: `id`, `old jsonb`, `new jsonb`, `actor`, `reason`, `at`, `undone_at`, like `artist_genre_changes`.
-- RLS the same as `genres`: members read, only the service role writes.
+- RLS on with no policies, the same as `genres`: only the server reads and writes, through `artist_orbits_images`, `artist_orbits_write` and `artist_orbits_undo` (service role only).
 - The PR is held until Charlie says it is applied.
 
 ## 3. Orbit store and write path (Slice 43.2)
