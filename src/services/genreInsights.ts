@@ -2,7 +2,8 @@ import type { LoggedEvent } from '../server/events/types';
 import { attendanceOf, wentTo } from '../server/events/attendance';
 import type { ArtistGenres, GenreVocabulary } from '../server/events/genreTypes';
 import { genreKey, genresUnder, NOT_GROUPED, umbrellaClosure } from '../server/events/genreVocabulary';
-import { umbrellaNames } from './genres';
+import { eventScale, type LineupFacts } from '../server/events/scale';
+import { genreMix, umbrellaNames } from './genres';
 
 // Pure browser-side genre maths (docs/specs/genre-explore.md sections 5 and 6).
 // Never reads the system clock: `today` (YYYY-MM-DD) is always passed in.
@@ -17,6 +18,29 @@ export const COOLING_LIMIT = 2;
 export const GONE_QUIET_MIN_SETS = 5;
 export const GONE_QUIET_MONTHS = 18;
 export const COMING_UP_LIMIT = 3;
+export const FIRSTS_MIN_SETS = 10;
+export const MILESTONE_MARKS = [10, 25, 50, 100, 250] as const;
+export const MILESTONE_NEAR_WITHIN = 5;
+export const MILESTONE_LATEST_LIMIT = 4;
+export const TEN_YEARS_MONTHS = 120;
+export const LABEL_MIN_SETS = 30;
+export const LABEL_SHAPE_SHIFTER_RECENT_MIN = 10;
+export const LABEL_DEVOTED_SHARE = 0.60;
+export const LABEL_DOUBLE_ACT_COMBINED = 0.75;
+export const LABEL_DOUBLE_ACT_EACH = 0.25;
+export const LABEL_DEEP_DIVER_SHARE = 0.25;
+export const LABEL_EXPLORER_MIN_GROUPS = 5;
+export const LABEL_EXPLORER_MAX_SHARE = 0.40;
+export const YEARS_MIN_SETS = 10;
+export const YEARS_MIN_COUNTED = 3;
+export const YEARS_TOP_GROUPS = 5;
+export const SPLIT_MIN_SETS = 10;
+export const SEASON_MIN_LEAD_POINTS = 0.05;
+export const YEAR_GENRES_MIN_SETS = 10;
+export const YEAR_FAVOURITES_MIN = 3;
+export const PEOPLE_MIN_SHOWS = 3;
+export const PEOPLE_MIN_GROUP_SHOWS = 3;
+export const PEOPLE_HEADLINE_SHARE = 0.50;
 
 export type GenrePeriod = 'all' | 'last12' | number;
 export type GenreTarget = { kind: 'group' | 'style' | 'umbrella'; name: string };
@@ -487,4 +511,835 @@ export function comingUp(
   }
 
   return out;
+}
+
+export interface GenreFirstItem {
+  group: string;
+  year: number;
+  acts: string[];
+  moreCount: number;
+  eventName: string;
+  eventId: string;
+  date: string;
+  sortDate: string;
+}
+
+export interface GenreFirstsResult {
+  knownSets: number;
+  items: GenreFirstItem[];
+}
+
+export function genreFirsts(
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  _vocab: GenreVocabulary | undefined,
+  today: string,
+): GenreFirstsResult {
+  const went = wentTo(events, today);
+  let knownSets = 0;
+  const dated: Array<{ e: LoggedEvent; sortDate: string; displayDate: string }> = [];
+
+  for (const e of went) {
+    for (const s of e.seen) {
+      if (byArtist.get(s.key)?.genres.length) knownSets += 1;
+    }
+    const sortDate = eventSortDate(e);
+    const displayDate = eventDisplayDate(e);
+    if (sortDate && displayDate) dated.push({ e, sortDate, displayDate });
+  }
+
+  dated.sort((a, b) => a.sortDate.localeCompare(b.sortDate) || a.e.name.localeCompare(b.e.name));
+
+  const firstByGroup = new Map<string, GenreFirstItem>();
+  for (const { e, sortDate, displayDate } of dated) {
+    const actsByGroup = new Map<string, Set<string>>();
+    for (const s of e.seen) {
+      const g = byArtist.get(s.key);
+      if (!g?.genres.length) continue;
+      for (const x of g.genres) {
+        const group = x.parent || NOT_GROUPED;
+        if (firstByGroup.has(group)) continue;
+        let set = actsByGroup.get(group);
+        if (!set) actsByGroup.set(group, (set = new Set()));
+        set.add(s.name);
+      }
+    }
+    for (const [group, actSet] of actsByGroup) {
+      const sorted = [...actSet].sort((a, b) => a.localeCompare(b));
+      firstByGroup.set(group, {
+        group,
+        year: Number(sortDate.slice(0, 4)),
+        acts: sorted.slice(0, 2),
+        moreCount: Math.max(0, sorted.length - 2),
+        eventName: e.name,
+        eventId: e.id,
+        date: displayDate,
+        sortDate,
+      });
+    }
+  }
+
+  const items = [...firstByGroup.values()].sort(
+    (a, b) => a.sortDate.localeCompare(b.sortDate) || a.group.localeCompare(b.group),
+  );
+  return { knownSets, items };
+}
+
+export interface NewThisYearItem {
+  key: string;
+  name: string;
+  firstAct: string;
+  firstEvent: string;
+  firstEventId: string;
+  firstDate: string;
+  firstSortDate: string;
+}
+
+export function newThisYear(
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  _vocab: GenreVocabulary | undefined,
+  today: string,
+): NewThisYearItem[] {
+  const went = wentTo(events, today);
+  const currentYear = Number(today.slice(0, 4));
+  const dated = went
+    .map((e) => ({ e, sortDate: eventSortDate(e), displayDate: eventDisplayDate(e) }))
+    .filter((x): x is { e: LoggedEvent; sortDate: string; displayDate: string } => Boolean(x.sortDate && x.displayDate))
+    .sort((a, b) => a.sortDate.localeCompare(b.sortDate) || a.e.name.localeCompare(b.e.name));
+
+  const firstByStyle = new Map<string, NewThisYearItem>();
+  for (const { e, sortDate, displayDate } of dated) {
+    for (const s of e.seen) {
+      const g = byArtist.get(s.key);
+      if (!g?.genres.length) continue;
+      for (const x of g.genres) {
+        const k = genreKey(x.style);
+        if (!k || firstByStyle.has(k)) continue;
+        firstByStyle.set(k, {
+          key: k,
+          name: x.style,
+          firstAct: s.name,
+          firstEvent: e.name,
+          firstEventId: e.id,
+          firstDate: displayDate,
+          firstSortDate: sortDate,
+        });
+      }
+    }
+  }
+
+  return [...firstByStyle.values()]
+    .filter((item) => Number(item.firstSortDate.slice(0, 4)) === currentYear)
+    .sort((a, b) => a.firstSortDate.localeCompare(b.firstSortDate) || a.name.localeCompare(b.name));
+}
+
+export interface GenreMilestoneReached {
+  group: string;
+  mark: number;
+  actName: string;
+  eventName: string;
+  eventId: string;
+  date: string | null;
+  sortDate: string;
+}
+
+export interface GenreAnniversary {
+  group: string;
+  years: number;
+}
+
+export interface GenreNextUp {
+  group: string;
+  mark: number;
+  remaining: number;
+}
+
+export interface GenreMilestonesResult {
+  knownSets: number;
+  reached: GenreMilestoneReached[];
+  anniversaries: GenreAnniversary[];
+  nextUp: GenreNextUp | null;
+}
+
+export function genreMilestones(
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  _vocab: GenreVocabulary | undefined,
+  today: string,
+): GenreMilestonesResult {
+  const went = wentTo(events, today).sort(
+    (a, b) => (eventSortDate(a) ?? '9999-99-99').localeCompare(eventSortDate(b) ?? '9999-99-99') || a.name.localeCompare(b.name),
+  );
+  const recentStart = shiftDays(today, -(LATELY_WINDOW_DAYS - 1));
+  const tenYearsCutoff = shiftMonths(today, -TEN_YEARS_MONTHS);
+
+  let knownSets = 0;
+  const counts = new Map<string, number>();
+  const firstDateByGroup = new Map<string, string>();
+  const hasRecentByGroup = new Set<string>();
+  const allReached: GenreMilestoneReached[] = [];
+
+  for (const e of went) {
+    const sortDate = eventSortDate(e);
+    const displayDate = eventDisplayDate(e);
+    const inRecent = Boolean(sortDate && sortDate >= recentStart && sortDate <= today);
+    for (const s of e.seen) {
+      const g = byArtist.get(s.key);
+      if (!g?.genres.length) continue;
+      knownSets += 1;
+      const seenGroups = new Set<string>();
+      for (const x of g.genres) {
+        const group = x.parent || NOT_GROUPED;
+        if (seenGroups.has(group)) continue;
+        seenGroups.add(group);
+        const next = (counts.get(group) ?? 0) + 1;
+        counts.set(group, next);
+        if (sortDate && !firstDateByGroup.has(group)) firstDateByGroup.set(group, sortDate);
+        if (inRecent) hasRecentByGroup.add(group);
+        if ((MILESTONE_MARKS as readonly number[]).includes(next) && sortDate) {
+          allReached.push({
+            group,
+            mark: next,
+            actName: s.name,
+            eventName: e.name,
+            eventId: e.id,
+            date: displayDate,
+            sortDate,
+          });
+        }
+      }
+    }
+  }
+
+  const reached = allReached
+    .sort((a, b) => b.sortDate.localeCompare(a.sortDate) || b.mark - a.mark || a.group.localeCompare(b.group))
+    .slice(0, MILESTONE_LATEST_LIMIT);
+
+  const anniversaries: GenreAnniversary[] = [];
+  for (const [group, first] of firstDateByGroup) {
+    if (first <= tenYearsCutoff && hasRecentByGroup.has(group)) {
+      const years = Math.max(10, Number(today.slice(0, 4)) - Number(first.slice(0, 4)));
+      anniversaries.push({ group, years });
+    }
+  }
+  anniversaries.sort((a, b) => b.years - a.years || a.group.localeCompare(b.group));
+
+  let nextUp: GenreNextUp | null = null;
+  for (const [group, count] of counts) {
+    const mark = MILESTONE_MARKS.find((m) => m > count && m - count <= MILESTONE_NEAR_WITHIN);
+    if (mark === undefined) continue;
+    const remaining = mark - count;
+    if (!nextUp || remaining < nextUp.remaining || (remaining === nextUp.remaining && mark < nextUp.mark)) {
+      nextUp = { group, mark, remaining };
+    }
+  }
+
+  return { knownSets, reached, anniversaries, nextUp };
+}
+
+export interface GenreRangeResult {
+  knownSets: number;
+  styleCount: number;
+  seenGroupCount: number;
+  totalGroupCount: number;
+  squares: Array<{ group: string; seen: boolean }>;
+  missingGroups: string[];
+  topGroup: { name: string; sets: number; share: number } | null;
+}
+
+export function genreRange(
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  vocab: GenreVocabulary | undefined,
+  today: string,
+  mapGroups?: string[],
+): GenreRangeResult {
+  const went = wentTo(events, today);
+  const mix = genreMix(went, byArtist, vocab);
+  const seenSet = new Set(mix.parents.map((p) => p.name).filter((g) => g !== NOT_GROUPED));
+  const orderedGroups = mapGroups?.length
+    ? [...new Set(mapGroups.filter((g) => g && g !== NOT_GROUPED))]
+    : mix.parents.map((p) => p.name).filter((g) => g !== NOT_GROUPED);
+
+  return {
+    knownSets: mix.known,
+    styleCount: mix.styles.length,
+    seenGroupCount: orderedGroups.filter((g) => seenSet.has(g)).length,
+    totalGroupCount: orderedGroups.length,
+    squares: orderedGroups.map((group) => ({ group, seen: seenSet.has(group) })),
+    missingGroups: orderedGroups.filter((g) => !seenSet.has(g)),
+    topGroup: mix.parents[0] ?? null,
+  };
+}
+
+export type GenreLabelName = 'Shape-shifter' | 'Devoted' | 'Double act' | 'Deep diver' | 'Explorer' | 'All-rounder';
+
+export interface GenreLabelResult {
+  label: GenreLabelName;
+  rule: string;
+}
+
+export function genreLabel(
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  vocab: GenreVocabulary | undefined,
+  today: string,
+): GenreLabelResult | null {
+  const went = wentTo(events, today);
+  const allMix = genreMix(went, byArtist, vocab);
+  if (allMix.known < LABEL_MIN_SETS) return null;
+
+  const recentMix = genreMix(periodEvents(went, 'last12', today), byArtist, vocab);
+  if (
+    recentMix.known >= LABEL_SHAPE_SHIFTER_RECENT_MIN &&
+    recentMix.parents[0] &&
+    allMix.parents[0] &&
+    recentMix.parents[0].name !== allMix.parents[0].name
+  ) {
+    return { label: 'Shape-shifter', rule: "Your top genre lately isn't your all-time top genre." };
+  }
+
+  const p0 = allMix.parents[0];
+  const p1 = allMix.parents[1];
+  if (p0 && p0.share >= LABEL_DEVOTED_SHARE) {
+    return { label: 'Devoted', rule: 'One genre is 60% or more of your sets.' };
+  }
+  if (p0 && p1 && p0.share + p1.share >= LABEL_DOUBLE_ACT_COMBINED && p0.share >= LABEL_DOUBLE_ACT_EACH && p1.share >= LABEL_DOUBLE_ACT_EACH) {
+    return { label: 'Double act', rule: 'Two genres make up three quarters of your sets.' };
+  }
+  if ((allMix.styles[0]?.share ?? 0) >= LABEL_DEEP_DIVER_SHARE) {
+    return { label: 'Deep diver', rule: 'One style is a quarter of everything you see.' };
+  }
+  const namedGroups = allMix.parents.filter((p) => p.name !== NOT_GROUPED);
+  if (namedGroups.length >= LABEL_EXPLORER_MIN_GROUPS && (p0?.share ?? 0) <= LABEL_EXPLORER_MAX_SHARE) {
+    return { label: 'Explorer', rule: 'No genre is over 40%, across 5 or more groups.' };
+  }
+  return { label: 'All-rounder', rule: 'A bit of everything.' };
+}
+
+export interface GenreYearRow {
+  year: number;
+  knownSets: number;
+  thin: boolean;
+  topGroup: string | null;
+  shares: Record<string, number>;
+}
+
+export interface GenreByYearResult {
+  groups: string[];
+  hasOther: boolean;
+  countedYears: number;
+  years: GenreYearRow[];
+}
+
+export function genreByYear(
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  vocab: GenreVocabulary | undefined,
+  today: string,
+): GenreByYearResult {
+  const went = wentTo(events, today);
+  const allMix = genreMix(went, byArtist, vocab);
+  const groups = allMix.parents.slice(0, YEARS_TOP_GROUPS).map((p) => p.name);
+  const topSet = new Set(groups);
+
+  const byYr = new Map<number, LoggedEvent[]>();
+  for (const e of went) {
+    const y = eventYearValue(e);
+    if (!y) continue;
+    let list = byYr.get(y);
+    if (!list) byYr.set(y, (list = []));
+    list.push(e);
+  }
+
+  let hasOther = false;
+  const years: GenreYearRow[] = [];
+  for (const y of [...byYr.keys()].sort((a, b) => a - b)) {
+    const mix = genreMix(byYr.get(y)!, byArtist, vocab);
+    if (mix.known === 0) continue;
+    const shares: Record<string, number> = {};
+    for (const g of groups) shares[g] = 0;
+    let other = 0;
+    for (const p of mix.parents) {
+      if (topSet.has(p.name)) shares[p.name] = p.share;
+      else other += p.share;
+    }
+    if (other > 0) {
+      hasOther = true;
+      shares.Other = other;
+    }
+    years.push({
+      year: y,
+      knownSets: mix.known,
+      thin: mix.known < YEARS_MIN_SETS,
+      topGroup: mix.parents[0]?.name ?? null,
+      shares,
+    });
+  }
+
+  return {
+    groups,
+    hasOther,
+    countedYears: years.filter((y) => !y.thin).length,
+    years,
+  };
+}
+
+export function genreStoryLine(byYear: GenreByYearResult): string | null {
+  if (byYear.countedYears < YEARS_MIN_COUNTED) return null;
+  const counted = byYear.years.filter((y) => !y.thin && y.topGroup);
+  if (counted.length < YEARS_MIN_COUNTED) return null;
+
+  const firstLeader = counted[0].topGroup!;
+  if (counted.every((y) => y.topGroup === firstLeader)) {
+    return `${firstLeader} has led every year since ${counted[0].year}.`;
+  }
+
+  for (let i = counted.length - 2; i >= 1; i--) {
+    const prev = counted[i - 1].topGroup!;
+    const cur = counted[i].topGroup!;
+    const next = counted[i + 1].topGroup!;
+    if (cur !== prev && next === cur) {
+      return `You moved from ${prev.toLowerCase()} to ${cur.toLowerCase()} around ${counted[i].year}.`;
+    }
+  }
+
+  return 'Your top genre changes from year to year.';
+}
+
+export interface GenreSplitBar {
+  label: string;
+  knownSets: number;
+  topGroup: string;
+  segments: Array<{ group: string; sets: number; share: number }>;
+}
+
+export interface GenreByKindResult {
+  bars: GenreSplitBar[];
+  headline: string | null;
+}
+
+function pluralKind(label: string): string {
+  if (label === 'Concert') return 'Concerts';
+  if (label === 'Festival') return 'Festivals';
+  return label.toLowerCase().endsWith('s') ? label : `${label}s`;
+}
+
+export function genreByKind(
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  vocab: GenreVocabulary | undefined,
+  today: string,
+  editions?: Record<string, LineupFacts>,
+): GenreByKindResult {
+  const went = wentTo(events, today);
+  const buckets = new Map<string, { label: string; events: LoggedEvent[] }>();
+
+  const pushBucket = (key: string, label: string, e: LoggedEvent) => {
+    let b = buckets.get(key);
+    if (!b) buckets.set(key, (b = { label, events: [] }));
+    b.events.push(e);
+  };
+
+  for (const e of went) {
+    const scale = eventScale(e, editions?.[e.id]);
+    if (scale.kind === 'concert') pushBucket('kind:concert', 'Concert', e);
+    else if (scale.kind === 'festival') pushBucket('kind:festival', 'Festival', e);
+
+    const fmt = e.format?.trim();
+    if (fmt) pushBucket(`fmt:${fmt.toLowerCase()}`, fmt, e);
+  }
+
+  const bars: GenreSplitBar[] = [];
+  for (const b of buckets.values()) {
+    const mix = genreMix(b.events, byArtist, vocab);
+    if (mix.known < SPLIT_MIN_SETS || !mix.parents.length) continue;
+    bars.push({
+      label: b.label,
+      knownSets: mix.known,
+      topGroup: mix.parents[0].name,
+      segments: mix.parents.map((p) => ({ group: p.name, sets: p.sets, share: p.share })),
+    });
+  }
+
+  bars.sort((a, b) => b.knownSets - a.knownSets || a.label.localeCompare(b.label));
+
+  let headline: string | null = null;
+  if (bars.length >= 2) {
+    const [a, b] = bars;
+    if (a.topGroup === b.topGroup) {
+      headline = `${a.topGroup} leads at every kind of night.`;
+    } else {
+      headline = `${pluralKind(a.label)} are for ${a.topGroup.toLowerCase()}. ${pluralKind(b.label)} are for ${b.topGroup.toLowerCase()}.`;
+    }
+  }
+
+  return { bars, headline };
+}
+
+export interface GenreSeasonTile {
+  label: 'Dec–Feb' | 'Mar–May' | 'Jun–Aug' | 'Sep–Nov';
+  knownSets: number;
+  enough: boolean;
+  topGroup: { name: string; sets: number; share: number } | null;
+}
+
+export interface GenreBySeasonResult {
+  tiles: GenreSeasonTile[];
+  headline: string | null;
+}
+
+const SEASON_DEFS: Array<{ label: GenreSeasonTile['label']; months: number[] }> = [
+  { label: 'Dec–Feb', months: [12, 1, 2] },
+  { label: 'Mar–May', months: [3, 4, 5] },
+  { label: 'Jun–Aug', months: [6, 7, 8] },
+  { label: 'Sep–Nov', months: [9, 10, 11] },
+];
+
+function eventMonthValue(e: Pick<LoggedEvent, 'startDate' | 'month'>): number | null {
+  if (e.startDate) return Number(e.startDate.slice(5, 7));
+  return e.month ?? null;
+}
+
+export function genreBySeason(
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  vocab: GenreVocabulary | undefined,
+  today: string,
+): GenreBySeasonResult {
+  const went = wentTo(events, today);
+  const allMix = genreMix(went, byArtist, vocab);
+  const allShare = new Map(allMix.parents.map((p) => [p.name, p.share]));
+
+  let bestLead = 0;
+  let headline: string | null = null;
+
+  const tiles: GenreSeasonTile[] = SEASON_DEFS.map(({ label, months }) => {
+    const evs = went.filter((e) => {
+      const m = eventMonthValue(e);
+      return m !== null && months.includes(m);
+    });
+    const mix = genreMix(evs, byArtist, vocab);
+    const enough = mix.known >= SPLIT_MIN_SETS;
+    const topGroup = enough && mix.parents[0] ? mix.parents[0] : null;
+    if (topGroup) {
+      const lift = topGroup.share - (allShare.get(topGroup.name) ?? 0);
+      if (lift >= SEASON_MIN_LEAD_POINTS && lift > bestLead) {
+        bestLead = lift;
+        headline = `${label} is when you go for ${topGroup.name.toLowerCase()}.`;
+      }
+    }
+    return { label, knownSets: mix.known, enough, topGroup };
+  });
+
+  return { tiles, headline };
+}
+
+export interface YearGenreStyle {
+  name: string;
+  sets: number;
+  share: number;
+  topAct: string | null;
+}
+
+export interface YearGenresResult {
+  year: number;
+  nights: number;
+  knownSets: number;
+  totalSets: number;
+  topStyle: YearGenreStyle;
+  topStyles: YearGenreStyle[];
+  newestToYou: { name: string; actName: string; date: string } | null;
+  distinctStyles: number;
+  prevDistinctStyles: number | null;
+  biggestChange: { name: string; beforeSets: number; afterSets: number; delta: number } | null;
+  favourites: { total: number; topStyle: string; topCount: number } | null;
+}
+
+export function yearGenres(
+  events: LoggedEvent[],
+  year: number,
+  byArtist: Map<string, ArtistGenres>,
+  vocab: GenreVocabulary | undefined,
+  today: string,
+): YearGenresResult | null {
+  const went = wentTo(events, today);
+  const yearEvs = went.filter((e) => eventYearValue(e) === year);
+  const mix = genreMix(yearEvs, byArtist, vocab);
+  if (mix.known < YEAR_GENRES_MIN_SETS || !mix.styles.length) return null;
+
+  const topStyles: YearGenreStyle[] = mix.styles.slice(0, 5).map((s) => ({
+    name: s.name,
+    sets: s.sets,
+    share: s.share,
+    topAct: artistsBehind(yearEvs, byArtist, vocab, { kind: 'style', name: s.name })[0]?.name ?? null,
+  }));
+
+  const datedAll = went
+    .map((e) => ({ e, sortDate: eventSortDate(e), displayDate: eventDisplayDate(e) }))
+    .filter((x): x is { e: LoggedEvent; sortDate: string; displayDate: string } => Boolean(x.sortDate && x.displayDate))
+    .sort((a, b) => a.sortDate.localeCompare(b.sortDate) || a.e.name.localeCompare(b.e.name));
+
+  const firstByStyle = new Map<string, { name: string; actName: string; date: string; sortDate: string }>();
+  for (const { e, sortDate, displayDate } of datedAll) {
+    for (const s of e.seen) {
+      const g = byArtist.get(s.key);
+      if (!g?.genres.length) continue;
+      for (const x of g.genres) {
+        const k = genreKey(x.style);
+        if (!k || firstByStyle.has(k)) continue;
+        firstByStyle.set(k, { name: x.style, actName: s.name, date: displayDate, sortDate });
+      }
+    }
+  }
+
+  const newestMatch = [...firstByStyle.values()]
+    .filter((x) => Number(x.sortDate.slice(0, 4)) === year)
+    .sort((a, b) => a.sortDate.localeCompare(b.sortDate) || a.name.localeCompare(b.name))[0];
+
+  const prevEvs = went.filter((e) => eventYearValue(e) === year - 1);
+  const prevMix = genreMix(prevEvs, byArtist, vocab);
+  let biggestChange: YearGenresResult['biggestChange'] = null;
+  if (prevMix.known > 0) {
+    const curMap = new Map(mix.styles.map((s) => [genreKey(s.name), s]));
+    const prevMap = new Map(prevMix.styles.map((s) => [genreKey(s.name), s]));
+    const allKeys = new Set([...curMap.keys(), ...prevMap.keys()]);
+    let bestAbs = 0;
+    for (const k of allKeys) {
+      const afterSets = curMap.get(k)?.sets ?? 0;
+      const beforeSets = prevMap.get(k)?.sets ?? 0;
+      const delta = afterSets - beforeSets;
+      const abs = Math.abs(delta);
+      const name = curMap.get(k)?.name ?? prevMap.get(k)?.name ?? k;
+      if (abs > bestAbs) {
+        bestAbs = abs;
+        biggestChange = { name, beforeSets, afterSets, delta };
+      }
+    }
+  }
+
+  let favTotal = 0;
+  const favCounts = new Map<string, { name: string; count: number }>();
+  for (const e of yearEvs) {
+    for (const s of e.seen) {
+      if (!s.favourite) continue;
+      const g = byArtist.get(s.key);
+      if (!g?.genres.length) continue;
+      favTotal += 1;
+      const seenKeys = new Set<string>();
+      for (const x of g.genres) {
+        const k = genreKey(x.style);
+        if (!k || seenKeys.has(k)) continue;
+        seenKeys.add(k);
+        const cur = favCounts.get(k);
+        if (cur) cur.count += 1;
+        else favCounts.set(k, { name: x.style, count: 1 });
+      }
+    }
+  }
+  const topFav = [...favCounts.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))[0];
+
+  return {
+    year,
+    nights: yearEvs.length,
+    knownSets: mix.known,
+    totalSets: mix.sets,
+    topStyle: topStyles[0],
+    topStyles,
+    newestToYou: newestMatch ? { name: newestMatch.name, actName: newestMatch.actName, date: newestMatch.date } : null,
+    distinctStyles: mix.styles.length,
+    prevDistinctStyles: prevMix.known > 0 ? prevMix.styles.length : null,
+    biggestChange,
+    favourites: favTotal >= YEAR_FAVOURITES_MIN && topFav ? { total: favTotal, topStyle: topFav.name, topCount: topFav.count } : null,
+  };
+}
+
+export interface PersonGenreItem {
+  id: string;
+  name: string;
+  shows: number;
+  topGroups: Array<{ group: string; count: number; totalWithAnyone: number }>;
+}
+
+export interface PeopleGenresResult {
+  people: PersonGenreItem[];
+  headline: string | null;
+}
+
+export function peopleGenres(
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  _vocab: GenreVocabulary | undefined,
+  people: Map<string, string>,
+  today?: string,
+): PeopleGenresResult {
+  const went = today
+    ? wentTo(events, today)
+    : events.filter((e) => e.attendance !== 'planned' && e.attendance !== 'missed');
+
+  const groupWithAnyone = new Map<string, number>();
+  const personStats = new Map<string, { id: string; name: string; shows: number; groups: Map<string, number> }>();
+
+  for (const e of went) {
+    if (e.peopleLocked) continue;
+
+    const resolvedIds: Array<{ id: string; name: string }> = [];
+    const seenPerson = new Set<string>();
+    const rawIds = e.personIds?.length ? e.personIds : e.companions;
+    for (const pid of rawIds) {
+      const name = people.get(pid);
+      if (!name || seenPerson.has(pid)) continue;
+      seenPerson.add(pid);
+      resolvedIds.push({ id: pid, name });
+    }
+    if (!resolvedIds.length) continue;
+
+    const showGroups = new Set<string>();
+    for (const s of e.seen) {
+      const g = byArtist.get(s.key);
+      if (!g?.genres.length) continue;
+      for (const x of g.genres) showGroups.add(x.parent || NOT_GROUPED);
+    }
+    if (!showGroups.size) continue;
+
+    for (const grp of showGroups) {
+      groupWithAnyone.set(grp, (groupWithAnyone.get(grp) ?? 0) + 1);
+    }
+    for (const p of resolvedIds) {
+      let cur = personStats.get(p.id);
+      if (!cur) {
+        cur = { id: p.id, name: p.name, shows: 0, groups: new Map() };
+        personStats.set(p.id, cur);
+      }
+      cur.shows += 1;
+      for (const grp of showGroups) {
+        cur.groups.set(grp, (cur.groups.get(grp) ?? 0) + 1);
+      }
+    }
+  }
+
+  const list: PersonGenreItem[] = [];
+  let bestScore = 0;
+  let headline: string | null = null;
+
+  for (const p of personStats.values()) {
+    if (p.shows < PEOPLE_MIN_SHOWS) continue;
+    const topGroups = [...p.groups]
+      .filter(([, count]) => count >= PEOPLE_MIN_GROUP_SHOWS)
+      .map(([group, count]) => ({ group, count, totalWithAnyone: groupWithAnyone.get(group) ?? count }))
+      .sort((a, b) => b.count - a.count || a.group.localeCompare(b.group))
+      .slice(0, 2);
+
+    for (const g of topGroups) {
+      const share = g.totalWithAnyone ? g.count / g.totalWithAnyone : 0;
+      if (share > PEOPLE_HEADLINE_SHARE && g.count > bestScore) {
+        bestScore = g.count;
+        headline = `${g.group} nights are with ${p.name}.`;
+      }
+    }
+
+    list.push({ id: p.id, name: p.name, shows: p.shows, topGroups });
+  }
+
+  list.sort((a, b) => b.shows - a.shows || a.name.localeCompare(b.name));
+  return { people: list, headline };
+}
+
+export interface GenreTreeNode {
+  key: string;
+  name: string;
+  sets: number;
+  seen: boolean;
+  children: GenreTreeNode[];
+}
+
+export interface GenreTreeRoot extends GenreTreeNode {
+  seenBranches: number;
+  totalBranches: number;
+}
+
+export function genreTree(
+  vocab: GenreVocabulary | undefined,
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  today?: string,
+): GenreTreeRoot[] {
+  if (!vocab?.genres.length) return [];
+  const { names, ups } = buildUmbrellaLookup(vocab);
+  if (!names.size) return [];
+
+  const went = today
+    ? wentTo(events, today)
+    : events.filter((e) => e.attendance !== 'planned' && e.attendance !== 'missed');
+
+  const counts = new Map<string, number>();
+  for (const e of went) {
+    for (const s of e.seen) {
+      const g = byArtist.get(s.key);
+      if (!g?.genres.length) continue;
+      const seenKeys = new Set<string>();
+      for (const x of g.genres) {
+        const k = genreKey(x.style);
+        if (!k) continue;
+        seenKeys.add(k);
+        for (const u of ups(k)) seenKeys.add(u);
+      }
+      for (const k of seenKeys) counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+  }
+
+  const vocabByKey = new Map(vocab.genres.map((g) => [g.key, g]));
+  const childrenOf = new Map<string, string[]>();
+  for (const g of vocab.genres) {
+    for (const u of g.umbrellas) {
+      let list = childrenOf.get(u);
+      if (!list) childrenOf.set(u, (list = []));
+      list.push(g.key);
+    }
+  }
+
+  const buildNode = (key: string, trail: Set<string>): GenreTreeNode => {
+    const sets = counts.get(key) ?? 0;
+    const childKeys = (childrenOf.get(key) ?? [])
+      .filter((c) => !trail.has(c))
+      .sort((a, b) => (vocabByKey.get(a)?.name ?? a).localeCompare(vocabByKey.get(b)?.name ?? b));
+    const nextTrail = new Set(trail);
+    nextTrail.add(key);
+    return {
+      key,
+      name: vocabByKey.get(key)?.name ?? names.get(key) ?? key,
+      sets,
+      seen: sets > 0,
+      children: childKeys.map((c) => buildNode(c, nextTrail)),
+    };
+  };
+
+  const countBranches = (nodes: GenreTreeNode[]): { seen: number; total: number } => {
+    let seen = 0;
+    let total = 0;
+    for (const n of nodes) {
+      total += 1;
+      if (n.seen) seen += 1;
+      const sub = countBranches(n.children);
+      seen += sub.seen;
+      total += sub.total;
+    }
+    return { seen, total };
+  };
+
+  // Top-level umbrellas are umbrellas that do not sit under any other umbrella.
+  const roots = [...names.keys()]
+    .filter((u) => !(vocabByKey.get(u)?.umbrellas.length))
+    .sort((a, b) => (names.get(a) ?? a).localeCompare(names.get(b) ?? b));
+
+  return roots.map((u) => {
+    const node = buildNode(u, new Set([u]));
+    const { seen, total } = countBranches(node.children);
+    return {
+      ...node,
+      seenBranches: seen,
+      totalBranches: total,
+    };
+  });
 }
