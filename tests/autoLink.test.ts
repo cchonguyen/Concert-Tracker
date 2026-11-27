@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { autoLinkEdition, isAutoLinkCandidate, linkedToEdition, runAutoLink } from '../src/server/canon/autoLink.ts';
+import { autoLinkEdition, editionFilledFrom, isAutoLinkCandidate, linkedToEdition, runAutoLink } from '../src/server/canon/autoLink.ts';
 import { resolveEvent, unlinkEvent } from '../src/server/events/inherit.ts';
 import type { LoggedEvent } from '../src/server/events/types.ts';
 
@@ -89,17 +89,33 @@ test('unlinking an automatic link stops that edition linking again', () => {
   assert.equal(autoLinkEdition(back, [ed()]), null);
 });
 
-test('the run links each member’s matching events through their own store', async () => {
-  const events: Record<string, LoggedEvent[]> = {
-    owner: [ev()],
-    m1: [ev({ id: 'e2' }), ev({ id: 'e3', name: 'Nothing Like It' })],
-  };
+test('the owner event fills only an edition\'s empty facts', () => {
+  const edition = { ...ed({ city: undefined, country: undefined }), performances: [] };
+  const filled = editionFilledFrom(edition, ev({ endDate: '2025-05-01' }));
+  assert.equal(filled?.city, 'Los Angeles');
+  assert.equal(filled?.country, 'United States');
+  assert.equal(filled?.venue, 'Crypto.com Arena');
+  // An end date before the start is never written, and nothing is written over a value.
+  assert.equal(filled?.endDate, undefined);
+  assert.equal(editionFilledFrom({ ...ed(), performances: [] }, ev({ city: 'Inglewood' })), null);
+});
+
+const fakeService = (events: Record<string, LoggedEvent[]>, edition: any) => {
   const written: Record<string, LoggedEvent[]> = {};
   const series = [{ slug: 'tension-tour', name: 'Kylie Minogue: Tension Tour', aliases: ['Tension Tour'] }];
+  const editions: any[] = [];
+  let current = { ...edition, performances: [] as any[] };
   const service: any = {
-    listEditionHeaders: async () => [ed()],
+    listEditionHeaders: async () => [edition],
     listSeries: async () => series,
     getSeries: async (slug: string) => series.find((s) => s.slug === slug) ?? null,
+    getEdition: async (id: string) => (id === current.id ? current : null),
+    upsertEdition: async (e: any) => {
+      current = e;
+      editions.push(e);
+    },
+    recordEditionChange: async () => ({ id: 'c1' }),
+    listEditionInferences: async () => [],
     forUser: ({ userId }: { userId: string }) => ({
       listEvents: async () => events[userId],
       putEvents: async (rows: LoggedEvent[]) => {
@@ -107,18 +123,40 @@ test('the run links each member’s matching events through their own store', as
       },
     }),
   };
-  const report = await runAutoLink(service, [
+  return { service, written, edition: () => current, editions };
+};
+
+test('the run links each member\u2019s matching events through their own store and contributes back', async () => {
+  const events: Record<string, LoggedEvent[]> = {
+    owner: [ev()],
+    m1: [ev({ id: 'e2', seen: [{ key: 'rita ora', name: 'Rita Ora', from: 'you' }] as any }), ev({ id: 'e3', name: 'Nothing Like It' })],
+  };
+  const f = fakeService(events, ed({ city: undefined }));
+  const report = await runAutoLink(f.service, [
     { userId: 'owner', role: 'owner' },
     { userId: 'm1', role: 'member' },
     { userId: 'b', role: 'member', blocked: true },
   ], { now });
-  assert.deepEqual(report, { members: 2, linked: 2, ambiguous: 1 });
-  assert.equal(written.owner[0].editionId, 'ed1');
-  assert.equal(written.owner[0].seriesSlug, 'tension-tour');
-  assert.deepEqual(written.m1.map((e) => e.id), ['e2']);
-  assert.equal(written.b, undefined);
-  // A second run finds nothing left to link.
-  events.owner = written.owner;
-  events.m1 = [...written.m1, events.m1[1]];
-  assert.equal(await runAutoLink(service, [{ userId: 'owner', role: 'owner' }, { userId: 'm1', role: 'member' }], { now }), null);
+  assert.equal(report?.members, 2);
+  assert.equal(report?.linked, 2);
+  assert.equal(report?.ambiguous, 1);
+  assert.deepEqual(report?.contributed, { events: 2, acts: 2, filled: 1 });
+  assert.equal(f.written.owner[0].editionId, 'ed1');
+  assert.equal(f.written.owner[0].seriesSlug, 'tension-tour');
+  assert.equal(f.written.owner[0].details.contributedAt, now.toISOString());
+  assert.deepEqual(f.written.m1.map((e) => e.id), ['e2']);
+  assert.equal(f.written.b, undefined);
+  // Both members' ticks are on the lineup as candidates; only the owner's event filled the empty city.
+  assert.deepEqual(f.edition().performances.map((p: any) => [p.artistKey, p.verification]), [['kylie minogue', 'candidate'], ['rita ora', 'candidate']]);
+  assert.equal(f.edition().city, 'Los Angeles');
+  // A second run finds nothing left to link or contribute.
+  events.owner = f.written.owner;
+  events.m1 = [...f.written.m1, events.m1[1]];
+  assert.equal(await runAutoLink(f.service, [{ userId: 'owner', role: 'owner' }, { userId: 'm1', role: 'member' }], { now }), null);
+});
+
+test('a member\u2019s typed place never fills a verified edition', async () => {
+  const f = fakeService({ m1: [ev({ id: 'e9' })] }, ed({ city: undefined }));
+  await runAutoLink(f.service, [{ userId: 'm1', role: 'member' }], { now });
+  assert.equal(f.edition().city, undefined);
 });
