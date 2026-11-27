@@ -1536,14 +1536,28 @@ export class SupabaseLineupStore implements LineupStore {
   }
 
   async listArtistGenres() {
-    const rows = this.check(await this.db.from('artist_genres').select('*'), 'listArtistGenres (apply 0013_artist_genres.sql)');
-    const shared = ((rows ?? []) as any[]).map(genresFromRow);
+    const shared: ArtistGenres[] = [];
+    for (let from = 0; ; from += 1000) {
+      const page = (this.check(
+        await this.db.from('artist_genres').select('*').order('artist_key').order('source').range(from, from + 999),
+        'listArtistGenres (apply 0013_artist_genres.sql)',
+      ) ?? []) as any[];
+      for (const r of page) shared.push(genresFromRow(r));
+      if (page.length < 1000) break;
+    }
     if (!this.memberGenres) return shared;
-    const own = this.check(await this.mine(this.own('user_artist_genres').select('*')), 'listArtistGenres (apply 0020_per_member_entities.sql)');
-    return [
-      ...shared,
-      ...((own ?? []) as any[]).map((r): ArtistGenres => ({ key: r.artist_key, name: r.name, source: 'added', genres: r.genres ?? [], checkedAt: r.updated_at })),
-    ];
+    const own: ArtistGenres[] = [];
+    for (let from = 0; ; from += 1000) {
+      const page = (this.check(
+        await this.mine(this.own('user_artist_genres').select('*')).order('artist_key').range(from, from + 999),
+        'listArtistGenres (apply 0020_per_member_entities.sql)',
+      ) ?? []) as any[];
+      for (const r of page) {
+        own.push({ key: r.artist_key, name: r.name, source: 'added', genres: r.genres ?? [], checkedAt: r.updated_at });
+      }
+      if (page.length < 1000) break;
+    }
+    return [...shared, ...own];
   }
 
   async writeArtistGenres(rows: GenreWriteRow[], meta: GenreWriteMeta): Promise<GenreChange[]> {
@@ -1581,14 +1595,24 @@ export class SupabaseLineupStore implements LineupStore {
       batchId = latest?.[0]?.batch_id;
       if (!batchId) return [];
     }
-    let query: any = this.db.from('artist_genre_changes').select('*');
-    if (q.key !== undefined) query = query.eq('artist_key', q.key);
-    if (batchId !== undefined) query = query.eq('batch_id', batchId);
-    if (q.latestBatchReason !== undefined) query = query.eq('reason', q.latestBatchReason).is('undone_at', null);
-    query = query.order('at', { ascending: false });
-    if (q.limit !== undefined) query = query.limit(q.limit);
-    const data = this.check(await query, 'listGenreChanges (apply 0059_canonical_genres.sql)') as any[] | null;
-    return (data ?? []).map(genreChangeFromRow);
+    const makeQuery = () => {
+      let query: any = this.db.from('artist_genre_changes').select('*');
+      if (q.key !== undefined) query = query.eq('artist_key', q.key);
+      if (batchId !== undefined) query = query.eq('batch_id', batchId);
+      if (q.latestBatchReason !== undefined) query = query.eq('reason', q.latestBatchReason).is('undone_at', null);
+      return query.order('at', { ascending: false }).order('id', { ascending: true });
+    };
+    if (q.limit !== undefined) {
+      const data = this.check(await makeQuery().limit(q.limit), 'listGenreChanges (apply 0059_canonical_genres.sql)') as any[] | null;
+      return (data ?? []).map(genreChangeFromRow);
+    }
+    const out: GenreChange[] = [];
+    for (let from = 0; ; from += 1000) {
+      const page = (this.check(await makeQuery().range(from, from + 999), 'listGenreChanges (apply 0059_canonical_genres.sql)') ?? []) as any[];
+      for (const r of page) out.push(genreChangeFromRow(r));
+      if (page.length < 1000) break;
+    }
+    return out;
   }
 
   // The log is append-only: only undone_at may be set, once, so rows already undone are skipped.
@@ -1604,9 +1628,15 @@ export class SupabaseLineupStore implements LineupStore {
 
   async listSeenActNames(): Promise<Array<{ key: string; name: string }>> {
     this.ownerGenres();
-    const { data, error } = await this.db.rpc('seen_act_names');
-    if (error) throw new Error(`Supabase listSeenActNames failed (apply 0059_canonical_genres.sql): ${error.message}`);
-    return ((data ?? []) as any[]).map((r) => ({ key: String(r.artist_key), name: String(r.name) }));
+    const out: Array<{ key: string; name: string }> = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await this.db.rpc('seen_act_names').order('artist_key').range(from, from + 999);
+      if (error) throw new Error(`Supabase listSeenActNames failed (apply 0059_canonical_genres.sql): ${error.message}`);
+      const page = (data ?? []) as any[];
+      for (const r of page) out.push({ key: String(r.artist_key), name: String(r.name) });
+      if (page.length < 1000) break;
+    }
+    return out;
   }
 
   async runArtistCleanup(

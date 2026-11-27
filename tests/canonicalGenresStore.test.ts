@@ -156,6 +156,7 @@ function fakeDb(tables: Record<string, any[]>, rpcs: Record<string, (args: any) 
             return (resolve: (v: any) => void) => {
               let data = [...(tables[table] ?? [])];
               for (const o of ops) if (o.op === 'eq') data = data.filter((r) => r[o.args[0]] === o.args[1]);
+              for (const o of ops) if (o.op === 'range') data = data.slice(o.args[0], o.args[1] + 1);
               resolve({ data, error: null });
             };
           }
@@ -170,9 +171,28 @@ function fakeDb(tables: Record<string, any[]>, rpcs: Record<string, (args: any) 
   };
   const db = {
     from,
-    async rpc(name: string, args: any) {
-      rpcCalls.push({ name, args });
-      return { data: rpcs[name] ? rpcs[name](args) : [], error: null };
+    rpc(name: string, args: any) {
+      const ops: { op: string; args: any[] }[] = [];
+      const builder: any = new Proxy(
+        {},
+        {
+          get(_t, prop: string) {
+            if (prop === 'then') {
+              return (resolve: (v: any) => void) => {
+                rpcCalls.push({ name, args });
+                let data = rpcs[name] ? rpcs[name](args) : [];
+                for (const o of ops) if (o.op === 'range') data = data.slice(o.args[0], o.args[1] + 1);
+                resolve({ data, error: null });
+              };
+            }
+            return (...opArgs: any[]) => {
+              ops.push({ op: prop, args: opArgs });
+              return builder;
+            };
+          },
+        },
+      );
+      return builder;
     },
   };
   return { db: db as any, calls, rpcCalls };
@@ -263,4 +283,46 @@ test('supabase store: a member scope is refused for the four owner methods befor
   await assert.rejects(ann.markGenreChangesUndone(['c1'], '2026-01-01T00:00:00Z'), /Only the owner/);
   await assert.rejects(ann.listSeenActNames(), /Only the owner/);
   assert.equal(calls.length + rpcCalls.length, 0);
+});
+
+test('supabase store: listArtistGenres, listGenreChanges and listSeenActNames paginate past 1000 rows', async () => {
+  const total = 1050;
+  const genreRows = Array.from({ length: total }, (_, i) => ({
+    ...sharedRow,
+    artist_key: `artist-${String(i).padStart(4, '0')}`,
+    name: `Artist ${i}`,
+  }));
+  const changeRows = Array.from({ length: total }, (_, i) => ({
+    id: `c-${i}`,
+    artist_key: `artist-${String(i).padStart(4, '0')}`,
+    source: 'owner',
+    at: '2026-01-01T00:00:00Z',
+    actor: 'owner',
+    reason: 'Genres file upload',
+    batch_id: 'b1',
+    before: null,
+    after: sharedRow,
+    undone_at: null,
+  }));
+  const seenRows = Array.from({ length: total }, (_, i) => ({
+    artist_key: `artist-${String(i).padStart(4, '0')}`,
+    name: `Artist ${i}`,
+  }));
+
+  const { db, calls, rpcCalls } = fakeDb(
+    { artist_genres: genreRows, artist_genre_changes: changeRows },
+    { seen_act_names: () => seenRows },
+  );
+  const s = new SupabaseLineupStore(db).forUser(OWNER);
+
+  const genres = await s.listArtistGenres();
+  const changes = await s.listGenreChanges({});
+  const seen = await s.listSeenActNames();
+
+  assert.equal(genres.length, total);
+  assert.equal(changes.length, total);
+  assert.equal(seen.length, total);
+  assert.equal(calls.filter((ops) => ops[0]?.table === 'artist_genres').length, 2);
+  assert.equal(calls.filter((ops) => ops[0]?.table === 'artist_genre_changes').length, 2);
+  assert.equal(rpcCalls.filter((c) => c.name === 'seen_act_names').length, 2);
 });
