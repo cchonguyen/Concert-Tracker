@@ -200,3 +200,10 @@ export function markHintSeen(storage: NavStorage | null): void {
 
 export * from './manageNav.ts';
 
+export const RANKING_BY = ['artists', 'genres', 'people'] as const;
+export type RankingBy = (typeof RANKING_BY)[number];
+
+export function rankingByFromParam(by: string | null): RankingBy {
+  return by && (RANKING_BY as readonly string[]).includes(by) ? (by as RankingBy) : 'artists';
+}
+
