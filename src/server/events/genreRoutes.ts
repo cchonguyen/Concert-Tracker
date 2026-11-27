@@ -37,6 +37,7 @@ import {
   setGenreParent,
   undoGenreVocabChange,
 } from './genreVocabularyManage';
+import { applyGenreRelationsCsv, previewGenreRelationsCsv } from './genreRelationsCsv';
 import { ManageError } from '../entities/manage';
 
 // The taxonomy as its own keys, read from the vocabulary (no extra query): the families and macros,
@@ -205,6 +206,29 @@ export function genresRouter(deps: PipelineDeps): Router {
     if (!rows) return res.status(400).json({ error: 'rows must be an array.' });
     try {
       res.json(await applyGenreVocabCsv(deps.store, rows));
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // The genre links file (docs/specs/genre-taxonomy-phase-a.md section 5). Registered before '/artist-genres/:key/undo'.
+  router.post('/artist-genres/relations/csv/preview', async (req, res) => {
+    if (isMember()) return res.status(403).json({ error: MEMBER_REFUSED });
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
+    if (!rows) return res.status(400).json({ error: 'rows must be an array.' });
+    try {
+      res.json({ preview: await previewGenreRelationsCsv(deps.store, rows) });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post('/artist-genres/relations/csv/apply', async (req, res) => {
+    if (isMember()) return res.status(403).json({ error: MEMBER_REFUSED });
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
+    if (!rows) return res.status(400).json({ error: 'rows must be an array.' });
+    try {
+      res.json(await applyGenreRelationsCsv(deps.store, rows));
     } catch (err) {
       fail(res, err);
     }

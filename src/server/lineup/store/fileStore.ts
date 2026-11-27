@@ -1082,7 +1082,7 @@ export class FileLineupStore implements LineupStore {
       for (const g of Object.values(vocab)) {
         if (g.umbrellas.some((u) => deleted.has(u)) || (g.primaryParent && deleted.has(g.primaryParent)) || (g.relations ?? []).some((r) => deleted.has(r.target))) touched.add(g.key);
       }
-      const before = vocabImages(vocab, [...touched]);
+      const before = vocabImages(vocab, [...touched], true);
 
       // Clear the listed genres' own links, and delete the genres with no image with every link to them.
       for (const k of keys) {
@@ -1156,7 +1156,7 @@ export class FileLineupStore implements LineupStore {
         reason: meta.reason,
         summary: meta.summary,
         before,
-        after: vocabImages(vocab, [...touched]),
+        after: vocabImages(vocab, [...touched], true),
       };
       state.genreVocabChanges.push(change);
     });
@@ -2327,7 +2327,9 @@ function relationsOf(g: Partial<VocabGenre>): NonNullable<VocabGenre['relations'
 }
 
 // genre_vocabulary_images (0060): the given genres as they are now, ordered by key; a key with no genre is left out.
-function vocabImages(vocab: Record<string, VocabGenre>, keys: string[]): VocabGenre[] {
+// forLog: log images always carry level and relations, as genre_vocabulary_images does, so an
+// undo replaces the taxonomy instead of keeping what is there now.
+function vocabImages(vocab: Record<string, VocabGenre>, keys: string[], forLog = false): VocabGenre[] {
   return [...new Set(keys)]
     .filter((k) => has(vocab, k))
     .sort()
@@ -2338,6 +2340,7 @@ function vocabImages(vocab: Record<string, VocabGenre>, keys: string[]): VocabGe
         name: g.name,
         ...(g.parent ? { parent: g.parent } : {}),
         ...taxonomyOf(g),
+        ...(forLog ? { level: g.level ?? 'genre', relations: relationsOf(g) } : {}),
         aliases: [...g.aliases].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)).map((a) => ({ key: a.key, alias: a.alias })),
         umbrellas: [...g.umbrellas].sort(),
       };

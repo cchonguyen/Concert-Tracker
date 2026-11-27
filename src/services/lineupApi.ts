@@ -21,6 +21,7 @@ import type { ArtistSuggestion } from '../server/events/artists';
 import type { LineupFacts } from '../server/events/scale';
 import type { CityPoint, PlaceGuess } from '../server/events/place';
 import type { GenreVocabCsvPreview, GenreVocabCsvRow } from '../server/events/genreVocabCsv';
+import type { GenreRelationsCsvPreview, GenreRelationsCsvRow } from '../server/events/genreRelationsCsv';
 import type { ArtistGenres, GenreCollision, GenreMapEntry, GenreVocabChange, GenreVocabulary, KnownGenre } from '../server/events/genreTypes';
 import type { GenreMergePlan } from '../server/events/genreVocabularyManage';
 import type { MilestoneSaved, Prefs, TipsSaved } from '../server/auth/prefs';
@@ -494,6 +495,10 @@ export const genresApi = {
     request<{ preview: GenreVocabCsvPreview }>('/api/artist-genres/vocabulary/csv/preview', post({ rows })).then((r) => r.preview),
   vocabCsvApply: (rows: GenreVocabCsvRow[]) =>
     request<{ preview: GenreVocabCsvPreview; change: GenreVocabChange | null }>('/api/artist-genres/vocabulary/csv/apply', post({ rows })),
+  relationsCsvPreview: (rows: GenreRelationsCsvRow[]) =>
+    request<{ preview: GenreRelationsCsvPreview }>('/api/artist-genres/relations/csv/preview', post({ rows })).then((r) => r.preview),
+  relationsCsvApply: (rows: GenreRelationsCsvRow[]) =>
+    request<{ preview: GenreRelationsCsvPreview; change: GenreVocabChange | null }>('/api/artist-genres/relations/csv/apply', post({ rows })),
   // The CSV text of the acts you can give genres (the browser downloads it).
   csvExport: async (): Promise<string> => {
     const init = await outgoing();
