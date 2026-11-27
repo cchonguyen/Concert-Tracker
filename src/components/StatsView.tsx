@@ -8,6 +8,7 @@ import { attendanceOf } from '../server/events/attendance';
 import { allTime, AllTime, facts, pastEvents, perYear, RankBy, Ranked, seriesStats, SeriesStat, top, YearReview, yearInReview } from '../services/stats';
 import { barcodeBars } from '../services/ticket';
 import { EventTitle } from './EventTitle';
+import { LatelyCard } from './LatelyCard';
 import { StubHeader } from './ui/StubHeader';
 import { StubBarcode, StubSentence, StubSerial, Ticket, TicketKicker, TicketSmallLine } from './ui/Ticket';
 import { MONTH_NAMES } from '../server/lineup/months';
@@ -365,6 +366,10 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
       .then((r) => setGenreData({ genres: r.genres, vocabulary: r.vocabulary, map: r.map }))
       .catch(() => setGenreData(NO_GENRES));
   }, []);
+  const byArtist = useMemo(
+    () => genresByArtist(genreData.genres, genreData.vocabulary, genreData.map),
+    [genreData],
+  );
   const { years, undated } = useMemo(() => perYear(past), [past]);
   const [pickedYear, setPickedYear] = useState<number | null>(null);
   const reviewYears = years.filter((y) => y.events > 0).map((y) => y.year).reverse();
@@ -422,6 +427,13 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
     <div className="space-y-6">
       <AllTimeStrip t={totals} />
       {heldNote}
+      <LatelyCard
+        events={events}
+        byArtist={byArtist}
+        vocabulary={genreData.vocabulary}
+        today={today}
+        onOpenEvent={onOpen}
+      />
       {years.length > 0 && (
         <section className={`${card} space-y-2`}>
           <h2 className={title}>Events per year</h2>
