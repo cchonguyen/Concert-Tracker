@@ -335,3 +335,67 @@ test('undo of a relation-add restores the earlier links', async () => {
   assert.deepEqual((await vocabOf(s, 'house')).relations ?? [], []);
   assert.equal((await vocabOf(s, 'house')).primaryParent, 'family:house');
 });
+
+// ---- Phase A loose ends (genre-taxonomy-phase-a.md section 6, Slice 40.6) ----------
+
+test('createGenre with a family sets its primary parent; a blank family is no family', async () => {
+  const s = await setup();
+  await seedTaxonomy(s);
+  const change = await createGenre(s, { name: 'Deep House', family: 'House' });
+  assert.equal(change.operation, 'create');
+  assert.equal(change.summary, 'Deep House created');
+  const deep = await vocabOf(s, 'deephouse');
+  assert.equal(deep.level ?? 'genre', 'genre');
+  assert.equal(deep.primaryParent, 'family:house');
+  await createGenre(s, { name: 'Acid', family: 'family:techno' });
+  assert.equal((await vocabOf(s, 'acid')).primaryParent, 'family:techno');
+  await createGenre(s, { name: 'Plain', family: '  ' });
+  assert.equal((await vocabOf(s, 'plain')).primaryParent, undefined);
+});
+
+test('createGenre refuses a family that is not a family row', async () => {
+  const s = await setup();
+  await seedTaxonomy(s);
+  await assert.rejects(createGenre(s, { name: 'X', family: 'techhouse' }), refused('That is not a family: techhouse.', 400));
+  await assert.rejects(createGenre(s, { name: 'X', family: 'macro:electronic' }), refused('That is not a family: macro:electronic.', 400));
+  await assert.rejects(createGenre(s, { name: 'X', family: 'Electronic' }), refused('That is not a family: Electronic.', 400));
+  assert.equal(await genreOf(s, 'x'), undefined);
+  assert.equal((await s.listGenreVocabChanges({})).length, 1);
+});
+
+test('createGenre without a family is unchanged: a map group still goes on the new genre', async () => {
+  const s = await setup();
+  const change = await createGenre(s, { name: 'Melodic Bass', parent: 'electronic' });
+  assert.equal(change.summary, 'Melodic Bass created');
+  assert.deepEqual(await genreOf(s, 'melodicbass'), { key: 'melodicbass', name: 'Melodic Bass', parent: 'electronic', aliases: [], umbrellas: [] });
+});
+
+test('undo of a genre change is refused after a later link is added to that genre', async () => {
+  const s = await setup();
+  await seedTaxonomy(s);
+  const first = await addGenreRelation(s, 'techhouse', 'techno', 'adjacent', 0.5);
+  await addGenreRelation(s, 'techhouse', 'house', 'adjacent', 0.3);
+  await assert.rejects(undoGenreVocabChange(s, first.id), refused(GENRES_CHANGED_SINCE, 409));
+  assert.equal((await vocabOf(s, 'techhouse')).relations?.length, 2);
+});
+
+test('undo of a genre change still works when no link changed after it', async () => {
+  const s = await setup();
+  await seedTaxonomy(s);
+  const c = await addGenreRelation(s, 'techhouse', 'techno', 'adjacent', 0.5);
+  await undoGenreVocabChange(s, c.id);
+  assert.deepEqual((await vocabOf(s, 'techhouse')).relations ?? [], []);
+});
+
+test('undo of an image written before 0063 (no level) is not blocked by its taxonomy', async () => {
+  const s = await setup();
+  await seedTaxonomy(s);
+  const c = await createGenre(s, { name: 'dance' });
+  // A later link on the same genre: the current taxonomy now differs from the 'after' image.
+  await addGenreRelation(s, 'dance', 'techhouse', 'adjacent', 0.5);
+  const list = s.listGenreVocabChanges.bind(s);
+  s.listGenreVocabChanges = async (q) =>
+    (await list(q)).map((ch) => ({ ...ch, after: ch.after.map(({ level: _level, ...g }) => g as VocabGenre) }));
+  await undoGenreVocabChange(s, c.id);
+  assert.equal(await genreOf(s, 'dance'), undefined);
+});

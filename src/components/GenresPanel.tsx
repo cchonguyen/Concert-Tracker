@@ -230,6 +230,7 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [newGroup, setNewGroup] = useState('');
+  const [newFamily, setNewFamily] = useState('');
   // The genre whose record is open, by key.
   const [selected, setSelected] = useState<string | null>(null);
   // The last change and its Undo.
@@ -263,6 +264,13 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
     () => (data ? genreResolver(data.vocabulary, data.map, data.genres.filter((r) => r.source !== 'added')).groups : []),
     [data],
   );
+  // Families grouped by macro, for the Create genre family menu.
+  const familyMacroGroups = useMemo(() => {
+    const byMacro = new Map<string, FamilyChoice[]>();
+    for (const f of families) byMacro.set(f.macro, [...(byMacro.get(f.macro) ?? []), f]);
+    return [...byMacro];
+  }, [families]);
+  const hasFamilies = families.length > 0;
   const collisions = data?.collisions ?? [];
 
   const visible = useMemo(() => {
@@ -579,11 +587,17 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
           className="flex flex-wrap items-center gap-2 rounded-card border border-line bg-surface-1 p-3"
           onSubmit={(e) => {
             e.preventDefault();
-            void run(() => genresApi.createGenre(newName.trim(), newGroup || null)).then((ok) => {
+            // With families, the new genre goes in a family; the old map groups are used only when there are none.
+            void run(() =>
+              hasFamilies
+                ? genresApi.createGenre(newName.trim(), null, newFamily || null)
+                : genresApi.createGenre(newName.trim(), newGroup || null, null),
+            ).then((ok) => {
               if (!ok) return;
               setCreating(false);
               setNewName('');
               setNewGroup('');
+              setNewFamily('');
             });
           }}
         >
@@ -595,14 +609,29 @@ export const GenresPanel: React.FC<{ query: string; events: LoggedEvent[] }> = (
             placeholder="Genre name"
             maxLength={80}
           />
-          <select aria-label="Group for the new genre" className={field} value={newGroup} onChange={(e) => setNewGroup(e.target.value)}>
-            <option value="">{NOT_GROUPED}</option>
-            {groups.map((g) => (
-              <option key={g} value={g}>
-                {g}
-              </option>
-            ))}
-          </select>
+          {hasFamilies ? (
+            <select aria-label="Family for the new genre" className={field} value={newFamily} onChange={(e) => setNewFamily(e.target.value)}>
+              <option value="">{NOT_GROUPED}</option>
+              {familyMacroGroups.map(([macro, list]) => (
+                <optgroup key={macro} label={macro}>
+                  {list.map((f) => (
+                    <option key={f.key} value={f.key}>
+                      {f.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          ) : (
+            <select aria-label="Group for the new genre" className={field} value={newGroup} onChange={(e) => setNewGroup(e.target.value)}>
+              <option value="">{NOT_GROUPED}</option>
+              {groups.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          )}
           <Button variant="primary" type="submit" disabled={busy || !newName.trim()}>
             Add genre
           </Button>

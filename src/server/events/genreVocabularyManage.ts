@@ -90,8 +90,23 @@ function image(g: VocabGenre): VocabGenre {
   };
 }
 
-const same = (a: VocabGenre | undefined, b: VocabGenre | undefined): boolean =>
-  JSON.stringify(a ? image(a) : null) === JSON.stringify(b ? image(b) : null);
+// The taxonomy part of an image: level, family, tier and outgoing links (sorted, so order does not matter).
+const taxonomyPart = (g: VocabGenre | undefined) => {
+  if (!g) return null;
+  const img = image(g);
+  return { level: img.level, primaryParent: img.primaryParent ?? null, tier: img.tier ?? null, relations: img.relations };
+};
+const corePart = (g: VocabGenre | undefined) => {
+  if (!g) return null;
+  const { level: _level, primaryParent: _family, tier: _tier, relations: _relations, ...core } = image(g);
+  return core;
+};
+
+// Compares a current genre with an undo image. An image written before migration 0063
+// has no `level` key: its taxonomy is not compared, only the spelling, group, aliases and umbrellas.
+const same = (a: VocabGenre | undefined, b: VocabGenre | undefined, taxonomy: boolean): boolean =>
+  JSON.stringify(corePart(a)) === JSON.stringify(corePart(b)) &&
+  (!taxonomy || JSON.stringify(taxonomyPart(a)) === JSON.stringify(taxonomyPart(b)));
 
 function cleanSpelling(value: unknown): { name: string; key: string } {
   const name = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
@@ -177,14 +192,33 @@ function linksRenamed(ctx: Ctx, fromKey: string, toKey: string): Map<string, Voc
   return out;
 }
 
-export async function createGenre(store: LineupStore, input: { name: unknown; parent?: unknown }): Promise<GenreVocabChange> {
+// A family for a new genre: a family row's key, or a family's name. Anything else is refused.
+function findFamilyForNew(ctx: Ctx, input: unknown): VocabGenre {
+  const raw = typeof input === 'string' ? input.trim() : '';
+  const row = ctx.byKey.get(raw.includes(':') ? raw : familyKey(raw));
+  if (!row || levelOf(row) !== 'family') throw new ManageError(`That is not a family: ${raw}.`, 400);
+  return row;
+}
+
+// A new genre, optionally in a family (genre-taxonomy-phase-a.md section 6). A family
+// given sets the genre's primary parent; a group given (the genre map's, for a
+// genre with no family) is kept as before.
+export async function createGenre(store: LineupStore, input: { name: unknown; parent?: unknown; family?: unknown }): Promise<GenreVocabChange> {
   const ctx = await load(store);
   const { name, key } = cleanSpelling(input.name);
   const taken = holderName(ctx, key);
   if (taken !== undefined) throw new ManageError(`That is already a genre: ${taken}.`, 409);
   const parent = checkGroup(ctx, input.parent);
-  const g = image({ key, name, ...(parent ? { parent } : {}), aliases: [], umbrellas: [] });
-  return write(store, [{ key, image: g }], 'create', `${name} created`);
+  const blankFamily = input.family === null || input.family === undefined || (typeof input.family === 'string' && input.family.trim() === '');
+  if (blankFamily) {
+    const g = image({ key, name, ...(parent ? { parent } : {}), aliases: [], umbrellas: [] });
+    return write(store, [{ key, image: g }], 'create', `${name} created`);
+  }
+  const f = findFamilyForNew(ctx, input.family);
+  const g = image({ key, name, level: 'genre', primaryParent: f.key, ...(parent ? { parent } : {}), aliases: [], umbrellas: [] });
+  const rows: GenreVocabWriteRow[] = [{ key, image: g }];
+  refuseIfBroken(ctx, rows);
+  return write(store, rows, 'create', `${name} created`);
 }
 
 // The old spelling becomes an alias. A new key moves the genre's row, and every
@@ -554,7 +588,11 @@ export async function undoGenreVocabChange(store: LineupStore, id: string, at: D
   const before = new Map(change.before.map((g) => [g.key, g]));
   const after = new Map(change.after.map((g) => [g.key, g]));
   const keys = [...new Set([...before.keys(), ...after.keys()])].sort();
-  for (const k of keys) if (!same(current.get(k), after.get(k))) throw new ManageError(GENRES_CHANGED_SINCE, 409);
+  // An 'after' image with no level is from before 0063: its taxonomy is not compared.
+  for (const k of keys) {
+    const a = after.get(k);
+    if (!same(current.get(k), a, a?.level !== undefined)) throw new ManageError(GENRES_CHANGED_SINCE, 409);
+  }
   const removed = new Set(keys.filter((k) => !before.has(k)));
   for (const g of vocab.genres) {
     if (keys.includes(g.key)) continue;
