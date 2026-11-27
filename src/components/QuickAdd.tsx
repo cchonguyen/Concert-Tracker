@@ -53,7 +53,7 @@ export const QuickAddButton: React.FC<{ onClick: () => void }> = ({ onClick }) =
   <button
     onClick={onClick}
     title="Quick add (N)"
-    className="hidden min-h-9 items-center gap-1.5 rounded-control bg-accent-fill px-3 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill sm:inline-flex"
+    className="btn-pop hidden min-h-9 items-center gap-1.5 rounded-control bg-accent-fill px-3 py-2 text-sm font-semibold text-on-accent hover:bg-accent-fill sm:inline-flex"
   >
     <Plus className="h-4 w-4" /> Quick add
   </button>
@@ -63,7 +63,7 @@ export const QuickAddFab: React.FC<{ onClick: () => void }> = ({ onClick }) => (
   <button
     onClick={onClick}
     aria-label="Quick add"
-    className="fixed bottom-5 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-accent-fill text-on-accent shadow-lg shadow-black/40 sm:hidden"
+    className="btn-pop fixed bottom-5 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-accent-fill text-on-accent shadow-lg shadow-black/40 sm:hidden"
   >
     <Plus className="h-6 w-6" />
   </button>

@@ -55,11 +55,15 @@
   to { transform: scale(1.4) translate(-7%, -5%) rotate(5deg); }
 }
 
-/* Buttons lift and grow a little on hover, never tilt. */
+/* Buttons lift, grow and glow a little on hover, never tilt: about half the landing page's
+   (lift 3px, grow 4%, a 24px glow there). */
 .btn-pop {
   transition: transform 0.2s var(--ease-pop), background-color 0.2s, border-color 0.2s, box-shadow 0.2s, filter 0.2s, color 0.2s;
 }
-.btn-pop:not(:disabled):hover { transform: translateY(-2px) scale(1.03); }
+.btn-pop:not(:disabled):hover {
+  transform: translateY(-1.5px) scale(1.02);
+  box-shadow: 0 6px 14px -6px color-mix(in oklab, var(--la-accent) 70%, transparent);
+}
 .btn-pop:not(:disabled):active { transform: scale(0.97); }
 
 /* Post-it: paper, tape, a resting tilt; it straightens and lifts on hover, and its icon hops. */
