@@ -16,6 +16,11 @@ import { StubHeader } from './ui/StubHeader';
 import { StubBarcode, StubSentence, StubSerial, Ticket, TicketKicker, TicketSmallLine } from './ui/Ticket';
 import { MONTH_NAMES } from '../server/lineup/months';
 import { NameList } from './ui/NameList';
+import { PostIt } from './ui/PostIt';
+
+// Count tiles are post-its (docs/specs/landing-look.md): tilts and tones repeat in this order.
+const NOTE_TILTS = [-1.25, 1, -0.75, 1.25, -0.5, 0.75];
+const NOTE_TONES = ['paper', 'second', 'accent', 'paper', 'second', 'accent'] as const;
 
 // Bars grow in once per visit to Stats (design-refresh-2.md, section 4): only while the page has just opened,
 // so changing the year or a filter later swaps them in place. Off with reduced motion.
@@ -56,13 +61,13 @@ const AllTimeStrip: React.FC<{ t: AllTime }> = ({ t }) => {
   return (
     <section aria-label="All time" className="space-y-2">
       <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">All time</h2>
-      <dl className="grid grid-cols-2 gap-px overflow-hidden border border-line-strong bg-line sm:grid-cols-3 lg:grid-cols-6">
-        {cells.map((cell) => (
-          <div key={cell.k} className="flex flex-col gap-1 bg-surface-1 px-3.5 py-3">
-            <dt className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">{cell.k}</dt>
-            <dd className="font-display text-2xl leading-none text-text tabular-nums">{cell.v}</dd>
-            <dd className="text-xs text-text-muted">{cell.c}</dd>
-          </div>
+      <dl className="grid grid-cols-2 gap-4 pt-2 sm:grid-cols-3 lg:grid-cols-6">
+        {cells.map((cell, i) => (
+          <PostIt key={cell.k} tilt={NOTE_TILTS[i % NOTE_TILTS.length]} tone={NOTE_TONES[i % NOTE_TONES.length]} className="flex h-full flex-col gap-1 !p-4">
+            <dt className="font-mono text-[11px] font-semibold uppercase tracking-wide">{cell.k}</dt>
+            <dd className="poster-head text-4xl leading-none tabular-nums">{cell.v}</dd>
+            <dd className="text-xs opacity-75">{cell.c}</dd>
+          </PostIt>
         ))}
       </dl>
     </section>
@@ -376,7 +381,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ events, onOpen, onOpenTabl
   // The scene families of the vocabulary when it has a taxonomy, else the genre map's parents.
   const mapGroups = useMemo(() => {
     const families = (genreData.vocabulary?.genres ?? []).filter((g) => levelOf(g) === 'family').map((g) => g.name);
-    return families.length ? families : [...new Set(genreData.map.map((m) => m.parent).filter(Boolean))];
+    return families.length ? families : [...new Set((genreData.map ?? []).map((m) => m.parent).filter(Boolean))];
   }, [genreData.map, genreData.vocabulary]);
   const { years, undated } = useMemo(() => perYear(past), [past]);
   const [pickedYear, setPickedYear] = useState<number | null>(null);
