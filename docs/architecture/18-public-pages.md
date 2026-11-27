@@ -20,6 +20,6 @@ The marketing page (`/`) opens Privacy and Terms in a side drawer that loads `/p
 
 Public allowlist. The Access bypass policy must list the same paths; the Worker's front door uses the same list. A test checks that this list and `publicPaths.ts` agree:
 
-- `/`, `/index.html`, `/demo`, `/demo/*`, `/privacy`, `/privacy.html`, `/terms`, `/terms.html`, `/unsubscribe`, `/robots.txt`, `/sitemap.xml`, `/og.png`, `/favicon.ico`, `/favicon.svg`, `/favicon-32.png`, `/apple-touch-icon.png`, `/logo.svg`, `/manifest.webmanifest`, `/assets/*`, `/s/*`, `/S/*`.
+- `/`, `/index.html`, `/demo`, `/demo/*`, `/privacy`, `/privacy.html`, `/terms`, `/terms.html`, `/unsubscribe`, `/robots.txt`, `/sitemap.xml`, `/og.png`, `/favicon.ico`, `/favicon.svg`, `/favicon-32.png`, `/apple-touch-icon.png`, `/logo.svg`, `/logo-heartbeat.svg`, `/manifest.webmanifest`, `/assets/*`, `/s/*`, `/S/*`.
 
 The site's one address is `site.config.json`. A test checks that it matches `APP_URL` in `wrangler.jsonc`; `APP_URL` is still the bare origin, since Google's redirect is built from it.

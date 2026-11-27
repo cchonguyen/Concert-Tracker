@@ -68,6 +68,8 @@ import type { DetailRow } from './components/ui/DetailShell';
 import { pastEvents, yearInReview } from './services/stats';
 import { eventYear } from './services/format';
 import { homeSummary } from './services/home';
+import { AppBackdrop } from './components/ui/AppBackdrop';
+import { Logo } from './components/ui/Logo';
 
 // The Table, the four timeline views and the Map keep their filters in the address (?view=table&...).
 const FILTERED: Page[] = ['table', 'agenda', 'month', 'heatmap', 'river', 'map'];
@@ -541,8 +543,9 @@ export default function App({ initialMe }: { initialMe?: Me }) {
     <VaultProvider events={events} onChanged={refresh}>
     <div
       inert={Boolean(notice)}
-      className="min-h-screen bg-page font-sans text-text selection:bg-accent-fill selection:text-on-accent flex flex-col"
+      className="relative isolate min-h-screen bg-page font-sans text-text selection:bg-accent-fill selection:text-on-accent flex flex-col"
     >
+      <AppBackdrop />
       {sampleMe?.sample && (
         <SampleBanner mode={sampleMe.sample} email={sampleMe.email} signedIn={document.documentElement.hasAttribute('data-signed-in')} />
       )}
@@ -555,7 +558,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
         {/* The section tabs sit on the header's bottom line, and the open one joins the row below. */}
         <div className={`mx-auto flex ${headerWidth} items-stretch justify-between gap-2 px-4 pt-2`}>
           <div className="flex items-center gap-2 pb-2">
-            <img src="/logo.svg" alt="LiveArchive" className="h-8 w-8" />
+            <Logo />
             <span className="hidden text-base font-extrabold tracking-tight sm:inline">
               Live<span className="text-accent">Archive</span>
             </span>
