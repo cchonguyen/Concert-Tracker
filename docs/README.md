@@ -14,6 +14,7 @@ Statuses were checked against the code on 2026-11-23.
 | [specs/global-editions-admin-spec.md](specs/global-editions-admin-spec.md) | Slices 1 to 4 built. Slice 5 (component reuse) not planned yet. |
 | [specs/series-type-fix.md](specs/series-type-fix.md) | Slices 1, 2, 3 and 5 merged. Slice 4 (the nine tours) not recorded as done. |
 | [specs/series-cleanup.md](specs/series-cleanup.md) | Approved 2026-11-26: one series list, one naming rule, brand/series/edition words stored once. 5 slices, none built yet. |
+| [specs/series-sync.md](specs/series-sync.md) | Proposed 2026-11-27: auto-link events that exactly match a shared edition (undoable), and series health with one-tap fixes in Data health. |
 | [specs/streamlining-plan.md](specs/streamlining-plan.md) | Built 2026-11-24: duplicate code removed and auto-verify switched on. |
 | [specs/docs-and-text-cleanup.md](specs/docs-and-text-cleanup.md) | Done 2026-11-24 (all ten slices merged). |
 | [specs/venue-location-fill.md](specs/venue-location-fill.md) | Built 2026-11-24 (all slices merged). Member entries sharing the state waits on Charlie's notice decision. |
