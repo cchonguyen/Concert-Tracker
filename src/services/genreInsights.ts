@@ -1956,6 +1956,137 @@ export function eventMatch(
   return { sets, events: contributing.size, score, band, lane, inLane, nearby, nearbyUnseen, enough };
 }
 
+// One step outside your lane (docs/specs/genre-taxonomy-release-3.md decision 6 and section 8).
+// Genres next to one of your top genres that you have never seen. Only the owner's adjacent
+// links and your own attended sets are read; nothing is inferred from names or events.
+export const OUTSIDE_MIN_WEIGHT = 0.25;
+export const OUTSIDE_MAX = 3;
+const OUTSIDE_TOP_GENRES = 5;
+const OUTSIDE_ACTS_MAX = 5;
+
+export interface OutsideAct {
+  key: string;
+  name: string;
+}
+
+export interface OutsideLaneItem {
+  key: string;
+  name: string;
+  via: { key: string; name: string }; // your top genre this one connects to
+  weight: number; // the adjacent link's weight
+  acts: OutsideAct[]; // acts from your own records whose top genre is this one
+}
+
+export interface OutsideLaneResult {
+  enough: boolean; // same floor as Event Match
+  items: OutsideLaneItem[];
+}
+
+export function outsideLane(
+  events: LoggedEvent[],
+  byArtist: Map<string, ArtistGenres>,
+  vocab: GenreVocabulary | undefined,
+): OutsideLaneResult {
+  const usableGenres = (row: ArtistGenres | undefined): GenreShare[] =>
+    (row?.genres ?? []).filter((x) => genreKey(x.style) && x.weight > 0);
+  const taxonomy = (vocab?.genres ?? []).some((g) => levelOf(g) === 'macro');
+  const byKey = new Map<string, VocabGenre>();
+  for (const g of vocab?.genres ?? []) byKey.set(g.key, g);
+  const adj = adjacencyOf(vocab);
+
+  // Shown spelling of each genre key: the vocabulary's name, else the style as music-story sent it.
+  const styleName = new Map<string, string>();
+  for (const row of byArtist.values()) {
+    for (const x of usableGenres(row)) {
+      const k = genreKey(x.style);
+      if (!styleName.has(k)) styleName.set(k, x.style);
+    }
+  }
+  const nameOf = (key: string): string => byKey.get(key)?.name ?? styleName.get(key) ?? key;
+
+  // Your genre totals: attended sets split by setShares and by normalised genre weight.
+  const sets = new Map<string, number>();
+  let totalSets = 0;
+  const contributing = new Set<string>();
+  for (const e of events) {
+    if (e.attendance === 'planned' || e.attendance === 'missed') continue;
+    const shares = setShares(e);
+    e.seen.forEach((s, si) => {
+      const genres = usableGenres(byArtist.get(s.key));
+      if (!genres.length) return;
+      const share = shares[si];
+      const total = genres.reduce((t, x) => t + x.weight, 0);
+      totalSets += share;
+      contributing.add(e.id);
+      for (const x of genres) {
+        const k = genreKey(x.style);
+        sets.set(k, (sets.get(k) ?? 0) + share * x.weight / total);
+      }
+    });
+  }
+
+  const yours = [...sets.entries()]
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1] || nameOf(a[0]).localeCompare(nameOf(b[0])))
+    .slice(0, OUTSIDE_TOP_GENRES)
+    .map(([k]) => k);
+
+  // Candidates: adjacent to one of your top genres, never seen by you, at a genre level.
+  // The best connecting genre is the one with the largest link weight times your sets in it.
+  const best = new Map<string, { via: string; weight: number; score: number }>();
+  for (const t of yours) {
+    for (const [c, w] of adj.get(t) ?? new Map<string, number>()) {
+      if (w < OUTSIDE_MIN_WEIGHT || (sets.get(c) ?? 0) > 0) continue;
+      if (taxonomy) {
+        const g = byKey.get(c);
+        if (!g || levelOf(g) !== 'genre') continue;
+      }
+      const score = w * (sets.get(t) ?? 0);
+      const cur = best.get(c);
+      if (!cur || score > cur.score || (score === cur.score && nameOf(t).localeCompare(nameOf(cur.via)) < 0)) {
+        best.set(c, { via: t, weight: w, score });
+      }
+    }
+  }
+
+  const picked = [...best.entries()]
+    .sort((a, b) => b[1].score - a[1].score || nameOf(a[0]).localeCompare(nameOf(b[0])))
+    .slice(0, OUTSIDE_MAX);
+  const wanted = new Set(picked.map(([c]) => c));
+
+  // Acts from any of your events (planned first, so future bills lead), by their top genre.
+  const topKeyOf = (row: ArtistGenres | undefined): string | null => {
+    const genres = usableGenres(row);
+    if (!genres.length) return null;
+    const top = [...genres].sort((a, b) => b.weight - a.weight || genreKey(a.style).localeCompare(genreKey(b.style)))[0];
+    return genreKey(top.style);
+  };
+  const ordered = [...events.filter((e) => e.attendance === 'planned'), ...events.filter((e) => e.attendance !== 'planned')];
+  const actsBy = new Map<string, { keys: Set<string>; acts: OutsideAct[] }>();
+  for (const e of ordered) {
+    for (const s of e.seen) {
+      const top = topKeyOf(byArtist.get(s.key));
+      if (!top || !wanted.has(top)) continue;
+      let bucket = actsBy.get(top);
+      if (!bucket) actsBy.set(top, (bucket = { keys: new Set(), acts: [] }));
+      if (bucket.keys.has(s.key)) continue;
+      bucket.keys.add(s.key);
+      bucket.acts.push({ key: s.key, name: s.name });
+    }
+  }
+
+  const items: OutsideLaneItem[] = picked.map(([c, p]) => ({
+    key: c,
+    name: nameOf(c),
+    via: { key: p.via, name: nameOf(p.via) },
+    weight: p.weight,
+    acts: (actsBy.get(c)?.acts ?? []).slice(0, OUTSIDE_ACTS_MAX),
+  }));
+
+  const enough = totalSets >= MATCH_MIN_SETS && contributing.size >= MATCH_MIN_EVENTS;
+  return { enough, items };
+}
+
 // Sound Drift (docs/specs/genre-taxonomy-release-1.md decisions 1-5, 7 and section 4).
 // Works by calendar year. A year is counted when it has at least DRIFT_MIN_SETS known sets.
 export const DRIFT_MIN_SETS = 10;

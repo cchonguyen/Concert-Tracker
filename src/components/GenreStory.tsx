@@ -10,6 +10,7 @@ import {
   genreMilestones,
   genreRange,
   newThisYear,
+  outsideLane,
 } from '../services/genreInsights';
 import type { GenreVocabulary } from '../server/events/genreTypes';
 import { GenreYearsChart } from './GenreYearsChart';
@@ -80,6 +81,7 @@ export const GenreStory: React.FC<GenreStoryProps> = ({
   const label = useMemo(() => genreLabel(events, byArtist, vocabulary, today), [events, byArtist, vocabulary, today]);
   const byKind = useMemo(() => genreByKind(events, byArtist, vocabulary, today), [events, byArtist, vocabulary, today]);
   const bySeason = useMemo(() => genreBySeason(events, byArtist, vocabulary, today), [events, byArtist, vocabulary, today]);
+  const outside = useMemo(() => outsideLane(events, byArtist, vocabulary), [events, byArtist, vocabulary]);
 
   if (firsts.knownSets < FIRSTS_MIN_SETS) return null;
 
@@ -241,6 +243,26 @@ export const GenreStory: React.FC<GenreStoryProps> = ({
       </div>
 
       <GenreYearsChart events={events} byArtist={byArtist} vocabulary={vocabulary} today={today} />
+
+      {outside.enough && outside.items.length > 0 && (
+        <div className="space-y-3 rounded-card border border-line bg-surface-1 p-4 sm:p-5">
+          <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-text-muted">
+            One step outside your lane
+          </h3>
+          <ul className="space-y-2">
+            {outside.items.map((item) => (
+              <li key={item.key} className="rounded-control border border-line bg-surface-2 px-3 py-2 text-xs">
+                <p className="font-semibold text-text">
+                  {item.name}, next to your {item.via.name}
+                </p>
+                {item.acts.length > 0 && (
+                  <p className="mt-0.5 text-text-muted">On your list: {item.acts.map((a) => a.name).join(', ')}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {byKind.bars.length > 0 && (
         <div className="space-y-3 rounded-card border border-line bg-surface-1 p-4 sm:p-5">

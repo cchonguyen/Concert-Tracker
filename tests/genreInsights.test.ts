@@ -35,6 +35,9 @@ import {
   MATCH_ALPHA,
   MATCH_MIN_EVENTS,
   MATCH_MIN_SETS,
+  OUTSIDE_MAX,
+  OUTSIDE_MIN_WEIGHT,
+  outsideLane,
 } from '../src/services/genreInsights.ts';
 import type { LineupGenresAct } from '../src/services/lineupApi.ts';
 import { genreKey } from '../src/server/events/genreVocabulary.ts';
@@ -1246,4 +1249,86 @@ test('eventMatch: floors are 20 sets over 5 events, and Lineup DNA enough', () =
   assert.equal(passes.sets, MATCH_MIN_SETS);
   assert.equal(passes.events, MATCH_MIN_EVENTS);
   assert.equal(passes.enough, true);
+});
+
+// One step outside your lane (genre-taxonomy-release-3 section 8). Built on the Event Match helpers.
+// Five events of four Alpha acts: 20 sets over 5 events, enough for the floor.
+const olBase = (): { events: LoggedEvent[]; rows: ArtistGenres[] } => emHistory('a', [4, 4, 4, 4, 4], 'Alpha');
+const olLinks = (names: string[], links: Array<[string, string, number]>) => emVocab(names, links);
+
+test('outsideLane: genres you have seen are never candidates', () => {
+  const vocab = olLinks(['Alpha', 'Beta', 'Gamma'], [['Alpha', 'Beta', 1], ['Alpha', 'Gamma', 1]]);
+  const base = olBase();
+  const beta = ev('beta-ev', '2025-07-01', ['bx']);
+  const byArtist = genresByArtist([...base.rows, emRow('bx', [['Beta', 1]])], vocab);
+  const res = outsideLane([...base.events, beta], byArtist, vocab);
+  assert.deepEqual(res.items.map((i) => i.name), ['Gamma']);
+  assert.equal(res.enough, true);
+});
+
+test('outsideLane: links under the 0.25 weight floor are left out, 0.25 itself is in', () => {
+  const vocab = olLinks(['Alpha', 'Beta', 'Gamma', 'Delta'], [['Alpha', 'Beta', 0.24], ['Alpha', 'Gamma', 0.25], ['Alpha', 'Delta', 0.2]]);
+  const byArtist = genresByArtist(olBase().rows, vocab);
+  const res = outsideLane(olBase().events, byArtist, vocab);
+  assert.deepEqual(res.items.map((i) => i.name), ['Gamma']);
+  assert.equal(res.items[0].weight, 0.25);
+  assert.equal(OUTSIDE_MIN_WEIGHT, 0.25);
+});
+
+test('outsideLane: at most 3 items, best score first', () => {
+  const vocab = olLinks(
+    ['Alpha', 'B', 'C', 'D', 'E'],
+    [['Alpha', 'B', 0.5], ['Alpha', 'C', 0.9], ['Alpha', 'D', 0.7], ['Alpha', 'E', 0.6]],
+  );
+  const byArtist = genresByArtist(olBase().rows, vocab);
+  const res = outsideLane(olBase().events, byArtist, vocab);
+  assert.equal(OUTSIDE_MAX, 3);
+  assert.deepEqual(res.items.map((i) => i.name), ['C', 'D', 'E']);
+});
+
+test('outsideLane: the via genre is the connecting genre with the best weight times your sets', () => {
+  // Alpha: 20 sets. Beta: 5 sets. Gamma links to Alpha at 0.3 (score 6) and to Beta at 0.9 (score 4.5).
+  const vocab = olLinks(['Alpha', 'Beta', 'Gamma'], [['Alpha', 'Gamma', 0.3], ['Beta', 'Gamma', 0.9]]);
+  const base = olBase();
+  const beta = emHistory('b', [5], 'Beta');
+  const byArtist = genresByArtist([...base.rows, ...beta.rows], vocab);
+  const res = outsideLane([...base.events, ...beta.events], byArtist, vocab);
+  assert.equal(res.items.length, 1);
+  assert.equal(res.items[0].via.name, 'Alpha');
+  assert.equal(res.items[0].weight, 0.3);
+});
+
+test('outsideLane: acts come from planned events first, then other events, max 5', () => {
+  const vocab = olLinks(['Alpha', 'Gamma'], [['Alpha', 'Gamma', 1]]);
+  const base = olBase();
+  // Gamma acts sit on a missed event (not sets, so Gamma stays unseen) and a planned one.
+  const missed = ev('missed-ev', '2025-08-01', ['g1', 'g2'], { attendance: 'missed' });
+  const planned = ev('plan-ev', '2026-12-01', ['g3', 'g2'], { attendance: 'planned' });
+  const rows = ['g1', 'g2', 'g3'].map((k) => emRow(k, [['Gamma', 1]]));
+  const byArtist = genresByArtist([...base.rows, ...rows], vocab);
+  const res = outsideLane([...base.events, missed, planned], byArtist, vocab);
+  assert.equal(res.items.length, 1);
+  assert.deepEqual(res.items[0].acts.map((a) => a.name), ['g3', 'g2', 'g1']);
+
+  const many = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+  const manyRows = many.map((k) => emRow(k, [['Gamma', 1]]));
+  const manyEv = ev('many-ev', '2025-08-02', many, { attendance: 'missed' });
+  const res2 = outsideLane([...base.events, manyEv], genresByArtist([...base.rows, ...manyRows], vocab), vocab);
+  assert.equal(res2.items[0].acts.length, 5);
+});
+
+test('outsideLane: below the Event Match floor, enough is false', () => {
+  const vocab = olLinks(['Alpha', 'Gamma'], [['Alpha', 'Gamma', 1]]);
+  const small = emHistory('s', [1, 1], 'Alpha');
+  const byArtist = genresByArtist(small.rows, vocab);
+  const res = outsideLane(small.events, byArtist, vocab);
+  assert.equal(res.enough, false);
+});
+
+test('outsideLane: with no adjacency there are no items', () => {
+  const vocab = emVocab(['Alpha', 'Beta']);
+  const base = olBase();
+  const res = outsideLane(base.events, genresByArtist(base.rows, vocab), vocab);
+  assert.deepEqual(res.items, []);
+  assert.equal(res.enough, true);
 });
