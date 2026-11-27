@@ -6,7 +6,9 @@
 import type {
   ArtistGenres,
   GenreCollision,
+  GenreLevel,
   GenreMapEntry,
+  GenreRelation,
   GenreShare,
   GenreVocabulary,
   ResolvedGenre,
@@ -15,6 +17,26 @@ import type {
 
 export const NOT_GROUPED = 'Not grouped';
 export const GENRE_NEEDS_LETTER = 'A genre needs a letter or a number.';
+
+const LEVELS: readonly GenreLevel[] = ['genre', 'family', 'macro'];
+const TIERS = ['specific', 'umbrella_fallback'];
+const RELATION_TYPES = ['secondary_parent', 'adjacent', 'derived_from'];
+const RELATION_ORIGINS = ['curated', 'artist_cooccur', 'lineup_cooccur'];
+
+// Families and macros are rows of the same vocabulary. Their keys never collide with a
+// genre key, because genreKey never makes a colon.
+export function familyKey(name: string): string {
+  return 'family:' + genreKey(name);
+}
+
+export function macroKey(name: string): string {
+  return 'macro:' + genreKey(name);
+}
+
+// A missing level means a genre (every row written before migration 0063).
+export function levelOf(g: Pick<VocabGenre, 'level'>): GenreLevel {
+  return g.level ?? 'genre';
+}
 
 // Accents dropped, lower case, and every character that is not a letter or a digit
 // removed. An empty key means the style has no letter or digit and is refused.
@@ -71,7 +93,11 @@ export function genreResolver(
   const byKey = new Map<string, VocabGenre>();
   for (const g of v.genres) byKey.set(g.key, g);
   const aliasTo = new Map<string, string>();
-  for (const g of v.genres) for (const a of g.aliases) if (!byKey.has(a.key)) aliasTo.set(a.key, g.key);
+  // Only genres take aliases: a spelling never resolves to a family or a macro.
+  for (const g of v.genres) {
+    if (levelOf(g) !== 'genre') continue;
+    for (const a of g.aliases) if (!byKey.has(a.key)) aliasTo.set(a.key, g.key);
+  }
   const target = (k: string): string => (byKey.has(k) ? k : aliasTo.get(k) ?? k);
 
   const groupByKey = new Map<string, string>();
@@ -139,7 +165,25 @@ export function genreResolver(
     const g = byKey.get(key);
     const name = g ? g.name : shownSpelling(key, style);
     const parent = groupOf(key, g);
-    return parent === undefined ? { key, name } : { key, name, parent };
+    const out: ResolvedGenre = parent === undefined ? { key, name } : { key, name, parent };
+    // Family and macro come only from the vocabulary's primaryParent links, never from the
+    // stored row parent or the genre map.
+    if (g && levelOf(g) === 'genre') {
+      const family = parentIn(g, 'family');
+      if (family) {
+        out.family = { key: family.key, name: family.name };
+        const macro = parentIn(family, 'macro');
+        if (macro) out.macro = { key: macro.key, name: macro.name };
+      }
+      if (g.tier) out.tier = g.tier;
+    }
+    return out;
+  };
+
+  const parentIn = (node: VocabGenre, level: GenreLevel): VocabGenre | undefined => {
+    if (!node.primaryParent) return undefined;
+    const p = byKey.get(node.primaryParent);
+    return p && levelOf(p) === level ? p : undefined;
   };
 
   return { resolve, groups };
@@ -255,4 +299,114 @@ export function genreCollisions(
     out.push({ key, spellings: list, shown: resolver.resolve(key).name });
   }
   return out.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+}
+
+// Human-readable rule breaks in the taxonomy (genre-taxonomy-phase-a.md section 2). The
+// same rules are checked again in genre_vocabulary_write. Empty: valid.
+export function checkTaxonomy(vocab: GenreVocabulary): string[] {
+  const errors: string[] = [];
+  const byKey = new Map<string, VocabGenre>();
+  for (const g of vocab.genres) byKey.set(g.key, g);
+
+  const keySpaceOk = (level: GenreLevel, key: string): boolean =>
+    level === 'genre'
+      ? !key.includes(':')
+      : level === 'family'
+        ? key.startsWith('family:')
+        : key.startsWith('macro:');
+
+  for (const g of vocab.genres) {
+    const level = levelOf(g);
+    const label = `${g.name} (${g.key})`;
+    if (!LEVELS.includes(level)) errors.push(`${label}: unknown level "${String(g.level)}"`);
+    if (!keySpaceOk(level, g.key)) errors.push(`${label}: a ${level} key is in the wrong key space`);
+
+    if (g.tier !== undefined) {
+      if (level !== 'genre') errors.push(`${label}: only a genre has a tier`);
+      if (!TIERS.includes(g.tier)) errors.push(`${label}: unknown tier "${g.tier}"`);
+    }
+
+    if (level === 'macro' && g.primaryParent !== undefined) {
+      errors.push(`${label}: a macro has no primary parent`);
+    }
+    if (level === 'family') {
+      const p = g.primaryParent === undefined ? undefined : byKey.get(g.primaryParent);
+      if (!p) errors.push(`${label}: a family needs a primary parent that is a macro`);
+      else if (levelOf(p) !== 'macro') errors.push(`${label}: a family's primary parent must be a macro`);
+    }
+    if (level === 'genre' && g.primaryParent !== undefined) {
+      const p = byKey.get(g.primaryParent);
+      if (!p) errors.push(`${label}: primary parent ${g.primaryParent} does not exist`);
+      else if (levelOf(p) !== 'family') errors.push(`${label}: a genre's primary parent must be a family`);
+    }
+    if (g.primaryParent !== undefined && g.primaryParent === g.key) {
+      errors.push(`${label}: cannot be its own primary parent`);
+    }
+
+    for (const r of g.relations ?? []) checkRelation(g, r, byKey, errors);
+  }
+
+  checkDerivedLoops(vocab, errors);
+  return errors;
+}
+
+function checkRelation(
+  g: VocabGenre,
+  r: GenreRelation,
+  byKey: Map<string, VocabGenre>,
+  errors: string[],
+): void {
+  const label = `${g.name} (${g.key}) to ${r.target}`;
+  const source = levelOf(g);
+  const target = byKey.get(r.target);
+  if (!RELATION_TYPES.includes(r.type)) errors.push(`${label}: unknown type "${r.type}"`);
+  if (!RELATION_ORIGINS.includes(r.origin)) errors.push(`${label}: unknown origin "${r.origin}"`);
+  if (!Number.isFinite(r.weight) || r.weight <= 0 || r.weight > 1) {
+    errors.push(`${label}: weight ${r.weight} is outside (0, 1]`);
+  }
+  if (r.target === g.key) errors.push(`${label}: a relation cannot point at itself`);
+  if (!target) {
+    errors.push(`${label}: target ${r.target} does not exist`);
+    return;
+  }
+  if (source !== 'genre') errors.push(`${label}: a relation starts at a genre`);
+  if (r.type === 'secondary_parent' && levelOf(target) !== 'family') {
+    errors.push(`${label}: a secondary_parent points at a family`);
+  }
+  if ((r.type === 'adjacent' || r.type === 'derived_from') && levelOf(target) !== 'genre') {
+    errors.push(`${label}: ${r.type} points at a genre`);
+  }
+  if (r.type === 'adjacent' && g.key < r.target) {
+    // Reported once per pair, from the smaller key.
+    const reverse = byKey.get(r.target)?.relations?.some((x) => x.type === 'adjacent' && x.target === g.key);
+    if (reverse) errors.push(`${g.name} (${g.key}) and ${r.target} are adjacent in both directions`);
+  }
+}
+
+function checkDerivedLoops(vocab: GenreVocabulary, errors: string[]): void {
+  const next = new Map<string, string[]>();
+  for (const g of vocab.genres) {
+    for (const r of g.relations ?? []) {
+      if (r.type !== 'derived_from') continue;
+      next.set(g.key, [...(next.get(g.key) ?? []), r.target]);
+    }
+  }
+  for (const [source, targets] of next) {
+    for (const target of targets) {
+      const seen = new Set<string>();
+      const stack = [target];
+      let loops = false;
+      while (stack.length && !loops) {
+        const k = stack.pop()!;
+        if (k === source) {
+          loops = true;
+          break;
+        }
+        if (seen.has(k)) continue;
+        seen.add(k);
+        stack.push(...(next.get(k) ?? []));
+      }
+      if (loops) errors.push(`${source} derived from ${target} makes a loop`);
+    }
+  }
 }
