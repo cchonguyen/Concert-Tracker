@@ -8,6 +8,7 @@ import {
   inboxApi,
   lineupApi,
   type LineupStatus,
+  type LoggedEvent,
   LookupJob,
   SOURCE_LABELS,
   UndoConflictError,
@@ -94,12 +95,17 @@ const messageOf = (err: unknown) => (err instanceof Error ? err.message : String
 
 const field = 'min-h-11 sm:min-h-9 rounded-control border border-line-strong bg-surface-1 px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none';
 
-export const CanonicalArchive: React.FC<{ section: ArchiveSection; query: string; status: EditionStatus }> = ({ section, query, status }) => {
+export const CanonicalArchive: React.FC<{ section: ArchiveSection; query: string; status: EditionStatus; events: LoggedEvent[] }> = ({
+  section,
+  query,
+  status,
+  events,
+}) => {
   if (section === 'lookups') return <ArchiveLookups />;
   if (section === 'changes') return <ArchiveChanges />;
   if (section === 'series') return <ArchiveSeries query={query} />;
   if (section === 'brands') return <ArchiveBrands query={query} />;
-  if (section === 'genres') return <GenresPanel query={query} />;
+  if (section === 'genres') return <GenresPanel query={query} events={events} />;
   if (section === 'editions') return <ArchiveEditions query={query} status={status} />;
   return <ArchiveArtists query={query} />;
 };
@@ -207,21 +213,6 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
 
   useKeptScroll('archive:artists', !detail, artists !== null);
 
-  if (detail) {
-    return (
-      <div className="space-y-4">
-        {noticeLine}
-        <CanonicalArtistEntry
-          artist={detail.artist}
-          appearances={detail.appearances}
-          artists={artists ?? []}
-          onBack={handleBackToArtists}
-          onChanged={(entry, key) => void changed(entry, key)}
-        />
-      </div>
-    );
-  }
-
   const q = query.trim().toLowerCase();
   const shown = (artists ?? []).filter((a) => !q || a.name.toLowerCase().includes(q) || a.key.includes(q) || a.akas.some((k) => k.includes(q)));
 
@@ -230,6 +221,15 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
       <ArtistCleanupPanel onApplied={() => void loadList()} />
       {noticeLine}
       {error && <p role="alert" className="text-sm text-bad">{error}</p>}
+      {detail && !shown.some((a) => a.key === detail.artist.key) && (
+        <CanonicalArtistEntry
+          artist={detail.artist}
+          appearances={detail.appearances}
+          artists={artists ?? []}
+          onBack={handleBackToArtists}
+          onChanged={(entry, key) => void changed(entry, key)}
+        />
+      )}
       {artists === null ? (
         <span role="status" aria-label="Loading artists" className="inline-flex items-center text-text-muted">
           <Equalizer />
@@ -242,31 +242,49 @@ const ArchiveArtists: React.FC<{ query: string }> = ({ query }) => {
         <Ledger>
           {shown.map((a) => {
             const url = canonicalArtistUrl(a.key, { q: query || undefined });
+            const isOpen = detail?.artist.key === a.key;
             return (
-              <Ledger.Row key={a.key} edge="none" className="row-hover hover:border-l-4">
-                <a
-                  href={url}
-                  onClick={(e) => {
-                    if (isModifiedClick(e)) return;
-                    e.preventDefault();
-                    window.history.pushState({ fromManageList: true }, '', url);
-                    rememberManageSearch(new URL(url, window.location.origin).search);
-                    window.dispatchEvent(new PopStateEvent('popstate'));
-                  }}
-                  className="flex w-full flex-wrap items-center gap-2 px-3 py-2.5 text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-                >
-                  <span className="font-medium text-text">{a.name}</span>
-                  {a.origins.map((o) => (
-                    <Pill key={o} tone="neutral">{ORIGIN_LABEL[o]}</Pill>
-                  ))}
-                  <span className="text-[11px] text-text-faint">{a.mbid ? 'MusicBrainz' : 'No MusicBrainz id'}</span>
-                  {a.akas.length > 0 && <span className="basis-full text-xs text-text-faint">Also known as {a.akas.join(', ')}</span>}
-                  <span className="ml-auto font-mono text-xs tabular-nums text-text-muted">
-                    {a.editionsCount} billed {a.editionsCount === 1 ? 'edition' : 'editions'}
-                    {a.communityCount === null ? '' : ` · ${a.communityCount} community`}
-                  </span>
-                </a>
-              </Ledger.Row>
+              <React.Fragment key={a.key}>
+                <Ledger.Row edge="none" selected={isOpen} className="row-hover hover:border-l-4">
+                  <a
+                    href={url}
+                    onClick={(e) => {
+                      if (isModifiedClick(e)) return;
+                      e.preventDefault();
+                      if (isOpen) {
+                        handleBackToArtists();
+                        return;
+                      }
+                      window.history.pushState({ fromManageList: true }, '', url);
+                      rememberManageSearch(new URL(url, window.location.origin).search);
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    }}
+                    className="flex w-full flex-wrap items-center gap-2 px-3 py-2.5 text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                  >
+                    <span className="font-medium text-text">{a.name}</span>
+                    {a.origins.map((o) => (
+                      <Pill key={o} tone="neutral">{ORIGIN_LABEL[o]}</Pill>
+                    ))}
+                    <span className="text-[11px] text-text-faint">{a.mbid ? 'MusicBrainz' : 'No MusicBrainz id'}</span>
+                    {a.akas.length > 0 && <span className="basis-full text-xs text-text-faint">Also known as {a.akas.join(', ')}</span>}
+                    <span className="ml-auto font-mono text-xs tabular-nums text-text-muted">
+                      {a.editionsCount} billed {a.editionsCount === 1 ? 'edition' : 'editions'}
+                      {a.communityCount === null ? '' : ` · ${a.communityCount} community`}
+                    </span>
+                  </a>
+                </Ledger.Row>
+                {isOpen && detail && (
+                  <div className="border-b border-line bg-surface-0 p-3">
+                    <CanonicalArtistEntry
+                      artist={detail.artist}
+                      appearances={detail.appearances}
+                      artists={artists ?? []}
+                      onBack={handleBackToArtists}
+                      onChanged={(entry, key) => void changed(entry, key)}
+                    />
+                  </div>
+                )}
+              </React.Fragment>
             );
           })}
         </Ledger>

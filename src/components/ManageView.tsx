@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Building2, HeartPulse, History, Layers, MapPin, Mic2, Plus, Search, Tag, Tags, Undo2, Users } from 'lucide-react';
-import { ArtistGenresPanel } from './ArtistGenresPanel';
+import { Building2, HeartPulse, History, Layers, MapPin, Mic2, Plus, Search, Tag, Undo2, Users } from 'lucide-react';
 import { canonicalApi, entitiesApi, LoggedEvent } from '../services/lineupApi';
 import type { ArtistOrigin, CanonicalArtistSummary } from '../server/entities/canonicalManage';
 import { normalizeName } from '../server/lineup/normalizeName';
@@ -189,8 +188,6 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   const [newOrg, setNewOrg] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [newGroup, setNewGroup] = useState('');
-  // Artist genres (owner only), moved here from the Table (docs/specs/quiet-tips-table.md).
-  const [genres, setGenres] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -530,18 +527,8 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
               className={showSearch ? '' : 'ml-auto'}
             />
           )}
-          {!archive && kind === 'artist' && isOwner && (
-            <button
-              type="button"
-              onClick={() => setGenres(true)}
-              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-line-strong bg-surface-1 px-3 text-sm text-text transition-colors hover:border-accent-tint-line motion-reduce:transition-none sm:min-h-9"
-            >
-              <Tags className="h-3.5 w-3.5" aria-hidden="true" /> Genres
-            </button>
-          )}
         </div>
       )}
-      {genres && <ArtistGenresPanel events={events} onClose={() => setGenres(false)} />}
 
       {notice && (
         <div className="flex flex-wrap items-center gap-3 rounded-card border border-line bg-surface-1 p-2.5 text-sm text-text">
@@ -564,7 +551,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
       {archive ? (
         <>
           {isOwner && <AdminInbox />}
-          <CanonicalArchive section={archiveSection} query={query} status={editionStatus} />
+          <CanonicalArchive section={archiveSection} query={query} status={editionStatus} events={events} />
         </>
       ) : kind === 'health' ? (
         <DataHealth
@@ -614,20 +601,6 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
             records.
           </p>
         </section>
-      ) : open && open.kind === kind ? (
-        <ManageEntry
-          key={open.id}
-          entity={open}
-          data={data}
-          events={counts.get(open.id) ?? []}
-          allEvents={events}
-          duplicates={(duplicateOf.get(open.id) ?? []).map((id) => byId.get(id)!).filter(Boolean)}
-          onBack={closeEntity}
-          onOpen={(id) => openEntity(id)}
-          onOpenEvent={onOpenEvent}
-          onOpenTable={onOpenTable}
-          onChanged={changed}
-        />
       ) : (
         <section className="space-y-3">
           {kind === 'artist' && (
@@ -703,6 +676,21 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
               </button>
             </form>
           )}
+          {open && open.kind === kind && !list.some((e) => e.id === open.id) && (
+            <ManageEntry
+              key={open.id}
+              entity={open}
+              data={data}
+              events={counts.get(open.id) ?? []}
+              allEvents={events}
+              duplicates={(duplicateOf.get(open.id) ?? []).map((id) => byId.get(id)!).filter(Boolean)}
+              onBack={closeEntity}
+              onOpen={(id) => openEntity(id)}
+              onOpenEvent={onOpenEvent}
+              onOpenTable={onOpenTable}
+              onChanged={changed}
+            />
+          )}
           {list.length ? (
             <Ledger>
               {list.map((e) => {
@@ -710,35 +698,56 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
                 const akas = data.aliases.filter((a) => a.entityId === e.id).length;
                 const hosts = e.kind === 'series' ? data.links.filter((l) => l.fromId === e.id && l.role === 'hosted_by').length : 0;
                 const hasDup = duplicateOf.has(e.id);
+                const isOpen = open?.id === e.id && open.kind === kind;
                 return (
-                  <Ledger.Row key={e.id} edge={hasDup ? 'needs' : 'none'} className="row-hover hover:border-l-4">
-                    <a
-                      href={entityUrl(kind, e.id)}
-                      onClick={(ev) => {
-                        if (isModifiedClick(ev)) return;
-                        ev.preventDefault();
-                        openEntity(e.id);
-                      }}
-                      className="flex w-full items-baseline gap-3 px-3 py-2.5 text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-sm text-text">{entityLabel(e)}</span>
-                      {hasDup && (
-                        <span title="Another record looks like the same one">
-                          <HintPill tone="needs">Look-alike</HintPill>
-                        </span>
-                      )}
-                      {e.kind === 'artist' &&
-                        (origins.get(normalizeName(e.name)) ?? []).map((o) => (
-                          <Pill key={o} tone="neutral">
-                            {ORIGIN_BADGE[o]}
-                          </Pill>
-                        ))}
-                      {akas > 0 && <span className="shrink-0 font-mono text-[11px] tabular-nums text-text-muted">{akas} AKA</span>}
-                      {hosts > 0 && <span className="shrink-0 text-[11px] text-text-muted">hosted</span>}
-                      {e.kind === 'label' && typeof e.attrs.group === 'string' && <span className="shrink-0 text-[11px] text-text-muted">{e.attrs.group}</span>}
-                      <span className="w-10 shrink-0 text-right font-mono text-xs tabular-nums text-text-muted">{e.kind === 'organization' ? '' : n}</span>
-                    </a>
-                  </Ledger.Row>
+                  <React.Fragment key={e.id}>
+                    <Ledger.Row edge={hasDup ? 'needs' : 'none'} selected={isOpen} className="row-hover hover:border-l-4">
+                      <a
+                        href={entityUrl(kind, e.id)}
+                        onClick={(ev) => {
+                          if (isModifiedClick(ev)) return;
+                          ev.preventDefault();
+                          if (isOpen) closeEntity();
+                          else openEntity(e.id);
+                        }}
+                        className="flex w-full items-baseline gap-3 px-3 py-2.5 text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-sm text-text">{entityLabel(e)}</span>
+                        {hasDup && (
+                          <span title="Another record looks like the same one">
+                            <HintPill tone="needs">Look-alike</HintPill>
+                          </span>
+                        )}
+                        {e.kind === 'artist' &&
+                          (origins.get(normalizeName(e.name)) ?? []).map((o) => (
+                            <Pill key={o} tone="neutral">
+                              {ORIGIN_BADGE[o]}
+                            </Pill>
+                          ))}
+                        {akas > 0 && <span className="shrink-0 font-mono text-[11px] tabular-nums text-text-muted">{akas} AKA</span>}
+                        {hosts > 0 && <span className="shrink-0 text-[11px] text-text-muted">hosted</span>}
+                        {e.kind === 'label' && typeof e.attrs.group === 'string' && <span className="shrink-0 text-[11px] text-text-muted">{e.attrs.group}</span>}
+                        <span className="w-10 shrink-0 text-right font-mono text-xs tabular-nums text-text-muted">{e.kind === 'organization' ? '' : n}</span>
+                      </a>
+                    </Ledger.Row>
+                    {isOpen && open && (
+                      <div className="border-b border-line bg-surface-0 p-3">
+                        <ManageEntry
+                          key={open.id}
+                          entity={open}
+                          data={data}
+                          events={counts.get(open.id) ?? []}
+                          allEvents={events}
+                          duplicates={(duplicateOf.get(open.id) ?? []).map((id) => byId.get(id)!).filter(Boolean)}
+                          onBack={closeEntity}
+                          onOpen={(id) => openEntity(id)}
+                          onOpenEvent={onOpenEvent}
+                          onOpenTable={onOpenTable}
+                          onChanged={changed}
+                        />
+                      </div>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </Ledger>
