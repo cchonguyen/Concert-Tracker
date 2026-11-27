@@ -1,5 +1,6 @@
 import React from 'react';
 import { PosterHeading } from './ui/PosterHeading';
+import { PostIt } from './ui/PostIt';
 import { Mail, Search, Ticket } from 'lucide-react';
 import { CaptureBar } from './CaptureBar';
 import { PAGE_ICON } from './pageIcons';
@@ -38,9 +39,11 @@ interface HomePageProps {
 
 // What each page is for, in one friendly line.
 
-const TINT: Record<Section, string> = {
-  library: 'border-accent-tint-line bg-surface-1',
-  explore: 'border-line-strong bg-surface-1',
+// The page links are post-its (docs/specs/landing-look.md): tilts repeat in this order, tones alternate per section.
+const LINK_TILTS = [-1, 1.25, 0.75, -1.25, -0.5, 1];
+const LINK_TONES: Record<Section, readonly ['paper' | 'second' | 'accent', 'paper' | 'second' | 'accent']> = {
+  library: ['paper', 'second'],
+  explore: ['accent', 'paper'],
 };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -195,30 +198,34 @@ export const HomePage: React.FC<HomePageProps> = ({
       {(Object.keys(SECTIONS) as Section[]).map((section) => (
         <section key={section} className="space-y-3">
           <PosterHeading size="md">{SECTIONS[section].label}</PosterHeading>
-          <div className={`grid gap-3 sm:grid-cols-2 ${empty ? 'opacity-60' : ''}`}>
-            {stripTabsFor(section, { canManage }).map((t) => {
+          <div className={`grid gap-5 pt-2 sm:grid-cols-2 ${empty ? 'opacity-60' : ''}`}>
+            {stripTabsFor(section, { canManage }).map((t, i) => {
               const Icon = PAGE_ICON[t === 'timeline' ? 'agenda' : t];
               const count = live(t);
               return (
-                <button
+                <PostIt
                   key={t}
                   onClick={() => (t === 'timeline' ? onOpenTimeline() : onOpen(t))}
-                  className={`group flex items-center gap-4 rounded-card border p-4 text-left shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] transition duration-150 hover:-translate-y-0.5 hover:border-accent-tint-line hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.99] motion-reduce:transform-none motion-reduce:transition-none ${TINT[section]}`}
+                  tilt={LINK_TILTS[i % LINK_TILTS.length]}
+                  tone={LINK_TONES[section][i % 2]}
+                  className="h-full"
                 >
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-control border border-accent-tint-line bg-accent-tint text-accent transition duration-150 group-hover:scale-105 motion-reduce:transform-none">
-                    <Icon className="h-6 w-6" strokeWidth={1.75} aria-hidden="true" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-base font-semibold text-text">{STRIP_LABELS[t]}</span>
-                    <span className="block text-sm text-text-muted">{STRIP_BLURB[t]}</span>
-                  </span>
-                  {count && (
-                    <span className="shrink-0 text-right">
-                      <span className="block text-3xl font-extrabold tabular-nums text-text">{count.n}</span>
-                      <span className="block font-mono text-xs text-text-muted">{count.unit}</span>
+                  <span className="flex items-center gap-4">
+                    <span aria-hidden="true" className="postit-icon flex h-11 w-11 shrink-0 items-center justify-center">
+                      <Icon className="h-7 w-7" strokeWidth={2} />
                     </span>
-                  )}
-                </button>
+                    <span className="min-w-0 flex-1">
+                      <span className="poster-head block text-2xl">{STRIP_LABELS[t]}</span>
+                      <span className="mt-0.5 block text-sm">{STRIP_BLURB[t]}</span>
+                    </span>
+                    {count && (
+                      <span className="shrink-0 text-right">
+                        <span className="poster-head block text-4xl tabular-nums">{count.n}</span>
+                        <span className="block font-mono text-xs">{count.unit}</span>
+                      </span>
+                    )}
+                  </span>
+                </PostIt>
               );
             })}
           </div>
