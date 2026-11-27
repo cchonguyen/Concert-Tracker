@@ -1213,6 +1213,32 @@ export class FileLineupStore implements LineupStore {
         if (!origByName.has(a.name)) origByName.set(a.name, clone(a));
       }
 
+      // Universe fallback: acts in seen_act_names(), artist_genres, or owner entities without a canonical_artists row.
+      const universeByKey = new Map<string, string>();
+      for (const ev of Object.values(state.events)) {
+        if (ev.deletedAt || !Array.isArray(ev.seen)) continue;
+        for (const a of ev.seen) {
+          const k = typeof a?.key === 'string' ? a.key.trim() : '';
+          const n = typeof a?.name === 'string' ? a.name.trim() : '';
+          if (k && n && !a.name.startsWith('v1:') && !universeByKey.has(k)) universeByKey.set(k, n);
+        }
+      }
+      for (const g of Object.values(state.artistGenres)) {
+        if (g.key && g.name?.trim() && !universeByKey.has(g.key)) universeByKey.set(g.key, g.name.trim());
+      }
+      const entHolder = this.holder(state, ownerUserId);
+      for (const e of Object.values(entHolder.entities ?? {})) {
+        if (e.kind === 'artist' && !e.mergedIntoId && e.nameNormalized && e.name && !universeByKey.has(e.nameNormalized)) {
+          universeByKey.set(e.nameNormalized, e.name);
+        }
+      }
+      const findUniverse = (name: string, key: string): { key: string; name: string } | undefined => {
+        for (const [k, n] of universeByKey) {
+          if (n === name || (key && k === key)) return { key: k, name: n };
+        }
+        return undefined;
+      };
+
       const findSource = (mbid: string, artist: string, artistKey: string): ArtistIdentity | undefined => {
         if (mbid) {
           const byMbid = Object.values(state.artists).find((a) => a.mbid === mbid);
@@ -1224,7 +1250,7 @@ export class FileLineupStore implements LineupStore {
         return undefined;
       };
 
-      const findTarget = (rawKey: string, normKey: string): ArtistIdentity | undefined => {
+      const findTarget = (rawKey: string, normKey: string, allowUniverse = false): ArtistIdentity | undefined => {
         if (rawKey.startsWith('mbid:')) {
           const mbid = rawKey.slice('mbid:'.length);
           return Object.values(state.artists).find((a) => a.mbid === mbid);
@@ -1234,6 +1260,14 @@ export class FileLineupStore implements LineupStore {
           const orig = origByName.get(rawName);
           if (orig && state.artists[orig.key]) return state.artists[orig.key];
           if (normKey && state.artists[normKey]) return state.artists[normKey];
+          if (allowUniverse) {
+            const u = findUniverse(rawName, normKey);
+            if (u) {
+              const promoted: ArtistIdentity = { key: u.key, name: u.name };
+              state.artists[u.key] = promoted;
+              return promoted;
+            }
+          }
         }
         return undefined;
       };
@@ -1298,7 +1332,7 @@ export class FileLineupStore implements LineupStore {
             }
           }
         } else if (r.status === 'merge_duplicate' || r.status === 'remap_set') {
-          const tgt = findTarget(r.canonicalKey, r.canonicalTargetKey);
+          const tgt = findTarget(r.canonicalKey, r.canonicalTargetKey, true);
           if (!tgt) {
             failedResolutions.push({ line: r.line, artist: r.artist, status: r.status, targetKey: r.canonicalKey, reason: 'Target artist not found' });
             continue;
@@ -1471,32 +1505,77 @@ export class FileLineupStore implements LineupStore {
             }
           }
         } else if (r.status === 'rename') {
-          if (!src) {
-            failedResolutions.push({ line: r.line, artist: r.artist, status: r.status, targetKey: r.canonicalArtist, reason: 'Source artist not found' });
-            continue;
+          let effectiveSrc = src;
+          if (!effectiveSrc) {
+            const univ = findUniverse(r.artist, r.artistKey);
+            if (!univ) {
+              failedResolutions.push({ line: r.line, artist: r.artist, status: r.status, targetKey: r.canonicalArtist, reason: 'Source artist not found' });
+              continue;
+            }
+            const nextKey = r.canonicalNewKey || univ.key;
+            if (nextKey !== univ.key) {
+              for (const g of Object.values(state.artistGenres)) {
+                if (g.key !== univ.key) continue;
+                const tgtId = `${g.source}|${nextKey}`;
+                if (!state.artistGenres[tgtId]) {
+                  const moved: ArtistGenres = { ...clone(g), key: nextKey, name: r.canonicalArtist };
+                  state.artistGenres[tgtId] = moved;
+                  state.genreChanges.push({
+                    id: crypto.randomUUID(),
+                    key: nextKey,
+                    source: g.source,
+                    at: new Date().toISOString(),
+                    actor: opts.actor as GenreChange['actor'],
+                    reason: `${opts.reason} (rename move)`,
+                    before: null,
+                    after: clone(moved),
+                  });
+                }
+              }
+              recordGenreDelete(univ.key, 'rename');
+            }
+            if (r.artistKey && r.artistKey !== nextKey) state.aliases[r.artistKey] = r.canonicalArtist;
+            for (const [ak, av] of Object.entries(state.aliases)) {
+              if (av === r.artist) state.aliases[ak] = r.canonicalArtist;
+            }
+            for (const ev of Object.values(state.events)) {
+              if (ev.deletedAt || !Array.isArray(ev.seen) || !isOwnerEvent(ev.id)) continue;
+              let changed = false;
+              for (const s of ev.seen) {
+                if (s.key === univ.key || (r.artistKey && s.key === r.artistKey) || s.name === r.artist) {
+                  changed = true;
+                  s.key = nextKey;
+                  s.name = r.canonicalArtist;
+                  if (r.setQualifier && !s.set) s.set = r.setQualifier;
+                }
+              }
+              if (changed) ownerEventsUpdated += 1;
+            }
+            if (!r.alterEgoOf) continue;
+            effectiveSrc = state.artists[nextKey] ?? (state.artists[nextKey] = { key: nextKey, name: r.canonicalArtist });
           }
-          let finalArtist = src;
-          if (!r.canonicalNewKey || r.canonicalNewKey === src.key) {
-            src.name = r.canonicalArtist;
+          let finalArtist = effectiveSrc;
+          if (!r.canonicalNewKey || r.canonicalNewKey === effectiveSrc.key) {
+            effectiveSrc.name = r.canonicalArtist;
             if (r.setQualifier) {
               for (const ed of Object.values(state.editions)) {
                 for (const p of ed.performances) {
-                  if (p.artistKey === src.key && !p.set) p.set = r.setQualifier;
+                  if (p.artistKey === effectiveSrc.key && !p.set) p.set = r.setQualifier;
                 }
               }
             }
           } else {
             let tgt = state.artists[r.canonicalNewKey];
             if (!tgt) {
-              tgt = { ...clone(src), key: r.canonicalNewKey, name: r.canonicalArtist };
+              tgt = { ...clone(effectiveSrc), key: r.canonicalNewKey, name: r.canonicalArtist };
               state.artists[tgt.key] = tgt;
-            } else if (src.mbid && !tgt.mbid) {
-              tgt.mbid = src.mbid;
+            } else if (effectiveSrc.mbid && !tgt.mbid) {
+              tgt.mbid = effectiveSrc.mbid;
             }
             for (const ed of Object.values(state.editions)) {
               const nextPerfs: EditionPerformance[] = [];
               for (const p of ed.performances) {
-                if (p.artistKey !== src.key) {
+                if (p.artistKey !== effectiveSrc.key) {
                   nextPerfs.push(p);
                   continue;
                 }
@@ -1515,7 +1594,7 @@ export class FileLineupStore implements LineupStore {
               ed.performances = nextPerfs;
             }
             for (const g of Object.values(state.artistGenres)) {
-              if (g.key !== src.key) continue;
+              if (g.key !== effectiveSrc.key) continue;
               const tgtId = `${g.source}|${tgt.key}`;
               if (!state.artistGenres[tgtId]) {
                 const moved: ArtistGenres = { ...clone(g), key: tgt.key, name: r.canonicalArtist };
@@ -1532,11 +1611,11 @@ export class FileLineupStore implements LineupStore {
                 });
               }
             }
-            recordGenreDelete(src.key, 'rename');
+            recordGenreDelete(effectiveSrc.key, 'rename');
             for (const a of Object.values(state.artists)) {
-              if (a.alterEgoOf === src.key) a.alterEgoOf = tgt.key;
+              if (a.alterEgoOf === effectiveSrc.key) a.alterEgoOf = tgt.key;
             }
-            delete state.artists[src.key];
+            delete state.artists[effectiveSrc.key];
             finalArtist = tgt;
           }
           if (r.artistKey && r.artistKey !== finalArtist.key) state.aliases[r.artistKey] = r.canonicalArtist;
@@ -1573,7 +1652,14 @@ export class FileLineupStore implements LineupStore {
             }
           }
         } else if (r.status === 'link_alter_ego') {
-          if (!src) {
+          let effectiveSrc = src;
+          if (!effectiveSrc) {
+            const univ = findUniverse(r.artist, r.artistKey);
+            if (univ) {
+              effectiveSrc = state.artists[univ.key] ?? (state.artists[univ.key] = { key: univ.key, name: univ.name });
+            }
+          }
+          if (!effectiveSrc) {
             failedResolutions.push({ line: r.line, artist: r.artist, status: r.status, targetKey: r.artist, reason: 'Alter-ego artist not found' });
             continue;
           }
@@ -1589,7 +1675,7 @@ export class FileLineupStore implements LineupStore {
           if (!parent) {
             failedResolutions.push({ line: r.line, artist: r.artist, status: r.status, targetKey: r.alterEgoOfKey, reason: `Alter-ego parent not found: ${r.alterEgoOf}` });
           } else {
-            src.alterEgoOf = parent.key;
+            effectiveSrc.alterEgoOf = parent.key;
           }
         }
       }
