@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { genresApi, type GenresList } from '../services/lineupApi';
-import { genreKey, NOT_GROUPED } from '../server/events/genreVocabulary';
+import { genresByArtist } from '../services/genres';
+import { genreKey, genreResolver, NOT_GROUPED } from '../server/events/genreVocabulary';
+import { canonicalArtistUrl, isModifiedClick, rememberManageSearch } from '../services/manageNav';
 import type { GenreVocabChange } from '../server/events/genreTypes';
 import type { GenreMergePlan } from '../server/events/genreVocabularyManage';
 import type { GenreListRow } from './GenresPanel';
@@ -24,6 +26,7 @@ const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyl
 const MERGE_INSTEAD = /That is already a genre: (.+)\. Merge instead\./;
 // The select's value for "no owner's group": the genre map decides again.
 const FROM_MAP = '';
+const ARTISTS_PREVIEW_LIMIT = 30;
 
 const Heading: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <h4 className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">{children}</h4>
@@ -50,6 +53,7 @@ export const GenreRecord: React.FC<{
   const [target, setTarget] = useState('');
   const [plan, setPlan] = useState<GenreMergePlan | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
+  const [showAllArtists, setShowAllArtists] = useState(false);
 
   // A different genre opened: start its record afresh.
   useEffect(() => {
@@ -61,6 +65,7 @@ export const GenreRecord: React.FC<{
     setPlan(null);
     setError(null);
     setMergeOffer(null);
+    setShowAllArtists(false);
   }, [row.key, row.name]);
 
   const vocab = useMemo(() => data.vocabulary.genres.find((g) => g.key === row.key), [data, row.key]);
@@ -71,6 +76,18 @@ export const GenreRecord: React.FC<{
     () => data.vocabulary.genres.filter((g) => g.umbrellas.includes(row.key)).map((g) => ({ key: g.key, name: nameOf(g.key) })),
     [data, row.key, rows],
   );
+  const connectedArtists = useMemo(() => {
+    const shared = data.genres.filter((r) => r.source !== 'added');
+    const resolver = genreResolver(data.vocabulary, data.map, shared);
+    const byArtist = genresByArtist(shared, data.vocabulary, data.map);
+    const out: Array<{ key: string; name: string }> = [];
+    for (const [key, artist] of byArtist) {
+      if (artist.genres.some((g) => resolver.resolve(g.style).key === row.key)) {
+        out.push({ key, name: artist.name });
+      }
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }, [data, row.key]);
   // Spellings joined by the key alone (same letters), not by an alias the owner added.
   const folded = row.spellings.filter((s) => s !== row.name && !row.aliases.includes(s) && genreKey(s) === row.key);
 
@@ -299,6 +316,47 @@ export const GenreRecord: React.FC<{
               </li>
             ))}
           </ul>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <Heading>Artists{connectedArtists.length > 0 ? ` (${connectedArtists.length})` : ''}</Heading>
+        {connectedArtists.length === 0 ? (
+          <p className="text-sm text-text-muted">None yet.</p>
+        ) : (
+          <>
+            <ul className="flex flex-wrap gap-x-3 gap-y-1">
+              {(showAllArtists ? connectedArtists : connectedArtists.slice(0, ARTISTS_PREVIEW_LIMIT)).map((a) => {
+                const url = canonicalArtistUrl(a.key);
+                return (
+                  <li key={a.key}>
+                    <a
+                      href={url}
+                      onClick={(e) => {
+                        if (isModifiedClick(e)) return;
+                        e.preventDefault();
+                        window.history.pushState({ fromManageList: true }, '', url);
+                        rememberManageSearch(new URL(url, window.location.origin).search);
+                        window.dispatchEvent(new PopStateEvent('popstate'));
+                      }}
+                      className="text-sm text-accent hover:underline"
+                    >
+                      {a.name}
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+            {connectedArtists.length > ARTISTS_PREVIEW_LIMIT && (
+              <button
+                type="button"
+                className="text-xs text-text-muted hover:text-accent"
+                onClick={() => setShowAllArtists((v) => !v)}
+              >
+                {showAllArtists ? 'Show fewer' : `Show all ${connectedArtists.length} artists`}
+              </button>
+            )}
+          </>
         )}
       </div>
 
