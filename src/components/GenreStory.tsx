@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { LoggedEvent } from '../services/lineupApi';
 import type { ArtistGenres } from '../services/genres';
 import {
@@ -13,6 +13,7 @@ import {
   outsideLane,
 } from '../services/genreInsights';
 import type { GenreVocabulary } from '../server/events/genreTypes';
+import { GenreConstellation } from './GenreConstellation';
 import { GenreYearsChart } from './GenreYearsChart';
 import { Pill } from './ui/Pill';
 import { Popover } from './ui/Popover';
@@ -82,6 +83,7 @@ export const GenreStory: React.FC<GenreStoryProps> = ({
   const byKind = useMemo(() => genreByKind(events, byArtist, vocabulary, today), [events, byArtist, vocabulary, today]);
   const bySeason = useMemo(() => genreBySeason(events, byArtist, vocabulary, today), [events, byArtist, vocabulary, today]);
   const outside = useMemo(() => outsideLane(events, byArtist, vocabulary), [events, byArtist, vocabulary]);
+  const [constellationOpen, setConstellationOpen] = useState(false);
 
   if (firsts.knownSets < FIRSTS_MIN_SETS) return null;
 
@@ -261,6 +263,29 @@ export const GenreStory: React.FC<GenreStoryProps> = ({
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {!constellationOpen && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setConstellationOpen(true)}
+            className="min-h-11 text-xs font-medium text-accent underline underline-offset-4 hover:text-text sm:min-h-9"
+          >
+            Open the Constellation
+          </button>
+        </div>
+      )}
+
+      {constellationOpen && (
+        <div className="rounded-card border border-line bg-surface-1 p-4 sm:p-5">
+          <GenreConstellation
+            events={events}
+            byArtist={byArtist}
+            vocabulary={vocabulary}
+            onClose={() => setConstellationOpen(false)}
+          />
         </div>
       )}
 
