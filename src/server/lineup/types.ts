@@ -28,6 +28,7 @@ export interface LookupInput {
   venue?: string;
   city?: string;
   country?: string;
+  seriesSlug?: string;
   lineupUrl?: string; // promoter lineup page or a Clashfinder URL
   notes?: string;
   // A set-times page the owner pasted (docs/specs/pasted-set-times.md). The lookup then runs only the pasted source.

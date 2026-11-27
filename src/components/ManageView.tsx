@@ -551,7 +551,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
       {archive ? (
         <>
           {isOwner && <AdminInbox />}
-          <CanonicalArchive section={archiveSection} query={query} status={editionStatus} events={events} />
+          <CanonicalArchive section={archiveSection} query={query} status={editionStatus} events={events} onEventsChanged={onEventsChanged} />
         </>
       ) : kind === 'health' ? (
         <DataHealth

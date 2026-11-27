@@ -152,12 +152,17 @@ export async function matchEdition(store: LineupStore, q: OccurrenceQuery): Prom
 // Without a date the one verified edition of the same subject and year can match. Two candidates mean no cache hit.
 export async function findVerifiedEdition(
   store: LineupStore,
-  q: { eventName: string; year: number; startDate?: string; venue?: string },
+  q: { eventName: string; year: number; startDate?: string; venue?: string; seriesSlug?: string },
 ): Promise<Edition | null> {
-  const slug = seriesSlugFor(q.eventName);
-  const all = (await store.listEditionHeaders({ limit: SCAN_LIMIT, status: 'verified' })).filter(
-    (e) => isVerified(e) && subjectOf(e) === slug,
-  );
+  const nameSlug = seriesSlugFor(q.eventName);
+  const slugs = new Set([q.seriesSlug?.trim(), nameSlug].filter((s): s is string => Boolean(s)));
+  const all = (await store.listEditionHeaders({ limit: SCAN_LIMIT, status: 'verified' })).filter((e) => {
+    if (!isVerified(e)) return false;
+    if (slugs.has(subjectOf(e))) return true;
+    if (e.seriesSlug && slugs.has(e.seriesSlug)) return true;
+    if (e.seriesName && seriesSlugFor(e.seriesName) === nameSlug) return true;
+    return (e.seriesAliases ?? []).some((a) => seriesSlugFor(a) === nameSlug);
+  });
   let found = q.startDate
     ? all.filter((e) => editionCoversDate(e, q.startDate!).matched)
     : all.filter((e) => e.year === q.year);
