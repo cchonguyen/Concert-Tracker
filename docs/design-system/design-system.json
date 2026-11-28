@@ -735,7 +735,7 @@
     },
     {
       "name": "AppBackdrop",
-      "purpose": "The drifting contour texture behind every page, tinted with the accent.",
+      "purpose": "The rotating, drifting contour texture (5% opacity, 400s spin, 50s drift) and non-rotating sliding dot grid (10% opacity, 10px, 14s slide) behind every page, tinted with the accent.",
       "props": {},
       "states": [
         "default"

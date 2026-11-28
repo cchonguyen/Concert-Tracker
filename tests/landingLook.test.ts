@@ -26,7 +26,28 @@ test('teal second colour differs from violet in both dark and light', () => {
 
 test('every movement in the module stops under reduced motion', () => {
   const reduced = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
-  for (const cls of ['.app-backdrop', '.btn-pop', '.postit', '.postit-icon']) assert.ok(reduced.includes(cls), cls);
+  for (const cls of [
+    '.app-backdrop',
+    '.app-backdrop-contour-rot',
+    '.app-backdrop-contour',
+    '.app-backdrop-dots',
+    '.btn-pop',
+    '.postit',
+    '.postit-icon',
+  ]) assert.ok(reduced.includes(cls), cls);
+});
+
+test('AppBackdrop pairs the rotating/drifting contour with the sliding dot grid', () => {
+  assert.match(css, /--la-backdrop-opacity:\s*0\.05;/);
+  assert.match(css, /--la-backdrop-dot-opacity:\s*0\.1;/);
+  assert.match(css, /animation:\s*la-backdrop-spin 400s linear infinite;/);
+  assert.match(css, /animation:\s*la-drift 50s ease-in-out infinite alternate;/);
+  assert.match(css, /background-size:\s*10px 10px;/);
+  assert.match(css, /animation:\s*la-dot-slide 14s linear infinite;/);
+  const backdropTsx = read('src/components/ui/AppBackdrop.tsx');
+  assert.match(backdropTsx, /app-backdrop-contour-rot/);
+  assert.match(backdropTsx, /app-backdrop-contour/);
+  assert.match(backdropTsx, /app-backdrop-dots/);
 });
 
 test('the heartbeat logo is public, animated, and uses primary accent tokens', () => {
