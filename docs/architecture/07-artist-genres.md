@@ -89,7 +89,7 @@ Release 2 of the genre taxonomy is built in Slices 41.1 to 41.5 ([docs/archive/g
 
 - Every act on the bill counts 1.0, split across its genres by weight. A B2B slot with a combo `alias` that has genres counts as 1.0 for the combo; otherwise each act counts 1.0.
 - There is one bar for the whole bill. When the lineup has stages, each stage gets its own bar as well. An act on two stages counts on both stage bars and once on the whole bill. Acts with no stage go on "No stage listed", which shows only when other stages exist.
-- Each bar shows its 4 largest families. A 5th family shows only when it is at least 10% of the bar, and the rest is grouped as Other. Tapping a segment lists its top genres and acts.
+- Each bar shows its 8 largest families, in the same 8 colours as Ranking, and the rest is grouped as Other (grey). Tapping a segment lists its top genres and acts.
 - When fewer than 60% of the acts have a genre, the bar notes "N of M acts have a genre." A bar needs 3 acts with a genre. Below that, the page says so and shows no bar.
 - Colours are the Sound Drift palette (`PALETTE`, exported from `GenreYearsChart.tsx`). A family keeps one colour across every bar of the event (the whole bill's order first). A B2B partner with no stage or day takes its slot partner's (`shareSlotPlaces`).
 

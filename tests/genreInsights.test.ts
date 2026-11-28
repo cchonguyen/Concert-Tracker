@@ -897,7 +897,7 @@ test('soundDrift: without a taxonomy it falls back to music-story groups and ign
 });
 
 // Lineup DNA (docs/archive/genre-taxonomy-release-2.md section 2 and decisions 1, 2, 5).
-const dnaFamilies = ['House', 'Techno', 'Trance', 'Garage', 'Dubstep', 'Jazz', 'Folk'];
+const dnaFamilies = ['House', 'Techno', 'Trance', 'Garage', 'Dubstep', 'Jazz', 'Folk', 'Disco', 'Ambient', 'Soul', 'Funk'];
 const dnaVocab: GenreVocabulary = {
   genres: [
     { key: 'macro:electronic', name: 'Electronic', level: 'macro', aliases: [], umbrellas: [] },
@@ -1029,9 +1029,12 @@ test('lineupDna: no-stage bar appears only when a named stage exists', () => {
   assert.deepEqual(full.bars.map((b) => b.id), ['all', 'stage:Main']);
 });
 
-test('lineupDna: Other collects the tail, and a 5th family shows only at 10% or more', () => {
-  // 14 acts: House 4, Techno 3, Garage 2, Trance 2, Dubstep 1, Jazz 1, Folk 1.
-  const counts: Array<[string, number]> = [['House', 4], ['Techno', 3], ['Garage', 2], ['Trance', 2], ['Dubstep', 1], ['Jazz', 1], ['Folk', 1]];
+test('lineupDna: the 8 largest families get segments and Other collects the tail', () => {
+  // 17 acts: House 4, Techno 3, Garage 2, Trance 2, then one each of Ambient, Disco, Dubstep, Folk, Jazz, Soul.
+  const counts: Array<[string, number]> = [
+    ['House', 4], ['Techno', 3], ['Garage', 2], ['Trance', 2],
+    ['Dubstep', 1], ['Jazz', 1], ['Folk', 1], ['Disco', 1], ['Ambient', 1], ['Soul', 1],
+  ];
   const acts: LineupGenresAct[] = [];
   const rows: ArtistGenres[] = [];
   for (const [fam, n] of counts) {
@@ -1043,24 +1046,26 @@ test('lineupDna: Other collects the tail, and a 5th family shows only at 10% or 
   }
   const whole = lineupDna(acts, genresByArtist(rows, dnaVocab), dnaVocab).bars[0];
 
-  // Fifth family Dubstep is 1/14 (under 10%): not shown; Dubstep, Jazz and Folk go to Other.
-  assert.deepEqual(whole.segments.map((s) => s.key), ['family:house', 'family:techno', 'family:garage', 'family:trance', 'other']);
-  const other = whole.segments[4];
+  // Ties sort by name, so Jazz and Soul are the 9th and 10th and go to Other.
+  assert.deepEqual(whole.segments.map((s) => s.key), [
+    'family:house', 'family:techno', 'family:garage', 'family:trance',
+    'family:ambient', 'family:disco', 'family:dubstep', 'family:folk', 'other',
+  ]);
+  const other = whole.segments[8];
   assert.equal(other.name, 'Other');
-  assert.ok(Math.abs(other.share - 3 / 14) < 1e-9);
-  assert.ok(Math.abs(whole.segments[0].share - 4 / 14) < 1e-9);
-  assert.deepEqual(other.acts.slice().sort(), ['dubstep0', 'folk0', 'jazz0']);
+  assert.ok(Math.abs(other.share - 2 / 17) < 1e-9);
+  assert.ok(Math.abs(whole.segments[0].share - 4 / 17) < 1e-9);
+  assert.deepEqual(other.acts.slice().sort(), ['jazz0', 'soul0']);
 });
 
-test('lineupDna: a fifth family at 10% or more gets its own segment; the sixth onwards goes to Other', () => {
-  // Seven acts, one per family: each 1/7 (about 14%), so the fifth shows and the sixth and seventh go to Other.
+test('lineupDna: with one act per family, the first 8 by name show and the rest go to Other', () => {
   const acts = dnaFamilies.map((f) => dnaAct(f.toLowerCase()));
   const rows = dnaFamilies.map((f) => dnaRow(f.toLowerCase(), [{ family: f, weight: 1 }]));
   const whole = lineupDna(acts, genresByArtist(rows, dnaVocab), dnaVocab).bars[0];
 
-  assert.deepEqual(whole.segments.map((s) => s.name), ['Dubstep', 'Folk', 'Garage', 'House', 'Jazz', 'Other']);
-  assert.ok(Math.abs(whole.segments[4].share - 1 / 7) < 1e-9);
-  assert.ok(Math.abs(whole.segments[5].share - 2 / 7) < 1e-9);
+  assert.deepEqual(whole.segments.map((s) => s.name), ['Ambient', 'Disco', 'Dubstep', 'Folk', 'Funk', 'Garage', 'House', 'Jazz', 'Other']);
+  assert.ok(Math.abs(whole.segments[7].share - 1 / 11) < 1e-9);
+  assert.ok(Math.abs(whole.segments[8].share - 3 / 11) < 1e-9);
 });
 
 test('lineupDna: coverage, lowCoverage and enough flags', () => {
