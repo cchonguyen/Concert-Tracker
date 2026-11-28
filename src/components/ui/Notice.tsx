@@ -1,23 +1,27 @@
 import type { ReactNode } from 'react';
-import { CircleAlert, CircleCheck, Info, Lightbulb } from 'lucide-react';
+import { CircleAlert, CircleCheck, Lightbulb, TriangleAlert } from 'lucide-react';
 
-export type NoticeTone = 'info' | 'success' | 'warning';
+export type NoticeTone = 'info' | 'success' | 'warning' | 'error';
 
-const TONES: Record<NoticeTone, { style: string; iconClass: string; Icon: typeof Info }> = {
-  info: { style: 'border-line bg-surface-1 text-text-muted', iconClass: 'text-accent', Icon: Lightbulb },
-  success: { style: 'border-good/45 bg-good/10 text-text', iconClass: 'text-good', Icon: CircleCheck },
-  warning: { style: 'border-warn/45 bg-warn/10 text-text', iconClass: 'text-warn', Icon: CircleAlert },
+// Every tone shares one card. The tone only sets the icon tile: a solid fill with a matching dark or light icon.
+const TONES: Record<NoticeTone, { tileClass: string; Icon: typeof Lightbulb }> = {
+  info: { tileClass: 'bg-accent-fill text-on-accent', Icon: Lightbulb },
+  success: { tileClass: 'bg-good text-surface-1', Icon: CircleCheck },
+  warning: { tileClass: 'bg-warn text-on-warn', Icon: CircleAlert },
+  error: { tileClass: 'bg-bad text-surface-1', Icon: TriangleAlert },
 };
 
-// A short, visible message for a result, a caveat or a warning. Warnings are announced at once; the rest are polite.
+// A short, visible message for a result, a caveat, a warning or an error. Warnings and errors are announced at once; the rest are polite.
 export function Notice({ tone = 'info', children, className = '' }: { tone?: NoticeTone; children: ReactNode; className?: string }) {
-  const { style, iconClass, Icon } = TONES[tone];
+  const { tileClass, Icon } = TONES[tone];
   return (
     <div
-      role={tone === 'warning' ? 'alert' : 'status'}
-      className={`flex items-start gap-2.5 rounded-card border px-3.5 py-2.5 text-sm ${style} ${className}`}
+      role={tone === 'warning' || tone === 'error' ? 'alert' : 'status'}
+      className={`flex items-start gap-2.5 rounded-card border border-line bg-surface-2 px-3.5 py-2.5 text-sm text-text ${className}`}
     >
-      <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${iconClass}`} aria-hidden="true" />
+      <span className={`mt-px flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[6px] ${tileClass}`}>
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      </span>
       <div className="min-w-0 flex-1 leading-relaxed">{children}</div>
     </div>
   );

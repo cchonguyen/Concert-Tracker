@@ -6,7 +6,7 @@ const VARIANTS: Record<ButtonVariant, string> = {
   primary: 'bg-accent-fill font-semibold text-on-accent hover:brightness-110',
   secondary: 'border border-line-strong bg-surface-2 text-text hover:bg-surface-3',
   ghost: 'text-text-muted hover:bg-surface-2 hover:text-text',
-  danger: 'border border-bad/45 bg-bad/10 text-bad hover:bg-bad/20',
+  danger: 'bg-bad-soft text-text hover:bg-[color-mix(in_oklab,var(--la-bad)_26%,var(--la-surface-1))]',
 };
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
