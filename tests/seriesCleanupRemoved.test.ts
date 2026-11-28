@@ -40,6 +40,11 @@ test('the owner previews the cleanup list in batches without changing anything',
     assert.equal(post.status, 200);
     assert.equal(post.json().total, SERIES_CLEANUP_PLAN.length);
     assert.equal(post.json().results.length, 0);
+    // With the list empty the routes answer total 0, which is what hides the Global Archive panel.
+    assert.equal(get.json().total, 0);
+    assert.equal(post.json().total, 0);
+    assert.deepEqual(get.json().results, []);
+    assert.deepEqual(post.json().results, []);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
