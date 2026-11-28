@@ -38,7 +38,7 @@ const PANEL_BORDER = { page: 'border-b-page', 'surface-1': 'border-b-surface-1',
 export function Tabs<T extends string>({ label, items, value, onChange, variant = 'folder', panel = 'surface-1', className = '', end, line = true }: Props<T>) {
   const id = useId();
   const still = useReducedMotion();
-  const slide = still ? { duration: 0 } : { type: 'spring' as const, stiffness: 90, damping: 11, mass: 0.7 };
+  const slide = still ? { duration: 0 } : { type: 'spring' as const, stiffness: 141, damping: 13.75, mass: 0.7 };
   const folder = variant === 'folder';
   // Which way the last change went (-1 left, 1 right), so the icon hop leans the right way.
   const at = items.findIndex((t) => t.value === value);
@@ -53,14 +53,14 @@ export function Tabs<T extends string>({ label, items, value, onChange, variant 
       still || !moved
         ? undefined
         : {
-            scaleX: [1, 1.045, 0.985, 1],
-            scaleY: [1, 0.93, 1.02, 1],
-            transition: { duration: 0.9, times: [0, 0.3, 0.65, 1], ease: 'easeOut' as const },
+            scaleX: [1, 0.935, 1],
+            scaleY: [1, 1.07, 1],
+            transition: { duration: 0.72, times: [0, 0.35, 1], ease: 'easeInOut' as const },
           },
     [value, still],
   );
   const squash = useMemo(
-    () => (still || !moved ? undefined : { scaleY: [1, 2.5, 1], transition: { duration: 0.9 } }),
+    () => (still || !moved ? undefined : { scaleY: [1, 2.5, 1], transition: { duration: 0.72 } }),
     [value, still],
   );
 
@@ -111,7 +111,7 @@ export function Tabs<T extends string>({ label, items, value, onChange, variant 
                   className="relative inline-flex"
                   initial={{ y: -6, rotate: dir * -14, scale: 1.25 }}
                   animate={{ y: 0, rotate: 0, scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 130, damping: 7 }}
+                  transition={{ type: 'spring', stiffness: 203, damping: 8.75 }}
                 >
                   <Icon className="h-[15px] w-[15px] text-accent" strokeWidth={1.75} aria-hidden="true" />
                 </motion.span>
