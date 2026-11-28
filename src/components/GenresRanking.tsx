@@ -33,7 +33,7 @@ type ZoomLevel = 'macro' | 'family' | 'genre';
 const LEVEL_KIND: Record<ZoomLevel, GenreTarget['kind']> = { macro: 'group', family: 'family', genre: 'style' };
 
 // Segment colours for the 100% bar; the first is the accent token.
-const SEGMENT_COLOURS = [
+export const SEGMENT_COLOURS = [
   'var(--accent, #e11d48)',
   '#38bdf8',
   '#34d399',

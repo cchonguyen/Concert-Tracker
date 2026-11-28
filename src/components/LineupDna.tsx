@@ -14,7 +14,7 @@ import {
 } from '../services/genreInsights';
 import type { GenreMapEntry, GenreVocabulary } from '../server/events/genreTypes';
 import { POPOVER_PANEL } from './ui/Popover';
-import { PALETTE } from './GenreYearsChart';
+import { SEGMENT_COLOURS as PALETTE } from './GenresRanking';
 
 interface Props {
   eventId: string;
