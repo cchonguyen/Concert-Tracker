@@ -37,7 +37,7 @@ Replace "never guess" with "always verify, and label every inference". The old r
 - Billing role: "List order, font size or position never make a headliner" (slice for item 8).
 - Reader model: "never asked for ... dates it was not shown" and the extraction-only prompt in `src/server/lineup/gemini.ts` (slice for item 7). "Never answers from memory" stays.
 - Venue fill: "several places are only offered" (could become an Inferred pick of the most-used place).
-- Auto-verify: "Ticks never verify an act" (item 10: two or more members agreeing will verify).
+- Auto-verify: "Ticks never verify an act" (item 10: two or more members agreeing will verify). Two members ticking the same act also verify it (`docs/specs/series-sync.md` Rule 1c).
 - On-screen text that says the app never guesses (landing page `FeatureTiles.tsx`, Find the lineup help in `EventDetail.tsx`) changes when the label ships, not before.
 
 ## Build plan (Charlie said "start building", 2026-11-25)
