@@ -94,7 +94,7 @@ export const AdminInbox: React.FC = () => {
               <h3 className="flex items-center gap-2 text-sm font-medium text-text">{g.label} <Pill tone="accent"><span className="font-mono tabular-nums">{g.items.length}</span></Pill></h3>
               <Ledger>
                 {g.items.map((it) => (
-                  <InboxRow key={it.id} item={it} busy={busy === it.id} onRun={run} />
+                  <InboxRow key={it.id} item={it} busy={busy === it.id} onRun={run} note={results[it.id]?.text} />
                 ))}
               </Ledger>
             </div>
@@ -147,7 +147,8 @@ const InboxRow: React.FC<{
   item: InboxItem;
   busy: boolean;
   onRun: (item: InboxItem, label: string, fn: () => Promise<unknown>) => void;
-}> = ({ item, busy, onRun }) => {
+  note?: string; // why the last tap on this item did not go through
+}> = ({ item, busy, onRun, note }) => {
   const c = change(item);
   const dismiss = (label: string, text: string) => <Button variant="ghost" disabled={busy} onClick={() => onRun(item, text, () => inboxApi.dismiss(item.id))}>{label}</Button>;
   const editionId = item.editionId || item.edition?.id;
@@ -194,6 +195,7 @@ const InboxRow: React.FC<{
         {item.kind === 'formatting' && dismiss('Got it', 'Noted.')}
         {item.kind === 'failed_lookup' && dismiss('Dismiss', 'Dismissed.')}
       </div>
+      {note && <p role="alert" className="break-words text-sm text-warn">{note}</p>}
     </Ledger.Row>
   );
 };

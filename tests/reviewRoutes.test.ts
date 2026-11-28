@@ -76,6 +76,22 @@ test('promote applies the override through writeEdition and resolves; stale need
   assert.equal((await store.getEdition('e1'))?.venue, 'Third Park');
 });
 
+test('promote closes an override the edition already holds, with no new change', async () => {
+  const { store, post } = await setup();
+  await store.upsertEdition({ ...ed('e1'), name: 'Comfort In Chaos Tour' });
+  const it = await store.addReviewItem({ kind: 'override', editionId: 'e1', eventId: 'ev1', payload: { field: 'name', old: 'John Summit', new: 'Comfort In Chaos Tour' } });
+  const r = await post(`/canon/review/${it.id}/promote`);
+  assert.equal(r.status, 200);
+  assert.equal(((await r.json()) as any).changeId, null);
+  assert.equal((await store.listEditionChanges('e1')).length, 0);
+  assert.equal((await store.listReviewItems({ status: 'promoted' })).length, 1);
+  // A different value over a changed edition still needs a decision, and says what the edition holds now.
+  const other = await store.addReviewItem({ kind: 'override', editionId: 'e1', eventId: 'ev2', payload: { field: 'name', old: 'John Summit', new: 'Comfort In Chaos' } });
+  const stale = await post(`/canon/review/${other.id}/promote`);
+  assert.equal(stale.status, 409);
+  assert.match(((await stale.json()) as any).error, /now says "Comfort In Chaos Tour"/);
+});
+
 test('verify sets the edition to verified; wrong kind and unknown id are 4xx', async () => {
   const { store, post } = await setup();
   await store.upsertEdition(ed('e1'));

@@ -101,8 +101,13 @@ export function canonReviewRouter(store: LineupStore): Router {
     if (!OVERRIDE_FIELDS.includes(field)) throw new HttpError(400, 'That override is not for a shared field.');
     const edition = await editionOf(item);
     const current = (edition as any)[field] ?? null;
+    // The edition already holds this value (an earlier promote, or the same change from another member): close the item.
+    if (current === (p.new ?? null)) {
+      await close(item.id, 'promoted');
+      return res.json({ ok: true, changeId: null, edition: publicEdition(edition) });
+    }
     if (current !== (p.old ?? null) && req.body?.force !== true) {
-      throw new HttpError(409, 'The edition changed since this override. Send force to apply it anyway.');
+      throw new HttpError(409, `The shared edition now says "${current ?? ''}". Choose Keep as is to close this, or edit the edition in Global Archive.`);
     }
     if (field === 'name' && !p.new) throw new HttpError(400, 'An edition name cannot be empty.');
     const next: Edition = { ...edition, [field]: p.new ?? undefined, updatedAt: new Date().toISOString() };
