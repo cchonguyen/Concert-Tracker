@@ -238,6 +238,8 @@ export const eventsApi = {
   research: (id: string, useGemini = false) =>
     request<{ event: LoggedEvent }>(`/api/events/${id}/details`, post({ useGemini })).then((r) => r.event),
   weather: (id: string) => request<{ event: LoggedEvent; note?: string }>(`/api/events/${id}/weather`, post()),
+  // Detach from the shared edition (undoes an automatic link: docs/specs/series-sync.md).
+  unlink: (id: string) => request<{ event: LoggedEvent }>(`/api/events/${encodeURIComponent(id)}/unlink`, post()).then((r) => r.event),
   pick: (id: string, candidateId?: string, fields?: EventField[]) =>
     request<{ event: LoggedEvent }>(`/api/events/${id}/details/pick`, post({ candidateId, fields })).then((r) => r.event),
   nameArtists: (id: string) =>
