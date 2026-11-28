@@ -1,4 +1,4 @@
-// App text rules from docs/specs/docs-and-text-cleanup.md: no AI brand name on
+// App text rules from docs/archive/docs-and-text-cleanup.md: no AI brand name on
 // member screens, and the deep search button keeps its plain name.
 import test from 'node:test';
 import assert from 'node:assert/strict';

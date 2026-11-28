@@ -1,5 +1,7 @@
 # Lineup-poster name lists and see-through ticket notches
 
+**Archived (2026-11-28):** Built and shipped.
+
 Charlie's requests, 2026-11-26:
 
 - "In ticket stubs and anywhere else where a lineup/who you've seen set of artists show up, I think something other than a comma-separated list would be more interesting. Perhaps instead of a comma, we can have a different delimiter such as a diamond or dot, making it feel more like a lineup poster instead of a long list."

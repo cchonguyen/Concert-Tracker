@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, Monitor, Moon, Sun } from 'lucide-react';
+import { Segmented } from './ui/Segmented';
 import { Tooltip } from './ui/Tooltip';
-import { Switch } from './ui/Switch';
-import { parseTintOn, TINT_KEY } from '../services/eventTint';
 import {
   ACCENT_KEY,
   ACCENTS,
@@ -46,8 +45,6 @@ export interface Theme {
   accent: Accent;
   pickMode: (m: ThemeMode) => void;
   pickAccent: (a: Accent) => void;
-  tintOn: boolean;
-  setTint: (on: boolean) => void;
   stubStyle: StubStyle;
   pickStubStyle: (s: StubStyle) => void;
 }
@@ -57,7 +54,6 @@ export interface Theme {
 export function useTheme(): Theme {
   const [mode, setMode] = useState<ThemeMode>(() => parseMode(read(MODE_KEY)));
   const [accent, setAccent] = useState<Accent>(() => parseAccent(read(ACCENT_KEY)));
-  const [tintOn, setTintOn] = useState<boolean>(() => parseTintOn(read(TINT_KEY)));
   const [stubStyle, setStubStyle] = useState<StubStyle>(() => parseStubStyle(read(STUB_STYLE_KEY)));
 
   useEffect(() => {
@@ -82,11 +78,6 @@ export function useTheme(): Theme {
     document.documentElement.dataset.stub = stubStyle;
   }, [stubStyle]);
 
-  // index.css hides the poster wash and series dots when this is "off".
-  useEffect(() => {
-    document.documentElement.dataset.eventTint = tintOn ? 'on' : 'off';
-  }, [tintOn]);
-
   const pickMode = (m: ThemeMode) => {
     setMode(m);
     write(MODE_KEY, m);
@@ -96,17 +87,12 @@ export function useTheme(): Theme {
     write(ACCENT_KEY, a);
   };
 
-  const setTint = (on: boolean) => {
-    setTintOn(on);
-    write(TINT_KEY, on ? 'on' : 'off');
-  };
-
   const pickStubStyle = (s: StubStyle) => {
     setStubStyle(s);
     write(STUB_STYLE_KEY, s);
   };
 
-  return { mode, accent, pickMode, pickAccent, tintOn, setTint, stubStyle, pickStubStyle };
+  return { mode, accent, pickMode, pickAccent, stubStyle, pickStubStyle };
 }
 
 // A 5-swatch picker for ticket stub styles; used both in the global menu and on Share cards.
@@ -145,25 +131,18 @@ export function TicketStylePicker({
 
 // The theme choices, shown inline inside the menu.
 export function ThemeControls({ theme }: { theme: Theme }) {
-  const { mode, accent, pickMode, pickAccent, tintOn, setTint, stubStyle, pickStubStyle } = theme;
+  const { mode, accent, pickMode, pickAccent, stubStyle, pickStubStyle } = theme;
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-1">
-        {MODES.map(([m, Icon, label]) => (
-          <button
-            key={m}
-            type="button"
-            aria-pressed={mode === m}
-            onClick={() => pickMode(m)}
-            className={`flex w-full flex-col items-center gap-1 rounded-lg px-1 py-2 text-xs transition-colors ${
-              mode === m ? 'bg-accent-fill text-on-accent' : 'text-text-muted hover:bg-surface-2 hover:text-text'
-            }`}
-          >
-            <Icon className="h-4 w-4" aria-hidden="true" />
-            {label}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        label="Theme mode"
+        compact
+        stretch
+        className="w-full"
+        value={mode}
+        onChange={pickMode}
+        options={MODES.map(([value, icon, label]) => ({ value, icon, label }))}
+      />
       <div className="flex justify-between border-t border-line pt-3">
         {ACCENTS.map((a) => (
           <Tooltip key={a} label={a[0].toUpperCase() + a.slice(1)}>
@@ -181,9 +160,6 @@ export function ThemeControls({ theme }: { theme: Theme }) {
         ))}
       </div>
       <TicketStylePicker value={stubStyle} onChange={pickStubStyle} className="border-t border-line pt-3" />
-      <div className="border-t border-line pt-2">
-        <Switch checked={tintOn} onChange={setTint} label="Tint posters by event" helper="A soft color on each poster, the same for every year of a series." />
-      </div>
     </div>
   );
 }

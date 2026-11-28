@@ -1,4 +1,4 @@
-// Reduced motion (docs/specs/design-refresh-2.md, section 4): with the system
+// Reduced motion (docs/archive/design-refresh-2.md, section 4): with the system
 // setting on, nothing glides, pulses or celebrates. CSS animations are
 // stopped by the rule at the end of index.css; this covers motion started
 // from code, such as scrolling.

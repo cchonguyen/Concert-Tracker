@@ -1,6 +1,8 @@
 # Genres in Explore
 
-> Update 2026-11-27: the Genres ranking (38.5) and the over-the-years chart (38.8) are upgraded to the Multi-Zoom Breakdown and Sound Drift in Release 1 of the genre taxonomy, after Phase A ([genre-taxonomy-phase-a.md](genre-taxonomy-phase-a.md)). Groups become macro genres and scene families there.
+**Archived (2026-11-28):** Built and shipped.
+
+> Update 2026-11-27: the Genres ranking (38.5) and the over-the-years chart (38.8) are upgraded to the Multi-Zoom Breakdown and Sound Drift in Release 1 of the genre taxonomy, after Phase A ([genre-taxonomy-phase-a.md](../specs/genre-taxonomy-phase-a.md)). Groups become macro genres and scene families there.
 
 > Note: the Genres table (38.5's Genre, Family and Style columns) and the over-the-years chart (38.8) were replaced by the Multi-Zoom Breakdown and Sound Drift in [genre-taxonomy-release-1.md](genre-taxonomy-release-1.md).
 
@@ -10,7 +12,7 @@ Mockups: https://claude.ai/artifact/GHxso4yoYwvpzsUT4nHG5u (sample data, made-up
 
 ## 1. The idea in one paragraph
 
-Genres are now shared and fairly complete (`docs/specs/canonical-genres.md`, `docs/specs/genre-vocabulary.md`). This spec turns them into small stories about the person: which genres they see most and the artists behind them, what they've got into lately, their firsts and milestones, how their taste moved over the years, and who they go with for which genre. Everything is worked out in the browser from the person's own events. No new table, migration, route or model call is needed.
+Genres are now shared and fairly complete (`docs/specs/canonical-genres.md`, `docs/archive/genre-vocabulary.md`). This spec turns them into small stories about the person: which genres they see most and the artists behind them, what they've got into lately, their firsts and milestones, how their taste moved over the years, and who they go with for which genre. Everything is worked out in the browser from the person's own events. No new table, migration, route or model call is needed.
 
 ## 2. Decisions (Charlie, 26 Nov 2026)
 
@@ -50,7 +52,7 @@ These come from `AGENTS.md` and the genre specs. Breaking one is a bug.
 - **Minimum sizes.** Each claim has a threshold (section 6). Below it the card says "Not enough shows yet" with the count so far, or the card is hidden where the section says so.
 - **Your stats stay yours.** Everything is worked out in the browser from the events and genre rows the person already receives. Nothing new is sent to the server, written to a shared table, logged, or added to the owner's genres file. No feature compares one member with another.
 - **Use the vocabulary.** Always call `genresByArtist(genres, vocabulary, map)` and count by `genreKey`, so spellings, aliases, merges, groups and umbrellas apply. A genre with no group counts under "Not grouped".
-- **People stay private.** Companion names come from the vault in the browser (`src/services/vaultPeople.ts`). While the vault is locked (`peopleLocked`), people features show "Unlock your vault to see this" and nothing else. Companions never appear on a share card, the public share page or any shared table, matching `docs/specs/ticket-stub.md`.
+- **People stay private.** Companion names come from the vault in the browser (`src/services/vaultPeople.ts`). While the vault is locked (`peopleLocked`), people features show "Unlock your vault to see this" and nothing else. Companions never appear on a share card, the public share page or any shared table, matching `docs/archive/ticket-stub.md`.
 - **Dates.** A month-only event counts in its month and year but is never placed on a day. "First" and "last" sort month-only events at the start of their month. Copy says "the first you logged", never "your first ever".
 - **Two ways of counting, said plainly.**
   - **Share** (bars, rising, over the years, year in review) uses `genreMix` weighting: each set counts once, split across its act's genres by weight.

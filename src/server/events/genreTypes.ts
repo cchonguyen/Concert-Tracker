@@ -79,7 +79,7 @@ export interface GenreRelation {
   origin: GenreRelationOrigin;
 }
 
-// The owner's genre vocabulary (docs/specs/genre-vocabulary.md section 2). A genre
+// The owner's genre vocabulary (docs/archive/genre-vocabulary.md section 2). A genre
 // nobody has changed has no entry: it resolves to itself by its key (genreKey).
 export interface VocabGenre {
   key: string; // genreKey(name); a family is 'family:' + genreKey, a macro 'macro:' + genreKey

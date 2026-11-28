@@ -1,11 +1,13 @@
 # Gemini package "Ledger & Lobby": LiveArchive 2.0 design refresh
 
+**Archived (2026-11-28):** Built and shipped.
+
 Status: approved by Charlie on 25 Nov 2026. **Stage 0 has merged** (slices 22.1 to 22.6), so `main` now has the tokens, the fonts, the contrast test and the shared parts `Tabs`, `Ledger`, `KindPill`, `HintPill`, `Stars` and `Equalizer`. They are documented in `docs/architecture/15-shared-ui.md`.
 
-This is half of the design refresh in `docs/specs/design-refresh-2.md`. Claude builds the other half (Track A) at the same time. "Ledger" covers the list screens: Table, Agenda, Month and River. "Lobby" covers the screens people meet first: the capture box, Home, the landing page, the share page and the emails.
+This is half of the design refresh in `docs/archive/design-refresh-2.md`. Claude builds the other half (Track A) at the same time. "Ledger" covers the list screens: Table, Agenda, Month and River. "Lobby" covers the screens people meet first: the capture box, Home, the landing page, the share page and the emails.
 
 ## Before you start
-1. Read `AGENTS.md`, `CLAUDE.md`, `.spec/EXTERNAL_AGENT_RULES.md` and `docs/specs/design-refresh-2.md` (sections 2 to 5 are the visual rules).
+1. Read `AGENTS.md`, `CLAUDE.md`, `.spec/EXTERNAL_AGENT_RULES.md` and `docs/archive/design-refresh-2.md` (sections 2 to 5 are the visual rules).
 2. Read `docs/design-system/` for the Stage 0 tokens and shared parts.
 3. Check that origin has no `harness-main-red` tag.
 4. Work one slice at a time, in the order of the table below. Each slice already has a line in `.spec/PROGRESS.md` and a GitHub issue.
@@ -63,4 +65,4 @@ Put the check results and before-and-after screenshots in each pull request. Cla
 
 ## Reference
 - Mockups: Charlie's design canvas (ask him for the link). The boards to match are "Round 3 · Library: Summary and Table" for G1 and G2, "Round 2 · 2 Bound Archive" for G3 and G4, and "Round 3 · Events and tabs" for rows and year separators.
-- Spec: `docs/specs/design-refresh-2.md`.
+- Spec: `docs/archive/design-refresh-2.md`.

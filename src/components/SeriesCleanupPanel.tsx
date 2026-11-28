@@ -13,7 +13,7 @@ const OUTCOME: Record<CleanupResult['outcome'], string> = {
   failed: 'Failed',
 };
 
-// Global Editions: the approved series cleanup (docs/specs/series-cleanup.md). Check shows every step against the
+// Global Editions: the approved series cleanup (docs/archive/series-cleanup.md). Check shows every step against the
 // live records and changes nothing; Run goes through them in small batches, each change logged and undoable in Changes.
 export const SeriesCleanupPanel: React.FC = () => {
   const [results, setResults] = useState<CleanupResult[] | null>(null);

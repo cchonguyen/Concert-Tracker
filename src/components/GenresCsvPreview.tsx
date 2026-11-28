@@ -6,7 +6,7 @@ import { changesToSave } from '../server/events/genreCsv';
 
 // "Check before saving": the preview of an edited artist-genres CSV, shown in
 // the Genres panel. Nothing is saved here; Apply is the only save. See
-// docs/specs/genres-csv.md ("Preview, then Apply", "UI copy").
+// docs/archive/genres-csv.md ("Preview, then Apply", "UI copy").
 
 interface GenresCsvPreviewProps {
   changes: GenreChange[];

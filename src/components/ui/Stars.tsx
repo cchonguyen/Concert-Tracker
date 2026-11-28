@@ -11,7 +11,7 @@ interface Props {
 }
 
 // A rating as icon stars with a label, never star characters
-// (docs/specs/design-refresh-2.md, section 2). Unrated says "Not rated" to
+// (docs/archive/design-refresh-2.md, section 2). Unrated says "Not rated" to
 // screen readers and shows faint outlines, so nothing reads as a rating that
 // was not given. When editable, a tap on the current value clears it, and the
 // chosen star and the ones before it pop in a quick ripple (skipped with reduced motion).

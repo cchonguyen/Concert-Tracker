@@ -1,6 +1,8 @@
 # Genre taxonomy, Release 1: Multi-Zoom Breakdown and Sound Drift
 
-Planned 2026-11-27, after Phase A ([genre-taxonomy-phase-a.md](genre-taxonomy-phase-a.md)) merged and its files were applied. It follows Charlie's brief "Genre Taxonomy, Visualizations & Relational Discovery" and decisions 5 and 6 of the Phase A spec. Slices are 40.x. There is no migration, and everything is worked out in the browser from data each person already gets.
+**Archived (2026-11-28):** Built and shipped.
+
+Planned 2026-11-27, after Phase A ([genre-taxonomy-phase-a.md](../specs/genre-taxonomy-phase-a.md)) merged and its files were applied. It follows Charlie's brief "Genre Taxonomy, Visualizations & Relational Discovery" and decisions 5 and 6 of the Phase A spec. Slices are 40.x. There is no migration, and everything is worked out in the browser from data each person already gets.
 
 ## In plain English
 
@@ -71,7 +73,7 @@ In Your genre story (`src/components/GenreYearsChart.tsx`, used by `GenreStory.t
 
 ## 7. Docs (Slice 40.7)
 
-`docs/architecture/07-artist-genres.md` (Explore section), `ARCHITECTURE.md` (Explore line), and a note in `docs/specs/genre-explore.md` that 38.5's table and 38.8's chart were replaced here.
+`docs/architecture/07-artist-genres.md` (Explore section), `ARCHITECTURE.md` (Explore line), and a note in `docs/archive/genre-explore.md` that 38.5's table and 38.8's chart were replaced here.
 
 ## 8. Slices
 
@@ -83,7 +85,7 @@ In Your genre story (`src/components/GenreYearsChart.tsx`, used by `GenreStory.t
 | 40.4 | CORE / DATA | Sound Drift maths | `src/services/genreInsights.ts`, `tests/genreInsights.test.ts` |
 | 40.5 | UI / VISUAL | Sound Drift chart and drivers panel | `src/components/GenreYearsChart.tsx`, `src/components/GenreStory.tsx` |
 | 40.6 | CORE / DATA | Create genre with a family; undo checks links | `src/components/GenresPanel.tsx`, `src/server/events/genreVocabularyManage.ts`, `tests/genreVocabularyManage.test.ts` |
-| 40.7 | UI / VISUAL | Docs | `docs/architecture/07-artist-genres.md`, `ARCHITECTURE.md`, `docs/specs/genre-explore.md` |
+| 40.7 | UI / VISUAL | Docs | `docs/architecture/07-artist-genres.md`, `ARCHITECTURE.md`, `docs/archive/genre-explore.md` |
 
 No slice touches AGENTS.md, REQUIREMENTS.md, a migration or a shared table.
 

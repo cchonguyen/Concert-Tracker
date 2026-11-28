@@ -30,7 +30,7 @@ interface Props<T extends string> {
 const PANEL_BG = { page: 'bg-page', 'surface-1': 'bg-surface-1', 'surface-2': 'bg-surface-2' } as const;
 const PANEL_BORDER = { page: 'border-b-page', 'surface-1': 'border-b-surface-1', 'surface-2': 'border-b-surface-2' } as const;
 
-// Navigation between pages or views (docs/specs/design-refresh-2.md, section 2, Shape).
+// Navigation between pages or views (docs/archive/design-refresh-2.md, section 2, Shape).
 // Square corners and straight borders, never the solid Add colour. The open tab is also
 // bold, raised and marked with aria-current, so the state is never shown by colour alone.
 // The open tab's folder (or the underline) slides to the new tab with a little overshoot and settles with a

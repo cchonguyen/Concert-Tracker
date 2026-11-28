@@ -47,7 +47,7 @@ const card = 'rounded-card border border-line bg-surface-1 p-4';
 const title = 'poster-head text-2xl text-text';
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-// All time: the totals the Table used to show, one cell each, with what each one covers (docs/specs/quiet-tips-table.md).
+// All time: the totals the Table used to show, one cell each, with what each one covers (docs/archive/quiet-tips-table.md).
 const AllTimeStrip: React.FC<{ t: AllTime }> = ({ t }) => {
   const cells: { k: string; v: string; c: string }[] = [
     { k: 'Shows', v: t.events.toLocaleString(), c: 'you went to' },

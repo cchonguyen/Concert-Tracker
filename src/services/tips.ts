@@ -1,6 +1,6 @@
 import type { TipsSaved } from '../server/auth/prefs';
 
-// When a page tip shows (docs/specs/quiet-tips-table.md). Pure rules; the account keeps the state
+// When a page tip shows (docs/archive/quiet-tips-table.md). Pure rules; the account keeps the state
 // (src/server/auth/prefs.ts) and src/components/ui/TipsContext.tsx reads and saves it.
 //
 // A tip shows on its first FOLD_AFTER visits, then folds away into the ? in the header.

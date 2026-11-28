@@ -22,7 +22,7 @@ export type { ArtistGenres, GenreShare };
 // with none. An act checked with no genre found keeps its empty row, so the
 // app can tell "none found" from "not looked up".
 // Step 2: a member's 'added' styles not already in the base go after it.
-// Every style is resolved first (docs/specs/genre-vocabulary.md section 3): spellings
+// Every style is resolved first (docs/archive/genre-vocabulary.md section 3): spellings
 // with the same genreKey are one genre, shown in one spelling, with their weights
 // added inside one act, and a genre with no group is "Not grouped".
 const BASE_RANK: Partial<Record<string, number>> = { owner: 0, you: 1 };
@@ -216,7 +216,7 @@ export function hasGenreUnder(g: ArtistGenres | undefined, umbrellaKey: string, 
 // spread over the others. Groups and styles are the resolved ones from
 // genresByArtist; a genre with no group counts under "Not grouped", and styles
 // are counted by genreKey so two spellings of one genre are one bar.
-// Umbrellas (docs/specs/genre-vocabulary.md section 7): per set, an umbrella gets
+// Umbrellas (docs/archive/genre-vocabulary.md section 7): per set, an umbrella gets
 // the weights of the act's genres at or under it, at any depth, each genre once
 // even when two paths reach the umbrella, so never more than one set.
 export function genreMix(

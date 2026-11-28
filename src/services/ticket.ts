@@ -1,4 +1,4 @@
-// Ticket stub rules (docs/specs/ticket-stub.md, Rules). Pure code: no React,
+// Ticket stub rules (docs/archive/ticket-stub.md, Rules). Pure code: no React,
 // no I/O, no clock. Callers pass `today` in. Every printed value is stored or
 // worked out here from stored values; a missing one is left out.
 

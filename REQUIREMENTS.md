@@ -170,4 +170,3 @@ Ranked by how much they serve the purpose for how little complexity they add.
 1. **Artist pages**: every time you saw someone, with the venues and who you were with.
 2. **Back-fill mode**: type one line per event in a box (a whole year at once) and stage 1 handles each.
 3. **Setlists**: for a seen act at a single-artist show, link the setlist.fm setlist for that night.
-4. **Share card**: an image of one event or one year, generated from your own data.

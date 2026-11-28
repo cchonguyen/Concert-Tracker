@@ -1,6 +1,6 @@
 import type { ReactNode, HTMLAttributes } from 'react';
 
-// Joined, square-cornered rows (docs/specs/design-refresh-2.md, section 2, Shape).
+// Joined, square-cornered rows (docs/archive/design-refresh-2.md, section 2, Shape).
 // A Ledger holds Ledger.Row and Ledger.Separator children. Each row carries a
 // 3 px straight edge bar on the left that names its kind: accent for a festival,
 // grey for a show, amber for needs-you. The bar is always paired with an icon and

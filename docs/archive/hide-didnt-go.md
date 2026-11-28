@@ -1,5 +1,7 @@
 # Hide events you didn't go to
 
+**Archived (2026-11-28):** Built and shipped.
+
 Charlie's request, 2026-11-26: "Auto-hide events that I did not go to (but they can be filtered to bring them back)." Scope confirmed in the project thread the same day. Issue #855.
 
 ## What exists

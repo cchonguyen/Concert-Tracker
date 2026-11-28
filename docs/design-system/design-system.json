@@ -1,7 +1,7 @@
 {
   "name": "LiveArchive design system export",
-  "version": "2026-11-27",
-  "describes": "What the app does today. Sources: src/index.css, src/services/theme.ts, src/components/ui/, REQUIREMENTS.md section 3, docs/architecture/15-shared-ui.md.",
+  "version": "2026-11-28",
+  "describes": "What the app does today. Sources: src/styles/tokens.css, src/styles/landing-look.css, src/styles/ticket-styles.css, src/styles/motion.css, src/services/theme.ts, src/components/ui/, REQUIREMENTS.md section 3, docs/architecture/15-shared-ui.md.",
   "stack": {
     "framework": "React + TypeScript",
     "css": "Tailwind CSS v4, CSS-first (@import \"tailwindcss\", @theme)",
@@ -70,8 +70,16 @@
     }
   ],
   "color": {
-    "model": "UI is written in Tailwind zinc (surfaces, text) and violet (accent) classes. A theme only redefines those variables.",
-    "accentAttribute": "data-accent on <html>; --accent-* scales are mapped onto --color-violet-*",
+    "model": "UI uses semantic --la-* utilities (bg-surface-1, text-text, border-line, bg-accent-fill, text-on-accent, text-good/warn/bad). Legacy Tailwind zinc (surfaces, text) and violet (accent) classes remain mapped for older screens.",
+    "semanticTokens": {
+      "surfaces": ["--la-page", "--la-surface-1", "--la-surface-2", "--la-surface-3", "--la-sunken"],
+      "borders": ["--la-line", "--la-line-strong"],
+      "text": ["--la-text", "--la-text-muted", "--la-text-faint"],
+      "accent": ["--la-accent", "--la-accent-fill", "--la-on-accent", "--la-accent-tint", "--la-accent-tint-line", "--la-row-hover"],
+      "status": ["--la-good", "--la-warn", "--la-bad"],
+      "ticket": ["--la-paper", "--la-paper-2", "--la-perf"]
+    },
+    "accentAttribute": "data-accent on <html>; --accent-* scales are mapped onto --la-accent* and legacy --color-violet-*",
     "accents": {
       "violet": {
         "50": "oklch(96.9% 0.016 293.756)",
@@ -148,12 +156,12 @@
       "red": "danger button"
     },
     "browserBar": {
-      "dark": "#022c22",
-      "light": "#fafafa"
+      "dark": "#0e0e11",
+      "light": "#f7f7f8"
     },
     "posterBase": {
-      "dark": "#111114",
-      "light": "var(--color-zinc-950)"
+      "dark": "var(--la-surface-1)",
+      "light": "var(--la-surface-1)"
     },
     "second": {
       "tokens": [
@@ -287,13 +295,14 @@
           950
         ]
       },
-      "semanticValues": "See :root[data-theme='light'] in LiveArchive src/index.css"
+      "semanticValues": "See :root[data-theme='light'] in LiveArchive src/styles/tokens.css"
     },
     "storage": {
       "modeKey": "livearchive.themeMode.v1",
       "accentKey": "livearchive.accent.v1",
+      "stubStyleKey": "livearchive.stubStyle.v1",
       "where": "localStorage, per device, read in try/catch",
-      "prePaint": "Inline script in app.html sets data-theme and data-accent before the app draws; keep it in step with src/services/theme.ts"
+      "prePaint": "Inline script in app.html sets data-theme, data-accent and data-stub before the app draws; keep it in step with src/services/theme.ts"
     }
   },
   "radius": {
@@ -360,17 +369,14 @@
       "saveStatusAgeRefreshMs": 30000,
       "hoverTransition": "duration-200"
     },
-    "knownGaps": [
-      "BackToTop scrolls with behavior \"smooth\" without a reduced-motion check.",
-      "SaveStatus spinner has no motion-reduce class."
-    ],
+    "knownGaps": [],
     "easing": {
       "--ease-pop": "cubic-bezier(0.2, 0.9, 0.3, 1.8): buttons (btn-pop) and post-its"
     },
     "landingLook": [
-      "Buttons lift 2px and grow 3% on hover and press to 97% on tap; never tilt.",
+      "Buttons lift 1.5px, grow 2% and glow in the accent on hover (btn-pop) and press to 94% on tap; never tilt.",
       "Post-its rise in and fade in on load, use a slightly transparent drop-shadow, and straighten from their resting tilt, lift and grow 2% on hover; tape lifts; icon hops.",
-      "The backdrop drifts over 50s.",
+      "The backdrop pairs a 400s rotating, 50s drifting contour layer (5% opacity) with a non-rotating 10px sliding dot grid (14s, 10% opacity).",
       "The heartbeat logo beats every 1.45s and matches the primary accent color; CSS switches to a still version under reduced motion.",
       "All of these stop under prefers-reduced-motion: reduce."
     ]
@@ -395,7 +401,7 @@
         "focus-visible",
         "disabled (40% opacity)"
       ],
-      "a11y": "Defaults to type=\"button\"; violet-400 focus outline."
+      "a11y": "Defaults to type=\"button\"; outline-accent focus outline."
     },
     {
       "name": "IconButton",
@@ -430,7 +436,7 @@
       "name": "Pill",
       "purpose": "Small rounded label for a short fact.",
       "props": {
-        "tone": "neutral | accent | good | warn | info | highlight"
+        "tone": "neutral | accent | good | warn | info | highlight | inferred"
       },
       "states": [
         "static"
@@ -768,7 +774,7 @@
         "default",
         "per ticket style"
       ],
-      "a11y": "Stub atoms are aria-hidden; StubSentence gives the one sentence they read. See docs/specs/ticket-stub.md."
+      "a11y": "Stub atoms are aria-hidden; StubSentence gives the one sentence they read. See docs/archive/ticket-stub.md."
     },
     {
       "name": "StubHeader",
@@ -781,6 +787,85 @@
         "default"
       ],
       "a11y": "Perforations and notches are decorative."
+    },
+    {
+      "name": "Ledger",
+      "purpose": "Shared ledger list container (Ledger.Row, Ledger.Separator) with accent edge bars and row-hover trail.",
+      "props": {
+        "edge": "festival | show | needs | none"
+      },
+      "states": ["default", "hover", "fresh"],
+      "a11y": "Row uses role=button when clickable with focus-visible outline."
+    },
+    {
+      "name": "DateStack",
+      "purpose": "Compact stacked date badge (month, day, year) for ledger rows.",
+      "props": { "event": "LoggedEvent" },
+      "states": ["default", "missing"],
+      "a11y": "Plain text date; missing reads \"No date\"."
+    },
+    {
+      "name": "KindPill",
+      "purpose": "Festival or Concert pill with icon.",
+      "props": { "kind": "festival | show", "size": "sm | md" },
+      "states": ["default"],
+      "a11y": "Always pairs icon with label."
+    },
+    {
+      "name": "HintPill",
+      "purpose": "Compact status/action pill for event rows (gaps, needs review, busy).",
+      "props": { "tone": "warn | busy | neutral" },
+      "states": ["default"],
+      "a11y": "Labelled text; never colour alone."
+    },
+    {
+      "name": "Equalizer",
+      "purpose": "Three-bar animated music equalizer indicator for active lookups.",
+      "props": { "className": "optional" },
+      "states": ["animated", "still (reduced motion)"],
+      "a11y": "aria-hidden; pair with visible status text."
+    },
+    {
+      "name": "NameList",
+      "purpose": "Comma-joined list of artist/person names in font-display.",
+      "props": { "names": "string[]" },
+      "states": ["default"],
+      "a11y": "Semantic inline text."
+    },
+    {
+      "name": "Stars",
+      "purpose": "Interactive or read-only 5-star rating control.",
+      "props": { "value": "number | null", "onChange": "optional" },
+      "states": ["unrated", "rated"],
+      "a11y": "Each star is a labelled button; tapping the current rating clears it."
+    },
+    {
+      "name": "ReadRow",
+      "purpose": "Detail field row with label, value, source/info popover, save flash, and inline edit slot.",
+      "props": { "label": "string", "value": "optional", "open": "boolean" },
+      "states": ["reading", "editing", "flashing"],
+      "a11y": "Click/Enter opens inline editor; source details sit in Popover."
+    },
+    {
+      "name": "SourceIcon",
+      "purpose": "Small icon mapping a source key (ticketmaster, setlistfm, clashfinder, etc.) to a Lucide icon.",
+      "props": { "source": "string" },
+      "states": ["default"],
+      "a11y": "aria-hidden beside source label."
+    },
+    {
+      "name": "TipsContext",
+      "purpose": "Dismissible page-tip provider and header ? toggle button.",
+      "props": { "children": "node" },
+      "states": ["tips visible", "tips folded"],
+      "a11y": "Toggle announces state; folded tips can be recalled."
+    },
+    {
+      "name": "VersionPicker",
+      "purpose": "Dropdown/segmented version selector for multi-versioned views.",
+      "props": { "value": "string", "onChange": "callback" },
+      "states": ["default"],
+      "a11y": "Uses MenuButton / Segmented keyboard contract."
     }
   ],
   "appSpecific": [
@@ -828,6 +913,6 @@
     "storageKey": "<prefix>.stubStyle.v1",
     "module": "src/styles/ticket-styles.css",
     "contract": "A style sets only the module's tokens (paper and ink, type, texture, frame). Add one: a CSS block, an entry in STUB_STYLES (src/services/theme.ts), its fonts in app.html. tests/ticketStyles.test.ts keeps list and module in step.",
-    "spec": "docs/specs/ticket-stub-styles.md"
+    "spec": "docs/archive/ticket-stub-styles.md"
   }
 }

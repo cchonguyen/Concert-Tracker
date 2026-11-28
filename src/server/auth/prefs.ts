@@ -19,7 +19,7 @@ const MAX_TIPS = 30;
 const MAX_VISITS = 10;
 
 // dismissed and allHidden are the first Home-cards choice; the rest are the page tips
-// (src/services/tips.ts, docs/specs/quiet-tips-table.md). Older saves have only the first two.
+// (src/services/tips.ts, docs/archive/quiet-tips-table.md). Older saves have only the first two.
 export interface TipsSaved {
   dismissed: string[];
   allHidden: boolean;

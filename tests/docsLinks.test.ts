@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -27,9 +28,17 @@ test('docs do not link to machine-specific file:// paths', () => {
 // are skipped, anchors and query strings are ignored, external links and
 // mailto: are not checked.
 test('every relative Markdown link in root and docs/ resolves', () => {
-  const rootDocs = readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
-    .map((entry) => path.join(root, entry.name));
+  let rootDocs: string[];
+  try {
+    rootDocs = execFileSync('git', ['ls-files', '*.md'], { cwd: root, encoding: 'utf8' })
+      .split('\n')
+      .filter((f) => f && !f.includes('/'))
+      .map((f) => path.join(root, f));
+  } catch {
+    rootDocs = readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+      .map((entry) => path.join(root, entry.name));
+  }
   const linkPattern = /\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
   const dead: string[] = [];
   for (const file of [...rootDocs, ...markdownFiles(docsDir)]) {

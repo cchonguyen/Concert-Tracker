@@ -7,7 +7,7 @@ import { eventSeriesSlug } from '../events/routes';
 import { removeUnusedSeries } from './manage';
 import { mergeSeriesLogged, saveSeriesLogged, withBuiltSeriesName } from './canonicalManage';
 
-// A one-time cleanup of shared series (docs/specs/series-cleanup.md): a list of steps run in order,
+// A one-time cleanup of shared series (docs/archive/series-cleanup.md): a list of steps run in order,
 // each through the logged path for what it changes, so every change has an actor, a reason and an undo.
 // Preview checks each step against the live records and changes nothing.
 export type CleanupStep =

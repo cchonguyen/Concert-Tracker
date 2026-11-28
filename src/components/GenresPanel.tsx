@@ -25,7 +25,7 @@ import { MenuButton, type MenuOption } from './ui/MenuButton';
 import { Notice } from './ui/Notice';
 import { Pill } from './ui/Pill';
 
-// Manage > Global archive > Genres (docs/specs/genre-vocabulary.md section 6). Owner only:
+// Manage > Global archive > Genres (docs/archive/genre-vocabulary.md section 6). Owner only:
 // the Global archive is not shown to members. One row per genre after resolving, so
 // spellings with the same key are one row. Counts are shared rows only; a member's own
 // additions never count here (section 8). The search box lives in ManageView.

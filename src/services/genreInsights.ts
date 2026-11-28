@@ -16,7 +16,7 @@ import { eventScale, type LineupFacts } from '../server/events/scale';
 import { normalizeName } from '../server/lineup/normalizeName';
 import { countedSets, formatSets, genreMix, setShares, umbrellaNames } from './genres';
 
-// Pure browser-side genre maths (docs/specs/genre-explore.md sections 5 and 6).
+// Pure browser-side genre maths (docs/archive/genre-explore.md sections 5 and 6).
 // Never reads the system clock: `today` (YYYY-MM-DD) is always passed in.
 
 export const LATELY_WINDOW_DAYS = 365;
@@ -1469,7 +1469,7 @@ export function genreTree(
   });
 }
 
-// Multi-zoom genre breakdown (docs/specs/genre-taxonomy-release-1.md decisions 1-6 and section 2).
+// Multi-zoom genre breakdown (docs/archive/genre-taxonomy-release-1.md decisions 1-6 and section 2).
 // Macro, then family, then genre, each level summing to `known`. Weighting is the same as
 // genreMix: a set's share times the genre's weight. Sets with no genre are `unknown`.
 export const ZOOM_MIN_SETS = 10;
@@ -1593,7 +1593,7 @@ export function genreZoom(
   return { levels: 'taxonomy', macros, families, genres, known, unknown, enough: known >= ZOOM_MIN_SETS };
 }
 
-// Lineup DNA (docs/specs/genre-taxonomy-release-2.md section 2 and decisions 1, 2, 5).
+// Lineup DNA (docs/archive/genre-taxonomy-release-2.md section 2 and decisions 1, 2, 5).
 // Every act on the bill counts 1.0, split across its genres by weight. Acts sharing a slotId
 // (a B2B) share one set: 1/n each. Bars: the whole bill, one per stage, then "No stage listed".
 export const LINEUP_DNA_MIN_ACTS = 3;
@@ -1791,7 +1791,7 @@ export function lineupDna(
   return { levels: taxonomy ? 'taxonomy' : 'groups', bars };
 }
 
-// Event Match (docs/specs/genre-taxonomy-release-2.md section 4 and decisions 3, 4, 7).
+// Event Match (docs/archive/genre-taxonomy-release-2.md section 4 and decisions 3, 4, 7).
 // How well one event's bill fits your own taste. Your vector is your other events' seen sets,
 // smoothed one step over the owner's adjacent genre links, rolled up to families and compared
 // with the bill's whole-bar family vector by cosine. Relations never change Lineup DNA.
@@ -2112,7 +2112,7 @@ export function outsideLane(
   return { enough, items };
 }
 
-// Sound Drift (docs/specs/genre-taxonomy-release-1.md decisions 1-5, 7 and section 4).
+// Sound Drift (docs/archive/genre-taxonomy-release-1.md decisions 1-5, 7 and section 4).
 // Works by calendar year. A year is counted when it has at least DRIFT_MIN_SETS known sets.
 export const DRIFT_MIN_SETS = 10;
 export const DRIFT_MIN_YEARS = 3;
