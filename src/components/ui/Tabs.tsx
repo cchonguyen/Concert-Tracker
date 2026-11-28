@@ -55,12 +55,12 @@ export function Tabs<T extends string>({ label, items, value, onChange, variant 
         : {
             scaleX: [1, 0.935, 1],
             scaleY: [1, 1.07, 1],
-            transition: { duration: 0.72, times: [0, 0.35, 1], ease: 'easeInOut' as const },
+            transition: { duration: 0.58, times: [0, 0.35, 1], ease: 'easeInOut' as const },
           },
     [value, still],
   );
   const squash = useMemo(
-    () => (still || !moved ? undefined : { scaleY: [1, 2.5, 1], transition: { duration: 0.72 } }),
+    () => (still || !moved ? undefined : { scaleY: [1, 2.5, 1], transition: { duration: 0.58 } }),
     [value, still],
   );
 
