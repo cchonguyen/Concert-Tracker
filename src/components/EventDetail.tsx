@@ -961,6 +961,70 @@ const WentCard: React.FC<{
 // Who you saw. Each act is a row that shows only what is stored about it; a tap on the row opens its editor in a Sheet.
 // Typing offers acts you've entered on other events; a click, or arrow keys then Enter, adds one as you spelled it
 // before. Enter alone adds what you typed. Typing a B2B act's name again adds its solo set.
+// Concert lineup: "+ Add" a name (it joins Who I Saw, which feeds the shared lineup), one-tap names from the
+// event name, and a small link to the full lookup (docs/specs/who-i-saw-lineup.md). Nothing is added without a tap.
+const ConcertAdd: React.FC<{
+  past: string[];
+  offered: Array<{ key: string; name: string; role?: Seen['role'] }>;
+  onAdd: (name: string, role?: Seen['role']) => void;
+  onLookup: () => void;
+}> = ({ past, offered, onAdd, onLookup }) => {
+  const [draft, setDraft] = useState('');
+  const add = (name: string) => {
+    const n = name.trim();
+    if (!n) return;
+    onAdd(n);
+    setDraft('');
+  };
+  return (
+    <div className="space-y-2">
+      {offered.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          {offered.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => onAdd(s.name, s.role)}
+              className="inline-flex items-center gap-1 rounded-full bg-neutral-soft px-2.5 py-1 text-text hover:bg-accent-tint"
+            >
+              <Plus className="h-3 w-3 text-accent" /> Add {s.name}?
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <SuggestInput
+            value={draft}
+            suggestions={past}
+            onPick={add}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.defaultPrevented) {
+                e.preventDefault();
+                add(draft);
+              }
+            }}
+            placeholder="Who played? Type a name"
+            aria-label="Add an act to the lineup"
+            className="w-full rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-sm text-text placeholder-text-faint focus:border-accent focus:outline-none"
+          />
+        </div>
+        <Button onClick={() => add(draft)} disabled={!draft.trim()}>
+          <Plus className="h-4 w-4" /> Add
+        </Button>
+      </div>
+      <p className="text-xs text-text-muted">
+        Acts you add go in Who I Saw too.{' '}
+        <button type="button" onClick={onLookup} className="text-accent underline-offset-2 hover:underline">
+          Look it up
+        </button>{' '}
+        to find openers from ticket and promoter pages.
+      </p>
+    </div>
+  );
+};
+
 const SeenActs: React.FC<{
   seen: Seen[];
   sets: Map<string, string>;
@@ -1385,6 +1449,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lineupUrl, setLineupUrl] = useState('');
+  // Concerts get "+ Add" first; "Look it up" opens the full lineup lookup (docs/specs/who-i-saw-lineup.md).
+  const [lookupOpen, setLookupOpen] = useState(false);
   // Whether Gemini is set up and how much of today's budget is left, for
   // "Deep search with AI".
   const [lineupStatus, setLineupStatus] = useState<LineupStatus | null>(null);
@@ -1645,6 +1711,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const worked = eventScale({ ...event, kind: undefined }, edition ? lineupFacts(edition) : undefined);
   // Your choice wins, else the worked-out type. Concerts show a plainer lineup (docs/specs/who-i-saw-lineup.md).
   const isConcert = eventScale(event, edition ? lineupFacts(edition) : undefined).kind === 'concert';
+  const addMode = isConcert && !lookupOpen && !isActive(job?.status);
   const offered = suggestions.filter((s) => !seenKeys.has(s.key));
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const toast = useToast();
@@ -2382,7 +2449,19 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             Full lineup
             {edition && <span className="font-normal text-text-muted">· {lineupActs.length}</span>}
           </h3>
-          {!job && !edition && (
+          {addMode && (
+            <ConcertAdd
+              past={pastArtists}
+              offered={offered}
+              onAdd={(name, role) =>
+                event.seen.some((s) => s.name.trim().toLowerCase() === name.trim().toLowerCase())
+                  ? undefined
+                  : save({ seen: [...toPatch(event.seen), { name, from: 'you', role, roleFrom: role ? 'you' : undefined }] })
+              }
+              onLookup={() => setLookupOpen(true)}
+            />
+          )}
+          {!addMode && !job && !edition && (
             <div className="space-y-2">
               <p className="text-xs text-text-muted">
                 Find the lineup looks for who played in Clashfinder, the promoter's page and ticketing listings. It cites every act and never guesses. The link is optional.
@@ -2418,7 +2497,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             />
           )}
 
-          {(!job || edition || job.status === 'no_data' || job.status === 'failed') && !isActive(job?.status) && (
+          {!addMode && (!job || edition || job.status === 'no_data' || job.status === 'failed') && !isActive(job?.status) && (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-2">
                 {edition && job ? (
@@ -2439,7 +2518,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </div>
           )}
 
-          {(event.year || event.startDate) && (
+          {!addMode && (event.year || event.startDate) && (
             <div className="mt-2">
               <VersionPicker
                 load={async () => eventsApi.lineupVersions(event.id)}
@@ -2450,7 +2529,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             </div>
           )}
 
-          {isOwner && event.startDate && !isActive(job?.status) && (
+          {!addMode && isOwner && event.startDate && !isActive(job?.status) && (
             <div className="mt-2">
               <PasteSetTimes
                 startDate={event.startDate}
