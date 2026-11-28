@@ -293,8 +293,27 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
       changed.push(slug ? { ...rest, seriesSlug: slug } : rest);
     }
     report.linked += changed.length;
-    // Unlinked dated events that matched no verified edition get a draft edition (events with Who I Saw acts first),
-    // while the budget allows. Only for members whose entries may feed shared editions.
+    // Contribute back first: it is what fills a linked event's lineup with its Who I Saw acts, and it is cheap.
+    // Events with acts you ticked go first. A spent budget stops the loop; what was done is still saved below.
+    const byId = new Map(changed.map((e) => [e.id, e]));
+    const contributeAll = async () => {
+      const linkedNow = events
+        .map((e) => byId.get(e.id) ?? e)
+        .filter((e) => e.editionId && !e.deletedAt && !e.details?.contributedAt)
+        .sort((a, b) => youRank(a) - youRank(b));
+      for (const e of linkedNow) {
+        if (budgetOut || budgetLeft() < contributeCost(e) + 1) break;
+        try {
+          byId.set(e.id, await contributeBack(service, e, m.role === 'owner', opts.now, report.contributed));
+        } catch (err) {
+          if (!isBudgetOut(err)) throw err;
+          budgetOut = true;
+        }
+      }
+    };
+    await contributeAll();
+    // Then unlinked dated events that matched no verified edition get a draft edition (events with Who I Saw acts
+    // first), while the budget allows, and the new links contribute their acts. Only for members whose entries may feed shared editions.
     const canDraft = m.role === 'owner' || (m.canDraft ?? (await hasNotice(scoped, m.userId, noticed)));
     if (canDraft && !budgetOut) {
       let drafted = 0;
@@ -307,11 +326,11 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
           if (d) {
             const slug = await eventSeriesSlug(series, d.event, d.edition);
             const { seriesSlug: _old, ...rest } = d.event;
-            changed.push(slug ? { ...rest, seriesSlug: slug } : rest);
+            byId.set(e.id, slug ? { ...rest, seriesSlug: slug } : rest);
             drafted++;
           } else {
             // Not linkable now (several matches, or unlinked before): do not spend the budget on it every run.
-            changed.push({ ...e, details: { ...e.details, draftTriedAt: opts.now.toISOString() } });
+            byId.set(e.id, { ...e, details: { ...e.details, draftTriedAt: opts.now.toISOString() } });
           }
         } catch (err) {
           if (isBudgetOut(err)) {
@@ -323,19 +342,7 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
       }
       report.drafted += drafted;
     }
-    // Every linked event not yet contributed, the ones just linked and drafted included, while the budget allows.
-    // A spent budget stops the loop; what was done so far is still saved below, so the next run moves on.
-    const byId = new Map(changed.map((e) => [e.id, e]));
-    const linkedNow = events.map((e) => byId.get(e.id) ?? e).filter((e) => e.editionId && !e.deletedAt && !e.details?.contributedAt);
-    for (const e of linkedNow) {
-      if (budgetOut || budgetLeft() < contributeCost(e) + 1) break;
-      try {
-        byId.set(e.id, await contributeBack(service, e, m.role === 'owner', opts.now, report.contributed));
-      } catch (err) {
-        if (!isBudgetOut(err)) throw err;
-        budgetOut = true;
-      }
-    }
+    await contributeAll();
     // The save may use the budget's reserve: it must follow the shared writes already made.
     if (byId.size) await runReserved(() => scoped.putEvents([...byId.values()]));
     for (const e of events.map((x) => byId.get(x.id) ?? x)) tallyTicks(ticks, e, m.userId);
