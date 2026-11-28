@@ -1643,6 +1643,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   });
   const confirmations = dateConfirmations(event);
   const worked = eventScale({ ...event, kind: undefined }, edition ? lineupFacts(edition) : undefined);
+  // Your choice wins, else the worked-out type. Concerts show a plainer lineup (docs/specs/who-i-saw-lineup.md).
+  const isConcert = eventScale(event, edition ? lineupFacts(edition) : undefined).kind === 'concert';
   const offered = suggestions.filter((s) => !seenKeys.has(s.key));
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const toast = useToast();
@@ -2412,6 +2414,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               daysAttended={event.daysAttended}
               inferredBilling={inferredBilling}
               onSeenChange={(seen) => save({ seen })}
+              concert={isConcert}
             />
           )}
 

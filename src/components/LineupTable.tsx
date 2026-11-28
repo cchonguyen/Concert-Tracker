@@ -35,6 +35,8 @@ interface LineupTableProps {
   daysAttended?: string[];
   inferredBilling: Record<string, InferredBilling>;
   onSeenChange: (seen: SeenPatch) => void;
+  // A concert has no stages or set times to show unless an act really has one (docs/specs/who-i-saw-lineup.md).
+  concert?: boolean;
 }
 
 export const LineupTable: React.FC<LineupTableProps> = ({
@@ -45,6 +47,7 @@ export const LineupTable: React.FC<LineupTableProps> = ({
   daysAttended = [],
   inferredBilling,
   onSeenChange,
+  concert = false,
 }) => {
   const [lineupStage, setLineupStage] = useState<string>('all');
   const [lineupDay, setLineupDay] = useState<string>('all');
@@ -167,6 +170,8 @@ export const LineupTable: React.FC<LineupTableProps> = ({
     }
   };
 
+  const showTimes = !concert || lineupSlots.some((slot) => timedSetsForSlot(slot).some((t) => t.start || t.stage));
+
   return (
     <div className="space-y-2.5">
       <div className="flex flex-wrap items-center justify-between gap-1.5">
@@ -250,12 +255,16 @@ export const LineupTable: React.FC<LineupTableProps> = ({
                 <th scope="col" className="px-2 py-2 font-mono text-[11px] font-medium uppercase tracking-wider text-text-muted">
                   Billed as
                 </th>
-                <th scope="col" className="hidden px-2 py-2 font-mono text-[11px] font-medium uppercase tracking-wider text-text-muted sm:table-cell">
-                  Stage
-                </th>
-                <th scope="col" className="px-2 py-2 text-right font-mono text-[11px] font-medium uppercase tracking-wider text-text-muted">
-                  Set time
-                </th>
+                {showTimes && (
+                  <>
+                    <th scope="col" className="hidden px-2 py-2 font-mono text-[11px] font-medium uppercase tracking-wider text-text-muted sm:table-cell">
+                      Stage
+                    </th>
+                    <th scope="col" className="px-2 py-2 text-right font-mono text-[11px] font-medium uppercase tracking-wider text-text-muted">
+                      Set time
+                    </th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -336,6 +345,8 @@ export const LineupTable: React.FC<LineupTableProps> = ({
                         <span className="text-xs text-text-muted">Artist</span>
                       )}
                     </td>
+                    {showTimes && (
+                    <>
                     <td className="hidden px-2 py-2 align-middle text-xs sm:table-cell">
                       {stages.length > 0 ? (
                         <span className="text-text">{stages.join(', ')}</span>
@@ -353,6 +364,8 @@ export const LineupTable: React.FC<LineupTableProps> = ({
                         <span className="text-text-faint">No time</span>
                       )}
                     </td>
+                    </>
+                    )}
                   </tr>
                 );
               })}
@@ -361,9 +374,11 @@ export const LineupTable: React.FC<LineupTableProps> = ({
         </div>
       )}
 
-      <p className="text-[11px] text-text-muted">
-        Set times and stages come only from timed sources. Acts without one say No time and Not known yet.
-      </p>
+      {showTimes && (
+        <p className="text-[11px] text-text-muted">
+          Set times and stages come only from timed sources. Acts without one say No time and Not known yet.
+        </p>
+      )}
     </div>
   );
 };
