@@ -1,4 +1,5 @@
 import { Dialog } from './ui/Dialog';
+import { Notice } from './ui/Notice';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Check, Layers, X } from 'lucide-react';
 import { Equalizer } from './ui/Equalizer';
@@ -150,7 +151,7 @@ const Series: React.FC<{
           <button
             onClick={() => (onRename ? onRename(draft.trim()) : onSet(draft.trim(), editions))}
             disabled={busy}
-            className="min-h-11 shrink-0 rounded-control border border-accent-tint-line bg-accent-tint px-2.5 py-1.5 text-xs text-accent hover:underline disabled:opacity-40 sm:min-h-9"
+            className="min-h-11 shrink-0 rounded-control border-transparent bg-accent-tint px-2.5 py-1.5 text-xs text-text hover:bg-row-hover disabled:opacity-40 sm:min-h-9"
           >
             Rename all {editions.length}
           </button>
@@ -272,7 +273,7 @@ export const SeriesPanel: React.FC<SeriesPanelProps> = ({ events, onChanged, onO
           </button>
         </div>
       )}
-      {error && <p className="rounded-card border border-bad/45 bg-bad/10 p-2 text-sm text-bad">{error}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
       {done && (
         <p className="inline-flex items-center gap-1 text-sm text-good">
           <Check className="h-4 w-4" /> {done}

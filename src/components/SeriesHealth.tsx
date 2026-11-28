@@ -3,13 +3,14 @@ import { canonicalApi } from '../services/lineupApi';
 import type { SeriesHealthIssue } from '../server/entities/seriesHealth';
 import { Equalizer } from './ui/Equalizer';
 import { Ledger } from './ui/Ledger';
+import { Notice } from './ui/Notice';
 
 // Series health in Data health, owner only (docs/specs/series-sync.md, Rule 2): shared series with no brand or not
 // built from their brand, and editions with no series. Each has one offer; nothing changes without a tap, and every
 // fix can be undone from History.
 const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-text-muted';
 const chip =
-  'inline-flex min-h-11 sm:min-h-9 items-center gap-1 rounded-full border border-line-strong px-2.5 py-1 text-xs text-text hover:border-accent hover:text-accent disabled:opacity-40';
+  'inline-flex min-h-11 sm:min-h-9 items-center gap-1 rounded-full bg-neutral-soft px-2.5 py-1 text-xs text-text hover:bg-accent-tint disabled:opacity-40';
 
 export const SeriesHealth: React.FC = () => {
   const [issues, setIssues] = useState<SeriesHealthIssue[] | null>(null);
@@ -47,7 +48,7 @@ export const SeriesHealth: React.FC = () => {
         Series with no brand, names not built from their brand, and editions with no series. Each fix is one tap and can be undone from
         History.
       </p>
-      {error && <p className="rounded-card border border-bad/45 bg-bad/10 p-2.5 text-sm text-bad">{error}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
       {!issues ? (
         <span role="status" aria-label="Loading series" className="inline-flex items-center text-text-muted">
           <Equalizer />
