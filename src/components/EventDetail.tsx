@@ -71,6 +71,7 @@ import { LineupProgress } from './LineupProgress';
 import { CheckDetails, type Suggestion } from './CheckDetails';
 import { Pill } from './ui/Pill';
 import { Button } from './ui/Button';
+import { Notice } from './ui/Notice';
 import { IconButton } from './ui/IconButton';
 import { Equalizer } from './ui/Equalizer';
 import { Segmented } from './ui/Segmented';
@@ -733,7 +734,7 @@ const ChipInput: React.FC<{
                 addNames([name]);
               }}
               className={`rounded-full border px-2.5 py-0.5 text-xs ${
-                i === active ? 'border-accent bg-accent-tint text-text' : 'border-line-strong text-text-muted hover:border-accent'
+                i === active ? 'border-transparent bg-accent-tint text-text' : 'border-transparent bg-neutral-soft text-text-muted hover:text-text'
               }`}
             >
               {name}
@@ -818,7 +819,7 @@ const DateAddMenu: React.FC<{ options: Array<{ label: string; onPick: () => void
   >
     {/* The padding widens the hover area around the small "+", so a sweeping pointer does not close the menu. */}
     <span className="group/add inline-flex sm:p-1.5">
-      <span className="inline-flex h-7 w-7 items-center justify-center rounded-control border border-line text-text-muted group-hover/add:border-accent group-hover/add:text-accent">
+      <span className="inline-flex h-7 w-7 items-center justify-center rounded-control bg-neutral-soft text-text-muted group-hover/add:bg-accent-tint group-hover/add:text-text">
         <Plus className="h-3.5 w-3.5" aria-hidden="true" />
       </span>
     </span>
@@ -849,7 +850,7 @@ const DaysWent: React.FC<{ days: string[]; attended: string[]; onChange: (days: 
             disabled={last}
             title={last ? 'You went at least one day' : on ? 'Tap if you missed this day' : 'Tap if you went this day'}
             aria-pressed={on}
-            className={`rounded-full border px-2.5 py-1 ${on ? 'border-accent bg-accent-tint text-text' : 'border-line text-text-muted line-through'}`}
+            className={`rounded-full border px-2.5 py-1 ${on ? 'border-transparent bg-accent-tint text-text' : 'border-transparent bg-neutral-soft text-text-muted line-through'}`}
           >
             {new Date(`${d}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' })}
           </button>
@@ -902,9 +903,9 @@ const WentCard: React.FC<{
           : [...toPatch(event.seen), { name: o.name, from: o.from, role: o.role, roleFrom: o.role ? o.from : undefined }],
       });
     return (
-      <div className={`${box} border-good/45 bg-good/10`}>
-        <p className="inline-flex items-center gap-1 font-semibold text-good">
-          <DrawnTick /> Counted. Who did you see?
+      <div className={`${box} border-line bg-good-soft`}>
+        <p className="inline-flex items-center gap-1 font-semibold text-text">
+          <DrawnTick className="text-good" /> Counted. Who did you see?
         </p>
         {offered.length > 0 && (
           <>
@@ -920,7 +921,7 @@ const WentCard: React.FC<{
                     key={o.key}
                     onClick={() => toggle(o)}
                     aria-pressed={on}
-                    className={`inline-flex min-h-11 items-center gap-1 rounded-full border px-2.5 py-1 text-xs sm:min-h-9 ${on ? 'border-accent bg-accent-tint text-text' : 'border-line text-text-muted hover:text-text'}`}
+                    className={`inline-flex min-h-11 items-center gap-1 rounded-full border px-2.5 py-1 text-xs sm:min-h-9 ${on ? 'border-transparent bg-accent-tint text-text' : 'border-transparent bg-neutral-soft text-text-muted hover:text-text'}`}
                   >
                     {on && <DrawnTick className="h-3 w-3 text-accent" />}
                     {o.name}
@@ -1128,7 +1129,7 @@ const SeenActs: React.FC<{
                 addNames([name]);
               }}
               className={`rounded-full border px-2.5 py-0.5 text-xs ${
-                i === active ? 'border-accent bg-accent-tint text-text' : 'border-line-strong text-text-muted hover:border-accent'
+                i === active ? 'border-transparent bg-accent-tint text-text' : 'border-transparent bg-neutral-soft text-text-muted hover:text-text'
               }`}
             >
               {name}
@@ -1209,8 +1210,8 @@ const ActEditor: React.FC<{
             aria-pressed={act.set?.toLowerCase() === 'dj set' || act.set?.toLowerCase() === 'dj'}
             className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
               act.set?.toLowerCase() === 'dj set' || act.set?.toLowerCase() === 'dj'
-                ? 'border-accent bg-accent-tint font-medium text-text'
-                : 'border-line text-text-muted hover:border-line-strong hover:text-text'
+                ? 'border-transparent bg-accent-tint font-medium text-text'
+                : 'border-transparent bg-neutral-soft text-text-muted hover:text-text'
             }`}
           >
             DJ Set
@@ -1224,8 +1225,8 @@ const ActEditor: React.FC<{
             aria-pressed={act.set?.toLowerCase() === 'live' || act.set?.toLowerCase() === 'live set'}
             className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
               act.set?.toLowerCase() === 'live' || act.set?.toLowerCase() === 'live set'
-                ? 'border-accent bg-accent-tint font-medium text-text'
-                : 'border-line text-text-muted hover:border-line-strong hover:text-text'
+                ? 'border-transparent bg-accent-tint font-medium text-text'
+                : 'border-transparent bg-neutral-soft text-text-muted hover:text-text'
             }`}
           >
             Live
@@ -1588,7 +1589,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   // AI reads left today, for Deep search beside Check details and its line in the sources card's tooltip.
   const aiReadsLeft = lineupStatus?.quota ? Math.max(0, lineupStatus.quota.limit - lineupStatus.quota.used) : null;
   const sourcesButton =
-    "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-line-strong px-2.5 text-xs text-text hover:border-accent hover:text-accent disabled:opacity-50 sm:min-h-8";
+    "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-line-strong px-2.5 text-xs text-text hover:bg-surface-2 hover:text-text disabled:opacity-50 sm:min-h-8";
 
   const seenKeys = new Set(event.seen.map((s) => s.key));
   const lineupActs = (edition?.performances ?? []).filter((p) => p.status !== 'cancelled');
@@ -1798,7 +1799,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
       <FlashContext.Provider value={flashing}>
         <EditionIdContext.Provider value={event.editionId}>
           <SourceHighlightContext.Provider value={setHighlightedSource}>
-        {error &&<p className="rounded-lg border border-bad/40 bg-bad/10 p-2 text-sm text-bad">{error}</p>}
+        {error && <Notice tone="error">{error}</Notice>}
         <div className="grid min-w-0 gap-5 @[760px]:grid-cols-[1.15fr_1fr] @[760px]:items-start">
           <div className="min-w-0 space-y-5">
         <WentCard
@@ -1841,7 +1842,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                     key={w.weekend}
                     type="button"
                     onClick={() => void save({ weekend: w.weekend })}
-                    className="min-h-11 rounded-control border border-accent-tint-line bg-accent-tint px-3 text-sm text-text hover:border-accent hover:bg-accent-tint sm:min-h-9"
+                    className="min-h-11 rounded-control border border-accent-tint-line bg-accent-tint px-3 text-sm text-text hover:bg-accent-tint sm:min-h-9"
                   >
                     {weekendLabel(w)}
                   </button>
@@ -2364,9 +2365,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
                         ? 'An artist of this name on MusicBrainz'
                         : `Listed by ${SOURCE_LABELS[s.sourceType]}`
                   }
-                  className="inline-flex items-center gap-1 rounded-full border border-accent-tint-line px-2.5 py-1 text-accent hover:bg-accent-tint"
+                  className="inline-flex items-center gap-1 rounded-full bg-neutral-soft px-2.5 py-1 text-text hover:bg-accent-tint"
                 >
-                  <Plus className="h-3 w-3" /> {s.name} as {roleName(s.role)}?
+                  <Plus className="h-3 w-3 text-accent" /> {s.name} as {roleName(s.role)}?
                 </button>
               ))}
             </div>

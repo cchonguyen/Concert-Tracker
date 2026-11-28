@@ -10,6 +10,7 @@ import type { Gap } from '../services/table';
 import { Ticket, TicketEventLine, TicketHeadline, TicketKicker, TicketSmallLine, StubAdmit, StubBarcode, StubCode, StubKV, StubSentence, StubSerial, StubShortDate, StubStamp } from './ui/Ticket';
 import { GAP_LABEL, gapQuestion } from '../services/poster';
 import { Button } from './ui/Button';
+import { PostIt } from './ui/PostIt';
 import { NameList } from './ui/NameList';
 import { Segmented } from './ui/Segmented';
 
@@ -171,9 +172,11 @@ interface StripProps {
 export function ThingsLeft({ gaps, current, needsWeekend, onPick, onNext }: StripProps) {
   if (gaps.length === 0) {
     return (
-      <p className="flex items-center gap-1.5 rounded-card border border-good/45 px-4 py-2.5 text-sm font-semibold text-good">
-        <Check className="h-4 w-4" aria-hidden="true" /> All filled in
-      </p>
+      <PostIt className="!p-2.5">
+        <p className="flex items-center gap-1.5 text-sm font-semibold">
+          <Check className="h-4 w-4 text-[color:var(--la-postit-ink)]" aria-hidden="true" /> All filled in
+        </p>
+      </PostIt>
     );
   }
   return (
