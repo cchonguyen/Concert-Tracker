@@ -1,6 +1,6 @@
 # Keeping events and series in sync (auto-link and series health)
 
-Status: approved 2026-11-27 (Charlie chose "Everyone's, start building": slices 1 to 4). Slice 1 built 2026-11-27. Charlie: "I would like to better automate this process so there's less opportunity for desync." He chose "Link automatically, undoable" for exact matches. Brands and missing series stay one-tap.
+Status: approved 2026-11-27 (Charlie chose "Everyone's, start building": slices 1 to 4). Slice 1 built 2026-11-27. Charlie: "I would like to better automate this process so there's less opportunity for desync." He chose "Link automatically, undoable" for exact matches. Brands and missing series stay one-tap. Rule 1c (two members verify) approved 2026-11-27.
 
 ## Why things drift today
 
