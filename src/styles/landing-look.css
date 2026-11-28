@@ -17,15 +17,24 @@
   --la-backdrop-opacity: 0.07;
   --la-postit-paper: #f4efe6;
   --la-postit-ink: #121016;
+  --la-postit-shadow: 4px 6px 14px rgb(0 0 0 / 0.32), 4px 5px 0 rgb(0 0 0 / 0.22);
+  --la-postit-shadow-hover: 8px 12px 20px -4px color-mix(in oklab, var(--la-accent) 38%, transparent), 6px 8px 0 color-mix(in oklab, var(--la-accent) 55%, transparent);
 }
 [data-accent='indigo'] { --la-second: #fcd34d; --la-second-soft: #fde68a; }
 [data-accent='pink'] { --la-second: #a78bfa; --la-second-soft: #c4b5fd; }
-[data-accent='teal'] { --la-second: #f472b6; --la-second-soft: #f9a8d4; }
+[data-accent='teal'] { --la-second: #60a5fa; --la-second-soft: #93c5fd; }
 [data-accent='orange'] { --la-second: #38bdf8; --la-second-soft: #7dd3fc; }
-:root[data-theme='light'] { --la-second: #db2777; --la-second-soft: #fbcfe8; --la-on-second: #ffffff; --la-backdrop-opacity: 0.045; }
+:root[data-theme='light'] {
+  --la-second: #db2777;
+  --la-second-soft: #fbcfe8;
+  --la-on-second: #ffffff;
+  --la-backdrop-opacity: 0.045;
+  --la-postit-shadow: 4px 6px 14px rgb(0 0 0 / 0.12), 4px 5px 0 rgb(0 0 0 / 0.10);
+  --la-postit-shadow-hover: 8px 12px 20px -4px color-mix(in oklab, var(--la-accent) 28%, transparent), 6px 8px 0 color-mix(in oklab, var(--la-accent) 45%, transparent);
+}
 :root[data-theme='light'][data-accent='indigo'] { --la-second: #b45309; --la-second-soft: #fde68a; }
 :root[data-theme='light'][data-accent='pink'] { --la-second: #7c3aed; --la-second-soft: #ddd6fe; }
-:root[data-theme='light'][data-accent='teal'] { --la-second: #db2777; --la-second-soft: #fbcfe8; }
+:root[data-theme='light'][data-accent='teal'] { --la-second: #2563eb; --la-second-soft: #bfdbfe; }
 :root[data-theme='light'][data-accent='orange'] { --la-second: #0369a1; --la-second-soft: #bae6fd; }
 
 /* Poster headings: condensed, capitals, tight. Sizes come from the component. */
@@ -66,16 +75,22 @@
 }
 .btn-pop:not(:disabled):active { transform: scale(0.97); }
 
-/* Post-it: paper, tape, a resting tilt; it straightens and lifts on hover, and its icon hops. */
+/* Post-it: paper, tape, a resting tilt; it rises in on load, straightens and lifts on hover, and its icon hops. */
 .postit {
   position: relative;
   background: var(--postit-bg, var(--la-postit-paper));
   color: var(--la-postit-ink);
-  box-shadow: 6px 8px 0 rgb(0 0 0 / 0.55);
+  box-shadow: var(--la-postit-shadow);
   transform: rotate(var(--r, 0deg));
+  animation: la-paste 0.65s cubic-bezier(0.2, 0.9, 0.3, 1.4) var(--d, 0s) backwards;
   transition: transform 0.3s var(--ease-pop), box-shadow 0.3s;
 }
-.postit:hover { transform: rotate(0deg) scale(1.02) translateY(-4px); box-shadow: 10px 12px 0 var(--la-accent); z-index: 2; }
+.postit:hover { transform: rotate(0deg) scale(1.02) translateY(-4px); box-shadow: var(--la-postit-shadow-hover); z-index: 2; }
+@keyframes la-paste {
+  0% { opacity: 0; transform: translateY(36px) rotate(var(--r, 0deg)) scale(0.96); }
+  60% { opacity: 1; transform: translateY(-4px) rotate(var(--r, 0deg)); }
+  100% { opacity: 1; transform: rotate(var(--r, 0deg)); }
+}
 .postit-tape {
   position: absolute;
   top: -10px;
@@ -97,11 +112,16 @@
   70% { transform: translateY(2px) scale(0.95); }
 }
 
+.logo-still { display: none; }
+
 @media (prefers-reduced-motion: reduce) {
   .app-backdrop { animation: none; transform: scale(1.15); }
   .btn-pop, .postit, .postit-tape { transition: none; }
+  .postit { animation: none; }
   .btn-pop:not(:disabled):hover, .btn-pop:not(:disabled):active { transform: none; }
   .postit:hover { transform: rotate(var(--r, 0deg)); }
   .postit:hover .postit-tape { transform: rotate(-6deg); }
   .postit:hover .postit-icon { animation: none; }
+  .logo-animated { display: none; }
+  .logo-still { display: inline; }
 }

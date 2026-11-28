@@ -52,6 +52,7 @@ export const FeatureTiles: React.FC<{ onOpen: (page: Page) => void; onImport: ()
               <PostIt
                 tilt={TILTS[i % TILTS.length]}
                 tone={TONES[i % TONES.length]}
+                delay={i * 0.06}
                 icon={<Icon className="h-6 w-6" strokeWidth={2} />}
                 title={t.title}
                 className="h-full"

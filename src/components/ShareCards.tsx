@@ -18,6 +18,8 @@ import {
 } from '../services/shareCard';
 import { eventYear, whenLabel } from '../services/format';
 import { stubPiecesShared } from '../services/ticket';
+import { parseStubStyle, type StubStyle } from '../services/theme';
+import { TicketStylePicker } from './ThemePicker';
 import { Segmented } from './ui/Segmented';
 
 // Event cards: pick a show you went to, choose what shows, and save the card
@@ -32,6 +34,7 @@ const MARGIN = 40;
 interface Palette {
   page: string;
   paper: string;
+  paper2: string;
   ink: string;
   muted: string;
   line: string;
@@ -39,6 +42,10 @@ interface Palette {
   display: string;
   sans: string;
   mono: string;
+  headTransform: string;
+  headColor: string;
+  headShadow: string;
+  rule: string;
 }
 
 // Canvas ignores colour strings it cannot parse (color-mix() from the CSS vars
@@ -53,21 +60,41 @@ function usableColour(value: string): string | null {
   return probe.fillStyle === '#000000' && value.trim().toLowerCase() !== '#000000' ? null : value;
 }
 
-function palette(): Palette {
-  const cs = getComputedStyle(document.documentElement);
-  const colour = (name: string, fallback: string) => usableColour(cs.getPropertyValue(name).trim()) ?? fallback;
-  const font = (name: string, fallback: string) => cs.getPropertyValue(name).trim() || fallback;
-  return {
-    page: colour('--la-page', '#0e0e11'),
-    paper: colour('--la-paper', '#1a1a1f'),
-    ink: colour('--la-text', '#ededf0'),
-    muted: colour('--la-text-muted', '#a1a1aa'),
-    line: colour('--la-line-strong', '#3d3d46'),
-    accent: colour('--la-accent', '#fbbf24'),
-    display: font('--font-display', 'Newsreader, ui-serif, Georgia, serif'),
-    sans: font('--font-sans', 'system-ui, sans-serif'),
-    mono: font('--font-mono', 'ui-monospace, Menlo, monospace'),
-  };
+function palette(style: StubStyle): Palette {
+  const probeEl = document.createElement('div');
+  probeEl.className = 'ticket-card';
+  probeEl.dataset.stub = style;
+  probeEl.style.position = 'fixed';
+  probeEl.style.visibility = 'hidden';
+  probeEl.style.pointerEvents = 'none';
+  document.body.appendChild(probeEl);
+  try {
+    const cs = getComputedStyle(probeEl);
+    const rootCs = getComputedStyle(document.documentElement);
+    const colour = (name: string, fallback: string, src: CSSStyleDeclaration = cs) =>
+      usableColour(src.getPropertyValue(name).trim()) ?? fallback;
+    const font = (name: string, fallback: string) => cs.getPropertyValue(name).trim() || fallback;
+    const paper = colour('--la-paper', '#1a1a1f');
+    const ink = colour('--la-text', '#ededf0');
+    return {
+      page: colour('--la-page', '#0e0e11', rootCs),
+      paper,
+      paper2: colour('--la-paper-2', paper),
+      ink,
+      muted: colour('--la-text-muted', '#a1a1aa'),
+      line: colour('--la-perf', colour('--la-line-strong', '#3d3d46')),
+      accent: colour('--la-accent', '#fbbf24'),
+      display: font('--font-display', 'Newsreader, ui-serif, Georgia, serif'),
+      sans: cs.getPropertyValue('--stub-font-body').trim() || font('--font-sans', 'system-ui, sans-serif'),
+      mono: font('--font-mono', 'ui-monospace, Menlo, monospace'),
+      headTransform: cs.getPropertyValue('--stub-head-transform').trim(),
+      headColor: colour('--stub-head-color', ink),
+      headShadow: cs.getPropertyValue('--stub-head-shadow').trim(),
+      rule: cs.getPropertyValue('--stub-rule').trim(),
+    };
+  } finally {
+    probeEl.remove();
+  }
 }
 
 // Words wrapped to maxW, as lines.
@@ -97,19 +124,49 @@ function fit(ctx: CanvasRenderingContext2D, text: string, maxW: number, maxLines
   return kept;
 }
 
-function drawCard(canvas: HTMLCanvasElement, c: CardContent, p: Palette): void {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-  canvas.width = W;
-  canvas.height = H;
-
+function drawTicketPaper(ctx: CanvasRenderingContext2D, p: Palette, style: StubStyle): void {
   // Backdrop, then the ticket body, notched at the perforation.
   ctx.fillStyle = p.page;
   ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = p.paper;
+  const grad = ctx.createLinearGradient(MARGIN, MARGIN, W - MARGIN, H - MARGIN);
+  grad.addColorStop(0, p.paper);
+  grad.addColorStop(1, p.paper2);
+  ctx.fillStyle = grad;
   ctx.beginPath();
   ctx.roundRect(MARGIN, MARGIN, W - MARGIN * 2, H - MARGIN * 2, 18);
   ctx.fill();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(MARGIN, MARGIN, W - MARGIN * 2, H - MARGIN * 2, 18);
+  ctx.clip();
+
+  if (style === 'raffle') {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate(-Math.PI / 6);
+    for (let x = -W; x < W; x += 48) {
+      ctx.fillRect(x, -H, 24, H * 2);
+    }
+  } else if (style === 'riso') {
+    ctx.fillStyle = 'rgba(244, 114, 182, 0.22)';
+    for (let x = MARGIN; x < W - MARGIN; x += 12) {
+      for (let y = MARGIN; y < H - MARGIN; y += 12) {
+        ctx.beginPath();
+        ctx.arc(x, y, 1.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  if (p.rule && p.rule !== 'none') {
+    ctx.strokeStyle = p.accent;
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(MARGIN + 10, MARGIN + 10, W - MARGIN * 2 - 20, H - MARGIN * 2 - 20);
+    ctx.strokeRect(MARGIN + 16, MARGIN + 16, W - MARGIN * 2 - 32, H - MARGIN * 2 - 32);
+  }
+  ctx.restore();
 
   const notch = (y: number) => {
     ctx.fillStyle = p.page;
@@ -129,6 +186,24 @@ function drawCard(canvas: HTMLCanvasElement, c: CardContent, p: Palette): void {
   ctx.lineTo(PERF_X, H - MARGIN - 26);
   ctx.stroke();
   ctx.restore();
+}
+
+function drawHeadlineText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, p: Palette): void {
+  if (p.headShadow && p.headShadow !== 'none') {
+    ctx.fillStyle = p.accent;
+    ctx.fillText(text, x + 5, y + 3);
+  }
+  ctx.fillStyle = p.headColor;
+  ctx.fillText(text, x, y);
+}
+
+function drawCard(canvas: HTMLCanvasElement, c: CardContent, p: Palette, style: StubStyle): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  canvas.width = W;
+  canvas.height = H;
+
+  drawTicketPaper(ctx, p, style);
 
   // Body.
   const bodyX = MARGIN + 56;
@@ -139,7 +214,8 @@ function drawCard(canvas: HTMLCanvasElement, c: CardContent, p: Palette): void {
   ctx.font = `600 24px ${p.mono}`;
   ctx.fillText(c.kicker.toUpperCase(), bodyX, y);
 
-  const bigText = c.big.join(' & ');
+  const rawBig = c.big.join(' & ');
+  const bigText = p.headTransform === 'uppercase' ? rawBig.toUpperCase() : rawBig;
   // The largest size at which the big line fits in two lines (or the smallest, cut with an ellipsis).
   let bigSize = 44;
   for (const size of [84, 68, 56, 44]) {
@@ -149,10 +225,9 @@ function drawCard(canvas: HTMLCanvasElement, c: CardContent, p: Palette): void {
   }
   ctx.font = `600 ${bigSize}px ${p.display}`;
   const bigLines = fit(ctx, bigText, bodyW, 2);
-  ctx.fillStyle = p.ink;
   y += 110;
   for (const line of bigLines) {
-    ctx.fillText(line, bodyX, y);
+    drawHeadlineText(ctx, line, bodyX, y, p);
     y += bigSize * 1.05;
   }
 
@@ -243,37 +318,13 @@ function drawCard(canvas: HTMLCanvasElement, c: CardContent, p: Palette): void {
   }
 }
 
-function drawYearGenreCard(canvas: HTMLCanvasElement, c: YearGenreCardContent, p: Palette): void {
+function drawYearGenreCard(canvas: HTMLCanvasElement, c: YearGenreCardContent, p: Palette, style: StubStyle): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   canvas.width = W;
   canvas.height = H;
 
-  ctx.fillStyle = p.page;
-  ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = p.paper;
-  ctx.beginPath();
-  ctx.roundRect(MARGIN, MARGIN, W - MARGIN * 2, H - MARGIN * 2, 18);
-  ctx.fill();
-
-  const notch = (y: number) => {
-    ctx.fillStyle = p.page;
-    ctx.beginPath();
-    ctx.arc(PERF_X, y, 22, 0, Math.PI * 2);
-    ctx.fill();
-  };
-  notch(MARGIN);
-  notch(H - MARGIN);
-
-  ctx.save();
-  ctx.strokeStyle = p.line;
-  ctx.lineWidth = 3;
-  ctx.setLineDash([12, 10]);
-  ctx.beginPath();
-  ctx.moveTo(PERF_X, MARGIN + 26);
-  ctx.lineTo(PERF_X, H - MARGIN - 26);
-  ctx.stroke();
-  ctx.restore();
+  drawTicketPaper(ctx, p, style);
 
   const bodyX = MARGIN + 56;
   const bodyW = PERF_X - bodyX - 60;
@@ -284,9 +335,9 @@ function drawYearGenreCard(canvas: HTMLCanvasElement, c: YearGenreCardContent, p
   ctx.fillText(c.kicker.toUpperCase(), bodyX, y);
 
   y += 58;
-  ctx.fillStyle = p.ink;
   ctx.font = `600 46px ${p.display}`;
-  ctx.fillText(c.title, bodyX, y);
+  const title = p.headTransform === 'uppercase' ? c.title.toUpperCase() : c.title;
+  drawHeadlineText(ctx, title, bodyX, y, p);
 
   const maxShare = Math.max(0.01, ...c.rows.map((r) => r.share));
   y += 42;
@@ -362,6 +413,7 @@ export const ShareCards: React.FC<{ events: LoggedEvent[]; today: string; sample
   }, [cards, byArtist, genreData.vocabulary, today]);
 
   const [cardKind, setCardKind] = useState<'event' | 'yearGenres'>('event');
+  const [stubStyle, setStubStyle] = useState<StubStyle>(() => parseStubStyle(document.documentElement.dataset.stub));
   const [pickedYear, setPickedYear] = useState<number | null>(null);
   const [ygOpts, setYgOpts] = useState<YearGenreCardOptions>({ artists: true, percentages: true });
   const ygCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -375,15 +427,20 @@ export const ShareCards: React.FC<{ events: LoggedEvent[]; today: string; sample
   useEffect(() => {
     if (cardKind !== 'yearGenres' || !ygContent) return;
     let cancelled = false;
-    void document.fonts.ready.then(() => {
+    const p = palette(stubStyle);
+    void Promise.allSettled([
+      document.fonts.ready,
+      document.fonts.load(`600 46px ${p.display}`),
+      document.fonts.load(`600 22px ${p.mono}`),
+    ]).then(() => {
       const canvas = ygCanvasRef.current;
       if (cancelled || !canvas) return;
-      drawYearGenreCard(canvas, ygContent, palette());
+      drawYearGenreCard(canvas, ygContent, p, stubStyle);
     });
     return () => {
       cancelled = true;
     };
-  }, [cardKind, ygContent]);
+  }, [cardKind, ygContent, stubStyle]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -397,15 +454,20 @@ export const ShareCards: React.FC<{ events: LoggedEvent[]; today: string; sample
   useEffect(() => {
     if (cardKind !== 'event' || !content) return;
     let cancelled = false;
-    void document.fonts.ready.then(() => {
+    const p = palette(stubStyle);
+    void Promise.allSettled([
+      document.fonts.ready,
+      document.fonts.load(`600 68px ${p.display}`),
+      document.fonts.load(`600 24px ${p.mono}`),
+    ]).then(() => {
       const canvas = canvasRef.current;
       if (cancelled || !canvas) return;
-      drawCard(canvas, content, palette());
+      drawCard(canvas, content, p, stubStyle);
     });
     return () => {
       cancelled = true;
     };
-  }, [cardKind, content]);
+  }, [cardKind, content, stubStyle]);
 
   if (cards.length === 0) {
     return (
@@ -511,6 +573,8 @@ export const ShareCards: React.FC<{ events: LoggedEvent[]; today: string; sample
             </label>
           </fieldset>
 
+          <TicketStylePicker value={stubStyle} onChange={setStubStyle} className="max-w-xs" />
+
           <canvas
             ref={ygCanvasRef}
             role="img"
@@ -579,6 +643,8 @@ export const ShareCards: React.FC<{ events: LoggedEvent[]; today: string; sample
           <input type="checkbox" checked={opts.venue} onChange={toggle('venue')} /> Venue
         </label>
       </fieldset>
+
+      <TicketStylePicker value={stubStyle} onChange={setStubStyle} className="max-w-xs" />
 
       {content && (
         <canvas

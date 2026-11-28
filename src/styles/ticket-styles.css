@@ -73,7 +73,9 @@
 /* ---- Styles ---- */
 
 /* Box office: thermal paper, dot-matrix ink. */
-:is([data-stub='thermal'] :is(.ticket-card, .stub-swatch), :is(.ticket-card, .stub-swatch)[data-stub='thermal']) {
+[data-stub='thermal'] .ticket-card:not([data-stub]),
+.ticket-card[data-stub='thermal'],
+.stub-swatch[data-stub='thermal'] {
   --la-paper: #f1ecdf; --la-paper-2: #ebe5d6;
   --la-text: #3b4a63; --la-text-muted: #5a6780; --la-text-faint: #8590a3;
   --la-perf: #b9b2a0; --la-accent: #3b4a63; --la-bad: #a33a3a;
@@ -83,7 +85,9 @@
 }
 
 /* Hard ticket: pink card stock, poster headline, red serial, double rule. */
-:is([data-stub='hard'] :is(.ticket-card, .stub-swatch), :is(.ticket-card, .stub-swatch)[data-stub='hard']) {
+[data-stub='hard'] .ticket-card:not([data-stub]),
+.ticket-card[data-stub='hard'],
+.stub-swatch[data-stub='hard'] {
   --la-paper: #f9a8d4; --la-paper-2: #f4c3df;
   --la-text: #2a0e2a; --la-text-muted: #5b2a4f; --la-text-faint: #8a5578;
   --la-perf: #b4123c; --la-accent: #b4123c; --la-bad: #b4123c;
@@ -94,7 +98,9 @@
 }
 
 /* Raffle: violet roll ticket, chunky mono, diagonal pattern. */
-:is([data-stub='raffle'] :is(.ticket-card, .stub-swatch), :is(.ticket-card, .stub-swatch)[data-stub='raffle']) {
+[data-stub='raffle'] .ticket-card:not([data-stub]),
+.ticket-card[data-stub='raffle'],
+.stub-swatch[data-stub='raffle'] {
   --la-paper: #7c3aed; --la-paper-2: #6d28d9;
   --la-text: #f5f3ff; --la-text-muted: #ddd6fe; --la-text-faint: #c4b5fd;
   --la-perf: #a78bfa; --la-accent: #fde68a; --la-bad: #fecaca;
@@ -103,7 +109,9 @@
 }
 
 /* Riso: black paper, off-register pink and blue headline, halftone. */
-:is([data-stub='riso'] :is(.ticket-card, .stub-swatch), :is(.ticket-card, .stub-swatch)[data-stub='riso']) {
+[data-stub='riso'] .ticket-card:not([data-stub]),
+.ticket-card[data-stub='riso'],
+.stub-swatch[data-stub='riso'] {
   --la-paper: #17131f; --la-paper-2: #221c2e;
   --la-text: #f3e8ff; --la-text-muted: #c9bfdc; --la-text-faint: #8f84a6;
   --la-perf: #4b3f63; --la-accent: #f472b6; --la-bad: #fca5a5;
