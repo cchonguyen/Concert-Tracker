@@ -23,15 +23,8 @@ const appFor = async (role: 'owner' | 'member') => {
   return { app, dir };
 };
 
-test('the cleanup list ends by relinking events and names each series once', () => {
-  assert.ok(SERIES_CLEANUP_PLAN.length > 1);
-  assert.equal(SERIES_CLEANUP_PLAN[SERIES_CLEANUP_PLAN.length - 1].op, 'linkEvents');
-  const slugs = SERIES_CLEANUP_PLAN.flatMap((s) => (s.op === 'series' ? [s.slug] : []));
-  assert.equal(new Set(slugs).size, slugs.length);
-  // A series the list creates carries its own name, and any edition the list moves goes into a series it names.
-  for (const s of SERIES_CLEANUP_PLAN) if (s.op === 'series' && s.create) assert.ok(s.name && s.name.trim());
-  const known = new Set(slugs);
-  for (const s of SERIES_CLEANUP_PLAN) if (s.op === 'edition' && s.seriesSlug) assert.ok(known.has(s.seriesSlug), s.seriesSlug);
+test('the cleanup list is empty once it has run, so the Global Archive panel hides', () => {
+  assert.deepEqual(SERIES_CLEANUP_PLAN, []);
 });
 
 test('the owner previews the cleanup list in batches without changing anything', async () => {
@@ -46,7 +39,12 @@ test('the owner previews the cleanup list in batches without changing anything',
     const post = await dispatch(app, { url: '/api/manage/canonical/series-cleanup', method: 'POST', headers: { 'content-type': 'application/json' }, body: { from: 0, count: 10 } });
     assert.equal(post.status, 200);
     assert.equal(post.json().total, SERIES_CLEANUP_PLAN.length);
-    assert.equal(post.json().results.length, 3);
+    assert.equal(post.json().results.length, 0);
+    // With the list empty the routes answer total 0, which is what hides the Global Archive panel.
+    assert.equal(get.json().total, 0);
+    assert.equal(post.json().total, 0);
+    assert.deepEqual(get.json().results, []);
+    assert.deepEqual(post.json().results, []);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
