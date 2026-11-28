@@ -122,3 +122,22 @@ test('runAutoLink marks an event it cannot draft and skips it on the next run', 
   assert.equal(again?.drafted ?? 0, 0);
   assert.equal((await owner.listEvents())[0].details.draftTriedAt, now.toISOString());
 });
+
+test('runAutoLink saves its links even when contribute back hits a spent budget', async () => {
+  const store = await fresh();
+  const owner = store.forUser({ userId: 'owner', role: 'owner' });
+  await owner.putEvent(ev({ id: 'c1' }));
+  const realGet = store.getEdition.bind(store);
+  let calls = 0;
+  store.getEdition = async (id: string) => {
+    calls++;
+    // Drafting reads the edition once; the contribute pass then finds the budget spent.
+    if (calls > 1) throw new Error('Supabase loadEdition performances failed: BudgetExhausted: Subrequest budget exhausted: 46 of 50 used.');
+    return realGet(id);
+  };
+  const report = await runAutoLink(store, [{ userId: 'owner', role: 'owner' }], { now });
+  assert.equal(report?.drafted, 1);
+  const [saved] = await owner.listEvents();
+  assert.ok(saved.editionId, 'the link is saved although contribute back ran out of budget');
+  assert.equal(saved.details.contributedAt, undefined);
+});

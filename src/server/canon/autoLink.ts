@@ -15,7 +15,7 @@ import { ensureCaptured, resolveEvent } from '../events/inherit';
 import { normalizeName, seriesSlugFor } from '../lineup/text';
 import { editionCoversDate, subjectOf } from './match';
 import { eventSeriesSlug } from '../events/routes';
-import { currentBudget } from '../lineup/budget';
+import { BudgetExhausted, currentBudget, runReserved } from '../lineup/budget';
 import { recordWhoISawTicks, TICK_VERIFY_THRESHOLD, verifyByMemberTicks } from './memberTick';
 import { writeEdition } from './editions';
 import type { Edition } from '../lineup/types';
@@ -27,7 +27,11 @@ const SCAN_LIMIT = 5000;
 export const AUTO_LINK_ACTOR = 'system:auto-link';
 const REASON = 'Same date, name and venue as exactly one verified edition';
 // Cost of one draft edition, worst case (upsert reads, a write, and the link); see runAutoLink.
-export const DRAFT_COST = 12;
+export const DRAFT_COST = 16;
+
+// The store wraps errors in its own message, so a spent budget is also recognised by its text.
+export const isBudgetOut = (err: unknown): boolean =>
+  err instanceof BudgetExhausted || (err instanceof Error && /BudgetExhausted|budget exhausted/i.test(err.message));
 
 type Shared = 'name' | 'startDate' | 'endDate' | 'venue' | 'city' | 'region' | 'country';
 const SHARED: Array<{ field: Shared; key: 'name' | 'start_date' | 'end_date' | 'venue' | 'city' | 'region' | 'country' }> = [
@@ -256,7 +260,9 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
   const noticed = members.some((m) => m.role !== 'owner' && m.canDraft === undefined) ? await noticedUserIds(service) : null;
   // Who ticked which act on which edition, held in memory for this run only and never stored.
   const ticks = new Map<string, Set<string>>();
+  let budgetOut = false;
   for (const m of members) {
+    if (budgetOut) break;
     if (m.blocked || !m.userId) continue;
     if (budgetLeft() < MEMBER_COST) break;
     const scoped = service.forUser?.({ userId: m.userId, role: m.role === 'owner' ? 'owner' : 'member' });
@@ -275,7 +281,14 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
         continue;
       }
       const linked = linkedToEdition(e, edition, opts.now);
-      const slug = await eventSeriesSlug(series, linked, edition);
+      let slug: string | undefined | null;
+      try {
+        slug = await eventSeriesSlug(series, linked, edition);
+      } catch (err) {
+        if (!isBudgetOut(err)) throw err;
+        budgetOut = true;
+        break;
+      }
       const { seriesSlug: _old, ...rest } = linked;
       changed.push(slug ? { ...rest, seriesSlug: slug } : rest);
     }
@@ -283,7 +296,7 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
     // Unlinked dated events that matched no verified edition get a draft edition (events with Who I Saw acts first),
     // while the budget allows. Only for members whose entries may feed shared editions.
     const canDraft = m.role === 'owner' || (m.canDraft ?? (await hasNotice(scoped, m.userId, noticed)));
-    if (canDraft) {
+    if (canDraft && !budgetOut) {
       let drafted = 0;
       const todo = unmatched.filter((e) => !e.details?.draftTriedAt).sort((a, b) => youRank(a) - youRank(b));
       for (const e of todo) {
@@ -301,19 +314,30 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
             changed.push({ ...e, details: { ...e.details, draftTriedAt: opts.now.toISOString() } });
           }
         } catch (err) {
+          if (isBudgetOut(err)) {
+            budgetOut = true;
+            break;
+          }
           console.warn('draft edition not made', err instanceof Error ? err.name : 'error');
         }
       }
       report.drafted += drafted;
     }
     // Every linked event not yet contributed, the ones just linked and drafted included, while the budget allows.
+    // A spent budget stops the loop; what was done so far is still saved below, so the next run moves on.
     const byId = new Map(changed.map((e) => [e.id, e]));
     const linkedNow = events.map((e) => byId.get(e.id) ?? e).filter((e) => e.editionId && !e.deletedAt && !e.details?.contributedAt);
     for (const e of linkedNow) {
-      if (budgetLeft() < contributeCost(e) + 1) break;
-      byId.set(e.id, await contributeBack(service, e, m.role === 'owner', opts.now, report.contributed));
+      if (budgetOut || budgetLeft() < contributeCost(e) + 1) break;
+      try {
+        byId.set(e.id, await contributeBack(service, e, m.role === 'owner', opts.now, report.contributed));
+      } catch (err) {
+        if (!isBudgetOut(err)) throw err;
+        budgetOut = true;
+      }
     }
-    if (byId.size) await scoped.putEvents([...byId.values()]);
+    // The save may use the budget's reserve: it must follow the shared writes already made.
+    if (byId.size) await runReserved(() => scoped.putEvents([...byId.values()]));
     for (const e of events.map((x) => byId.get(x.id) ?? x)) tallyTicks(ticks, e, m.userId);
   }
   for (const [k, who] of ticks) {
