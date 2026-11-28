@@ -23,7 +23,8 @@ interface Props {
 }
 
 // Other is a neutral token.
-const OTHER_FILL = 'var(--line-strong)';
+// A mid grey that shows in both themes (--line-strong is not a defined token, so Other drew nothing).
+const OTHER_FILL = 'var(--la-text-faint)';
 
 const pct = (share: number): string => `${Math.round(share * 100)}%`;
 const noun = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
