@@ -795,6 +795,8 @@ export const canonicalApi = {
     request<VenueLocationResult>(`/api/canon/venue-location?${new URLSearchParams({ name }).toString()}`, signal ? { signal } : undefined),
   artists: () => request<{ artists: CanonicalArtistRecord[] }>('/api/manage/canonical/artists'),
   // Find gaps: editions named for a catalog artist who is not on their lineup yet.
+  dismissNameMatch: (editionId: string, artistKey: string) =>
+    request<{ ok: boolean }>('/api/manage/canonical/name-matches/dismiss', post({ editionId, artistKey })),
   nameMatches: () => request<{ matches: Array<{ editionId: string; editionName: string; artistKey: string; artistName: string }> }>('/api/manage/canonical/name-matches'),
   addLineupAct: (editionId: string, artistKey: string) =>
     request<{ ok: boolean; changeId: string | null }>(`/api/manage/canonical/editions/${encodeURIComponent(editionId)}/lineup`, post({ artistKey })),
