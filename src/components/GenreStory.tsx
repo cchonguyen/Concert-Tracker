@@ -185,7 +185,7 @@ export const GenreStory: React.FC<GenreStoryProps> = ({
           {milestones.anniversaries.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {milestones.anniversaries.map((a) => (
-                <Pill key={a.group} tone="highlight">
+                <Pill key={a.group} tone="accent">
                   {a.years} years of {a.group.toLowerCase()}
                 </Pill>
               ))}
@@ -209,7 +209,7 @@ export const GenreStory: React.FC<GenreStoryProps> = ({
             <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-text-muted">Your range</h3>
             {label && (
               <Popover label={label.label} align="end" content={<span className="text-xs">{label.rule}</span>}>
-                <Pill tone="highlight">{label.label}</Pill>
+                <Pill tone="accent">{label.label}</Pill>
               </Popover>
             )}
           </div>
