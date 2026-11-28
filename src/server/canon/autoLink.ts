@@ -268,7 +268,7 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
     for (const m of members) {
       if (budgetOut) break;
       if (m.blocked || !m.userId) continue;
-      if (budgetLeft() < MEMBER_COST) break;
+      if (budgetLeft() < MEMBER_COST + SAVE_COST) break;
       // Keep the save's calls free while this member's work runs: edition change records may use the reserve.
       const budget = currentBudget();
       if (budget) budget.hold = SAVE_COST;
