@@ -128,7 +128,12 @@ export const LineupDna: FC<Props> = ({ eventId, refreshKey, events }) => {
     }
   }
   const colourFor = (seg: DnaSegment): string => (seg.key === 'other' ? OTHER_FILL : familyColours.get(seg.key) ?? OTHER_FILL);
-  const actNames = (keys: string[]) => keys.map((k) => names.get(k) ?? k).join(', ');
+  // The Your lane and Nearby lists read A to Z (Charlie, 2026-11-27).
+  const actNames = (keys: string[]) =>
+    keys
+      .map((k) => names.get(k) ?? k)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+      .join(', ');
 
   return (
     <section aria-labelledby="lineup-dna-heading" className="space-y-3">
