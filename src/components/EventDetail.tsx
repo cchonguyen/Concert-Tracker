@@ -27,7 +27,6 @@ import { actSets, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
 import { LineupTable } from './LineupTable';
-import { LineupDna, type LaneMatch } from './LineupDna';
 import { EventSources, sourceHighlightKey } from './EventSources';
 import { LogView } from './LogView';
 import { pendingReplacement } from '../services/reviewRows';
@@ -1381,7 +1380,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const [inferred, setInferred] = useState<Partial<Record<InferenceField, InferredView>>>({});
   const [inferredBilling, setInferredBilling] = useState<Record<string, InferredBilling>>({});
   // The Event Match result for this bill, from LineupDna, shown as pills in the lineup table.
-  const [laneMatch, setLaneMatch] = useState<LaneMatch>({ inLane: new Set(), nearbyUnseen: new Set() });
   const [suggestions, setSuggestions] = useState<ArtistSuggestion[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -2404,14 +2402,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             />
           )}
           {lineupActs.length > 0 && (
-            <LineupDna
-              eventId={event.id}
-              refreshKey={`${edition?.id ?? ''}:${lineupActs.length}`}
-              events={events}
-              onMatch={setLaneMatch}
-            />
-          )}
-          {lineupActs.length > 0 && (
             <LineupTable
               key={event.id}
               lineupActs={lineupActs}
@@ -2421,8 +2411,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               daysAttended={event.daysAttended}
               inferredBilling={inferredBilling}
               onSeenChange={(seen) => save({ seen })}
-              inLane={laneMatch.inLane}
-              nearby={laneMatch.nearbyUnseen}
             />
           )}
 

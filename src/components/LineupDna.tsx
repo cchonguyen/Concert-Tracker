@@ -20,13 +20,6 @@ interface Props {
   eventId: string;
   refreshKey?: string | number; // Changes when the lineup changes, so the bar is worked out again.
   events?: LoggedEvent[]; // Your events, for the Event Match line.
-  onMatch?: (match: LaneMatch) => void; // The bill's acts in your lane and the nearby ones you have not seen.
-}
-
-// Act keys (normalized names), as LineupTable marks its rows.
-export interface LaneMatch {
-  inLane: Set<string>;
-  nearbyUnseen: Set<string>;
 }
 
 // Other is a neutral token.
@@ -70,7 +63,7 @@ interface Loaded {
 }
 
 // The bar shows nothing until the lineup has genres; a failed request shows nothing at all.
-export const LineupDna: FC<Props> = ({ eventId, refreshKey, events, onMatch }) => {
+export const LineupDna: FC<Props> = ({ eventId, refreshKey, events }) => {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [open, setOpen] = useState<string | null>(null); // 'barId|segmentKey' of the panel showing
 
@@ -109,12 +102,6 @@ export const LineupDna: FC<Props> = ({ eventId, refreshKey, events, onMatch }) =
         : null,
     [loaded, events, eventId],
   );
-
-  // Tells the lineup table which acts to mark; empty while nothing is loaded.
-  useEffect(() => {
-    if (!onMatch) return;
-    onMatch({ inLane: new Set(match?.inLane ?? []), nearbyUnseen: new Set(match?.nearbyUnseen ?? []) });
-  }, [match, onMatch]);
 
   // Escape closes the open panel.
   useEffect(() => {
