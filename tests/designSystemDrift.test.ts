@@ -58,3 +58,37 @@ test('src/components/ui/ uses semantic --la-* utilities instead of raw Tailwind 
     .filter((f) => rawPalette.test(readFileSync(path.join(uiDir, f), 'utf8')));
   assert.deepEqual(offenders, []);
 });
+
+// Neon cleanup (docs/specs/neon-cleanup.md): no new "faux neon" (coloured border plus same-colour text).
+const walkTsx = (dir: string): string[] =>
+  readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walkTsx(path.join(dir, e.name)) : e.name.endsWith('.tsx') ? [path.join(dir, e.name)] : [],
+  );
+const NEON_ALLOW = new Set(['src/components/ui/Ticket.tsx']);
+const NEON_COLOURS = ['accent', 'good', 'warn', 'bad', 'second'];
+
+test('no faux neon: one class string never has a coloured border and same-colour text', () => {
+  const hits: string[] = [];
+  const strings = /(['"`])((?:(?!\1)[^\\\n]|\\.)*)\1/g;
+  const base = (t: string) => t.slice(t.lastIndexOf(':') + 1).replace(/^!|!$/g, '');
+  for (const rel of walkTsx('src')) {
+    if (NEON_ALLOW.has(rel.split(path.sep).join('/'))) continue;
+    read(rel).split('\n').forEach((line, i) => {
+      for (const m of line.matchAll(strings)) {
+        const toks = m[2].split(/\s+/).map(base);
+        for (const c of NEON_COLOURS) {
+          const border = new RegExp(`^border-${c}(-tint-line)?(/\\d+)?$`);
+          const text = new RegExp(`^text-${c}(/\\d+)?$`);
+          if (toks.some((t) => border.test(t)) && toks.some((t) => text.test(t))) hits.push(`${rel}:${i + 1} (${c})`);
+        }
+      }
+    });
+  }
+  assert.deepEqual(hits, [], `Faux neon found; use soft solid instead (docs/specs/neon-cleanup.md): ${hits.join(', ')}`);
+});
+
+test('Pill and HintPill carry no hairline border', () => {
+  for (const rel of ['src/components/ui/Pill.tsx', 'src/components/ui/HintPill.tsx']) {
+    assert.ok(!/border/.test(read(rel)), `${rel} mentions "border"; pills are soft solid with no hairlines (docs/specs/neon-cleanup.md)`);
+  }
+});

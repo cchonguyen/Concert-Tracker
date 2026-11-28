@@ -13,6 +13,7 @@ Approved by Charlie 2026-11-27: "I also want to apply the new landing page desig
 | Post-its | `PostIt` | A taped paper note for callouts and highlights; small resting tilt, straightens and lifts on hover, icon hops. Tones: paper, second, accent. |
 | Heartbeat logo | `Logo`, `public/logo-heartbeat.svg` | The waveform beats and the pin pulses with it (1.45 s). The browser picks the still `/logo.svg` under reduced motion, with no script. Used in the app header and on the landing page. |
 | Ticket stubs | `Ticket`, `src/styles/ticket-styles.css` | Already part of the system, unchanged. |
+| Soft solid, no neon | Tokens `--la-{good,warn,bad,neutral}-soft`, `Pill`, `HintPill`, `CountBubble`, `Notice`; classes `btn-layer`, `today-line`, `hatch` | Pills, chips and badges are tinted fills with ink text and no hairline. At most two outlined-neon pieces per page (the Today line and the WENT stamp). See `docs/specs/neon-cleanup.md`. |
 
 All of it is in one module, `src/styles/landing-look.css`, loaded by `src/index.css`. Screens use the shared components and tokens, never their own copies.
 
