@@ -40,10 +40,20 @@ Charlie, 2026-11-27: "I want to avoid splitting canonical information between 'm
 
 Once per linked event, whether it was linked automatically or by a tap, the hourly run does two things (`contributeBack`, `src/server/canon/autoLink.ts`):
 
-- Each act the person ticked under Who I Saw joins the edition's lineup as a candidate, sourced "your entry" (`recordWhoISawTicks`). Ticks never verify an act, which is the existing rule.
+- Each act the person ticked under Who I Saw joins the edition's lineup as a candidate, sourced "your entry" (`recordWhoISawTicks`). Two different members ticking the same act verify it (Rule 1c).
 - The owner's own event fills only the edition's empty venue, city, state, country and end date, through `writeEdition` with actor `system:auto-link` and a reason. These are the same facts the owner backfill already trusts. A member's typed facts never fill a verified edition. They reach shared editions only through their own provisional entry.
 
 `details.contributedAt` marks the event as done. Unlinking clears it, so a later link contributes again. No personal field is read.
+
+## Rule 1c: two members verify an act
+
+Charlie, 2026-11-27, chose "Yes, two members verify it" on "Should two members ticking the same act verify it?"
+
+- The hourly run already reads every member's events. While it does, it counts in memory how many different members ticked each act (Who I Saw, their own tick) on events linked to the same shared edition. The count is never stored: no table holds who ticked what, so no attendance reaches a shared table (AGENTS.md, personal fields).
+- One member's ticks, however many events they are on, leave the act a candidate.
+- When two or more different members ticked it, a candidate act is lifted to verified through `writeEdition`, actor `system:member-verify`, reason "two members ticked this act" (`verifyByMemberTicks`, `src/server/canon/memberTick.ts`). It is recorded like an auto-verify, so the same undo puts it back to candidate. The change record names no member.
+- After the owner undoes one, the run leaves that act alone on that edition from then on.
+- An act that is already verified is left alone, and nothing is demoted.
 
 ## Rule 2: series health, one tap
 
@@ -62,6 +72,7 @@ Each fix goes through `saveSeriesLogged` or `writeEdition` with actor `owner` an
 2. **Contribute back** (Rule 1b). Built 2026-11-27. [CORE / DATA]
 3. **Undo surface.** Built 2026-11-27. Event detail note with Unlink, plus the "Linked automatically" list in Data health (`EventDetail.tsx`, `DataHealth.tsx`, `services/dataHealth.ts`). [UI / VISUAL]
 4. **Series health.** New `src/server/entities/seriesHealth.ts` (issues and offers), owner routes, Data health section with one-tap fixes, and tests. [CORE / DATA]
-5. **Members' events.** Folded into slice 1 (Charlie chose everyone's): the run walks every member who isn't blocked. [CORE / DATA]
+5. **Two members verify** (Rule 1c). Built 2026-11-28. `memberTick.ts`, `autoLink.ts`, tests. [CORE / DATA]
+6. **Members' events.** Folded into slice 1 (Charlie chose everyone's): the run walks every member who isn't blocked. [CORE / DATA]
 
-ARCHITECTURE.md sections 02 and 12 change with slices 1 and 3. No migration: `details` is already JSON.
+ARCHITECTURE.md sections 02 and 12 change with slices 1 and 3. No migration: `details` is already JSON, and Rule 1c stores nothing new.
