@@ -215,13 +215,13 @@ export function DetailShell({ title, rows, openId, closeDisabled = false, status
                   </span>
                   {r.gaps > 0 ? (
                     <span
-                      className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full border border-warn/45 px-1 font-mono text-[11px] font-semibold text-warn"
+                      className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-neutral-soft px-1 font-mono text-[11px] font-semibold text-text-muted tabular-nums"
                       aria-label={`${r.gaps} missing`}
                     >
                       {r.gaps}
                     </span>
                   ) : (
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-good/45" aria-label="Nothing missing">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-good-soft" aria-label="Nothing missing">
                       <Check className="h-3 w-3 text-good" aria-hidden="true" />
                     </span>
                   )}

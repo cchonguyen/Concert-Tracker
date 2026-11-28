@@ -165,7 +165,7 @@ export function TipsButton() {
         aria-pressed={anyShown}
         onClick={() => tips.choose(tips.onScreen, !anyShown)}
         className={`relative flex h-11 w-11 items-center justify-center rounded-control border transition-colors motion-reduce:transition-none sm:h-9 sm:w-9 ${
-          anyShown ? 'border-accent-tint-line bg-accent-tint text-accent' : 'border-line bg-surface-1 text-text-muted hover:text-text'
+          anyShown ? 'border-transparent bg-accent-fill text-on-accent' : 'border-line bg-surface-1 text-text-muted hover:text-text'
         } ${tips.nudge ? 'tips-nudge' : ''}`}
       >
         <HelpCircle className="h-4 w-4" aria-hidden="true" />

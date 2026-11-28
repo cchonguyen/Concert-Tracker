@@ -292,9 +292,9 @@ const ArtistCard: React.FC<ArtistProps> = ({ artist: a, genre, onOpenEvent, onOp
           <div className="flex flex-wrap gap-1.5">
             {a.favourites > 0 && (
               <Pill
-                icon={<Heart className="h-3 w-3 fill-current" />}
+                icon={<Heart className="h-3 w-3 fill-current text-bad" />}
                 text={a.favourites === 1 ? 'Favorite set' : `Favorite set ×${a.favourites}`}
-                tone="border border-bad/45 bg-bad/10 text-bad"
+                tone="bg-bad-soft text-text"
                 title="Events where this was your favorite set"
               />
             )}
