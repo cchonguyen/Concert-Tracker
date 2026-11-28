@@ -15,7 +15,10 @@ export function NameSep() {
         {'⁠'}
         {NAME_DIAMOND}
       </span>
-      <span className="sr-only">, </span>
+      {/* The relative wrapper keeps the absolutely placed sr-only comma inside a truncated line, so it cannot widen the page. */}
+      <span className="relative">
+        <span className="sr-only">, </span>
+      </span>
       {'​'}
     </>
   );
