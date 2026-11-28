@@ -2493,6 +2493,19 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               )}
             </p>
           )}
+          {event.editionId && event.details.autoLinked?.editionId === event.editionId && (
+            <p className="text-[11px] text-text-muted">
+              Linked automatically: same date, name and venue as this shared edition. What you typed still shows.{' '}
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => void run('unlink', () => eventsApi.unlink(event.id))}
+                className="text-accent hover:underline disabled:opacity-50"
+              >
+                {busy === 'unlink' ? 'Unlinking…' : 'Unlink'}
+              </button>
+            </p>
+          )}
           {!edition && event.editionId && canManageEdition && (
             <p className="text-[11px] text-text-muted">
               <a

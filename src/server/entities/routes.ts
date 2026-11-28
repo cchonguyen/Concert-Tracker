@@ -1,6 +1,7 @@
 import { Response, Router } from 'express';
 import { runSeriesCleanup } from './seriesCleanup';
 import { SERIES_CLEANUP_PLAN } from './seriesCleanupPlan';
+import { fixSeriesIssue, seriesHealth } from './seriesHealth';
 import { InputError, PipelineDeps } from '../lineup/pipeline';
 import { defaultFinders, DetailFinder, researchEditionFacts } from '../events/details';
 import { isLinking } from './linkingStore';
@@ -692,6 +693,26 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
       const batch = cleanupBatch((req.body ?? {}) as Record<string, unknown>, 3);
       const results = await runSeriesCleanup(store, SERIES_CLEANUP_PLAN, { ...CLEANUP_BY, apply: true, ...batch });
       res.json({ total: SERIES_CLEANUP_PLAN.length, results });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Series health (docs/specs/series-sync.md, Rule 2): issues with one offer each, read-only; a fix is the owner's tap.
+  router.get('/manage/canonical/series-health', ownerOnly as any, async (_req, res) => {
+    try {
+      res.json({ issues: await seriesHealth(store) });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+  router.post('/manage/canonical/series-health/fix', ownerOnly as any, async (req, res) => {
+    try {
+      const id = (req.body ?? {}).id;
+      if (typeof id !== 'string' || !id) return res.status(400).json({ error: 'Which issue?' });
+      const results = await fixSeriesIssue(store, id, 'owner');
+      if (!results) return res.status(409).json({ error: 'That issue is already fixed or has changed. Refresh to see the current list.' });
+      res.json({ results });
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }

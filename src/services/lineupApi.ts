@@ -1,5 +1,6 @@
 import type { VenueLocation, VenueLocationResult } from '../server/canon/venueLocation';
 import type { CleanupResult } from '../server/entities/seriesCleanup';
+import type { SeriesHealthIssue } from '../server/entities/seriesHealth';
 import type { VenueFillPlan, VenueFillResult } from '../server/canon/venueFill';
 import type { ArtistCleanupReport, ArtistCleanupRow } from '../server/entities/artistCleanupCsv';
 import type { Edition, EditionInference, EditionWeekend, InferenceField, LookupJob, SeriesKind, SeriesRecord, SeriesSummary, SourceType } from '../server/lineup/types';
@@ -238,6 +239,8 @@ export const eventsApi = {
   research: (id: string, useGemini = false) =>
     request<{ event: LoggedEvent }>(`/api/events/${id}/details`, post({ useGemini })).then((r) => r.event),
   weather: (id: string) => request<{ event: LoggedEvent; note?: string }>(`/api/events/${id}/weather`, post()),
+  // Detach from the shared edition (undoes an automatic link: docs/specs/series-sync.md).
+  unlink: (id: string) => request<{ event: LoggedEvent }>(`/api/events/${encodeURIComponent(id)}/unlink`, post()).then((r) => r.event),
   pick: (id: string, candidateId?: string, fields?: EventField[]) =>
     request<{ event: LoggedEvent }>(`/api/events/${id}/details/pick`, post({ candidateId, fields })).then((r) => r.event),
   nameArtists: (id: string) =>
@@ -782,6 +785,9 @@ export const canonicalApi = {
     request<{ total: number; results: CleanupResult[] }>(`/api/manage/canonical/series-cleanup?${new URLSearchParams({ from: String(from), count: String(count) }).toString()}`),
   seriesCleanupRun: (from: number, count: number) =>
     request<{ total: number; results: CleanupResult[] }>('/api/manage/canonical/series-cleanup', post({ from, count })),
+  // Series health (owner only): issues with one offer each, and the tap that applies one.
+  seriesHealth: () => request<{ issues: SeriesHealthIssue[] }>('/api/manage/canonical/series-health'),
+  fixSeriesIssue: (id: string) => request<{ results: CleanupResult[] }>('/api/manage/canonical/series-health/fix', post({ id })),
   venueFillPlan: () => request<VenueFillPlan>('/api/manage/canonical/venue-fill'),
   venueFillApply: (body: { editionIds?: string[]; picks?: Array<{ editionId: string; location: VenueLocation }> }) =>
     request<VenueFillResult>('/api/manage/canonical/venue-fill', post(body)),

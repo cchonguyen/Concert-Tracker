@@ -104,6 +104,7 @@ const fakeService = (events: Record<string, LoggedEvent[]>, edition: any) => {
   const written: Record<string, LoggedEvent[]> = {};
   const series = [{ slug: 'tension-tour', name: 'Kylie Minogue: Tension Tour', aliases: ['Tension Tour'] }];
   const editions: any[] = [];
+  const changes: any[] = [];
   let current = { ...edition, performances: [] as any[] };
   const service: any = {
     listEditionHeaders: async () => [edition],
@@ -114,16 +115,21 @@ const fakeService = (events: Record<string, LoggedEvent[]>, edition: any) => {
       current = e;
       editions.push(e);
     },
-    recordEditionChange: async () => ({ id: 'c1' }),
+    recordEditionChange: async (c: any) => {
+      const row = { ...c, id: `c${changes.length}` };
+      changes.unshift(row);
+      return row;
+    },
+    listEditionChanges: async () => changes,
     listEditionInferences: async () => [],
     forUser: ({ userId }: { userId: string }) => ({
-      listEvents: async () => events[userId],
+      listEvents: async () => written[userId] ?? events[userId],
       putEvents: async (rows: LoggedEvent[]) => {
         written[userId] = rows;
       },
     }),
   };
-  return { service, written, edition: () => current, editions };
+  return { service, written, edition: () => current, editions, changes };
 };
 
 test('the run links each member\u2019s matching events through their own store and contributes back', async () => {
@@ -159,4 +165,29 @@ test('a member\u2019s typed place never fills a verified edition', async () => {
   const f = fakeService({ m1: [ev({ id: 'e9' })] }, ed({ city: undefined }));
   await runAutoLink(f.service, [{ userId: 'm1', role: 'member' }], { now });
   assert.equal(f.edition().city, undefined);
+});
+
+test('two different members ticking the same act verify it; one member alone does not; an undone verify stays undone', async () => {
+  const tick = [{ key: 'rita ora', name: 'Rita Ora', from: 'you' }] as any;
+  const members = [{ userId: 'owner', role: 'owner' }, { userId: 'm1', role: 'member' }];
+  // One member, two events with the same tick: still a candidate.
+  const solo = fakeService({ owner: [ev({ seen: tick }), ev({ id: 'e9', seen: tick })], m1: [] }, ed());
+  const r1 = await runAutoLink(solo.service, members, { now });
+  assert.equal(r1?.verifiedByTicks, 0);
+  assert.deepEqual(solo.edition().performances.map((p: any) => p.verification), ['candidate']);
+  // Two members: verified, recorded as system:member-verify.
+  const f = fakeService({ owner: [ev({ seen: tick })], m1: [ev({ id: 'e2', seen: tick })] }, ed());
+  const r2 = await runAutoLink(f.service, members, { now });
+  assert.equal(r2?.verifiedByTicks, 1);
+  assert.deepEqual(f.edition().performances.map((p: any) => [p.artistKey, p.verification]), [['rita ora', 'verified']]);
+  const change = f.changes.find((c: any) => c.actor === 'system:member-verify');
+  assert.equal(change?.reason, 'two members ticked this act');
+  // Nothing about who ticked is in the change record.
+  assert.doesNotMatch(JSON.stringify(change), /owner|m1|e2/);
+  // The owner undoes it: the next run leaves it a candidate.
+  change.undoneAt = now.toISOString();
+  f.service.upsertEdition({ ...f.edition(), performances: f.edition().performances.map((p: any) => ({ ...p, verification: 'candidate' })) });
+  const r3 = await runAutoLink(f.service, members, { now });
+  assert.equal(r3, null);
+  assert.deepEqual(f.edition().performances.map((p: any) => p.verification), ['candidate']);
 });

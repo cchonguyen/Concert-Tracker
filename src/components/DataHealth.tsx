@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { GitMerge, MapPin, Sparkles, Tag } from 'lucide-react';
-import { entitiesApi, LoggedEvent } from '../services/lineupApi';
+import { entitiesApi, eventsApi, LoggedEvent } from '../services/lineupApi';
 import type { Entity, HistoryEntry } from '../server/entities/types';
 import { entityLabel, KINDS, ManageData } from './ManageView';
-import { categoryGaps, linkedSuggestions, placeOfferVenues, rareLabels, venuesWithoutPlace } from '../services/dataHealth';
+import { categoryGaps, linkedSuggestions, placeOfferVenues, rareLabels, recentAutoLinks, venuesWithoutPlace } from '../services/dataHealth';
 import { Equalizer } from './ui/Equalizer';
 import { Ledger } from './ui/Ledger';
+import { SeriesHealth } from './SeriesHealth';
+import { useIsOwner } from './MeContext';
 
 // Data health in the Manage tab: what needs your call to keep records from
 // drifting. Records that look like the same one (merge, or leave them),
@@ -30,10 +32,12 @@ const chip =
   'inline-flex min-h-11 sm:min-h-9 items-center gap-1 rounded-full border border-line-strong px-2.5 py-1 text-xs text-text hover:border-accent hover:text-accent disabled:opacity-40';
 
 export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, onOpen, onChanged }) => {
+  const isOwner = useIsOwner();
   const [venues, setVenues] = useState<VenuePlaces | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [merging, setMerging] = useState<{ from: Entity; into: Entity } | null>(null);
+  const [unlinked, setUnlinked] = useState<Set<string>>(() => new Set());
   const byId = new Map(data.entities.map((e) => [e.id, e]));
   const n = (id: string) => counts.get(id)?.length ?? 0;
 
@@ -74,6 +78,19 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
   const label = (kind: string, n: number) => `${n} ${KINDS.find((k) => k.kind === kind)?.[n === 1 ? 'one' : 'label'].toLowerCase() ?? kind}`;
   const addLabel = (recordId: string, labelId: string) =>
     void run(`label:${recordId}:${labelId}`, () => entitiesApi.link(recordId, labelId, 'has_label'));
+  const autoLinked = recentAutoLinks(events, new Date()).filter((e) => !unlinked.has(e.id));
+  const unlink = async (id: string) => {
+    setBusy(`unlink:${id}`);
+    setError(null);
+    try {
+      await eventsApi.unlink(id);
+      setUnlinked((prev) => new Set(prev).add(id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
   const disagree = (venues ?? []).filter((v) => byId.get(v.venueId) && !byId.get(v.venueId)!.mergedIntoId);
 
   return (
@@ -83,6 +100,29 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
         History.
       </p>
       {error && <p className="rounded-card border border-bad/45 bg-bad/10 p-2.5 text-sm text-bad">{error}</p>}
+
+      {autoLinked.length > 0 && (
+        <div className="space-y-2">
+          <h3 className={sectionTitle}>Linked automatically</h3>
+          <p className="text-xs text-text-muted">
+            These events had the same date, name and venue as one shared edition, so they were linked to it. What you typed still shows.
+            Unlink one to keep it on its own; it will not be linked again.
+          </p>
+          <ul className="space-y-1">
+            {autoLinked.map((e) => (
+              <li key={e.id} className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-text">{e.name}</span>
+                <span className="font-mono text-xs tabular-nums text-text-muted">{e.startDate}</span>
+                <button onClick={() => void unlink(e.id)} disabled={busy !== null} className={chip}>
+                  {busy === `unlink:${e.id}` ? 'Unlinking…' : 'Unlink'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {isOwner && <SeriesHealth />}
 
       <div className="space-y-2">
         <h3 className={sectionTitle}>Venues whose events disagree on the city</h3>

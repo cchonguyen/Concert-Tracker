@@ -1,6 +1,6 @@
 # Keeping events and series in sync (auto-link and series health)
 
-Status: approved 2026-11-27 (Charlie chose "Everyone's, start building": slices 1 to 4). Slice 1 built 2026-11-27. Charlie: "I would like to better automate this process so there's less opportunity for desync." He chose "Link automatically, undoable" for exact matches. Brands and missing series stay one-tap.
+Status: approved 2026-11-27 (Charlie chose "Everyone's, start building": slices 1 to 4). Slice 1 built 2026-11-27. Charlie: "I would like to better automate this process so there's less opportunity for desync." He chose "Link automatically, undoable" for exact matches. Brands and missing series stay one-tap. Rule 1c (two members verify) approved 2026-11-27.
 
 ## Why things drift today
 
@@ -40,28 +40,40 @@ Charlie, 2026-11-27: "I want to avoid splitting canonical information between 'm
 
 Once per linked event, whether it was linked automatically or by a tap, the hourly run does two things (`contributeBack`, `src/server/canon/autoLink.ts`):
 
-- Each act the person ticked under Who I Saw joins the edition's lineup as a candidate, sourced "your entry" (`recordWhoISawTicks`). Ticks never verify an act, which is the existing rule.
+- Each act the person ticked under Who I Saw joins the edition's lineup as a candidate, sourced "your entry" (`recordWhoISawTicks`). Two different members ticking the same act verify it (Rule 1c).
 - The owner's own event fills only the edition's empty venue, city, state, country and end date, through `writeEdition` with actor `system:auto-link` and a reason. These are the same facts the owner backfill already trusts. A member's typed facts never fill a verified edition. They reach shared editions only through their own provisional entry.
 
 `details.contributedAt` marks the event as done. Unlinking clears it, so a later link contributes again. No personal field is read.
 
+## Rule 1c: two members verify an act
+
+Charlie, 2026-11-27, chose "Yes, two members verify it" on "Should two members ticking the same act verify it?"
+
+- The hourly run already reads every member's events. While it does, it counts in memory how many different members ticked each act (Who I Saw, their own tick) on events linked to the same shared edition. The count is never stored: no table holds who ticked what, so no attendance reaches a shared table (AGENTS.md, personal fields).
+- One member's ticks, however many events they are on, leave the act a candidate.
+- When two or more different members ticked it, a candidate act is lifted to verified through `writeEdition`, actor `system:member-verify`, reason "two members ticked this act" (`verifyByMemberTicks`, `src/server/canon/memberTick.ts`). It is recorded like an auto-verify, so the same undo puts it back to candidate. The change record names no member.
+- After the owner undoes one, the run leaves that act alone on that edition from then on.
+- An act that is already verified is left alone, and nothing is demoted.
+
 ## Rule 2: series health, one tap
 
-There is a nightly read-only check, also shown on demand in Data health (owner only). It lists:
+A read-only check runs when the owner opens Data health (`src/server/entities/seriesHealth.ts`, shown by `SeriesHealth.tsx`). It lists:
 
 - **A series with no brand, or not built from its parts.** That means no qualifier and a name that differs from the brand. Offers, worked out in code from stored data only:
   - When every edition's lineup, together with the seen acts on events linked to it, names exactly one act, that act is offered as the brand. The old name is offered as the qualifier and alias.
   - Otherwise the series' own name is offered as its brand.
-- **An edition with no series.** Offers the one series whose name or alias equals the edition name without its year. When there is none, it offers a new series named after the edition.
+- **A branded series whose name is not built from its brand** (no qualifier, name differs from the brand). Offers the rest of the name after the brand as the qualifier, and keeps the old name as an alias.
+- **An edition with no series.** Offers the one series whose name or alias equals the edition name without its year. When there is none and two or more editions share that name, it offers a new series named after it. A one-off night with no match is left alone: it is not a series.
 
-Each fix goes through `saveSeriesLogged` or `writeEdition` with actor `owner` and a reason. It is recorded and can be undone. Nothing is applied without a tap. This is the guess rule: who a tour belongs to is the owner's call.
+A tap works the issue out again from live data, then runs its steps through `runSeriesCleanup`: `saveSeriesLogged` or `writeEdition` with actor `owner` and a reason. It is recorded and can be undone. Nothing is applied without a tap. This is the guess rule: who a tour belongs to is the owner's call.
 
 ## Slices
 
 1. **Auto-link core.** New `src/server/canon/autoLink.ts` (match and link, pure plus store), the `backfill.ts` hook, the nightly sweep in `worker/index.ts`, and tests. [CORE / DATA]
 2. **Contribute back** (Rule 1b). Built 2026-11-27. [CORE / DATA]
-3. **Undo surface.** Event detail note with Unlink, plus the "Linked automatically" list in Data health (`EventDetail.tsx`, `DataHealth.tsx`, `services/dataHealth.ts`). [UI / VISUAL]
-4. **Series health.** New `src/server/entities/seriesHealth.ts` (issues and offers), owner routes, Data health section with one-tap fixes, and tests. [CORE / DATA]
-5. **Members' events.** Folded into slice 1 (Charlie chose everyone's): the run walks every member who isn't blocked. [CORE / DATA]
+3. **Undo surface.** Built 2026-11-27. Event detail note with Unlink, plus the "Linked automatically" list in Data health (`EventDetail.tsx`, `DataHealth.tsx`, `services/dataHealth.ts`). [UI / VISUAL]
+4. **Series health.** Built 2026-11-28. New `src/server/entities/seriesHealth.ts` (issues and offers), owner routes, Data health section with one-tap fixes, and tests. [CORE / DATA]
+5. **Two members verify** (Rule 1c). Built 2026-11-28. `memberTick.ts`, `autoLink.ts`, tests. [CORE / DATA]
+6. **Members' events.** Folded into slice 1 (Charlie chose everyone's): the run walks every member who isn't blocked. [CORE / DATA]
 
-ARCHITECTURE.md sections 02 and 12 change with slices 1 and 3. No migration: `details` is already JSON.
+ARCHITECTURE.md sections 02 and 12 change with slices 1 and 3. No migration: `details` is already JSON, and Rule 1c stores nothing new.
