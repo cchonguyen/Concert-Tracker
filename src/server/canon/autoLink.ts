@@ -16,7 +16,7 @@ import { normalizeName, seriesSlugFor } from '../lineup/text';
 import { editionCoversDate, subjectOf } from './match';
 import { eventSeriesSlug } from '../events/routes';
 import { currentBudget } from '../lineup/budget';
-import { recordWhoISawTicks } from './memberTick';
+import { recordWhoISawTicks, TICK_VERIFY_THRESHOLD, verifyByMemberTicks } from './memberTick';
 import { writeEdition } from './editions';
 import type { Edition } from '../lineup/types';
 
@@ -162,6 +162,20 @@ export async function contributeBack(
   return { ...event, details: { ...event.details, contributedAt: now.toISOString() } };
 }
 
+const TICK_SEP = '\u0000';
+
+// Adds this member's own ticks on a linked event to the run's tally (edition and act key to member ids).
+export function tallyTicks(tally: Map<string, Set<string>>, event: LoggedEvent, memberId: string): void {
+  if (!event.editionId || event.deletedAt) return;
+  for (const s of event.seen ?? []) {
+    if (s.from !== 'you' || !s.key) continue;
+    const k = `${event.editionId}${TICK_SEP}${s.key}`;
+    let who = tally.get(k);
+    if (!who) tally.set(k, (who = new Set()));
+    who.add(memberId);
+  }
+}
+
 export interface AutoLinkMember {
   userId: string | null;
   role: string;
@@ -173,6 +187,7 @@ export interface AutoLinkReport {
   linked: number;
   ambiguous: number; // candidates with no single edition (none or several)
   contributed: ContributeReport;
+  verifiedByTicks: number; // candidate acts that two or more members ticked, lifted to verified
 }
 
 export interface AutoLinkOptions {
@@ -206,11 +221,13 @@ function withSeriesCache(store: LineupStore): LineupStore {
 export async function runAutoLink(service: LineupStore, members: AutoLinkMember[], opts: AutoLinkOptions): Promise<AutoLinkReport | null> {
   const budgetLeft = opts.budgetLeft ?? defaultBudgetLeft;
   const maxPerMember = Math.max(1, opts.maxPerMember ?? 50);
-  const report: AutoLinkReport = { members: 0, linked: 0, ambiguous: 0, contributed: { events: 0, acts: 0, filled: 0 } };
+  const report: AutoLinkReport = { members: 0, linked: 0, ambiguous: 0, contributed: { events: 0, acts: 0, filled: 0 }, verifiedByTicks: 0 };
   if (budgetLeft() < 1 + MEMBER_COST) return null;
   const headers = (await service.listEditionHeaders({ limit: SCAN_LIMIT, status: 'verified' })).filter((e) => isVerifiedStatus(e.status));
   if (!headers.length) return null;
   const series = withSeriesCache(service);
+  // Who ticked which act on which edition, held in memory for this run only and never stored.
+  const ticks = new Map<string, Set<string>>();
   for (const m of members) {
     if (m.blocked || !m.userId) continue;
     if (budgetLeft() < MEMBER_COST) break;
@@ -241,6 +258,13 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
       byId.set(e.id, await contributeBack(service, e, m.role === 'owner', opts.now, report.contributed));
     }
     if (byId.size) await scoped.putEvents([...byId.values()]);
+    for (const e of events.map((x) => byId.get(x.id) ?? x)) tallyTicks(ticks, e, m.userId);
   }
-  return report.linked || report.contributed.events ? report : null;
+  for (const [k, who] of ticks) {
+    if (who.size < TICK_VERIFY_THRESHOLD) continue;
+    if (budgetLeft() < 4) break;
+    const [editionId, artistKey] = k.split(TICK_SEP);
+    if (await verifyByMemberTicks(service, editionId, artistKey)) report.verifiedByTicks++;
+  }
+  return report.linked || report.contributed.events || report.verifiedByTicks ? report : null;
 }
