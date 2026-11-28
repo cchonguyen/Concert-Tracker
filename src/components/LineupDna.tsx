@@ -119,8 +119,16 @@ export const LineupDna: FC<Props> = ({ eventId, refreshKey, events }) => {
   const floorLine = match
     ? `Event Match needs ${MATCH_MIN_SETS} sets with a genre over ${MATCH_MIN_EVENTS} events. You have ${noun(sets, 'set', 'sets')} over ${noun(match.events, 'event', 'events')}.`
     : null;
-  // Colours follow the segment order within each bar, as Sound Drift does; Other is neutral.
-  const colourFor = (seg: DnaSegment, index: number): string => (seg.key === 'other' ? OTHER_FILL : PALETTE[index % PALETTE.length]);
+  // One colour per family across every bar: the whole bill's order first, then any family that
+  // shows only on a stage bar. Other is neutral.
+  const familyColours = new Map<string, string>();
+  for (const bar of dna.bars) {
+    for (const seg of bar.segments) {
+      if (seg.key !== 'other' && !familyColours.has(seg.key)) familyColours.set(seg.key, PALETTE[familyColours.size % PALETTE.length]);
+    }
+  }
+  const colourFor = (seg: DnaSegment): string => (seg.key === 'other' ? OTHER_FILL : familyColours.get(seg.key) ?? OTHER_FILL);
+  const actNames = (keys: string[]) => keys.map((k) => names.get(k) ?? k).join(', ');
 
   return (
     <section aria-labelledby="lineup-dna-heading" className="space-y-3">
@@ -129,7 +137,7 @@ export const LineupDna: FC<Props> = ({ eventId, refreshKey, events }) => {
       </h4>
       {dna.bars.map((bar: DnaBar) => {
         const panelFor = (seg: DnaSegment) => `${bar.id}|${seg.key}`;
-        const shown = bar.segments.map((seg, i) => ({ seg, colour: colourFor(seg, i) }));
+        const shown = bar.segments.map((seg) => ({ seg, colour: colourFor(seg) }));
         const current = bar.segments.find((s) => open === panelFor(s));
         return (
           <div key={bar.id} className="space-y-1.5">
@@ -177,6 +185,16 @@ export const LineupDna: FC<Props> = ({ eventId, refreshKey, events }) => {
                 )}
                 {bar.id === 'all' && match && (
                   <p className="text-xs text-text">{match.enough ? matchLine(match) : floorLine}</p>
+                )}
+                {bar.id === 'all' && match?.enough && match.inLane.length > 0 && (
+                  <p className="text-xs text-text-muted">
+                    <span className="font-medium text-text">Your lane:</span> {actNames(match.inLane)}
+                  </p>
+                )}
+                {bar.id === 'all' && match?.enough && match.nearbyUnseen.length > 0 && (
+                  <p className="text-xs text-text-muted">
+                    <span className="font-medium text-text">Nearby:</span> {actNames(match.nearbyUnseen)}
+                  </p>
                 )}
                 {bar.lowCoverage && (
                   <p className="text-xs text-text-muted">

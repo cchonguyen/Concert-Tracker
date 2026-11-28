@@ -6,7 +6,7 @@ import path from 'node:path';
 import express from 'express';
 import { dispatch } from './helpers/testApp.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
-import { genresRouter } from '../src/server/events/genreRoutes.ts';
+import { genresRouter, shareSlotPlaces } from '../src/server/events/genreRoutes.ts';
 import { requestScopedStore, runAsMember } from '../src/server/auth/requestScope.ts';
 import type { ArtistGenres } from '../src/server/events/genreTypes.ts';
 import type { LoggedEvent, SeenAct } from '../src/server/events/types.ts';
@@ -162,4 +162,21 @@ test('an event with no lineup gives empty lists', async () => {
     assert.equal(res.status, 200);
     assert.deepEqual(res.json(), { acts: [], genres: [] });
   });
+});
+
+test('a B2B partner with no stage or day takes its slot partner stages and days', () => {
+  const out = shareSlotPlaces([
+    { key: 'a', name: 'A', stages: ['Main'], days: ['Sat'], slotId: 's1' },
+    { key: 'b', name: 'B', stages: [], days: [], slotId: 's1' },
+    { key: 'c', name: 'C', stages: [], days: [] },
+    { key: 'd', name: 'D', stages: ['Tent'], days: [], slotId: 's2' },
+    { key: 'e', name: 'E', stages: ['Dome'], days: [], slotId: 's2' },
+  ]);
+  assert.deepEqual(out.map((a) => [a.key, a.stages, a.days]), [
+    ['a', ['Main'], ['Sat']],
+    ['b', ['Main'], ['Sat']],
+    ['c', [], []],
+    ['d', ['Tent'], []],
+    ['e', ['Dome'], []],
+  ]);
 });
