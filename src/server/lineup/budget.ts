@@ -22,6 +22,8 @@ export class BudgetExhausted extends Error {
 export interface Budget {
   limit: number;
   reserve: number;
+  // Calls held back for a save still to come: neither ordinary nor reserved calls may use them (autoLink.ts).
+  hold?: number;
   used: number;
   take(n?: number, opts?: { reserved?: boolean }): void;
 }
@@ -36,7 +38,8 @@ export function makeBudget(): Budget {
     used: 0,
     take(n = 1, opts = {}) {
       // Ordinary calls stop at limit - reserve; reserved calls may use the reserve, never more than limit.
-      const ceiling = opts.reserved ? budget.limit : budget.limit - budget.reserve;
+      // A hold keeps its calls free from both.
+      const ceiling = (opts.reserved ? budget.limit : budget.limit - budget.reserve) - (budget.hold ?? 0);
       if (budget.used + n > ceiling) throw new BudgetExhausted(budget.used, budget.limit);
       budget.used += n;
     },

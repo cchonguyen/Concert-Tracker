@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { DRAFT_LINK_REASON, ensureDraftEdition } from '../src/server/canon/draftEdition.ts';
-import { SAVE_COST, runAutoLink } from '../src/server/canon/autoLink.ts';
+import { runAutoLink } from '../src/server/canon/autoLink.ts';
+import { makeBudget, runWithBudget } from '../src/server/lineup/budget.ts';
 import { NOTICE_SETTING, NOTICE_VERSION } from '../src/server/auth/routes.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import type { LoggedEvent } from '../src/server/events/types.ts';
@@ -161,15 +162,48 @@ test('runAutoLink contributes waiting linked events before drafting, so a spent 
   assert.equal(saved.get('u1')?.editionId, undefined);
 });
 
-test('runAutoLink starts no contribution it could not still save', async () => {
+test('runAutoLink saves its work even when edition change records spend the reserve', async () => {
   const store = await fresh();
   const owner = store.forUser({ userId: 'owner', role: 'owner' });
   const linked = await ensureDraftEdition(store, ev({ id: 'l1' }), now);
   assert.ok(linked);
   await owner.putEvent(linked.event);
-  // One ticked act costs 7 calls; 10 left would leave no room for the save.
-  await runAutoLink(store, [{ userId: 'owner', role: 'owner' }], { now, budgetLeft: () => 10 });
-  assert.equal((await owner.listEvents())[0].details.contributedAt, undefined);
-  await runAutoLink(store, [{ userId: 'owner', role: 'owner' }], { now, budgetLeft: () => 7 + SAVE_COST });
-  assert.ok((await owner.listEvents())[0].details.contributedAt);
+  const second = await ensureDraftEdition(store, ev({ id: 'l2', name: 'Bonobo', input: 'Bonobo', venue: 'Greek Theatre' }), now);
+  assert.ok(second);
+  await owner.putEvent(second.event);
+  const budget = makeBudget();
+  // Each edition read costs one call. For the second edition, change records then take what they can of the reserve.
+  const realGet = store.getEdition.bind(store);
+  store.getEdition = async (id: string) => {
+    budget.take(1);
+    if (id !== second.edition.id) return realGet(id);
+    for (let i = 0; i < 100; i++) {
+      try {
+        budget.take(1, { reserved: true });
+      } catch {
+        break;
+      }
+    }
+    return realGet(id);
+  };
+  // The save itself: prior rows, upsert, activity log.
+  const realFor = store.forUser.bind(store);
+  store.forUser = ((ctx: Parameters<typeof store.forUser>[0]) => {
+    const scoped = realFor(ctx);
+    const put = scoped.putEvents.bind(scoped);
+    return new Proxy(scoped, {
+      get: (target, prop) =>
+        prop === 'putEvents'
+          ? async (list: LoggedEvent[]) => {
+              budget.take(3, { reserved: true });
+              return put(list);
+            }
+          : Reflect.get(target, prop),
+    });
+  }) as typeof store.forUser;
+  budget.used = budget.limit - budget.reserve - 20;
+  await runWithBudget(budget, () => runAutoLink(store, [{ userId: 'owner', role: 'owner' }], { now }));
+  const saved = (await owner.listEvents()).filter((e) => e.details.contributedAt);
+  assert.equal(saved.length, 1, 'the first contribution was saved');
+  assert.equal(budget.hold ?? 0, 0, 'the hold is released after the run');
 });

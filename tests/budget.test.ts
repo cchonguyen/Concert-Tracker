@@ -161,3 +161,15 @@ test('budget: outside a budget nothing is counted and nothing throws', async (t)
   assert.equal(calls.length, 2);
   assert.equal(currentBudget(), undefined);
 });
+
+test('a hold keeps its calls free from ordinary and reserved calls alike', () => {
+  const b = makeBudget();
+  b.used = b.limit - b.reserve - 2;
+  b.hold = 6;
+  assert.throws(() => b.take(1), BudgetExhausted);
+  b.used = b.limit - 6;
+  assert.throws(() => b.take(1, { reserved: true }), BudgetExhausted);
+  b.hold = 0;
+  b.take(4, { reserved: true });
+  assert.equal(b.used, b.limit - 2);
+});
