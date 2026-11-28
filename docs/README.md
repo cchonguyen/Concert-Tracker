@@ -12,7 +12,7 @@ Active specs, backlog items, and `AGENTS.md`-referenced specs:
 | --- | --- |
 | [auto-verify-spec.md](auto-verify-spec.md) | Built (slices 2 to 5). `AGENTS.md` links its rules here. |
 | [ingest-canon-plan.md](ingest-canon-plan.md) | Built (Slices 11.0 to 11.25). Personal-field encryption is still on hold. |
-| [specs/who-i-saw-lineup.md](specs/who-i-saw-lineup.md) | Approved 2026-11-28 (Slices 52.1 to 52.3). |
+| [specs/who-i-saw-lineup.md](specs/who-i-saw-lineup.md) | Built 2026-11-28 (Slices 52.1 to 52.3, auto-link fixes 52.1217 to 52.1225). The draft-edition catch-up is still running. |
 | [specs/canonical-genres.md](specs/canonical-genres.md) | Built (Slices 35.1 to 35.12, migration 0059). `AGENTS.md` links its rules here. |
 | [specs/genre-taxonomy-phase-a.md](specs/genre-taxonomy-phase-a.md) | Built (Slices 39.1 to 39.10, migration 0063). `AGENTS.md` links its rules here. |
 | [specs/genre-taxonomy-release-3.md](specs/genre-taxonomy-release-3.md) | Built (Slices 43.0 to 43.9, migration 0064). `AGENTS.md` links its rules here. |
@@ -20,7 +20,7 @@ Active specs, backlog items, and `AGENTS.md`-referenced specs:
 | [specs/landing-look.md](specs/landing-look.md) | Built (Slices 45.1 to 46.10). `AGENTS.md` links its rules here. |
 | [specs/neon-cleanup.md](specs/neon-cleanup.md) | Built 2026-11-28 (Slices 51.1 to 51.8). Soft solid pills and chips, at most two neon pieces per page. |
 | [specs/pasted-set-times.md](specs/pasted-set-times.md) | Built (slices 1 to 4). `AGENTS.md` links its rules here. |
-| [specs/series-sync.md](specs/series-sync.md) | Built (auto-link, member ticks, series health). `AGENTS.md` links its rules here. |
+| [specs/series-sync.md](specs/series-sync.md) | Built (slices 1 to 5: auto-link, contribute back, undo, series health, member ticks). `AGENTS.md` links its rules here. |
 | [specs/venue-location-fill.md](specs/venue-location-fill.md) | Built. `AGENTS.md` links its rules here. |
 | [specs/event-fetch-upgrade-prd.md](specs/event-fetch-upgrade-prd.md) | Stages 0 to 4 built. Stage 4b and Stage 5 not started. |
 | [specs/global-editions-admin-spec.md](specs/global-editions-admin-spec.md) | Slices 1 to 4 built. Slice 5 (component reuse) not planned yet. |
@@ -66,7 +66,7 @@ Finished or replaced specs. Each one starts with a line saying why it was archiv
 | [archive/event-detail-polish.md](archive/event-detail-polish.md) | Built. |
 | [archive/event-fetch-stage-1-2-plan.md](archive/event-fetch-stage-1-2-plan.md) | Built. |
 | [archive/event-fetch-upgrade-review.md](archive/event-fetch-upgrade-review.md) | Review taken into the event fetch PRD. |
-| [archive/genre-explore.md](archive/genre-explore.md) | Built (Slices 38.2 to 38.13). |
+| [archive/genre-explore.md](archive/genre-explore.md) | Built (Slices 38.2 to 38.13); parts later replaced by taxonomy Releases 1 to 3. Idea 12 (archive comparison) parked. |
 | [archive/genre-taxonomy-release-1.md](archive/genre-taxonomy-release-1.md) | Built (Slices 40.1 to 40.7). |
 | [archive/genre-taxonomy-release-2.md](archive/genre-taxonomy-release-2.md) | Built (Slices 41.1 to 41.6). |
 | [archive/genre-vocabulary.md](archive/genre-vocabulary.md) | Built (Slices 36.1 to 36.12, migration 0060). |

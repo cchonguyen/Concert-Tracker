@@ -1,6 +1,6 @@
 # Who I Saw fills the lineup; simpler concert lineups
 
-Status: approved by Charlie 2026-11-28 (thread "Fill concert lineups from Who I Saw": 1B, tap-to-add name suggestion, catch-up yes).
+Status: approved by Charlie 2026-11-28 (thread "Fill concert lineups from Who I Saw": 1B, tap-to-add name suggestion, catch-up yes). Built 2026-11-28: Slices 52.1 to 52.3 plus auto-link fixes 52.1217 to 52.1225. Still running: the catch-up, which gives the unlinked events draft editions over a day or two. No code work is left.
 
 ## Why
 

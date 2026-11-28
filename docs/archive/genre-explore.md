@@ -6,7 +6,7 @@
 
 > Note: the Genres table (38.5's Genre, Family and Style columns) and the over-the-years chart (38.8) were replaced by the Multi-Zoom Breakdown and Sound Drift in [genre-taxonomy-release-1.md](genre-taxonomy-release-1.md).
 
-Status: ideas, mockups and the Explore tab changes (section 3) approved by Charlie on 26 Nov 2026 (Pacific). Not started. Planned for Gemini to build.
+Status: built. Ideas, mockups and the Explore tab changes (section 3) were approved by Charlie on 26 Nov 2026 (Pacific), and Slices 38.2 to 38.13 were all built. Taxonomy Releases 1 to 3 later replaced parts of it (see the notes above), and charts now group by scene family. Idea 12 (compared with the archive's lineups) is parked by Charlie and is the only part not built.
 
 Mockups: https://claude.ai/artifact/GHxso4yoYwvpzsUT4nHG5u (sample data, made-up acts). The ideas doc with research: https://claude.ai/artifact/BNbgw1XSULuC6An3RbHSAp.
 

@@ -1,6 +1,6 @@
 # Inferred values (spec)
 
-Status: principle approved 2026-11-24 (Charlie, thread "Reword never guess core principle"). Build not started. The behavior rules in AGENTS.md that this changes stay in force until the slice that changes each one is built.
+Status: principle approved 2026-11-24 (Charlie, thread "Reword never guess core principle"). Built: Slices 27.1 to 27.7 merged (now in `.spec/archive/HISTORY-2026-11.md`), and the rules are in AGENTS.md.
 
 ## Ask
 

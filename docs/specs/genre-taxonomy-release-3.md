@@ -1,5 +1,7 @@
 # Genre taxonomy, Release 3: Orbits, bill links and the Constellation
 
+Status: built (Slices 43.0 to 43.9; migration 0064 applied 2026-11-27). The "Proposed" decisions below were accepted as written and built. Charlie has uploaded the Orbits file and run "Learn links from lineups".
+
 Planned 2026-11-27, after Release 2 ([genre-taxonomy-release-2.md](../archive/genre-taxonomy-release-2.md)) merged. It follows Charlie's brief "Genre Taxonomy, Visualizations & Relational Discovery" (Release 3, its Phase B schema, the "Live Stage Co-Occurrence Learning" and "One Step Outside Your Lane" rows) and the Phase A decision on the system job. Slices are 43.x. It has one migration, 0064, which Charlie applied on 2026-11-27.
 
 ## In plain English
