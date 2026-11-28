@@ -82,6 +82,9 @@ export interface EventDetails {
   autoLinkDeclined?: string[];
   // Set once this linked event's ticked acts (and, for the owner, its venue and place) went to the shared edition.
   contributedAt?: string;
+  // Set when the auto-link pass tried a draft edition and could not link one (several matches, or declined before).
+  // The pass skips it from then on; saving Who I Saw acts on the event still tries again, and a verified match still links.
+  draftTriedAt?: string;
 }
 
 // How an act played, as you mark it or as billed on a lineup (e.g. "DJ Set", "Live", "Sunrise Set").

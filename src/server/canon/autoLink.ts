@@ -19,11 +19,15 @@ import { currentBudget } from '../lineup/budget';
 import { recordWhoISawTicks, TICK_VERIFY_THRESHOLD, verifyByMemberTicks } from './memberTick';
 import { writeEdition } from './editions';
 import type { Edition } from '../lineup/types';
+import { NOTICE_SETTING, NOTICE_VERSION } from '../auth/routes';
+import { ensureDraftEdition } from './draftEdition';
 
 const FULL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const SCAN_LIMIT = 5000;
 export const AUTO_LINK_ACTOR = 'system:auto-link';
 const REASON = 'Same date, name and venue as exactly one verified edition';
+// Cost of one draft edition, worst case (upsert reads, a write, and the link); see runAutoLink.
+export const DRAFT_COST = 12;
 
 type Shared = 'name' | 'startDate' | 'endDate' | 'venue' | 'city' | 'region' | 'country';
 const SHARED: Array<{ field: Shared; key: 'name' | 'start_date' | 'end_date' | 'venue' | 'city' | 'region' | 'country' }> = [
@@ -180,6 +184,8 @@ export interface AutoLinkMember {
   userId: string | null;
   role: string;
   blocked?: boolean;
+  // May this member's events feed shared editions (the current notice). Owners always may; unset means look it up.
+  canDraft?: boolean;
 }
 
 export interface AutoLinkReport {
@@ -188,6 +194,7 @@ export interface AutoLinkReport {
   ambiguous: number; // candidates with no single edition (none or several)
   contributed: ContributeReport;
   verifiedByTicks: number; // candidate acts that two or more members ticked, lifted to verified
+  drafted: number; // unlinked events given a draft (provisional) shared edition
 }
 
 export interface AutoLinkOptions {
@@ -216,16 +223,37 @@ function withSeriesCache(store: LineupStore): LineupStore {
   });
 }
 
+// Members who accepted the current notice, read once per run (the gate memberBackfill uses). Null when the store
+// cannot read settings in bulk; then each member is looked up on their own store.
+async function noticedUserIds(store: LineupStore): Promise<Set<string> | null> {
+  if (typeof store.listUserSettingsByKeys !== 'function') return null;
+  const rows = await store.listUserSettingsByKeys([NOTICE_SETTING]);
+  return new Set(
+    rows.filter((r) => r.key === NOTICE_SETTING && (r.data as { version?: number } | null)?.version === NOTICE_VERSION).map((r) => r.userId),
+  );
+}
+
+async function hasNotice(scoped: LineupStore, userId: string | null, noticed: Set<string> | null): Promise<boolean> {
+  if (!userId) return false;
+  if (noticed) return noticed.has(userId);
+  if (typeof scoped.getSetting !== 'function') return false;
+  const n = await scoped.getSetting<{ version: number }>(NOTICE_SETTING);
+  return n?.version === NOTICE_VERSION;
+}
+
+// Events with a seen act the person ticked come first (0), then the rest (1).
+const youRank = (e: LoggedEvent) => ((e.seen ?? []).some((s) => s.from === 'you') ? 0 : 1);
+
 // Links every candidate event of each member (owner included) that matches exactly one verified edition.
 // Returns null when the run did nothing.
 export async function runAutoLink(service: LineupStore, members: AutoLinkMember[], opts: AutoLinkOptions): Promise<AutoLinkReport | null> {
   const budgetLeft = opts.budgetLeft ?? defaultBudgetLeft;
   const maxPerMember = Math.max(1, opts.maxPerMember ?? 50);
-  const report: AutoLinkReport = { members: 0, linked: 0, ambiguous: 0, contributed: { events: 0, acts: 0, filled: 0 }, verifiedByTicks: 0 };
+  const report: AutoLinkReport = { members: 0, linked: 0, ambiguous: 0, contributed: { events: 0, acts: 0, filled: 0 }, verifiedByTicks: 0, drafted: 0 };
   if (budgetLeft() < 1 + MEMBER_COST) return null;
   const headers = (await service.listEditionHeaders({ limit: SCAN_LIMIT, status: 'verified' })).filter((e) => isVerifiedStatus(e.status));
-  if (!headers.length) return null;
   const series = withSeriesCache(service);
+  const noticed = members.some((m) => m.role !== 'owner' && m.canDraft === undefined) ? await noticedUserIds(service) : null;
   // Who ticked which act on which edition, held in memory for this run only and never stored.
   const ticks = new Map<string, Set<string>>();
   for (const m of members) {
@@ -235,6 +263,7 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
     if (!scoped) continue;
     report.members++;
     const changed: LoggedEvent[] = [];
+    const unmatched: LoggedEvent[] = [];
     const events = await scoped.listEvents();
     for (const e of events) {
       if (changed.length >= maxPerMember) break;
@@ -242,6 +271,7 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
       const edition = autoLinkEdition(e, headers);
       if (!edition) {
         report.ambiguous++;
+        unmatched.push(e);
         continue;
       }
       const linked = linkedToEdition(e, edition, opts.now);
@@ -250,7 +280,33 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
       changed.push(slug ? { ...rest, seriesSlug: slug } : rest);
     }
     report.linked += changed.length;
-    // Every linked event not yet contributed, the ones just linked included, while the budget allows.
+    // Unlinked dated events that matched no verified edition get a draft edition (events with Who I Saw acts first),
+    // while the budget allows. Only for members whose entries may feed shared editions.
+    const canDraft = m.role === 'owner' || (m.canDraft ?? (await hasNotice(scoped, m.userId, noticed)));
+    if (canDraft) {
+      let drafted = 0;
+      const todo = unmatched.filter((e) => !e.details?.draftTriedAt).sort((a, b) => youRank(a) - youRank(b));
+      for (const e of todo) {
+        if (drafted >= maxPerMember) break;
+        if (budgetLeft() < DRAFT_COST + contributeCost(e) + 1) break;
+        try {
+          const d = await ensureDraftEdition(service, e, opts.now);
+          if (d) {
+            const slug = await eventSeriesSlug(series, d.event, d.edition);
+            const { seriesSlug: _old, ...rest } = d.event;
+            changed.push(slug ? { ...rest, seriesSlug: slug } : rest);
+            drafted++;
+          } else {
+            // Not linkable now (several matches, or unlinked before): do not spend the budget on it every run.
+            changed.push({ ...e, details: { ...e.details, draftTriedAt: opts.now.toISOString() } });
+          }
+        } catch (err) {
+          console.warn('draft edition not made', err instanceof Error ? err.name : 'error');
+        }
+      }
+      report.drafted += drafted;
+    }
+    // Every linked event not yet contributed, the ones just linked and drafted included, while the budget allows.
     const byId = new Map(changed.map((e) => [e.id, e]));
     const linkedNow = events.map((e) => byId.get(e.id) ?? e).filter((e) => e.editionId && !e.deletedAt && !e.details?.contributedAt);
     for (const e of linkedNow) {
@@ -266,5 +322,5 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
     const [editionId, artistKey] = k.split(TICK_SEP);
     if (await verifyByMemberTicks(service, editionId, artistKey)) report.verifiedByTicks++;
   }
-  return report.linked || report.contributed.events || report.verifiedByTicks ? report : null;
+  return report.linked || report.drafted || report.contributed.events || report.verifiedByTicks ? report : null;
 }

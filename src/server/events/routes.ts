@@ -10,6 +10,7 @@ import { clashfinderChoices, EventPatch, lineupSummary, newEvent, newEventFromEd
 import { DetailCandidate, EVENT_FIELDS, EventField, LineupSummary, LoggedEvent } from './types';
 import { isVerifiedStatus } from '../lineup/store/types';
 import { recordWhoISawTicks } from '../canon/memberTick';
+import { ensureDraftEdition } from '../canon/draftEdition';
 import type { Edition, EditionHeader } from '../lineup/types';
 import { editionCoversDate, findSeriesEditionMatches } from '../canon/match';
 import { parseEventInput } from './parse';
@@ -377,7 +378,7 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
     try {
       const event = await load(req.params.id, res);
       if (!event) return;
-      const edition = event.editionId ? await deps.store.getEdition(event.editionId) : null;
+      let edition = event.editionId ? await deps.store.getEdition(event.editionId) : null;
       const body = (req.body ?? {}) as EventPatch & { import?: boolean };
       // `import: true` (list import, Sheets): an event not yet edited takes these values as what was first imported.
       const { event: patched, changes } = applyLinkedPatch(event, edition, body, deps.now(), { recapture: body.import === true });
@@ -390,11 +391,24 @@ export function eventsRouter(deps: PipelineDeps, runner: EventsRunner, finders: 
         const { seriesSlug: _old, ...rest } = patched;
         updated = seriesSlug ? { ...rest, seriesSlug } : rest;
       }
-      const stored = await saveEvent(updated);
+      let stored = await saveEvent(updated);
       await recordOverrides(deps.store, stored, changes);
       // The series it had may now be used by no event (a part-typed name, or a changed one): remove that record, logged and undoable.
       if (body.series !== undefined && event.series && normalizeName(event.series) !== normalizeName(stored.series ?? '')) {
         await removeUnusedSeries(deps.store, { names: [event.series] }).catch((err) => console.warn('unused series not removed', err instanceof Error ? err.name : 'error'));
+      }
+      // An unlinked dated event with Who I Saw acts gets a draft shared edition, then links to it.
+      // A failure here never fails the save.
+      if (!edition && body.seen) {
+        try {
+          const d = await ensureDraftEdition(deps.store, stored, deps.now());
+          if (d) {
+            stored = await saveEvent(d.event);
+            edition = d.edition;
+          }
+        } catch (err) {
+          console.warn('draft edition not made', err instanceof Error ? err.name : 'error');
+        }
       }
       // The event is already saved; a failed shared write must not fail the save. The tick is retried on the next save.
       if (edition && body.seen) {
