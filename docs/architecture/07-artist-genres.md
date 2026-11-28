@@ -81,7 +81,7 @@ Release 1 of the genre taxonomy is built in Slices 40.1 to 40.7 ([docs/specs/gen
 
 ## Lineup DNA and Event Match
 
-Release 2 of the genre taxonomy is built in Slices 41.1 to 41.5 ([docs/specs/genre-taxonomy-release-2.md](../specs/genre-taxonomy-release-2.md)). It shows on an event's page, above the lineup table, whenever the event has a lineup. There is no migration and nothing new is stored.
+Release 2 of the genre taxonomy is built in Slices 41.1 to 41.5 ([docs/specs/genre-taxonomy-release-2.md](../specs/genre-taxonomy-release-2.md)). **Moved 2026-11-27 (Charlie: too much clutter on the lineup):** Lineup DNA and the Event Match line now sit in the event page's own Genres tab, which replaced the Changes tab (a link there opens this event's changes in the Log). The lineup table no longer shows the "Your lane" and "Nearby" pills. There is no migration and nothing new is stored.
 
 **Lineup genres route.** `GET /api/events/:id/lineup-genres` (`src/server/events/genreRoutes.ts`) answers only for the caller's own event (another person's id gives 404). It returns the lineup acts the event page already shows (`eventPerformers`). Each act comes with its stages and days, read from the edition's performances (cancelled ones left out) or from the lookup's candidate. It also returns the shared genre rows for those acts and the caller's own added rows for them. A member therefore gets the shared genres of acts on their own event's lineup, including acts they did not mark as seen. It only reads: there is no lookup, fetch or model call.
 
@@ -98,7 +98,7 @@ Release 2 of the genre taxonomy is built in Slices 41.1 to 41.5 ([docs/specs/gen
 - Your vector is every seen set at your other attended events, counted with `countedSets`. The event being matched is left out, and so are planned and missed events.
 - That vector is smoothed one step over the owner's `adjacent` links only: `u + 0.5 · Â·u`. The links are read both ways, and each weight is divided by `sqrt(deg(a) · deg(b))`, so a genre linked to almost everything is toned down. It never goes two steps. `secondary_parent` and `derived_from` links are not used.
 - The score is the cosine between your smoothed families and the bill's families. The bands are "Strong fit" at 0.6 or more, "Some overlap" from 0.3, and "Outside your usual" below 0.3. The line names your lane, the 1 or 2 families that add most to the score, with the number of acts in your lane and of nearby acts you haven't seen.
-- The lineup table marks those acts with "Your lane" and "Nearby" pills.
+- The lineup table marked those acts with "Your lane" and "Nearby" pills (removed when parked).
 - Event Match needs 20 sets with a genre over 5 events, plus the whole-bill bar's own floor. Below that, the line says what is missing.
 - Relations never change the Lineup DNA bar, only the match.
 - Sample mode shows neither, because the sample events have no lineup edition.

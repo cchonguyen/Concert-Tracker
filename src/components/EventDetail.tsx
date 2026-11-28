@@ -3,7 +3,7 @@ import { useIsOwner } from './MeContext';
 import { noteView } from '../services/vaultSession';
 import { draftAfterStoredChange } from '../services/fieldDraft';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Calendar, CalendarCheck, CalendarRange, Check, ChevronDown, CircleHelp, CloudSun, ExternalLink, FolderCog, Globe, Heart, Info, Lightbulb, History, Layers, ListFilter, ListMusic, Loader2, MapPin, Plus, RefreshCw, Search, StickyNote, Tag, Ticket, Trash2, Type, Users, X, type LucideIcon } from 'lucide-react';
+import { ArrowDown, ArrowUp, Calendar, CalendarCheck, CalendarRange, Check, ChevronDown, CircleHelp, CloudSun, ExternalLink, FolderCog, Globe, Heart, Info, Lightbulb, Layers, ListFilter, ListMusic, Loader2, MapPin, Plus, RefreshCw, Search, StickyNote, Tag, Ticket, Trash2, Type, Users, X, type LucideIcon } from 'lucide-react';
 import {
   ArtistSuggestion,
   canonicalApi,
@@ -27,9 +27,8 @@ import { actSets, setLabel } from '../server/events/sets';
 import { eventScale, KIND_LABELS, lineupFacts } from '../server/events/scale';
 import { LineupReview } from './LineupReview';
 import { LineupTable } from './LineupTable';
-import { LineupDna, type LaneMatch } from './LineupDna';
 import { EventSources, sourceHighlightKey } from './EventSources';
-import { LogView } from './LogView';
+import { LineupDna } from './LineupDna';
 import { pendingReplacement } from '../services/reviewRows';
 import { norm } from '../services/listImport';
 import { placeForVenue } from '../services/venuePlace';
@@ -1381,7 +1380,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   const [inferred, setInferred] = useState<Partial<Record<InferenceField, InferredView>>>({});
   const [inferredBilling, setInferredBilling] = useState<Record<string, InferredBilling>>({});
   // The Event Match result for this bill, from LineupDna, shown as pills in the lineup table.
-  const [laneMatch, setLaneMatch] = useState<LaneMatch>({ inLane: new Set(), nearbyUnseen: new Set() });
   const [suggestions, setSuggestions] = useState<ArtistSuggestion[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1669,7 +1667,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
   ];
   const gapsLeft = thingsLeft(event, (e, g) => hasGap(e, g, undefined, edition ? lineupFacts(edition) : undefined));
   // Scrolls to the section a gap is filled in and highlights it for a moment.
-  const [rightTab, setRightTab] = useState<'lineup' | 'seen' | 'changes'>('seen');
+  const [rightTab, setRightTab] = useState<'lineup' | 'seen' | 'genres'>('seen');
   const GAP_ROW: Partial<Record<Gap, string>> = {
     date: 'date',
     venue: 'venue',
@@ -2326,16 +2324,16 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
 
           </div>
           <div className="min-w-0">
-          {/* Lineup, Who you saw and Changes share the column as folder tabs joined to their card. */}
+          {/* Lineup, Who you saw and Genres share the column as folder tabs joined to their card. */}
           <Tabs
-            label="Lineup, who you saw and changes"
+            label="Lineup, who you saw and genres"
             value={rightTab}
             onChange={setRightTab}
             panel="surface-1"
             items={[
               { value: 'lineup', label: 'Lineup', icon: ListMusic, ...(edition ? { count: lineupActs.length } : {}) },
               { value: 'seen', label: 'You saw', icon: Users, count: event.seen.length },
-              { value: 'changes', label: 'Changes', icon: History },
+              { value: 'genres', label: 'Genres', icon: Tag },
             ]}
           />
         {/* Who you saw */}
@@ -2404,14 +2402,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
             />
           )}
           {lineupActs.length > 0 && (
-            <LineupDna
-              eventId={event.id}
-              refreshKey={`${edition?.id ?? ''}:${lineupActs.length}`}
-              events={events}
-              onMatch={setLaneMatch}
-            />
-          )}
-          {lineupActs.length > 0 && (
             <LineupTable
               key={event.id}
               lineupActs={lineupActs}
@@ -2421,8 +2411,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
               daysAttended={event.daysAttended}
               inferredBilling={inferredBilling}
               onSeenChange={(seen) => save({ seen })}
-              inLane={laneMatch.inLane}
-              nearby={laneMatch.nearbyUnseen}
             />
           )}
 
@@ -2526,15 +2514,21 @@ export const EventDetail: React.FC<EventDetailProps> = ({ event, events, onChang
           )}
         </section>
 
-        {/* Changes */}
-        <section id="changes" hidden={rightTab !== 'changes'} className={tabbedCard}>
-          <h3 className={cardTitle}>Changes</h3>
-          {rightTab === 'changes' && (
-            <LogView
-              eventId={event.id}
-              compact
-              onOpenFull={onOpenHistory ? () => onOpenHistory(event.id) : undefined}
-            />
+        {/* Genres: the bill's genre mix and how it fits your history (Lineup DNA and Event Match). */}
+        <section id="genres" hidden={rightTab !== 'genres'} className={tabbedCard}>
+          <h3 className={cardTitle}>Genres</h3>
+          {rightTab === 'genres' &&
+            (lineupActs.length > 0 ? (
+              <LineupDna eventId={event.id} refreshKey={`${edition?.id ?? ''}:${lineupActs.length}`} events={events} />
+            ) : (
+              <p className="text-sm text-text-muted">The genre mix shows once this event has a lineup.</p>
+            ))}
+          {onOpenHistory && (
+            <p className="text-xs text-text-muted">
+              <button type="button" onClick={() => onOpenHistory(event.id)} className="text-accent hover:underline">
+                See changes to this event
+              </button>
+            </p>
           )}
         </section>
 
