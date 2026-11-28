@@ -58,13 +58,8 @@ const Row: React.FC<{ row: AgendaRow; selected: boolean; onOpen: (id: string) =>
 }) => {
   if (row.kind === 'today') {
     return (
-      <div
-        ref={todayRef}
-        className="flex items-center gap-2 border-y border-accent-tint-line bg-accent-tint px-3.5 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-accent"
-      >
-        <span className="h-px flex-1 bg-accent-tint-line" />
+      <div ref={todayRef} className="today-line px-3.5 py-1.5">
         Today
-        <span className="h-px flex-1 bg-accent-tint-line" />
       </div>
     );
   }

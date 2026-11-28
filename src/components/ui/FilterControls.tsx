@@ -1,5 +1,6 @@
 import React from 'react';
 import { Check, Minus, SlidersHorizontal } from 'lucide-react';
+import { CountBubble } from './Pill';
 
 // The filter controls shared by the Table, Map and Timeline, so the same filter
 // looks and behaves the same on each Explore page. Filters sit behind one
@@ -44,15 +45,15 @@ export const FilterToggle: React.FC<{
   <button
     onClick={() => onChange(NEXT[value])}
     title="Tap to cycle: any, has it, doesn't"
-    className={`inline-flex min-h-11 items-center gap-1 rounded-full border px-2.5 py-1 text-xs sm:min-h-9 ${
+    className={`inline-flex min-h-11 items-center gap-1 rounded-full px-2.5 py-1 text-xs sm:min-h-9 ${
       value === 'yes'
-        ? 'border-good/45 bg-good/10 text-good'
+        ? 'bg-good-soft text-text'
         : value === 'no'
-          ? 'border-warn/45 bg-warn/10 text-warn'
-          : 'border-line text-text-muted hover:text-text'
+          ? 'bg-warn-soft text-text'
+          : 'bg-neutral-soft text-text-muted hover:text-text'
     }`}
   >
-    {value === 'yes' ? <Check className="h-3 w-3" /> : value === 'no' ? <Minus className="h-3 w-3" /> : null}
+    {value === 'yes' ? <Check className="h-3 w-3 text-good" /> : value === 'no' ? <Minus className="h-3 w-3 text-warn" /> : null}
     {value === 'yes' ? yes : value === 'no' ? no : name}
   </button>
 );
@@ -63,10 +64,10 @@ export const FilterButton: React.FC<{ open: boolean; count: number; onClick: () 
     onClick={onClick}
     aria-expanded={open}
     className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border px-3 text-sm sm:min-h-9 ${
-      open ? 'border-accent text-accent' : 'border-line-strong text-text-muted hover:text-text'
+      open ? 'border-transparent bg-accent-tint text-text' : 'border-line-strong text-text-muted hover:text-text'
     }`}
   >
-    <SlidersHorizontal className="h-3.5 w-3.5" /> Filters{count ? ` (${count})` : ''}
+    <SlidersHorizontal className="h-3.5 w-3.5" /> Filters{count ? <CountBubble tone="solid">{count}</CountBubble> : null}
   </button>
 );
 

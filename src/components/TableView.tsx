@@ -10,6 +10,7 @@ import {
   Mail,
   MapPin,
   Sparkles,
+  TriangleAlert,
   X,
 } from 'lucide-react';
 import type { LineupFacts, LineupSummary, LoggedEvent } from '../services/lineupApi';
@@ -250,11 +251,7 @@ const Acts: React.FC<{ seen: LoggedEvent['seen']; muted?: boolean }> = ({ seen, 
 };
 
 const TodayIndicator: React.FC = () => (
-  <div className="flex items-center gap-2 border-y border-accent-tint-line bg-accent-tint px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-accent">
-    <span className="h-px flex-1 bg-accent-tint-line" />
-    Today
-    <span className="h-px flex-1 bg-accent-tint-line" />
-  </div>
+  <div className="today-line px-4 py-1.5">Today</div>
 );
 
 // Every event as a row you can filter, sort and export. A row opens the usual
@@ -283,7 +280,8 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const todayLine = useMemo(() => todayLineIndex(rows, filters, today), [rows, filters, today]);
   const active = activeFilterCount(filters);
   // The Table's filter shortcuts (upcoming, to confirm, hidden): small chips, shown only when above zero.
-  const shortcut = 'inline-flex min-h-8 items-center gap-1.5 rounded-control border border-line-strong px-2.5 py-1 text-xs font-semibold text-text-muted transition-colors hover:border-accent-tint-line hover:text-text motion-reduce:transition-none';
+  const shortcut = 'inline-flex min-h-8 items-center gap-1.5 rounded-control bg-neutral-soft px-2.5 py-1 text-xs font-semibold text-text-muted transition-colors hover:text-text hover:bg-row-hover motion-reduce:transition-none';
+  const confirmShortcut = 'inline-flex min-h-8 items-center gap-1.5 rounded-full bg-warn px-2.5 py-1 text-xs font-semibold text-on-warn transition-colors hover:brightness-110 motion-reduce:transition-none';
   const set = (patch: Partial<TableFilters>) => setFilters((f) => ({ ...f, ...patch }));
   const setHas = (field: HasField, v: Has) => setFilters((f) => ({ ...f, has: { ...f.has, [field]: v } }));
   // A column header and the sort menu both cycle: the usual direction, the other, then off.
@@ -369,9 +367,9 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
   const fillButton = (
     <button
       onClick={() => setFilling(true)}
-      className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-line-strong bg-surface-1 px-3 text-sm text-accent transition-colors hover:border-accent-tint-line motion-reduce:transition-none sm:min-h-9"
+      className="btn-pop btn-layer inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control px-3 text-sm font-semibold text-text sm:min-h-9"
     >
-      <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Fill gaps
+      <Sparkles className="h-3.5 w-3.5 text-second" aria-hidden="true" /> Fill gaps
     </button>
   );
 
@@ -418,7 +416,7 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
           onChange={pickSort}
           className="[&>button]:h-auto [&>button]:min-h-11 [&>button]:sm:min-h-9 [&>button]:rounded-control [&>button]:border-line-strong [&>button]:bg-surface-1 [&>button]:text-text [&>button]:hover:border-accent-tint-line [&>button]:focus-visible:outline-accent"
         />
-        <div className="[&>button]:h-auto [&>button]:min-h-11 [&>button]:sm:min-h-9 [&>button]:rounded-control [&>button]:border-line-strong [&>button]:bg-surface-1 [&>button]:text-text [&>button]:hover:border-accent-tint-line">
+        <div className="[&>button]:h-auto [&>button]:min-h-11 [&>button]:sm:min-h-9 [&>button]:rounded-control [&>button[aria-expanded=false]]:border-line-strong [&>button[aria-expanded=false]]:bg-surface-1 [&>button]:text-text [&>button[aria-expanded=false]]:hover:border-accent-tint-line">
           <FilterButton open={showFilters} count={active} onClick={() => setShowFilters((s) => !s)} />
         </div>
         {fillButton}
@@ -435,11 +433,11 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
               type="button"
               onClick={chip.onRemove}
               aria-label={`Remove filter ${chip.label}`}
-              className="inline-flex min-h-8 items-center gap-1.5 rounded-control border border-accent-tint-line bg-accent-tint px-2.5 py-1 text-xs text-accent hover:border-accent"
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-control bg-accent-tint px-2.5 py-1 text-xs text-text hover:bg-row-hover"
             >
               {chip.icon}
               <span>{chip.label}</span>
-              <X className="h-3 w-3 shrink-0" aria-hidden="true" />
+              <X className="h-3 w-3 shrink-0 text-accent" aria-hidden="true" />
             </button>
           ))}
           {active > 0 && rows.length > 0 && (
@@ -556,7 +554,8 @@ export const TableView: React.FC<TableViewProps> = ({ events, lineups, editions,
             </button>
           )}
           {summary.toConfirm > 0 && (
-            <button type="button" onClick={() => set({ went: 'confirm' })} className={`${shortcut} border-warn/45 text-warn hover:border-warn`}>
+            <button type="button" onClick={() => set({ went: 'confirm' })} className={confirmShortcut}>
+              <TriangleAlert className="h-3.5 w-3.5" aria-hidden="true" />
               <span className="font-mono tabular-nums">{summary.toConfirm}</span> to confirm
             </button>
           )}
