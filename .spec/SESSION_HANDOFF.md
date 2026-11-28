@@ -1,8 +1,8 @@
 # Session Handoff
 
-- **Last Active Platform:** Antigravity
-- **Active Branch / State:** `feat/post-3.0-design-docs-pass` off `main` (Post-3.0 design system, documentation, and landing screenshot pass).
+- **Last Active Platform:** Claude Code
+- **Active Branch / State:** `claude/project-thread-h5pmua`: neon cleanup spec (docs only).
 - **Active Slice:** none
 - **Verification Status:** Verified via finish-slice.mjs (Slice 50.1187)
-- **Immediate Next Step:** Open PR and merge to `main` after owner sign-off on intentional file deletions / comment-path Red tripwires.
+- **Immediate Next Step:** Gemini implements Slice 51.1 from `docs/specs/neon-cleanup.md`, then 51.2 to 51.8 in order, one PR each.
 - **Open gaps:** none.
