@@ -1,6 +1,6 @@
 // Event cards: what one shared card prints, and which events can have one.
 // Pure code: no React, no DOM, no I/O, no clock. Callers pass `today` in.
-// Docs: docs/specs/ticket-stub.md (Rules: Nothing invented, Private).
+// Docs: docs/archive/ticket-stub.md (Rules: Nothing invented, Private).
 //
 // Private fields (companions, price, rating, notes, order, seller, ticket
 // count, admit) are never read here, and CardContent has no place to carry

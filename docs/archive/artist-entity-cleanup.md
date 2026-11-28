@@ -1,5 +1,7 @@
 # Phase 1 Artist Entity Cleanup & Remap Specification
 
+**Archived (2026-11-28):** Built and shipped.
+
 Status: approved by Charlie 2026-11-26 (1B + reusable CSV upload UI, 2A `alter_ego_of` FK + `extraction_blocklist.reason`, 3A canonical catalog + owner's own records/events). Migrations: `supabase/migrations/0061_artist_cleanup.sql` and `supabase/migrations/0062_artist_cleanup_universe_fallback.sql` (adds `seen_act_names()` / `artist_genres` / owner entity fallback for seen-only or genre-only artists).
 
 ## 1. Purpose & Execution Model

@@ -1,8 +1,10 @@
 # Gemini package "Detail gaps": LiveArchive 2.0, stage 3
 
+**Archived (2026-11-28):** Built and shipped.
+
 Status: approved by Charlie on 25 Nov 2026 (Pacific), as fixes 1 to 4 of the mockup review. Not started.
 
-Stages 0 to 2 of the 2.0 refresh have merged (`docs/specs/design-refresh-2.md`, and the back-office brief). A review on 25 Nov compared the approved board "Round 3 · Dense event detail" with the live app. Most of the event detail matched. Four parts of it did not, and this package builds them:
+Stages 0 to 2 of the 2.0 refresh have merged (`docs/archive/design-refresh-2.md`, and the back-office brief). A review on 25 Nov compared the approved board "Round 3 · Dense event detail" with the live app. Most of the event detail matched. Four parts of it did not, and this package builds them:
 
 1. The Lineup tab is a cloud of name chips. The board, and decision 8 in the spec ("Lineup stays a table"), call for a table. Its Day and Stage filters are about 22 px tall, so they also fail the touch-size rule.
 2. There is no "Where every detail came from" section. Sources show only as small "via …" links beside fields.
@@ -27,7 +29,7 @@ The board itself is on the design canvas (https://claude.ai/artifact/2eTeWGL5SgN
   - a field saves when you leave it, or 500 ms after you stop typing
   - a stored value never replaces what you are typing
   - offers, inferred values and the green "Saved" flash all work as they do now
-- **Visual rules:** sections 2 to 5 of `docs/specs/design-refresh-2.md`.
+- **Visual rules:** sections 2 to 5 of `docs/archive/design-refresh-2.md`.
   - Tokens only. No hard-coded colours, and no white text on an accent.
   - Square tabs and tables. 12 px cards and 8 px controls.
   - Serif only for headings and source quotes. Mono for times, counts and dates.

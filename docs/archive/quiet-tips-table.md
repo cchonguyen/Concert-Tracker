@@ -1,5 +1,7 @@
 # Quieter tips and a leaner Table
 
+**Archived (2026-11-28):** Built and shipped.
+
 Charlie's request, 2026-11-26: the tips on each page take too much space and attention, and the Table's options should be consolidated. Mockups (round 2 holds his picks): https://claude.ai/artifact/TvGYzA1Y9Ty96vbZxPYWwy. He picked tips B + C and Table Option 3, and said "Go" on 2026-11-25 PT.
 
 ## What exists

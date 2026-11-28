@@ -1,5 +1,7 @@
 # Row hover: a stronger tint that fades out
 
+**Archived (2026-11-28):** Built and shipped.
+
 Charlie's request, 2026-11-25: "Provide a stronger highlight when hovering over things and animate a fadeout so it's fun to sweep over a bunch of rows."
 
 Status: built in Slice 30.4.

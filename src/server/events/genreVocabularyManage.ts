@@ -1,4 +1,4 @@
-// The owner's operations on the genre vocabulary (docs/specs/genre-vocabulary.md
+// The owner's operations on the genre vocabulary (docs/archive/genre-vocabulary.md
 // section 6, docs/specs/genre-taxonomy-phase-a.md section 6). Each one builds the
 // 'after' images of the rows it touches and makes exactly one writeGenreVocabulary
 // call with actor 'owner'. Stored artist genres are never rewritten: they follow the

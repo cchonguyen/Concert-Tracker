@@ -1,7 +1,7 @@
 // Browser only: builds the artist-genres CSV for download and reads an edited
 // file back into rows. The rules (columns, BOM, formula-safe cells, header
 // lookup, blank rows left out) live in src/server/events/genreCsv.ts; this file
-// only wires them to the file and the download. Spec: docs/specs/genres-csv.md.
+// only wires them to the file and the download. Spec: docs/archive/genres-csv.md.
 
 import { downloadText } from './download';
 import { parseCsv } from './listImport';

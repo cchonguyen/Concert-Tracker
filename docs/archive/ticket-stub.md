@@ -1,10 +1,12 @@
 # Ticket stub: LiveArchive 2.0, stage 4
 
+**Archived (2026-11-28):** Built and shipped.
+
 Status: design approved by Charlie on 25 Nov 2026 (Pacific). Not started. Slices 29.1 to 29.9 below wait for his go on this plan.
 
 Mockups: https://claude.ai/artifact/FJmhKgBktTqwWVdvdULTjX (the "Decided" list at its foot is part of this spec). Earlier options page: https://claude.ai/artifact/3jqdZx2JzFpF8xVtmn7xjC.
 
-This lifts the "ticket stub is parked" line in `docs/specs/design-refresh-2.md` section 1.
+This lifts the "ticket stub is parked" line in `docs/archive/design-refresh-2.md` section 1.
 
 ## The idea in one paragraph
 
@@ -40,7 +42,7 @@ One shape, two jobs. The **true ticket** is built from one event's own facts. It
 
 ## Depends on
 
-- Gemini slices 28.2 to 28.4 (`docs/specs/design-refresh-2-detail-gaps.md`) edit `EventDetail.tsx`. Slice 29.4 starts only after 28.4 merges. Slices 29.1 to 29.3 and 29.5 to 29.9 do not touch those parts and can start now.
+- Gemini slices 28.2 to 28.4 (`docs/archive/design-refresh-2-detail-gaps.md`) edit `EventDetail.tsx`. Slice 29.4 starts only after 28.4 merges. Slices 29.1 to 29.3 and 29.5 to 29.9 do not touch those parts and can start now.
 - No database migration. Share settings are stored as JSON (`share_links.settings`, 0015), so a new switch needs no column.
 
 ## Slices
@@ -63,4 +65,4 @@ Later, not in this plan: a per-event share link (needs new server work), and a "
 
 - `ARCHITECTURE.md` and `docs/architecture/15-shared-ui.md`: Ticket and StubHeader as shared parts (29.3).
 - The share page section of the architecture docs: Share as a Library page (29.8), and event cards (29.9).
-- `docs/specs/design-refresh-2.md` section 1: the ticket stub is no longer parked (this PR).
+- `docs/archive/design-refresh-2.md` section 1: the ticket stub is no longer parked (this PR).

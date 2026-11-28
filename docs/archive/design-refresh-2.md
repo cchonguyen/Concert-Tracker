@@ -1,6 +1,8 @@
 # LiveArchive 2.0 design refresh: spec and build plan
 
-Status: **approved by Charlie, 25 Nov 2026.** The work is split into two tracks after Stage 0: Track A (Claude) and the Gemini package "Ledger & Lobby" (`docs/specs/design-refresh-2-ledger-and-lobby.md`).
+**Archived (2026-11-28):** Built and shipped.
+
+Status: **approved by Charlie, 25 Nov 2026.** The work is split into two tracks after Stage 0: Track A (Claude) and the Gemini package "Ledger & Lobby" (`docs/archive/design-refresh-2-ledger-and-lobby.md`).
 
 Mockups: https://claude.ai/artifact/2eTeWGL5SgNCHSAZMbY2eg (round 3 boards "Events and tabs" and "Dense event detail" are the target; round 2 mix 2 "Bound Archive" for Home and Stats).
 
@@ -9,7 +11,7 @@ Mockups: https://claude.ai/artifact/2eTeWGL5SgNCHSAZMbY2eg (round 3 boards "Even
 - **Goal.** A facelift across the app: the Bound Archive look. It uses Editorial typography and Bento icons and colour, puts rows in joined ledgers, and keeps the information density people rely on.
 - **Not in scope.**
   - The Harness UI restyle waits until 2.0 is built and proven.
-  - The ticket stub was parked here; it is now planned in `docs/specs/ticket-stub.md` (approved 25 Nov 2026).
+  - The ticket stub was parked here; it is now planned in `docs/archive/ticket-stub.md` (approved 25 Nov 2026).
   - A dotted "Guess" style waits on the separate never-guess decision.
   - No change to capture, lookup, storage or review behaviour.
 - **Product rules stay as they are.**
@@ -147,7 +149,7 @@ Each slice is one pull request, follows the harness slice gate, and stays under 
 - A7. Stats and heatmap (`StatsView.tsx`, `timeline/HeatmapView.tsx`).
 
 **Gemini package "Ledger & Lobby" (after Stage 0)**
-The full brief is `docs/specs/design-refresh-2-ledger-and-lobby.md`.
+The full brief is `docs/archive/design-refresh-2-ledger-and-lobby.md`.
 - G1. Table (`TableView.tsx`, 2 slices).
 - G2. Agenda, Month and River (`timeline/AgendaView.tsx`, `MonthView.tsx`, `RiverView.tsx`, `parts.tsx`).
 - G3. Capture box: focus halo and suggestion fades (`CaptureBar.tsx`).
@@ -188,7 +190,7 @@ The work is split in two, as before. Each slice is one pull request with its own
    - `SeenGenres.tsx`, `EmailCard.tsx`, `ReaderPanel.tsx` and `SuggestInput.tsx`
 8. *[UI]* What is left: `FinderReadoutPanel.tsx`, `timeline/HeatmapView.tsx`, `timeline/TimelineTab.tsx` and `EventTitle.tsx`. This includes the faint "—" on Ranking, which is 3.98:1 in light mode.
 
-**Gemini package "Back Office":** the global archive, Manage, the admin panels, Artists and the map, the imports, and sharing and the log. The brief is `docs/specs/design-refresh-2-back-office.md`.
+**Gemini package "Back Office":** the global archive, Manage, the admin panels, Artists and the map, the imports, and sharing and the log. The brief is `docs/archive/design-refresh-2-back-office.md`.
 
 **Done when:**
 - No file under `src/` uses a Tailwind colour name.

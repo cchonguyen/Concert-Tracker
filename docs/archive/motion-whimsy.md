@@ -1,8 +1,10 @@
 # Motion with a little whimsy
 
+**Archived (2026-11-28):** Built and shipped.
+
 Charlie's request, 2026-11-25: "I would like to see more animations like these on rows, buttons, tabs, etc. It adds a slight sense of whimsy to the app without being too obnoxious or taking away from visibility/usability. In general, I'm having trouble seeing the animations or motion effects you've put in so far. They're all very subtle and hard to see."
 
-Status: round 1 built in Slice 30.5. It raises the motion of `docs/specs/design-refresh-2.md`, section 4, which was too faint to notice.
+Status: round 1 built in Slice 30.5. It raises the motion of `docs/archive/design-refresh-2.md`, section 4, which was too faint to notice.
 
 ## Rules
 
@@ -14,7 +16,7 @@ Status: round 1 built in Slice 30.5. It raises the motion of `docs/specs/design-
 
 - **Every control** (`button`, links, inputs, `role="button"`) fades colour, border and shadow changes over 160 ms instead of snapping (`@layer base` in `index.css`, so Tailwind utilities still win).
 - **Press:** any button squashes to 94% while pressed and springs back. Full-width rows (`row-hover`) only tint.
-- **Rows:** the shared hover tint with its fade-out trail (`docs/specs/row-hover.md`).
+- **Rows:** the shared hover tint with its fade-out trail (`docs/archive/row-hover.md`).
 - **Icon buttons:** the icon tips and grows on hover (`icon-wiggle`, on `IconButton`).
 - **Tabs and segmented choices:** the tab mark and the chosen fill in `Segmented` slide to the new choice with a small overshoot.
 - **Popovers and menus** (`Popover`, `MenuButton`, the header menu) pop in from their trigger (`pop-in`).

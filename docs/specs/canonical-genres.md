@@ -15,7 +15,7 @@ Today every member keeps their own genres for the acts they saw, and only the ow
 ## Rules this feature keeps
 
 - No model call, no inferred genre. A genre exists only because music-story, MusicBrainz (through music-story's genre map, when asked) or the owner gave it.
-- Matching never guesses: MusicBrainz ID first, then the exact normalized name with the catalog's renames (`artist_aliases`); ambiguous or unknown rows are skipped and listed (unchanged from `docs/specs/genres-csv.md`).
+- Matching never guesses: MusicBrainz ID first, then the exact normalized name with the catalog's renames (`artist_aliases`); ambiguous or unknown rows are skipped and listed (unchanged from `docs/archive/genres-csv.md`).
 - Sync never overwrites newer: the version stamp check stays, recomputed at preview and at apply.
 - Shared tables hold no personal fields. `artist_genres` and `artist_genre_changes` hold an act key, a name, genres, a source, a MusicBrainz ID or page, and for changes an actor (`owner` or `system:<job>`), a reason and a batch id. No user id, event id, date seen, companion, note, rating, price or attendance.
 - Public pages untouched. All routes stay under `/api/artist-genres`.

@@ -665,7 +665,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     }
   });
 
-  // Reusable single-transaction artist entity cleanup (docs/specs/artist-entity-cleanup.md).
+  // Reusable single-transaction artist entity cleanup (docs/archive/artist-entity-cleanup.md).
   const ARTIST_CLEANUP_BY = { actor: 'system:artist-cleanup', reason: 'Artist entity cleanup' };
   const readCleanupRows = (body: unknown): ArtistCleanupRow[] => {
     const raw = (body as { rows?: unknown } | null)?.rows;
@@ -693,7 +693,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
-  // The approved series cleanup (docs/specs/series-cleanup.md): preview, then run, in batches of steps so one
+  // The approved series cleanup (docs/archive/series-cleanup.md): preview, then run, in batches of steps so one
   // request stays inside the call budget. Every change goes through its logged path and can be undone.
   const cleanupBatch = (q: Record<string, unknown>, max: number) => {
     const from = Number(q.from ?? 0);
@@ -703,7 +703,7 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
       count: Number.isInteger(count) && count > 0 ? Math.min(count, max) : max,
     };
   };
-  const CLEANUP_BY = { actor: 'system:series-cleanup', reason: 'Series cleanup approved by Charlie (docs/specs/series-cleanup.md, seriesCleanupPlan.ts)' };
+  const CLEANUP_BY = { actor: 'system:series-cleanup', reason: 'Series cleanup approved by Charlie (docs/archive/series-cleanup.md, seriesCleanupPlan.ts)' };
   router.get('/manage/canonical/series-cleanup', ownerOnly as any, async (req, res) => {
     try {
       const batch = cleanupBatch(req.query as Record<string, unknown>, 20);

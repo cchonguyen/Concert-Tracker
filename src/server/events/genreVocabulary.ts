@@ -1,4 +1,4 @@
-// The loose-match key and the genre resolver (docs/specs/genre-vocabulary.md
+// The loose-match key and the genre resolver (docs/archive/genre-vocabulary.md
 // sections 1, 3 and 5). Pure and free of server imports: the browser uses it too.
 // It never joins different words: no stemming, no dropped words, no "&" to "and",
 // no closeness matching. Those joins are the owner's, as aliases.

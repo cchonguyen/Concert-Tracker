@@ -26,7 +26,7 @@ const STATUS_LABEL: Record<(typeof ARTIST_CLEANUP_ORDER)[number], string> = {
   link_alter_ego: 'Link alter ego',
 };
 
-// Global Archive (Artists): reusable single-transaction CSV cleanup (docs/specs/artist-entity-cleanup.md).
+// Global Archive (Artists): reusable single-transaction CSV cleanup (docs/archive/artist-entity-cleanup.md).
 // Upload any 15-column cleanup CSV, inspect the live dry-run report, and click Apply to commit atomically.
 export const ArtistCleanupPanel: React.FC<ArtistCleanupPanelProps> = ({ onApplied }) => {
   const inputRef = useRef<HTMLInputElement>(null);

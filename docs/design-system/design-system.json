@@ -774,7 +774,7 @@
         "default",
         "per ticket style"
       ],
-      "a11y": "Stub atoms are aria-hidden; StubSentence gives the one sentence they read. See docs/specs/ticket-stub.md."
+      "a11y": "Stub atoms are aria-hidden; StubSentence gives the one sentence they read. See docs/archive/ticket-stub.md."
     },
     {
       "name": "StubHeader",
@@ -913,6 +913,6 @@
     "storageKey": "<prefix>.stubStyle.v1",
     "module": "src/styles/ticket-styles.css",
     "contract": "A style sets only the module's tokens (paper and ink, type, texture, frame). Add one: a CSS block, an entry in STUB_STYLES (src/services/theme.ts), its fonts in app.html. tests/ticketStyles.test.ts keeps list and module in step.",
-    "spec": "docs/specs/ticket-stub-styles.md"
+    "spec": "docs/archive/ticket-stub-styles.md"
   }
 }

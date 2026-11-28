@@ -1,5 +1,7 @@
 # Event detail polish (2026-11-25)
 
+**Archived (2026-11-28):** Built and shipped.
+
 Charlie asked for this in the project thread on 2026-11-25 and confirmed two readings (weekend button, inferred tag at the row's right end, with the source in a tooltip when there is no room). One slice, one pull request, because most of it is in `EventDetail.tsx`.
 
 ## What changes

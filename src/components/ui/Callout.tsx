@@ -3,7 +3,7 @@ import { Lightbulb, X } from 'lucide-react';
 import type { TipKey } from '../../services/tips';
 import { useTip } from './TipsContext';
 
-// A page tip: one quiet line under the page title (docs/specs/quiet-tips-table.md). It shows on the first
+// A page tip: one quiet line under the page title (docs/archive/quiet-tips-table.md). It shows on the first
 // visits, then folds into the ? in the header, which brings it back. Nothing renders until the account's
 // choice has arrived, so a hidden tip never flashes back.
 export function Callout({ id, children }: { id: TipKey; children: ReactNode }) {

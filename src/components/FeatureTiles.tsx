@@ -7,7 +7,7 @@ import { PostIt } from './ui/PostIt';
 import { useTip } from './ui/TipsContext';
 
 // The feature tiles, each opening the page where the feature lives. They are Home's tip (`home`): shown on the
-// first visits, then folded into the ? in the header, which brings them back (docs/specs/quiet-tips-table.md).
+// first visits, then folded into the ? in the header, which brings them back (docs/archive/quiet-tips-table.md).
 interface Tile {
   key: string;
   icon: typeof Search;

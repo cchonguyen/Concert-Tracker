@@ -48,7 +48,7 @@ interface Props {
 }
 
 // The top of the event detail: a true ticket. The body has the kicker, the big line (rules in src/services/ticket.ts),
-// the date and the place. The stub end has only the pieces the event has, in the order docs/specs/ticket-stub.md gives.
+// the date and the place. The stub end has only the pieces the event has, in the order docs/archive/ticket-stub.md gives.
 export function PosterHeader({ title, dateLine, placeLine, kind, event, state, seen, inferredBilling = {}, facts, showNumber, tear, onWhoSaw }: Props) {
   const wide = useWide();
   const lines = ticketLines(

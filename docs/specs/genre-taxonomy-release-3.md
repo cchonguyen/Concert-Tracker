@@ -1,6 +1,6 @@
 # Genre taxonomy, Release 3: Orbits, bill links and the Constellation
 
-Planned 2026-11-27, after Release 2 ([genre-taxonomy-release-2.md](genre-taxonomy-release-2.md)) merged. It follows Charlie's brief "Genre Taxonomy, Visualizations & Relational Discovery" (Release 3, its Phase B schema, the "Live Stage Co-Occurrence Learning" and "One Step Outside Your Lane" rows) and the Phase A decision on the system job. Slices are 43.x. It has one migration, 0064, which Charlie applied on 2026-11-27.
+Planned 2026-11-27, after Release 2 ([genre-taxonomy-release-2.md](../archive/genre-taxonomy-release-2.md)) merged. It follows Charlie's brief "Genre Taxonomy, Visualizations & Relational Discovery" (Release 3, its Phase B schema, the "Live Stage Co-Occurrence Learning" and "One Step Outside Your Lane" rows) and the Phase A decision on the system job. Slices are 43.x. It has one migration, 0064, which Charlie applied on 2026-11-27.
 
 ## In plain English
 

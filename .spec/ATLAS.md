@@ -33,3 +33,9 @@ The single entry point and registry for this repo's `.spec/` artifacts. Definiti
 - `410` [.spec/DECISIONS.md](DECISIONS.md) — Architecture Decision Records
 - `420` [.spec/OVERVIEW.md](OVERVIEW.md) — Project overview & build status
 - `430` [.spec/AI_STUDIO_RULES.md](AI_STUDIO_RULES.md) — AI Studio rules alias
+
+## Sector 500 Architecture & Design
+- `510` [docs/design-system/design-system.json](../docs/design-system/design-system.json) — Machine-readable tokens & UI component catalogue
+- `520` [docs/architecture/12-data-model.md](../docs/architecture/12-data-model.md) — Database schema, migrations & data model
+- `530` [docs/architecture/13-api.md](../docs/architecture/13-api.md) — HTTP endpoints & route contracts
+- `540` [docs/architecture/15-shared-ui.md](../docs/architecture/15-shared-ui.md) — Shared UI primitives, ticket stubs & LiveArchive 3.0 look

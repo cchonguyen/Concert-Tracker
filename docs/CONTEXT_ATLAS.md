@@ -8,11 +8,12 @@ The index is `.spec/ATLAS.md`. This page defines the rules around it.
 
 | Sector | Meaning | Files and coordinates |
 | --- | --- | --- |
-| `000` Card Catalog | Agent instructions | `AGENTS.md` (010), `CLAUDE.md` (000, a pointer), this page (020) |
+| `000` Card Catalog | Agent instructions & root docs | `CLAUDE.md` (000), `AGENTS.md` (010), this page (020), `REQUIREMENTS.md` (050), `ARCHITECTURE.md` (060), `docs/README.md` (070) |
 | `100` Work Dispatch | Slice queue and logs | `.spec/PROGRESS.md` (110), `.spec/archive/HISTORY.md` (120), `.spec/BLACK_BOX.md` (130, only after a failure), `.spec/SESSION_HANDOFF.md` (140) |
 | `200` Boundaries | What may and may not change | `.spec/boundaries/locks.md` (210), `.spec/boundaries/do-not-build.md` (220), `.spec/EXTERNAL_AGENT_RULES.md` (230) |
 | `300` Contracts | Config and rule contracts | `.harness/config/thresholds.json` (305), `.spec/contracts/referee.md` (310), `.spec/contracts/circuit-breaker.md` (320), `.spec/contracts/baton-pass.md` (330), `.spec/contracts/review-relay.md` (340) |
 | `400` System Spec | Architecture and decisions | `.spec/SYSTEM_SPEC.md` (400), `.spec/DECISIONS.md` (410), `.spec/OVERVIEW.md` (420), `.spec/AI_STUDIO_RULES.md` (430) |
+| `500` Architecture & Design | Subsystem docs & design system | `docs/design-system/design-system.json` (510), `docs/architecture/12-data-model.md` (520), `docs/architecture/13-api.md` (530), `docs/architecture/15-shared-ui.md` (540) |
 
 `.spec/ATLAS.md` is the machine-checked copy of this table. If the two ever disagree, `.spec/ATLAS.md` wins for the tools, and this page should be corrected in the same change.
 

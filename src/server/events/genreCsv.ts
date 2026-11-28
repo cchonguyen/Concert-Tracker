@@ -1,6 +1,6 @@
 // Artist genres as a CSV: pure rules only (no DB, network or model). Shared by
 // the server and, later, the browser, so no server-only imports here.
-// Spec: docs/specs/genres-csv.md.
+// Spec: docs/archive/genres-csv.md.
 
 import { canonicalName } from '../lineup/merge';
 import { normalizeName } from '../lineup/text';

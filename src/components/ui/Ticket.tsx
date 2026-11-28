@@ -1,7 +1,7 @@
 import { createContext, Fragment, useContext, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { NameSep } from './NameList';
 
-// The ticket stub (docs/specs/ticket-stub.md). Presentational only: no data,
+// The ticket stub (docs/archive/ticket-stub.md). Presentational only: no data,
 // no rules. The rules live in src/services/ticket.ts. Paper, perforation and notches are
 // classes in src/index.css; text and spacing are Tailwind utilities here.
 // Stub atoms are aria-hidden: StubSentence is the one plain sentence a screen reader reads.

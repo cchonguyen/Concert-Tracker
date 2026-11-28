@@ -1,7 +1,7 @@
 import { motion, useReducedMotion } from 'motion/react';
 
 // The busy mark: three bars that breathe while a lookup or save is running,
-// in place of a spinner (docs/specs/design-refresh-2.md, section 4, Breathe).
+// in place of a spinner (docs/archive/design-refresh-2.md, section 4, Breathe).
 // With reduced motion the bars stand still. Give the surrounding text the
 // words ("Finding who played"); the mark itself is hidden from screen readers.
 const BARS = [

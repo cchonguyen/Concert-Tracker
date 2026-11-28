@@ -1,11 +1,13 @@
 # Gemini package "Back Office": LiveArchive 2.0, stage 2
 
+**Archived (2026-11-28):** Built and shipped.
+
 Status: approved by Charlie on 24 Nov 2026 (Pacific). Stage 0, Track A and the "Ledger & Lobby" package have all merged, so `main` already has:
 - the tokens, the fonts and the contrast test
 - the shared parts `Tabs`, `Ledger`, `KindPill`, `HintPill`, `Stars`, `Equalizer` and `Popover`
 - the refreshed Summary, Table, Agenda, Month, River, Home, event detail and Stats screens
 
-This is half of stage 2 (section 8 of `docs/specs/design-refresh-2.md`). Claude builds the other half, Track C, at the same time. "Back Office" covers the screens behind the main library: the global archive, Manage, the admin panels, Artists and the map, the import screens, and sharing and the log.
+This is half of stage 2 (section 8 of `docs/archive/design-refresh-2.md`). Claude builds the other half, Track C, at the same time. "Back Office" covers the screens behind the main library: the global archive, Manage, the admin panels, Artists and the map, the import screens, and sharing and the log.
 
 These screens work today and pass contrast, because the colour engine remaps their old `zinc-*` and `violet-*` classes. This package moves them onto the 2.0 look.
 
@@ -14,7 +16,7 @@ These screens work today and pass contrast, because the colour engine remaps the
    - `AGENTS.md`
    - `CLAUDE.md`
    - `.spec/EXTERNAL_AGENT_RULES.md`
-   - `docs/specs/design-refresh-2.md` (sections 2 to 5 are the visual rules)
+   - `docs/archive/design-refresh-2.md` (sections 2 to 5 are the visual rules)
    - `docs/architecture/15-shared-ui.md`
 2. Look at a refreshed screen as a model, for example `src/components/EventDetail.tsx` or `src/components/TableView.tsx`.
 3. Check that origin has no `harness-main-red` tag.

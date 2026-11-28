@@ -4,7 +4,7 @@ import { loadPrefs, TIPS_EVENT, writeTips } from '../../services/prefs';
 import { chooseTips, isShown, markFolded, needsNudge, readTips, recordVisit, saveTips, setShowAll, type TipKey, type TipsState } from '../../services/tips';
 import { Tooltip } from './Tooltip';
 
-// The page tips (docs/specs/quiet-tips-table.md). The rules are in src/services/tips.ts and the state is saved
+// The page tips (docs/archive/quiet-tips-table.md). The rules are in src/services/tips.ts and the state is saved
 // on the account. Each tip on screen registers its key, so the ? in the header knows which tips this screen has.
 
 interface TipsApi {

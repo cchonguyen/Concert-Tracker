@@ -1,6 +1,6 @@
 // Pure CSV parser and shared types for Phase 1 Artist Entity Cleanup.
 // Shared by the browser UI and server routes (no Node-only imports).
-// Spec: docs/specs/artist-entity-cleanup.md.
+// Spec: docs/archive/artist-entity-cleanup.md.
 
 import { normalizeName } from '../lineup/normalizeName';
 
