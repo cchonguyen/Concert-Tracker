@@ -33,14 +33,14 @@ const PANEL_BORDER = { page: 'border-b-page', 'surface-1': 'border-b-surface-1',
 // Navigation between pages or views (docs/specs/design-refresh-2.md, section 2, Shape).
 // Square corners and straight borders, never the solid Add colour. The open tab is also
 // bold, raised and marked with aria-current, so the state is never shown by colour alone.
-// The open tab's folder (or the underline) slides to the new tab with a little overshoot and rocks like a
-// seesaw in the direction it travelled, and the new tab's icon hops; with reduced motion it all moves at once.
+// The open tab's folder (or the underline) slides to the new tab with a little overshoot and settles with a
+// subtle squish, and the new tab's icon hops; with reduced motion it all moves at once.
 export function Tabs<T extends string>({ label, items, value, onChange, variant = 'folder', panel = 'surface-1', className = '', end, line = true }: Props<T>) {
   const id = useId();
   const still = useReducedMotion();
   const slide = still ? { duration: 0 } : { type: 'spring' as const, stiffness: 90, damping: 11, mass: 0.7 };
   const folder = variant === 'folder';
-  // Which way the last change went (-1 left, 1 right), so the seesaw tips the right way.
+  // Which way the last change went (-1 left, 1 right), so the icon hop leans the right way.
   const at = items.findIndex((t) => t.value === value);
   const last = useRef({ value, at, dir: 0, moved: false });
   if (last.current.value !== value) {
@@ -48,8 +48,15 @@ export function Tabs<T extends string>({ label, items, value, onChange, variant 
   }
   const { dir, moved } = last.current;
   // Made once per change, so a re-render for another reason (a count ticking up) does not rock it again.
-  const rock = useMemo(
-    () => (still || !moved ? undefined : { rotate: [0, dir * 4, dir * -2, 0], transition: { duration: 1.1, times: [0, 0.35, 0.7, 1] } }),
+  const squish = useMemo(
+    () =>
+      still || !moved
+        ? undefined
+        : {
+            scaleX: [1, 1.045, 0.985, 1],
+            scaleY: [1, 0.93, 1.02, 1],
+            transition: { duration: 0.9, times: [0, 0.3, 0.65, 1], ease: 'easeOut' as const },
+          },
     [value, still],
   );
   const squash = useMemo(
@@ -80,7 +87,7 @@ export function Tabs<T extends string>({ label, items, value, onChange, variant 
               <motion.span
                 layoutId={`${id}-folder`}
                 transition={slide}
-                animate={rock}
+                animate={squish}
                 aria-hidden="true"
                 style={{ originY: 1 }}
                 className={`pointer-events-none absolute -inset-px border border-line-strong ${PANEL_BORDER[panel]} ${PANEL_BG[panel]}`}
