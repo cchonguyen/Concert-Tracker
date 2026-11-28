@@ -1598,8 +1598,8 @@ export function genreZoom(
 // (a B2B) share one set: 1/n each. Bars: the whole bill, one per stage, then "No stage listed".
 export const LINEUP_DNA_MIN_ACTS = 3;
 export const LINEUP_DNA_MIN_COVERAGE = 0.6;
-const DNA_TOP_FAMILIES = 4;
-const DNA_FIFTH_MIN_SHARE = 0.10;
+// Up to 8 families get their own colour, as in Ranking (Charlie, 2026-11-28); the rest is Other.
+const DNA_TOP_FAMILIES = 8;
 const DNA_TOP_GENRES = 5;
 
 export interface DnaGenre {
@@ -1749,8 +1749,6 @@ export function lineupDna(
       (a, b) => b.weight - a.weight || a.name.localeCompare(b.name) || a.key.localeCompare(b.key),
     );
     const shown = ranked.slice(0, DNA_TOP_FAMILIES);
-    const fifth = ranked[DNA_TOP_FAMILIES];
-    if (fifth && share(fifth.weight) >= DNA_FIFTH_MIN_SHARE) shown.push(fifth);
     const tail = ranked.slice(shown.length);
     const segments = shown.map(segment);
     if (tail.length) {
