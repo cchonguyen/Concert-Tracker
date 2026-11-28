@@ -17,6 +17,7 @@ Active specs, backlog items, and `AGENTS.md`-referenced specs:
 | [specs/genre-taxonomy-release-3.md](specs/genre-taxonomy-release-3.md) | Built (Slices 43.0 to 43.9, migration 0064). `AGENTS.md` links its rules here. |
 | [specs/inferred-values.md](specs/inferred-values.md) | Built. `AGENTS.md` links its rules here. |
 | [specs/landing-look.md](specs/landing-look.md) | Built (Slices 45.1 to 46.10). `AGENTS.md` links its rules here. |
+| [specs/neon-cleanup.md](specs/neon-cleanup.md) | Approved 2026-11-28, not built (Slices 51.1 to 51.8, for Gemini). Soft solid pills and chips, at most two neon pieces per page. |
 | [specs/pasted-set-times.md](specs/pasted-set-times.md) | Built (slices 1 to 4). `AGENTS.md` links its rules here. |
 | [specs/series-sync.md](specs/series-sync.md) | Built (auto-link, member ticks, series health). `AGENTS.md` links its rules here. |
 | [specs/venue-location-fill.md](specs/venue-location-fill.md) | Built. `AGENTS.md` links its rules here. |
