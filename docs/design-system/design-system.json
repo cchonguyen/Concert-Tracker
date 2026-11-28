@@ -177,8 +177,8 @@
           "light": "#7c3aed"
         },
         "teal": {
-          "dark": "#f472b6",
-          "light": "#db2777"
+          "dark": "#60a5fa",
+          "light": "#2563eb"
         },
         "orange": {
           "dark": "#38bdf8",
@@ -369,9 +369,9 @@
     },
     "landingLook": [
       "Buttons lift 2px and grow 3% on hover and press to 97% on tap; never tilt.",
-      "Post-its straighten from their resting tilt, lift and grow 2% on hover; tape lifts; icon hops.",
+      "Post-its rise in and fade in on load, use a slightly transparent drop-shadow, and straighten from their resting tilt, lift and grow 2% on hover; tape lifts; icon hops.",
       "The backdrop drifts over 50s.",
-      "The heartbeat logo beats every 1.45s; the browser shows the still logo under reduced motion.",
+      "The heartbeat logo beats every 1.45s and matches the primary accent color; CSS switches to a still version under reduced motion.",
       "All of these stop under prefers-reduced-motion: reduce."
     ]
   },
@@ -720,13 +720,15 @@
       "props": {
         "tilt": "resting tilt in degrees, keep within -3 to 3 (default 0)",
         "tone": "paper (default) | second | accent",
+        "delay": "optional entrance animation delay in seconds",
         "icon": "optional node, hops on hover",
         "title": "optional, shown as a poster heading",
         "onClick": "optional; makes the whole note one button (a link card) with the focus ring",
         "children": ""
       },
       "states": [
-        "default",
+        "entering (rises up and fades in on load)",
+        "default (softer, slightly transparent drop-shadow)",
         "hover (straightens, lifts, tape lifts)"
       ],
       "a11y": "Decorative tape and icon are aria-hidden; content reads the same without motion. Put any action inside as a real button or link."
@@ -742,7 +744,7 @@
     },
     {
       "name": "Logo",
-      "purpose": "The heartbeat logo: the waveform beats and the pin pulses with it.",
+      "purpose": "The heartbeat logo: the waveform beats and the pin pulses with it, tinted with the primary accent.",
       "props": {
         "className": "default h-8 w-8",
         "alt": "default LiveArchive"
@@ -751,7 +753,7 @@
         "animated",
         "still (reduced motion)"
       ],
-      "a11y": "A picture element: the browser swaps in /logo.svg under prefers-reduced-motion with no script."
+      "a11y": "Inline SVG tinted with primary accent CSS variables; CSS swaps to the still group under prefers-reduced-motion."
     },
     {
       "name": "Ticket",

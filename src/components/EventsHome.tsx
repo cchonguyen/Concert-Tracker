@@ -231,7 +231,7 @@ export const EventsHome: React.FC<EventsHomeProps> = ({
 
       <div className="grid grid-cols-2 gap-4 pt-2 sm:grid-cols-4">
         {tiles.map(([label, value, query, Icon], i) => (
-          <PostIt key={label} onClick={() => onOpenTable(query)} tilt={TILE_TILTS[i % TILE_TILTS.length]} tone={TILE_TONES[i % TILE_TONES.length]} className="h-full !p-4">
+          <PostIt key={label} onClick={() => onOpenTable(query)} tilt={TILE_TILTS[i % TILE_TILTS.length]} tone={TILE_TONES[i % TILE_TONES.length]} delay={i * 0.06} className="h-full !p-4">
             <span className="flex items-center gap-3">
               <span aria-hidden="true" className="postit-icon flex h-9 w-9 shrink-0 items-center justify-center">
                 <Icon className="h-6 w-6" strokeWidth={2} />

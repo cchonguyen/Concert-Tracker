@@ -208,6 +208,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                   onClick={() => (t === 'timeline' ? onOpenTimeline() : onOpen(t))}
                   tilt={LINK_TILTS[i % LINK_TILTS.length]}
                   tone={LINK_TONES[section][i % 2]}
+                  delay={i * 0.06}
                   className="h-full"
                 >
                   <span className="flex items-center gap-4">

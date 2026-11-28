@@ -19,3 +19,13 @@ test('index.css loads the module', () => {
   const index = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8');
   assert.match(index, /@import "\.\/styles\/ticket-styles\.css";/);
 });
+
+test('stub-swatch is only styled by its own data-stub, never as a descendant of html[data-stub]', () => {
+  const rules = [...css.matchAll(/([^{}]+)\{/g)].map((m) => m[1]);
+  for (const sel of rules) {
+    for (const part of sel.split(',')) {
+      if (!part.includes('.stub-swatch')) continue;
+      assert.ok(!/\[data-stub=[^\]]*\]\s+.*\.stub-swatch/.test(part), `unexpected descendant selector: ${part.trim()}`);
+    }
+  }
+});

@@ -1,15 +1,74 @@
+import { useId } from 'react';
+
 interface Props {
   className?: string;
   alt?: string;
 }
 
-// The heartbeat logo (docs/specs/landing-look.md): the waveform beats and the pin pulses with it.
-// People who ask for reduced motion get the still logo, chosen by the browser with no script.
+// The heartbeat logo (docs/specs/landing-look.md): the waveform beats and the pin pulses with it,
+// tinted with the chosen primary accent. People who ask for reduced motion get the still logo via CSS.
 export function Logo({ className = 'h-8 w-8', alt = 'LiveArchive' }: Props) {
+  const gradId = useId();
+  const gradUrl = `url(#${gradId})`;
+
   return (
-    <picture>
-      <source media="(prefers-reduced-motion: reduce)" srcSet="/logo.svg" />
-      <img src="/logo-heartbeat.svg" alt={alt} className={className} />
-    </picture>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" role="img" aria-label={alt} className={className}>
+      <defs>
+        <linearGradient id={gradId} x1="180" y1="170" x2="1104" y2="1094" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="var(--la-accent)" />
+          <stop offset="0.55" stopColor="var(--accent-500)" />
+          <stop offset="1" stopColor="var(--accent-600)" />
+        </linearGradient>
+      </defs>
+
+      <g className="logo-animated">
+        <g transform="translate(627 640)">
+          <g>
+            <animateTransform
+              attributeName="transform"
+              type="scale"
+              dur="1.45s"
+              repeatCount="indefinite"
+              values="1 1;1.05 1.05;1 1;1 1"
+              keyTimes="0;.18;.45;1"
+              calcMode="spline"
+              keySplines=".3 0 .2 1;.4 0 .3 1;0 0 1 1"
+            />
+            <g transform="translate(-627 -640)">
+              <path d="M 304 478 A 324 324 0 0 1 950 478" fill="none" stroke={gradUrl} strokeWidth="90" />
+              <path d="M 264 602 Q 360 820 627 1057 Q 894 820 990 602 L 892 602 Q 800 760 627 903 Q 454 760 362 602 Z" fill={gradUrl} />
+            </g>
+          </g>
+        </g>
+        <path
+          d="M 137 540 L 382 540 L 474 458 L 565 617 L 677 491 L 749 574 L 820 540 L 1116 540"
+          fill="none"
+          stroke={gradUrl}
+          strokeWidth="80"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <animate
+            attributeName="d"
+            dur="1.45s"
+            repeatCount="indefinite"
+            values="M 137 540 L 382 540 L 474 458 L 565 617 L 677 491 L 749 574 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 448 L 565 621 L 677 489 L 749 575 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 427 L 565 628 L 677 487 L 749 577 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 389 L 565 644 L 677 483 L 749 578 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 347 L 565 678 L 677 474 L 749 580 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 332 L 565 721 L 677 455 L 749 585 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 355 L 565 747 L 677 427 L 749 596 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 389 L 565 735 L 677 404 L 749 615 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 409 L 565 701 L 677 403 L 749 635 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 412 L 565 675 L 677 424 L 749 641 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 412 L 565 668 L 677 445 L 749 629 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 420 L 565 669 L 677 453 L 749 613 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 434 L 565 663 L 677 454 L 749 604 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 449 L 565 651 L 677 455 L 749 603 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 459 L 565 636 L 677 462 L 749 602 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 466 L 565 623 L 677 473 L 749 598 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 469 L 565 616 L 677 481 L 749 592 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 470 L 565 612 L 677 487 L 749 584 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 471 L 565 610 L 677 491 L 749 579 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 470 L 565 609 L 677 492 L 749 576 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 469 L 565 609 L 677 493 L 749 574 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 467 L 565 611 L 677 494 L 749 574 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 465 L 565 612 L 677 493 L 749 574 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 462 L 565 614 L 677 492 L 749 574 L 820 540 L 1116 540;M 137 540 L 382 540 L 474 458 L 565 617 L 677 491 L 749 574 L 820 540 L 1116 540"
+          />
+        </path>
+      </g>
+
+      <g className="logo-still">
+        <path d="M 304 478 A 324 324 0 0 1 950 478" fill="none" stroke={gradUrl} strokeWidth="90" />
+        <path d="M 264 602 Q 360 820 627 1057 Q 894 820 990 602 L 892 602 Q 800 760 627 903 Q 454 760 362 602 Z" fill={gradUrl} />
+        <path
+          d="M 137 540 L 382 540 L 474 458 L 565 617 L 677 491 L 749 574 L 820 540 L 1116 540"
+          fill="none"
+          stroke={gradUrl}
+          strokeWidth="80"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
+    </svg>
   );
 }

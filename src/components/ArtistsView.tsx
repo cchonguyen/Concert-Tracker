@@ -574,7 +574,7 @@ export const ArtistsView: React.FC<ArtistsViewProps> = ({ events, onOpenEvent, o
           [repeat, 'Seen more than once'],
           [favourites, 'Favorite sets'],
         ].map(([value, label], i) => (
-          <PostIt key={label} tilt={NOTE_TILTS[i]} tone={NOTE_TONES[i]} className="h-full !px-3 !py-4 sm:!px-4">
+          <PostIt key={label} tilt={NOTE_TILTS[i]} tone={NOTE_TONES[i]} delay={i * 0.06} className="h-full !px-3 !py-4 sm:!px-4">
             <div className="poster-head text-4xl leading-none tabular-nums">{value}</div>
             <div className="mt-1 font-mono text-xs">{label}</div>
           </PostIt>

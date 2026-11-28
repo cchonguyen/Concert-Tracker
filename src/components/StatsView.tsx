@@ -64,7 +64,7 @@ const AllTimeStrip: React.FC<{ t: AllTime }> = ({ t }) => {
       <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">All time</h2>
       <dl className="grid grid-cols-2 gap-4 pt-2 sm:grid-cols-3 lg:grid-cols-6">
         {cells.map((cell, i) => (
-          <PostIt key={cell.k} tilt={NOTE_TILTS[i % NOTE_TILTS.length]} tone={NOTE_TONES[i % NOTE_TONES.length]} className="flex h-full flex-col gap-1 !p-4">
+          <PostIt key={cell.k} tilt={NOTE_TILTS[i % NOTE_TILTS.length]} tone={NOTE_TONES[i % NOTE_TONES.length]} delay={i * 0.06} className="flex h-full flex-col gap-1 !p-4">
             <dt className="font-mono text-[11px] font-semibold uppercase tracking-wide">{cell.k}</dt>
             <dd className="poster-head text-4xl leading-none tabular-nums">{cell.v}</dd>
             <dd className="text-xs opacity-75">{cell.c}</dd>

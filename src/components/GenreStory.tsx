@@ -345,7 +345,7 @@ export const GenreStory: React.FC<GenreStoryProps> = ({
           </div>
           <div className="grid grid-cols-2 gap-4 pt-2 sm:grid-cols-4">
             {bySeason.tiles.map((tile, i) => (
-              <PostIt key={tile.label} tilt={NOTE_TILTS[i % NOTE_TILTS.length]} tone={NOTE_TONES[i % NOTE_TONES.length]} className="h-full space-y-1 !p-3">
+              <PostIt key={tile.label} tilt={NOTE_TILTS[i % NOTE_TILTS.length]} tone={NOTE_TONES[i % NOTE_TONES.length]} delay={i * 0.06} className="h-full space-y-1 !p-3">
                 <p className="font-mono text-[11px] font-semibold uppercase tracking-wider">
                   {tile.label}
                 </p>

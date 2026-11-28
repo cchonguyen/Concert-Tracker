@@ -109,6 +109,40 @@ export function useTheme(): Theme {
   return { mode, accent, pickMode, pickAccent, tintOn, setTint, stubStyle, pickStubStyle };
 }
 
+// A 5-swatch picker for ticket stub styles; used both in the global menu and on Share cards.
+export function TicketStylePicker({
+  value,
+  onChange,
+  className = '',
+}: {
+  value: StubStyle;
+  onChange: (s: StubStyle) => void;
+  className?: string;
+}) {
+  return (
+    <fieldset className={className}>
+      <legend className="mb-2 text-xs font-semibold text-text-muted">Ticket style</legend>
+      <div className="grid grid-cols-5 gap-1">
+        {STUB_STYLES.map((s) => (
+          <Tooltip key={s} label={STUB_STYLE_LABELS[s]}>
+            <button
+              type="button"
+              onClick={() => onChange(s)}
+              aria-label={`${STUB_STYLE_LABELS[s]} ticket style`}
+              aria-pressed={value === s}
+              data-stub={s}
+              className={`stub-swatch h-9 w-full rounded-md ring-offset-2 ring-offset-surface-1 ${
+                value === s ? 'ring-2 ring-accent' : 'hover:ring-2 hover:ring-line-strong'
+              }`}
+            />
+          </Tooltip>
+        ))}
+      </div>
+      <p className="mt-1.5 text-xs text-text-faint">{STUB_STYLE_LABELS[value]}</p>
+    </fieldset>
+  );
+}
+
 // The theme choices, shown inline inside the menu.
 export function ThemeControls({ theme }: { theme: Theme }) {
   const { mode, accent, pickMode, pickAccent, tintOn, setTint, stubStyle, pickStubStyle } = theme;
@@ -146,26 +180,7 @@ export function ThemeControls({ theme }: { theme: Theme }) {
           </Tooltip>
         ))}
       </div>
-      <fieldset className="border-t border-line pt-3">
-        <legend className="mb-2 text-xs font-semibold text-text-muted">Ticket style</legend>
-        <div className="grid grid-cols-5 gap-1">
-          {STUB_STYLES.map((s) => (
-            <Tooltip key={s} label={STUB_STYLE_LABELS[s]}>
-              <button
-                type="button"
-                onClick={() => pickStubStyle(s)}
-                aria-label={`${STUB_STYLE_LABELS[s]} ticket style`}
-                aria-pressed={stubStyle === s}
-                data-stub={s}
-                className={`stub-swatch h-9 w-full rounded-md ring-offset-2 ring-offset-surface-1 ${
-                  stubStyle === s ? 'ring-2 ring-accent' : 'hover:ring-2 hover:ring-line-strong'
-                }`}
-              />
-            </Tooltip>
-          ))}
-        </div>
-        <p className="mt-1.5 text-xs text-text-faint">{STUB_STYLE_LABELS[stubStyle]}</p>
-      </fieldset>
+      <TicketStylePicker value={stubStyle} onChange={pickStubStyle} className="border-t border-line pt-3" />
       <div className="border-t border-line pt-2">
         <Switch checked={tintOn} onChange={setTint} label="Tint posters by event" helper="A soft color on each poster, the same for every year of a series." />
       </div>
