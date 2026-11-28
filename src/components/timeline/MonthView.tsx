@@ -11,8 +11,8 @@ import { eventTitle } from '../../services/series';
 const SEGMENT_STYLE: Record<MonthSegment['span']['attendance'], { went: string; skipped: string; text: string }> = {
   // A skipped day keeps the fill under thin hatching, so the label stays readable across the whole bar.
   went: { went: 'bg-accent-fill', skipped: 'bg-accent-fill bg-[repeating-linear-gradient(135deg,transparent_0_3px,var(--la-page)_3px_5px)]', text: 'text-on-accent' },
-  upcoming: { went: 'border border-dashed border-accent-tint-line bg-accent-tint', skipped: 'border border-dashed border-accent-tint-line/50', text: 'text-accent' },
-  confirm: { went: 'border border-dashed border-warn/70 bg-warn/10', skipped: 'border border-dashed border-warn/30', text: 'text-warn' },
+  upcoming: { went: 'bg-accent-tint hatch', skipped: 'bg-accent-tint/50 hatch', text: 'text-text' },
+  confirm: { went: 'bg-warn-soft hatch', skipped: 'bg-warn-soft/60 hatch', text: 'text-text' },
 };
 
 const Segment: React.FC<{ seg: MonthSegment; onOpen: (id: string) => void }> = ({ seg, onOpen }) => {

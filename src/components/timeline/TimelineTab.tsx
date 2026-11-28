@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarRange, Table2 } from 'lucide-react';
+import { CalendarRange, Table2, TriangleAlert } from 'lucide-react';
 import { FilterButton, FilterPanel, FilterSelect } from '../ui/FilterControls';
 import { Segmented } from '../ui/Segmented';
 import type { LineupFacts, LineupSummary, LoggedEvent } from '../../services/lineupApi';
@@ -76,8 +76,9 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({ mode, onModeChange, fo
                 if (mode === 'agenda') setSelectedEventId(confirmId);
                 else onShowInAgenda(confirmId);
               }}
-              className="inline-flex min-h-11 items-center rounded-full border border-dashed border-warn/60 px-3 font-semibold text-warn hover:bg-warn/10 sm:min-h-9"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-warn px-3 font-semibold text-on-warn hover:brightness-110 sm:min-h-9"
             >
+              <TriangleAlert className="h-3.5 w-3.5" aria-hidden="true" />
               {model.toConfirm} to confirm
             </button>
           )}
