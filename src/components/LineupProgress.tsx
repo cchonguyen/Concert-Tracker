@@ -30,7 +30,7 @@ export function LineupProgress({ job, busy, onRetry, onReview }: { job: LookupJo
         <p className="text-xs text-text-muted">Find the lineup reads the sources and cites every act. You can close this; it keeps going.</p>
       </div>
       {job.status === 'waiting_quota' && (
-        <p className="rounded-control border border-warn/45 bg-warn/10 p-2 text-xs text-warn">
+        <p className="rounded-control bg-warn-soft p-2 text-xs text-text">
           Continues on its own{job.nextAttemptAt ? ` after ${new Date(job.nextAttemptAt).toLocaleString()}` : ''}. Nothing found is lost.
         </p>
       )}

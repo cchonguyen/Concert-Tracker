@@ -205,7 +205,7 @@ export const AccountPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => 
         {me.role === 'member' && (
           <>
             <p className="text-xs text-text-muted">Deleting removes your events, imports and share links. Backups keep deleted rows until they expire.</p>
-            <button className={`${button} border-bad/45 text-bad`} disabled={busy} onClick={() => setDeleting(true)}>
+            <button className={`${button} bg-bad-soft text-text!`} disabled={busy} onClick={() => setDeleting(true)}>
               Delete my account
             </button>
             {deleting && (

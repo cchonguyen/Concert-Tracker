@@ -188,7 +188,7 @@ const Row: React.FC<{ row: EmailImport; ticked?: boolean; onTick?: () => void; a
           <EmailLink row={row} />
           {facts && <span className="font-mono tabular-nums">{facts}</span>}
           {row.flags.map((f) => (
-            <span key={f} className="rounded bg-warn/10 px-1.5 py-0.5 text-warn">
+            <span key={f} className="rounded bg-warn-soft px-1.5 py-0.5 text-text">
               {FLAG_LABELS[f]}
             </span>
           ))}
@@ -232,7 +232,7 @@ const MergePicker: React.FC<{ row: EmailImport; events: LoggedEvent[]; busy: boo
       .slice(0, 8);
   }, [q, events, row.startDate]);
   return (
-    <div className="space-y-2 rounded-card border border-accent-tint-line bg-accent-tint p-3">
+    <div className="space-y-2 rounded-card border border-line bg-accent-tint p-3">
       <div className="flex items-center gap-2">
         <input
           autoFocus
@@ -390,17 +390,14 @@ export const ImportReview: React.FC<ImportReviewProps> = ({ imports, onChange, o
             <X className="h-5 w-5" />
           </button>
         </div>
-        {notice && (
-          <p
-            className={`rounded-card border p-2 text-sm ${
-              notice === 'connected' ? 'border-accent-tint-line bg-accent-tint text-accent' : 'border-bad/45 bg-bad/10 text-bad'
-            }`}
-          >
-            {notice === 'connected' ? 'Gmail is connected. Press Check email to look for new tickets.' : notice}
-          </p>
-        )}
+        {notice &&
+          (notice === 'connected' ? (
+            <Notice tone="info">Gmail is connected. Press Check email to look for new tickets.</Notice>
+          ) : (
+            <Notice tone="error">{notice}</Notice>
+          ))}
         <CheckEmail onFound={onChange} />
-        {error && <p className="rounded-card border border-bad/45 bg-bad/10 p-2 text-sm text-bad">{error}</p>}
+        {error && <Notice tone="error">{error}</Notice>}
 
         {!toReview.length && <p className="text-sm text-text-muted">Nothing left to review.</p>}
         {years.map((g) => (

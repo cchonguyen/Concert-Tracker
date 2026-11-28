@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Check, Copy, ExternalLink } from 'lucide-react';
+import { Check, Copy, ExternalLink } from 'lucide-react';
 import { Equalizer } from './ui/Equalizer';
+import { Notice } from './ui/Notice';
 import { ShareLinkView, shareApi } from '../services/lineupApi';
 import type { ShareSettings } from '../server/share/types';
 
@@ -154,9 +155,7 @@ export const SharePanel: React.FC<SharePanelProps> = ({ sample }) => {
       </p>
 
       {error && (
-        <p className="flex items-start gap-2 rounded-card border border-warn/45 bg-warn/10 p-3 text-sm text-warn">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
-        </p>
+        <Notice tone="warning">{error}</Notice>
       )}
 
       {link === undefined ? (

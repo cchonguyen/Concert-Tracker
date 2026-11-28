@@ -70,6 +70,7 @@ import { eventYear } from './services/format';
 import { homeSummary } from './services/home';
 import { AppBackdrop } from './components/ui/AppBackdrop';
 import { Logo } from './components/ui/Logo';
+import { Notice } from './components/ui/Notice';
 
 // The Table, the four timeline views and the Map keep their filters in the address (?view=table&...).
 const FILTERED: Page[] = ['table', 'agenda', 'month', 'heatmap', 'river', 'map'];
@@ -632,7 +633,7 @@ export default function App({ initialMe }: { initialMe?: Me }) {
             <p className="text-xs text-text-muted">{PAGE_BLURB[shown as SubPage]}</p>
           </div>
         )}
-        {error && <p className="rounded-card border border-bad/45 bg-bad/10 p-3 text-sm text-bad">{error}</p>}
+        {error && <Notice tone="error">{error}</Notice>}
         {shown in copy.callouts && <Callout id={shown as keyof typeof copy.callouts}>{copy.callouts[shown as keyof typeof copy.callouts]}</Callout>}
         {shown === 'home' && (
           <HomePage
