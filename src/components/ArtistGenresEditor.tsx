@@ -179,8 +179,8 @@ export const ArtistGenresEditor: React.FC<{ actKey: string }> = ({ actKey }) => 
               title={isOwner && own ? 'Set by you' : sharedTooltip(shown!.source)}
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
                 isOwner && own
-                  ? 'border-accent-tint-line bg-accent-tint text-accent'
-                  : 'border-line-strong bg-surface-1 text-text-muted'
+                  ? 'border-transparent bg-accent-tint text-text'
+                  : 'border-transparent bg-neutral-soft text-text-muted hover:text-text'
               }`}
             >
               {isOwner && own && sharedStyles.length > 1 && (
@@ -218,7 +218,7 @@ export const ArtistGenresEditor: React.FC<{ actKey: string }> = ({ actKey }) => 
               <li
                 key={`added-${s}`}
                 title="Added by you"
-                className="inline-flex items-center gap-1 rounded-full border border-accent-tint-line bg-accent-tint px-2 py-0.5 text-xs text-accent"
+                className="inline-flex items-center gap-1 rounded-full bg-accent-tint px-2 py-0.5 text-xs text-text"
               >
                 {s}
                 <IconButton

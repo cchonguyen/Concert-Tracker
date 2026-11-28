@@ -186,7 +186,7 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
       </div>
 
       {problem && (
-        <div className="space-y-2 rounded-card border border-bad/45 bg-bad/10 p-2.5 text-sm text-bad">
+        <div className="space-y-2 rounded-card border border-line bg-bad-soft p-2.5 text-sm text-text">
           <p>{problem.message}</p>
           {problem.with && (
             <button onClick={() => setMerging(byId.get(problem.with!.id) ?? null)} className={quiet}>
@@ -226,7 +226,7 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
           {akas.length > 0 && (
             <ul className="flex flex-wrap gap-1.5">
               {akas.map((a) => (
-                <li key={a} className="inline-flex items-center gap-1 rounded-full border border-line-strong px-2 py-0.5 text-xs text-text-muted">
+                <li key={a} className="inline-flex items-center gap-1 rounded-full border border-transparent bg-neutral-soft px-2 py-0.5 text-xs text-text-muted">
                   {a}
                   <button
                     onClick={() => void run(`aka:${a}`, () => entitiesApi.removeAlias(entity.id, a))}
@@ -348,7 +348,7 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
             <ul className="flex flex-wrap gap-1.5">
               {labelled.map((r) => (
                 <li key={r.id}>
-                  <button onClick={() => onOpen(r.id)} className="rounded-full border border-line-strong px-2 py-0.5 text-xs text-text-muted hover:text-accent">
+                  <button onClick={() => onOpen(r.id)} className="rounded-full border border-transparent bg-neutral-soft px-2 py-0.5 text-xs text-text-muted hover:bg-accent-tint">
                     {r.name} <span className="text-text-muted">{r.kind}</span>
                   </button>
                 </li>
@@ -368,7 +368,7 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
           <ul className="flex flex-wrap gap-1.5">
             {venuesHere.map((v) => (
               <li key={v.id}>
-                <button onClick={() => onOpen(v.id)} className="rounded-full border border-line-strong px-2 py-0.5 text-xs text-text-muted hover:text-accent">
+                <button onClick={() => onOpen(v.id)} className="rounded-full border border-transparent bg-neutral-soft px-2 py-0.5 text-xs text-text-muted hover:bg-accent-tint">
                   {v.name}
                 </button>
               </li>
@@ -383,7 +383,7 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
           {hosts.length ? (
             <ul className="flex flex-wrap gap-1.5">
               {hosts.map((o) => (
-                <li key={o.id} className="inline-flex items-center gap-1 rounded-full border border-line-strong px-2 py-0.5 text-xs text-text-muted">
+                <li key={o.id} className="inline-flex items-center gap-1 rounded-full border border-transparent bg-neutral-soft px-2 py-0.5 text-xs text-text-muted">
                   <button onClick={() => onOpen(o.id)} className="hover:text-accent">
                     {o.name}
                   </button>
@@ -417,7 +417,7 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
             <ul className="flex flex-wrap gap-1.5">
               {hosted.map((s) => (
                 <li key={s.id}>
-                  <button onClick={() => onOpen(s.id)} className="rounded-full border border-line-strong px-2 py-0.5 text-xs text-text-muted hover:text-accent">
+                  <button onClick={() => onOpen(s.id)} className="rounded-full border border-transparent bg-neutral-soft px-2 py-0.5 text-xs text-text-muted hover:bg-accent-tint">
                     {s.name}
                   </button>
                 </li>
@@ -435,14 +435,14 @@ export const ManageEntry: React.FC<ManageEntryProps> = ({
           <p className="flex flex-wrap items-center gap-1.5 text-xs text-warn">
             Looks like:
             {duplicates.map((d) => (
-              <button key={d.id} onClick={() => setMerging(d)} className="rounded-full border border-warn/45 px-2 py-0.5 hover:bg-warn/10">
+              <button key={d.id} onClick={() => setMerging(d)} className="rounded-full bg-warn-soft px-2 py-0.5 text-text hover:bg-row-hover">
                 {entityLabel(d)}
               </button>
             ))}
           </p>
         )}
         {merging ? (
-          <div className="space-y-2 rounded-card border border-accent-tint-line bg-accent-tint p-2.5 text-sm text-text">
+          <div className="space-y-2 rounded-card border border-line bg-accent-tint p-2.5 text-sm text-text">
             <p>
               Merge “{entityLabel(entity)}” into “{entityLabel(merging)}”? Its {events.length} event{events.length === 1 ? '' : 's'} will show “
               {entityLabel(merging)}”{entity.kind !== 'place' && <>, and “{entity.name}” becomes an AKA</>}. You can undo it.
@@ -616,7 +616,7 @@ const Labels: React.FC<{
       {mine.length > 0 && (
         <ul className="flex flex-wrap gap-1.5">
           {mine.map((l) => (
-            <li key={l.id} className="inline-flex items-center gap-1 rounded-full border border-line-strong px-2 py-0.5 text-xs text-text-muted">
+            <li key={l.id} className="inline-flex items-center gap-1 rounded-full border border-transparent bg-neutral-soft px-2 py-0.5 text-xs text-text-muted">
               <button onClick={() => onOpen(l.id)} className="hover:text-accent" title={group(l) || undefined}>
                 {l.name}
               </button>
@@ -635,7 +635,7 @@ const Labels: React.FC<{
           <p key={o.labelId} className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
             <Sparkles className="h-3.5 w-3.5 text-accent" />
             {because.name} is {label.name}.
-            <button onClick={() => void link(label, true)} disabled={Boolean(busy)} className="rounded-full border border-accent-tint-line bg-accent-tint px-2 py-0.5 text-accent hover:underline">
+            <button onClick={() => void link(label, true)} disabled={Boolean(busy)} className="rounded-full bg-accent-tint px-2 py-0.5 text-text hover:bg-row-hover">
               Add {label.name}
             </button>
           </p>
@@ -645,7 +645,7 @@ const Labels: React.FC<{
         <p key={g.group} className="flex flex-wrap items-center gap-1.5 text-xs text-text-muted">
           Set {g.group.toLowerCase()}:
           {g.labels.map((l) => (
-            <button key={l.id} onClick={() => void link(l, true)} disabled={Boolean(busy)} className="rounded-full border border-line-strong px-2 py-0.5 text-text hover:border-accent">
+            <button key={l.id} onClick={() => void link(l, true)} disabled={Boolean(busy)} className="rounded-full bg-neutral-soft px-2 py-0.5 text-text hover:bg-accent-tint">
               {l.name}
             </button>
           ))}
@@ -699,7 +699,7 @@ const Insights: React.FC<{
   );
   const byId = new Map(data.entities.map((e) => [e.id, e]));
   const went = wentTo(events, today);
-  const chipClass = 'inline-flex items-center gap-1 rounded-full border border-line-strong px-2 py-0.5 text-xs text-text-muted';
+  const chipClass = 'inline-flex items-center gap-1 rounded-full border border-transparent bg-neutral-soft px-2 py-0.5 text-xs text-text-muted';
   const lines: React.ReactNode[] = [];
 
   if (entity.kind === 'artist') {

@@ -275,7 +275,7 @@ export const MergeEditionModal: React.FC<MergeEditionModalProps> = ({ initialEdi
             <div
               key={ed.id}
               className={`space-y-2 rounded-card border p-3 text-xs ${
-                isKeep ? 'border-accent-tint-line bg-accent-tint' : 'border-line bg-surface-2'
+                isKeep ? 'border-line bg-accent-tint' : 'border-line bg-surface-2'
               }`}
             >
               <div className="flex items-start justify-between gap-2">
@@ -328,7 +328,7 @@ export const MergeEditionModal: React.FC<MergeEditionModalProps> = ({ initialEdi
 
       {/* Combine as weekends */}
       {distinctDates && editions.length >= 2 && (
-        <label className="block space-y-1 rounded-card border border-accent-tint-line bg-accent-tint p-3 text-xs">
+        <label className="block space-y-1 rounded-card border border-line bg-accent-tint p-3 text-xs">
           <span className="flex items-center gap-2 font-semibold text-text">
             <input
               type="checkbox"
@@ -365,8 +365,8 @@ export const MergeEditionModal: React.FC<MergeEditionModalProps> = ({ initialEdi
                           onClick={() => setFactChoices((prev) => ({ ...prev, [d.field]: opt.value }))}
                           className={`min-h-11 rounded-full border px-3 py-1 text-xs sm:min-h-9 ${
                             active
-                              ? 'border-accent-tint-line bg-accent-tint text-accent'
-                              : 'border-line-strong text-text-muted hover:border-accent'
+                              ? 'border-transparent bg-accent-tint text-text'
+                              : 'border-transparent bg-neutral-soft text-text-muted hover:text-text'
                           }`}
                         >
                           {opt.display}

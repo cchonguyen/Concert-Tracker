@@ -4,6 +4,7 @@ import { AlertTriangle, FileUp, X } from 'lucide-react';
 import { useVault } from './VaultContext';
 import { Equalizer } from './ui/Equalizer';
 import { Ledger } from './ui/Ledger';
+import { Notice } from './ui/Notice';
 import { EmailImport, entitiesApi, eventsApi, importsApi, LoggedEvent } from '../services/lineupApi';
 import type { NameIndex } from '../server/entities/link';
 import { placeLabel, whenLabel } from '../services/format';
@@ -289,10 +290,11 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
           />
         </label>
 
-        {error && <p className="rounded-card border border-bad/45 bg-bad/10 p-2 text-sm text-bad">{error}</p>}
+        {error && <Notice tone="error">{error}</Notice>}
 
         {result && (
-          <div className="space-y-1 rounded-card border border-good/45 bg-good/10 p-3 text-sm text-good">
+          <Notice tone="success">
+            <div className="space-y-1">
             <p>
               {result.created} new event{result.created === 1 ? '' : 's'}, {result.merged} merged into existing ones
               {result.unchanged ? `, ${result.unchanged} already complete` : ''}.
@@ -302,7 +304,8 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
                 {f.row.name}: {f.error}
               </p>
             ))}
-          </div>
+            </div>
+          </Notice>
         )}
 
         {list && !list.error && !result && (
@@ -330,7 +333,7 @@ export const ListImport: React.FC<ListImportProps> = ({ events, imports, onDone,
                         })
                       }
                       className={`min-h-11 rounded-full border px-3 py-1 text-xs sm:min-h-9 ${
-                        leaveOut.has(key) ? 'border-line text-text-muted line-through' : 'border-accent-tint-line bg-accent-tint text-accent'
+                        leaveOut.has(key) ? 'border-transparent bg-neutral-soft text-text-muted line-through' : 'border-transparent bg-accent-tint text-text'
                       }`}
                     >
                       {p.name} <span className="font-mono tabular-nums text-text-muted">{p.count}</span>

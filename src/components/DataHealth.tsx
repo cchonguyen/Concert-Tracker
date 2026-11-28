@@ -6,6 +6,7 @@ import { entityLabel, KINDS, ManageData } from './ManageView';
 import { categoryGaps, linkedSuggestions, placeOfferVenues, rareLabels, recentAutoLinks, venuesWithoutPlace } from '../services/dataHealth';
 import { Equalizer } from './ui/Equalizer';
 import { Ledger } from './ui/Ledger';
+import { Notice } from './ui/Notice';
 import { SeriesHealth } from './SeriesHealth';
 import { useIsOwner } from './MeContext';
 
@@ -29,7 +30,7 @@ type VenuePlaces = Awaited<ReturnType<typeof entitiesApi.health>>['venuePlaces']
 
 const sectionTitle = 'text-xs font-bold uppercase tracking-wide text-text-muted';
 const chip =
-  'inline-flex min-h-11 sm:min-h-9 items-center gap-1 rounded-full border border-line-strong px-2.5 py-1 text-xs text-text hover:border-accent hover:text-accent disabled:opacity-40';
+  'inline-flex min-h-11 sm:min-h-9 items-center gap-1 rounded-full bg-neutral-soft px-2.5 py-1 text-xs text-text hover:bg-accent-tint disabled:opacity-40';
 
 export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, onOpen, onChanged }) => {
   const isOwner = useIsOwner();
@@ -99,7 +100,7 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
         Things that need your call to keep names consistent. Nothing here changes on its own, and every change can be undone from
         History.
       </p>
-      {error && <p className="rounded-card border border-bad/45 bg-bad/10 p-2.5 text-sm text-bad">{error}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
 
       {autoLinked.length > 0 && (
         <div className="space-y-2">
@@ -213,7 +214,7 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
                     ))}
                   </ul>
                   {merging && g.includes(merging.from) && (
-                    <div className="space-y-2 rounded-card border border-accent-tint-line bg-accent-tint p-2.5 text-sm text-text">
+                    <div className="space-y-2 rounded-card border border-line bg-accent-tint p-2.5 text-sm text-text">
                       <p>
                         Merge “{entityLabel(merging.from)}” into “{entityLabel(merging.into)}”? Its {n(merging.from.id)} event
                         {n(merging.from.id) === 1 ? '' : 's'} will show “{entityLabel(merging.into)}”
