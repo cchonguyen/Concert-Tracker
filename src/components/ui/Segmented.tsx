@@ -31,7 +31,7 @@ export function Segmented<T extends string>({ label, options, value, onChange, c
   // The chosen fill slides to the new option with a little bounce; with reduced motion it moves at once.
   const id = useId();
   const still = useReducedMotion();
-  const slide = still ? { duration: 0 } : { type: 'spring' as const, stiffness: 105, damping: 13, mass: 0.7 };
+  const slide = still ? { duration: 0 } : { type: 'spring' as const, stiffness: 164, damping: 16.25, mass: 0.7 };
   const chosen = options.findIndex((o) => o.value === value);
   // The chosen option is the one Tab lands on; with none chosen, the first enabled one is.
   const tabStop = chosen >= 0 ? chosen : options.findIndex((o) => !o.disabled);

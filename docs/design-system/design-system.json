@@ -500,7 +500,7 @@
       "states": [
         "open (bold, raised folder or underline, aria-current=page)",
         "closed",
-        "changing: the folder slides and settles with a subtle squish, the underline slides with a squash, the new tab's icon hops; all off under reduced motion"
+        "changing: the folder slides, squishes slightly taller in motion (constant area) and eases back on arrival, the underline slides with a squash, the new tab's icon hops; all off under reduced motion"
       ],
       "a11y": "nav with aria-label; aria-current=page on the open tab; compact tabs keep their label as the name."
     },
