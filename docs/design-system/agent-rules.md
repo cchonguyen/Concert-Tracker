@@ -32,6 +32,13 @@ Read docs/design-system/README.md, philosophy-and-voice.md and design-system.jso
 - Ticket styles are tokens only: a new style is one block in the ticket-styles module plus one list entry, never component changes.
 - Do not invent other typography, spacing or motion tokens. Add one only when a change needs it, and add it to design-system.json in the same change.
 
+### Soft solid, no neon
+Full rules and the look-by-job table: docs/specs/neon-cleanup.md.
+- At most two neon pieces per page: the Today line (`.today-line`) and a ticket's WENT stamp. New neon needs a spec line saying which piece it replaces.
+- No hairline strokes on pills, chips, badges, tags, toggle chips or count bubbles. They are filled shapes with no border. Hairlines stay on tables and rows, cards and panels, inputs, the Segmented frame, dividers and buttons.
+- Text on a tinted fill is ink (`text-text`), not the tint's colour. Colour lives in the fill and in the icon.
+- Pick the look by job: one thing that needs you is solid ink (`bg-warn text-on-warn`); anything repeated per row is soft solid (`bg-good-soft`, `bg-warn-soft`, `bg-bad-soft`, `bg-neutral-soft`, `bg-accent-tint`); a signature action is layered (`btn-layer`); a done or empty moment is a PostIt; billing is solid second colour in mono capitals; messages are a Notice card.
+
 ### Accessibility
 - Every icon-only control has a required label, used as its aria-label and its tooltip.
 - Touch targets are at least 44 px on phones (36 px from the sm breakpoint up); dismiss buttons are 40 px.

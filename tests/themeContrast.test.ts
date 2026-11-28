@@ -113,6 +113,10 @@ const PAIRS: Array<[string, string[]]> = [
   ['--la-good', ['--la-page', '--la-surface-1', '--la-surface-2']],
   ['--la-warn', ['--la-page', '--la-surface-1', '--la-surface-2']],
   ['--la-bad', ['--la-page', '--la-surface-1', '--la-surface-2']],
+  // Soft solid fills (docs/specs/neon-cleanup.md): ink text on tinted fills, dark ink on solid warn.
+  ['--la-text', ['--la-good-soft', '--la-warn-soft', '--la-bad-soft', '--la-neutral-soft']],
+  ['--la-on-warn', ['--la-warn']],
+  // --la-on-second / --la-second are not checked here: they live in landing-look.css, which this test does not read.
 ];
 
 test('the contrast check itself: white on black is 21:1 and the accent scales parse', () => {

@@ -108,6 +108,42 @@
 }
 .btn-pop:not(:disabled):active { transform: scale(0.97); }
 
+/* Layered button: a solid raised fill with a hard coloured offset shadow and no border (Table's "Fill gaps"). */
+.btn-layer {
+  background: var(--la-surface-3);
+  border: 0;
+  box-shadow: 3px 3px 0 var(--layer-shadow, var(--la-second));
+  transition: transform .15s var(--ease-pop, ease), box-shadow .15s;
+}
+.btn-layer:not(:disabled):hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--layer-shadow, var(--la-second)); }
+.btn-layer:not(:disabled):active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--layer-shadow, var(--la-second)); }
+
+/* Today line: the page's kept neon (Table and Timeline agenda). Accent mono capitals between two glowing accent lines. */
+.today-line {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  color: var(--la-accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.today-line::before,
+.today-line::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--la-accent);
+  box-shadow: 0 0 6px color-mix(in oklab, var(--la-accent) 70%, transparent);
+}
+
+/* Hatch: a diagonal fill for "not certain" (Inferred, upcoming month bars) in place of dashed borders. */
+.hatch {
+  background-image: repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in oklab, currentColor 14%, transparent) 4px 6px);
+}
+
 /* Post-it: paper, tape, a resting tilt; it rises in on load, straightens and lifts on hover, and its icon hops. */
 .postit {
   position: relative;
@@ -151,6 +187,8 @@
   .app-backdrop, .app-backdrop-contour-rot, .app-backdrop-dots { animation: none; }
   .app-backdrop-contour { animation: none; transform: scale(1.18); }
   .btn-pop, .postit, .postit-tape { transition: none; }
+  .btn-layer { transition: none; }
+  .btn-layer:not(:disabled):hover, .btn-layer:not(:disabled):active { transform: none; }
   .postit { animation: none; }
   .btn-pop:not(:disabled):hover, .btn-pop:not(:disabled):active { transform: none; }
   .postit:hover { transform: rotate(var(--r, 0deg)); }
