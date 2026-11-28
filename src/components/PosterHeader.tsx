@@ -180,7 +180,7 @@ export function ThingsLeft({ gaps, current, needsWeekend, onPick, onNext }: Stri
     );
   }
   return (
-    <section aria-label="Still to fill in" className="flex flex-wrap items-center gap-2 rounded-card border border-accent-tint-line bg-accent-tint px-3 py-2">
+    <section aria-label="Still to fill in" className="flex flex-wrap items-center gap-2 rounded-card border border-line bg-accent-tint px-3 py-2">
       <p className="text-sm font-semibold text-text">
         {gaps.length} {gaps.length === 1 ? 'thing' : 'things'} left
       </p>

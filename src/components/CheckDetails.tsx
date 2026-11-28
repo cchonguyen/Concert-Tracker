@@ -182,8 +182,8 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
       )}
 
       {showChoice && (
-        <div className="space-y-2 rounded-control border border-accent-tint-line bg-accent-tint p-2.5">
-          <p className="text-sm text-accent">
+        <div className="space-y-2 rounded-control border border-line bg-accent-tint p-2.5">
+          <p className="text-sm text-text">
             {status === 'candidates' || hasCanonCandidates
               ? 'Is it one of these?'
               : candidates.length && status === 'choose'
@@ -232,14 +232,14 @@ export function CheckDetails({ busy, geminiBusy, checkedAt, status, candidates, 
       )}
 
       {shown.map((s) => (
-        <div key={s.key} className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-accent-tint-line bg-accent-tint p-2.5 text-sm">
+        <div key={s.key} className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-line bg-accent-tint p-2.5 text-sm">
           <div className="min-w-0 space-y-0.5">
             <p className="text-xs text-text-muted">{s.label}</p>
             <p className="text-text-muted">
               Yours: <span className="text-text">{s.yours}</span>
             </p>
             <p className="text-text-muted">
-              Found: <span className="text-accent">{s.value}</span> <span className="text-xs text-text-muted">from {s.from}</span>
+              Found: <span className="font-semibold text-text">{s.value}</span> <span className="text-xs text-text-muted">from {s.from}</span>
             </p>
           </div>
           <Button
