@@ -57,21 +57,22 @@ Charlie, 2026-11-27, chose "Yes, two members verify it" on "Should two members t
 
 ## Rule 2: series health, one tap
 
-There is a nightly read-only check, also shown on demand in Data health (owner only). It lists:
+A read-only check runs when the owner opens Data health (`src/server/entities/seriesHealth.ts`, shown by `SeriesHealth.tsx`). It lists:
 
 - **A series with no brand, or not built from its parts.** That means no qualifier and a name that differs from the brand. Offers, worked out in code from stored data only:
   - When every edition's lineup, together with the seen acts on events linked to it, names exactly one act, that act is offered as the brand. The old name is offered as the qualifier and alias.
   - Otherwise the series' own name is offered as its brand.
-- **An edition with no series.** Offers the one series whose name or alias equals the edition name without its year. When there is none, it offers a new series named after the edition.
+- **A branded series whose name is not built from its brand** (no qualifier, name differs from the brand). Offers the rest of the name after the brand as the qualifier, and keeps the old name as an alias.
+- **An edition with no series.** Offers the one series whose name or alias equals the edition name without its year. When there is none and two or more editions share that name, it offers a new series named after it. A one-off night with no match is left alone: it is not a series.
 
-Each fix goes through `saveSeriesLogged` or `writeEdition` with actor `owner` and a reason. It is recorded and can be undone. Nothing is applied without a tap. This is the guess rule: who a tour belongs to is the owner's call.
+A tap works the issue out again from live data, then runs its steps through `runSeriesCleanup`: `saveSeriesLogged` or `writeEdition` with actor `owner` and a reason. It is recorded and can be undone. Nothing is applied without a tap. This is the guess rule: who a tour belongs to is the owner's call.
 
 ## Slices
 
 1. **Auto-link core.** New `src/server/canon/autoLink.ts` (match and link, pure plus store), the `backfill.ts` hook, the nightly sweep in `worker/index.ts`, and tests. [CORE / DATA]
 2. **Contribute back** (Rule 1b). Built 2026-11-27. [CORE / DATA]
 3. **Undo surface.** Built 2026-11-27. Event detail note with Unlink, plus the "Linked automatically" list in Data health (`EventDetail.tsx`, `DataHealth.tsx`, `services/dataHealth.ts`). [UI / VISUAL]
-4. **Series health.** New `src/server/entities/seriesHealth.ts` (issues and offers), owner routes, Data health section with one-tap fixes, and tests. [CORE / DATA]
+4. **Series health.** Built 2026-11-28. New `src/server/entities/seriesHealth.ts` (issues and offers), owner routes, Data health section with one-tap fixes, and tests. [CORE / DATA]
 5. **Two members verify** (Rule 1c). Built 2026-11-28. `memberTick.ts`, `autoLink.ts`, tests. [CORE / DATA]
 6. **Members' events.** Folded into slice 1 (Charlie chose everyone's): the run walks every member who isn't blocked. [CORE / DATA]
 
