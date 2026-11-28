@@ -10,3 +10,6 @@ Finished slices move to `.spec/archive/HISTORY.md` and `.spec/archive/HISTORY-20
 
 ## Governance & Automated Hygiene
 - [x] **Slice 50.1: Trim AGENTS.md and add automated hygiene guards** [CORE / DATA] Trim AGENTS.md spoke-owned rules by ~67% (preserving all invariants, genreTaxonomyRules clauses, and hub-owned harness block) and add character-budget + ui semantic-token drift guards. Target files: AGENTS.md, tests/docsLinks.test.ts, tests/designSystemDrift.test.ts | Verify: npm run typecheck --silent && npm run lint --silent && npm test --silent
+
+## Genres tab follow-ups
+- [x] **Slice 48.1183: Sort Your lane and Nearby lists A to Z** [UI / VISUAL] On-the-fly: Charlie asked for alphabetical order Target files: src/components/LineupDna.tsx | Issue: #1183 | Verify: npm run lint --silent
