@@ -13,3 +13,4 @@ Finished slices move to `.spec/archive/HISTORY.md` and `.spec/archive/HISTORY-20
 
 ## Genres tab follow-ups
 - [x] **Slice 48.1183: Sort Your lane and Nearby lists A to Z** [UI / VISUAL] On-the-fly: Charlie asked for alphabetical order Target files: src/components/LineupDna.tsx | Issue: #1183 | Verify: npm run lint --silent
+- [ ] **Slice 50.1187: Genres tab: show Other as grey** [IN_PROGRESS] [UI / VISUAL] On-the-fly: Charlie: Other is invisible but clickable Target files: src/components/LineupDna.tsx | Issue: #1187 | Verify: npm run lint --silent
