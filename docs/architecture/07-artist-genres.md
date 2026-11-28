@@ -91,14 +91,14 @@ Release 2 of the genre taxonomy is built in Slices 41.1 to 41.5 ([docs/archive/g
 - There is one bar for the whole bill. When the lineup has stages, each stage gets its own bar as well. An act on two stages counts on both stage bars and once on the whole bill. Acts with no stage go on "No stage listed", which shows only when other stages exist.
 - Each bar shows its 4 largest families. A 5th family shows only when it is at least 10% of the bar, and the rest is grouped as Other. Tapping a segment lists its top genres and acts.
 - When fewer than 60% of the acts have a genre, the bar notes "N of M acts have a genre." A bar needs 3 acts with a genre. Below that, the page says so and shows no bar.
-- Colours are the Sound Drift palette (`PALETTE`, exported from `GenreYearsChart.tsx`).
+- Colours are the Sound Drift palette (`PALETTE`, exported from `GenreYearsChart.tsx`). A family keeps one colour across every bar of the event (the whole bill's order first). A B2B partner with no stage or day takes its slot partner's (`shareSlotPlaces`).
 
 **Event Match** (`eventMatch` in `src/services/genreInsights.ts`).
 
 - Your vector is every seen set at your other attended events, counted with `countedSets`. The event being matched is left out, and so are planned and missed events.
 - That vector is smoothed one step over the owner's `adjacent` links only: `u + 0.5 · Â·u`. The links are read both ways, and each weight is divided by `sqrt(deg(a) · deg(b))`, so a genre linked to almost everything is toned down. It never goes two steps. `secondary_parent` and `derived_from` links are not used.
 - The score is the cosine between your smoothed families and the bill's families. The bands are "Strong fit" at 0.6 or more, "Some overlap" from 0.3, and "Outside your usual" below 0.3. The line names your lane, the 1 or 2 families that add most to the score, with the number of acts in your lane and of nearby acts you haven't seen.
-- The lineup table marked those acts with "Your lane" and "Nearby" pills (removed when parked).
+- Under the match line, "Your lane:" and "Nearby:" list those acts by name. The lineup table no longer marks them.
 - Event Match needs 20 sets with a genre over 5 events, plus the whole-bill bar's own floor. Below that, the line says what is missing.
 - Relations never change the Lineup DNA bar, only the match.
 - Sample mode shows neither, because the sample events have no lineup edition.

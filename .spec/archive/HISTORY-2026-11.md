@@ -260,3 +260,6 @@ Finished slices moved out of `.spec/PROGRESS.md` on 2026-11-25. Earlier history 
 - [x] **Slice 48.1166: Series cleanup: empty the one-time list** | Issue: #1166
 - [x] **Slice 48.1171: Inbox: promote closes an override the edition already holds** | Issue: #1171
 - [x] **Slice 48.1174: Find gaps: dismiss an offered act** | Issue: #1174
+- [x] **Slice 47.2: Park Lineup DNA and lane pills** | Issue: #1176
+- [x] **Slice 47.3: Genres tab in place of Changes** | Issue: #1177
+- [x] **Slice 48.1179: Genres tab B2B stage, steady colours, lane lists** | Issue: #1179
