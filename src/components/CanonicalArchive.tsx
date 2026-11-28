@@ -1011,7 +1011,7 @@ const SeriesDetail: React.FC<{
       {error && <p role="alert" className="text-sm text-bad">{error}</p>}
 
       {merging && (
-        <div className="space-y-2 rounded-card border border-warn/45 bg-warn/10 p-3 text-sm">
+        <div className="space-y-2 rounded-card border border-line bg-warn-soft p-3 text-sm text-text">
           <p className="font-semibold text-text">Merge "{series.name}" into another series</p>
           <p className="text-xs text-text-muted">
             All attached editions move onto the target series, and "{series.name}" plus its aliases are kept as aliases on the target.
@@ -1180,8 +1180,8 @@ const SeriesDetail: React.FC<{
                     onClick={() => togglePriority(src)}
                     className={`min-h-11 rounded-full border px-2.5 py-0.5 text-xs sm:min-h-9 ${
                       active
-                        ? 'border-accent-tint-line bg-accent-tint text-accent'
-                        : 'border-line-strong text-text-muted hover:border-accent'
+                        ? 'border-transparent bg-accent-tint text-text'
+                        : 'border-transparent bg-neutral-soft text-text-muted hover:text-text'
                     }`}
                   >
                     {SOURCE_LABELS[src] ?? src}
@@ -2461,7 +2461,7 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
           type="button"
           onClick={() => void runResearch(false)}
           disabled={checking || geminiChecking}
-          className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-line-strong px-2.5 text-xs text-text hover:border-accent hover:text-accent disabled:opacity-50 sm:min-h-9"
+          className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-line-strong px-2.5 text-xs text-text hover:bg-surface-2 hover:text-text disabled:opacity-50 sm:min-h-9"
         >
           {checking ? <Equalizer size="sm" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
           Check details
@@ -2656,7 +2656,7 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
             <button
               type="button"
               onClick={() => setWeekendsMode('single')}
-              className={`min-h-11 sm:min-h-9 rounded-control border px-2.5 py-1 text-xs ${weekendsMode === 'single' ? 'border-accent bg-accent-tint text-accent' : 'border-line-strong text-text-muted hover:text-text'}`}
+              className={`min-h-11 sm:min-h-9 rounded-control border px-2.5 py-1 text-xs ${weekendsMode === 'single' ? 'border-transparent bg-accent-tint text-text' : 'border-transparent bg-neutral-soft text-text-muted hover:text-text'}`}
             >
               Single date range
             </button>
@@ -2675,7 +2675,7 @@ const EditionFactsForm: React.FC<{ edition: Edition; onCancel: () => void; onSav
                   setDraftBadges(seeded.draftBadges);
                 }
               }}
-              className={`min-h-11 sm:min-h-9 rounded-control border px-2.5 py-1 text-xs ${weekendsMode === 'multi' ? 'border-accent bg-accent-tint text-accent' : 'border-line-strong text-text-muted hover:text-text'}`}
+              className={`min-h-11 sm:min-h-9 rounded-control border px-2.5 py-1 text-xs ${weekendsMode === 'multi' ? 'border-transparent bg-accent-tint text-text' : 'border-transparent bg-neutral-soft text-text-muted hover:text-text'}`}
             >
               Multiple weekends
             </button>

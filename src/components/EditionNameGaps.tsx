@@ -81,7 +81,7 @@ export const EditionNameGaps: React.FC = () => {
           type="button"
           disabled={busy !== null}
           onClick={() => void addAll()}
-          className="inline-flex min-h-11 items-center sm:min-h-9 rounded-control border border-accent px-2.5 py-1 text-xs text-accent hover:bg-accent-tint disabled:opacity-50"
+          className="inline-flex min-h-11 items-center sm:min-h-9 rounded-control border border-line-strong bg-surface-2 px-2.5 py-1 text-xs text-text hover:bg-surface-3 disabled:opacity-50"
         >
           {busy === 'all' ? 'Adding all…' : `Add all to lineup (${rows.length})`}
         </button>

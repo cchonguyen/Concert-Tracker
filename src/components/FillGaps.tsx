@@ -2,6 +2,7 @@ import { Dialog } from './ui/Dialog';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, CloudSun, ExternalLink, Heart, MapPin, Plus, RefreshCw, Search, Star, Type, X } from 'lucide-react';
 import { Equalizer } from './ui/Equalizer';
+import { Notice } from './ui/Notice';
 import {
   ArtistSuggestion,
   eventsApi,
@@ -103,7 +104,7 @@ const TitleArtistsRow: React.FC<{
           onClick={() => onToggle(s.key)}
           title={offeredBy(s)}
           className={`min-h-11 sm:min-h-9 inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${
-            on ? 'border-accent bg-accent-tint text-accent' : 'border-line-strong text-text-muted hover:text-text'
+            on ? 'border-transparent bg-accent-tint text-text' : 'border-transparent bg-neutral-soft text-text-muted hover:text-text'
           }`}
         >
           {on ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
@@ -173,7 +174,7 @@ const GapEditor: React.FC<{
     return (
       <div className="flex gap-1.5">
         {(['concert', 'festival'] as const).map((k) => (
-          <button key={k} onClick={() => submit({ kind: k })} className="inline-flex min-h-11 items-center sm:min-h-9 rounded-full border border-line-strong px-3 py-1 text-xs text-text hover:border-accent">
+          <button key={k} onClick={() => submit({ kind: k })} className="inline-flex min-h-11 items-center sm:min-h-9 rounded-full border border-transparent bg-neutral-soft px-3 py-1 text-xs text-text hover:bg-row-hover">
             {k === 'concert' ? 'Concert' : 'Festival'}
           </button>
         ))}
@@ -187,7 +188,7 @@ const GapEditor: React.FC<{
           <button
             key={s.key}
             onClick={() => submit({ seen: seenPatch(event).map((p, j) => ({ ...p, favourite: i === j })) })}
-            className="min-h-11 sm:min-h-9 inline-flex items-center gap-1 rounded-full border border-line-strong px-2.5 py-1 text-xs text-text hover:border-warn/45"
+            className="min-h-11 sm:min-h-9 inline-flex items-center gap-1 rounded-full border border-transparent bg-neutral-soft px-2.5 py-1 text-xs text-text hover:bg-row-hover"
           >
             <Heart className="h-3 w-3" /> {s.name}
           </button>
@@ -646,7 +647,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
               setNote(null);
             }}
             className={`inline-flex min-h-11 items-center sm:min-h-9 rounded-full border px-2.5 py-1 text-xs ${
-              gap === g ? 'border-accent bg-accent-tint text-accent' : 'border-line text-text-muted hover:text-text'
+              gap === g ? 'border-transparent bg-accent-tint text-text' : 'border-transparent bg-neutral-soft text-text-muted hover:text-text'
             }`}
           >
             {GAP_LABELS[g]} <span className="text-text-muted">{counts[g]}</span>
@@ -668,9 +669,9 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
         <button
           onClick={findLineups}
           disabled={busy !== null}
-          className="min-h-11 sm:min-h-9 inline-flex items-center gap-1.5 rounded-control border border-accent-tint-line px-3 py-1.5 text-xs text-accent hover:bg-accent-tint disabled:opacity-40"
+          className="min-h-11 sm:min-h-9 inline-flex items-center gap-1.5 rounded-control border border-line-strong bg-surface-2 px-3 py-1.5 text-xs text-text hover:bg-surface-3 disabled:opacity-40"
         >
-          {busy === 'lineups' ? <Equalizer size="sm" /> : <Search className="h-3.5 w-3.5" />}
+          {busy === 'lineups' ? <Equalizer size="sm" /> : <Search className="h-3.5 w-3.5 text-accent" />}
           Find lineups for {lineupRows.length === 50 ? 'the first 50' : `these ${lineupRows.length}`}
         </button>
       )}
@@ -749,7 +750,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
         </div>
       )}
       {batchWaiting.length > 0 && (
-        <section className="space-y-2 rounded-card border border-accent-tint-line p-3" aria-label="Batch results to confirm">
+        <section className="space-y-2 rounded-card border border-line bg-surface-2 p-3" aria-label="Batch results to confirm">
           <h3 className="font-display text-base font-normal text-text">Results to confirm ({batchWaiting.length})</h3>
           <p className="text-xs text-text-muted">Found for the year and city you gave. Nothing is applied until you tap one.</p>
           <ul className="divide-y divide-line">
@@ -771,7 +772,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
                         type="button"
                         disabled={picking !== null}
                         onClick={() => pickBatch(e.id, c.id)}
-                        className="inline-flex min-h-11 items-center sm:min-h-9 rounded-full border border-line-strong px-2.5 py-1 text-xs text-text hover:border-accent disabled:opacity-50"
+                        className="inline-flex min-h-11 items-center sm:min-h-9 rounded-full border border-transparent bg-neutral-soft px-2.5 py-1 text-xs text-text hover:bg-row-hover disabled:opacity-50"
                       >
                         {[row.date, row.venue, sources].filter(Boolean).join(' · ')}
                       </button>
@@ -834,7 +835,7 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
         </section>
       )}
       {note && <p className="text-xs text-text-muted">{note}</p>}
-      {error && <p className="rounded-control border border-bad/45 bg-bad/10 p-2 text-sm text-bad">{error}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
 
       {rows.length === 0 ? (
         <p className="rounded-card border border-dashed border-line p-6 text-center text-sm text-text-muted">Nothing missing here.</p>
@@ -866,9 +867,9 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
                         type="button"
                         disabled={busy !== null}
                         onClick={() => void propose(e.editionId!, o.artistKey)}
-                        className="min-h-11 sm:min-h-9 inline-flex items-center gap-1 rounded-full border border-accent-tint-line px-2.5 py-1 text-xs text-accent hover:bg-accent-tint disabled:opacity-50"
+                        className="min-h-11 sm:min-h-9 inline-flex items-center gap-1 rounded-full border border-transparent bg-neutral-soft px-2.5 py-1 text-xs text-text hover:bg-accent-tint disabled:opacity-50"
                       >
-                        <Plus className="h-3 w-3" /> Propose {o.artistName}
+                        <Plus className="h-3 w-3 text-accent" /> Propose {o.artistName}
                       </button>
                     );
                   })}
@@ -897,9 +898,9 @@ export const FillGaps: React.FC<FillGapsProps> = ({ events, all, lineups, editio
               {gap === 'place' && guesses[e.id] && placePatch(e, guesses[e.id]) && (
                 <button
                   onClick={() => void usePlace(e)}
-                  className="min-h-11 sm:min-h-9 inline-flex items-center gap-1 rounded-full border border-accent-tint-line px-2.5 py-1 text-xs text-accent hover:bg-accent-tint"
+                  className="min-h-11 sm:min-h-9 inline-flex items-center gap-1 rounded-full border border-transparent bg-neutral-soft px-2.5 py-1 text-xs text-text hover:bg-accent-tint"
                 >
-                  <Check className="h-3 w-3" /> Use {guesses[e.id].label}
+                  <Check className="h-3 w-3 text-accent" /> Use {guesses[e.id].label}
                   {guesses[e.id].places > 1 && <span className="text-[10px] text-text-muted">biggest of {guesses[e.id].places} by that name</span>}
                 </button>
               )}

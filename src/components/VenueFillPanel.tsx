@@ -88,7 +88,7 @@ export const VenueFillPanel: React.FC = () => {
             type="button"
             disabled={busy !== null}
             onClick={() => void fillAll()}
-            className="min-h-11 rounded-control border border-accent-tint-line bg-accent-tint px-2.5 py-1 font-mono text-xs tabular-nums text-accent hover:underline disabled:opacity-50 sm:min-h-9"
+            className="min-h-11 rounded-control border border-transparent bg-accent-tint px-2.5 py-1 font-mono text-xs tabular-nums text-text hover:bg-row-hover disabled:opacity-50 sm:min-h-9"
           >
             {busy === 'all' ? 'Filling…' : `Fill all (${plan.fills.length})`}
           </button>
