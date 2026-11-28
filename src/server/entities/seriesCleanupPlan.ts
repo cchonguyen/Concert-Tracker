@@ -1,7 +1,7 @@
 import type { CleanupStep } from './seriesCleanup';
 
 // The current one-time series cleanup list, run by the owner from Global Archive through runSeriesCleanup
-// (docs/specs/series-cleanup.md). One-time data, like a data migration: slugs come from the live records read
+// (docs/archive/series-cleanup.md). One-time data, like a data migration: slugs come from the live records read
 // on the day it was written. Nothing matches against it, so it is not a hardcoded festival or artist list.
 // Once it has run and the read-only check passes, the list is emptied and the Global Archive panel hides.
 //

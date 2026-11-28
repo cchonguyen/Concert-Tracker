@@ -21,11 +21,11 @@ export function SaveStatus<P>({ track, onRetry, hint = false }: Props<P>) {
   const saving = track.inFlight > 0;
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-      <span role="status" aria-live="polite" className={`inline-flex items-center gap-1 ${failed ? 'text-rose-300' : 'text-zinc-400'}`}>
-        {saving && <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />}
-        {!saving && !failed && label && <Check className="h-3 w-3 text-emerald-300" aria-hidden="true" />}
+      <span role="status" aria-live="polite" className={`inline-flex items-center gap-1 ${failed ? 'text-bad' : 'text-text-muted'}`}>
+        {saving && <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
+        {!saving && !failed && label && <Check className="h-3 w-3 text-good" aria-hidden="true" />}
         {failed ? (
-          <button type="button" onClick={onRetry} className="underline underline-offset-2 hover:text-rose-200">
+          <button type="button" onClick={onRetry} className="underline underline-offset-2 hover:brightness-110">
             {label}
           </button>
         ) : (

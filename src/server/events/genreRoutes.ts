@@ -330,7 +330,7 @@ export function genresRouter(deps: PipelineDeps): Router {
 
   // Every scope gets the vocabulary and the genre map. Only the owner gets the
   // vocabulary's change log and the spellings that collide: a member's
-  // additions never reach either (docs/specs/genre-vocabulary.md section 8).
+  // additions never reach either (docs/archive/genre-vocabulary.md section 8).
   router.get('/artist-genres', async (_req, res) => {
     try {
       const member = isMember();
@@ -359,7 +359,7 @@ export function genresRouter(deps: PipelineDeps): Router {
     }
   });
 
-  // The downloadable CSV of the acts you can give genres (see docs/specs/genres-csv.md).
+  // The downloadable CSV of the acts you can give genres (see docs/archive/genres-csv.md).
   router.get('/artist-genres/csv/export', async (_req, res) => {
     try {
       const day = deps.now().toISOString().slice(0, 10);
@@ -593,7 +593,7 @@ export function genresRouter(deps: PipelineDeps): Router {
     }
   });
 
-  // The lineup of one event and the genre rows of its acts (docs/specs/genre-taxonomy-release-2.md section 1). Reads only.
+  // The lineup of one event and the genre rows of its acts (docs/archive/genre-taxonomy-release-2.md section 1). Reads only.
   // The store scopes the event (a member gets only their own) and the rows (a member's 'added' rows are theirs alone),
   // so the rows are filtered here to the acts on this lineup.
   router.get('/events/:id/lineup-genres', async (req, res) => {

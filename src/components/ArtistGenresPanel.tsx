@@ -17,7 +17,7 @@ import { GenresCsvPreview } from './GenresCsvPreview';
 
 // "Genres" in the Table view (owner only; ManageView shows the button): import the file music-story
 // exports, look up the acts it does not cover on MusicBrainz, and edit genres in a spreadsheet.
-// See ARCHITECTURE.md ("Artist genres") and docs/specs/genres-csv.md.
+// See ARCHITECTURE.md ("Artist genres") and docs/archive/genres-csv.md.
 
 interface ArtistGenresPanelProps {
   events: LoggedEvent[];

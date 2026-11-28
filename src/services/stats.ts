@@ -209,7 +209,7 @@ export function seriesStats(events: LoggedEvent[]): SeriesStat[] {
   return out.sort((a, b) => b.editions - a.editions || (b.streak?.years ?? 0) - (a.streak?.years ?? 0) || a.name.localeCompare(b.name));
 }
 
-// The "All time" strip at the top of Stats (docs/specs/quiet-tips-table.md): the totals the Table's summary line
+// The "All time" strip at the top of Stats (docs/archive/quiet-tips-table.md): the totals the Table's summary line
 // used to show, counted over events you went to, plus how many cities they were in.
 export interface AllTime extends Summary {
   cities: number;

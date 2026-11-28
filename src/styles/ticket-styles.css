@@ -1,4 +1,4 @@
-/* Ticket styles: a design-system module (docs/specs/ticket-stub-styles.md).
+/* Ticket styles: a design-system module (docs/archive/ticket-stub-styles.md).
 
    Contract. A style is one block that sets only these tokens; nothing else in the app changes.
      Paper and ink:  --la-paper, --la-paper-2, --la-text, --la-text-muted, --la-text-faint,
@@ -119,4 +119,152 @@
   --stub-head-transform: uppercase; --stub-head-color: #93c5fd; --stub-head-shadow: 3px 2px 0 #f472b6;
   --stub-texture: radial-gradient(rgb(244 114 182 / 0.22) 1px, transparent 1.4px);
   --stub-texture-size: 6px 6px; --stub-texture-blend: screen;
+}
+
+/* ---- Ticket Geometry & Notches (Ticket.tsx, StubHeader.tsx) ---- */
+.ticket-card,
+.stub-header {
+  isolation: isolate;
+}
+.ticket-card::before,
+.stub-header::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  pointer-events: none;
+  border: 1px solid var(--color-perf);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+.ticket-card::before {
+  background: linear-gradient(120deg, var(--la-paper) 0%, var(--la-paper-2) 100%);
+  mask-image:
+    radial-gradient(circle 11px at var(--notch-a), transparent 10.5px, #000 11px),
+    radial-gradient(circle 11px at var(--notch-b), transparent 10.5px, #000 11px);
+}
+.stub-header::before {
+  background: var(--color-surface-1);
+  border-color: var(--color-line-strong);
+  mask-image:
+    radial-gradient(circle 16px at 0 var(--tear-y, -99px), transparent 15.5px, #000 16px),
+    radial-gradient(circle 16px at 100% var(--tear-y, -99px), transparent 15.5px, #000 16px);
+}
+/* The stub header's paper band reaches down to the perforation, so it is cut too. */
+.stub-header .ticket-paper {
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  mask-image:
+    radial-gradient(circle 16px at -1px calc(100% - 1px), transparent 15.5px, #000 16px),
+    radial-gradient(circle 16px at calc(100% + 1px) calc(100% - 1px), transparent 15.5px, #000 16px);
+}
+.ticket-cols {
+  --notch-a: var(--notch-x, calc(100% - var(--ticket-stub-w, 230px) - 2px)) 0;
+  --notch-b: var(--notch-x, calc(100% - var(--ticket-stub-w, 230px) - 2px)) 100%;
+  grid-template-columns: minmax(0, 1fr) var(--ticket-stub-w, 230px);
+}
+.ticket-rows {
+  --notch-a: 0 var(--notch-y, -99px);
+  --notch-b: 100% var(--notch-y, -99px);
+  grid-template-columns: minmax(0, 1fr);
+}
+.ticket-paper {
+  background: linear-gradient(120deg, var(--la-paper) 0%, var(--la-paper-2) 100%);
+}
+/* The stub end: a dashed tear on its left (columns) or top (rows), with a notch at each end of the tear. */
+.ticket-stub {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  transition:
+    transform 220ms ease,
+    box-shadow 220ms ease;
+}
+.ticket-cols .ticket-stub {
+  border-left: 2px solid transparent;
+  background: repeating-linear-gradient(to bottom, var(--color-perf) 0 6px, transparent 6px 11px) no-repeat;
+  background-origin: border-box;
+  background-size: 2px calc(100% - 22px);
+  background-position: 0 11px;
+  padding: 16px 16px 14px;
+}
+.ticket-rows .ticket-stub {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  border-top: 2px solid transparent;
+  background: repeating-linear-gradient(to right, var(--color-perf) 0 6px, transparent 6px 11px) no-repeat;
+  background-origin: border-box;
+  background-size: calc(100% - 22px) 2px;
+  background-position: 11px 0;
+  padding: 12px 14px;
+}
+.ticket-stub::before,
+.ticket-stub::after {
+  content: '';
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid var(--color-perf);
+  pointer-events: none;
+}
+.ticket-cols .ticket-stub::before {
+  top: -12px;
+  left: -12px;
+  clip-path: inset(50% 0 0 0);
+}
+.ticket-cols .ticket-stub::after {
+  bottom: -12px;
+  left: -12px;
+  clip-path: inset(0 0 50% 0);
+}
+.ticket-rows .ticket-stub::before {
+  top: -12px;
+  left: -12px;
+  clip-path: inset(0 0 0 50%);
+}
+.ticket-rows .ticket-stub::after {
+  top: -12px;
+  right: -12px;
+  clip-path: inset(0 50% 0 0);
+}
+.ticket-tearing {
+  transform: translate(10px, 6px) rotate(6deg);
+  box-shadow: 0 14px 22px -12px color-mix(in oklab, var(--la-text) 45%, transparent);
+}
+.ticket-torn {
+  transform: translate(6px, 0) rotate(2deg);
+}
+/* Stub header: one large dashed perforation with a notch cut into each outer edge. */
+.stub-perf {
+  position: relative;
+  height: 0;
+  border-top: 3px dashed var(--color-perf);
+  margin: 0 18px;
+}
+.stub-perf::before,
+.stub-perf::after {
+  content: '';
+  position: absolute;
+  top: -17px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid var(--color-line-strong);
+  pointer-events: none;
+}
+.stub-perf::before {
+  left: -35px;
+  clip-path: inset(0 0 0 50%);
+}
+.stub-perf::after {
+  right: -35px;
+  clip-path: inset(0 50% 0 0);
 }

@@ -1,6 +1,6 @@
 // Artist genres CSV: store access. Export, preview, apply and undo of one
 // upload. The matching and checks are pure (genreCsv.ts); this file reads and
-// writes the store. No model calls. Spec: docs/specs/genres-csv.md.
+// writes the store. No model calls. Spec: docs/archive/genres-csv.md.
 
 import { InputError } from '../lineup/pipeline';
 import { CanonicalStoreError } from '../lineup/store/types';

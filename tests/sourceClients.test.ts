@@ -5,7 +5,7 @@ import { setlistfmSearch } from '../src/server/lineup/adapters/setlistfm.ts';
 import { ticketmasterEvents } from '../src/server/lineup/adapters/ticketmaster.ts';
 import type { FetchResponse, Fetcher } from '../src/server/lineup/types.ts';
 
-// One client per source, shared by Check details and Find the lineup (docs/specs/streamlining-plan.md, slice 3).
+// One client per source, shared by Check details and Find the lineup (docs/archive/streamlining-plan.md, slice 3).
 function fetcherAnswering(status: number, body: string, headers: Record<string, string> = {}) {
   const urls: string[] = [];
   const fetcher = {

@@ -1,6 +1,5 @@
 import { Check, ChevronRight } from 'lucide-react';
-import { useEffect, useState, type CSSProperties } from 'react';
-import { tintHue } from '../services/eventTint';
+import { useEffect, useState } from 'react';
 import type { LoggedEvent, SeenAct, EventKind } from '../server/events/types';
 import type { AttendanceState } from '../server/events/attendance';
 import type { TicketFacts as ImportedFacts } from '../server/events/email/ticketFacts';
@@ -10,6 +9,7 @@ import { admitCount, barcodeBars, shortDate, shorthand, stubPieces, stubSentence
 import type { Gap } from '../services/table';
 import { Ticket, TicketEventLine, TicketHeadline, TicketKicker, TicketSmallLine, StubAdmit, StubBarcode, StubCode, StubKV, StubSentence, StubSerial, StubShortDate, StubStamp } from './ui/Ticket';
 import { GAP_LABEL, gapQuestion } from '../services/poster';
+import { Button } from './ui/Button';
 import { NameList } from './ui/NameList';
 import { Segmented } from './ui/Segmented';
 
@@ -48,10 +48,9 @@ interface Props {
 }
 
 // The top of the event detail: a true ticket. The body has the kicker, the big line (rules in src/services/ticket.ts),
-// the date and the place. The stub end has only the pieces the event has, in the order docs/specs/ticket-stub.md gives.
+// the date and the place. The stub end has only the pieces the event has, in the order docs/archive/ticket-stub.md gives.
 export function PosterHeader({ title, dateLine, placeLine, kind, event, state, seen, inferredBilling = {}, facts, showNumber, tear, onWhoSaw }: Props) {
   const wide = useWide();
-  const hue = tintHue(event.series, event.name);
   const lines = ticketLines(
     title,
     seen.map((s): TicketAct => (s.role ? { name: s.name, role: s.role } : { name: s.name, role: inferredBilling[s.key]?.role, inferred: Boolean(inferredBilling[s.key]) })),
@@ -144,7 +143,7 @@ export function PosterHeader({ title, dateLine, placeLine, kind, event, state, s
   );
 
   return (
-    <header className="poster-bg border-b border-line-strong px-5 pt-6 pb-5" style={hue == null ? undefined : ({ '--event-hue': hue } as CSSProperties)}>
+    <header className="poster-bg border-b border-line-strong px-5 pt-6 pb-5">
       <h2 className="sr-only">{title}</h2>
       <Ticket
         layout={wide ? 'columns' : 'rows'}
@@ -194,13 +193,9 @@ export function ThingsLeft({ gaps, current, needsWeekend, onPick, onNext }: Stri
       />
       {current && <span className="min-w-0 text-sm text-text">{gapQuestion(current, { needsWeekend })}</span>}
       <span className="grow" />
-      <button
-        type="button"
-        onClick={onNext}
-        className="inline-flex min-h-11 items-center gap-0.5 rounded-control bg-accent-fill px-3 text-sm font-semibold text-on-accent hover:brightness-110 sm:min-h-9"
-      >
+      <Button variant="primary" onClick={onNext} className="min-h-11 gap-0.5 sm:min-h-9">
         Next <ChevronRight className="h-4 w-4" aria-hidden="true" />
-      </button>
+      </Button>
     </section>
   );
 }

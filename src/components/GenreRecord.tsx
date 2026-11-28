@@ -14,7 +14,7 @@ import { Ledger } from './ui/Ledger';
 import { Notice } from './ui/Notice';
 import { Pill } from './ui/Pill';
 
-// A row's record in Manage > Global archive > Genres (docs/specs/genre-vocabulary.md
+// A row's record in Manage > Global archive > Genres (docs/archive/genre-vocabulary.md
 // section 6, docs/specs/genre-taxonomy-phase-a.md section 6). A genre has its name,
 // spellings, family, links, umbrellas, merge and history. A family or macro has its
 // name, the genres under it and the artists behind them. Every write goes to the

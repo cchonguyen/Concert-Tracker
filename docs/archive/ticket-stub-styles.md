@@ -1,5 +1,7 @@
 # Ticket stub styles and the landing look in the app
 
+**Archived (2026-11-28):** Built and shipped.
+
 Approved by Charlie 2026-11-27 ("I would love to have a picker that chooses what style of ticket stub you would like (including the original style). Let's build this!"). Mockups: https://claude.ai/artifact/31HrhPXoz4AJsmyCJTpvot, row "Round 3" (App · Home, App · Event, App · Ranking, Ticket stub studies).
 
 ## Slice 44.1: Ticket style picker (built)
@@ -8,7 +10,7 @@ A per-device choice, saved like the theme mode and accent (`livearchive.stubStyl
 
 | Style | Look |
 | --- | --- |
-| Original | The current stub (docs/specs/ticket-stub.md). Default. |
+| Original | The current stub (docs/archive/ticket-stub.md). Default. |
 | Box office | Thermal paper: cream paper, faded blue-grey dot-matrix ink (VT323), grain. |
 | Hard ticket | Pink card stock, condensed poster type (Anton) for the headline, Courier details, red serial and stamp, a double rule inset. |
 | Raffle | Violet roll ticket with chunky mono type (Rubik Mono One) and a faint ADMIT ONE pattern. |

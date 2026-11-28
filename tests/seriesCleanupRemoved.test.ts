@@ -12,7 +12,7 @@ import { runAsMember } from '../src/server/auth/requestScope.ts';
 import { SERIES_CLEANUP_PLAN } from '../src/server/entities/seriesCleanupPlan.ts';
 
 // The owner routes preview and run the current one-time cleanup list (seriesCleanupPlan.ts,
-// docs/specs/series-cleanup.md). The first list ran on 2026-11-26; the loose-ends list was written on 2026-11-27.
+// docs/archive/series-cleanup.md). The first list ran on 2026-11-26; the loose-ends list was written on 2026-11-27.
 const appFor = async (role: 'owner' | 'member') => {
   const dir = await mkdtemp(path.join(tmpdir(), 'series-cleanup-routes-'));
   const linked = withEntityLinks(new FileLineupStore(dir));

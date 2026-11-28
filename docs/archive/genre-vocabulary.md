@@ -1,5 +1,7 @@
 # Genre vocabulary: one spelling per genre, aliases, merges and umbrella genres
 
+**Archived (2026-11-28):** Built and shipped.
+
 Status: draft written 2026-11-26 for Charlie's review. Not approved. Replaces the old planned Slice 35.13. Slices 36.1 to 36.12 below. Needs migration `0060_genre_vocabulary.sql`; Charlie applies it, and the slices that need it are held until he says it is applied.
 
 Builds on `docs/specs/canonical-genres.md` (shared genres, `artist_genres`, `artist_genre_changes`, `writeArtistGenres`).
@@ -10,7 +12,7 @@ Builds on `docs/specs/canonical-genres.md` (shared genres, `artist_genres`, `art
 2. A Genres tab in Manage, where the owner can add aliases for a genre or merge two genres, the same way series and editions work today.
 3. Related genres: the owner can put "electro house" and "tech house" under a "house" umbrella, or "melodic dubstep" and "future bass" under "melodic bass".
 
-Decided by Charlie: a genre may sit under several umbrellas. music-story's parent groups (13 today) stay the top level, and the owner can override a genre's group. (Superseded 2026-11-27: 8 macro genres and 28 scene families replace music-story's groups as the top level; see [genre-taxonomy-phase-a.md](genre-taxonomy-phase-a.md).)
+Decided by Charlie: a genre may sit under several umbrellas. music-story's parent groups (13 today) stay the top level, and the owner can override a genre's group. (Superseded 2026-11-27: 8 macro genres and 28 scene families replace music-story's groups as the top level; see [genre-taxonomy-phase-a.md](../specs/genre-taxonomy-phase-a.md).)
 
 ## In plain English
 
@@ -62,7 +64,7 @@ The vocabulary holds only the owner's decisions. A genre nobody has changed need
 Migration `0060_genre_vocabulary.sql` (Slice 36.4 writes it with a check query and a rollback; Charlie applies it):
 
 ```sql
--- 0060 genre vocabulary (docs/specs/genre-vocabulary.md). Apply only on Charlie's go.
+-- 0060 genre vocabulary (docs/archive/genre-vocabulary.md). Apply only on Charlie's go.
 -- The owner's genre decisions: shown spelling, group, other spellings, umbrellas.
 -- No personal fields. Server only: no policies, writes through one function.
 
@@ -251,7 +253,7 @@ Issues not yet opened: add `Issue: #N` before starting each slice. RED = red tri
 - [ ] **Slice 36.5: Store: read and write the vocabulary** [CORE / DATA] `getGenreVocabulary` (every scope, service client), `writeGenreVocabulary` (rpc `genre_vocabulary_write`), `listGenreVocabChanges`, `markGenreVocabChangesUndone`, the last three refused in a member scope; file store parity. Needs 0060 applied. Target files: src/server/lineup/store/types.ts, src/server/lineup/store/supabaseStore.ts, src/server/lineup/store/fileStore.ts, tests/genreVocabularyStore.test.ts | Coords: [400, 12-data-model, 19-multi-user] | Verify: npm run lint --silent && npm test --silent
 - [ ] **Slice 36.6: Owner operations on genres** [CORE / DATA] `createGenre`, `renameGenre` (old spelling becomes an alias), `addGenreAlias`/`removeGenreAlias` ("Merge instead" refusals), `planGenreMerge` (preview counts, aliases, moved and dropped umbrella links) and `mergeGenres`, `setGenreParent`, `addGenreUmbrella`/`removeGenreUmbrella` (loop refused), `pickGenreSpelling`, `undoGenreChange` with the changed-since check; all actor `owner`. Target files: src/server/events/genreVocabularyManage.ts, tests/genreVocabularyManage.test.ts | Coords: [400, 07-artist-genres, src/server/entities/canonicalManage.ts] | Verify: npm run lint --silent && npm test --silent
 - [ ] **Slice 36.7: Routes and client calls** [CORE / DATA] `GET /api/artist-genres` adds `vocabulary` and `map` (every scope) and `vocabularyChanges` and `collisions` (owner only); `POST /api/artist-genres/vocabulary/<operation>` and `/vocabulary/undo/:id`; route tests: a member gets 403 on every write, a member's response holds no change log or collisions; `genresApi` vocabulary calls. Target files: src/server/events/genreRoutes.ts, tests/genreVocabularyRoute.test.ts, src/services/lineupApi.ts | Coords: [400, 13-api, 19-multi-user] | Verify: npm run lint --silent && npm test --silent
-- [ ] **Slice 36.8: Genres file resolves aliases** [CORE / DATA] Export lists resolved names; `genreStamp` over resolved rows; preview resolves each typed genre and shows "typed → stored"; a row equal after resolving is "No change". Target files: src/server/events/genreCsv.ts, src/server/events/genreCsvApply.ts, tests/genreCsv.test.ts, tests/genreCsvApply.test.ts | Coords: [400, 07-artist-genres, docs/specs/genres-csv.md] | Verify: npm run lint --silent && npm test --silent
+- [ ] **Slice 36.8: Genres file resolves aliases** [CORE / DATA] Export lists resolved names; `genreStamp` over resolved rows; preview resolves each typed genre and shows "typed → stored"; a row equal after resolving is "No change". Target files: src/server/events/genreCsv.ts, src/server/events/genreCsvApply.ts, tests/genreCsv.test.ts, tests/genreCsvApply.test.ts | Coords: [400, 07-artist-genres, docs/archive/genres-csv.md] | Verify: npm run lint --silent && npm test --silent
 - [ ] **Slice 36.9: Screens read the vocabulary** [CORE / DATA] Pass `vocabulary` and `map` from the genres response into every `genresByArtist` call; `genreMix` gains `umbrellas` (section 7: per set, each genre once per umbrella, never above one set) with tests. Target files: src/services/genres.ts, tests/genres.test.ts, src/components/StatsView.tsx, src/components/ArtistsView.tsx | Coords: [400, 07-artist-genres, 15-shared-ui] | Verify: npm run lint --silent && npm test --silent
 - [ ] **Slice 36.10: Manage > Global archive > Genres list** [UI / VISUAL] "Genres" tab after Brands; list with group, umbrellas and artist counts; search by name or alias; group filter with "Not grouped"; "N genres have more than one spelling. Pick one." with "Use this spelling"; "New genre". Target files: src/components/GenresPanel.tsx, src/components/ManageView.tsx, src/components/CanonicalArchive.tsx | Coords: [400, 15-shared-ui] | Verify: npm run lint --silent
 - [ ] **Slice 36.11: A genre's record: rename, aliases, group, umbrellas, merge, history** [UI / VISUAL] Spec section 6 screens and exact refusal lines; merge preview then "Merge"; History with Undo on the newest change; notice with Undo after each change; uses shared `src/components/ui/` parts. Target files: src/components/GenreRecord.tsx, src/components/GenresPanel.tsx | Coords: [400, 15-shared-ui] | Verify: npm run lint --silent

@@ -15,8 +15,8 @@ test('without a browser, motion counts as allowed', () => {
   assert.equal(prefersReducedMotion(undefined), false);
 });
 
-test('index.css stops animations and transitions under reduced motion', () => {
-  const css = readFileSync(path.join(import.meta.dirname, '..', 'src', 'index.css'), 'utf8');
+test('motion.css stops animations and transitions under reduced motion', () => {
+  const css = readFileSync(path.join(import.meta.dirname, '..', 'src', 'styles', 'motion.css'), 'utf8');
   const rule = /@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
   for (const prop of ['animation-duration', 'animation-iteration-count', 'transition-duration', 'scroll-behavior']) {
     assert.ok(rule.includes(prop), `missing ${prop}`);

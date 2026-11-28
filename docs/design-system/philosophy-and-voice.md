@@ -48,4 +48,4 @@ Avoid: praise for ordinary actions ("Great job!"), exclamation marks outside mil
 
 ## Direction (not built yet)
 
-Noted for later, not part of the export's rules: LiveArchive's "Ideas for delight" (REQUIREMENTS.md section 13) and the remaining inline controls still move onto shared components as their pages are touched. No typography, spacing or motion tokens are planned yet; when one is added here first, this export gains it.
+Noted for later, not part of the export's rules: remaining inline controls still move onto shared components as their pages are touched. Type roles (`--font-sans`, `--font-display`, `--font-mono`, `--font-poster`) and `--ease-pop` are defined; spacing, shadow, and z-index scales remain Tailwind defaults until a change needs named tokens.

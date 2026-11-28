@@ -1,5 +1,7 @@
 # Artist genres: download as a CSV, edit in a spreadsheet, upload again
 
+**Archived (2026-11-28):** Built and shipped.
+
 Status: designed 2026-11-26 (Level 3 scout); scope approved by Charlie in plain English. Slices 34.1 to 34.5 in `.spec/PROGRESS.md`. Moved onto shared genres 2026-11-26 (`docs/specs/canonical-genres.md`, migration 0059): the file is the owner's, saves shared `owner` rows and undoes from the change log.
 
 ## In plain English

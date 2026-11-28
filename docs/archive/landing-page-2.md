@@ -1,5 +1,7 @@
 # Landing page 2 (direction D)
 
+**Archived (2026-11-28):** Built and shipped.
+
 Approved by Charlie 2026-11-27 ("Go ahead and build"). Mockup: https://claude.ai/artifact/31HrhPXoz4AJsmyCJTpvot, board "D · Combined".
 
 ## What changes
@@ -21,4 +23,4 @@ Approved by Charlie 2026-11-27 ("Go ahead and build"). Mockup: https://claude.ai
 
 - The page stays static HTML (search engines read it on first load), with one small inline script for the carousel and drawer.
 - Screenshots are imported by Vite from `src/landing/`, so they ship under `/assets/` and no new public path is needed.
-- The animated logo for the whole app is a separate piece of work. This page uses the current logo.
+- The animated heartbeat logo (`/logo-heartbeat.svg`, static `/logo.svg` under reduced motion) is used in the header.

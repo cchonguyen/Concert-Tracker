@@ -243,3 +243,23 @@ Finished slices moved out of `.spec/PROGRESS.md` on 2026-11-25. Earlier history 
 - [x] **Slice 45.1109: Re-verify Release 3 branch after merging main** [CORE / DATA] On-the-fly: main moved while PR 1102 waited; Charlie approved the work Target files: docs/architecture/12-data-model.md | Issue: #1109 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 45.1113: Re-verify Release 3 branch after second merge of main** [CORE / DATA] On-the-fly: main moved again while PR 1102 waited; Charlie approved the work Target files: docs/architecture/12-data-model.md | Issue: #1113 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 45.1115: Re-verify Release 3 branch after third merge of main** [CORE / DATA] On-the-fly: main moved again while PR 1102 waited; Charlie approved the work Target files: docs/architecture/12-data-model.md | Issue: #1115 | Verify: npm run lint --silent && npm test --silent
+
+## Post-3.0 Compaction (2026-11-28)
+- [x] **Slice 47.1: Group genre charts by scene family** | Issue: #1121
+- [x] **Slice 47.1125: Colour dots beside genre names in Ranking** | Issue: #1125
+- [x] **Slice 46.9: Ticket style picker fixes, Share style picker, teal secondary, accent logo, post-it polish**
+- [x] **Slice 46.10: Rotating contour backdrop with sliding dot grid**
+- [x] **Slice 38.996: Match verified editions by seriesSlug/aliases and refresh events after Global Archive edits**
+- [x] **Slice 47.1130: Stop Library Table page scrolling past the table** | Issue: #1130
+- [x] **Slice 47.1137: Series sync: auto-link events that exactly match one verified edition** | Issue: #1137
+- [x] **Slice 48.1: Count B2B sets as whole viewings per artist or named combo**
+- [x] **Slice 48.1145: Series sync: linked events contribute back to shared editions** | Issue: #1145
+- [x] **Slice 48.1149: Series sync: show automatic links with Unlink** | Issue: #1149
+- [x] **Slice 48.1160: Series sync: two members ticking the same act verify it** | Issue: #1160
+- [x] **Slice 48.1164: Series sync: series health with one-tap fixes** | Issue: #1164
+- [x] **Slice 48.1166: Series cleanup: empty the one-time list** | Issue: #1166
+- [x] **Slice 48.1171: Inbox: promote closes an override the edition already holds** | Issue: #1171
+- [x] **Slice 48.1174: Find gaps: dismiss an offered act** | Issue: #1174
+- [x] **Slice 47.2: Park Lineup DNA and lane pills** | Issue: #1176
+- [x] **Slice 47.3: Genres tab in place of Changes** | Issue: #1177
+- [x] **Slice 48.1179: Genres tab B2B stage, steady colours, lane lists** | Issue: #1179

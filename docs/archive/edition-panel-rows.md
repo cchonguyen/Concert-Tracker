@@ -1,6 +1,8 @@
 # The edition panel: aligned rows (2026-11-25)
 
-Charlie asked for this in the project thread on 2026-11-25 and approved the plan the same evening. It replaces the right-anchored source and inferred tags from `docs/specs/event-detail-polish.md` (item 3).
+**Archived (2026-11-28):** Built and shipped.
+
+Charlie asked for this in the project thread on 2026-11-25 and approved the plan the same evening. It replaces the right-anchored source and inferred tags from `docs/archive/event-detail-polish.md` (item 3).
 
 ## What changes
 

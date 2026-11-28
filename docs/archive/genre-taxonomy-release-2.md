@@ -1,5 +1,7 @@
 # Genre taxonomy, Release 2: Lineup DNA and Event Match
 
+**Archived (2026-11-28):** Built and shipped.
+
 Planned 2026-11-27, after Release 1 ([genre-taxonomy-release-1.md](genre-taxonomy-release-1.md)) merged. It follows Charlie's brief "Genre Taxonomy, Visualizations & Relational Discovery" and his decisions for this release: every act on a bill counts 1.0, stage bars show where the lineup has stages, and Event Match needs 20 sets over 5 events. Slices are 41.x. There is no migration and no new table.
 
 ## In plain English

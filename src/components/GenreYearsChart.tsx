@@ -14,7 +14,7 @@ import type { GenreVocabulary } from '../server/events/genreTypes';
 import { IconButton } from './ui/IconButton';
 import { Segmented } from './ui/Segmented';
 
-// Sound Drift: a stacked 100% area chart of genre shares by calendar year (docs/specs/genre-taxonomy-release-1.md section 5).
+// Sound Drift: a stacked 100% area chart of genre shares by calendar year (docs/archive/genre-taxonomy-release-1.md section 5).
 interface GenreYearsChartProps {
   events: LoggedEvent[];
   byArtist: Map<string, ArtistGenres>;

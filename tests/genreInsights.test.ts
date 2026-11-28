@@ -198,7 +198,7 @@ test('cooling requires >= 5 sets before and <= half after, capped at 2', () => {
   ]);
 });
 
-// Marks every act in the event as B2B with the others in it (docs/specs/genre-taxonomy-release-1.md section 1).
+// Marks every act in the event as B2B with the others in it (docs/archive/genre-taxonomy-release-1.md section 1).
 const b2bEvent = (e: LoggedEvent): LoggedEvent => ({
   ...e,
   seen: e.seen.map((s) => ({ ...s, b2b: e.seen.filter((x) => x.key !== s.key).map((x) => x.key) })),
@@ -612,7 +612,7 @@ test('legacy fallback: without a taxonomy the mix groups by the stored parent an
   assert.deepEqual(mix.families, []);
 });
 
-// Multi-zoom (docs/specs/genre-taxonomy-release-1.md decisions 1-6 and section 2).
+// Multi-zoom (docs/archive/genre-taxonomy-release-1.md decisions 1-6 and section 2).
 const zoomVocab: GenreVocabulary = {
   genres: [
     { key: 'macro:electronic', name: 'Electronic', level: 'macro', aliases: [], umbrellas: [] },
@@ -722,7 +722,7 @@ test('genreZoom: without a taxonomy it falls back to music-story groups with no 
   assert.deepEqual(z.genres, []);
 });
 
-// Sound Drift (docs/specs/genre-taxonomy-release-1.md section 4).
+// Sound Drift (docs/archive/genre-taxonomy-release-1.md section 4).
 let driftSeq = 0;
 const setsIn = (year: number, names: string[], n = 1, extra: Partial<LoggedEvent> = {}): LoggedEvent[] =>
   Array.from({ length: n }, () => ev(`d${driftSeq++}`, `${year}-03-01`, names, extra));
@@ -896,7 +896,7 @@ test('soundDrift: without a taxonomy it falls back to music-story groups and ign
   assert.deepEqual(fam.years.map((y) => y.shares), [{ Electronic: 1, Rock: 0 }, { Electronic: 0, Rock: 1 }]);
 });
 
-// Lineup DNA (docs/specs/genre-taxonomy-release-2.md section 2 and decisions 1, 2, 5).
+// Lineup DNA (docs/archive/genre-taxonomy-release-2.md section 2 and decisions 1, 2, 5).
 const dnaFamilies = ['House', 'Techno', 'Trance', 'Garage', 'Dubstep', 'Jazz', 'Folk'];
 const dnaVocab: GenreVocabulary = {
   genres: [
@@ -1113,7 +1113,7 @@ test('lineupDna: without a taxonomy it uses the music-story groups', () => {
   assert.ok(Math.abs(whole.segments.reduce((t, s) => t + s.share, 0) - 1) < 1e-9);
 });
 
-// Event Match (docs/specs/genre-taxonomy-release-2.md section 4). Each genre sits in its own
+// Event Match (docs/archive/genre-taxonomy-release-2.md section 4). Each genre sits in its own
 // family ("Fam <name>") under one macro, so a family and a genre are the same thing here.
 const emVocab = (names: string[], links: Array<[string, string, number]> = []): GenreVocabulary => {
   const genres: VocabGenre[] = [{ key: 'macro:electronic', name: 'Electronic', level: 'macro', aliases: [], umbrellas: [] }];

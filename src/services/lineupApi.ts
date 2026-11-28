@@ -498,7 +498,7 @@ const vocabWrite = (operation: string, body: Record<string, unknown>) =>
 
 export const genresApi = {
   list: () => request<GenresList>('/api/artist-genres'),
-  // The owner's genre vocabulary (docs/specs/genre-vocabulary.md section 6).
+  // The owner's genre vocabulary (docs/archive/genre-vocabulary.md section 6).
   // Each write returns the change it recorded, which undoVocabulary takes back.
   // family is a family's key ('family:house') or name; a new genre goes in it (genre-taxonomy-phase-a.md section 6).
   createGenre: (name: string, parent?: string | null, family?: string | null) => vocabWrite('create', { name, parent, family }),
