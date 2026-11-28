@@ -6,6 +6,8 @@ import { entityLabel, KINDS, ManageData } from './ManageView';
 import { categoryGaps, linkedSuggestions, placeOfferVenues, rareLabels, recentAutoLinks, venuesWithoutPlace } from '../services/dataHealth';
 import { Equalizer } from './ui/Equalizer';
 import { Ledger } from './ui/Ledger';
+import { SeriesHealth } from './SeriesHealth';
+import { useIsOwner } from './MeContext';
 
 // Data health in the Manage tab: what needs your call to keep records from
 // drifting. Records that look like the same one (merge, or leave them),
@@ -30,6 +32,7 @@ const chip =
   'inline-flex min-h-11 sm:min-h-9 items-center gap-1 rounded-full border border-line-strong px-2.5 py-1 text-xs text-text hover:border-accent hover:text-accent disabled:opacity-40';
 
 export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, onOpen, onChanged }) => {
+  const isOwner = useIsOwner();
   const [venues, setVenues] = useState<VenuePlaces | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -118,6 +121,8 @@ export const DataHealth: React.FC<DataHealthProps> = ({ data, events, counts, on
           </ul>
         </div>
       )}
+
+      {isOwner && <SeriesHealth />}
 
       <div className="space-y-2">
         <h3 className={sectionTitle}>Venues whose events disagree on the city</h3>
