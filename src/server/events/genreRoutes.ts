@@ -94,7 +94,29 @@ export function lineupActs(event: LoggedEvent, job: LookupJob | null, edition: E
     const i = info.get(key);
     out.push({ key, name: p.name, ...(i?.alias ? { alias: i.alias } : {}), stages: i?.stages ?? [], days: i?.days ?? [], ...(i?.status ? { status: i.status } : {}), ...(i?.slotId ? { slotId: i.slotId } : {}) });
   }
-  return out;
+  return shareSlotPlaces(out);
+}
+
+// Acts in one B2B slot play the same set, so an act the lineup gives no stage or day takes its
+// slot partners' stages and days. Stages and days already on an act are never changed.
+export function shareSlotPlaces(acts: LineupGenresAct[]): LineupGenresAct[] {
+  const bySlot = new Map<string, { stages: Set<string>; days: Set<string> }>();
+  for (const a of acts) {
+    if (!a.slotId) continue;
+    const slot = bySlot.get(a.slotId) ?? { stages: new Set<string>(), days: new Set<string>() };
+    a.stages.forEach((s) => slot.stages.add(s));
+    a.days.forEach((d) => slot.days.add(d));
+    bySlot.set(a.slotId, slot);
+  }
+  return acts.map((a) => {
+    const slot = a.slotId ? bySlot.get(a.slotId) : undefined;
+    if (!slot) return a;
+    return {
+      ...a,
+      stages: a.stages.length ? a.stages : [...slot.stages],
+      days: a.days.length ? a.days : [...slot.days],
+    };
+  });
 }
 
 // The taxonomy as its own keys, read from the vocabulary (no extra query): the families and macros,
