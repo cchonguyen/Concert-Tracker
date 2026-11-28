@@ -141,3 +141,22 @@ test('runAutoLink saves its links even when contribute back hits a spent budget'
   assert.ok(saved.editionId, 'the link is saved although contribute back ran out of budget');
   assert.equal(saved.details.contributedAt, undefined);
 });
+
+test('runAutoLink contributes waiting linked events before drafting, so a spent budget never starves them', async () => {
+  const store = await fresh();
+  const owner = store.forUser({ userId: 'owner', role: 'owner' });
+  const linked = await ensureDraftEdition(store, ev({ id: 'l1' }), now);
+  assert.ok(linked);
+  await owner.putEvent(linked.event);
+  await owner.putEvent(ev({ id: 'u1', name: 'Bonobo', input: 'Bonobo', venue: 'Greek Theatre', seen: [{ key: 'bonobo', name: 'Bonobo', from: 'you' }] }));
+  const realUpsertVenue = store.upsertVenue.bind(store);
+  store.upsertVenue = (async (input: { name: string }) => {
+    // Drafting the unlinked event finds the budget spent.
+    if (input.name === 'Greek Theatre') throw new Error('Supabase upsertVenue failed: BudgetExhausted: Subrequest budget exhausted: 46 of 50 used.');
+    return realUpsertVenue(input as never);
+  }) as typeof store.upsertVenue;
+  await runAutoLink(store, [{ userId: 'owner', role: 'owner' }], { now });
+  const saved = new Map((await owner.listEvents()).map((e) => [e.id, e]));
+  assert.ok(saved.get('l1')?.details.contributedAt, 'the waiting linked event was contributed first');
+  assert.equal(saved.get('u1')?.editionId, undefined);
+});

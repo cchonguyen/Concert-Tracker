@@ -216,11 +216,11 @@ async function runCron(env: Env): Promise<void> {
       // Best effort: the budget may be spent.
     }
   }
-  // Every 10 minutes at minute 2 (2, 12, 22 ...): link each member's events (owner included) that match exactly one
+  // Minutes 3 and 4 of every 5 (3, 4, 8, 9 ...), which no other cron job uses: link each member's events (owner included) that match exactly one
   // verified edition by date, name and venue, then give a draft shared edition to the rest (docs/specs/series-sync.md).
   // Each link is recorded on the event and undone by Unlink.
   try {
-    const db = multiUserFromEnv(settings) && now.getUTCMinutes() % 10 === 2 ? getSupabaseClient() : null;
+    const db = multiUserFromEnv(settings) && now.getUTCMinutes() % 5 >= 3 ? getSupabaseClient() : null;
     if (db) {
       const members = await supabaseMemberDirectory(db).listMembers();
       const report = await runAutoLink(deps.store, members, { now });
