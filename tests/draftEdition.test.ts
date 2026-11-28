@@ -207,3 +207,28 @@ test('runAutoLink saves its work even when edition change records spend the rese
   assert.equal(saved.length, 1, 'the first contribution was saved');
   assert.equal(budget.hold ?? 0, 0, 'the hold is released after the run');
 });
+
+test('runAutoLink does not start a member whose reads and save no longer fit', async () => {
+  const store = await fresh();
+  const owner = store.forUser({ userId: 'owner', role: 'owner' });
+  await owner.putEvent(ev({ id: 'u1' }));
+  const budget = makeBudget();
+  // Reading a member's events costs one call.
+  const realFor = store.forUser.bind(store);
+  store.forUser = ((ctx: Parameters<typeof store.forUser>[0]) => {
+    const scoped = realFor(ctx);
+    return new Proxy(scoped, {
+      get: (target, prop) =>
+        prop === 'listEvents'
+          ? async () => {
+              budget.take(1);
+              return target.listEvents();
+            }
+          : Reflect.get(target, prop),
+    });
+  }) as typeof store.forUser;
+  budget.used = budget.limit - budget.reserve - 5;
+  const report = await runWithBudget(budget, () => runAutoLink(store, [{ userId: 'owner', role: 'owner' }], { now }));
+  assert.equal(report, null);
+  assert.equal((await owner.listEvents())[0].editionId, undefined);
+});
