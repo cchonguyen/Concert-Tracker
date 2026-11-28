@@ -163,3 +163,12 @@ test('every closed ticket carries a Closed verdict line', () => {
   assert.deepEqual(missing, []);
   assert.ok(count > 0);
 });
+
+test('AGENTS.md spoke-owned rules stay concise (<= 6500 chars)', () => {
+  const raw = readFileSync(path.join(root, 'AGENTS.md'), 'utf8');
+  const spoke = raw.replace(/<!-- >>> harness >>> -->[\s\S]*<!-- <<< harness <<< -->/g, '').trim();
+  assert.ok(
+    spoke.length <= 6500,
+    `AGENTS.md spoke-owned text is ${spoke.length} chars (limit 6500); move details into docs/architecture/ and link there.`,
+  );
+});
