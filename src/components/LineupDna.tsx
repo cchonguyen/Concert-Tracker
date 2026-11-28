@@ -188,19 +188,6 @@ export const LineupDna: FC<Props> = ({ eventId, refreshKey, events }) => {
                     )}
                   </div>
                 )}
-                {bar.id === 'all' && match && (
-                  <p className="text-xs text-text">{match.enough ? matchLine(match) : floorLine}</p>
-                )}
-                {bar.id === 'all' && match?.enough && match.inLane.length > 0 && (
-                  <p className="text-xs text-text-muted">
-                    <span className="font-medium text-text">Your lane:</span> {actNames(match.inLane)}
-                  </p>
-                )}
-                {bar.id === 'all' && match?.enough && match.nearbyUnseen.length > 0 && (
-                  <p className="text-xs text-text-muted">
-                    <span className="font-medium text-text">Nearby:</span> {actNames(match.nearbyUnseen)}
-                  </p>
-                )}
                 {bar.lowCoverage && (
                   <p className="text-xs text-text-muted">
                     {bar.tagged} of {bar.total} acts have a genre.
@@ -211,6 +198,21 @@ export const LineupDna: FC<Props> = ({ eventId, refreshKey, events }) => {
           </div>
         );
       })}
+      {match && (
+        <div className="space-y-1">
+          <p className="text-xs text-text">{match.enough ? matchLine(match) : floorLine}</p>
+          {match.enough && match.inLane.length > 0 && (
+            <p className="text-xs text-text-muted">
+              <span className="font-medium text-text">Your lane:</span> {actNames(match.inLane)}
+            </p>
+          )}
+          {match.enough && match.nearbyUnseen.length > 0 && (
+            <p className="text-xs text-text-muted">
+              <span className="font-medium text-text">Nearby:</span> {actNames(match.nearbyUnseen)}
+            </p>
+          )}
+        </div>
+      )}
       <table className="sr-only">
         <caption>Lineup DNA numbers</caption>
         <thead>
