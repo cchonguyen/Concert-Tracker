@@ -20,6 +20,7 @@ import { Tabs } from './ui/Tabs';
 import { CanonicalArchive, type ArchiveSection, type EditionStatus } from './CanonicalArchive';
 import { useIsOwner } from './MeContext';
 import { AdminInbox } from './AdminInbox';
+import { Notice } from './ui/Notice';
 import {
   parseManageParams,
   buildManageUrl,
@@ -362,7 +363,7 @@ export const ManageView: React.FC<ManageViewProps> = ({ events, target, onOpenEv
   useKeptScroll(`mine:${kind}`, !entryShown, data !== null);
 
   if (error) {
-    return <p className="rounded-card border border-bad/45 bg-bad/10 p-3 text-sm text-bad">{error}</p>;
+    return <Notice tone="error">{error}</Notice>;
   }
   if (!data) {
     return (

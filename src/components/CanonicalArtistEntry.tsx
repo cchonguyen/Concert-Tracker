@@ -252,7 +252,7 @@ export const CanonicalArtistEntry: React.FC<CanonicalArtistEntryProps> = ({ arti
       </div>
 
       {problem && (
-        <div role="alert" className="space-y-2 rounded-card border border-bad/45 bg-bad/10 p-3 text-sm text-bad">
+        <div role="alert" className="space-y-2 rounded-card border border-line bg-bad-soft p-3 text-sm text-text">
           <p>{problem.message}</p>
           {problem.with && (
             <button onClick={() => { setMerging(true); setTarget(artists.find((a) => a.key === problem.with!.id) ?? null); }} className={quiet}>

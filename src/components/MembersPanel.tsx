@@ -9,6 +9,7 @@ import { HintPill } from './ui/HintPill';
 import { Ledger } from './ui/Ledger';
 import { Pill } from './ui/Pill';
 import { Tabs } from './ui/Tabs';
+import { Notice } from './ui/Notice';
 import { accessRequestsApi, membersApi, type AccessRequestRow, type MemberRow, type RequestSettings, type RequestStatus } from '../services/lineupApi';
 import { useMe } from './MeContext';
 
@@ -178,8 +179,8 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
         value={tab}
         onChange={setTab}
       />
-      {error && <p className="text-xs text-bad">{error}</p>}
-      {note && <p className="text-xs text-good">{note}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
+      {note && <Notice tone="success">{note}</Notice>}
 
       {tab === 'members' && (
         <>
@@ -303,7 +304,7 @@ export const MembersPanel: React.FC<{ onClose: () => void; onChanged?: () => voi
                 aria-pressed={requests?.settings.paused ?? false}
                 disabled={busy || !requests}
                 onClick={() => saveSettings({ paused: !requests?.settings.paused })}
-                className={`${button} ${requests?.settings.paused ? 'border-bad/45 text-bad' : ''}`}
+                className={`${button} ${requests?.settings.paused ? 'bg-bad-soft text-text!' : ''}`}
               >
                 {requests?.settings.paused ? 'Requests paused' : 'Pause requests'}
               </button>

@@ -7,6 +7,7 @@ import { eventsApi, SheetsStatus, sheetsApi } from '../services/lineupApi';
 import { readTable } from '../services/listImport';
 import { pickSpreadsheet } from '../services/googlePicker';
 import { droppedColumns, outsideEdits, sheetRows, sheetTable } from '../services/sheetSync';
+import { Notice } from './ui/Notice';
 
 // "Google Sheets" in the Table view: sign in, link a sheet, and update it.
 // One way: the app is the source of truth and writes your log into the tab;
@@ -109,13 +110,13 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ notice, onClose }) => {
           </button>
         </div>
 
-        {error && <p className="rounded-card border border-bad/45 bg-bad/10 p-2 text-sm text-bad">{error}</p>}
+        {error && <Notice tone="error">{error}</Notice>}
         {reconnect && (
           <a href="/api/sheets/connect" className={primary}>
             Sign in with Google again
           </a>
         )}
-        {message && <p className="rounded-card border border-good/45 bg-good/10 p-2 text-sm text-good">{message}</p>}
+        {message && <Notice tone="success">{message}</Notice>}
 
         {!status ? (
           <span role="status" aria-label="Loading Google Sheets status" className="inline-flex items-center text-text-muted">
@@ -212,18 +213,18 @@ export const SheetSync: React.FC<SheetSyncProps> = ({ notice, onClose }) => {
               {busy === 'sync' ? <Equalizer size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />} Update the sheet
             </button>
             {confirm && (
-              <div className="space-y-2 rounded-card border border-warn/45 bg-warn/10 p-3">
+              <div className="space-y-2 rounded-card border border-line bg-warn-soft p-3 text-text">
                 {confirm.edits > 0 && (
-                  <p className="flex items-start gap-1.5 text-sm text-warn">
-                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <p className="flex items-start gap-1.5 text-sm text-text">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warn" />
                     {confirm.edits} row{confirm.edits === 1 ? '' : 's'} in "{confirm.tab}" {confirm.edits === 1 ? 'was' : 'were'} changed, added or
                     removed in the sheet. Updating replaces {confirm.edits === 1 ? 'it' : 'them'} with your log; nothing from the sheet is
                     saved to the app.
                   </p>
                 )}
                 {confirm.dropped.length > 0 && (
-                  <p className="flex items-start gap-1.5 text-sm text-warn">
-                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <p className="flex items-start gap-1.5 text-sm text-text">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warn" />
                     The {confirm.dropped.map((d) => `"${d}"`).join(', ')} column{confirm.dropped.length === 1 ? ' is' : 's are'} not part of
                     the app and will be removed.
                   </p>
