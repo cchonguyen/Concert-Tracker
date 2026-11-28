@@ -10,14 +10,14 @@ const { emailCard } = copy;
 export const EmailCard: React.FC<{ waiting: number; onCheck: () => void }> = ({ waiting, onCheck }) => {
   const [open, setOpen] = useState(false);
   return (
-    <section className="space-y-4 rounded-card border border-accent-tint-line bg-accent-tint p-5">
+    <section className="space-y-4 rounded-card border border-line bg-surface-1 p-5 shadow-[4px_4px_0_0_var(--la-second)]">
       <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-accent">{emailCard.eyebrow}</p>
+        <p className="inline-block rounded-[3px] bg-second px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-on-second">{emailCard.eyebrow}</p>
         <h2 className="poster-head text-2xl text-text">{emailCard.title}</h2>
         <p className="text-sm text-text-muted">{emailCard.line}</p>
         <ul className="flex flex-wrap gap-2 pt-1">
           {emailCard.badges.map((b) => (
-            <li key={b} className="rounded-full border border-line-strong px-2.5 py-0.5 text-xs text-text-muted">
+            <li key={b} className="rounded-full bg-neutral-soft px-2.5 py-0.5 text-xs text-text">
               {b}
             </li>
           ))}

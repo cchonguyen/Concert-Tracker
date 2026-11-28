@@ -185,9 +185,9 @@ export const CollaborationsCard: React.FC<Props> = ({
       {open && (
         <div className="space-y-4 pt-2">
           {(isNew || editing) && (
-            <div className="space-y-3 rounded-card border border-accent-tint-line bg-accent-tint p-3">
+            <div className="space-y-3 rounded-card border border-line bg-accent-tint p-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-accent">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-text">
                   {isNew ? 'Create Collaboration' : `Edit ${editing?.alias}`}
                 </h4>
                 <IconButton icon={X} label="Close" size="chip" onClick={cancelForm} />
