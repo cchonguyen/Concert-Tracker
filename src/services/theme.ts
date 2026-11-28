@@ -1,5 +1,5 @@
 // The theme is a per-device choice kept in localStorage: a mode (dark, light or
-// follow the system) and an accent. index.html applies it before the app loads
+// follow the system) and an accent. app.html applies it before the app loads
 // with the same keys; keep the two in step.
 
 export const THEME_MODES = ['dark', 'light', 'system'] as const;
@@ -21,11 +21,11 @@ export const parseAccent = (v: string | null | undefined): Accent =>
 export const resolveMode = (mode: ThemeMode, systemLight: boolean): 'dark' | 'light' =>
   mode === 'system' ? (systemLight ? 'light' : 'dark') : mode;
 
-// The browser bar color for each resolved mode: the page color (--la-page in index.css).
+// The browser bar color for each resolved mode: the page color (--la-page in src/styles/tokens.css).
 export const BAR_COLORS = { dark: '#0e0e11', light: '#f7f7f8' } as const;
 
-// Ticket stub style (docs/specs/ticket-stub-styles.md): how every ticket stub is printed.
-// index.css restyles .ticket-card for each value of data-stub on <html>.
+// Ticket stub style: how every ticket stub is printed.
+// src/styles/ticket-styles.css restyles .ticket-card for each value of data-stub on <html>.
 export const STUB_STYLES = ['original', 'thermal', 'hard', 'raffle', 'riso'] as const;
 export type StubStyle = (typeof STUB_STYLES)[number];
 export const STUB_STYLE_LABELS: Record<StubStyle, string> = {

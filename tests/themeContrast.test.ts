@@ -1,5 +1,5 @@
 // Every text and fill pair in the design refresh tokens must reach 4.5:1 in all
-// 10 themes (5 accents x dark and light). The test reads src/index.css itself,
+// 10 themes (5 accents x dark and light). The test reads src/styles/tokens.css itself,
 // so a token edit that drops a pair under AA fails the build.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ACCENTS, type Accent } from '../src/services/theme.ts';
 
-const css = readFileSync(path.join(import.meta.dirname, '..', 'src', 'index.css'), 'utf8');
+const css = readFileSync(path.join(import.meta.dirname, '..', 'src', 'styles', 'tokens.css'), 'utf8');
 
 type Rgb = [number, number, number]; // linear-light sRGB, 0..1
 type Decls = Record<string, string>;

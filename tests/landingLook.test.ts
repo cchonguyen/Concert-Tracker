@@ -61,9 +61,10 @@ test('the heartbeat logo is public, animated, and uses primary accent tokens', (
   assert.match(logoTsx, /logo-still/);
 });
 
-test('index.css loads the module and exposes its tokens', () => {
+test('index.css loads the modules and tokens.css exposes its tokens', () => {
   const index = read('src/index.css');
+  const tokens = read('src/styles/tokens.css');
   assert.match(index, /@import "\.\/styles\/landing-look\.css";/);
-  assert.match(index, /--font-poster:/);
-  assert.match(index, /--color-second: var\(--la-second\);/);
+  assert.match(tokens, /--font-poster:/);
+  assert.match(tokens, /--color-second: var\(--la-second\);/);
 });

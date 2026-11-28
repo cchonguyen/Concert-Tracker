@@ -22,7 +22,7 @@ Read docs/design-system/README.md, philosophy-and-voice.md and design-system.jso
 - Only add a shared component when the current change needs it. Do not build the whole library ahead of use.
 
 ### Tokens and theme
-- Write UI in Tailwind zinc (surfaces, text) and violet (accent) classes. Themes remap those variables; do not hardcode hex colours in components.
+- Write new UI using semantic `--la-*` utilities (`bg-surface-1`, `text-text-muted`, `border-line`, `bg-accent-fill`, `text-on-accent`, `text-good/warn/bad`). Themes remap those variables; do not hardcode hex colours in components. Legacy `zinc` and `violet` classes remain mapped for older screens.
 - Use rounded-control for buttons, inputs and icon buttons, and rounded-card for cards, panels and notices.
 - Theme mode and accent are per-device choices in localStorage (<prefix>.themeMode.v1, <prefix>.accent.v1), applied to <html> as data-theme and data-accent before the app draws. Keep the pre-paint script and the theme module in step.
 - Type roles: font-sans for what people read or tap, font-display for names of things, font-mono for dates, times, counts and prices, and PosterHeading (font-poster, capitals) for page, section, panel and dialog titles. Never set a name of a thing in poster capitals.
