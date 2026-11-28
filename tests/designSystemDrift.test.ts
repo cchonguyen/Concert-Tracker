@@ -49,3 +49,12 @@ test('theme storage keys in theme.ts match app.html and design-system.json', () 
     assert.ok(appHtml.includes(key), `app.html missing ${key}`);
   }
 });
+
+test('src/components/ui/ uses semantic --la-* utilities instead of raw Tailwind palette colors', () => {
+  const rawPalette = /\b(?:text|bg|border|ring|outline)-(?:zinc|violet|rose|emerald|amber|sky|fuchsia|cyan)-\d{2,3}\b/;
+  const uiDir = path.join(root, 'src', 'components', 'ui');
+  const offenders = readdirSync(uiDir)
+    .filter((f) => f.endsWith('.tsx'))
+    .filter((f) => rawPalette.test(readFileSync(path.join(uiDir, f), 'utf8')));
+  assert.deepEqual(offenders, []);
+});
