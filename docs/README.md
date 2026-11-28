@@ -12,6 +12,7 @@ Active specs, backlog items, and `AGENTS.md`-referenced specs:
 | --- | --- |
 | [auto-verify-spec.md](auto-verify-spec.md) | Built (slices 2 to 5). `AGENTS.md` links its rules here. |
 | [ingest-canon-plan.md](ingest-canon-plan.md) | Built (Slices 11.0 to 11.25). Personal-field encryption is still on hold. |
+| [specs/who-i-saw-lineup.md](specs/who-i-saw-lineup.md) | Approved 2026-11-28 (Slices 52.1 to 52.3). |
 | [specs/canonical-genres.md](specs/canonical-genres.md) | Built (Slices 35.1 to 35.12, migration 0059). `AGENTS.md` links its rules here. |
 | [specs/genre-taxonomy-phase-a.md](specs/genre-taxonomy-phase-a.md) | Built (Slices 39.1 to 39.10, migration 0063). `AGENTS.md` links its rules here. |
 | [specs/genre-taxonomy-release-3.md](specs/genre-taxonomy-release-3.md) | Built (Slices 43.0 to 43.9, migration 0064). `AGENTS.md` links its rules here. |
