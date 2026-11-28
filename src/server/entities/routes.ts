@@ -295,14 +295,23 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
     return out;
   }
 
-  // Find gaps: every edition whose name starts with a catalog artist who is not on its lineup yet.
+  // Find gaps: every edition whose name starts with a catalog artist who is not on its lineup yet, less the ones the
+  // owner dismissed (editionId and artist key, in the owner's settings).
+  const NAME_GAPS_DISMISSED = 'nameGapsDismissed';
+  const NAME_GAPS_DISMISSED_MAX = 2000;
   router.get(
     '/manage/canonical/name-matches',
     ownerOnly as any,
     manage(async () => {
       // Headers only (one query), then the lineups of the few editions whose name matched. Loading every
       // edition in full cost a round trip per 100 editions and hit the Worker's subrequest budget.
-      const [headers, artists, blocked] = await Promise.all([store.listEditionHeaders({ limit: NAME_MATCH_EDITION_LIMIT }), store.listArtists(), namedPlaceRemainders(store)]);
+      const [headers, artists, blocked, dismissedList] = await Promise.all([
+        store.listEditionHeaders({ limit: NAME_MATCH_EDITION_LIMIT }),
+        store.listArtists(),
+        namedPlaceRemainders(store),
+        store.getSetting<string[]>(NAME_GAPS_DISMISSED),
+      ]);
+      const dismissed = new Set(dismissedList ?? []);
       const catalog = prepareCatalog(artists.map((a) => ({ key: a.key, name: a.name })));
       const named = [];
       for (const edition of headers) {
@@ -314,12 +323,28 @@ export function entitiesRouter(deps: PipelineDeps, finders: DetailFinder[] = def
       const onLineup = new Set(refs.map((r) => `${r.editionId}\u0000${r.artistKey}`));
       const matches = [];
       for (const { edition, match } of named) {
-        if (onLineup.has(`${edition.id}\u0000${match.artistKey}`)) continue;
+        if (onLineup.has(`${edition.id}\u0000${match.artistKey}`) || dismissed.has(`${edition.id}\u0000${match.artistKey}`)) continue;
         matches.push({ editionId: edition.id, editionName: edition.name, artistKey: match.artistKey, artistName: match.artistName });
       }
       return { matches };
     }),
   );
+
+  // The owner dismisses a gap: that act is not offered for that edition again. Kept in the owner's own settings; no
+  // shared record changes, so there is nothing to undo on the edition.
+  router.post('/manage/canonical/name-matches/dismiss', ownerOnly as any, async (req, res) => {
+    try {
+      const editionId = String(req.body?.editionId ?? '');
+      const artistKey = String(req.body?.artistKey ?? '');
+      if (!editionId || !artistKey) return res.status(400).json({ error: 'Which gap?' });
+      const current = (await store.getSetting<string[]>(NAME_GAPS_DISMISSED)) ?? [];
+      const key = `${editionId}\u0000${artistKey}`;
+      if (!current.includes(key)) await store.putSetting(NAME_GAPS_DISMISSED, [...current, key].slice(-NAME_GAPS_DISMISSED_MAX));
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
 
   // Member proposal: a signed-in member proposes a catalog artist named in a shared edition's name. The owner
   // approves or rejects it in the Changes queue. Stored as a review item with no user id and no personal field.

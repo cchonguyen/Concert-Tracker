@@ -37,6 +37,20 @@ export const EditionNameGaps: React.FC = () => {
     }
   };
 
+  // Hides a gap the owner does not want: that act is not offered for that edition again.
+  const dismiss = async (row: NameMatch) => {
+    const key = `${row.editionId}:${row.artistKey}`;
+    setBusy(key);
+    try {
+      await canonicalApi.dismissNameMatch(row.editionId, row.artistKey);
+      setRows((r) => (r ?? []).filter((x) => `${x.editionId}:${x.artistKey}` !== key));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not dismiss it.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   // Adds each row in turn, so two acts on one edition never race. A row the server refuses is counted, not retried.
   const addAll = async () => {
     if (!rows?.length) return;
@@ -84,14 +98,24 @@ export const EditionNameGaps: React.FC = () => {
                   <span className="text-text-muted"> in </span>
                   {row.editionName}
                 </span>
+                <span className="flex items-center gap-1">
                 <button
                   type="button"
                   disabled={busy !== null}
                   onClick={() => void add(row)}
                   className="inline-flex min-h-11 items-center sm:min-h-9 rounded-control border border-line-strong px-2.5 py-1 text-xs text-text hover:bg-surface-2 disabled:opacity-50"
                 >
-                  {busy === key ? 'Adding…' : 'Add to lineup'}
+                  {busy === key ? 'Working…' : 'Add to lineup'}
                 </button>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void dismiss(row)}
+                  className="inline-flex min-h-11 items-center sm:min-h-9 rounded-control px-2.5 py-1 text-xs text-text-muted hover:text-text disabled:opacity-50"
+                >
+                  Dismiss
+                </button>
+                </span>
               </li>
             );
           })}
