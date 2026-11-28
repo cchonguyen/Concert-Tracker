@@ -208,6 +208,9 @@ export interface AutoLinkOptions {
 }
 
 const MEMBER_COST = 3; // listEvents, series list (cached), putEvents
+// The final save: prior rows, the upserts and the activity log. Kept free above the reserve, because edition
+// change records already draw on the reserve during the run.
+export const SAVE_COST = 6;
 function defaultBudgetLeft(): number {
   const b = currentBudget();
   return b ? b.limit - b.reserve - b.used : Number.POSITIVE_INFINITY;
@@ -302,7 +305,7 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
         .filter((e) => e.editionId && !e.deletedAt && !e.details?.contributedAt)
         .sort((a, b) => youRank(a) - youRank(b));
       for (const e of linkedNow) {
-        if (budgetOut || budgetLeft() < contributeCost(e) + 1) break;
+        if (budgetOut || budgetLeft() < contributeCost(e) + SAVE_COST) break;
         try {
           byId.set(e.id, await contributeBack(service, e, m.role === 'owner', opts.now, report.contributed));
         } catch (err) {
@@ -320,7 +323,7 @@ export async function runAutoLink(service: LineupStore, members: AutoLinkMember[
       const todo = unmatched.filter((e) => !e.details?.draftTriedAt).sort((a, b) => youRank(a) - youRank(b));
       for (const e of todo) {
         if (drafted >= maxPerMember) break;
-        if (budgetLeft() < DRAFT_COST + contributeCost(e) + 1) break;
+        if (budgetLeft() < DRAFT_COST + contributeCost(e) + SAVE_COST) break;
         try {
           const d = await ensureDraftEdition(service, e, opts.now);
           if (d) {

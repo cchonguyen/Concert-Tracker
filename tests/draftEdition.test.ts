@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { DRAFT_LINK_REASON, ensureDraftEdition } from '../src/server/canon/draftEdition.ts';
-import { runAutoLink } from '../src/server/canon/autoLink.ts';
+import { SAVE_COST, runAutoLink } from '../src/server/canon/autoLink.ts';
 import { NOTICE_SETTING, NOTICE_VERSION } from '../src/server/auth/routes.ts';
 import { FileLineupStore } from '../src/server/lineup/store/fileStore.ts';
 import type { LoggedEvent } from '../src/server/events/types.ts';
@@ -159,4 +159,17 @@ test('runAutoLink contributes waiting linked events before drafting, so a spent 
   const saved = new Map((await owner.listEvents()).map((e) => [e.id, e]));
   assert.ok(saved.get('l1')?.details.contributedAt, 'the waiting linked event was contributed first');
   assert.equal(saved.get('u1')?.editionId, undefined);
+});
+
+test('runAutoLink starts no contribution it could not still save', async () => {
+  const store = await fresh();
+  const owner = store.forUser({ userId: 'owner', role: 'owner' });
+  const linked = await ensureDraftEdition(store, ev({ id: 'l1' }), now);
+  assert.ok(linked);
+  await owner.putEvent(linked.event);
+  // One ticked act costs 7 calls; 10 left would leave no room for the save.
+  await runAutoLink(store, [{ userId: 'owner', role: 'owner' }], { now, budgetLeft: () => 10 });
+  assert.equal((await owner.listEvents())[0].details.contributedAt, undefined);
+  await runAutoLink(store, [{ userId: 'owner', role: 'owner' }], { now, budgetLeft: () => 7 + SAVE_COST });
+  assert.ok((await owner.listEvents())[0].details.contributedAt);
 });
