@@ -194,6 +194,12 @@
   --la-good: #34d3a6;
   --la-warn: #fbbf24;
   --la-bad: #f87171;
+  /* Soft solid fills for pills, chips and messages (docs/specs/neon-cleanup.md): tint over surface-1, ink text. */
+  --la-good-soft: color-mix(in oklab, var(--la-good) 16%, var(--la-surface-1));
+  --la-warn-soft: color-mix(in oklab, var(--la-warn) 16%, var(--la-surface-1));
+  --la-bad-soft: color-mix(in oklab, var(--la-bad) 16%, var(--la-surface-1));
+  --la-neutral-soft: var(--la-surface-3);
+  --la-on-warn: #121016;
   /* Ticket stub (docs/archive/ticket-stub.md): perforation and paper, derived from the tokens above. */
   --la-perf: color-mix(in oklab, var(--la-text) 32%, transparent);
   --la-paper: color-mix(in oklab, var(--la-surface-1) 90%, var(--accent-500));
@@ -219,6 +225,12 @@
   --la-good: #0b7a5c;
   --la-warn: #8a4b08;
   --la-bad: #b91c1c;
+  /* Soft solid fills for pills, chips and messages (docs/specs/neon-cleanup.md): tint over surface-1, ink text. */
+  --la-good-soft: color-mix(in oklab, var(--la-good) 12%, var(--la-surface-1));
+  --la-warn-soft: color-mix(in oklab, var(--la-warn) 12%, var(--la-surface-1));
+  --la-bad-soft: color-mix(in oklab, var(--la-bad) 10%, var(--la-surface-1));
+  --la-neutral-soft: var(--la-surface-3);
+  --la-on-warn: #ffffff;
   --la-perf: color-mix(in oklab, var(--la-text) 32%, transparent);
   --la-paper: color-mix(in oklab, var(--la-surface-1) 94%, var(--accent-500));
   --la-paper-2: color-mix(in oklab, var(--la-surface-2) 88%, var(--accent-500));
@@ -253,6 +265,11 @@
   --color-second: var(--la-second);
   --color-second-soft: var(--la-second-soft);
   --color-on-second: var(--la-on-second);
+  --color-good-soft: var(--la-good-soft);
+  --color-warn-soft: var(--la-warn-soft);
+  --color-bad-soft: var(--la-bad-soft);
+  --color-neutral-soft: var(--la-neutral-soft);
+  --color-on-warn: var(--la-on-warn);
 }
 
 /* Type roles: Jakarta for UI copy, Newsreader for names of things and ticket headlines, Mono for dates/counts/prices, Anton for PosterHeading capitals. */

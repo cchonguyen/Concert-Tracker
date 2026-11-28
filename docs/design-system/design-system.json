@@ -77,6 +77,9 @@
       "text": ["--la-text", "--la-text-muted", "--la-text-faint"],
       "accent": ["--la-accent", "--la-accent-fill", "--la-on-accent", "--la-accent-tint", "--la-accent-tint-line", "--la-row-hover"],
       "status": ["--la-good", "--la-warn", "--la-bad"],
+      "softSolid": ["--la-good-soft", "--la-warn-soft", "--la-bad-soft", "--la-neutral-soft"],
+      "solidInk": ["--la-on-warn"],
+      "softSolidUse": "Pills, chips, badges, count bubbles and messages: a tinted fill with ink text (text-text), a coloured icon and no border. Tailwind: bg-good-soft, bg-warn-soft, bg-bad-soft, bg-neutral-soft, text-on-warn. Plain bg-accent-tint is the accent's soft solid. See docs/specs/neon-cleanup.md.",
       "ticket": ["--la-paper", "--la-paper-2", "--la-perf"]
     },
     "accentAttribute": "data-accent on <html>; --accent-* scales are mapped onto --la-accent* and legacy --color-violet-*",
@@ -375,11 +378,17 @@
     },
     "landingLook": [
       "Buttons lift 1.5px, grow 2% and glow in the accent on hover (btn-pop) and press to 94% on tap; never tilt.",
+      "Layered buttons (btn-layer) lift 1px on hover and press 1px on tap, with a hard offset shadow in --la-second; no movement under reduced motion.",
       "Post-its rise in and fade in on load, use a slightly transparent drop-shadow, and straighten from their resting tilt, lift and grow 2% on hover; tape lifts; icon hops.",
       "The backdrop pairs a 400s rotating, 50s drifting contour layer (5% opacity) with a non-rotating 10px sliding dot grid (14s, 10% opacity).",
       "The heartbeat logo beats every 1.45s and matches the primary accent color; CSS switches to a still version under reduced motion.",
       "All of these stop under prefers-reduced-motion: reduce."
     ]
+  },
+  "utilityClasses": {
+    "btn-layer": "Layered button: solid --la-surface-3 fill, no border, hard offset shadow in --la-second (or --layer-shadow). Table's Fill gaps. Hover and press move it 1px; no movement under reduced motion.",
+    "today-line": "The Today line, the page's kept neon: accent mono capitals between two glowing 1px accent lines. Table and Timeline agenda only.",
+    "hatch": "Diagonal fill for not-certain states (Inferred, upcoming month bars) in place of dashed borders. Uses currentColor at 14%."
   },
   "notDefinedYet": [
     "type scale beyond the poster heading sizes (Tailwind default sizes)",
