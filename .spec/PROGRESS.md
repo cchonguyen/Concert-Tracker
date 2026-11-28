@@ -14,16 +14,12 @@ Every slice (34.x) is done; see `.spec/archive/HISTORY-2026-11.md`.
 Every slice (35.x) is done; see `.spec/archive/HISTORY.md`.
 ## Phase 1 Artist Entity Cleanup (docs/specs/artist-entity-cleanup.md, approved by Charlie 2026-11-26; migration 0061, Charlie applied it)
 Every slice (37.x) is done; see `.spec/archive/HISTORY-2026-11.md`.
-
 ## Genres in Explore (docs/specs/genre-explore.md, ideas and tab changes approved by Charlie 2026-11-26 PT; planned for Gemini; no migration; issues opened before each slice starts)
 Every slice (38.x) is done; see `.spec/archive/HISTORY-2026-11.md`. 38.5 and 38.8 are replaced in Release 1 (40.3, 40.5).
-
 ## Genre taxonomy, Phase A (docs/specs/genre-taxonomy-phase-a.md, plan approved by Charlie 2026-11-27 PT; migration 0063, held until applied; 39.1 waits on his OK for the rule wording)
 Finished slices (39.x) are in `.spec/archive/HISTORY-2026-11.md`.
-
 ## Genre taxonomy, Release 1 (docs/specs/genre-taxonomy-release-1.md, plan approved by Charlie 2026-11-27 PT; no migration)
 Every slice (40.x) is done; see `.spec/archive/HISTORY-2026-11.md`.
-
 ## Genre taxonomy, Release 2 (docs/specs/genre-taxonomy-release-2.md, plan approved by Charlie 2026-11-27 PT; no migration; 41.0 not needed)
 Every slice (41.x) is done; see `.spec/archive/HISTORY-2026-11.md`.
 
@@ -50,6 +46,11 @@ Every slice (43.x, plus its re-verify slices) is done; see `.spec/archive/HISTOR
 - [x] **Slice 46.1: Button glow and pop** [UI / VISUAL] docs/specs/landing-look.md. Target files: src/styles/landing-look.css, src/components/QuickAdd.tsx, src/components/ui/IconButton.tsx, src/components/ui/MenuButton.tsx | Issue: #1135 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 46.2: Sliding highlight on Agenda order and Ranking sort and view** [UI / VISUAL] docs/specs/landing-look.md. Target files: src/components/ui/Segmented.tsx, src/components/timeline/AgendaView.tsx, src/components/ArtistsView.tsx, docs/specs/landing-look.md | Issue: #1139 | Verify: npm run lint --silent && npm test --silent
 - [x] **Slice 46.3: Sliding highlight on Stats years, Event weekends and things left** [UI / VISUAL] docs/specs/landing-look.md. Target files: src/components/StatsView.tsx, src/components/EventDetail.tsx, src/components/PosterHeader.tsx, docs/design-system/design-system.json | Issue: #1140 | Verify: npm run lint --silent && npm test --silent
+- [x] **Slice 46.4: Playful tabs** [UI / VISUAL] docs/specs/landing-look.md. Target files: src/components/ui/Tabs.tsx, docs/specs/landing-look.md, docs/design-system/design-system.json | Issue: #1147 | Verify: npm run lint --silent && npm test --silent
+- [x] **Slice 46.5: Reduce tab animation speeds by 50%** [UI / VISUAL] Halve animation speeds (quarter spring stiffness, halve spring damping, double keyframe durations) on Tabs and Segmented. Target files: src/components/ui/Tabs.tsx, src/components/ui/Segmented.tsx | Verify: npm run typecheck --silent && npm run lint --silent && npm test --silent
+- [x] **Slice 46.6: Replace tab seesaw with subtle squish** [UI / VISUAL] Replace folder tab seesaw rotation with a subtle squish animation in Tabs.tsx and update docs. Target files: src/components/ui/Tabs.tsx, docs/specs/landing-look.md, docs/design-system/design-system.json | Verify: npm run typecheck --silent && npm run lint --silent && npm test --silent
+- [x] **Slice 46.7: Area-preserving tall tab squish and +25% speed** [UI / VISUAL] Make folder tab squish slightly taller and narrower in motion (constant area) easing back on arrival, and increase tab/segmented animation speeds by 25%. Target files: src/components/ui/Tabs.tsx, src/components/ui/Segmented.tsx, docs/specs/landing-look.md, docs/design-system/design-system.json | Verify: npm run typecheck --silent && npm run lint --silent && npm test --silent
+- [x] **Slice 46.8: Speed up tab squish ease-in/out by 25%** [UI / VISUAL] Reduce Tabs.tsx squish and squash keyframe durations by 20% (25% faster: 0.72s -> 0.58s). Target files: src/components/ui/Tabs.tsx | Verify: npm run typecheck --silent && npm run lint --silent && npm test --silent
 
 ## Global Archive & Table sync
 - [x] **Slice 38.996: Match verified editions by seriesSlug/aliases and refresh events after Global Archive edits** [CORE / DATA] Pass seriesSlug through LookupInput/startLineupLookup, match verified editions by seriesSlug/seriesName/seriesAliases in findVerifiedEdition, fall back from job.editionId in confirmLookup, and refresh App events after Global Archive edits. Target files: src/server/lineup/types.ts, src/server/lineup/pipeline.ts, src/server/canon/match.ts, src/server/events/service.ts, src/server/lineup/learning.ts, src/components/ManageView.tsx, src/components/CanonicalArchive.tsx, tests/canonMatch.test.ts | Coords: [400, 12-data-model, 13-api] | Verify: npm run typecheck --silent && npm run lint --silent && npm test --silent
