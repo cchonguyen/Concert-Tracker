@@ -1,6 +1,6 @@
 # Shared artist genres (genres become canonical)
 
-Status: scope approved by Charlie 2026-11-26 (five decisions in the project thread; decision 4 revised by him the same day: members may add genres of their own on top). Design written 2026-11-26. Slices 35.1 to 35.12 in `.spec/PROGRESS.md`. Needs migration `0059_canonical_genres.sql`; Charlie applies it, and the slices that need it are held until he says it is applied.
+Status: scope approved by Charlie 2026-11-26 (five decisions in the project thread; decision 4 revised by him the same day: members may add genres of their own on top). Design written 2026-11-26. Built: Slices 35.1 to 35.12 merged (now in `.spec/archive/HISTORY-2026-11.md`), and Charlie applied migration `0059_canonical_genres.sql`.
 
 ## In plain English
 

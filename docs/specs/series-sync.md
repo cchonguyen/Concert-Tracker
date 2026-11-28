@@ -1,6 +1,6 @@
 # Keeping events and series in sync (auto-link and series health)
 
-Status: approved 2026-11-27 (Charlie chose "Everyone's, start building": slices 1 to 4). Slice 1 built 2026-11-27. Charlie: "I would like to better automate this process so there's less opportunity for desync." He chose "Link automatically, undoable" for exact matches. Brands and missing series stay one-tap. Rule 1c (two members verify) approved 2026-11-27.
+Status: approved 2026-11-27 (Charlie chose "Everyone's, start building": slices 1 to 4). Built: slices 1 to 5 merged 2026-11-27 and 2026-11-28 (see Slices below). Charlie: "I would like to better automate this process so there's less opportunity for desync." He chose "Link automatically, undoable" for exact matches. Brands and missing series stay one-tap. Rule 1c (two members verify) approved 2026-11-27.
 
 ## Why things drift today
 
@@ -71,7 +71,7 @@ A tap works the issue out again from live data, then runs its steps through `run
 
 ## Slices
 
-1. **Auto-link core.** New `src/server/canon/autoLink.ts` (match and link, pure plus store), the `backfill.ts` hook, the nightly sweep in `worker/index.ts`, and tests. [CORE / DATA]
+1. **Auto-link core.** Built 2026-11-27. New `src/server/canon/autoLink.ts` (match and link, pure plus store), the `backfill.ts` hook, the nightly sweep in `worker/index.ts`, and tests. [CORE / DATA]
 2. **Contribute back** (Rule 1b). Built 2026-11-27. [CORE / DATA]
 3. **Undo surface.** Built 2026-11-27. Event detail note with Unlink, plus the "Linked automatically" list in Data health (`EventDetail.tsx`, `DataHealth.tsx`, `services/dataHealth.ts`). [UI / VISUAL]
 4. **Series health.** Built 2026-11-28. New `src/server/entities/seriesHealth.ts` (issues and offers), owner routes, Data health section with one-tap fixes, and tests. [CORE / DATA]

@@ -1,5 +1,7 @@
 # Genre taxonomy, Phase A: the tree, ranked genres and relations
 
+Status: built (Slices 39.1 to 39.10; migration 0063 applied 2026-11-27; the rule wording in section 9 is in AGENTS.md). Releases 1 to 3 are built on top of it.
+
 Planned 2026-11-27 from Charlie's brief "Genre Taxonomy, Visualizations & Relational Discovery" and his answers of 2026-11-27 (06:49 UTC). Phase A is the data layer that Releases 1 to 3 build on. It has one migration (0063) and three owner uploads. Slices are 39.x. The rule wording in section 9 goes in first, in Slice 39.1, once Charlie approves it.
 
 ## In plain English

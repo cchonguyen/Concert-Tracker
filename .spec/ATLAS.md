@@ -12,7 +12,7 @@ The single entry point and registry for this repo's `.spec/` artifacts. Definiti
 
 ## Sector 100 Work Dispatch
 - `110` [.spec/PROGRESS.md](PROGRESS.md) — Active slice queue & lock
-- `120` [.spec/archive/HISTORY.md](archive/HISTORY.md) — Completed slice archive
+- `120` [.spec/archive/HISTORY.md](archive/HISTORY.md) and [HISTORY-2026-11.md](archive/HISTORY-2026-11.md) — Completed slice archive
 - `130` `.spec/BLACK_BOX.md` — flight-recorder dump on 2-strike failure (only after a failure)
 - `140` [.spec/SESSION_HANDOFF.md](SESSION_HANDOFF.md) — Session handoff state
 
